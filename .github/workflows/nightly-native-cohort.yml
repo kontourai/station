@@ -70,10 +70,9 @@ jobs:
           EXPECTED_PRODUCT_BASE: ${{ inputs.marketing_version }}
         run: |
           set -euo pipefail
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[][] | {tag_name, draft, prerelease}]' > "$RUNNER_TEMP/published-product-releases.json"
           expected=()
           if [ -n "$EXPECTED_PRODUCT_BASE" ]; then expected=(--expected-base "$EXPECTED_PRODUCT_BASE"); fi
-          node scripts/nightly-release-base.mjs --package-json package.json --release-history "$RUNNER_TEMP/published-product-releases.json" "${expected[@]}"
+          node scripts/nightly-release-base.mjs --package-json package.json --repository "$GITHUB_REPOSITORY" "${expected[@]}"
       - name: Admit only byte-for-byte staged assets
         run: |
           node scripts/release-cohort-workflow.mjs artifact-input artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg windows=station-nightly-desktop-windows-x86_64-setup.exe=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe windows=station-nightly-desktop-windows-x86_64-setup.exe.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe.sig windows=windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json

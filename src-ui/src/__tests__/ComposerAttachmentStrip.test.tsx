@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
-import { AttachmentPreviewMenu } from '../components/chat/AttachmentPreviewMenu';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ComposerAttachmentStrip } from '../components/chat/ComposerAttachmentStrip';
+import { PreviewProvider } from '../contexts/PreviewContext';
 import type { FileAttachment } from '../types';
 
 function attachment(overrides: Partial<FileAttachment> = {}): FileAttachment {
@@ -292,38 +299,89 @@ describe('ComposerAttachmentStrip', () => {
   });
 });
 
-describe('AttachmentPreviewMenu', () => {
-  function renderMenu(overrides: Partial<FileAttachment> = {}) {
-    render(
-      <AttachmentPreviewMenu
-        attachments={[attachment(overrides)]}
-        onRemove={vi.fn()}
-        onClearAll={vi.fn()}
-        onAddMore={vi.fn()}
-        onPreviewImage={vi.fn()}
-      />,
-    );
-  }
-
-  test('names the resize beside the size it reports (#3375)', () => {
-    renderMenu({
-      resized: {
-        fromBytes: 8 * 1024 * 1024,
-        fromMimeType: 'image/png',
-        width: 2048,
-        height: 1152,
+describe('ComposerAttachmentStrip previews', () => {
+  beforeEach(() => {
+    // The image inspector sizes itself with ResizeObserver, which jsdom lacks.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
       },
-    });
-
-    // Without this the popover's "1.0 MB" reads as the size of the file the
-    // user picked, while the strip beside it says the image was resized.
-    expect(screen.getByText('1.0 MB · resized from 8.0 MB')).toBeTruthy();
+    );
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
   });
 
-  test('reports an untouched attachment as one size, in the strip’s units', () => {
-    renderMenu();
+  test('a thumbnail opens the transcript’s image previewer', async () => {
+    render(
+      <PreviewProvider>
+        <ComposerAttachmentStrip
+          attachments={[attachment()]}
+          onRemove={vi.fn()}
+        />
+      </PreviewProvider>,
+    );
 
-    expect(screen.getByText('1.0 MB')).toBeTruthy();
-    expect(screen.queryByText(/resized/)).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const thumbnail = screen.getByRole('button', {
+      name: 'Preview screenshot.webp',
+    });
+    // A real button, so Enter and Space reach it from the keyboard.
+    expect(thumbnail.tagName).toBe('BUTTON');
+    expect(thumbnail.getAttribute('type')).toBe('button');
+    fireEvent.click(thumbnail);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Preview' });
+    // The same previewer a sent image opens: titled with the file, showing
+    // the attached bytes once its lazy inspector loads.
+    expect(within(dialog).getByText('screenshot.webp')).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        within(dialog)
+          .getAllByRole('img')
+          .some(
+            (image) =>
+              image.getAttribute('src') === 'data:image/webp;base64,AAAA',
+          ),
+      ).toBe(true),
+    );
+  });
+
+  test('a file without a thumbnail offers no preview', () => {
+    render(
+      <PreviewProvider>
+        <ComposerAttachmentStrip
+          attachments={[
+            attachment({
+              id: 'doc',
+              name: 'notes.txt',
+              type: 'text/plain',
+              preview: undefined,
+            }),
+          ]}
+          onRemove={vi.fn()}
+        />
+      </PreviewProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: /^Preview/ })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Remove notes.txt' }),
+    ).toBeTruthy();
+  });
+
+  test('stays a plain thumbnail where no previewer is mounted', () => {
+    render(
+      <ComposerAttachmentStrip
+        attachments={[attachment()]}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /^Preview/ })).toBeNull();
+    expect(screen.getByAltText('screenshot.webp')).toBeTruthy();
   });
 });

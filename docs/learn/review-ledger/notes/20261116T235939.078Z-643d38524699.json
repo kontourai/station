@@ -1,0 +1,7 @@
+{
+  "revision": "2259840eb4309c4c0516a8d7723a0d8b81413efd",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Four dead workflows removed (CI throughput health, hosted capacity probe, PR conflict signer diagnostic, PR conflict admission). Re-read: no sentence names a removed workflow; the reviewed workflow-level queue count is two, matching scripts/actionlint-gate.mjs; ci:health remains a documented manual command.","inputs":["docs/guides/testing.md",".github/workflows/ci-throughput-health.yml","scripts/__tests__/ci-health.test.ts","scripts/__tests__/ci-workflow-contract.test.ts","scripts/actionlint-gate.mjs","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

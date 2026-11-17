@@ -1414,11 +1414,13 @@ same `session-cli-reads` Feature Preview as `sessions wait`.
 ### `conversation`
 
 Export a conversation as a portable thread, or in a provider-native format,
-or fork it into a new conversation.
+fork it into a new conversation, or settle or reopen it in your own inbox.
 
 ```
 station conversation export <agent> <conversationId>
 station conversation fork <agent> <conversationId> [--target-agent=<slug>] [--project=<slug>] [--turn=<id>] [--idempotency-key=<key>] [--json]
+station conversation settle <conversationId> [--json]
+station conversation reopen <conversationId> [--json]
 ```
 
 `export`:
@@ -1449,6 +1451,15 @@ unreachable, 3 refused (for example, not found, no completed turn at the branch
 point, or a target Agent not available in the Project). An agent forks through
 Station Control's `fork_conversation`, which the route holds to the agent's
 scope; a person's fork is not.
+
+`settle` and `reopen` move a conversation between **Open** and **Settled** in
+your own inbox (`PUT /api/conversations/:id/work-state`, SDK
+`setConversationWorkState`) and need the **Open and Settled inbox** Feature
+Preview. Your next message, a question, a failure or a stop reopens it on its
+own. `--json` prints `{ok, kind: "conversation.work-state", data}`. Exit codes:
+0 done, 1 usage error, 2 Station unreachable, 3 refused (preview off, or a
+conversation you cannot read). An agent uses Station Control's
+`settle_conversation`, only when you ask.
 
 ### `claims`
 

@@ -14,6 +14,18 @@ export interface OverlayLayer {
   /** An element inside the overlay; its ancestors carry the overlay's z-index. */
   element: () => HTMLElement | null;
   parent: OverlayLayer | null;
+  /**
+   * Present on a desktop popover that gives way to a popover opened from
+   * inside it, so only one surface shows at a time. The child calls `hide`
+   * while it is open (it returns the release) and anchors to `anchor`, the
+   * parent's own trigger, because its own trigger is hidden with the parent.
+   * `dismiss` closes the parent, for a click outside both.
+   */
+  yieldTo?: {
+    hide: () => () => void;
+    anchor: () => HTMLElement | null;
+    dismiss: () => void;
+  };
 }
 
 export const OverlayLayerContext = createContext<OverlayLayer | null>(null);

@@ -1,0 +1,7 @@
+{
+  "revision": "bfab55d3b0559beba7cf002cec5f3a11dc72a613",
+
+  "notes": [
+    {"path":"docs/design/survey-flow-review.md","note":"Checked the test diff: a survey test name and comment now claim only that the real adapter runs on each call; the composition this page describes is unchanged.","inputs":["docs/design/survey-flow-review.md","src-server/services/flow/__tests__/survey-flow-review-service.test.ts"]}
+  ]
+}

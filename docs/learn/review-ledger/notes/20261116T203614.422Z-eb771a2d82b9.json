@@ -1,0 +1,7 @@
+{
+  "revision": "86a601bb95062539dfad0a4176fc4ea1e6aa3085",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"publish-packages.yml only gained a push-only version-PR probe before the changesets action; dispatch publishing, OIDC and promotion claims here are unaffected.","inputs":["docs/guides/release-rings.md",".github/workflows/publish-packages.yml"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "d4f7a83c8af8481140490ddb8aac4c13e7c72403",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Fix round: re-checked the Agents pane amendment against childWorkSelectors.ts (one group-key resolver via the store's reporter-to-chat binding, open by durable id, project as the open chat's display name only, monitors counted apart), backgroundTaskRows.tsx (agent cards read 'Run finished') and AgentsWorkspacePane.tsx; amendment text updated to match.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/backgroundTaskRows.tsx","src-ui/src/workspace-panes/AgentsWorkspacePane.tsx","src-ui/src/workspace-panes/agents/AgentsWorkspacePane.css","src-ui/src/workspace-panes/agents/childWorkSelectors.ts"]}
+  ]
+}

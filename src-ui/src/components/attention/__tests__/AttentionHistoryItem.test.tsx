@@ -224,20 +224,17 @@ describe('AttentionHistoryItem — session-failed kind', () => {
   });
 
   // archive#3203 defect 2: the count stayed at 4 after acting on a row.
-  test('opening the row acknowledges it before navigating', async () => {
+  test('opening the row navigates in the app and acknowledges it', () => {
     const onClose = vi.fn();
     renderRow(baseFailure(), { onClose });
 
     screen.getByRole('link', { name: 'Open session' }).click();
 
     expect(onClose).toHaveBeenCalled();
-    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
-    expect(navigate).not.toHaveBeenCalled();
-    await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith(
-        '/?surface=activity&session=thread-boom',
-      ),
+    expect(navigate).toHaveBeenCalledWith(
+      '/?surface=activity&session=thread-boom',
     );
+    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
   });
 
   test('opening an approval row acknowledges nothing', () => {

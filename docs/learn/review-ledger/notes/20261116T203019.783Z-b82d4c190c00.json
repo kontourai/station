@@ -1,0 +1,7 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Adds settled/running live-record cases and the legacy later-messages control; no documented claim changes.","inputs":["src-ui/src/__tests__/child-transcript-navigation.test.tsx"]}
+  ]
+}

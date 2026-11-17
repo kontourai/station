@@ -2666,7 +2666,16 @@ request authority remain distinct. `interruptOrchestrationTurn` and
 `resolveOrchestrationRequest` accept `requestScope`;
 `dispatchOrchestrationCommand` accepts it in its fourth options argument.
 The runtime-event-content hooks accept `apiBase` and `requestScope` in their
-input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
+input. `useChildWorkTranscriptTailQuery` reads a child transcript the way a
+chat reads: the latest messages first (`tail`), older ones through
+`fetchPreviousPage`, and, while `running`, only the messages past its last
+`endOffset` every two seconds; `refreshLatest` reads past that cursor now and
+`reload` starts again from the latest messages; a cursor the transcript has
+shrunk behind also starts again there. Against a Station from before page
+ranges (pages without `endOffset`), it pages forward by `nextOffset`
+(`hasLaterPage`, `fetchNextPage`) and re-reads its pages while `running`.
+`useChildWorkTranscriptQuery` pages forward from the first message.
+`useChildWorkTranscriptQuery` also accepts `requestScope` in its input
 and the target API base as its second argument. Its optional `running` input
 refreshes a visible engine transcript every two seconds through React Query.
 The caller supplies current child-work state and stops polling after settlement;
@@ -2678,6 +2687,10 @@ delegates use `childSession` for their own Session thread. `childTitle` labels
 the breadcrumb. These selectors choose a read-only child view and grant no
 additional authority. The pane consumes each child request once and retains
 an already-open parent Chat, including its draft, when the bound parent matches.
+A bound parent matches a child request when the request's reporting session
+belongs to that Chat by the Agents pane's rule (`threadInChat`), including an
+earlier session of its conversation; a cold-loaded Chat binds before a child
+request is read against it.
 Explicit target reads partition
 cache entries by that target and authority. These options grant no access and
 expose no outbound peer credential.

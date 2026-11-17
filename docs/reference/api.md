@@ -168,6 +168,14 @@ preview returns 404 with `code:feature_preview_disabled` and a Settings link.
 
 State is personal and durable across devices. Settlement changes neither
 provider execution nor history, and is separate from dismissal and deletion.
+The host clears it whether or not the preview is on: a person's own message
+through `/api/orchestration/chat`, a steer or a queued inbox message clears that
+person's record, and a `request.opened`, a failed turn or a `session.stop-settled`
+clears everyone's for that conversation. An engine-opened turn that finishes
+normally keeps it. Station Control's `settle_conversation` and
+`station conversation settle|reopen` call the same PUT. See the
+[reopen owner](../../src-server/services/orchestration/conversation-resolution-reopen.ts)
+and its [tests](../../src-server/services/orchestration/__tests__/conversation-resolution-reopen.test.ts).
 See the [route owner](../../src-server/routes/chat/conversation-work-state.ts),
 [route tests](../../src-server/routes/chat/__tests__/conversation-work-state.test.ts)
 and [SDK helpers](sdk.md#personal-conversation-resolution-and-turn-directory).
@@ -6044,8 +6052,12 @@ code when unplaced (`not-in-scope` after two polls in a row miss it,
 `holder-gone` once a found holder has left the scope, `holder-unavailable`
 when the host has no `setsid`(1) or `sleep`(1))
 (an unplaced holder means that scope's OOM count will be unknown after the
-engine dies). The session read's measured scope carries
-`lastOomKillAt` too. A save refuses a total below the slice's current usage
+engine dies). A scope also carries `lastOomKillProcesses`, its three
+largest processes when Station saw the latest kill, and, while its working
+set is at or above `STATION_WORKLOAD_PRESSURE_PERCENT` of its limit,
+`pressure` (`since`, `thresholdPercent`, `workingSetBytes`, `memoryMaxBytes`,
+`limitEvents` and `largestProcesses`). The session read's measured scope carries
+`lastOomKillAt`, `lastOomKillProcesses` and `pressure` too. A save refuses a total below the slice's current usage
 (400 `workload_settings_invalid`), because the total binds running engines at
 once.
 

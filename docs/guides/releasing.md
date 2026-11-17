@@ -126,12 +126,10 @@ runner availability. Other repositories still consume the shared hosted pool.
 `release-pipeline.mjs profile` validates the execution envelope without polling
 GitHub. Its explicit `observe` command is a one-shot diagnostic snapshot; it
 allocates no work and grants no admission. The old fifteen-minute runner-held
-capacity loop is removed. A manual `hosted-capacity-probe.yml` can demonstrate
-native queue retention and non-overlap with a ten-second `ADMISSION_ONLY` job;
-it performs no source qualification, installs nothing and publishes nothing.
+capacity loop is removed.
 
 Pinned actionlint does not yet parse GitHub's queue field. The workflow gate
-validates the three reviewed workflow-level queues and the two PR source-job
+validates the two reviewed workflow-level queues and the two PR source-job
 queues, then removes that field
 from private lint copies. All other actionlint checks and the original-document
 security checks still run; unknown queue shapes fail rather than being ignored.
@@ -368,8 +366,16 @@ The resolver validates its profile and exact-source reuse without waiting on
 an occupancy snapshot. `release-pipeline.mjs observe` remains available as a
 single diagnostic inventory of configured repositories; its output explicitly
 reports observed headroom, not admission. An API error fails the observation,
-with no retry loop or work allocation. Native staging uses two platform build
-slots and one macOS slot by ordering iOS after macOS and Windows after Android.
+with no retry loop or work allocation. Native staging starts its four platform
+builds together once the cohort plan exists; none reads another's output, and
+the desktop manifest is the only join. A Nightly therefore holds two macOS
+runners at once (the macOS and iOS builds) out of `STATION_HOSTED_MACOS_SLOTS`,
+which post-landing iOS builds also use. GitHub has cancelled macOS jobs it
+could not place on busy weekdays; such a cancellation fails native staging, so
+the native cohort does not run and no native build publishes. The npm nightly
+CLI needs only the source gate and still publishes, and the portable server
+Nightly follows the plan, not the staging result. The run is recovered like any
+other staging failure.
 
 `STATION_NIGHTLY_INTERVAL_HOURS` defaults to 6 and accepts integers 1–168.
 Admission under the Nightly delivery lock rechecks this interval, the
@@ -663,7 +669,30 @@ upstream's trailing whitespace, and the review ledger's
 [release-versioning contract](documentation-review-ledger.md#generated-release-records-and-removed-notes)
 accepts the version bumps and the changelog sections built from consumed notes.
 A record that cites a version value still needs a note.
-Mixed pushes and every other changed path still trigger maintenance. Manual
+Mixed pushes and every other changed path still trigger maintenance.
+Maintenance leaves the open version PR alone when regenerating would not change
+what it releases: [`version-pr-current.mjs`](../../scripts/version-pr-current.mjs)
+runs `npm run version-packages` on the pushed `main` (bounded at 3 minutes,
+without the job's GitHub token) and compares the tree with `git merge-tree` of
+that `main` and the PR head. It skips the action only for the
+`station-automation[bot]` PR (login, `Bot` type and user id) from this
+repository's `changeset-release/main`, whose head is one commit on an ancestor
+of `main`, merges cleanly to exactly that tree, still consumes only notes that
+are on `main` unchanged, and is not a no-op on `main` unless regenerating is
+empty too. The PR then keeps its checks and its merge-queue place. A new,
+removed or edited note, a manifest or lockfile change that alters the output,
+a release that already landed, a conflict, a timeout or any unreadable state
+regenerates as before; a dispatch never skips. The version script runs in its
+own process group, which the probe kills and waits out; if it cannot confirm
+the group is gone, the job fails rather than let the action commit a checkout
+something may still write to. A descendant that starts its own session leaves
+that group and is not covered; pnpm and the changesets tooling do not do that.
+Squashing the kept head onto
+the probed `main` gives the bytes a regeneration would have pushed. When the
+merge queue builds it behind other entries, it is squashed onto that later
+base instead, as a regenerated head would be; a note one of those entries adds
+stays pending for the next version PR, and the push that lands it probes again.
+On 2026-11-16, 28 of the 36 regenerations would have been skipped. Manual
 package publication remains available and requires exact-source qualification.
 The separately authorized published
 pointer-repair break glass retains its existing inventory/provenance checks and

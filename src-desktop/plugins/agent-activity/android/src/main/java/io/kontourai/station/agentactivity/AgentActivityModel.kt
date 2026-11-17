@@ -420,22 +420,41 @@ internal fun planCard(
 internal val SESSION_REFERENCE = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 /**
+ * A Station notification record id (`NativePushNotificationPlaintext.id`). Ids
+ * the Station mints are UUIDs; anything outside this grammar is refused.
+ */
+internal val NOTIFICATION_ID_PATTERN = Regex("^[A-Za-z0-9._:-]{1,128}$")
+
+/**
  * A session a tap opens, and which Station it belongs to. `stationId` is the
  * registration's verified Station id, never a value from the card, so the
  * web layer can refuse a route for a Station it is not connected to.
+ * `notificationId` is the alert's record (never the card's), so opening it
+ * reads it; null for a card, or an id outside its grammar.
  */
-data class SessionRoute(val stationId: String, val sessionId: String, val projectSlug: String?) {
+data class SessionRoute(
+  val stationId: String,
+  val sessionId: String,
+  val projectSlug: String?,
+  val notificationId: String? = null
+) {
   companion object {
     /**
      * Null unless every part is well formed: a session id and (optional)
      * project slug in the contract grammar, and a Station id that is a
      * registration's. Anything else opens the app where it was.
      */
-    fun validOrNull(stationId: String?, sessionId: String?, projectSlug: String?): SessionRoute? {
+    fun validOrNull(
+      stationId: String?,
+      sessionId: String?,
+      projectSlug: String?,
+      notificationId: String? = null
+    ): SessionRoute? {
       if (stationId.isNullOrBlank() || stationId.length > 128) return null
       if (sessionId == null || !SESSION_REFERENCE.matches(sessionId)) return null
       if (projectSlug != null && !SESSION_REFERENCE.matches(projectSlug)) return null
-      return SessionRoute(stationId, sessionId, projectSlug)
+      // An unreadable record id drops only the read, never the route.
+      return SessionRoute(stationId, sessionId, projectSlug, notificationId?.takeIf { NOTIFICATION_ID_PATTERN.matches(it) })
     }
   }
 }
@@ -537,6 +556,7 @@ internal class TapLedger(val taps: List<IssuedTap>) {
           .put("stationId", tap.route.stationId)
           .put("sessionId", tap.route.sessionId)
           .put("projectSlug", tap.route.projectSlug ?: JSONObject.NULL)
+          .put("notificationId", tap.route.notificationId ?: JSONObject.NULL)
           .put("issuedAt", tap.issuedAt)
       }
     ).toString()
@@ -554,7 +574,8 @@ internal class TapLedger(val taps: List<IssuedTap>) {
             val route = SessionRoute.validOrNull(
               entry.optString("stationId", null),
               entry.optString("sessionId", null),
-              if (entry.isNull("projectSlug")) null else entry.optString("projectSlug", null)
+              if (entry.isNull("projectSlug")) null else entry.optString("projectSlug", null),
+              if (entry.isNull("notificationId")) null else entry.optString("notificationId", null)
             ) ?: return@mapNotNull null
             IssuedTap(nonce, entry.optString("identity"), entry.optInt("requestCode"), route, entry.optLong("issuedAt"))
           }
