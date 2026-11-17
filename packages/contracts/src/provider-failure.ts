@@ -22,6 +22,13 @@ import {
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
+import {
+  CONVERSATION_IMPORT_DELETED_CODE,
+  PAIRED_STATION_REQUIRED_CODE,
+  PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
+  PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
+  PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+} from './peer-chat.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
 import { PROJECT_HELD_REFUSAL_CODE } from './project-lifecycle.js';
@@ -192,6 +199,15 @@ export const PROVIDER_FAILURE_KINDS = {
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   // The current Session still has a turn running; the handoff waits for it.
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
+  // Continuing a conversation on a paired Station: the paired Station refused
+  // the import outright (not retryable as sent), refused this Station's
+  // credential, or takes imports only from a Station paired as a Station.
+  [PEER_CONVERSATION_HANDOFF_REFUSAL_CODE]: 'conflict',
+  [PEER_CONVERSATION_HANDOFF_ACCESS_CODE]: 'permission_denied',
+  [PEER_CONVERSATION_HANDOFF_PAIRING_CODE]: 'permission_denied',
+  [PAIRED_STATION_REQUIRED_CODE]: 'permission_denied',
+  // The import this key saved was deleted before it started.
+  [CONVERSATION_IMPORT_DELETED_CODE]: 'session_gone',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
   [ADOPTION_SOURCE_ACTIVE_CODE]: 'busy',
   // A second consumer violates Station's internal queue-ownership invariant.

@@ -185,6 +185,13 @@ export interface ConversationMessage {
     /** Immutable copied-context receipt; it is not an execution or read grant. */
     forkOrigin?: { eventId: string; digest: string };
     forkSourceMessageId?: string;
+    /**
+     * A row another Station sent (`conversation-imports`), named as that
+     * Station named itself when requesting pairing (the Device name this
+     * Station's operator approved). That Station's claim, not a row this
+     * Station recorded; every seed and memory copy quotes it.
+     */
+    importedFrom?: string;
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';

@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AUTHORITY_OBSERVATION_SCHEMA_VERSION } from '@kontourai/station-contracts/authority-observation';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
   parseHostedTenantRegistry,
@@ -158,6 +162,81 @@ const CONSUMED_FLAGS: Record<
           : { select: (branches) => branches.enabled() },
       });
       return (await app.request('/receiver/chat-connection')).status === 200;
+    } finally {
+      fetch.mockRestore();
+    }
+  },
+  // The source half of a cross-Station handoff serves only where the paired
+  // chat preview is bound, which hosted deployments never bind.
+  conversationStationHandoff: async ({ hosted }) => {
+    const peer = {
+      environmentId: 'receiver',
+      apiBase: 'https://receiver.test',
+      credential: 'peer-credential-for-test',
+      scope: 'orchestration:read orchestration:operate',
+      label: 'Receiver',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const peers = { get: () => peer };
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) =>
+        String(input).endsWith('/conversation-imports')
+          ? Response.json(
+              {
+                success: true,
+                data: {
+                  conversationId: 'conversation:import:one',
+                  carriedMessages: 1,
+                  omittedMessages: 0,
+                  nonTextMessages: 0,
+                  idempotent: false,
+                },
+              },
+              {
+                headers: {
+                  [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+                },
+              },
+            )
+          : Response.json({
+              environmentId: 'receiver',
+              capabilities: { conversationStationHandoff: true },
+            }),
+      );
+    try {
+      const app = createPeerChatRoutes({
+        peers,
+        remote: createRemoteStationForwarder({
+          peers,
+          ssh: { list: () => [], connect: vi.fn() },
+        }),
+        current: () => true,
+        owner: () => true,
+        preview: hosted
+          ? undefined
+          : { select: (branches) => branches.enabled() },
+        handoff: {
+          readSource: async () => ({
+            agentSlug: 'helper',
+            title: 'Plan',
+            messages: [
+              { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
+            ],
+          }),
+        },
+      });
+      const response = await app.request('/receiver/conversation-handoffs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idempotencyKey: 'key',
+          conversationId: 'conversation-one',
+          targetAgent: 'helper',
+        }),
+      });
+      return response.status === 200;
     } finally {
       fetch.mockRestore();
     }
@@ -848,6 +927,7 @@ describe('consumed capability flags match what their routes serve', () => {
   const EXPECTED: Record<string, Record<'personal' | 'hosted', boolean>> = {
     peerChatTunnelV1: { personal: true, hosted: false },
     delegationLocalConversationV1: { personal: true, hosted: false },
+    conversationStationHandoff: { personal: true, hosted: false },
     childWorkSteering: { personal: true, hosted: true },
     privateMemoryReview: { personal: true, hosted: false },
     privateOperationalOutcomes: { personal: true, hosted: true },

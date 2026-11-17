@@ -39,8 +39,18 @@ import {
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
 import type { PreparedOutgoingText } from '../../hooks/useChatInput';
-import { type DraftQuote, parseDraftQuote } from '../../utils/answer-quotes';
+import {
+  type DraftQuote,
+  draftQuoteKeys,
+  parseDraftQuote,
+} from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import {
+  type ContinuedOnStation,
+  ConversationStationChoice,
+  ConversationStationHandoff,
+  readPendingStationHandoff,
+} from './ConversationStationHandoff';
 
 export interface AcceptedConversationHandoff {
   receipt: ConversationHandoffReceipt;
@@ -98,6 +108,11 @@ interface ConversationHandoffDialogProps {
   /** The composer's quotes, which are part of its draft. */
   draftQuotes?: readonly DraftQuote[];
   onAccepted: (result: AcceptedConversationHandoff) => void;
+  /**
+   * Offer paired Stations as well: the chat's history moves to a new chat
+   * there, which the dock opens and sends the first turn to.
+   */
+  onContinuedOnStation?: (result: ContinuedOnStation) => void;
   onDispatchStarted: (input: { message: string; clientTurnId: string }) => void;
   onDefiniteFailure: (clientTurnId: string) => void;
   onClose: () => void;
@@ -225,9 +240,6 @@ export function handoffStatusFeedback(
 }
 
 const NO_QUOTES: readonly DraftQuote[] = [];
-function quoteKeys(quotes: readonly DraftQuote[]): string {
-  return JSON.stringify(quotes);
-}
 
 /**
  * Station's reason for a refused handoff, in words the person can act on
@@ -271,6 +283,7 @@ export function ConversationHandoffDialog({
   draftQuotes = NO_QUOTES,
   busyTurnId,
   onAccepted,
+  onContinuedOnStation,
   onDispatchStarted,
   onDefiniteFailure,
   onClose,
@@ -278,6 +291,25 @@ export function ConversationHandoffDialog({
   const restoredIntent = useRef(
     readPendingIntent(apiBase, conversationId),
   ).current;
+  const restoredStation = useRef(
+    onContinuedOnStation
+      ? readPendingStationHandoff(apiBase, conversationId)
+      : null,
+  ).current;
+  const [where, setWhere] = useState(
+    restoredStation?.environmentId ?? 'current',
+  );
+  const stationOffered = Boolean(
+    onContinuedOnStation && !executionPreset && !restoredIntent,
+  );
+  const currentAgent = agents.find((agent) => agent.slug === currentAgentId);
+  // With another Station chosen the chat moves there, it does not switch Agent.
+  const dialogTitle =
+    stationOffered && where !== 'current'
+      ? 'Continue elsewhere'
+      : executionPreset
+        ? 'Switch engine'
+        : 'Switch agent';
   const selectedContext = projectSlug ?? GLOBAL_CONTEXT;
   const selection = useNewChatSelectionModel({
     agents,
@@ -361,7 +393,7 @@ export function ConversationHandoffDialog({
     retained &&
       composerHasDraft &&
       (initialMessage.trim() !== (retained.draft ?? retained.message).trim() ||
-        quoteKeys(draftQuotes) !== quoteKeys(retained.quotes ?? [])),
+        draftQuoteKeys(draftQuotes) !== draftQuoteKeys(retained.quotes ?? [])),
   );
   const message = retained?.message ?? (composerDraft || catchUpMessage);
   const sentQuotes = useRef<readonly DraftQuote[]>(
@@ -708,13 +740,13 @@ export function ConversationHandoffDialog({
   return (
     <ResponsiveDialogSurface
       layer="dialog"
-      ariaLabel={executionPreset ? 'Switch engine' : 'Switch agent'}
+      ariaLabel={dialogTitle}
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
       onClose={closeLocked ? () => {} : onClose}
     >
       <div className="conversation-handoff-dialog__header">
-        <h3>{executionPreset ? 'Switch engine' : 'Switch agent'}</h3>
+        <h3>{dialogTitle}</h3>
         <ResponsiveDialogCloseButton
           label={
             executionPreset ? 'Cancel engine change' : 'Cancel agent handoff'
@@ -724,7 +756,49 @@ export function ConversationHandoffDialog({
         />
       </div>
 
-      {executionPreset ? (
+      {stationOffered && (
+        <ConversationStationChoice
+          apiBase={apiBase}
+          value={where}
+          disabled={mutationLocked}
+          onChange={setWhere}
+        />
+      )}
+
+      {stationOffered && where !== 'current' && onContinuedOnStation ? (
+        currentAgent ? (
+          <ConversationStationHandoff
+            key={where}
+            apiBase={apiBase}
+            conversationId={conversationId}
+            agent={currentAgent}
+            environmentId={where}
+            sourceProject={projects.find(
+              (project) => project.slug === projectSlug,
+            )}
+            message={message}
+            draft={composerHasDraft}
+            composerText={initialMessage}
+            composerQuotes={draftQuotes}
+            prepareDraft={retained ? undefined : prepareDraft}
+            catchUpMessage={catchUpMessage}
+            blockedReason={
+              blockedReason ??
+              (attachments.length > 0
+                ? 'Send or remove attachments before continuing on another Station.'
+                : undefined)
+            }
+            restored={restoredStation}
+            onContinued={onContinuedOnStation}
+          />
+        ) : (
+          <Empty
+            variant="compact"
+            label="Agent unavailable"
+            description="This chat's Agent isn't on this Station anymore."
+          />
+        )
+      ) : executionPreset ? (
         <p className="conversation-handoff-dialog__summary">
           Keep the {targetName} agent and run this chat on{' '}
           {engineLabel ?? 'its default engine'}.
@@ -773,7 +847,7 @@ export function ConversationHandoffDialog({
         </div>
       )}
 
-      {targetId && (
+      {where === 'current' && targetId && (
         <div className="conversation-handoff-dialog__confirmation">
           {targetModels.length > 0 && (
             <div className="conversation-handoff-dialog__model">

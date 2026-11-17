@@ -26,6 +26,41 @@ import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import type { ChatSession } from '../types';
 
 const handoffExecutionMessage = vi.fn();
+/** What the stubbed Station section reports when Finish is pressed. */
+const station = vi.hoisted(() => ({ result: undefined as unknown }));
+// The Station picker's own behavior has its own tests; here it only reports
+// a chosen result so the dock's wiring of that result is what is tested.
+vi.mock(
+  '../components/chat-dock/ConversationStationHandoff',
+  async (importOriginal) => {
+    const React = await import('react');
+    return {
+      ...(await importOriginal<
+        typeof import('../components/chat-dock/ConversationStationHandoff')
+      >()),
+      ConversationStationChoice: ({
+        onChange,
+      }: {
+        onChange: (id: string) => void;
+      }) =>
+        React.createElement(
+          'button',
+          { type: 'button', onClick: () => onChange('receiver') },
+          'Choose Receiver',
+        ),
+      ConversationStationHandoff: ({
+        onContinued,
+      }: {
+        onContinued: (result: unknown) => void;
+      }) =>
+        React.createElement(
+          'button',
+          { type: 'button', onClick: () => onContinued(station.result) },
+          'Finish on Receiver',
+        ),
+    };
+  },
+);
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   handoffExecutionMessage: (...args: unknown[]) =>
@@ -123,11 +158,13 @@ function Pane({
   sessions = [chatA, chatB],
   chatInput,
   onState,
+  continueOnStation,
 }: {
   active: ChatSession;
   sessions?: ChatSession[];
   chatInput: Record<string, unknown>;
   onState: (state: ReturnType<typeof useConversationBoundaryDialogs>) => void;
+  continueOnStation?: (result: unknown, title?: string) => void;
 }) {
   const dialogs = useConversationBoundaryDialogs({
     agents: agents as never,
@@ -152,11 +189,16 @@ function Pane({
       invalidate={vi.fn()}
       showToast={vi.fn()}
       refetchOrchestrationSessions={vi.fn() as never}
+      {...(continueOnStation ? { continueOnStation } : {})}
     />
   );
 }
 
-function mount(active: ChatSession, overrides: Record<string, unknown> = {}) {
+function mount(
+  active: ChatSession,
+  overrides: Record<string, unknown> = {},
+  continueOnStation?: (result: unknown, title?: string) => void,
+) {
   let latest!: ReturnType<typeof useConversationBoundaryDialogs>;
   const textarea = { current: document.createElement('textarea') };
   document.body.append(textarea.current);
@@ -180,6 +222,7 @@ function mount(active: ChatSession, overrides: Record<string, unknown> = {}) {
         active={next}
         sessions={sessions}
         chatInput={chatInput}
+        continueOnStation={continueOnStation}
         onState={(state) => {
           latest = state;
         }}
@@ -288,5 +331,84 @@ describe('dock handoff wiring', () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(pane.textarea.current),
     );
+  });
+
+  describe('continuing on a paired Station', () => {
+    const quote = {
+      version: 1 as const,
+      origin: 'http://station.test',
+      sessionId: 'chat-a',
+      turnId: 't',
+      messageId: 'm',
+      revision: 'b'.repeat(64),
+      excerpt: 'quoted for the Station',
+    };
+    beforeEach(() =>
+      chatDraftsStore.consumeQuotes(
+        'chat-a',
+        chatDraftsStore.getQuotes('chat-a'),
+      ),
+    );
+    const result = (clearsComposer: boolean) => ({
+      connection: { stationName: 'Receiver' },
+      receipt: { conversationId: 'conversation:import:x' },
+      agentSlug: 'claude',
+      message: 'Pick this up there',
+      clearsComposer,
+      sentQuotes: [quote],
+    });
+
+    test('an active chat whose draft was sent clears it and its quotes, and keeps attachments', async () => {
+      chatDraftsStore.addQuote('chat-a', quote);
+      station.result = result(true);
+      const continueOnStation = vi.fn();
+      const pane = mount(chatA, {}, continueOnStation);
+      act(() => pane.get().openConversationHandoff(null));
+      fireEvent.click(screen.getByRole('button', { name: 'Choose Receiver' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Finish on Receiver' }),
+      );
+      await waitFor(() => expect(pane.get().handoffSource).toBeNull());
+      expect(continueOnStation).toHaveBeenCalledWith(station.result, undefined);
+      expect(pane.chatInput.handleClearInput).toHaveBeenCalledOnce();
+      expect(pane.chatInput.handleClearAttachments).not.toHaveBeenCalled();
+      expect(chatDraftsStore.getQuotes('chat-a')).toHaveLength(0);
+    });
+
+    test('a draft the Station handoff did not send stays in the composer', async () => {
+      chatDraftsStore.addQuote('chat-a', quote);
+      station.result = result(false);
+      const continueOnStation = vi.fn();
+      const pane = mount(chatA, {}, continueOnStation);
+      act(() => pane.get().openConversationHandoff(null));
+      fireEvent.click(screen.getByRole('button', { name: 'Choose Receiver' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Finish on Receiver' }),
+      );
+      await waitFor(() => expect(continueOnStation).toHaveBeenCalledOnce());
+      expect(pane.chatInput.handleClearInput).not.toHaveBeenCalled();
+      expect(chatDraftsStore.getQuotes('chat-a')).toHaveLength(1);
+    });
+
+    test("another chat's Station handoff leaves this composer alone", async () => {
+      chatDraftsStore.addQuote('chat-a', quote);
+      station.result = result(true);
+      const continueOnStation = vi.fn();
+      const pane = mount(chatA, {}, continueOnStation);
+      act(() =>
+        pane.get().setHandoffSource({
+          id: 'conversation-b',
+          agentSlug: 'claude',
+          nonce: 7,
+        }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Choose Receiver' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Finish on Receiver' }),
+      );
+      await waitFor(() => expect(continueOnStation).toHaveBeenCalledOnce());
+      expect(pane.chatInput.handleClearInput).not.toHaveBeenCalled();
+      expect(chatDraftsStore.getQuotes('chat-a')).toHaveLength(1);
+    });
   });
 });

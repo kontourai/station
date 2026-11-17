@@ -1330,7 +1330,31 @@ on the host (`ui-bootstrap`):
   [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts),
   so the owner can chat on a paired Station from a phone. The bridge's own
   allowlist and agent-origin refusal still apply, and the receiver still
-  checks the saved peer grant. Every other peer-family write (adding,
+  checks the saved peer grant. The exact leaf
+  `POST /api/environments/peers/:id/conversation-handoffs`
+  (`isPeerConversationHandoff`) is admitted the same way: it sends history the
+  caller can already read here to the paired Station under the saved peer
+  grant. On that Station, `POST /agents/:slug/conversation-imports` accepts only
+  an authenticated delegation Device (another Station's grant at the operate
+  tier) and names the sender by the Device name it requested at pairing, which
+  this Station's operator approved, never from the body. The imported rows are
+  the sender's claim and carry `importedFrom`. Every seed built from them (the
+  first turn, later Agent/engine handoffs, successor Sessions) and the target
+  Agent's memory copy quote each line, including after a shortening cut, so
+  none can pose as a turn. Conversation summaries (`POST
+  /agents/:slug/conversations/:id/summary`) read the copied rows too and quote
+  them the same way; context-compaction summaries read runtime events, which
+  never include them. `read_conversation` returns `importedFrom` with each such
+  row. A row the sender itself imported keeps its origin ("Laptop, via Studio
+  Mac"): only the last hop is verified (this Station's own pairing record);
+  earlier hops are the sender's claim. Origins and titles are cleaned of
+  controls, terminal escapes, bidi embedding/override/isolate controls and
+  invisible fillers; joiners, variation selectors, weak direction marks and
+  emoji tag sequences stay, so real names in any script survive. A label left
+  blank, or holding only joiners or marks, is refused, and any length bound cuts
+  whole graphemes from the earlier hops, never the verified last one. Transcript views show
+  them as ordinary user and assistant rows. Pairing a Station therefore
+  lets it author a conversation's earlier history on this one. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays
   operator-only.
 

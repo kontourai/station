@@ -48,6 +48,36 @@ relayed, without source authority; loss/unknown outcomes stay uncertain. Source
 401 still means reconnect to S. See the [threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)
 and [connection design](../design/station-connection.md) for limits and evidence.
 
+### Continue a conversation on a paired Station
+
+`POST /api/environments/peers/:id/conversation-handoffs` takes
+`{idempotencyKey, conversationId, targetAgent, projectSlug?}`
+(`PeerConversationHandoffRequestV1`). Admission matches the tunnel: an owner
+Device or the operator, the preview on, never an agent. The source reads the
+conversation's text history with the caller's own authority (the lineage and
+projection an Agent/engine handoff seeds from), bounds it to 400 messages and
+512 KB, newest first, cutting a message over 64 KB with a marker, and sends it
+with the saved peer credential to the receiver's
+`POST /agents/:slug/conversation-imports` (`ConversationImportRequestV1`). The
+bounds count JSON-encoded bytes, and the sender refuses (**413**) an encoded
+request over 768 KB rather than send it. The receiver accepts only an
+authenticated paired Station (**403** otherwise), names it from that credential,
+and saves the history as a fork context on a new conversation for the same
+Agent, in one of its own Projects. Its answer reports the counts it saved. Answers: **200** `PeerConversationHandoffReceiptV1`
+(no turn has run); **409** before sending (the receiver lacks
+`conversationStationHandoff`, nothing to carry, identity unconfirmed); **424**
+`peer_conversation_handoff_refused` when the receiver definitely refused, any
+4xx carrying its Station envelope, middleware refusals included (its text is
+not relayed), with `peer_conversation_handoff_access_refused` for its 401/403
+and `peer_conversation_handoff_pairing_required` when it reaches the receiver
+with a person's device credential rather than a Station pairing. A receiver
+failure after the save began answers **500** `outcome:'indeterminate'`, so the
+same key is retried; **409** when this Station cannot read or hand off its own chat; **502** with `outcome:'indeterminate'` once sent without a
+confirmed answer. A same-key retry returns the same conversation with
+`idempotent:true`. The client sends the first turn through the tunnel's `chat`
+leaf to the returned conversation. Both Stations advertise the
+`conversationStationHandoff` capability; hosted deployments withdraw it.
+
 ## Session Goals
 
 While the default-off **Session goals** Feature Preview is enabled,
