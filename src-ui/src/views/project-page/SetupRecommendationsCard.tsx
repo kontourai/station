@@ -9,6 +9,7 @@ import {
 import { useId, useMemo, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { Checkbox } from '../../components/Checkbox';
 import { ErrorState } from '../../components/state';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import {
@@ -176,19 +177,14 @@ function SetupRecommendationsForm({
       <ul className="setup-recommendations__list">
         {recommendations.map((item) => (
           <li key={item.id} className="setup-recommendations__item">
-            <label className="setup-recommendations__toggle">
-              <input
-                type="checkbox"
-                checked={isOn(item.id)}
-                disabled={pending || applied[item.id] === true}
-                onChange={(event) =>
-                  setEnabled((current) => ({
-                    ...current,
-                    [item.id]: event.currentTarget.checked,
-                  }))
-                }
-              />
-              <span>
+            <Checkbox
+              checked={isOn(item.id)}
+              disabled={pending || applied[item.id] === true}
+              onChange={(checked) =>
+                setEnabled((current) => ({ ...current, [item.id]: checked }))
+              }
+            >
+              <span className="setup-recommendations__toggle-text">
                 <strong>
                   {item.kind === 'task'
                     ? `New Task: ${item.label}`
@@ -196,7 +192,7 @@ function SetupRecommendationsForm({
                 </strong>
                 {item.kind === 'task' && <small>{item.detail}</small>}
               </span>
-            </label>
+            </Checkbox>
             {item.kind === 'brief' && isOn(item.id) && (
               <>
                 <label

@@ -24,6 +24,10 @@
   min-width: 0;
 }
 
+.project-library__filter select {
+  min-height: 44px;
+}
+
 .project-library__list {
   display: flex;
   flex-direction: column;
