@@ -61,6 +61,7 @@ interface RuntimeInitializationContext {
   resolveProjectToolServers?: InitializeRuntimeDeps['resolveProjectToolServers'];
   stationInstructionsEnabled?: InitializeRuntimeDeps['stationInstructionsEnabled'];
   codexBoundToolsEnabled?: InitializeRuntimeDeps['codexBoundToolsEnabled'];
+  codexToolFamiliesAdmitted?: InitializeRuntimeDeps['codexToolFamiliesAdmitted'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -206,6 +207,7 @@ export function createRuntimeInitializationDeps(
     resolveProjectToolServers: context.resolveProjectToolServers,
     stationInstructionsEnabled: context.stationInstructionsEnabled,
     codexBoundToolsEnabled: context.codexBoundToolsEnabled,
+    codexToolFamiliesAdmitted: context.codexToolFamiliesAdmitted,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
     voiceService: context.voiceService,

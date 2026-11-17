@@ -161,7 +161,8 @@ interface StationControlMcpTokenEntry {
   externalClientLeaseId?: string;
   callerRecordBinding?: string;
   isIssuerCurrent?: () => boolean;
-  dynamicTools?: boolean;
+  /** #2376 slice 3: this credential's listing starts at the family index. */
+  toolFamilies?: boolean;
   disclosure?: StationControlDisclosure;
 }
 
@@ -220,7 +221,7 @@ export function mintStationControlMcpToken(
   serverId: StationMcpCredentialPurpose = 'station-control',
   onRevoke?: () => void,
   isIssuerCurrent?: () => boolean,
-  dynamicTools = false,
+  toolFamilies = false,
 ): MintedStationControlMcpToken {
   if (
     (serverId === 'coordinator-control' ||
@@ -238,7 +239,7 @@ export function mintStationControlMcpToken(
   const tokenDigest = digest(token);
   tokensByDigest.set(tokenDigest, {
     onRevoke,
-    dynamicTools,
+    toolFamilies,
     ...(isIssuerCurrent ? { isIssuerCurrent } : {}),
     sessionId,
     serverId,
@@ -397,7 +398,7 @@ export function stationControlDisclosureForToken(
     entry = tokensByDigest.get(tokenDigest);
   if (
     !entry ||
-    !entry.dynamicTools ||
+    !entry.toolFamilies ||
     entry.externalClientLeaseId ||
     (entry.serverId !== 'station-control' &&
       entry.serverId !== 'coordinator-control')
@@ -650,6 +651,53 @@ export function mintStationControlMcpHeaderAuth(
     isIssuerCurrent,
   );
   return { url: buildStationControlMcpHeaderUrl(port, serverId), token };
+}
+
+/**
+ * The Codex header channel's mint (`CodexAdapter`'s
+ * `mintStationControlMcpAuth` / `mintStationKnowledgeMcpAuth`), as one named
+ * export so a test drives the runtime's real mint rather than a stand-in.
+ * A coordinator credential (a designation generation is given) is guarded by
+ * that generation. `toolFamilies` (#2376 slice 3) makes the station-control
+ * credential start at the family index; Knowledge has no families, so it is
+ * refused there rather than ignored.
+ */
+export function mintCodexStationMcpHeaderAuth(input: {
+  port: number;
+  sessionId: string;
+  /** The conversation whose designation generation guards a coordinator credential. */
+  conversationId: string;
+  serverId: BuiltinStationApiMcpId;
+  tenantExecutionContext?: TenantExecutionContext;
+  allowedTools?: readonly string[];
+  coordinatorGeneration?: number;
+  toolFamilies?: boolean;
+}): { url: string; token: string } {
+  if (input.toolFamilies && input.serverId !== 'station-control')
+    throw new Error('Only Station Control has tool families.');
+  const generation = input.coordinatorGeneration;
+  const coordinator = generation !== undefined;
+  const { token } = mintStationControlMcpToken(
+    input.sessionId,
+    'http-header-token',
+    undefined,
+    input.tenantExecutionContext,
+    input.allowedTools,
+    coordinator
+      ? input.serverId === 'station-knowledge'
+        ? 'coordinator-knowledge'
+        : 'coordinator-control'
+      : input.serverId,
+    undefined,
+    coordinator
+      ? () => coordinatorGeneration(input.conversationId) === generation
+      : undefined,
+    input.toolFamilies === true,
+  );
+  return {
+    url: buildStationControlMcpHeaderUrl(input.port, input.serverId),
+    token,
+  };
 }
 
 /** Test-only reset so suites don't leak state across test files. */

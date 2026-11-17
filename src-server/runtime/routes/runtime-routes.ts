@@ -1431,6 +1431,10 @@ export interface ConfigureRuntimeRoutesContext {
   featurePreviews: FeaturePreviewRegistry;
   /** #3628: bound by the runtime, absent on a hosted Station. */
   coordinatorSessionPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
+  /**
+   * The `codex-tool-families` preview (#2376 slice 3). Off, a credential
+   * minted at the family index lists the whole catalog instead.
+   */
   progressiveToolsEnabled?: () => boolean;
   projectWorkingConfiguration?: import('../project-working-configuration-runtime.js').ProjectWorkingRuntime;
   learningReview?: import('../learning-review-runtime.js').LearningReviewRuntime;

@@ -107,8 +107,15 @@ interface SessionAgentResolverOptions {
    * no `stationInstructions`.
    */
   stationInstructionsEnabled?: () => boolean;
-  /** HTTP progressive tool disclosure is on (adds the family-loading line). */
-  progressiveToolsEnabled?: () => boolean;
+  /**
+   * #2376 slice 3: `CodexAdapter.toolFamiliesAdmitted` (the
+   * `codex-tool-families` preview and a qualified Codex version). Asked only
+   * for a new Codex Session on the header-token path; when it answers true
+   * the adapter mints that Session's credential at the family index, and the
+   * instructions carry the family-loading line. Claude and ACP engines never
+   * get families.
+   */
+  codexToolFamiliesAdmitted?: () => Promise<boolean>;
   /** The `codex-bound-browser-device-tools` preview (Codex browser/device tools). */
   codexBoundToolsEnabled?: () => boolean;
 }
@@ -312,14 +319,14 @@ class ToolApprovalDeliveryError extends Error {}
  * would duplicate into the thread). Claude's append is per-process, so it is
  * re-attached on resume.
  */
-function resolveStationInstructions(args: {
+async function resolveStationInstructions(args: {
   options: SessionAgentResolverOptions;
   input: ProviderSessionStartInput;
   definition: ResolvedAgentDefinition;
   report: SessionCapabilityDeliveryMetadata;
   authoredPrompt: string | undefined;
   spec: AgentSpec;
-}): void {
+}): Promise<void> {
   const { options, input, definition, report, authoredPrompt, spec } = args;
   if (options.stationInstructionsEnabled?.() !== true) return;
   const control = definition.toolServers?.find(
@@ -365,11 +372,15 @@ function resolveStationInstructions(args: {
     toolSearch:
       provider === 'claude' &&
       stationEnablesClaudeToolSearch(spec.tools?.mcpLoading),
-    // Family loading exists only on HTTP station-control. A `bound` session
-    // (Claude's in-process server, Codex's bound catalog) is served without
-    // disclosure, so it is never told to load families.
+    // Family loading exists only for Codex on HTTP station-control, as the
+    // adapter admits it. A `bound` session (Claude's in-process server,
+    // Codex's bound catalog) is served without disclosure, and a resumed
+    // thread is told nothing here (it returns below before any stamp).
     progressiveFamilies:
-      assurance !== 'bound' && options.progressiveToolsEnabled?.() === true,
+      provider === 'codex' &&
+      assurance !== 'bound' &&
+      input.resumeCursor === undefined &&
+      (await options.codexToolFamiliesAdmitted?.()) === true,
   });
   if (!composed) return;
   const base = {
@@ -785,7 +796,7 @@ export function createSessionAgentResolver(
         }
       }
 
-      resolveStationInstructions({
+      await resolveStationInstructions({
         options,
         input,
         definition,
