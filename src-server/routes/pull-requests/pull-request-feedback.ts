@@ -176,8 +176,9 @@ export function createPullRequestFeedbackRoutes(
       const result = await ownership.write({
         conversationId,
         identity: lower(body.identity),
+        // Ignored while review of each head is not offered (its preview off).
         settings:
-          body.settings.reviewEachHead === undefined
+          body.settings.reviewEachHead === undefined || !headReview()
             ? sends
             : { ...sends, reviewEachHead },
         viewer: actor,
@@ -278,34 +279,35 @@ export function createPullRequestFeedbackRoutes(
     if (!claim) return unavailable(c);
     if (action === 'send') {
       const outcome = await reviewer.sendFindings(claim.prKey);
-      return outcome === 'queued'
-        ? c.json({ success: true, data: { conversationId } })
-        : c.json(
-            {
+      if (outcome === 'queued')
+        return c.json({ success: true, data: { conversationId } });
+      return c.json(
+        outcome === 'paused'
+          ? {
+              success: false,
+              code: 'pull_request_feedback_paused',
+              error:
+                'Feedback for this pull request is paused. Send again to lift it.',
+            }
+          : {
               success: false,
               code: 'pull_request_head_review_nothing_to_send',
               error: 'This head has no required findings to send.',
             },
-            409,
-          );
+        409,
+      );
     }
-    const outcome = await reviewer.reviewAgain(claim.prKey);
-    if (outcome === 'started' || outcome === 'running')
+    const started = await reviewer.reviewAgain(claim.prKey);
+    if (started.outcome === 'started' || started.outcome === 'running')
       return c.json({ success: true, data: { conversationId } });
     return c.json(
       {
         success: false,
         code: 'pull_request_head_review_not_started',
-        error:
-          outcome === 'project-busy'
-            ? "Station is reviewing another pull request in this Project. Try again when it's done."
-            : outcome === 'daily-limit'
-              ? 'Station already ran 10 reviews in this Project today.'
-              : outcome === 'head-not-local' ||
-                  outcome === 'no-reviewer' ||
-                  outcome === 'not-verified'
-                ? 'Station could not start the review. The review shows why.'
-                : 'Turn on "Review each new head" for an open pull request first.',
+        // The reviewer's own reason: a busy Project, the daily limit, no
+        // reviewer, a head not here yet. Display text, built server-side.
+        error: started.reason ?? 'Station could not start the review.',
+        details: { outcome: started.outcome },
       },
       409,
     );

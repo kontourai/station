@@ -45,6 +45,11 @@ export interface PullRequestFeedbackNotice {
   rounds?: number;
   /** agent-stopped: what is waiting. */
   waiting?: PullRequestFeedbackCategoryCount[];
+  /**
+   * Only "Review each new head" is on: what paused is review findings, not
+   * auto-fix.
+   */
+  reviewOnly?: true;
 }
 
 /** One pull request whose feedback needs a person, for the attention item. */
@@ -63,6 +68,8 @@ const MAX_SENT_PER_DAY = 10;
 const REPEATED_FAILURE_HEADS = 3;
 
 const short = (sha: string) => (SHA.test(sha) ? sha.slice(0, 7) : 'its head');
+const paused = (notice: Pick<PullRequestFeedbackNotice, 'reviewOnly'>) =>
+  notice.reviewOnly ? 'Review feedback is paused.' : 'Auto-fix is paused.';
 const number = (identity: PullRequestLinkIdentity) =>
   /^\d{1,12}$/.test(identity.ref) ? `#${identity.ref}` : 'A pull request';
 const repository = (identity: PullRequestLinkIdentity) =>
@@ -160,7 +167,7 @@ export function pullRequestFeedbackAttentionCopy(
     case 'repeated-failure':
       return {
         title: `${pr}: the same checks failed on ${REPEATED_FAILURE_HEADS} pushes`,
-        body: `${checkNames(source.failing ?? [])} failed again on ${head}. Auto-fix is paused.`,
+        body: `${checkNames(source.failing ?? [])} failed again on ${head}. ${paused(source)}`,
       };
     default:
       return {
@@ -171,8 +178,8 @@ export function pullRequestFeedbackAttentionCopy(
               ? source.failing?.length
                 ? `${pr} still failing after ${source.rounds ?? MAX_ROUNDS_PER_HEAD} rounds`
                 : `${pr} still has feedback after ${source.rounds ?? MAX_ROUNDS_PER_HEAD} rounds`
-              : `${pr}: auto-fix is paused`,
-        body: `${failed} Auto-fix is paused.`,
+              : `${pr}: ${source.reviewOnly ? 'review feedback' : 'auto-fix'} is paused`,
+        body: `${failed} ${paused(source)}`,
       };
   }
 }
@@ -201,7 +208,7 @@ function pushCopy(notice: PullRequestFeedbackNotice): {
   const body =
     notice.reason === 'agent-stopped'
       ? `${where}: ${waitingClause(notice.waiting ?? [])} not sent. Open the chat to continue.`
-      : `${where}. Send again or turn off auto-fix in Station.`;
+      : `${where}. Send again or turn off ${notice.reviewOnly ? 'review of each head' : 'auto-fix'} in Station.`;
   return { title: bounded(title, 80), body: bounded(body, 300) };
 }
 

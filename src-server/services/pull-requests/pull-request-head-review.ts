@@ -34,6 +34,7 @@ import type {
   PullRequestFeedbackObservation,
   PullRequestHeadReview,
   PullRequestHeadReviewFinding,
+  PullRequestHeadReviewWaiting,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type {
   IndependentReviewReceipt,
@@ -46,8 +47,14 @@ import { execGit } from '../../utils/git-exec.js';
 import { readReviewRepositoryIdentity } from '../evidence/git-review-workspace-source.js';
 import type { ReviewEvidenceModule } from '../evidence/review-evidence-module.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
-import { ownRepositoryGitArgs } from '../projects/git-read-repository.js';
-import type { FeedbackSessionState } from './pull-request-feedback-delivery.js';
+import {
+  ownRepositoryGitArgs,
+  ProjectRepositoryRefusedError,
+} from '../projects/git-read-repository.js';
+import {
+  type FeedbackSessionState,
+  reviewFindingsSignature,
+} from './pull-request-feedback-delivery.js';
 import type {
   PullRequestFeedbackClaim,
   PullRequestFeedbackStore,
@@ -65,6 +72,13 @@ const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
 const REQUIRED_SEVERITY = new Set(['critical', 'high']);
 const REQUIRED_CONFIDENCE = new Set(['high', 'medium']);
 const CARRIED_OUTCOMES = new Set(['still-present', 'regressed']);
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+const CONFIDENCE_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 /** What a reviewer found that goes to the agent; the rest stays in Station. */
 function requiredHeadReviewFinding(
@@ -116,13 +130,29 @@ export interface PullRequestHeadReviewPorts {
   now?(): number;
 }
 
-export type HeadReviewStart =
-  | 'started'
-  | 'not-eligible'
-  | 'project-busy'
-  | 'daily-limit'
-  | 'running'
-  | StoredHeadReview['state'];
+/** How a request to review a head went, and why when it did not start. */
+export interface HeadReviewStart {
+  outcome:
+    | 'started'
+    | 'running'
+    | 'not-eligible'
+    | 'project-busy'
+    | 'daily-limit'
+    | 'head-not-local'
+    | 'no-reviewer'
+    | 'not-verified';
+  /** Why it did not start, in a person's words. */
+  reason?: string;
+}
+
+/** Only a Codex connection reviews read-only today. */
+const NO_REVIEWER =
+  'No reviewer can read this Project read-only. Connect Codex to review.';
+const PROJECT_BUSY =
+  'Station is reviewing another pull request in this Project.';
+const DAILY_LIMIT = 'Station already ran 10 reviews in this Project today.';
+const NOT_ELIGIBLE =
+  'Turn on "Review each new head" for an open pull request first.';
 
 /** A review whose pull request, switch, head or owner changed under it. */
 class HeadReviewSuperseded extends Error {
@@ -284,7 +314,8 @@ export class PullRequestHeadReviewer {
    */
   async reviewAgain(prKey: string): Promise<HeadReviewStart> {
     const store = this.ports.store();
-    if (!store || !this.ports.enabled()) return 'not-eligible';
+    const notEligible = { outcome: 'not-eligible', reason: NOT_ELIGIBLE };
+    if (!store || !this.ports.enabled()) return notEligible as HeadReviewStart;
     await this.reconcile(store);
     const claim = store.claim(prKey);
     const observation = store.observation(prKey)?.observation;
@@ -294,9 +325,10 @@ export class PullRequestHeadReviewer {
       observation.state !== 'OPEN' ||
       observation.draft
     )
-      return 'not-eligible';
+      return notEligible as HeadReviewStart;
     const existing = store.headReview(prKey, observation.headSha);
-    if (this.running.has(keyOf(prKey, observation.headSha))) return 'running';
+    if (this.running.has(keyOf(prKey, observation.headSha)))
+      return { outcome: 'running' };
     return this.start(store, claim, observation, existing, true);
   }
 
@@ -304,7 +336,7 @@ export class PullRequestHeadReviewer {
    * A person's Send to agent: the current head's required findings go out
    * even with "Address review comments" off, under the same caps.
    */
-  async sendFindings(prKey: string): Promise<'queued' | 'nothing'> {
+  async sendFindings(prKey: string): Promise<'queued' | 'paused' | 'nothing'> {
     const store = this.ports.store();
     if (!store || !this.ports.enabled()) return 'nothing';
     const claim = store.claim(prKey);
@@ -317,7 +349,10 @@ export class PullRequestHeadReviewer {
       sendRequestedAt: new Date(this.now()).toISOString(),
     });
     await this.ports.delivery()?.deliver(claim.conversationId);
-    return 'queued';
+    // The feedback caps still hold: a pause (now or already) sends nothing.
+    return store.claim(prKey)?.condition?.state === 'paused'
+      ? 'paused'
+      : 'queued';
   }
 
   /** The newest head review, as a reader of the owning chat sees it. */
@@ -326,24 +361,32 @@ export class PullRequestHeadReviewer {
     const store = this.ports.store();
     const review = store?.headReviews(prKey)[0];
     if (!store || !review) return undefined;
+    const observedHead = store.observation(prKey)?.observation.headSha;
     const state: PullRequestHeadReview['state'] =
       review.state === 'running'
         ? this.running.has(keyOf(prKey, review.headSha))
           ? 'reviewing'
           : 'unknown'
         : review.state;
+    // The message that carried exactly these findings: a rerun with new
+    // findings on the same head is not "sent" by the earlier one.
+    const signature = reviewFindingsSignature(
+      review.headSha,
+      review.requiredIds,
+    );
     const sent = store
       .deliveriesForPullRequest(prKey, 200)
       .find(
         (delivery) =>
           delivery.category === 'review-findings' &&
-          delivery.headSha === review.headSha &&
+          delivery.signature === signature &&
           delivery.state !== 'superseded' &&
           delivery.state !== 'dismissed',
       );
     return {
       headSha: review.headSha,
       state,
+      current: review.headSha === observedHead,
       at: review.settledAt ?? review.startedAt,
       ...(review.mode ? { mode: review.mode } : {}),
       ...(review.state === 'reviewed'
@@ -383,6 +426,57 @@ export class PullRequestHeadReviewer {
   }
 
   /**
+   * Why the head Station last observed has no review yet, when it has none
+   * (no row for it). Undefined before Station has read the pull request.
+   * The same checks `consider` makes, in the order it makes them.
+   */
+  waiting(prKey: string): PullRequestHeadReviewWaiting | undefined {
+    if (!this.ports.enabled()) return undefined;
+    const store = this.ports.store();
+    const claim = store?.claim(prKey);
+    const stored = store?.observation(prKey);
+    const observation = stored?.observation;
+    if (!store || !claim || !stored || !observation) return undefined;
+    const headSha = observation.headSha;
+    if (store.headReview(prKey, headSha)) return undefined;
+    const waiting = (reason: PullRequestHeadReviewWaiting['reason']) => ({
+      headSha,
+      reason,
+    });
+    if (observation.state !== 'OPEN' || claim.condition?.state === 'closed')
+      return waiting('closed');
+    if (observation.draft) return waiting('draft');
+    const first = Date.parse(stored.headFirstSeenAt ?? stored.observedAt);
+    const lastTurn = this.ports.lastTurnAt(claim.conversationId);
+    if (
+      !(Date.parse(stored.observedAt) > first) &&
+      !(lastTurn !== undefined && lastTurn > first)
+    )
+      return waiting('settling');
+    const session = this.ports.session(claim.conversationId).state;
+    if (session === 'busy') return waiting('agent-busy');
+    if (session === 'awaiting') return waiting('agent-waiting');
+    if (session === 'stopped') return waiting('agent-stopped');
+    if (
+      store.openBatch(claim.conversationId) ||
+      store.pendingDeliveries(claim.conversationId).length
+    )
+      return waiting('feedback-waiting');
+    const projectSlug = this.ports.chat(claim.conversationId).projectSlug;
+    if (projectSlug && this.busyProjects.has(projectSlug))
+      return waiting('project-busy');
+    if (
+      projectSlug &&
+      store.headReviewsStartedSince(
+        projectSlug,
+        new Date(this.now() - DAY_MS).toISOString(),
+      ) >= MAX_PER_PROJECT_PER_DAY
+    )
+      return waiting('daily-limit');
+    return waiting('starting');
+  }
+
+  /**
    * A review left running by an earlier process: its result if the review
    * module recorded one, otherwise unknown. Never run again by itself.
    */
@@ -419,7 +513,7 @@ export class PullRequestHeadReviewer {
     existing: StoredHeadReview | undefined,
     manual = false,
   ): Promise<HeadReviewStart> {
-    if (this.considering.has(claim.prKey)) return 'running';
+    if (this.considering.has(claim.prKey)) return { outcome: 'running' };
     this.considering.add(claim.prKey);
     try {
       return await this.prepare(store, claim, observation, existing, manual);
@@ -436,13 +530,17 @@ export class PullRequestHeadReviewer {
     manual: boolean,
   ): Promise<HeadReviewStart> {
     const reviews = this.ports.reviews();
-    if (!reviews) return 'not-eligible';
+    if (!reviews) return { outcome: 'not-eligible', reason: NOT_ELIGIBLE };
     const conversationId = claim.conversationId;
     const headSha = observation.headSha;
     const nowIso = new Date(this.now()).toISOString();
     const rerun = existing ? existing.rerun + (submitted(existing) ? 1 : 0) : 0;
     // A re-run of a head that was never submitted keeps the first id.
-    if (!manual && existing && submitted(existing)) return 'not-eligible';
+    if (!manual && existing && submitted(existing))
+      return { outcome: 'not-eligible' };
+    // Review again over a finished review keeps it until a new request is
+    // submitted: a stop before that only says why, to the person who asked.
+    const keepStored = manual && existing !== undefined && submitted(existing);
     const row: StoredHeadReview = {
       prKey: claim.prKey,
       headSha,
@@ -457,14 +555,15 @@ export class PullRequestHeadReviewer {
     const halt = (
       state: 'head-not-local' | 'no-reviewer' | 'not-verified',
       failureReason: string,
-    ) => {
-      store.writeHeadReview({
-        ...row,
-        state,
-        failureReason,
-        settledAt: nowIso,
-      });
-      return state;
+    ): HeadReviewStart => {
+      if (!keepStored)
+        store.writeHeadReview({
+          ...row,
+          state,
+          failureReason,
+          settledAt: nowIso,
+        });
+      return { outcome: state, reason: failureReason };
     };
     const chat = this.ports.chat(conversationId);
     if (
@@ -474,7 +573,10 @@ export class PullRequestHeadReviewer {
     )
       // Who turned it on may no longer send to this chat: nothing runs
       // for them, and the feedback line already says so.
-      return 'not-eligible';
+      return {
+        outcome: 'not-eligible',
+        reason: 'You can no longer send to this chat.',
+      };
     if (!chat.projectSlug)
       return halt(
         'not-verified',
@@ -486,7 +588,8 @@ export class PullRequestHeadReviewer {
         "Station can't tell which agent wrote this change.",
       );
     const projectSlug = chat.projectSlug;
-    if (this.busyProjects.has(projectSlug)) return 'project-busy';
+    if (this.busyProjects.has(projectSlug))
+      return { outcome: 'project-busy', reason: PROJECT_BUSY };
     this.busyProjects.add(projectSlug);
     let handedOff = false;
     try {
@@ -496,17 +599,21 @@ export class PullRequestHeadReviewer {
           new Date(this.now() - DAY_MS).toISOString(),
         ) >= MAX_PER_PROJECT_PER_DAY
       )
-        return 'daily-limit';
+        return { outcome: 'daily-limit', reason: DAILY_LIMIT };
       const root = this.ports.projectRoot(projectSlug);
       if (!root)
         return halt('not-verified', "This chat's Project has no folder.");
       let repository: Awaited<ReturnType<typeof projectRepository>>;
       try {
         repository = await projectRepository(root);
-      } catch {
+      } catch (error) {
+        // The refusal's own reason carries its fix (an alternates file:
+        // "run `git repack -a -d`").
         return halt(
           'not-verified',
-          "Station can't read this Project's git repository.",
+          error instanceof ProjectRepositoryRefusedError
+            ? `Station can't read this Project's git repository: ${error.reason}.`
+            : "Station can't read this Project's git repository.",
         );
       }
       const { host, repository: repo } = claim.identity;
@@ -526,10 +633,12 @@ export class PullRequestHeadReviewer {
         projectSlug,
         taskBaseCommit: chat.taskBaseCommit,
       });
-      if (!range)
+      if (range.kind !== 'range')
         return halt(
           'not-verified',
-          "Station can't find this pull request's base branch here.",
+          range.kind === 'in-base'
+            ? `Head ${short(headSha)} is already in the base branch: there is nothing to review.`
+            : "Station can't find this pull request's base branch here.",
         );
       const requestId = requestIdFor(claim.prKey, headSha, rerun);
       const request: IndependentReviewRequest = {
@@ -547,11 +656,7 @@ export class PullRequestHeadReviewer {
         ...(range.delta ? { delta: range.delta } : {}),
       };
       const who = await this.ports.reviewers(request);
-      if (!who)
-        return halt(
-          'no-reviewer',
-          'No reviewer agent can review this Project read-only.',
-        );
+      if (!who) return halt('no-reviewer', NO_REVIEWER);
       const { selection: _selection, ...rest } = request;
       const planned: IndependentReviewRequest = {
         ...rest,
@@ -566,6 +671,14 @@ export class PullRequestHeadReviewer {
         baseSha: range.baseSha,
         ...(range.delta ? { priorReceiptId: range.delta.priorReceiptId } : {}),
       };
+      // Counted when submitted, reruns included: the daily limit reads it.
+      store.recordHeadReviewRequest({
+        requestId,
+        projectSlug,
+        prKey: claim.prKey,
+        headSha,
+        at: nowIso,
+      });
       store.writeHeadReview(started);
       const key = keyOf(claim.prKey, headSha);
       this.running.add(key);
@@ -583,16 +696,18 @@ export class PullRequestHeadReviewer {
           this.inFlight.delete(run);
         });
       this.inFlight.add(run);
-      return 'started';
+      return { outcome: 'started' };
     } finally {
       if (!handedOff) this.busyProjects.delete(projectSlug);
     }
   }
 
   /**
-   * The review range, never fetching. Delta from the previous reviewed
-   * head when it is this head's ancestor and its receipt had 1 to 100
-   * findings; otherwise from the merge base with the pull request's base.
+   * The review range, never fetching. The base is the merge base of the
+   * head with the pull request's base. Delta from the previous reviewed
+   * head when it is this head's ancestor, its receipt had 1 to 100
+   * findings, and both heads share that merge base (a push that merged the
+   * base branch in would otherwise review the base's own commits).
    */
   private async range(
     store: PullRequestFeedbackStore,
@@ -602,12 +717,30 @@ export class PullRequestHeadReviewer {
     input: { projectSlug: string; taskBaseCommit?: string },
   ): Promise<
     | {
+        kind: 'range';
         baseSha: string;
         delta?: { priorReceiptId: string; claimedFindingIds: string[] };
       }
-    | undefined
+    | { kind: 'no-base' | 'in-base' }
   > {
     const headSha = observation.headSha;
+    let base: string | undefined;
+    for (const candidate of [
+      observation.baseSha,
+      BRANCH.test(observation.baseRefName)
+        ? `refs/remotes/origin/${observation.baseRefName}`
+        : undefined,
+      input.taskBaseCommit,
+    ]) {
+      if (!candidate) continue;
+      base = await repository.commit(candidate);
+      if (base) break;
+    }
+    const mergeBase = base
+      ? await repository.mergeBase(headSha, base)
+      : undefined;
+    if (!base || !mergeBase) return { kind: 'no-base' };
+    if (mergeBase === headSha) return { kind: 'in-base' };
     const prior = store
       .headReviews(claim.prKey)
       .find(
@@ -632,9 +765,11 @@ export class PullRequestHeadReviewer {
         receipt.findings.length >= 1 &&
         receipt.findings.length <= 100 &&
         receipt.target.headSha === prior.headSha &&
-        (await repository.isAncestor(prior.headSha, headSha))
+        (await repository.isAncestor(prior.headSha, headSha)) &&
+        (await repository.mergeBase(prior.headSha, base)) === mergeBase
       )
         return {
+          kind: 'range',
           baseSha: prior.headSha,
           delta: {
             priorReceiptId: receipt.receiptId,
@@ -644,21 +779,7 @@ export class PullRequestHeadReviewer {
           },
         };
     }
-    const candidates = [
-      observation.baseSha,
-      BRANCH.test(observation.baseRefName)
-        ? `refs/remotes/origin/${observation.baseRefName}`
-        : undefined,
-      input.taskBaseCommit,
-    ];
-    for (const candidate of candidates) {
-      if (!candidate) continue;
-      const base = await repository.commit(candidate);
-      if (!base) continue;
-      const mergeBase = await repository.mergeBase(headSha, base);
-      if (mergeBase && mergeBase !== headSha) return { baseSha: mergeBase };
-    }
-    return undefined;
+    return { kind: 'range', baseSha: mergeBase };
   }
 
   private async execute(
@@ -681,9 +802,20 @@ export class PullRequestHeadReviewer {
         !latest.settings.reviewEachHead ||
         observation?.state !== 'OPEN' ||
         observation.headSha !== row.headSha ||
-        !this.ports.mayContinue(claim.conversationId, ownerUserId)
+        !this.ports.mayContinue(claim.conversationId, ownerUserId) ||
+        !this.ports.mayContinue(claim.conversationId, latest.enabledBy)
       )
         throw new HeadReviewSuperseded();
+    };
+    /** The claim moved, was released or its switch went off. */
+    const ownerChanged = () => {
+      const latest = store.claim(claim.prKey);
+      return (
+        !latest ||
+        latest.conversationId !== claim.conversationId ||
+        latest.generation !== claim.generation ||
+        !latest.settings.reviewEachHead
+      );
     };
     try {
       if (!reviews) throw new Error('The review module is unavailable.');
@@ -704,17 +836,20 @@ export class PullRequestHeadReviewer {
         } catch {
           superseded = true;
         }
-      store.writeHeadReview({
-        ...row,
-        ...(superseded
-          ? {
-              state: 'not-verified',
-              failureReason:
-                'The pull request moved on before the review finished.',
-            }
-          : { state: 'unknown' }),
-        settledAt: new Date(this.now()).toISOString(),
-      });
+      // A claim that moved or was released already dropped its reviews; a
+      // row written now would block the next owner's review of this head.
+      if (!(superseded && ownerChanged()))
+        store.writeHeadReview({
+          ...row,
+          ...(superseded
+            ? {
+                state: 'not-verified',
+                failureReason:
+                  'The pull request moved on before the review finished.',
+              }
+            : { state: 'unknown' }),
+          settledAt: new Date(this.now()).toISOString(),
+        });
       if (!superseded) throw error;
     } finally {
       await this.ports.delivery()?.deliver(claim.conversationId);
@@ -765,8 +900,18 @@ export class PullRequestHeadReviewer {
         continue;
       carried.push({ ...prior, required: true, carried: true });
     }
-    const required = [...own.filter((f) => f.required), ...carried];
-    const others = own.filter((finding) => !finding.required);
+    // Most severe first, then most certain.
+    const bySeverity = (
+      a: StoredHeadReviewFinding,
+      b: StoredHeadReviewFinding,
+    ) =>
+      (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9) ||
+      (CONFIDENCE_RANK[a.confidence] ?? 9) -
+        (CONFIDENCE_RANK[b.confidence] ?? 9);
+    const required = [...own.filter((f) => f.required), ...carried].sort(
+      bySeverity,
+    );
+    const others = own.filter((finding) => !finding.required).sort(bySeverity);
     store.writeHeadReview({
       ...row,
       state: 'reviewed',

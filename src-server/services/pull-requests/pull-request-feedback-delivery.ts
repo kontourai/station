@@ -41,6 +41,7 @@ import {
   type PullRequestFeedbackReview,
   type PullRequestReviewThread,
   pullRequestFeedbackActive,
+  pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import { errorMessage } from '../../utils/error-message.js';
 import { quotedLines, singleLine } from '../orchestration/quoted-text.js';
@@ -500,6 +501,14 @@ const FINDING_TEXT_CHARS = 300;
  * agents wrote them. Reviewer text read untrusted code, so it is made inert
  * like forge text: the location in a code span, the rest escaped.
  */
+/** A head review's required findings as one delivery: the head and the ids. */
+export function reviewFindingsSignature(
+  headSha: string,
+  requiredIds: readonly string[],
+): string {
+  return digest([headSha, ...[...requiredIds].sort()]);
+}
+
 function reviewFindingsCandidate(
   observation: PullRequestFeedbackObservation,
   review: StoredHeadReview,
@@ -510,10 +519,10 @@ function reviewFindingsCandidate(
     inertMarkdown(singleLine(value).slice(0, max));
   return {
     category: 'review-findings',
-    signature: digest([
+    signature: reviewFindingsSignature(
       observation.headSha,
-      ...required.map((finding) => finding.id).sort(),
-    ]),
+      required.map((finding) => finding.id),
+    ),
     summary: { count: required.length, items: required.map((f) => f.id) },
     render: (_host, excerptChars, maxItems) => {
       const others = review.others
@@ -757,6 +766,9 @@ export class PullRequestFeedbackDelivery {
         ? { failing: condition.shown ?? condition.failing }
         : {}),
       ...(condition.rounds ? { rounds: condition.rounds } : {}),
+      ...(pullRequestFeedbackSends(claim.settings)
+        ? {}
+        : { reviewOnly: true as const }),
     });
   }
 
@@ -831,7 +843,10 @@ export class PullRequestFeedbackDelivery {
           !claim ||
           claim.conversationId !== batch.conversationId ||
           claim.generation !== entry.generation ||
-          !pullRequestFeedbackActive(claim.settings)
+          !pullRequestFeedbackActive(
+            claim.settings,
+            this.ports.headReviewEnabled?.() ?? false,
+          )
         )
           return {
             reasonCode: 'pr_feedback_owner_changed',
@@ -1006,7 +1021,13 @@ export class PullRequestFeedbackDelivery {
       : undefined;
     const sections: PullRequestSection[] = [];
     for (const claim of store.claimsForConversation(conversationId)) {
-      if (!pullRequestFeedbackActive(claim.settings)) continue;
+      if (
+        !pullRequestFeedbackActive(
+          claim.settings,
+          this.ports.headReviewEnabled?.() ?? false,
+        )
+      )
+        continue;
       if (linked && !linked.has(claim.prKey)) {
         // Unlinked (or no longer kept on the Task): its feedback stops.
         store.releaseClaim(claim.prKey, nowIso);

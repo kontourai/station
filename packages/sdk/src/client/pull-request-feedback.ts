@@ -215,3 +215,27 @@ export async function sendPullRequestHeadReviewFindings(
     ),
   );
 }
+
+/** The refusals Station words itself for Review again and Send to agent. */
+const HEAD_REVIEW_REFUSALS = new Set([
+  'pull_request_head_review_not_started',
+  'pull_request_head_review_nothing_to_send',
+  'pull_request_feedback_paused',
+]);
+
+/**
+ * Why Review again or Send to agent did not go, as display text: the
+ * server composes these sentences itself (a busy Project, the daily limit,
+ * no reviewer, a pause), so they are shown as they come. Undefined for any
+ * other failure, which callers describe as usual.
+ */
+export function pullRequestHeadReviewRefusal(
+  error: unknown,
+): string | undefined {
+  return error instanceof StationHttpError &&
+    error.status === 409 &&
+    typeof error.code === 'string' &&
+    HEAD_REVIEW_REFUSALS.has(error.code)
+    ? error.message
+    : undefined;
+}

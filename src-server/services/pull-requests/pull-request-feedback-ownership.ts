@@ -24,6 +24,7 @@ import {
   type PullRequestFeedbackStatus,
   type PullRequestFeedbackView,
   type PullRequestHeadReview,
+  type PullRequestHeadReviewWaiting,
   pullRequestFeedbackActive,
   pullRequestFeedbackKey,
 } from '@kontourai/station-contracts/pull-request-feedback';
@@ -72,6 +73,10 @@ export interface PullRequestFeedbackOwnershipPorts {
   title(conversationId: string): string | undefined;
   /** Station's newest review of one of the pull request's heads. */
   headReview?(prKey: string): PullRequestHeadReview | undefined;
+  /** Why the observed head has no review yet. */
+  headReviewWaiting?(prKey: string): PullRequestHeadReviewWaiting | undefined;
+  /** The head review preview: while off, `reviewEachHead` alone does nothing. */
+  headReviewEnabled?(): boolean;
   now?(): number;
 }
 
@@ -109,6 +114,10 @@ export class PullRequestFeedbackOwnership {
     return this.ports.now?.() ?? Date.now();
   }
 
+  private headReviewOn(): boolean {
+    return this.ports.headReviewEnabled?.() ?? false;
+  }
+
   private async linked(
     conversationId: string,
     identity: PullRequestLinkIdentity,
@@ -144,7 +153,7 @@ export class PullRequestFeedbackOwnership {
     if (
       existing &&
       existing.conversationId !== input.conversationId &&
-      pullRequestFeedbackActive(existing.settings) &&
+      pullRequestFeedbackActive(existing.settings, this.headReviewOn()) &&
       !input.move
     ) {
       return {
@@ -164,7 +173,7 @@ export class PullRequestFeedbackOwnership {
           : false),
     };
     if (
-      !pullRequestFeedbackActive(settings) &&
+      !pullRequestFeedbackActive(settings, this.headReviewOn()) &&
       existing?.conversationId === input.conversationId
     ) {
       // Every switch off is turning it off: what waited is dropped, as `off`.
@@ -279,7 +288,7 @@ export class PullRequestFeedbackOwnership {
       };
     const ownedHere = claim.conversationId === conversationId;
     const history = ownedHere ? this.history(store, claim) : [];
-    const owner = pullRequestFeedbackActive(claim.settings)
+    const owner = pullRequestFeedbackActive(claim.settings, this.headReviewOn())
       ? ownedHere
         ? { conversationId }
         : this.ownerFor(claim.conversationId, viewer)
@@ -289,6 +298,9 @@ export class PullRequestFeedbackOwnership {
     // status (a pause's head and time, a stopped agent).
     const hidden = !ownedHere && owner !== null && !owner.conversationId;
     const headReview = ownedHere ? this.ports.headReview?.(prKey) : undefined;
+    const headReviewWaiting = ownedHere
+      ? this.ports.headReviewWaiting?.(prKey)
+      : undefined;
     return {
       identity,
       ownedHere,
@@ -298,6 +310,7 @@ export class PullRequestFeedbackOwnership {
       ...(history[0] ? { last: history[0] } : {}),
       history,
       ...(headReview ? { headReview } : {}),
+      ...(headReviewWaiting ? { headReviewWaiting } : {}),
     };
   }
 
@@ -334,13 +347,20 @@ export class PullRequestFeedbackOwnership {
   byPullRequest(
     identity: PullRequestLinkIdentity,
     viewer: Pick<PullRequestFeedbackViewer, 'canRead'>,
-    /** false: without `sentChecks` (the Task board reads only the rest). */
-    options: { sentChecks?: boolean } = {},
+    /**
+     * false: without `sentChecks` or the head review (the Task board reads
+     * only the rest, once per card).
+     */
+    options: { sentChecks?: boolean; headReview?: boolean } = {},
   ): PullRequestFeedbackByPullRequest {
     const exact = identityOf(identity);
     const store = this.ports.readStore();
     const claim = store?.claim(pullRequestFeedbackKey(exact));
-    if (!store || !claim || !pullRequestFeedbackActive(claim.settings))
+    if (
+      !store ||
+      !claim ||
+      !pullRequestFeedbackActive(claim.settings, this.headReviewOn())
+    )
       return { identity: exact, owner: null };
     const title = this.readableTitle(claim.conversationId, viewer);
     if (title === undefined)
@@ -351,7 +371,13 @@ export class PullRequestFeedbackOwnership {
       options.sentChecks === false
         ? undefined
         : this.sentChecks(store, claim.prKey);
-    const headReview = this.ports.headReview?.(claim.prKey);
+    const withReview = options.headReview !== false;
+    const headReview = withReview
+      ? this.ports.headReview?.(claim.prKey)
+      : undefined;
+    const headReviewWaiting = withReview
+      ? this.ports.headReviewWaiting?.(claim.prKey)
+      : undefined;
     return {
       identity: exact,
       owner: { readable: true, conversationId: claim.conversationId, title },
@@ -360,6 +386,7 @@ export class PullRequestFeedbackOwnership {
       ...(last ? { last } : {}),
       ...(sentChecks ? { sentChecks } : {}),
       ...(headReview ? { headReview } : {}),
+      ...(headReviewWaiting ? { headReviewWaiting } : {}),
     };
   }
 
@@ -429,7 +456,8 @@ export class PullRequestFeedbackOwnership {
     store: PullRequestFeedbackStore,
     claim: PullRequestFeedbackClaim,
   ): PullRequestFeedbackStatus {
-    if (!pullRequestFeedbackActive(claim.settings)) return { state: 'off' };
+    if (!pullRequestFeedbackActive(claim.settings, this.headReviewOn()))
+      return { state: 'off' };
     const condition = claim.condition;
     if (condition?.state === 'closed') return { state: 'closed' };
     if (condition?.state === 'paused')

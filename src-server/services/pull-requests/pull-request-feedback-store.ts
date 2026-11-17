@@ -274,6 +274,16 @@ const SCHEMA = [
     PRIMARY KEY (pr_key, head_sha)
   ) STRICT`,
   `CREATE INDEX IF NOT EXISTS head_reviews_by_project ON head_reviews (project_slug, started_at)`,
+  // Every review request submitted, reruns included, kept for the daily
+  // limit; a head review row is replaced by its rerun, this is not.
+  `CREATE TABLE IF NOT EXISTS head_review_requests (
+    request_id TEXT PRIMARY KEY,
+    project_slug TEXT NOT NULL,
+    pr_key TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    submitted_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE INDEX IF NOT EXISTS head_review_requests_by_project ON head_review_requests (project_slug, submitted_at)`,
   `CREATE TABLE IF NOT EXISTS rounds (
     pr_key TEXT NOT NULL,
     head_sha TEXT NOT NULL,
@@ -491,13 +501,18 @@ export class PullRequestFeedbackStore {
           input.now,
           generation,
         );
-      if (moved)
+      if (moved) {
         // What waited for the old owner is not the new owner's.
         this.db
           .prepare(
             "UPDATE deliveries SET state = 'superseded', settled_at = ? WHERE pr_key = ? AND state = 'pending'",
           )
           .run(input.now, input.prKey);
+        // Nor are its head reviews: the new owner's chat reviews afresh.
+        this.db
+          .prepare('DELETE FROM head_reviews WHERE pr_key = ?')
+          .run(input.prKey);
+      }
       return this.claim(input.prKey)!;
     });
   }
@@ -537,6 +552,8 @@ export class PullRequestFeedbackStore {
           "UPDATE deliveries SET state = 'superseded', settled_at = ? WHERE pr_key = ? AND state = 'pending'",
         )
         .run(now, prKey);
+      // A released claim's head reviews were for the chat that let it go.
+      this.db.prepare('DELETE FROM head_reviews WHERE pr_key = ?').run(prKey);
     });
   }
 
@@ -933,12 +950,34 @@ export class PullRequestFeedbackStore {
       );
   }
 
-  /** Reviews this Project submitted since `since` (the daily cap). */
+  /** Record one submitted review request, a rerun included. */
+  recordHeadReviewRequest(input: {
+    requestId: string;
+    projectSlug: string;
+    prKey: string;
+    headSha: string;
+    at: string;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO head_review_requests (request_id, project_slug, pr_key, head_sha, submitted_at)
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT (request_id) DO NOTHING`,
+      )
+      .run(
+        input.requestId,
+        input.projectSlug,
+        input.prKey,
+        input.headSha,
+        input.at,
+      );
+  }
+
+  /** Review requests this Project submitted since `since` (the daily cap). */
   headReviewsStartedSince(projectSlug: string, since: string): number {
     const row = this.db
       .prepare(
-        `SELECT COUNT(*) AS started FROM head_reviews
-         WHERE project_slug = ? AND request_id IS NOT NULL AND started_at >= ?`,
+        `SELECT COUNT(*) AS started FROM head_review_requests
+         WHERE project_slug = ? AND submitted_at >= ?`,
       )
       .get(projectSlug, since);
     return row ? int(row, 'started') : 0;
@@ -984,6 +1023,10 @@ export class PullRequestFeedbackStore {
           )
           .run(claim.prKey, claim.prKey, MAX_HEAD_REVIEWS_PER_PULL_REQUEST);
       }
+      // Two days: the daily limit reads back one.
+      this.db
+        .prepare('DELETE FROM head_review_requests WHERE submitted_at < ?')
+        .run(new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString());
       this.db
         .prepare(
           `DELETE FROM batches WHERE state NOT IN ('submitting', 'queued')

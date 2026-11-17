@@ -112,10 +112,13 @@ function projectRepository() {
   git(root, 'checkout', '-q', '-b', 'station/task/t-91', mergeBase);
   const first = commit('module.ts', 'export const a = 2;\n', 'first push');
   const second = commit('module.ts', 'export const a = 3;\n', 'second push');
+  git(root, 'checkout', '-q', '-b', 'merged-base', first);
+  git(root, 'merge', '-q', '--no-ff', '-m', 'merge main in', 'main');
+  const mergedIn = git(root, 'rev-parse', 'HEAD');
   git(root, 'checkout', '-q', '-b', 'rewritten', mergeBase);
   const forced = commit('module.ts', 'export const a = 4;\n', 'force-push');
   git(root, 'checkout', '-q', 'main');
-  return { root, mergeBase, baseTip, first, second, forced };
+  return { root, mergeBase, baseTip, first, second, mergedIn, forced };
 }
 
 const finding = (
@@ -144,6 +147,18 @@ function reviewModule() {
     findings: ReviewFinding[];
     assessments: Omit<ReviewDeltaAssessment, 'reviewerId' | 'lensId'>[];
   } = { findings: [], assessments: [] };
+  /** While set, every run waits for it: a review still running. */
+  const held: { gate?: Promise<void> } = {};
+  const hold = () => {
+    let release!: () => void;
+    held.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return () => {
+      held.gate = undefined;
+      release();
+    };
+  };
   const receipts = new Map<string, IndependentReviewReceipt>();
   const statuses = new Map<string, IndependentReviewRequestStatus>();
   const run = vi.fn(
@@ -153,6 +168,7 @@ function reviewModule() {
     ): Promise<IndependentReviewRequestStatus> => {
       const request = value as IndependentReviewRequest;
       context.assertCurrent?.();
+      if (held.gate) await held.gate;
       const at = new Date().toISOString();
       const receipt: IndependentReviewReceipt = {
         schemaVersion: 1,
@@ -203,6 +219,7 @@ function reviewModule() {
   );
   return {
     answer,
+    hold,
     run,
     module: {
       run: run as never,
@@ -258,6 +275,7 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
   });
   delivery = new PullRequestFeedbackDelivery(deliveryPorts());
   const reviews = reviewModule();
+  const reviewerAvailable = { yes: true };
   // The forge: reads answer the current observation; every write throws.
   // Head review must never approve, merge, comment or submit a review.
   const forge = {
@@ -300,15 +318,18 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
       ownerUserId: OWNER,
     }),
     projectRoot: () => repo.root,
-    reviewers: async () => ({
-      reviewers: [
-        {
-          reviewerId: 'head-review',
-          executorAgentSlug: 'critic',
-          lens: { id: 'correctness', instructions: 'Review it.' },
-        },
-      ],
-    }),
+    reviewers: async () =>
+      reviewerAvailable.yes
+        ? {
+            reviewers: [
+              {
+                reviewerId: 'head-review',
+                executorAgentSlug: 'critic',
+                lens: { id: 'correctness', instructions: 'Review it.' },
+              },
+            ],
+          }
+        : undefined,
     reviews: () => reviews.module,
     delivery: () => delivery,
     logger: { warn: vi.fn() },
@@ -323,6 +344,7 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
       lastTurnAt: readers.lastTurnAt,
       delivery: () => delivery,
       headReview: () => current,
+      headReviewEnabled: () => true,
       logger: { warn: vi.fn() },
     });
   let poller = pollerFor(reviewer);
@@ -367,6 +389,11 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
     await poller.poll({ now: clock, signal: new AbortController().signal });
     await reviewer.settled();
   };
+  /** One tick without waiting for the reviews it started (one is held). */
+  const tickOnly = async () => {
+    clock += 3 * MINUTE;
+    await poller.poll({ now: clock, signal: new AbortController().signal });
+  };
   /** A new process over the same store. */
   const restart = () => {
     reviewer = new PullRequestHeadReviewer(reviewerPorts);
@@ -386,9 +413,11 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
     read,
     observe,
     tick,
+    tickOnly,
     restart,
     reviewPrompts,
     reviewer: () => reviewer,
+    reviewerAvailable,
     delivery: () => delivery!,
     setDelivery: (overrides: Partial<PullRequestFeedbackDeliveryPorts>) => {
       delivery = new PullRequestFeedbackDelivery(deliveryPorts(overrides));
@@ -587,10 +616,11 @@ describe('Station reviews each new pull request head once', () => {
     const stored = t.store.headReview(PR_KEY, t.repo.second)!;
     expect(stored.state).toBe('reviewed');
     expect(stored.requiredIds).toEqual([
+      // Most severe first, then most certain.
       'n-crit-high',
       'n-crit-medium',
-      'n-high-medium',
       'p-high',
+      'n-high-medium',
     ]);
     expect(stored.others).toBe(4);
     expect(
@@ -690,6 +720,7 @@ describe('the switches keep "Review each new head"', () => {
       session: () => ({ state: 'idle', ownerUserId: 'owner' }),
       mayContinue: () => true,
       title: () => 'Chat',
+      headReviewEnabled: () => true,
     });
     const app = new Hono().route(
       '/api/pull-request-feedback',
@@ -706,6 +737,11 @@ describe('the switches keep "Review each new head"', () => {
           isPerson: () => true,
           mayContinue: () => true,
         },
+        // The head review preview is on.
+        () => ({
+          reviewAgain: async () => ({ outcome: 'not-eligible' as const }),
+          sendFindings: async () => 'nothing' as const,
+        }),
       ),
     );
     const put = (settings: Record<string, boolean>) =>
@@ -763,6 +799,7 @@ describe('the switches keep "Review each new head"', () => {
       session: () => ({ state: 'idle', ownerUserId: 'owner' }),
       mayContinue: () => true,
       title: () => 'Chat',
+      headReviewEnabled: () => true,
     });
     const viewer = { userId: 'owner', canRead: () => true };
     await ownership.write({
@@ -885,5 +922,329 @@ describe('the head review routes', () => {
     access.person = false;
     expect((await again()).status).toBe(404);
     expect(reviews.run).not.toHaveBeenCalled();
+  });
+});
+
+describe('the bounds hold and a finished review is never lost', () => {
+  it('counts every submitted review toward 10 a Project a day, Review again included', async () => {
+    const t = await setup();
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    expect(t.reviews.run).toHaveBeenCalledTimes(1);
+    for (let press = 0; press < 9; press += 1) {
+      expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+      await t.reviewer().settled();
+    }
+    expect(t.reviews.run).toHaveBeenCalledTimes(10);
+    // The 11th in the day is refused, with the reason a person reads.
+    expect(await t.reviewer().reviewAgain(PR_KEY)).toEqual({
+      outcome: 'daily-limit',
+      reason: 'Station already ran 10 reviews in this Project today.',
+    });
+    expect(t.reviews.run).toHaveBeenCalledTimes(10);
+    // And a new head waits on the same limit.
+    t.observe(t.repo.second);
+    await t.tick();
+    await t.tick();
+    expect(t.reviews.run).toHaveBeenCalledTimes(10);
+    expect(t.reviewer().waiting(PR_KEY)).toEqual({
+      headSha: t.repo.second,
+      reason: 'daily-limit',
+    });
+  });
+
+  it('runs one review a Project at a time', async () => {
+    const t = await setup();
+    const release = t.reviews.hold();
+    t.observe(t.repo.first);
+    await t.tickOnly();
+    await t.tickOnly();
+    await vi.waitFor(() => expect(t.reviews.run).toHaveBeenCalledTimes(1));
+    // A second pull request of the same Project, owned by the same chat.
+    const other = { ...IDENTITY, ref: '43' };
+    const otherKey = pullRequestFeedbackKey(other);
+    t.store.writeClaim({
+      prKey: otherKey,
+      identity: other,
+      conversationId: CONVERSATION,
+      settings: REVIEW_ONLY,
+      enabledBy: OWNER,
+      now: new Date().toISOString(),
+    });
+    const at = new Date(Date.now() + 60 * MINUTE).toISOString();
+    t.store.writeObservation(otherKey, {
+      observation: {
+        identity: other,
+        url: 'https://github.com/acme/widgets/pull/43',
+        state: 'OPEN',
+        draft: false,
+        headSha: t.repo.forced,
+        baseSha: t.repo.baseTip,
+        headRefName: 'rewritten',
+        baseRefName: 'main',
+        mergeable: 'mergeable',
+        checks: [],
+        checksTruncated: false,
+        threads: [],
+        threadsTotal: 0,
+        reviews: [],
+        observedAt: at,
+      },
+      observedAt: at,
+      unchangedSince: at,
+      digest: 'other',
+      headFirstSeenAt: new Date(Date.now() - 60 * MINUTE).toISOString(),
+    });
+    expect(await t.reviewer().reviewAgain(otherKey)).toEqual({
+      outcome: 'project-busy',
+      reason: 'Station is reviewing another pull request in this Project.',
+    });
+    expect(t.reviewer().waiting(otherKey)?.reason).toBe('project-busy');
+    expect(t.reviews.run).toHaveBeenCalledTimes(1);
+    release();
+    await t.reviewer().settled();
+    expect((await t.reviewer().reviewAgain(otherKey)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(t.reviews.run).toHaveBeenCalledTimes(2);
+  });
+
+  it('a review running when Station restarts reads unknown and is never run again by itself', async () => {
+    const t = await setup();
+    t.reviews.hold();
+    t.observe(t.repo.first);
+    await t.tickOnly();
+    await t.tickOnly();
+    await vi.waitFor(() => expect(t.reviews.run).toHaveBeenCalledTimes(1));
+    expect(t.reviewer().view(PR_KEY)?.state).toBe('reviewing');
+    t.restart();
+    await t.tickOnly();
+    await t.tickOnly();
+    await t.reviewer().consider(CONVERSATION);
+    expect(t.reviewer().view(PR_KEY)?.state).toBe('unknown');
+    expect(t.store.headReview(PR_KEY, t.repo.first)?.state).toBe('unknown');
+    expect(t.reviews.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('Review again that stops before it is submitted keeps the finished review and says why', async () => {
+    const t = await setup();
+    t.reviews.answer.findings = [finding('f-1', 'high', 'high')];
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    const before = t.store.headReview(PR_KEY, t.repo.first)!;
+    expect(before.state).toBe('reviewed');
+    t.reviewerAvailable.yes = false;
+    expect(await t.reviewer().reviewAgain(PR_KEY)).toEqual({
+      outcome: 'no-reviewer',
+      reason:
+        'No reviewer can read this Project read-only. Connect Codex to review.',
+    });
+    expect(t.store.headReview(PR_KEY, t.repo.first)).toEqual(before);
+    expect(t.reviewer().view(PR_KEY)).toMatchObject({
+      state: 'reviewed',
+      required: 1,
+    });
+    expect(t.reviews.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('a push that merged the base branch in is reviewed from the merge base, not as a delta', async () => {
+    const t = await setup();
+    t.reviews.answer.findings = [finding('f-1', 'high', 'high')];
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    t.observe(t.repo.mergedIn);
+    await t.tick();
+    await t.tick();
+    expect(t.reviews.run).toHaveBeenCalledTimes(2);
+    const merged = t.reviews.requests()[1]!;
+    expect(merged.mode).toBe('initial');
+    expect(merged.delta).toBeUndefined();
+    // Base is now the merged-in base branch tip: the base's own commits are
+    // not the change under review.
+    expect(merged.target.baseRevision).toBe(t.repo.baseTip);
+  });
+});
+
+describe('what the panel is told about the newest head', () => {
+  it('says why the newest head has no review yet, and an earlier push is not current', async () => {
+    const t = await setup();
+    t.reviews.answer.findings = [finding('f-1', 'high', 'high')];
+    t.observe(t.repo.first, { draft: true });
+    await t.tick();
+    expect(t.reviewer().waiting(PR_KEY)?.reason).toBe('draft');
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    expect(t.reviewer().view(PR_KEY)).toMatchObject({
+      headSha: t.repo.first,
+      current: true,
+    });
+    expect(t.reviewer().waiting(PR_KEY)).toBeUndefined();
+    t.forced.state = 'busy';
+    t.observe(t.repo.second);
+    await t.tick();
+    expect(t.reviewer().waiting(PR_KEY)).toEqual({
+      headSha: t.repo.second,
+      reason: 'settling',
+    });
+    await t.tick();
+    expect(t.reviewer().waiting(PR_KEY)?.reason).toBe('agent-busy');
+    // The kept review is an earlier push's: not current, nothing to send.
+    expect(t.reviewer().view(PR_KEY)).toMatchObject({
+      headSha: t.repo.first,
+      current: false,
+    });
+    expect(await t.reviewer().sendFindings(PR_KEY)).toBe('nothing');
+  });
+
+  it('a rerun with new findings is not "sent" by the message that carried the earlier ones', async () => {
+    const t = await setup();
+    t.reviews.answer.findings = [finding('f-1', 'high', 'high')];
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    expect(await t.reviewer().sendFindings(PR_KEY)).toBe('queued');
+    await eventually(async () => {
+      await t.delivery().deliver(CONVERSATION);
+      expect(t.reviewer().view(PR_KEY)?.delivery?.state).toBe('sent');
+    });
+    t.reviews.answer.findings = [finding('f-2', 'critical', 'high')];
+    expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(t.reviewer().view(PR_KEY)).toMatchObject({
+      state: 'reviewed',
+      required: 1,
+    });
+    expect(t.reviewer().view(PR_KEY)?.delivery).toBeUndefined();
+  });
+
+  it("a moved claim drops the old chat's reviews", async () => {
+    const t = await setup();
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    expect(t.store.headReviews(PR_KEY)).toHaveLength(1);
+    t.store.writeClaim({
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      conversationId: 'another-chat',
+      settings: REVIEW_ONLY,
+      enabledBy: OWNER,
+      now: new Date().toISOString(),
+    });
+    expect(t.store.headReviews(PR_KEY)).toEqual([]);
+  });
+});
+
+describe('with the head review preview off', () => {
+  it('a review-only claim is not read, and a write cannot turn review on', async () => {
+    const store = new PullRequestFeedbackStore(
+      join(tempDir('pr-head-review-off-'), 'pull-request-feedback.sqlite'),
+    );
+    closers.push(() => store.close());
+    store.writeClaim({
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      conversationId: 'chat-a',
+      settings: REVIEW_ONLY,
+      enabledBy: 'owner',
+      now: new Date().toISOString(),
+    });
+    const read = vi.fn();
+    const poller = new PullRequestFeedbackPoller({
+      enabled: () => true,
+      headReviewEnabled: () => false,
+      store: () => store,
+      providers: () => [
+        {
+          id: 'github',
+          canServeHost: () => true,
+          getFeedbackObservation: read,
+        } as unknown as IPullRequestProvider,
+      ],
+      session: () => ({ state: 'idle' }),
+      lastTurnAt: () => undefined,
+      delivery: () => undefined,
+      logger: { warn: vi.fn() },
+    });
+    await poller.poll({
+      now: Date.now(),
+      signal: new AbortController().signal,
+    });
+    expect(read).not.toHaveBeenCalled();
+    const ownership = new PullRequestFeedbackOwnership({
+      store: () => store,
+      readStore: () => store,
+      linkedIdentities: async () => [IDENTITY],
+      session: () => ({ state: 'idle', ownerUserId: 'owner' }),
+      mayContinue: () => true,
+      title: () => 'Chat',
+      headReviewEnabled: () => false,
+    });
+    expect(
+      ownership.byPullRequest(IDENTITY, { canRead: () => true }).owner,
+    ).toBeNull();
+    const app = new Hono().route(
+      '/api/pull-request-feedback',
+      createPullRequestFeedbackRoutes(
+        ownership,
+        () => undefined,
+        () => {},
+        {
+          enabled: () => true,
+          current: () => true,
+          canRead: () => true,
+          operator: () => 'owner',
+          readerOf: () => () => true,
+          isPerson: () => true,
+          mayContinue: () => true,
+        },
+        () => undefined,
+      ),
+    );
+    const put = await app.request(
+      '/api/pull-request-feedback/conversations/chat-b',
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          identity: IDENTITY,
+          settings: {
+            fixFailingChecks: true,
+            addressReviewComments: false,
+            reviewEachHead: true,
+          },
+        }),
+      },
+    );
+    expect(put.status, await put.clone().text()).toBe(200);
+    expect(store.claim(PR_KEY)).toMatchObject({
+      conversationId: 'chat-b',
+      settings: { fixFailingChecks: true, reviewEachHead: false },
+    });
+    // Its own chat now, still asking for review: ignored while off.
+    const again = await app.request(
+      '/api/pull-request-feedback/conversations/chat-b',
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          identity: IDENTITY,
+          settings: {
+            fixFailingChecks: true,
+            addressReviewComments: true,
+            reviewEachHead: true,
+          },
+        }),
+      },
+    );
+    expect(again.status).toBe(200);
+    expect(store.claim(PR_KEY)?.settings).toEqual({
+      fixFailingChecks: true,
+      addressReviewComments: true,
+      reviewEachHead: false,
+    });
   });
 });

@@ -60,11 +60,17 @@ export function pullRequestFeedbackSends(
  * Whether the claim does anything at all: a switch that sends, or Station's
  * own review of each new head. A review-only claim is still read, still
  * owned and still placed (its findings go out on a person's Send to agent).
+ * `headReview` is whether review of each head is offered at all (its
+ * preview): while it is not, `reviewEachHead` alone does nothing.
  */
 export function pullRequestFeedbackActive(
   settings: PullRequestFeedbackSettings,
+  headReview: boolean,
 ): boolean {
-  return pullRequestFeedbackSends(settings) || settings.reviewEachHead;
+  return (
+    pullRequestFeedbackSends(settings) ||
+    (headReview && settings.reviewEachHead)
+  );
 }
 
 /** A settings body as a client sent it, or undefined when it is not one. */
@@ -298,6 +304,8 @@ export interface PullRequestFeedbackByPullRequest {
   };
   /** Station's newest head review, while the head review preview is on. */
   headReview?: PullRequestHeadReview;
+  /** The observed head has no review yet, and why. */
+  headReviewWaiting?: PullRequestHeadReviewWaiting;
 }
 
 /** One finding of Station's review of a head, as a person reads it. */
@@ -320,6 +328,8 @@ export interface PullRequestHeadReviewFinding {
  */
 export interface PullRequestHeadReview {
   headSha: string;
+  /** It is about the head Station last observed, not an earlier push. */
+  current: boolean;
   state:
     | 'reviewing'
     | 'reviewed'
@@ -341,6 +351,29 @@ export interface PullRequestHeadReview {
   delivery?: { state: 'sent' | 'queued' | 'held'; at: string };
 }
 
+/**
+ * The head Station last observed has no review yet, and why:
+ * `settling` (it may move again: read once, no turn ended since), the agent
+ * `agent-busy`, `agent-waiting` on a person or `agent-stopped`,
+ * `feedback-waiting` for the agent, `project-busy` (another pull request of
+ * the Project is being reviewed), `daily-limit` (10 reviews in 24 hours),
+ * `draft`, `closed`, or `starting` (on Station's next check).
+ */
+export interface PullRequestHeadReviewWaiting {
+  headSha: string;
+  reason:
+    | 'settling'
+    | 'agent-busy'
+    | 'agent-waiting'
+    | 'agent-stopped'
+    | 'feedback-waiting'
+    | 'project-busy'
+    | 'daily-limit'
+    | 'draft'
+    | 'closed'
+    | 'starting';
+}
+
 /** One pull request's feedback, as one conversation's reader sees it. */
 export interface PullRequestFeedbackView {
   identity: PullRequestLinkIdentity;
@@ -356,6 +389,8 @@ export interface PullRequestFeedbackView {
   history: PullRequestFeedbackDelivery[];
   /** Station's newest head review, for the owning chat's reader. */
   headReview?: PullRequestHeadReview;
+  /** The observed head has no review yet, and why. */
+  headReviewWaiting?: PullRequestHeadReviewWaiting;
 }
 
 export interface ConversationPullRequestFeedback {

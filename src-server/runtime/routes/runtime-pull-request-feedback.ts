@@ -15,6 +15,7 @@ import type {
 import {
   pullRequestFeedbackActive,
   pullRequestFeedbackKey,
+  pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type { IndependentReviewRequest } from '@kontourai/station-contracts/review-evidence';
@@ -563,6 +564,7 @@ export function composePullRequestFeedbackRuntime(
     lastTurnAt,
     delivery: () => delivery,
     headReview: () => headReview,
+    headReviewEnabled,
     logger: deps.logger,
   });
   const ownership = new PullRequestFeedbackOwnership({
@@ -575,6 +577,8 @@ export function composePullRequestFeedbackRuntime(
     title: (conversationId) =>
       eventStore.conversationTitle(lineage(conversationId)),
     headReview: (prKey) => headReview.view(prKey),
+    headReviewWaiting: (prKey) => headReview.waiting(prKey),
+    headReviewEnabled,
   });
   attentionSources = () => {
     const store = enabled() ? holder.forRead() : undefined;
@@ -592,7 +596,7 @@ export function composePullRequestFeedbackRuntime(
     for (const claim of store.allClaims()) {
       const condition = claim.condition;
       if (
-        !pullRequestFeedbackActive(claim.settings) ||
+        !pullRequestFeedbackActive(claim.settings, headReviewEnabled()) ||
         (condition && condition.state !== 'paused') ||
         // Unlinked: delivery releases it on its next run.
         !stillLinked(claim.conversationId, claim.prKey)
@@ -622,6 +626,9 @@ export function composePullRequestFeedbackRuntime(
             ? { failing: condition.shown ?? condition.failing }
             : {}),
           ...(condition.rounds ? { rounds: condition.rounds } : {}),
+          ...(pullRequestFeedbackSends(claim.settings)
+            ? {}
+            : { reviewOnly: true as const }),
           at: condition.at ?? backfillPausedAt(store, claim.prKey, condition),
         });
         continue;
@@ -678,7 +685,7 @@ export function composePullRequestFeedbackRuntime(
             canRead: (conversationId) =>
               deps.access.canRead(request, conversationId),
           },
-          { sentChecks: false },
+          { sentChecks: false, headReview: false },
         ),
         store,
         openTurnKey,

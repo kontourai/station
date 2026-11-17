@@ -74,6 +74,8 @@ export interface PullRequestFeedbackPollerPorts {
   headReview?():
     | { consider(conversationId: string): Promise<void> }
     | undefined;
+  /** The head review preview: while off, `reviewEachHead` alone reads nothing. */
+  headReviewEnabled?(): boolean;
   /** As the delivery's: a claim no longer linked is released, not read. */
   linked?(conversationId: string): readonly PullRequestLinkIdentity[];
   readonly logger: {
@@ -133,10 +135,14 @@ export class PullRequestFeedbackPoller {
     await this.settled();
   }
 
+  private headReviewOn(): boolean {
+    return this.ports.headReviewEnabled?.() ?? false;
+  }
+
   /** Whether a claim is read at all; the lifecycle read is last (it costs most). */
   private polled(claim: PullRequestFeedbackClaim): boolean {
     return (
-      pullRequestFeedbackActive(claim.settings) &&
+      pullRequestFeedbackActive(claim.settings, this.headReviewOn()) &&
       this.ports.session(claim.conversationId).state !== 'stopped'
     );
   }
@@ -193,7 +199,9 @@ export class PullRequestFeedbackPoller {
     const signal = AbortSignal.any([input.signal, deadline]);
     const due = store
       .allClaims()
-      .filter((claim) => pullRequestFeedbackActive(claim.settings))
+      .filter((claim) =>
+        pullRequestFeedbackActive(claim.settings, this.headReviewOn()),
+      )
       .map((claim) => ({ claim, at: store.nextDueAt(claim.prKey) }))
       .filter(({ at }) => at <= input.now)
       .sort((a, b) => a.at - b.at)
