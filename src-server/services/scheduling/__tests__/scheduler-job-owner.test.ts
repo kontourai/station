@@ -221,18 +221,16 @@ test('an unreadable job record on first start does not hold the migration back, 
   await first.stop();
   // Later: the damaged record is repaired, and a job is stored ownerless.
   sqlite(directory, (db) =>
-    db
-      .prepare('UPDATE scheduler_jobs SET data = ? WHERE name = ?')
-      .run(
-        JSON.stringify({
-          name: 'damaged',
-          cron: '0 9 * * *',
-          prompt: 'tidy',
-          enabled: true,
-          createdAt: new Date().toISOString(),
-        }),
-        'damaged',
-      ),
+    db.prepare('UPDATE scheduler_jobs SET data = ? WHERE name = ?').run(
+      JSON.stringify({
+        name: 'damaged',
+        cron: '0 9 * * *',
+        prompt: 'tidy',
+        enabled: true,
+        createdAt: new Date().toISOString(),
+      }),
+      'damaged',
+    ),
   );
   const between = createSchedulerLedger({ directory });
   expect(between.create(olderJob('newer')).kind).toBe('created');
