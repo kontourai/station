@@ -443,7 +443,7 @@
 }
 .queued-messages-presence[data-phase="exiting"],
 .queued-message-presence[data-phase="exiting"] {
-  animation: queued-presence-exit var(--motion-base) var(--ease-in) both;
+  animation: queued-presence-exit var(--motion-fast) var(--ease-out) both;
   pointer-events: none;
 }
 :root[data-page-hidden] .queued-messages-presence,
