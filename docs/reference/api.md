@@ -4058,7 +4058,9 @@ omit numeric progress, and remain locked; a reported zero remains eligible.
 `POST /api/analytics/rescan` returns
 `{success: true, data: stats, message: "Full rescan completed"}`. It scans
 Agent file-memory transcripts and folds available orchestration usage into a new
-retained-source projection. Corrected or deleted records decrease current totals
+retained-source projection. Unlike an ordinary rebuild, which refolds only engine
+sessions whose events changed, it discards the per-session folds kept between
+rebuilds and refolds every engine session. Corrected or deleted records decrease current totals
 and remove obsolete buckets. Pre-projection saved summaries remain separate,
 unverified `legacySummary` evidence. Only canonical Station-agent relay provenance
 selects a saved-message primary ledger; a matching conversation ID alone does not
