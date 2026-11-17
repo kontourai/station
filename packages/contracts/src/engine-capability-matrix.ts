@@ -460,7 +460,10 @@ export interface EngineCapabilityMatrix {
   toolServers: CapabilityDelivery;
   skills: CapabilityDelivery;
   commands: CapabilityDelivery;
-  modelSelection: CapabilityDelivery;
+  modelSelection: CapabilityDelivery & {
+    /** Explicit false keeps an existing conversation's model picker closed. */
+    overridePerTurn?: boolean;
+  };
   /** The declared pre-tool blocking/grant boundary; see `ToolPolicyDelivery`. */
   toolPolicy: ToolPolicyDelivery;
   /** Whether a pasted image reaches the model; see `ImageInputDelivery`. */
@@ -1387,7 +1390,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // catalog advertises the value: a model config option whose response
     // confirms the exact currentValue, else a `models` list switched with
     // session/set_model (#352). Resume/per-turn remain unsupported.
-    modelSelection: { state: 'session', channel: 'wire' },
+    modelSelection: {
+      state: 'session',
+      channel: 'wire',
+      overridePerTurn: ACP_MODEL_OVERRIDE_PER_TURN,
+    },
     // ACP enters the shared staged policy at requestPermission. Coverage is
     // still partial: ACP does not guarantee every tool call requests
     // permission, and the tool identity is reported by the external engine.
@@ -1488,7 +1495,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // Native: `POST /api/session` carries `model: {providerID, id}`
     // after checking the model catalog; subsequent native turns switch with
     // `POST /api/session/{id}/model`. ACP fallback selects only at start.
-    modelSelection: { state: 'session', channel: 'wire' },
+    modelSelection: {
+      state: 'session',
+      channel: 'wire',
+      overridePerTurn: true,
+    },
     // Station's staged policy, for a session started as an Agent, on both
     // transports. ACP: at `requestPermission`, exactly as on the `acp` row
     // (the declared hook and module, which the tool-policy tripwire checks).

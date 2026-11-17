@@ -17,7 +17,8 @@
  *   version. Never backed up and never touched by a rollback: the service
  *   manifests and the liveness entry the update window re-points to the
  *   launcher (instances.json) must stay exactly as they are, and logs are the
- *   record of what the failed trial did.
+ *   record of what the failed trial did. Pending native-engine effects also
+ *   outlive a trial; their custody must not revert to an older snapshot.
  * - `external`: content kept in the home that an update does not snapshot
  *   or roll back: the default project directories under `workspaces/`
  *   (users' repositories, with their `node_modules` and its symbolic links),
@@ -85,6 +86,8 @@ export const STATION_HOME_ROOTS: Readonly<
   // Pinned, sha256-verified engine installs (managed-install.ts): read-only
   // and re-acquirable from the pin, like media-tools.
   engines: 'external',
+  // Native effects outlive a trial version; rollback must retain their custody.
+  'engine-state': 'live',
   environments: 'state',
   feedback: 'state',
   // Finished alerts held, being written or recently released; a restart

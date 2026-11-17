@@ -6484,13 +6484,14 @@ describe('station#1182: runtime-reported model', () => {
     expect(processes[0].destroyCalls).toBe(1);
   });
 
-  // The UI reads ACP_MODEL_OVERRIDE_PER_TURN directly (useChatInput) while the
-  // server enforces the adapter's declared metadata; both must agree.
+  // The UI reads the matrix while the server enforces adapter metadata;
+  // both declarations must agree on per-turn model selection.
   test('the adapter declares the per-turn model override the UI reads, and the matrix cell matches', () => {
     const { adapter } = createAdapter();
     expect(ENGINE_CAPABILITY_MATRICES.acp.modelSelection).toEqual({
       state: 'session',
       channel: 'wire',
+      overridePerTurn: adapter.metadata.modelLaunch.overridePerTurn,
     });
     expect(adapter.metadata.modelLaunch.overridePerTurn).toBe(
       ACP_MODEL_OVERRIDE_PER_TURN,

@@ -166,7 +166,9 @@ after an exact delivery receipt, or a confirmed POST followed by confirmed
 withdrawal. An uncertain POST keeps
 the record even if a subsequent DELETE says 404: the POST may still finish
 later. A session with such a record cannot resume on either transport; start
-a new chat. The journal stores ids, never message text. A resume also refuses
+a new chat. The journal stores ids, never message text. Its `engine-state` root is
+lifecycle-owned: an update rollback preserves pending external-engine effects
+rather than restoring an older journal. A resume also refuses
 a session whose OpenCode inbox still has queued input.
 
 ## Server pool and isolation

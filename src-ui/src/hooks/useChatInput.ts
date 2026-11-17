@@ -1,7 +1,4 @@
-import {
-  ACP_MODEL_OVERRIDE_PER_TURN,
-  resolveEngineCapabilityMatrix,
-} from '@kontourai/station-contracts/engine-capability-matrix';
+import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
@@ -416,8 +413,7 @@ export function useChatInput({
   // conversation with engine history keeps the picker closed.
   const continuationOverrideUnsupported =
     Boolean(conversationId) &&
-    activeChatState?.provider === 'acp' &&
-    !ACP_MODEL_OVERRIDE_PER_TURN &&
+    engineModelSelection.overridePerTurn === false &&
     !conversationAwaitsFirstTurn(
       orchestrationSession,
       activeChatState?.turnInFlight ?? false,

@@ -835,6 +835,14 @@ describe('update backup and in-place restore (#2675 D)', () => {
 
   it('rolls a trial that bumped the schema and wrote new data back, keeping live roots as they are', () => {
     const fixture = serviceHome();
+    const pendingSteers = join(
+      fixture.home,
+      'engine-state',
+      'opencode-steers',
+      'session.json',
+    );
+    mkdirSync(join(pendingSteers, '..'), { recursive: true });
+    writeFileSync(pendingSteers, '[]\n');
     const scratch = join(fixture.home, 'scratch', 'chat', 'work.txt');
     mkdirSync(join(scratch, '..'), { recursive: true, mode: 0o700 });
     writeFileSync(scratch, 'private scratch before', { mode: 0o600 });
@@ -855,6 +863,7 @@ describe('update backup and in-place restore (#2675 D)', () => {
     // The trial: migrates the home, rewrites data, adds a store, and the
     // service lifecycle keeps writing its live entries meanwhile.
     writeSchemaVersion(fixture.home, 99);
+    writeFileSync(pendingSteers, '["msg_inflight"]\n');
     writeFileSync(scratch, 'private scratch during trial');
     const trialScratch = join(
       fixture.home,
@@ -884,6 +893,7 @@ describe('update backup and in-place restore (#2675 D)', () => {
     });
 
     expect(sha(join(fixture.home, STATION_HOME_SCHEMA_FILE))).toBe(before);
+    expect(readFileSync(pendingSteers, 'utf8')).toBe('["msg_inflight"]\n');
     expect(schemaVersion(fixture.home)).not.toBe(99);
     expect(existsSync(empty), 'the empty directory must survive rollback').toBe(
       true,
