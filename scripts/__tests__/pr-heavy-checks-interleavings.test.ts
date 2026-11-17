@@ -166,6 +166,8 @@ function world(mode: string | undefined) {
         repository: REPOSITORY,
         eventName: 'workflow_run',
         event: { workflow_run: { id: run.id, head_sha: run.head_sha } },
+        callerRunId: undefined,
+        sourceSha: undefined,
         token: 'fixture',
         apiUrl: 'https://api.example',
       });
@@ -279,7 +281,7 @@ type World = ReturnType<typeof world>;
 type Step = (w: World, runs: Record<string, SimRun>) => void | Promise<void>;
 
 /** Interleavings of question 3. `drain` marks where queued publishers run. */
-const SCENARIOS: Array<[string, Step[]]> = [
+const SCENARIOS: Array<[string, Array<Step | 'drain'>]> = [
   [
     'arm before any run started',
     [
@@ -292,7 +294,7 @@ const SCENARIOS: Array<[string, Step[]]> = [
       'drain',
       (w, r) => w.complete(r.armed),
       'drain',
-    ] as unknown as Step[],
+    ],
   ],
   [
     'arm during the cheap run, armed run finishing first',
@@ -308,7 +310,7 @@ const SCENARIOS: Array<[string, Step[]]> = [
       'drain',
       (w, r) => w.complete(r.push),
       'drain',
-    ] as unknown as Step[],
+    ],
   ],
   [
     'arm after the cheap verdict',
@@ -324,7 +326,7 @@ const SCENARIOS: Array<[string, Step[]]> = [
       'drain',
       (w, r) => w.complete(r.armed),
       'drain',
-    ] as unknown as Step[],
+    ],
   ],
   [
     'push after arming, before the armed run finished',
@@ -343,7 +345,7 @@ const SCENARIOS: Array<[string, Step[]]> = [
       'drain',
       (w, r) => w.complete(r.second),
       'drain',
-    ] as unknown as Step[],
+    ],
   ],
   [
     'disarm and re-arm after an ejection',
@@ -362,7 +364,7 @@ const SCENARIOS: Array<[string, Step[]]> = [
       'drain',
       (w, r) => w.complete(r.rearmed, 'failure'),
       'drain',
-    ] as unknown as Step[],
+    ],
   ],
   [
     'two quick pushes, then arm',
@@ -380,7 +382,7 @@ const SCENARIOS: Array<[string, Step[]]> = [
       'drain',
       (w, r) => w.complete(r.armed),
       'drain',
-    ] as unknown as Step[],
+    ],
   ],
   [
     "a superseded run's late completion after the newer head's verdict",
@@ -398,13 +400,13 @@ const SCENARIOS: Array<[string, Step[]]> = [
         w.complete(r.old);
       },
       'drain',
-    ] as unknown as Step[],
+    ],
   ],
 ];
 
 async function play(
   mode: string | undefined,
-  steps: Step[],
+  steps: Array<Step | 'drain'>,
   order: 'fifo' | 'lifo' | 'end',
 ) {
   const w = world(mode);
@@ -412,7 +414,7 @@ async function play(
   vi.spyOn(console, 'log').mockImplementation(() => {});
   const runs: Record<string, SimRun> = {};
   for (const step of steps) {
-    if ((step as unknown) === 'drain') {
+    if (step === 'drain') {
       if (order !== 'end') await w.drain(order);
     } else await step(w, runs);
     w.check('after an event');

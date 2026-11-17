@@ -69,8 +69,9 @@ const legacyMetadataJobs = [
   conclusion: id === 0 ? 'failure' : 'skipped',
 }));
 
-type Job = Omit<(typeof jobs)[number], 'conclusion'> & {
+type Job = Omit<(typeof jobs)[number], 'conclusion' | 'steps'> & {
   conclusion: string | null;
+  steps?: unknown;
 };
 type Run = Omit<typeof run, 'conclusion'> & {
   conclusion: string | null;

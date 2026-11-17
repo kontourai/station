@@ -16,7 +16,7 @@ const HEAD = 'a'.repeat(40);
 function pullRequest(
   overrides: {
     autoMerge?: boolean;
-    labels?: string[];
+    labels?: readonly string[];
     draft?: boolean;
     fork?: boolean;
   } = {},

@@ -53,6 +53,17 @@ function labelNames(labels) {
  * API when this job ran, or null when that read failed; it is consulted for
  * the opt-in label and, on a re-run attempt (whose payload is the original
  * event's), for the current auto-merge state.
+ *
+ * @param {{
+ *   mode?: string,
+ *   eventName?: string,
+ *   action?: string,
+ *   runAttempt?: string | number,
+ *   pullRequest?: any,
+ *   repository?: string,
+ *   live?: any,
+ * }} input
+ * @returns {{ heavy: boolean, reason: string }}
  */
 export function decideHeavyChecks({
   mode,
