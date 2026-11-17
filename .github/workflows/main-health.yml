@@ -115,7 +115,7 @@ jobs:
           RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         with:
           script: |
-            const { SILENT_CANCEL_CAUSES, classifyCancellation, supersededByNewerRun, decideMainHealthComment, failingLines, listTrackers, pickTracker, renderTrackerBody, summarizeRunFailure, trackerLabels, trackerTitle, unsuccessfulJobs } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { SILENT_CANCEL_CAUSES, classifyCancellation, supersededByNewerRun, decideMainHealthComment, failingLines, consolidateTracker, listTrackers, renderTrackerBody, summarizeRunFailure, trackerLabels, trackerTitle, unsuccessfulJobs } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
@@ -187,7 +187,7 @@ jobs:
               ] : [],
             });
             const labels = await trackerLabels(github, context.repo, core);
-            const existing = pickTracker(await listTrackers(github, context.repo, labels), title);
+            const existing = await consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title);
             if (!existing) {
               await github.rest.issues.create({
                 owner: context.repo.owner,
@@ -286,7 +286,7 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           script: |
-            const { listTrackers, pickTracker, trackerLabels, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { consolidateTracker, listTrackers, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
@@ -328,8 +328,7 @@ jobs:
               // CodeQL tracker.
               if (!jobs.some((job) => job.name === 'CodeQL JavaScript and TypeScript' && job.conclusion === 'success')) return;
             } else if (!hasSuccessfulJob || hasSkippedJob) return;
-            const labels = await trackerLabels(github, context.repo, core);
-            const existing = pickTracker(await listTrackers(github, context.repo, labels), title);
+            const existing = await consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title);
             if (!existing || existing.state !== 'open') return;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -373,11 +372,11 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const { listTrackers, pickTracker, trackerLabels, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { consolidateTracker, listTrackers, trackerLabels, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const { cronIntervalMs, decideOverdue, isOverdueBody, readWatchedSchedules, renderOverdueBody } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-schedules.mjs`);
             const now = Date.now();
             const labels = await trackerLabels(github, context.repo, core);
-            const trackers = await listTrackers(github, context.repo, labels);
+            const trackers = await listTrackers(github, context.repo);
             for (const { file, name, crons } of readWatchedSchedules(process.env.GITHUB_WORKSPACE)) {
               const intervalMs = cronIntervalMs(crons);
               const { data } = await github.rest.actions.listWorkflowRuns({
@@ -402,7 +401,7 @@ jobs:
                 verdict = decideOverdue({ intervalMs, lastRunAt: last?.created_at ?? null, scheduleChangedAt: commits[0]?.commit?.committer?.date ?? null, now });
               }
               const title = trackerTitle(name);
-              const tracker = pickTracker(trackers, title);
+              const tracker = await consolidateTracker(github, context.repo, trackers, title);
               core.info(`main-health: ${name} last scheduled run ${last?.created_at ?? 'never'}; overdue=${verdict.overdue}`);
               if (verdict.overdue) {
                 const body = renderOverdueBody({ workflowName: name, file, crons, intervalMs, limitMs: verdict.limitMs, lastRunAt: last?.created_at ?? null, lastRunUrl: last?.html_url ?? null, since: verdict.since });

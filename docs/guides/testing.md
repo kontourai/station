@@ -449,8 +449,13 @@ is the only reporter: it watches each scheduled workflow by name and keeps one
 tracker per workflow, titled `Main pipeline red: <workflow name>` and labelled
 `bug` and `P1`, plus `ci:red` once the owner has created that label (until
 then trackers open unlabelled with it and the job log says so). The tracker is
-found with one `ci:red` listing and one title search, not a scan of every
-issue. Its body is rewritten for each red run with the run URL, trigger, head
+found with one consistent listing of the issues the workflow bot opened, not a
+scan of every issue or a search; report and close runs for one workflow share
+a concurrency group, so a second red reads the first one's tracker. When
+several trackers with one title are open, the oldest is kept and the others
+are closed as duplicates. Only exact titles match: a tracker a person renamed,
+or the tracker of a workflow that was renamed, is left as it is and the next
+red opens a new one. Its body is rewritten for each red run with the run URL, trigger, head
 SHA, failing jobs and steps, and up to 15 failing annotation lines, so an
 agent can start from the issue alone. Comments follow the
 [comment policy](../../scripts/main-health-comment-policy.mjs): a new comment

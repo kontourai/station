@@ -113,6 +113,7 @@ function resolveEnv(env: Record<string, string> | undefined, github: unknown) {
 }
 
 type Issue = {
+  creator?: string;
   number: number;
   title: string;
   body: string;
@@ -233,7 +234,12 @@ function fakeGithub({ labelExists = true } = {}) {
     if (!issue) throw new Error(`no issue ${number}`);
     return issue;
   };
-  const view = ({ comments: _comments, labels, ...issue }: Issue) => ({
+  const view = ({
+    comments: _comments,
+    labels,
+    creator: _creator,
+    ...issue
+  }: Issue) => ({
     ...issue,
     labels: labels.map((name) => ({ name })),
   });
@@ -297,19 +303,6 @@ function fakeGithub({ labelExists = true } = {}) {
           data: run.annotations[check_run_id] ?? [],
         }),
       },
-      search: {
-        issuesAndPullRequests: async ({ q }: { q: string }) => {
-          calls.push('search');
-          const phrase = /in:title "([^"]+)"/.exec(q)?.[1] ?? '';
-          return {
-            data: {
-              items: issues
-                .filter((issue) => issue.title.includes(phrase))
-                .map(view),
-            },
-          };
-        },
-      },
       issues: {
         getLabel: async ({ name }: { name: string }) => {
           calls.push('getLabel');
@@ -317,19 +310,22 @@ function fakeGithub({ labelExists = true } = {}) {
             throw Object.assign(new Error('Not Found'), { status: 404 });
           return { data: { name } };
         },
+        // The one consistent read: issues the workflow bot opened. A scan
+        // without the creator filter would read every issue in the repo.
         listForRepo: async ({
-          labels,
+          creator,
           state,
         }: {
-          labels?: string;
+          creator?: string;
           state: string;
         }) => {
           calls.push('listForRepo');
-          if (!labels) throw new Error('unbounded listForRepo: pass a label');
+          if (creator !== 'github-actions[bot]')
+            throw new Error('unbounded listForRepo: filter by the bot creator');
           return {
             data: issues
               .filter((issue) => state === 'all' || issue.state === state)
-              .filter((issue) => issue.labels.includes(labels))
+              .filter((issue) => (issue.creator ?? creator) === creator)
               .map(view),
           };
         },
@@ -722,9 +718,74 @@ describe('scheduled workflow failure reporting', () => {
     );
     expect(fake.issues).toHaveLength(1);
     expect(fake.issues[0].labels).toEqual(['bug', 'P1', 'ci:red']);
-    // One label listing and one title search, whatever the issue count.
+    // One consistent listing, whatever the issue count.
     expect(fake.calls.filter((call) => call === 'listForRepo')).toHaveLength(1);
-    expect(fake.calls.filter((call) => call === 'search')).toHaveLength(1);
+  });
+
+  it('converges on the oldest of several open trackers, closing the others once', async () => {
+    // #3403 and #4037 are both open for Main: Container smoke today.
+    const fake = fakeGithub();
+    for (const number of [4037, 3403])
+      fake.issues.push({
+        number,
+        title: 'Main pipeline red: Main: Container smoke',
+        body: 'old',
+        state: 'open',
+        labels: ['bug', 'P1'],
+        comments: [],
+      });
+    fake.setRun({
+      jobs: [job(51, 'smoke', 'failure', [['Build', 'failure']])],
+      annotations: {},
+    });
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Container smoke', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    const byNumber = (number: number) =>
+      fake.issues.find((issue) => issue.number === number);
+    expect(byNumber(3403)?.state).toBe('open');
+    expect(byNumber(3403)?.body).toContain('- smoke > Build (failure)');
+    expect(byNumber(4037)?.state).toBe('closed');
+    expect(byNumber(4037)?.comments.map((comment) => comment.body)).toEqual([
+      'Duplicate of #3403: Main: Health keeps one tracker per workflow and reports there.',
+    ]);
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Container smoke', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    expect(byNumber(4037)?.comments).toHaveLength(1);
+    expect(fake.issues).toHaveLength(2);
+  });
+
+  it('leaves a renamed tracker alone and opens a fresh one', async () => {
+    const fake = fakeGithub();
+    fake.issues.push({
+      number: 77,
+      title: 'Dated TODO sweep is red (renamed by a person)',
+      body: 'old',
+      state: 'open',
+      labels: ['bug', 'P1'],
+      comments: [],
+    });
+    fake.setRun(RED_SWEEP);
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    expect(fake.issues.map((issue) => [issue.number, issue.state])).toEqual([
+      [77, 'open'],
+      [101, 'open'],
+    ]);
   });
 
   it('opens and updates trackers unlabelled while ci:red does not exist yet', async () => {
@@ -748,7 +809,6 @@ describe('scheduled workflow failure reporting', () => {
       },
     );
     expect(fake.issues).toHaveLength(1);
-    expect(fake.calls).not.toContain('listForRepo');
   });
 
   it.each([

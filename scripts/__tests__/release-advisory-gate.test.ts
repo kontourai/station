@@ -491,18 +491,17 @@ describe('publication graph cannot borrow feature/advisory silence as a pass', (
     if (!script) throw new Error('Expected the real tracker script');
     const create = vi.fn();
     // The surface the step really calls on a first red run before the
-    // ci:red label exists: no label (404), no existing tracker, no jobs.
+    // ci:red label exists: no label (404), no tracker among the bot's issues
+    // (paginate), no jobs.
     const getLabel = vi.fn(async () => {
       throw Object.assign(new Error('Not Found'), { status: 404 });
     });
-    const search = vi.fn(async () => ({ data: { items: [] } }));
     const github = {
       rest: {
         // The run's jobs come back through paginate (empty: no failing step
         // to name), so the advisory body is all the tracker carries.
         actions: { listJobsForWorkflowRun: vi.fn() },
         issues: { getLabel, listForRepo: vi.fn(), create },
-        search: { issuesAndPullRequests: search },
       },
       paginate: async () => [],
     };

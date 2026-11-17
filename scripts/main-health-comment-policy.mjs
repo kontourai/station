@@ -503,64 +503,90 @@ export async function trackerLabels(github, repo, core) {
   }
 }
 
-/** Most trackers a lookup reads; there is one per watched workflow. */
-export const MAX_TRACKER_RESULTS = 100;
+/** The account `GITHUB_TOKEN` writes as: every tracker is opened by it. */
+export const TRACKER_CREATOR = 'github-actions[bot]';
 
 /**
- * Every existing tracker, in a bounded number of calls rather than a scan of
- * every issue in the repository (~50 pages here). Labelled trackers come from
- * one label listing; trackers opened before the label existed are found by
- * one title search. Search is eventually consistent, so a tracker created
- * seconds ago and still unlabelled can be missed; the per-workflow
- * concurrency group keeps that window to a second red within the same
- * minute.
+ * Every existing tracker, from one consistent listing of the issues the
+ * workflow bot opened (22 in this repository on 2026-11-16, all states),
+ * rather than a scan of every issue (~50 pages) or a search, which is
+ * eventually consistent and can miss a tracker created seconds earlier.
+ * Creation is serialised per workflow by the reporter's concurrency group,
+ * so a second red run reads the first run's tracker here.
+ *
+ * Only exact titles match: a tracker a person renamed, or one whose workflow
+ * was renamed, is no longer found; the next red opens a fresh tracker and the
+ * old one stays as it is.
  *
  * @param {any} github Octokit
  * @param {{owner: string, repo: string}} repo
- * @param {string[]} labels the labels trackerLabels found, `ci:red` only if it exists
  * @returns {Promise<{number: number, title: string, state: string, body?: string | null}[]>}
  */
-export async function listTrackers(github, repo, labels) {
-  const labelled = labels.includes(MAIN_HEALTH_LABEL);
-  const found = new Map();
-  const keep = (issue) => {
-    if (issue?.pull_request) return;
-    if (!String(issue?.title ?? '').startsWith(trackerTitle(''))) return;
-    found.set(issue.number, issue);
-  };
-  if (labelled) {
-    const { data } = await github.rest.issues.listForRepo({
-      ...repo,
-      state: 'all',
-      labels: MAIN_HEALTH_LABEL,
-      per_page: MAX_TRACKER_RESULTS,
-    });
-    for (const issue of data) keep(issue);
-  }
-  const { data } = await github.rest.search.issuesAndPullRequests({
-    q: `repo:${repo.owner}/${repo.repo} is:issue in:title "${trackerTitle('').trim()}"`,
-    per_page: MAX_TRACKER_RESULTS,
+export async function listTrackers(github, repo) {
+  const issues = await github.paginate(github.rest.issues.listForRepo, {
+    ...repo,
+    creator: TRACKER_CREATOR,
+    state: 'all',
+    per_page: 100,
   });
-  for (const issue of data.items ?? []) keep(issue);
-  return [...found.values()];
+  return issues.filter(
+    (issue) =>
+      !issue?.pull_request &&
+      String(issue?.title ?? '').startsWith(trackerTitle('')),
+  );
 }
 
 /**
- * The tracker for one title: an open one if any (two open duplicates exist
- * from before), otherwise the newest.
+ * The tracker for one title: the oldest open one, otherwise the newest
+ * closed one.
  *
  * @param {{number: number, title: string, state: string}[]} trackers
  * @param {string} title
  */
 export function pickTracker(trackers, title) {
-  const matches = trackers
-    .filter((issue) => issue.title === title)
-    .sort(
-      (a, b) =>
-        Number(b.state === 'open') - Number(a.state === 'open') ||
-        b.number - a.number,
-    );
-  return matches[0] ?? null;
+  const matches = trackers.filter((issue) => issue.title === title);
+  const open = matches
+    .filter((issue) => issue.state === 'open')
+    .sort((a, b) => a.number - b.number);
+  if (open.length) return open[0];
+  return [...matches].sort((a, b) => b.number - a.number)[0] ?? null;
+}
+
+/**
+ * Converge on one tracker per title: when several are open (#3403 and #4037
+ * both track Main: Container smoke), keep the oldest and close each other
+ * with a comment pointing to it. A closed duplicate is never picked again,
+ * so this speaks once per duplicate.
+ *
+ * @param {any} github Octokit
+ * @param {{owner: string, repo: string}} repo
+ * @param {{number: number, title: string, state: string}[]} trackers
+ * @param {string} title
+ */
+export async function consolidateTracker(github, repo, trackers, title) {
+  const kept = pickTracker(trackers, title);
+  if (!kept || kept.state !== 'open') return kept;
+  for (const duplicate of trackers) {
+    if (
+      duplicate.title !== title ||
+      duplicate.state !== 'open' ||
+      duplicate.number === kept.number
+    )
+      continue;
+    await github.rest.issues.createComment({
+      ...repo,
+      issue_number: duplicate.number,
+      body: `Duplicate of #${kept.number}: Main: Health keeps one tracker per workflow and reports there.`,
+    });
+    await github.rest.issues.update({
+      ...repo,
+      issue_number: duplicate.number,
+      state: 'closed',
+      state_reason: 'duplicate',
+    });
+    duplicate.state = 'closed';
+  }
+  return kept;
 }
 
 /** Unsuccessful jobs whose annotations are read, so one red run costs a bounded number of calls. */

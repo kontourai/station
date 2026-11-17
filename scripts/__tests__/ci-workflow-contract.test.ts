@@ -477,9 +477,11 @@ describe('CI verification workflow contracts', () => {
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
       expect(job).toContain('trackerTitle(workflowName)');
-      // A bounded lookup (one label listing, one title search), never a scan
-      // of every issue (scheduled-failure-reporting.test.ts executes it).
-      expect(job).toContain('listTrackers(github, context.repo, labels)');
+      // One consistent listing of the bot's issues, never a scan of every
+      // issue (scheduled-failure-reporting.test.ts executes it).
+      expect(job).toContain(
+        'consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title)',
+      );
       expect(job).not.toContain(
         'github.paginate(github.rest.issues.listForRepo',
       );
@@ -559,9 +561,7 @@ describe('CI verification workflow contracts', () => {
       [],
       { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
     )();
-    const listForRepo = vi.fn(async () => {
-      throw new Error('label absent: listForRepo must not be called');
-    });
+    const listForRepo = vi.fn();
     const listJobs = vi.fn();
     const listComments = vi.fn();
     const createComment = vi.fn();
@@ -582,19 +582,6 @@ describe('CI verification workflow contracts', () => {
           createComment,
           updateComment,
         },
-        search: {
-          issuesAndPullRequests: vi.fn(async () => ({
-            data: {
-              items: [
-                {
-                  number: 42,
-                  state: issueState,
-                  title: 'Main pipeline red: Repo: Backlog policy',
-                },
-              ],
-            },
-          })),
-        },
       },
       paginate: vi.fn(async (method: unknown) => {
         if (method === listJobs)
@@ -606,7 +593,15 @@ describe('CI verification workflow contracts', () => {
             },
           ];
         if (method === listComments) return comments;
-        throw new Error('unbounded issue scan');
+        if (method === listForRepo)
+          return [
+            {
+              number: 42,
+              state: issueState,
+              title: 'Main pipeline red: Repo: Backlog policy',
+            },
+          ];
+        throw new Error('unexpected paginate');
       }),
     };
     await run(
@@ -812,6 +807,7 @@ describe('CI verification workflow contracts', () => {
         );
         jobs.push({ name: optionalName, conclusion: 'skipped' });
         const listJobs = vi.fn();
+        const listForRepo = vi.fn();
         const tracker = {
           number: 1,
           state: 'open',
@@ -820,22 +816,15 @@ describe('CI verification workflow contracts', () => {
         const github = {
           rest: {
             actions: { listJobsForWorkflowRun: listJobs },
-            issues: {
-              getLabel: vi.fn(async () => ({ data: {} })),
-              listForRepo: vi.fn(async () => ({ data: [tracker] })),
-              createComment: vi.fn(),
-              update,
-            },
-            search: {
-              issuesAndPullRequests: vi.fn(async () => ({
-                data: { items: [tracker] },
-              })),
-            },
+            issues: { listForRepo, createComment: vi.fn(), update },
           },
-          paginate: vi.fn(async (method) => {
-            if (method !== listJobs) throw new Error('unbounded issue scan');
-            return jobs;
-          }),
+          paginate: vi.fn(async (method) =>
+            method === listJobs
+              ? jobs
+              : method === listForRepo
+                ? [tracker]
+                : [],
+          ),
         };
         await run(
           github,
