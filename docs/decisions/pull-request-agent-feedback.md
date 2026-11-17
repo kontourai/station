@@ -210,34 +210,50 @@ existing independent review (`ReviewEvidenceModule`) once per head.
    owning agent is idle, not waiting on a person, with no feedback message
    open or waiting. A claim with only this switch on is active
    (`pullRequestFeedbackActive`): it is read, owned (a second chat is
-   refused) and its messages are placed. A write that leaves
-   `reviewEachHead` out keeps the chat's stored value.
+   refused) and its messages are placed, but only while the
+   `pull-request-head-review` preview is on; while it is off the switch
+   does nothing and a write cannot turn it on. A write that leaves
+   `reviewEachHead` out keeps the chat's stored value. While the newest
+   head has no review, the panel says why (`headReviewWaiting`: settling,
+   the agent busy, waiting or stopped, feedback waiting, another review
+   in the Project, the daily limit, a draft, closed, or starting soon);
+   "Waiting for a push" only before Station has read the pull request.
 10. **What is reviewed.** The Project's own checkout, which a Task's
     worktree shares objects with; Station never fetches. A head that is not
     there reads "Head a1b2c3d isn't on this Station yet" and is tried again
     on the next read. The base is the merge base of the head with the
     observed base commit (when local), else `origin/<base branch>`, else the
     Task's recorded base commit. When the previous reviewed head is an
-    ancestor and its receipt had 1 to 100 findings, it is a delta review
-    from that head; a force-push reviews from the merge base again.
+    ancestor, its receipt had 1 to 100 findings and both heads share that
+    merge base, it is a delta review from that head; a force-push, or a
+    push that merged the base branch in, reviews from the merge base again.
+    A head already in the base branch is not reviewed.
 11. **Once.** The request id is `prh-` and 40 hex of a hash of the pull
     request and head; Review again adds `:rerun:<n>`. The row is written
     before the review starts; a review a restart left running reads "Result
-    unknown" and never runs again by itself.
+    unknown" ("Station doesn't know how this review ended") and never runs
+    again by itself. Review again keeps the finished review until a new
+    request is submitted: one that stops first (no reviewer, head not here,
+    a busy Project, the daily limit) only tells the person why. A claim
+    that moves to another chat or is turned off drops its head reviews.
 12. **Reviewers and bounds.** Repo Map selection when it is available,
     otherwise one `correctness` reviewer by the Task code review's rule
     (an Agent of the Project, not the implementer, that reviews read-only).
-    None: "No reviewer". One review per Project at a time, at most 10 per
-    Project in 24 hours, the module's 10-minute reviewer window and 2
-    concurrent reviewers.
+    Today only a Codex connection can review read-only, so "No reviewer"
+    says to connect Codex. One review per Project at a time, at most 10
+    submitted per Project in 24 hours (every request counts, Review again
+    included), the module's 10-minute reviewer window and 2 concurrent
+    reviewers.
 13. **What reaches the agent.** Required findings only: critical or high
     severity with high or medium confidence, plus earlier findings the
     reviewer found still present or regressed that pass the same filter.
     They go as a `review-findings` block under "Address review comments",
     or when a person chooses Send to agent; either way under the same caps
-    as the rest. The rest stay in Station. Reviewer text is made inert like
-    forge text. The head reviewer has no forge provider: it never approves,
-    merges, comments or posts a review.
+    as the rest (Send to agent on a paused pull request says so). The rest
+    stay in Station, folded. Findings are listed most severe first, then
+    most certain; only the current head's review can be sent. Reviewer text
+    is made inert like forge text. The head reviewer has no forge provider:
+    it never approves, merges, comments or posts a review.
 
 Departures from the plan:
 
@@ -251,7 +267,14 @@ Departures from the plan:
   takes. Repo Map selection may route more than 2 lenses; 2 run at a time.
 - A chat with no Agent (an engine-only chat) cannot be reviewed: the review
   module resolves the implementer as an Agent. It reads "Not reviewed".
-- The daily limit counts reviews by when they started; Review again on the
-  same head replaces that head's row, so it counts once.
 - With the preview off, turning both sending switches off still turns the
   claim off (one turn-off path), review included.
+- Send to agent is the section's one primary when there is something to
+  send; Review again is never a primary, so it does not sit as a second
+  green button beside the panel's own tabs.
+- Not yet: the Project defaults section (#5138, not merged when this was
+  built) gains a third "Review each new head" switch, and its attention,
+  auto-claim and "still get feedback" counts use the preview-aware
+  `pullRequestFeedbackActive` where a review-only claim must count. The
+  attention card's "Turn off auto-fix" button keeps that label for a
+  review-only claim (its title and body say review feedback).

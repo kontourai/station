@@ -6343,7 +6343,9 @@ read is `{ readable: false }`, and a 409 about such a chat reads through
 With the `pull-request-head-review` preview on, `reviewPullRequestHeadAgain`
 runs Station's review of the pull request's current head again and
 `sendPullRequestHeadReviewFindings` sends that review's required findings to
-the agent. `writePullRequestFeedback` takes an optional `reviewEachHead`;
+the agent. `pullRequestHeadReviewRefusal(error)` reads either one's refusal
+as Station's own sentence (a busy Project, the daily limit, no reviewer, a
+pause), to show as it comes. `writePullRequestFeedback` takes an optional `reviewEachHead`;
 leaving it out keeps what the chat stored.
 
 ## Files in answers to input requests
