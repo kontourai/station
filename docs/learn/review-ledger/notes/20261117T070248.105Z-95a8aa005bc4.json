@@ -1,0 +1,13 @@
+{
+  "revision": "c3311b50ea041d8b581c9234f0c30e47666e15c8",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"The inventory only gains the PullRequestHeadReviewSection.tsx row (exception, measured 44px phone targets); the guides citing the inventory describe its format and rules, which are unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"The inventory only gains the PullRequestHeadReviewSection.tsx row (exception, measured 44px phone targets); the guides citing the inventory describe its format and rules, which are unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"The inventory only gains the PullRequestHeadReviewSection.tsx row (exception, measured 44px phone targets); the guides citing the inventory describe its format and rules, which are unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"The inventory only gains the PullRequestHeadReviewSection.tsx row (exception, measured 44px phone targets); the guides citing the inventory describe its format and rules, which are unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}
