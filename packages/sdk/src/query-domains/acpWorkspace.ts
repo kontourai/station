@@ -2,7 +2,11 @@ import type {
   ACPConnectionRegistryEntry,
   ACPPublicRegistrySourceStatus,
 } from '@kontourai/station-contracts/acp';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import {
   type MutationOptions,
@@ -696,6 +700,18 @@ export function useUnregisteredACPConnectionsQuery(
   );
 }
 
+function invalidateACPInventory(queryClient: QueryClient) {
+  for (const key of [
+    'acp-connections',
+    'engine-setup',
+    'connections',
+    'agents',
+    'acp-unregistered-connections',
+    'acp-connection-registry',
+  ])
+    void queryClient.invalidateQueries({ queryKey: [key] });
+}
+
 export function useCheckACPConnectionMutation(
   options?: MutationOptions<ACPConnectionInfo | undefined, string>,
 ) {
@@ -703,14 +719,7 @@ export function useCheckACPConnectionMutation(
   return useMutation<ACPConnectionInfo | undefined, Error, string>({
     mutationFn: async (id) => checkACPConnection(id),
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
-      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
-      queryClient.invalidateQueries({ queryKey: ['connections'] });
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
-      queryClient.invalidateQueries({
-        queryKey: ['acp-unregistered-connections'],
-      });
-      queryClient.invalidateQueries({ queryKey: ['acp-connection-registry'] });
+      invalidateACPInventory(queryClient);
     },
     onSuccess: (data, variables) => options?.onSuccess?.(data, variables),
     onError: (error, variables) =>
@@ -776,16 +785,7 @@ export function useCreateACPConnectionMutation(
   >({
     mutationFn: async (data) => createACPConnection(data),
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
-      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
-      queryClient.invalidateQueries({ queryKey: ['connections'] });
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
-      queryClient.invalidateQueries({
-        queryKey: ['acp-unregistered-connections'],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['acp-connection-registry'],
-      });
+      invalidateACPInventory(queryClient);
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
@@ -816,16 +816,7 @@ export function useInstallACPConnectionRegistryEntryMutation(
         ? installACPConnectionRegistryEntry(request)
         : installACPConnectionRegistryEntry(request.id, request.confirmCommand),
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
-      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
-      queryClient.invalidateQueries({ queryKey: ['connections'] });
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
-      queryClient.invalidateQueries({
-        queryKey: ['acp-unregistered-connections'],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['acp-connection-registry'],
-      });
+      invalidateACPInventory(queryClient);
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
@@ -870,16 +861,7 @@ export function useDeleteACPConnectionMutation(
   return useMutation({
     mutationFn: async (id: string) => deleteACPConnection(id),
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
-      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
-      queryClient.invalidateQueries({ queryKey: ['connections'] });
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
-      queryClient.invalidateQueries({
-        queryKey: ['acp-unregistered-connections'],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['acp-connection-registry'],
-      });
+      invalidateACPInventory(queryClient);
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {
