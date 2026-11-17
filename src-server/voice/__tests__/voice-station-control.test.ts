@@ -117,6 +117,7 @@ const createSession = vi.fn();
 const audit = vi.fn();
 const limiter = new RuntimeAuthFailureLimiter();
 const recordFailure = vi.spyOn(limiter, 'recordFailure');
+const clearFailures = vi.spyOn(limiter, 'clear');
 const seen: Array<ReturnType<typeof stationControlRequestAuthority>> = [];
 
 beforeAll(async () => {
@@ -241,6 +242,7 @@ beforeAll(async () => {
 afterEach(() => {
   audit.mockClear();
   recordFailure.mockClear();
+  clearFailures.mockClear();
   seen.length = 0;
   providers = [];
   createSession.mockClear();
@@ -360,8 +362,9 @@ test('a cookie whose credential fails verification gives the session no Station 
   const names = provider!.config?.tools?.map((tool) => tool.name) ?? [];
   expect(names).not.toContain('stationControl_updateConfig');
   expect(names).toContain('weather_today');
-  // Counted and audited exactly as a failed auth frame is.
+  // Counted and audited exactly as a failed auth frame is, never cleared.
   expect(recordFailure).toHaveBeenCalledWith('127.0.0.1');
+  expect(clearFailures).not.toHaveBeenCalled();
   expect(audit).toHaveBeenCalledWith(
     expect.objectContaining({
       event: 'station.auth.failure',
@@ -379,8 +382,15 @@ test('a peer over its failure budget is refused before its cookie is verified, a
     const ws = new WebSocket(voiceUrl, {
       headers: { cookie: UI_COOKIE, origin: STATION_ORIGIN },
     });
-    const [code] = (await once(ws, 'close')) as [number];
+    // Bounded, so a missing refusal fails here, readably, not by timeout.
+    const code = await Promise.race([
+      once(ws, 'close').then(([closeCode]) => closeCode as number),
+      new Promise<string>((done) =>
+        setTimeout(() => done('still open after 2 s'), 2_000),
+      ),
+    ]);
     expect(code).toBe(4429);
+    ws.terminate();
     expect(createSession).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -406,6 +416,8 @@ test('a verified cookie is neither counted nor audited as a failure', async () =
   });
   expect(recordFailure).not.toHaveBeenCalled();
   expect(audit).not.toHaveBeenCalled();
+  // And it clears the peer's earlier failures, as a verified auth frame does.
+  expect(clearFailures).toHaveBeenCalledWith('127.0.0.1');
   ws.close();
 });
 

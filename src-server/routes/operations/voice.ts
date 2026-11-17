@@ -390,6 +390,9 @@ export function attachVoiceWebSocket(
       auditVoiceFailure(loopbackAuth, peerClass, 'invalid_credential');
       failureLimiter.recordFailure(limiterKey);
     }
+    // A verified cookie clears the peer's failures, as a verified auth frame
+    // does.
+    if (credential && verified) failureLimiter.clear(limiterKey);
     const principalId =
       credential && verified
         ? loopbackAuth.resolvePrincipal?.(credential)
