@@ -62,6 +62,7 @@ interface RuntimeInitializationContext {
   stationInstructionsEnabled?: InitializeRuntimeDeps['stationInstructionsEnabled'];
   codexBoundToolsEnabled?: InitializeRuntimeDeps['codexBoundToolsEnabled'];
   codexToolFamiliesAdmitted?: InitializeRuntimeDeps['codexToolFamiliesAdmitted'];
+  stationControlCallerRecords?: InitializeRuntimeDeps['stationControlCallerRecords'];
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -81,6 +82,10 @@ interface RuntimeInitializationContext {
     // #3429: this Station's Environment, which a continued attached
     // conversation records as its execution binding.
     | 'readExistingRecord'
+    // #2377 slice D: the voice socket's credential resolves to its person.
+    | 'verifyOperatorCredential'
+    | 'credentialLocality'
+    | 'credentialHasOwnerStanding'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -208,6 +213,7 @@ export function createRuntimeInitializationDeps(
     stationInstructionsEnabled: context.stationInstructionsEnabled,
     codexBoundToolsEnabled: context.codexBoundToolsEnabled,
     codexToolFamiliesAdmitted: context.codexToolFamiliesAdmitted,
+    stationControlCallerRecords: context.stationControlCallerRecords,
     skillService: context.skillService,
     feedbackService: context.feedbackService,
     voiceService: context.voiceService,

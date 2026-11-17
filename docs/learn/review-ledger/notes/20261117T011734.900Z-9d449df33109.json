@@ -1,0 +1,11 @@
+{
+  "revision": "1e21a6478680606801a5d95cb7e73d24305310c2",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked against the #2377 slice D round-3 change: the loopback cookie path now refuses a peer over its failure budget (4429) before verifying, as the auth frame does. The threat model records it; connections and connect references only describe the voice listener's loopback/direct transport, unchanged.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked against the #2377 slice D round-3 change: the loopback cookie path now refuses a peer over its failure budget (4429) before verifying, as the auth frame does. The threat model records it; connections and connect references only describe the voice listener's loopback/direct transport, unchanged.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against the #2377 slice D round-3 change: the loopback cookie path now refuses a peer over its failure budget (4429) before verifying, as the auth frame does. The threat model records it; connections and connect references only describe the voice listener's loopback/direct transport, unchanged.","inputs":["src-server/routes/operations/voice.ts"]}
+  ]
+}

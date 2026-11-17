@@ -156,10 +156,15 @@ source type's `plan()` can describe the source, it should write a proposal's
 - An Agent recreated with an identical definition under the same slug
   matches the recorded binding. It is indistinguishable, and it grants the
   same authority.
-- A Station-engine Agent whose station-control connection carries no
-  verified caller (for example one on a model connection) cannot propose:
-  the guard refuses it (`station_control_caller_required`). Engines that
-  carry a verified caller can.
+- Every engine's session carries a verified caller, Station's own engine
+  included (#2377 slice D), and so does a Station-engine run an
+  authenticated request starts without a session (the invoke endpoints, the
+  SDK's raw tool call or direct chat stream), acting for that request's
+  principal. So does a signed-in voice session (its person) and a scheduled
+  job (its recorded owner). A run with no caller at all (a voice session with
+  no credential, which is offered no Station tools, or a job with no recorded
+  owner on a shared or hosted Station) cannot propose: the guard refuses it
+  (`station_control_caller_required`).
 - Station does not yet have a route that removes a source or rule (it is
   proposed in [#4646](https://github.com/kontourai/station/pull/4646)), so
   "removing a rule leaves things exactly as before" is not covered here.

@@ -1,0 +1,7 @@
+{
+  "revision": "1e21a6478680606801a5d95cb7e73d24305310c2",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Edited for #2377 slice D round-3: operator override limits (no owner device, no retargeting, run record stays the owner's), the fixed pre-owner migration set, and the voice cookie failure budget; checked against agent-schedule-composition.ts, routes/operations/scheduler.ts, scheduler-ledger.ts and routes/operations/voice.ts.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}
