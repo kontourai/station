@@ -212,6 +212,10 @@ import type {
   ProjectMembershipService,
 } from '../../services/projects/project-membership-service.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
+import {
+  createProjectPrincipalPermission,
+  projectJobCreatorMayRun,
+} from '../../services/projects/project-principal-permission.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
@@ -1246,6 +1250,14 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  /**
+   * #5066: hand every agent's pre-tool policy the watching-Task refusals
+   * once pull request feedback is composed. Absent in embedders without
+   * agents.
+   */
+  bindPullRequestWatchPolicy?: (
+    policy: import('../agents/pre-tool-policy.js').PullRequestWatchPolicy,
+  ) => void;
   discordGateway?: Pick<DiscordGatewayService, 'getGatewayStatus'>;
   retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
@@ -1447,7 +1459,6 @@ export interface ConfigureRuntimeRoutesContext {
   featurePreviews: FeaturePreviewRegistry;
   /** #3628: bound by the runtime, absent on a hosted Station. */
   coordinatorSessionPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
-  progressiveToolsEnabled?: () => boolean;
   projectWorkingConfiguration?: import('../project-working-configuration-runtime.js').ProjectWorkingRuntime;
   learningReview?: import('../learning-review-runtime.js').LearningReviewRuntime;
   // station#1194 (epic #1191, slice B): re-applies the built-in default
@@ -2729,32 +2740,14 @@ export function configureRuntimeRoutes(
     const id = context.storageAdapter.getProject(slug).id;
     return typeof id === 'string' && id ? id : undefined;
   };
-  // The same membership rule as the Project routes: an account principal
-  // holds exactly its membership's actions; any other owner is
-  // unrestricted in its own requests, so it may view and execute.
-  // Approving a worker's request is the operator's there: no membership
-  // row names anyone else an admin. A session's recorded owner is checked
-  // by the dispatch scope; a person reading their own Sessions (#3427) by
-  // the person-facing Session reads.
-  const principalMayInProject = (
-    principalId: string,
-    localProjectId: string,
-    action: 'view' | 'execute' | 'approve',
-  ): boolean => {
-    if (!isDeploymentAccountPrincipalId(principalId))
-      return (
-        action !== 'approve' || principalId === LOCAL_OPERATOR_PRINCIPAL_ID
-      );
-    if (!context.projectMembership) return false;
-    return context.projectMembership
-      .admissionsForResolvedPrincipal(principalId)
-      .some(
-        ({ scope, member }) =>
-          scope.localProjectId === localProjectId &&
-          member.status === 'active' &&
-          member.actions.includes(action),
-      );
-  };
+  // The same membership rule as the Project routes (see
+  // `createProjectPrincipalPermission`). A session's recorded owner is
+  // checked by the dispatch scope, a Project job's creator before each run
+  // (#5126), and a person reading their own Sessions (#3427) by the
+  // person-facing Session reads.
+  const principalMayInProject = createProjectPrincipalPermission(
+    context.projectMembership,
+  );
   // #2377 slices C1 and C2a: the server's records for whatever a
   // station-control call aims at (a steer, an adoption, a dispatch, a
   // follow-up, an answer), read from the same records as the caller's own
@@ -3559,7 +3552,6 @@ export function configureRuntimeRoutes(
       hostedTenantRegistry,
       resolveCallerRecord: resolveStationControlCallerRecord,
       resolveExternalClientProjectId: currentLocalProjectId,
-      progressiveToolsEnabled: context.progressiveToolsEnabled,
     }),
   );
   context.app.route(
@@ -5887,6 +5879,9 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      // Read per request: pull request feedback is composed after these
+      // routes are mounted.
+      pullRequestWatch: () => pullRequestFeedback?.watch,
       pullRequestProviders: () =>
         listProviders('pullRequest').map((entry) => entry.provider),
       pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
@@ -7303,6 +7298,11 @@ export function configureRuntimeRoutes(
           taskDispatcher: context.taskDispatcher,
           eventStore: context.orchestrationEventStore,
           conversationRuns: scheduledConversationRuns,
+          // #5126: a run acts as the job's creator, so it starts only while
+          // the creator may still start work in the Project.
+          creatorMayRunInProject: projectJobCreatorMayRun(
+            principalMayInProject,
+          ),
           logger: context.logger,
         })
       : undefined;
@@ -10834,6 +10834,25 @@ export function configureRuntimeRoutes(
       listProviders('pullRequest').map((entry) => entry.provider),
     keptForSessions: (ids) =>
       context.taskGraphService.listKeptDeclaredPullRequestsForSessions(ids),
+    tasks: {
+      listTasks: () => context.taskGraphService.listTasks(),
+      listKeptDeclaredPullRequests: (taskId) =>
+        context.taskGraphService.listKeptDeclaredPullRequests(taskId),
+      holdTaskForPullRequestWatch: (input) =>
+        context.taskGraphService.holdTaskForPullRequestWatch(input),
+      // A Task names its Project by id or, for Tasks created against a
+      // slug, by slug.
+      project: (projectId) => {
+        const summary = context.projectService
+          .listProjects()
+          .find(
+            (project) => project.id === projectId || project.slug === projectId,
+          );
+        return summary
+          ? context.storageAdapter.getProject(summary.slug)
+          : undefined;
+      },
+    },
     taskBranches: pullRequestFeedbackTaskBranchPorts({
       taskGraph: context.taskGraphService,
       projects: context.projectService,
@@ -10860,6 +10879,10 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/pull-request-feedback',
       createPullRequestFeedbackRoutes(...pullRequestFeedback.routeArgs),
+    );
+  if (pullRequestFeedback?.pullRequestWatchPolicy)
+    context.bindPullRequestWatchPolicy?.(
+      pullRequestFeedback.pullRequestWatchPolicy,
     );
   context.app.route(
     '/api/pull-requests',

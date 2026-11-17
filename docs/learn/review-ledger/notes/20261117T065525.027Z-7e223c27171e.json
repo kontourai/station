@@ -1,0 +1,7 @@
+{
+  "revision": "4c241ad303575efe27251f80dbca57c0de290138",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Host heavy-check slots: checked the new bullet against scripts/lib/slot-holder-exec.mjs (POSIX path spawns an inherited no-op /bin/sh child to clear O_NONBLOCK on fds 0-2, then execve) and scripts/run-biome.mjs (POSIX path now calls execAsSlotHolder with its bounded-thread env); the waiting message, arrival order and Windows owned-job claims are unchanged.","inputs":["docs/guides/testing.md","scripts/lib/slot-holder-exec.mjs"]}
+  ]
+}

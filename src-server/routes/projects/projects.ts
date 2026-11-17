@@ -52,6 +52,10 @@ import {
   validateLayoutAgentReferences,
   validateProjectAgentScope,
 } from '@kontourai/station-contracts/project-reference-integrity';
+import {
+  MAX_PULL_REQUEST_FIX_ATTEMPTS,
+  parseProjectPullRequestWatchSettings,
+} from '@kontourai/station-contracts/pull-request-watch';
 import { BROWSER_PANE_DEPLOYMENT_CAPABILITY } from '@kontourai/station-contracts/workspace-browser-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -2091,6 +2095,50 @@ export function createProjectRoutes(
         const updated = {
           ...revision.value,
           ...getBody(c),
+          updatedAt: new Date().toISOString(),
+        };
+        await revision.replace(updated);
+        return c.json({ success: true, data: updated });
+      } catch (error) {
+        return c.json(
+          { success: false, error: projectMutationMessage(error) },
+          projectMutationStatus(error),
+        );
+      }
+    },
+  );
+
+  // #5066: whether this Project's Tasks watch their pull requests. Only the
+  // Project's owner reaches a write here (the runtime Project guard refuses a
+  // member's), and no station-control tool names it, so an agent never does.
+  app.put(
+    '/:slug/pull-request-watch',
+    validate(
+      z
+        .object({
+          enabled: z.boolean(),
+          maxFixAttempts: z
+            .number()
+            .int()
+            .min(1)
+            .max(MAX_PULL_REQUEST_FIX_ATTEMPTS)
+            .optional(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      try {
+        const slug = param(c, 'slug');
+        const settings = parseProjectPullRequestWatchSettings(getBody(c));
+        if (!settings)
+          return c.json(
+            { success: false, error: 'Invalid pull request watch settings' },
+            400,
+          );
+        const revision = storageAdapter.projectRevision(slug);
+        const updated = {
+          ...revision.value,
+          pullRequestWatch: settings,
           updatedAt: new Date().toISOString(),
         };
         await revision.replace(updated);

@@ -155,7 +155,7 @@ change. A separate, non-required `ui-bundle-delta` job reports each
 same-repository pull request's entry-bundle delta against its merge base,
 in parallel with `fast-checks` and exiting zero once started, so growth
 stays attributed to the change that added it. It does not run in the merge
-queue.
+queue, and under `STATION_PR_HEAVY_CHECKS=when-armed` it waits for arming.
 
 ### What the entry-bundle ceiling is for
 
@@ -255,6 +255,61 @@ Track confirmed defects separately from advisory review, and distinguish new
 findings from fixes and inherited debt. Freeze each repair batch for validation
 and landing; later discoveries belong to a subsequent batch. These gates reduce
 specific regressions; they cannot guarantee that new code has no defects.
+
+### Memory budget
+
+Each fallow child the gate and the audit runners start
+([`runFallowAnalysis`](../../scripts/run-fallow-audit.mjs)) runs inside a
+memory budget, so an analysis that outgrows it fails the gate rather than the
+Station engine that started it (#5111). Peak resident memory of one fallow
+process on this repository (about 11,000 source files), measured on 2026-11-17
+with fallow 3.42:
+
+| Run | 2 threads | 1 thread |
+| --- | --- | --- |
+| Gate audit (`--gate new-only`), base and head both uncached | 5.5 GiB | 2.9 GiB |
+| Gate audit, head cached, base not cached (67–233 changed files) | 5.3 GiB | 3.7 GiB |
+| Gate audit, both cached | 2.7 GiB | 2.7 GiB |
+| Gate audit, 907 changed files, base not cached | killed at a 6 GiB cap | 3.8 GiB |
+| Head only (`--gate all`), uncached | 2.9 GiB | 2.9 GiB |
+| Whole tree (`npm run audit:code-health`): `health`, `dead-code`, `dupes`, uncached | 2.7, 1.4, 0.9 GiB | 2.7, 1.4, 0.9 GiB |
+
+Changed-file count matters little (67 to 907 files moved the one-thread peak
+from 3.7 to 3.8 GiB), and duplication is not the driver: an audit
+with only its dupes analysis peaked lower than one with only health or dead
+code. What doubles the peak is the base snapshot's analysis, which
+`--gate new-only` needs to tell new findings from inherited ones. With two
+threads fallow analyses the base and the head at the same time; with one, in
+turn. Fallow caches a base's analysis under `.fallow/cache/`, so the cold case
+is the first audit against a new merge base: a fresh worktree, or after
+`main` moves.
+
+So off CI every fallow child runs with `--threads 1`. Reports are identical to
+the two-thread ones apart from their run id; a cold audit takes about 1.7
+times as long (114 s measured on a loaded host), so the per-command watchdog is
+240 s. The changed-file scope and every sub-analysis stay as they were:
+skipping the base pass (`--gate all`) or dropping an analysis would change the
+verdict.
+
+The budget is `STATION_FALLOW_MEMORY_MAX_MIB`, default 5120 MiB: the largest
+measured single-thread peak (3.8 GiB) with about 1.2 GiB of headroom for
+repository growth and the scope's page cache, which the kernel reclaims
+before it kills anything. On Linux with a systemd user manager, the
+child runs in its own transient user scope (`systemd-run --user --scope`,
+`MemoryMax` set to the budget, no swap, `OOMPolicy=continue`). That scope sits
+under the user manager, outside the caller's own scope, so the caller is no
+longer charged for the analyzer. When the kernel kills the analyzer at the
+budget, the gate exits 2 with `code-health gate needs more than N MiB; fallow
+audit was OOM-killed at its memory budget`. A run that finishes logs the
+scope's memory peak to stderr; that peak counts reclaimable file cache (the
+base checkout and the files read), so it can sit at the budget with no kill. A budget below
+1024 MiB, or one that is not a whole number, is refused before anything runs.
+
+Where no capped scope can start (macOS, Windows, Linux without a user manager),
+the child runs uncapped and the runner prints a warning naming why. Hosted CI
+(`GITHUB_ACTIONS=true`) runs uncapped, silently and with two threads, as
+before: each runner is a single tenant. The raw `npm run fallow*` package
+scripts run the analyzer directly, without the budget.
 
 ### Dead-code ceiling
 

@@ -1,0 +1,7 @@
+{
+  "revision": "9a287e04e4f1456b0209812af93227727484b720",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"New Heavy checks when armed section checked against ci.yml, pr-heavy-checks-decision.mjs and source-verification-policy.mjs; whitespace gate already in ci:fast statics.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml",".github/workflows/pr-ci-supersession.yml","docs/guides/development.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/ci-workflow-contract.test.ts","scripts/__tests__/source-verification-policy.test.ts","scripts/actionlint-gate.mjs","scripts/ci-workflow-governance.mjs","scripts/source-verification-policy.mjs"]}
+  ]
+}

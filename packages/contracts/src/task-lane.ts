@@ -164,6 +164,7 @@ export type TaskLaneRung =
   | 'prOpen'
   | 'prUnknown'
   | 'markedBlocked'
+  | 'fixAttemptsUsed'
   | 'markedReview'
   | 'runUnknown'
   | 'elsewhere'
@@ -561,6 +562,22 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
     };
   }
 
+  // 4a. Station blocked the Task (#5066): a watched pull request used every
+  // fix attempt and these checks still fail.
+  if (task.status === 'blocked' && task.pullRequestWatchHold)
+    return {
+      ...base,
+      placement: lane('needs_you'),
+      rung: 'fixAttemptsUsed',
+      tone: 'attention',
+      word: 'Fix attempts used',
+      detail: task.pullRequestWatchHold.checks.join(', ') || undefined,
+      reason: `${task.pullRequestWatchHold.pullRequest}: checks still fail after every fix attempt.`,
+      statusGlyph: glyph,
+      factTime: task.pullRequestWatchHold.at,
+      nextAction: openTask,
+      certainty: 'observed',
+    };
   // 4b. A person or agent marked the Task blocked: a recorded decision that
   // no pull request state outranks (a clean PR does not unblock a Task).
   if (task.status === 'blocked')

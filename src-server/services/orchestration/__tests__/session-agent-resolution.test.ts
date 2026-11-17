@@ -1593,7 +1593,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     options: {
       enabled?: () => boolean;
       codexBound?: () => boolean;
-      progressive?: () => boolean;
+      families?: () => Promise<boolean>;
     } = {},
   ) {
     const { selfIntegration } = createRuntimeSelfIntegration();
@@ -1612,7 +1612,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
       resolveSkillDir: async () => null,
       stationInstructionsEnabled: options.enabled ?? (() => true),
       codexBoundToolsEnabled: options.codexBound,
-      progressiveToolsEnabled: options.progressive,
+      codexToolFamiliesAdmitted: options.families,
     });
   }
 
@@ -1792,19 +1792,32 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     expect(header.firstTurnText).toContain('`list_agents`');
   });
 
-  test('a bound session, served without disclosure, is never told to load tool families', async () => {
+  test('only an admitted Codex header-token Session is told to load tool families', async () => {
     const families = 'list_tool_families';
-    const textFor = async (provider: 'claude' | 'codex', codexBound: boolean) =>
+    const textFor = async (
+      provider: 'claude' | 'codex' | 'acp',
+      codexBound: boolean,
+      admitted: boolean,
+    ) =>
       receiptOf(
         await resolverFor(
           { prompt: '' },
-          { codexBound: () => codexBound, progressive: () => true },
+          {
+            codexBound: () => codexBound,
+            families: async () => admitted,
+          },
         )(baseInput({ provider })),
-      ).firstTurnText as string;
+      )?.firstTurnText ?? '';
     // The header channel is HTTP station-control, where families exist.
-    expect(await textFor('codex', false)).toContain(families);
-    expect(await textFor('codex', true)).not.toContain(families);
-    expect(await textFor('claude', false)).not.toContain(families);
+    expect(await textFor('codex', false, true)).toContain(families);
+    // Not admitted (preview off, or an unqualified Codex version).
+    expect(await textFor('codex', false, false)).not.toContain(families);
+    // The bound catalog is served without disclosure.
+    expect(await textFor('codex', true, true)).not.toContain(families);
+    // Claude keeps native tool search; ACP engines are unqualified.
+    expect(await textFor('claude', false, true)).not.toContain(families);
+    expect(await textFor('acp', false, true)).toContain('delegate_task');
+    expect(await textFor('acp', false, true)).not.toContain(families);
   });
 
   test('no station-control means no receipt and no stationInstructions', async () => {

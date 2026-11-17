@@ -49,7 +49,9 @@ older than an hour that a killed run left behind. The cache is
 overrides it. It is never the system temp directory by default: where `/tmp` is
 tmpfs, a checkout there is RAM charged to the caller's memory limit (#5080).
 The raw `npm run fallow` and `npm run fallow:audit` commands run the analyzer
-directly, without that private directory.
+directly, without that private directory. The runners also hold each fallow
+child to a [memory budget](code-quality.md#memory-budget) and, off CI, one
+analysis thread.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -909,6 +911,60 @@ that `main` may be stale, so the warning never refuses a push. Merge `main`
 the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
 the deferred verdict. Merge-queue, dispatch and push runs never evaluate it.
+
+#### Heavy checks when armed
+
+The repository variable `STATION_PR_HEAVY_CHECKS` chooses when a
+same-repository pull request runs the heavy part of `PR: CI`: the
+affected-test shards, the critical browser journeys, the `UI entry bundle
+delta` report and delivery validation. Unset or `every-push`, every push runs
+them, as before the switch existed. `when-armed` runs only the cheap part on an
+unarmed push (the plan, the `ci:fast` statics, which include lint, every
+typecheck lane and the `git diff --check` whitespace gate, and `Repository
+source scans`, which nothing else runs before landing) and the heavy part once
+the pull request is armed for auto-merge. The merge queue runs the journeys
+again in its statics; delivery validation runs only on pull requests and in
+scheduled main qualification. Merge
+groups, pushes to `main`, manual dispatches and fork pull requests always run
+everything. The `PR source admission` job decides with
+[`pr-heavy-checks-decision.mjs`](../../scripts/pr-heavy-checks-decision.mjs)
+and prints its reason; anything it cannot read decides heavy.
+
+Arming (`auto_merge_enabled`, run name `PR armed`) starts a run that spends
+the heavy part on the current head, and a push to an armed pull request runs
+heavy. Re-arming a head that already reads verified runs only the cheap part.
+Under `when-armed` a head whose newest run deferred the heavy part reads
+`Source verification policy` pending ("heavy checks run once armed"), never
+success, so arming cannot enqueue it before the armed run passes; a head
+already verified enqueues at once. The source policy ignores a `PR armed` run
+until its `PR source admission` job has completed (with the switch off that
+job is skipped, so the run never counts), and once a head has a successful
+proof it ignores newer runs that recorded a deferral, so a cheap run or its
+re-run can neither pend nor fail a verified head. A newer run that may be
+heavy (in progress, failed or cancelled) still decides, as before.
+
+To get a full run before arming, add the `full-checks` label, then push or use
+**Re-run all jobs** on the newest `PR: CI` run: that re-runs `PR source
+admission`, which reads the label and the live auto-merge state. **Re-run
+failed jobs** does not re-run a successful admission job, so it repeats that
+run's earlier decision. To roll back, set the variable to `every-push` or
+delete it; a head left pending by a cheap-only run needs one push or **Re-run
+all jobs**.
+
+The saving for `PR: CI` alone is modest: on the 2026-11-09 to 11-16 runs,
+roughly 350–480 runner-minutes a day (about 3,330 a week: 11,871 heavy minutes
+before arming, less a full run for each first arm and a cheap run for each
+re-arm), about 1.6% of daily runner time. The switch is meant to be turned on
+together with the Gallery, iOS and Windows adoptions of the same decision.
+Before turning it on, with it still off: arm one pull request and confirm a
+`PR armed` run appears (GitHub delivered the event), then push to that armed
+pull request and confirm its `Decide whether the heavy checks run` step prints
+`pull_request.auto_merge populated`. Under `when-armed` an arming run's step
+prints which path it took: `head already verified: cheap`, `not verified:
+heavy` or `status unreadable: heavy`. A workflow whose own required check would skip before arming
+cannot adopt the switch by itself: a `skipped` required check passes, so the
+source policy must also hold the head until that check has run (see the
+decision script's header).
 
 Source execution and admission are separate: the `fast-checks` aggregate validates
 the actual plan, statics and shard receipts. The trusted source-policy publisher
@@ -2334,6 +2390,13 @@ whole test run.
 - A queued check prints `[heavy-check-slots] waiting for a heavy-check slot
   for <label>: 1/1 held by pid <N> (<holder label>) in <worktree>`, repeated
   every minute.
+- That message leaves the inherited stdout or stderr non-blocking, and the
+  flag survives execve. Before a slot holder execs the slotted program on
+  macOS or Linux, `scripts/lib/slot-holder-exec.mjs` (also used by
+  `scripts/run-biome.mjs`) restores blocking stdio. Otherwise a native program
+  such as Biome fails with `Resource temporarily unavailable` (EAGAIN) as soon
+  as the process reading its output falls behind
+  ([#5119](https://github.com/kontourai/station/issues/5119)).
 - Waiters are admitted in arrival order. Each waiter writes a ticket under the
   pool's `queue/` directory, and only the earliest N live tickets may claim a
   slot. A ticket whose waiter died is removed by the next reader.
@@ -2421,7 +2484,7 @@ liveness bounds ×4`.
 | Vitest `testTimeout` and `hookTimeout` | 30 s | `vitest.config.ts` |
 | Product-law per-observation default | 30 s | `productLawObservationTimeoutMs` |
 | Product-law total runtime ceiling | 150 s | `productLawRuntimeBudgetMs` |
-| Fallow watchdog per command | 120 s | `runFallowAnalysis` |
+| Fallow watchdog per command | 240 s | `runFallowAnalysis` |
 | Transfer capture child default | 60 s | `transferCaptureLivenessTimeoutMs` |
 | Transfer capture in-process barriers | half the capture bound (30 s), so they scale with it | `scripts/lib/transfer-capture-barrier.ts` |
 

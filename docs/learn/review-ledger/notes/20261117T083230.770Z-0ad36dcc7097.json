@@ -1,0 +1,7 @@
+{
+  "revision": "5ccd4fca34d9f1aa458b5a3e914dd76935362392",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#5120: the gate's readiness-wrapper recognizer now matches the wrapper's merge-base argv literal ([entry, 'readiness', ...branchScopedArgs(process.argv.slice(2))]); it still requires the Veritas bin path and a readiness subcommand, and ci:fast routing is unchanged. No evidence-check execution claim in this page changed.","inputs":["scripts/evidence-check-execution-gate.mjs"]}
+  ]
+}

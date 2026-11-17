@@ -1,0 +1,241 @@
+{
+  "revision": "7baa459ce4209b21bffd6caaa401370221947d09",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Rewrote the tool loading compatibility and qualification sections against the new admission: codex-tool-families preview (default off, new id), codex-cli >= 0.167.0 read from the spawn binary (pre-release, unknown and older stay static), header-token path only, coordinator-derived admitted, adopted forks excluded, features.mcp_tool_list_changed in the private thread config, resume cursor toolFamilies and index-first resume. Checked each claim against codex-adapter.ts, codex-tool-families.ts, session-agent-resolution.ts and the live resume case result.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md","src-server/runtime/mcp/station-control-mcp-token.ts","src-server/providers/adapters/codex-tool-families.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The families line now follows the adapter's admission (preview, Codex 0.167.0+, header-token path, new Sessions); checked against resolveStationInstructions in session-agent-resolution.ts and the resolver test that covers Claude, ACP, bound and unadmitted Codex.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/codex-adapter.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Added the codex-tool-families row; checked label, default off, version floor, exclusions and the off-switch behaviour against the preview binding in station-runtime.ts and the route kill switch; docs:feature-previews:check passes.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Added the tool-family admission clause to the Codex MCP delivery cell; checked against codex-adapter.ts (feature key rides the same private thread config as the header credential).","inputs":["docs/design/agent-engine-unification.md","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The change adds tool-family admission on the header-token path (feature key in private thread config, toolFamilies resume-cursor marker, a version probe of the spawn binary). Checked the citing pages: none states that Codex never gets families or describes the thread config keys exhaustively; delivery, custody and resume claims are unchanged.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"The change binds the codex-tool-families preview, routes Codex mints through mintCodexStationMcpHeaderAuth and forwards the admission to the resolver and the route. Checked the citing pages: no stated preview list, route, credential custody or startup claim changed; the preview docs check passes.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Only forwards codexToolFamiliesAdmitted to the session resolver. No citing page's claim depends on that option.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Only documents the existing progressiveToolsEnabled context field, now wired to the codex-tool-families preview. No route, path, auth or response claim in the citing pages changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Adds the exported Codex header mint and renames the per-token flag to toolFamilies. Channels, assurance levels, TTL, rotation and revocation are unchanged; Knowledge refuses families. Checked the knowledge and threat-model claims citing this file.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Adds the exported Codex header mint and renames the per-token flag to toolFamilies. Channels, assurance levels, TTL, rotation and revocation are unchanged; Knowledge refuses families. Checked the knowledge and threat-model claims citing this file.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Adds the exported Codex header mint and renames the per-token flag to toolFamilies. Channels, assurance levels, TTL, rotation and revocation are unchanged; Knowledge refuses families. Checked the knowledge and threat-model claims citing this file.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Adds the exported Codex header mint and renames the per-token flag to toolFamilies. Channels, assurance levels, TTL, rotation and revocation are unchanged; Knowledge refuses families. Checked the knowledge and threat-model claims citing this file.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The families line now asks the Codex adapter's admission and is limited to new Codex header-token Sessions. No other resolution claim in the citing pages changed.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"The families line now asks the Codex adapter's admission and is limited to new Codex header-token Sessions. No other resolution claim in the citing pages changed.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"The families line now asks the Codex adapter's admission and is limited to new Codex header-token Sessions. No other resolution claim in the citing pages changed.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The families line now asks the Codex adapter's admission and is limited to new Codex header-token Sessions. No other resolution claim in the citing pages changed.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The families line now asks the Codex adapter's admission and is limited to new Codex header-token Sessions. No other resolution claim in the citing pages changed.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Adds a runtime case for the codex-tool-families preview wiring; the existing cold-start claims the citing page relies on are unchanged.","inputs":["src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Only a new preview row was added; the pages citing the settings reference make no claim about the preview list's contents.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Only a new preview row was added; the pages citing the settings reference make no claim about the preview list's contents.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only the tool-families bullet changed; citing pages do not restate it.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}
