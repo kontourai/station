@@ -25,12 +25,82 @@ const DURATION_LITERAL = /(?:^|[\s,(])(?:\d*\.)?\d+(?:ms|s)\b/i;
 const EASING_LITERAL =
   /(?:^|[\s,(])(?:ease(?:-in|-out|-in-out)?|linear|cubic-bezier\s*\()/i;
 const TRANSITION_ALL = /\btransition\s*:\s*all(?:\s|;|$)/i;
-// `ease-in-out` is a different curve and must not match. Keywords are
-// case-insensitive; custom properties are not, so `var(--EASE-IN)` is a
-// different token. `var()` is a function name, and a fallback argument is
-// still a use. A declared `--ease-in` legalizes neither form. No ceiling.
-const EASE_IN_KEYWORD = /(?:^|[\s,(])ease-in(?![\w-])/i;
+// `ease-in-out` is a different curve. CSS still forms the keyword when it
+// sits against `)` (`var(--motion-fast)ease-in`), and a hex escape spells
+// the same ident (`\65 ase-in`, `ease-in\2d out`, `v\61r(--ease-in)`). A
+// non-ASCII character continues the ident, so `ease-iné` is not `ease-in`.
+// Keywords are case-insensitive. Custom properties are not, so
+// `var(--EASE-IN)` is a different token. `var()` is a function name, and a
+// fallback argument is still a use. A declared `--ease-in` legalizes
+// neither form. No ceiling.
 const EASE_IN_VAR = /[vV][aA][rR]\(\s*--ease-in\s*[,)]/;
+const CSS_HEX_DIGIT = /[0-9a-f]/i;
+// One whitespace code point terminates a hex escape and is not output.
+const CSS_ESCAPE_WHITESPACE = /[ \t\n\r\f]/;
+
+function decodeCssEscapes(value) {
+  let decoded = '';
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== '\\') {
+      decoded += value[index];
+      continue;
+    }
+    if (index + 1 >= value.length) {
+      decoded += '\uFFFD';
+      break;
+    }
+    if (!CSS_HEX_DIGIT.test(value[index + 1])) {
+      decoded += value[index + 1];
+      index += 1;
+      continue;
+    }
+    let hex = '';
+    let cursor = index + 1;
+    while (
+      cursor < value.length &&
+      hex.length < 6 &&
+      CSS_HEX_DIGIT.test(value[cursor])
+    ) {
+      hex += value[cursor];
+      cursor += 1;
+    }
+    if (cursor < value.length && CSS_ESCAPE_WHITESPACE.test(value[cursor])) {
+      cursor += 1;
+    }
+    const code = Number.parseInt(hex, 16);
+    const illegal =
+      code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff);
+    decoded += illegal ? '\uFFFD' : String.fromCodePoint(code);
+    index = cursor - 1;
+  }
+  return decoded;
+}
+
+function isCssIdentChar(char) {
+  if (char === '') return false;
+  const code = char.codePointAt(0) ?? 0;
+  return code >= 0x80 || /[A-Za-z0-9_-]/.test(char);
+}
+
+/** True when `ease-in` is its own ident, not a prefix of a longer one. */
+function hasEaseInKeyword(decoded) {
+  const lower = decoded.toLowerCase();
+  let from = 0;
+  while (from < lower.length) {
+    const at = lower.indexOf('ease-in', from);
+    if (at === -1) return false;
+    const before = at === 0 ? '' : decoded[at - 1];
+    const after = decoded[at + 'ease-in'.length] ?? '';
+    if (!isCssIdentChar(before) && !isCssIdentChar(after)) return true;
+    from = at + 1;
+  }
+  return false;
+}
+
+function layerUsesEaseIn(layer) {
+  const decoded = decodeCssEscapes(layer);
+  return hasEaseInKeyword(decoded) || EASE_IN_VAR.test(decoded);
+}
 
 // Matches a custom-property *declaration* (`--name:`), not a `var(--name)`
 // reference — the character before `--` must be whitespace, `;`, `{`, or the
@@ -168,11 +238,7 @@ export function inspectMotionCss(content, declaredTokens) {
     const value = match[1].trim();
     const declaration = match[0];
     if (TRANSITION_ALL.test(declaration)) transitionAll.push(declaration);
-    if (
-      motionLayers(value).some(
-        (layer) => EASE_IN_KEYWORD.test(layer) || EASE_IN_VAR.test(layer),
-      )
-    ) {
+    if (motionLayers(value).some((layer) => layerUsesEaseIn(layer))) {
       easeIn.push(declaration);
     }
     // Per LAYER, not per declaration. Testing the whole value let a

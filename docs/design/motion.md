@@ -40,10 +40,12 @@ it looks alive, and the person will see it often, leave it still.
 ## Easing
 
 `--ease-out` is the kit curve `--k-ease`. Enter and exit both use it.
-`ease-in` delays the frames someone is watching, so the ratchet rejects the
-keyword in any case, and `var(--ease-in)` with or without a fallback, with
-no ceiling. A custom property in another case is not that token. Declaring
-an `--ease-in` token does not make a use of it legal.
+`ease-in` delays the frames someone is watching, so the ratchet rejects that
+timing keyword and `var(--ease-in)`, in any case and with CSS escapes
+decoded, with no ceiling. A longer identifier, including `ease-in-out`, is
+not that keyword. A fallback argument is still a use. A custom property in
+another case is not that token. Declaring an `--ease-in` token does not
+make a use of it legal.
 
 A hover rule that translates or scales is wrapped in
 `@media (hover: hover) and (pointer: fine)`, so a tap cannot leave the

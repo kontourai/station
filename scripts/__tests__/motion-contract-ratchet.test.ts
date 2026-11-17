@@ -190,6 +190,41 @@ describe('motion contract ratchet', () => {
     ).toBe(true);
   });
 
+  it('rejects an adjacent or escaped ease-in and keeps a longer ident', () => {
+    const rejected = [
+      '.a { transition: opacity var(--motion-fast)ease-in; }',
+      '.b { transition: opacity var(--motion-fast)EASE-IN; }',
+      '.c { transition: opacity var(--motion-fast) \\65 ase-in; }',
+      '.d { transition: opacity var(--motion-fast) v\\61r(--ease-in); }',
+      '.e { transition: opacity var(--motion-fast) var(--\\65 ase-in); }',
+    ];
+    for (const css of rejected) {
+      const found = inspectMotionCss(css, REAL_TOKENS);
+      expect(found.easeIn, css).toHaveLength(1);
+      expect(
+        evaluateMotionContract(
+          found.easeIn.map((declaration) => ({
+            file: 'a.css',
+            kind: 'ease-in' as const,
+            declaration,
+          })),
+          0,
+        ).passed,
+        css,
+      ).toBe(false);
+    }
+    const named = inspectMotionCss(
+      '.a { animation: ease-iné var(--motion-slow) var(--ease-out); }',
+      REAL_TOKENS,
+    );
+    expect(named.easeIn).toEqual([]);
+    const escapedOut = inspectMotionCss(
+      '.b { animation: pulse 1.2s ease-in\\2d out infinite; }',
+      REAL_TOKENS,
+    );
+    expect(escapedOut.easeIn).toEqual([]);
+  });
+
   it('does not treat ease-in-out or ease-out as ease-in', () => {
     const declared = new Set([...REAL_TOKENS, '--EASE-IN']);
     const mixed = inspectMotionCss(
