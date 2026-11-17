@@ -125,8 +125,12 @@ test('the pane lists the ACTIVE chat’s running and finished work', () => {
     'chat-1',
     'http://station.test',
   );
-  expect(screen.getByText('Running (1)')).toBeTruthy();
-  expect(screen.getByText('Finished (1)')).toBeTruthy();
+  expect(
+    screen.getByRole('heading', { name: 'Running · 1 agent' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('heading', { name: 'Finished · 1 agent' }),
+  ).toBeTruthy();
   expect(screen.getByText('Investigate flaky test')).toBeTruthy();
   expect(screen.getByText('Rebuild index')).toBeTruthy();
   // Elapsed comes from `startedAt`, which IS carried.

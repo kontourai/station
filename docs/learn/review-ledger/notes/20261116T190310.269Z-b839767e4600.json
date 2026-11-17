@@ -1,0 +1,17 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Adds optional SchedulerJob.projectId and AddJobOpts.projectId; existing fields unchanged. automations.md and module-map describe Project jobs.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Adds optional SchedulerJob.projectId and AddJobOpts.projectId; existing fields unchanged. automations.md and module-map describe Project jobs.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds optional SchedulerJob.projectId and AddJobOpts.projectId; existing fields unchanged. automations.md and module-map describe Project jobs.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Adds optional SchedulerJob.projectId and AddJobOpts.projectId; existing fields unchanged. automations.md and module-map describe Project jobs.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Adds optional SchedulerJob.projectId and AddJobOpts.projectId; existing fields unchanged. automations.md and module-map describe Project jobs.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Adds optional SchedulerJob.projectId and AddJobOpts.projectId; existing fields unchanged. automations.md and module-map describe Project jobs.","inputs":["packages/contracts/src/scheduler.ts"]}
+  ]
+}

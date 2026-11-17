@@ -131,8 +131,8 @@ refused at the routes behind them (`POST /api/orchestration/delegations`, and
 `delegated_tool_blocked`, before the depth limit is read. The decision uses the
 calling session's own recorded delegation context and the built-in denial list,
 so an Agent's `allowedTools` cannot re-allow it. It needs a verified
-station-control caller: a Codex URL token, an ACP header token or the Claude
-in-process server. A shell `station` CLI run under an operator credential is not
+station-control caller: a Codex or ACP header token, Codex's bound channel or the
+Claude in-process server. A shell `station` CLI run under an operator credential is not
 that caller, so this is not coverage of every way a child could start work.
 
 ### Codex approval policy and reviewer

@@ -1,0 +1,7 @@
+{
+  "revision": "f8bc2d4b16ff44d2086b1175766d6ab46b4565d1",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Combined branch: threadInChat and resolveChat accept the narrower ChatMembershipInput so the chat dock reuses the Agents pane's chat-membership rule; membership semantics unchanged. Checked placement.md's Agents pane rules still match.","inputs":["src-ui/src/workspace-panes/agents/childWorkSelectors.ts"]}
+  ]
+}

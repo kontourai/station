@@ -156,16 +156,16 @@ const APP_ASSET_PATH = '/assets/';
  * The live document's failed requests for the app's own scripts (same origin
  * as the page, under `APP_ASSET_PATH`), hash-masked, sorted and deduplicated.
  */
+const isLiveAppChunk = (request: FailedRequestRecord) =>
+  request.document === 'current' &&
+  request.resourceType === 'script' &&
+  request.appAsset;
+
 function failedChunkPaths(observation: AppErrorObservation): string[] {
   return [
     ...new Set(
       observation.failedRequests
-        .filter(
-          (request) =>
-            request.document === 'current' &&
-            request.resourceType === 'script' &&
-            request.appAsset,
-        )
+        .filter(isLiveAppChunk)
         .map((request) => withoutAssetHash(request.path)),
     ),
   ].sort();
@@ -174,6 +174,27 @@ function failedChunkPaths(observation: AppErrorObservation): string[] {
 /** Whether the attempt shows a chunk download failing in the live page. */
 export function chunkLoadFailed(observation: AppErrorObservation): boolean {
   return failedChunkPaths(observation).length > 0;
+}
+
+/**
+ * A failed screen's reason for the capture log, one line. A screen that showed
+ * an error surface while an app chunk request of the live document failed reads
+ * `lazy chunk unavailable: <screen> (<path> <error>, ...)`, with the requests'
+ * real paths, so the log names the lost chunk rather than the error row's
+ * layout (#5028). Any other failure reads `<screen>: <its error's first line>`.
+ */
+export function failedScreenReason(
+  screen: string,
+  error: string,
+  appError: AppErrorObservation | undefined,
+): string {
+  if (appError && chunkLoadFailed(appError)) {
+    const requests = appError.failedRequests
+      .filter(isLiveAppChunk)
+      .map((request) => `${request.path} ${request.errorText}`);
+    return `lazy chunk unavailable: ${screen} (${[...new Set(requests)].join(', ')})`;
+  }
+  return `${screen}: ${error.split('\n')[0]}`;
 }
 
 /**

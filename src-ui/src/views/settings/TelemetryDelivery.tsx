@@ -179,6 +179,12 @@ function DeliveryForAuthority({
           {product.counts.withdrawn + product.counts.shutdownDropped}. Counts
           are for this process.
         </p>
+        {product.phase === 'failed' && product.lastFailure?.detail && (
+          // The receiver's own words: untrusted, so plain text only.
+          <p className="settings__field-hint telemetry-delivery__detail">
+            Receiver’s reason: {product.lastFailure.detail}
+          </p>
+        )}
         {product.lastAttemptAt && (
           <p className="settings__field-hint">
             Last delivery attempt: {when(product.lastAttemptAt)}.

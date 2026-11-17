@@ -24,11 +24,11 @@ describe('Flow major composition', () => {
       ['contracts', contractsManifest.dependencies],
       ['sdk', sdkManifest.dependencies],
     ] as const) {
-      expect(deps['@kontourai/flow-agents'], name).toBe('11.0.0');
+      expect(deps['@kontourai/flow-agents'], name).toBe('11.2.0');
       expect(deps['@kontourai/flow'], name).toBe('6.0.0');
     }
     expect(viewerManifest.dependencies['@kontourai/flow-agents']).toBe(
-      '11.0.0',
+      '11.2.0',
     );
   });
 
