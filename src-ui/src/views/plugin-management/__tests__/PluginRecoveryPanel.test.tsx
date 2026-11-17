@@ -75,10 +75,11 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
-test('requires a fresh preview and explicit consent, passes exact revisions, and keeps pending acceptance honest', async () => {
+test('loads a fresh review with the row, requires explicit consent, passes exact revisions, and keeps a saved-but-inactive recovery honest', async () => {
   render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
   expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
+  // Nothing resumes the activation, so the review is offered without a click.
+  await waitFor(() => expect(state.refetch).toHaveBeenCalledOnce());
   fireEvent.click(
     await screen.findByRole('button', { name: 'Recover plugin' }),
   );
@@ -98,7 +99,7 @@ test('requires a fresh preview and explicit consent, passes exact revisions, and
     },
   });
   expect((await screen.findByRole('status')).textContent).toContain(
-    'still pending',
+    'still not active',
   );
   expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
 });
@@ -126,7 +127,6 @@ test('a refused recovery shows the server reason, not the field key', async () =
   );
   try {
     render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Recover plugin' }),
     );
@@ -139,7 +139,6 @@ test('a refused recovery shows the server reason, not the field key', async () =
 test('cancelled permission review performs no recovery mutation', async () => {
   state.approve.mockResolvedValue(false);
   render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
   fireEvent.click(
     await screen.findByRole('button', { name: 'Recover plugin' }),
   );
@@ -182,7 +181,6 @@ test('#1521: the recovery review shows the recovery preview’s receipt, not the
       onRemove={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
   const region = await screen.findByRole('region', {
     name: 'Registry verification',
   });
@@ -193,9 +191,9 @@ test('#1521: the recovery review shows the recovery preview’s receipt, not the
   expect(region.textContent).not.toContain('listed-key');
 });
 
-test('an install that left this row pending explains itself above the recovery review', () => {
+test('an install that left this row inactive explains itself above the recovery review', async () => {
   const text =
-    'Fixture was installed, but it did not finish activating in time. It stays Activation pending until you choose Review recovery, then Recover plugin. Trusted permissions are approved after that.';
+    'Fixture was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are approved after that.';
   render(
     <PluginRecoveryPanel
       plugin={plugin}
@@ -206,6 +204,8 @@ test('an install that left this row pending explains itself above the recovery r
   const status = screen.getByRole('status');
   expect(status.textContent).toBe(text);
   expect(status.className).toContain('plugins__message--warning');
-  expect(screen.getByText('Activation pending')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Review recovery' })).toBeTruthy();
+  expect(screen.getByText('Needs recovery')).toBeTruthy();
+  expect(
+    await screen.findByRole('region', { name: 'Recovery review' }),
+  ).toBeTruthy();
 });

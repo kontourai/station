@@ -1,4 +1,4 @@
-import { pluginLifecyclePending } from '@kontourai/station-contracts/plugin';
+import { pluginLifecycleUnapplied } from '@kontourai/station-contracts/plugin';
 import {
   type RegistryCatalogTab,
   useInstalledRegistryItemsQuery,
@@ -43,7 +43,7 @@ import {
   installedDependencyPermissions,
   type PreviewData,
 } from './plugin-management/types';
-import { installPendingMessage } from './plugin-management/view-utils';
+import { installUnappliedMessage } from './plugin-management/view-utils';
 import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
@@ -450,15 +450,15 @@ export function RegistryView({
     const callbacks = {
       onError: baseCallbacks.onError,
       onSuccess: async (result: unknown) => {
-        const pending = pluginLifecyclePending(result);
-        if (pending) {
+        const unapplied = pluginLifecycleUnapplied(result);
+        if (unapplied) {
           // Accepted, not active: the same outcome the Plugins view reports.
           // No dependency host review now; it refuses a plugin that is not
           // active, and the plugin's own row finishes the activation.
           actionCallbacks(tab, item, itemId, false, () => {
             setMessage(null);
             showToast(
-              installPendingMessage(displayName, pending),
+              installUnappliedMessage(displayName, unapplied),
               undefined,
               undefined,
               installedPluginName
@@ -476,7 +476,7 @@ export function RegistryView({
               'warning',
             );
           }).onSuccess();
-          if (pending.kind === 'projection')
+          if (unapplied.kind === 'projection')
             await reloadPluginsMutation.mutateAsync().catch(() => {});
           return;
         }

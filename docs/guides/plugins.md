@@ -677,24 +677,27 @@ permission, or removal controls until the manifest validates again.
 
 ### Recover interrupted activation
 
-On a slow or busy host, an install can be saved before its runtime activation
-finishes. Station then says the plugin was installed but did not finish
-activating in time, and selects its row, which reads **Activation pending**. It
-did not fail, and installing it again would install a second copy. Station
-does not ask for its trusted permissions yet, because their host approval
-needs an active plugin. Finish it with recovery below; trusted permissions are
-approved after that. The CLI prints the same outcome.
+On a slow or busy host, an install or update can be saved before its runtime
+activation finishes. Station stops that activation rather than hold every other
+configuration change behind it, and it does not retry it on its own. Plugins
+then says the plugin was installed (or updated) but is not active, and opens
+its row, which reads **Needs recovery**. It did not fail, and installing it
+again would install a second copy. Station does not ask for its trusted
+permissions yet, because their host approval needs an active plugin; the row's
+permissions ask for them once recovery activates it. The CLI prints the same
+outcome. A removal saved this way needs nothing from you: Station finishes
+unloading the plugin in the background.
 
-An **Activation pending** plugin retains its code and data while its runtime
-contributions remain unavailable. Open **Plugins**, select it, and choose
-**Review recovery**. Review the permissions and retained dependencies, then
-choose **Recover plugin** and confirm the permission review. Recovery does not
-fetch replacement code or reset stored data. Trusted permissions still require
-the separate host approval flow.
+A **Needs recovery** plugin retains its code and data while its runtime
+contributions remain unavailable. Open **Plugins** and select it: the recovery
+review loads with the row. Review the permissions and retained dependencies,
+then choose **Recover plugin** and confirm the permission review. Recovery does
+not fetch replacement code or reset stored data. Trusted permissions still
+require the separate host approval flow.
 
-A recovery request may be accepted while runtime activation remains pending.
-Use **Refresh status** to read its current state; do not automatically replay the
-request. If a dependency must recover first, follow the server's dependency
+A recovery can also be saved without its activation finishing; the row then
+still reads **Needs recovery**. Use **Refresh status** to read its current
+state and recover it again; do not automatically replay the request. If a dependency must recover first, follow the server's dependency
 message, then obtain a fresh review for the parent. A changed approval or
 installation requires a new review, never reuse of an earlier decision.
 

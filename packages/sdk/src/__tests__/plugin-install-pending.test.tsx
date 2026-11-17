@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { pluginLifecyclePending } from '@kontourai/station-contracts/plugin';
+import { pluginLifecycleUnapplied } from '@kontourai/station-contracts/plugin';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -12,6 +12,8 @@ vi.mock('../api', () => ({
 import {
   requestPluginRegistryInstallAction,
   usePluginInstallMutation,
+  usePluginRemoveMutation,
+  usePluginUpdateMutation,
 } from '../query-domains/plugin-mutations';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -82,7 +84,7 @@ function renderInstall() {
   return { ...hook, client, invalidate };
 }
 
-test('an install accepted with activation pending resolves as pending, not as "Install failed"', async () => {
+test('an install saved without completing its activation resolves as saved, not as "Install failed"', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => Response.json(PENDING_BODY, { status: 202 })),
@@ -96,12 +98,12 @@ test('an install accepted with activation pending resolves as pending, not as "I
         consent,
       });
     });
-    expect(pluginLifecyclePending(installed)).toEqual({
+    expect(pluginLifecycleUnapplied(installed)).toEqual({
       kind: 'activation',
       reason: PENDING_BODY.configurationActivation.reason,
     });
     expect(installed).toMatchObject({ plugin: { name: 'slow-activation' } });
-    // The plugin's row now exists (Activation pending), so the list refreshes.
+    // The plugin's row now exists (Needs recovery), so the list refreshes.
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['plugins'] });
   } finally {
     unmount();
@@ -109,7 +111,7 @@ test('an install accepted with activation pending resolves as pending, not as "I
   }
 });
 
-test('a refusal is still a failure, including a 202 that does not say pending', async () => {
+test('a refusal is still a failure, including a 202 that does not say it was saved', async () => {
   const { result, unmount, client } = renderInstall();
   try {
     for (const [status, body, message] of [
@@ -141,7 +143,7 @@ test('a refusal is still a failure, including a 202 that does not say pending', 
   }
 });
 
-test('the registry install reads the same pending response the same way', async () => {
+test('the registry install reads the same saved response the same way', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => Response.json(PENDING_BODY, { status: 202 })),
@@ -151,5 +153,63 @@ test('the registry install reads the same pending response the same way', async 
     'install',
     { consent },
   );
-  expect(pluginLifecyclePending(installed)?.kind).toBe('activation');
+  expect(pluginLifecycleUnapplied(installed)?.kind).toBe('activation');
 });
+
+/**
+ * Update and remove answer the same designed `202` (lifecycle routes in
+ * src-server/routes/plugins/plugin-lifecycle-routes.ts): saved, not applied.
+ */
+test.each([
+  ['update', 'Update failed'],
+  ['remove', 'Remove failed'],
+] as const)(
+  'a saved %s resolves instead of reporting "%s"',
+  async (kind, failure) => {
+    const body = {
+      success: false,
+      plugin: { name: 'slow-activation', version: '1.1.0' },
+      configurationActivation: { status: 'pending', reason: 'saved' },
+    };
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const { result: hooks, unmount } = renderHook(
+      () => ({
+        update: usePluginUpdateMutation(),
+        remove: usePluginRemoveMutation(),
+      }),
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      },
+    );
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json(body, { status: 202 })),
+      );
+      let settled: unknown;
+      await act(async () => {
+        settled = await hooks.current[kind].mutateAsync('slow-activation');
+      });
+      expect(pluginLifecycleUnapplied(settled)?.kind).toBe('activation');
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['plugins'] });
+      // Without the saved marker the same 202 is still the failure it was.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json({ success: false }, { status: 202 })),
+      );
+      await act(async () => {
+        await expect(
+          hooks.current[kind].mutateAsync('slow-activation'),
+        ).rejects.toThrow(failure);
+      });
+    } finally {
+      unmount();
+      client.clear();
+    }
+  },
+);

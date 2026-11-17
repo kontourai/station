@@ -403,6 +403,14 @@ const CONFIGURATION_READ_LEASE_TIMEOUT_MS = 30_000;
  */
 const AGENT_CONFIGURATION_ACTIVATION_DEADLINE_MS = 10_000;
 /**
+ * The receipt reason when a plugin's activation did not complete in its own
+ * pass. Its readiness then reads `pending` with `recovery: 'review'` until a
+ * person runs recovery; no background pass finishes it.
+ */
+export const PLUGIN_ACTIVATION_STOPPED_REASON =
+  'The plugin was saved, but its activation did not finish and was stopped. ' +
+  'It is not active; recover it to activate it.';
+/**
  * How long shutdown waits for the configuration queues to drain before
  * proceeding without them. An abandoned activation is by definition one
  * nobody can wait for, and `gracefulShutdown` ends in `process.exit` — so the
@@ -2529,8 +2537,13 @@ export class StationRuntime {
         if (operationError) throw operationError;
         if (reloadError) {
           activation.status = 'pending';
-          activation.reason =
-            'Configuration was saved, but runtime activation is pending reconciliation.';
+          // A plugin's activation session closed with this pass, and nothing
+          // reopens it: reconciliation reloads the runtime but cannot admit
+          // the plugin. Say so rather than promise a reconciliation that will
+          // not activate it.
+          activation.reason = options?.pluginActivation
+            ? PLUGIN_ACTIVATION_STOPPED_REASON
+            : 'Configuration was saved, but runtime activation is pending reconciliation.';
           this.logger?.error?.(
             'Configuration activation failed after persistence',
             {
@@ -2542,9 +2555,13 @@ export class StationRuntime {
         }
         if (activationAbandoned) {
           activation.status = 'pending';
-          activation.reason =
-            'Configuration was saved, but runtime activation did not finish ' +
-            'within its deadline and is continuing in the background.';
+          // The abandoned pass cannot publish a plugin's readiness (the epoch
+          // bump and the closed session above), so for a plugin nothing is
+          // continuing: it stays inactive until a person recovers it.
+          activation.reason = options?.pluginActivation
+            ? PLUGIN_ACTIVATION_STOPPED_REASON
+            : 'Configuration was saved, but runtime activation did not finish ' +
+              'within its deadline and is continuing in the background.';
         }
         return result as T;
       }),

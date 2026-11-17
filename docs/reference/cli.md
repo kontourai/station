@@ -4339,12 +4339,15 @@ station plugin install ./path/to/local-plugin
 station plugin install https://github.com/org/plugin.git --skip=agent:plugin:chat
 ```
 
-When Station saves the plugin but its runtime activation does not finish in
-time (a `202` the server marks pending), `station plugin install` and
-`station registry install` print `⏳ Installed …, but it did not finish
-activating in time.` and exit successfully. The plugin stays **Activation
-pending** until you choose **Review recovery** for it in Plugins; do not
-install it again. A `202` without that pending marker is still an error.
+When Station saves the plugin but its runtime activation does not finish (a
+`202` the server marks as not applied), `station plugin install`,
+`station plugin update` and `station registry install` print `⚠️ Installed …,
+but its activation did not finish, so it is not active.` (or `Updated …`) and
+exit successfully. Station does not retry the activation: the plugin reads
+**Needs recovery** in Plugins until you choose **Recover plugin** there; do not
+install it again. `station plugin remove` reports a removal saved this way as
+removed, finishing its unloading in the background. A `202` without that
+marker is still an error.
 
 ### `plugin preview <source>`
 

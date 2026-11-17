@@ -1320,7 +1320,7 @@ describe('RegistryView', () => {
     expect(mutationCalls).toEqual([]);
   });
 
-  test('an install accepted with activation pending says so and points at the plugin, without a host review it cannot finish', async () => {
+  test('an install saved without completing its activation says it is not active and points at the plugin, without a host review it cannot finish', async () => {
     previewResults.set('demo-layout', validDemoPreview());
     pluginInstallResult = {
       success: false,
@@ -1355,7 +1355,7 @@ describe('RegistryView', () => {
       string,
     ];
     expect(text).toBe(
-      'Demo Layout was installed, but it did not finish activating in time. It stays Activation pending until you choose Review recovery, then Recover plugin. Trusted permissions are approved after that.',
+      'Demo Layout was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are approved after that.',
     );
     expect(tone).toBe('warning');
     actions?.[0]?.onClick();

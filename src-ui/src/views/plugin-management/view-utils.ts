@@ -1,4 +1,4 @@
-import type { PluginLifecyclePending } from '@kontourai/station-contracts/plugin';
+import type { PluginLifecycleUnapplied } from '@kontourai/station-contracts/plugin';
 import {
   isRejectedPlugin,
   type Plugin,
@@ -40,7 +40,7 @@ export function buildPluginListItems(plugins: Plugin[]) {
       : {
           id: pluginSelectionId(plugin),
           name: plugin.displayName || plugin.name,
-          subtitle: `${plugin.installationReadiness?.state === 'pending' ? 'Activation pending · ' : plugin.installationReadiness?.state === 'unavailable' ? 'Unavailable · ' : ''}v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
+          subtitle: `${plugin.installationReadiness?.state === 'pending' ? 'Needs recovery · ' : plugin.installationReadiness?.state === 'unavailable' ? 'Unavailable · ' : ''}v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
         },
   );
 }
@@ -247,17 +247,27 @@ export function reinstallDelta(
 }
 
 /**
- * An install the server accepted but has not activated (its designed `202`).
- * Not a failure, so no retry is offered: a second install would install the
- * plugin again. Not ready either: an activation that outran the deadline
- * cannot make the plugin ready on its own, so the person finishes it from
- * the plugin's Activation pending row, which is what the message points at.
+ * An install the server saved but did not apply (its designed `202`). Not a
+ * failure, so no retry is offered: a second install would install the plugin
+ * again. Not in progress either: an activation that did not complete is not
+ * resumed, so the plugin stays inactive until the person recovers it from its
+ * row, which is what the message points at.
  */
-export function installPendingMessage(
+export function installUnappliedMessage(
   pluginName: string,
-  pending: PluginLifecyclePending,
+  unapplied: PluginLifecycleUnapplied,
 ) {
-  return pending.kind === 'projection'
+  return unapplied.kind === 'projection'
     ? `${pluginName} was installed, but Station had not finished listing it, so plugins are being reloaded to pick it up. Its code and data are kept.`
-    : `${pluginName} was installed, but it did not finish activating in time. It stays Activation pending until you choose Review recovery, then Recover plugin. Trusted permissions are approved after that.`;
+    : `${pluginName} was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are approved after that.`;
+}
+
+/** The same outcome for an update: the new version is saved, not active. */
+export function updateUnappliedMessage(
+  pluginName: string,
+  unapplied: PluginLifecycleUnapplied,
+) {
+  return unapplied.kind === 'projection'
+    ? `${pluginName} was updated, but Station had not finished listing it, so plugins are being reloaded to pick it up. Its code and data are kept.`
+    : `${pluginName} was updated, but its activation did not finish, so it is not active. Choose Recover plugin to activate it.`;
 }

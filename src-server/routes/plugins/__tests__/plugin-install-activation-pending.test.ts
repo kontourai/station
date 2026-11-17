@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { readPluginLifecycleResponse } from '@kontourai/station-contracts/plugin';
 import { expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
-import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import {
+  PLUGIN_ACTIVATION_STOPPED_REASON,
+  StationRuntime,
+} from '../../../runtime/bootstrap/station-runtime.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { createPluginRoutes } from '../plugins.js';
@@ -16,7 +19,7 @@ import { operatorPluginVisibility } from './plugin-visibility-test-support.js';
  * seam the runtime's own activation tests use). What the client is told, and
  * what it can do next, both come from here.
  */
-test('an install whose activation outruns its deadline is accepted as pending, stays pending, and owes its trusted approval until recovered', {
+test('an install whose activation outruns its deadline is saved but not active, says so, stays inactive until recovered, and owes its trusted approval until then', {
   timeout: 30_000,
 }, async () => {
   const home = mkdtempSync(join(tmpdir(), 'station-install-pending-'));
@@ -64,15 +67,18 @@ test('an install whose activation outruns its deadline is accepted as pending, s
     runtime.agentMetadataMap = new Map();
     runtime.logger = logger;
     runtime.scheduleAgentConfigurationReconciliation = vi.fn();
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let held = true;
+    // The next runtime pass waits on this gate; each hold blocks one pass.
+    let gate: Promise<void> | undefined;
+    const hold = () => {
+      gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    hold();
     runtime.reloadConfigurationFromDisk = vi.fn(async () => {
-      if (held) {
-        held = false;
-        await blocked;
-      }
+      const blocked = gate;
+      gate = undefined;
+      if (blocked) await blocked;
     });
     const app = withOperatorPrincipal(
       createPluginRoutes(home, logger, undefined, {
@@ -125,11 +131,15 @@ test('an install whose activation outruns its deadline is accepted as pending, s
     });
     const body = (await response.json()) as any;
 
-    // The designed acceptance, read the way every client now reads it.
+    // The designed acceptance, read the way every client now reads it, and
+    // a reason that does not promise a background activation nothing runs.
     expect(response.status, JSON.stringify(body)).toBe(202);
     expect(readPluginLifecycleResponse(response.status, body)).toEqual({
-      state: 'pending',
-      pending: { kind: 'activation', reason: expect.any(String) },
+      state: 'saved',
+      unapplied: {
+        kind: 'activation',
+        reason: PLUGIN_ACTIVATION_STOPPED_REASON,
+      },
     });
     expect(body.plugin).toMatchObject({ name: 'slow-activation' });
     // Consent: the install decision never grants the trusted tier, so it is
@@ -186,6 +196,24 @@ test('an install whose activation outruns its deadline is accepted as pending, s
     expect(await readiness()).toEqual({ state: 'ready' });
     // Now, and only now, the owed approval can be asked for.
     expect((await openHostApproval()).status).toBe(200);
+
+    // A removal activates nothing. Held past the deadline it is saved, the
+    // runtime is told to reconcile (which finishes unloading it), and its
+    // reason says the work continues, which for a removal is true.
+    hold();
+    runtime.scheduleAgentConfigurationReconciliation.mockClear();
+    const removal = await app.request('/slow-activation', { method: 'DELETE' });
+    const removed = (await removal.json()) as any;
+    expect(removal.status, JSON.stringify(removed)).toBe(202);
+    expect(readPluginLifecycleResponse(removal.status, removed)).toEqual({
+      state: 'saved',
+      unapplied: {
+        kind: 'activation',
+        reason: expect.stringContaining('continuing in the background'),
+      },
+    });
+    expect(runtime.scheduleAgentConfigurationReconciliation).toHaveBeenCalled();
+    expect(await readiness()).toBeUndefined();
   } finally {
     release();
     for (const timer of runtime.timers) clearTimeout(timer);

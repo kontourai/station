@@ -3,7 +3,7 @@ import {
   PLUGIN_PROPOSAL_QUERY_KEY,
   type PluginLifecycleProposal,
   type PluginLocalSourceStatus,
-  pluginLifecyclePending,
+  pluginLifecycleUnapplied,
 } from '@kontourai/station-contracts/plugin';
 import {
   type PluginProviderDetail,
@@ -54,11 +54,12 @@ import {
 import {
   buildPluginListItems,
   filterPlugins,
-  installPendingMessage,
+  installUnappliedMessage,
   pluginSelectionId,
   slugifyProjectName,
   soleLayoutTargetProject,
   toggleSetValue,
+  updateUnappliedMessage,
 } from './view-utils';
 
 export function consentFailureMessage(
@@ -535,22 +536,23 @@ export function usePluginManagementViewModel() {
           setShowInstallModal(false);
           if (reinstalling) setReinstall(null);
           if (proposalId) setActiveProposal(null);
-          const pendingActivation = pluginLifecyclePending(data);
-          if (pendingActivation) {
-            // Trusted permissions stay owed, but their host review refuses a
-            // plugin that is not active, so asking now would take a yes that
-            // cannot be recorded. They are asked once it is active.
+          const unapplied = pluginLifecycleUnapplied(data);
+          if (unapplied) {
+            // Installed but not active. Trusted permissions stay owed, but
+            // their host review refuses a plugin that is not active, so
+            // asking now would take a yes that cannot be recorded; the row's
+            // permissions ask once recovery activates it.
             setInstallSource('');
-            const pendingName =
+            const installedName =
               data.plugin?.displayName || data.plugin?.name || displayName;
             setMessage({
               type: 'warning',
-              text: installPendingMessage(pendingName, pendingActivation),
+              text: installUnappliedMessage(installedName, unapplied),
             });
             if (data.plugin?.name) selectPlugin(data.plugin.name);
             // The server's own instruction for an unlisted selection; a
             // reload replays nothing the person approved.
-            if (pendingActivation.kind === 'projection') {
+            if (unapplied.kind === 'projection') {
               await reloadPluginsMutation.mutateAsync().catch(() => {});
               await reloadClientPluginRegistry();
             }
@@ -755,6 +757,19 @@ export function usePluginManagementViewModel() {
     setMessage(null);
     updateMutation.mutate(proposalId ? { name, proposalId } : name, {
       onSuccess: (data) => {
+        const unapplied = pluginLifecycleUnapplied(data);
+        if (unapplied) {
+          // The new version is installed but not active: the row turns to
+          // Needs recovery, so open it.
+          setMessage({
+            type: 'warning',
+            text: updateUnappliedMessage(data.plugin?.name || name, unapplied),
+          });
+          selectPlugin(data.plugin?.name || name);
+          if (unapplied.kind === 'projection')
+            void reloadPluginsMutation.mutateAsync().catch(() => {});
+          return;
+        }
         setMessage({
           type: 'success',
           text: `Updated ${data.plugin?.name || name} to v${data.plugin?.version}`,
@@ -787,11 +802,18 @@ export function usePluginManagementViewModel() {
     if (activeProposal?.kind === 'remove') setActiveProposal(null);
     removeMutation.mutate(proposalId ? { name, proposalId } : name, {
       onSuccess: async (result) => {
+        const retained =
+          result.lifecycle?.reclamation === 'not-proven'
+            ? ' Its stored data and code are retained.'
+            : '';
+        // A removal activates nothing, so a saved removal whose runtime reload
+        // did not finish is completed by Station's next reconciliation.
         setMessage({
           type: 'success',
-          text:
-            result.lifecycle?.reclamation === 'not-proven'
-              ? `Removed ${name} from Station. Its stored data and code are retained.`
+          text: pluginLifecycleUnapplied(result)
+            ? `Removed ${name} from Station. It finishes unloading in the background.${retained}`
+            : retained
+              ? `Removed ${name} from Station.${retained}`
               : `Removed ${name}.`,
         });
         deselectPlugin();

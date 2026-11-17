@@ -3620,22 +3620,27 @@ host-owned approval are separate checks; an arbitrary Station credential is
 not sufficient for every lifecycle operation. A recorded trusted grant also
 does not prove runtime activation: inspect reconciliation and current status.
 
-An install whose runtime activation outruns the server's deadline is saved but
-not active. The server answers HTTP `202` with `success: false` and
-`configurationActivation.status: "pending"` (or, rarely, `lifecycle.status:
-"pending"` when the selection is recorded but not yet listed). The mutation
-resolves with that result rather than rejecting, and refreshes the plugin
-queries. Read it with `pluginLifecyclePending(result)` from
-`@kontourai/station-contracts/plugin`, which returns `{ kind: 'activation' }`
-or `{ kind: 'projection' }`, or `undefined` for an applied install. The plugin's row then
-reads `installationReadiness.state: "pending"` until a person completes
-[retained plugin recovery](#retained-plugin-recovery). An abandoned activation
-does not make it ready on its own. Do not replay the install. Its trusted
-permissions stay in `pendingConsent`, but their host approval refuses a plugin
-that is not ready, so ask for them after recovery.
-`requestPluginRegistryInstallAction(id, 'install')` reads the registry install
-the same way. `readPluginLifecycleResponse(status, body)` is the HTTP-level
-reading these clients share: `applied`, `pending`, or `refused`.
+An install whose runtime activation does not complete (it outruns the
+server's deadline, or fails after saving) is saved but not active, and nothing
+activates it on its own. The server answers HTTP `202` with `success: false`
+and `configurationActivation.status: "pending"`, whose `reason` says to recover
+the plugin (or, rarely, `lifecycle.status: "pending"` when the selection is
+recorded but not yet listed). The mutation resolves with that result rather
+than rejecting, and refreshes the plugin queries. Read it with
+`pluginLifecycleUnapplied(result)` from `@kontourai/station-contracts/plugin`,
+which returns `{ kind: 'activation' }` or `{ kind: 'projection' }`, or
+`undefined` for an applied install. The plugin's row then reads
+`installationReadiness: { state: "pending", recovery: "review" }` until a person
+completes [retained plugin recovery](#retained-plugin-recovery). Do not replay
+the install. Its trusted permissions stay in `pendingConsent`, but their host
+approval refuses a plugin that is not ready, so ask for them after recovery.
+`usePluginUpdateMutation` resolves a saved update the same way, with the same
+recovery requirement. `usePluginRemoveMutation` resolves a saved removal too;
+a removal activates nothing, so Station's next reconciliation finishes
+unloading it without any action. `requestPluginRegistryInstallAction(id,
+'install')` reads the registry install the same way.
+`readPluginLifecycleResponse(status, body)` is the HTTP-level reading these
+clients share: `applied`, `saved` (with `unapplied`), or `refused`.
 
 ```tsx
 const { mutate } = usePluginInstallMutation();
@@ -3723,8 +3728,9 @@ const result = await recoverPlugin(apiBase, name, {
     })),
   },
 }, requestOptions);
-// A 202 receipt with configurationActivation.status === 'pending' is retained
-// work awaiting activation. It is not completed installation or a retry signal.
+// A 202 receipt with configurationActivation.status === 'pending' means the
+// recovery was saved but did not activate the plugin; it still needs recovery.
+// It is not a completed installation or an automatic retry signal.
 ```
 
 Recovery continues retained bytes and their data scope; it does not fetch missing

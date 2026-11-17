@@ -4,7 +4,7 @@ import {
   usePluginRecoveryPreviewQuery,
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { DetailHeader } from '../../components/DetailHeader';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
@@ -44,6 +44,13 @@ export function PluginRecoveryPanel({
     if (result.data && !result.error)
       setReviewedRevision(result.data.recoveryRevision);
   }
+  // A pending row is a plugin whose activation did not complete; nothing
+  // resumes it, so the review that recovers it is loaded straight away. It
+  // is a read: recovering still takes the person's explicit decision below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per plugin row (the panel is keyed by plugin name).
+  useEffect(() => {
+    if (pending) void review();
+  }, []);
   async function recover() {
     if (busy.current || !basis) return;
     busy.current = true;
@@ -80,7 +87,7 @@ export function PluginRecoveryPanel({
       });
       setNotice(
         result.configurationActivation?.status === 'pending'
-          ? 'Recovery was accepted. Activation is still pending; refresh status before reviewing another recovery.'
+          ? 'Recovery was saved, but activation did not finish this time either, so the plugin is still not active. Refresh status, then recover it again.'
           : 'Recovery completed. Refreshing plugin status.',
       );
     } catch (error) {
@@ -108,14 +115,14 @@ export function PluginRecoveryPanel({
         title={plugin.displayName || plugin.name}
         subtitle={`Version ${plugin.version}`}
         badge={{
-          label: pending ? 'Activation pending' : 'Unavailable',
+          label: pending ? 'Needs recovery' : 'Unavailable',
           variant: 'warning',
         }}
       />
       <div className="detail-panel__body plugins__recovery">
         <p>
           {pending
-            ? 'The retained plugin is not active yet. Its workspace panes and actions stay unavailable until runtime activation completes.'
+            ? 'This plugin is installed but not active: its activation did not finish, and Station does not retry it on its own. Its workspace panes and actions stay unavailable until you recover it.'
             : 'Station cannot verify this installation. Refresh its status before using it.'}
         </p>
         <p>

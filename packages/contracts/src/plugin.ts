@@ -58,34 +58,37 @@ export interface PluginInstallResult {
   dependencies?: Array<{ id: string; status: string; error?: string }>;
   permissions?: PluginInstallPermissionStatus;
   /**
-   * Present (as `pending`) only on a `202` whose change was saved but whose
-   * runtime activation did not finish inside the server's deadline.
+   * Present (as `pending`) only on a `202` whose change was saved but not
+   * applied to the runtime. See {@link PluginLifecycleUnapplied}.
    */
   configurationActivation?: { status: 'applied' | 'pending'; reason?: string };
 }
 
 /**
- * Why an accepted plugin lifecycle change is not active yet.
+ * Why a saved plugin lifecycle change is not applied.
  *
- * `activation`: the change was saved, but runtime activation did not finish
- * within the server's deadline (or failed after saving). The installation
- * reads `installationReadiness.state === 'pending'` until a person recovers
- * it; the abandoned pass cannot make it ready on its own.
+ * `activation`: the change was saved, but its runtime pass did not complete
+ * (it outran the server's deadline, or failed after saving). For an install,
+ * update or recovery the plugin is then NOT active and nothing activates it
+ * on its own: its `installationReadiness` reads `pending` with
+ * `recovery: 'review'` until a person runs recovery. For a removal, which
+ * activates nothing, the runtime finishes unloading the plugin on its next
+ * reconciliation.
  * `projection`: the selection was recorded but the catalog projection was
  * not; reloading plugins reconciles it.
  */
-export type PluginLifecyclePending =
+export type PluginLifecycleUnapplied =
   | { kind: 'activation'; reason?: string }
   | { kind: 'projection'; reason?: string };
 
 /**
- * The one reading of a plugin lifecycle response body that says "accepted,
- * but not active yet". The server sends that as `202` with `success: false`,
- * which a caller that only checks `success` misreads as a failure.
+ * The one reading of a plugin lifecycle response body that says "saved, but
+ * not applied". The server sends that as `202` with `success: false`, which a
+ * caller that only checks `success` misreads as a failure.
  */
-export function pluginLifecyclePending(
+export function pluginLifecycleUnapplied(
   body: unknown,
-): PluginLifecyclePending | undefined {
+): PluginLifecycleUnapplied | undefined {
   if (!body || typeof body !== 'object' || Array.isArray(body))
     return undefined;
   const result = body as Record<string, unknown>;
@@ -110,16 +113,17 @@ export function pluginLifecyclePending(
 }
 
 /**
- * How a caller reads `POST /api/plugins/install`, the registry install and
- * recovery: `applied` is a 2xx with `success: true`; `pending` is the designed
- * `202` above; everything else is `refused` and carries its own error.
+ * How a caller reads a plugin install, registry install, update, removal or
+ * recovery response: `applied` is a 2xx with `success: true`; `saved` is the
+ * designed `202` above; everything else is `refused` and carries its own
+ * error.
  */
 export function readPluginLifecycleResponse(
   status: number,
   body: unknown,
 ):
   | { state: 'applied' }
-  | { state: 'pending'; pending: PluginLifecyclePending }
+  | { state: 'saved'; unapplied: PluginLifecycleUnapplied }
   | { state: 'refused' } {
   if (
     status >= 200 &&
@@ -129,8 +133,8 @@ export function readPluginLifecycleResponse(
     (body as { success?: unknown }).success === true
   )
     return { state: 'applied' };
-  const pending = status === 202 ? pluginLifecyclePending(body) : undefined;
-  return pending ? { state: 'pending', pending } : { state: 'refused' };
+  const unapplied = status === 202 ? pluginLifecycleUnapplied(body) : undefined;
+  return unapplied ? { state: 'saved', unapplied } : { state: 'refused' };
 }
 
 /**

@@ -432,7 +432,7 @@ describe('plugin CLI API authority', () => {
     expect(authenticatedFetch).toHaveBeenCalledTimes(2);
   });
 
-  test('reports an install accepted with activation pending as pending, not as a failed request', async () => {
+  test('reports an install saved without completing its activation as installed but not active, not as a failed request', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     authenticatedFetch
       .mockResolvedValueOnce(
@@ -477,7 +477,7 @@ describe('plugin CLI API authority', () => {
     ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
     const printed = log.mock.calls.map((call) => String(call[0]));
     expect(printed).toContain(
-      '⏳ Installed demo@1.0.0, but it did not finish activating in time.',
+      '⚠️ Installed demo@1.0.0, but its activation did not finish, so it is not active.',
     );
     // Not the host-approval list: that review refuses an inactive plugin.
     expect(printed.join('\n')).not.toContain('requires host approval');
@@ -486,6 +486,35 @@ describe('plugin CLI API authority', () => {
     // A 202 that does not say pending is still a refusal.
     await expect(installRegistryPlugin('curated-demo', parsed)).rejects.toThrow(
       'Registry install failed with HTTP 202',
+    );
+  });
+
+  test('reports a saved update as not active and a saved removal as removed', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const saved = {
+      success: false,
+      plugin: { name: 'demo', version: '1.1.0' },
+      configurationActivation: { status: 'pending', reason: 'saved' },
+    };
+    authenticatedFetch
+      .mockResolvedValueOnce(Response.json(saved, { status: 202 }))
+      .mockResolvedValueOnce(Response.json(saved, { status: 202 }))
+      .mockResolvedValueOnce(
+        Response.json({ success: false }, { status: 202 }),
+      );
+    const { update, remove } = await import('../commands/install.js');
+
+    await update('demo', parsed);
+    await remove('demo', parsed);
+    const printed = log.mock.calls.map((call) => String(call[0]));
+    expect(printed).toContain(
+      '⚠️ Updated demo@1.1.0, but its activation did not finish, so it is not active.',
+    );
+    expect(printed).toContain(
+      '✅ Removed demo through Station; it finishes unloading in the background',
+    );
+    await expect(remove('demo', parsed)).rejects.toThrow(
+      'Plugin request failed with HTTP 202',
     );
   });
 

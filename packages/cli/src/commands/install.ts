@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
-  type PluginLifecyclePending,
+  type PluginLifecycleUnapplied,
   type PluginManifest,
   readPluginLifecycleResponse,
 } from '@kontourai/station-contracts/plugin';
@@ -74,36 +74,41 @@ function resolvePluginTarget(parsed: ParsedCoreArgs): ResolvedApiBase {
 }
 
 /**
- * A plugin lifecycle request whose designed `202` (saved, activation not
- * finished) is an accepted outcome rather than a failure.
+ * A plugin lifecycle request whose designed `202` (saved, not applied) is an
+ * accepted outcome rather than a failure.
  */
 async function pluginLifecycleRequest<T>(
   parsed: ParsedCoreArgs,
   path: string,
   init: AuthenticatedFetchInit,
-  target: ResolvedApiBase,
-): Promise<{ payload: T; pending?: PluginLifecyclePending }> {
-  let pending: PluginLifecyclePending | undefined;
+  target?: ResolvedApiBase,
+): Promise<{ payload: T; unapplied?: PluginLifecycleUnapplied }> {
+  let unapplied: PluginLifecycleUnapplied | undefined;
   const payload = await pluginRequest<T>(parsed, path, init, target, (o) => {
-    if (o.state === 'pending') pending = o.pending;
+    if (o.state === 'saved') unapplied = o.unapplied;
     return o.state !== 'refused';
   });
-  return { payload, ...(pending ? { pending } : {}) };
+  return { payload, ...(unapplied ? { unapplied } : {}) };
 }
 
-function pendingInstallLines(
+/**
+ * What a saved-but-unapplied install or update means. An activation that did
+ * not complete is not continuing: the plugin stays inactive until recovered.
+ */
+function unappliedLines(
+  verb: 'Installed' | 'Updated',
   name: string,
-  pending: PluginLifecyclePending,
+  unapplied: PluginLifecycleUnapplied,
 ): string[] {
-  return pending.kind === 'projection'
+  return unapplied.kind === 'projection'
     ? [
-        `⏳ Installed ${name}, but Station has not finished listing it.`,
+        `⚠️ ${verb} ${name}, but Station has not finished listing it.`,
         '  Reload plugins on the Station host to pick it up; its code and data are kept.',
       ]
     : [
-        `⏳ Installed ${name}, but it did not finish activating in time.`,
-        '  It stays Activation pending until you open Plugins on the Station host, select it, and choose Review recovery.',
-        '  Do not install it again; trusted permissions are approved after recovery.',
+        `⚠️ ${verb} ${name}, but its activation did not finish, so it is not active.`,
+        '  Open Plugins on the Station host, select it, and choose Recover plugin to activate it.',
+        `  Do not ${verb === 'Installed' ? 'install' : 'update'} it again; trusted permissions are approved after recovery.`,
       ];
 }
 
@@ -334,7 +339,7 @@ export async function install(
     }
   }
 
-  const { payload: result, pending } = await pluginLifecycleRequest<{
+  const { payload: result, unapplied } = await pluginLifecycleRequest<{
     success: boolean;
     plugin?: { name: string; version: string };
     permissions?: {
@@ -390,14 +395,15 @@ export async function install(
     },
     target,
   );
-  if (pending) {
-    // A designed `202`: installed, not active. Host approvals cannot be
-    // reviewed until it is, so none are listed here.
+  if (unapplied) {
+    // A designed `202`: saved, not applied. Host approvals cannot be
+    // reviewed until the plugin is active, so none are listed here.
     const name = result.plugin?.name ?? previewed.manifest?.name ?? source;
     const version = result.plugin?.version ?? previewed.manifest?.version;
-    for (const line of pendingInstallLines(
+    for (const line of unappliedLines(
+      'Installed',
       version ? `${name}@${version}` : name,
-      pending,
+      unapplied,
     ))
       console.log(line);
     return { pluginName: name, version: version ?? '' };
@@ -513,7 +519,7 @@ export async function remove(
   name: string,
   parsed: ParsedCoreArgs = NO_FLAGS,
 ): Promise<void> {
-  const result = await pluginRequest<{
+  const { payload: result, unapplied } = await pluginLifecycleRequest<{
     success: boolean;
     commandEffects?: CommandEffectsWithdrawal;
     commandEffectsUnavailable?: boolean;
@@ -522,11 +528,12 @@ export async function remove(
     result.commandEffects,
     result.commandEffectsUnavailable,
   );
-  console.log(
-    note
-      ? `✅ Removed ${name} through Station.${note}`
-      : `✅ Removed ${name} through Station`,
-  );
+  // A removal activates nothing: a saved removal whose runtime reload did not
+  // finish is completed by Station's next reconciliation.
+  const removed = unapplied
+    ? `✅ Removed ${name} through Station; it finishes unloading in the background`
+    : `✅ Removed ${name} through Station`;
+  console.log(note ? `${removed}.${note}` : removed);
 }
 
 export async function info(
@@ -550,7 +557,7 @@ export async function update(
   name: string,
   parsed: ParsedCoreArgs = NO_FLAGS,
 ): Promise<void> {
-  const result = await pluginRequest<{
+  const { payload: result, unapplied } = await pluginLifecycleRequest<{
     success: boolean;
     plugin?: { name?: string; version?: string };
     commandEffects?: CommandEffectsWithdrawal;
@@ -558,6 +565,15 @@ export async function update(
   }>(parsed, `/${encodeURIComponent(name)}/update`, { method: 'POST' });
   const updatedName = result.plugin?.name ?? name;
   const version = result.plugin?.version ? `@${result.plugin.version}` : '';
+  if (unapplied) {
+    for (const line of unappliedLines(
+      'Updated',
+      `${updatedName}${version}`,
+      unapplied,
+    ))
+      console.log(line);
+    return;
+  }
   const note = commandEffectsNote(
     result.commandEffects,
     result.commandEffectsUnavailable,
@@ -609,10 +625,11 @@ export async function installRegistryPlugin(
         `Registry install failed with HTTP ${response.status}`,
     );
   }
-  if (outcome.state === 'pending') {
-    for (const line of pendingInstallLines(
+  if (outcome.state === 'saved') {
+    for (const line of unappliedLines(
+      'Installed',
       `registry plugin ${id}`,
-      outcome.pending,
+      outcome.unapplied,
     ))
       console.log(line);
     return;
