@@ -22,7 +22,10 @@ import { createHash } from 'node:crypto';
  * 2. **No recorded state** — the tracker predates this policy (or its marker
  *    was edited away). Comment once to establish the marker, then go quiet.
  * 3. **Different failure** — a different job/step failed, or failed with a
- *    different conclusion, than the last comment recorded.
+ *    different conclusion, than the last comment recorded, and the last
+ *    comment is at least a day old. A change sooner than that rewrites the
+ *    existing comment and its marker instead: a flaky secondary job flipping
+ *    the failure set would otherwise comment on every run.
  * 4. **Heartbeat** — same failure, but 24h have passed since the last comment.
  *    Says how many red runs happened in that window.
  * 5. Otherwise **silent**: no new comment. The run is still recorded, by
@@ -450,12 +453,6 @@ export function decideMainHealthComment({
     );
   if (!previous)
     return comment('no-recorded-state', 'The workflow failed again on main.');
-  if (previous.digest !== digest)
-    return comment(
-      'failure-changed',
-      'The workflow failed again on main, at a different point than the last comment recorded.',
-    );
-
   // A red run that posts nothing is still recorded, so the next heartbeat can
   // report the size of the silence rather than only its duration.
   const redRunsSinceComment = previous.redRunsSinceComment + 1;
@@ -464,6 +461,30 @@ export function decideMainHealthComment({
     !Number.isFinite(elapsedMs) ||
     elapsedMs < 0 ||
     elapsedMs >= heartbeatIntervalMs;
+  if (previous.digest !== digest) {
+    // A changed failure set speaks at most once a day: a flaky secondary job
+    // flipping the set (Fresh-home: 15 of 23 replayed comments) is still
+    // recorded at once, in the issue body and in this comment's marker.
+    if (heartbeatDue)
+      return comment(
+        'failure-changed',
+        'The workflow failed again on main, at a different point than the last comment recorded.',
+      );
+    const state = {
+      ...previous,
+      failures: current.slice(0, MAX_TRACKED_FAILURES),
+      failureCount: current.length,
+      digest,
+      redRunsSinceComment,
+    };
+    return {
+      action: 'update-marker',
+      reason: 'failure-changed-within-a-day',
+      commentId: recorded?.commentId,
+      body: renderMainHealthComment(run, state),
+      state,
+    };
+  }
   if (heartbeatDue) {
     const runs =
       redRunsSinceComment === 1
@@ -471,7 +492,7 @@ export function decideMainHealthComment({
         : `${redRunsSinceComment} red runs`;
     return comment(
       'heartbeat',
-      `Still red on main: ${runs} since the last comment, all failing at the same point.`,
+      `Still red on main: ${runs} since the last comment; the newest failing set is below.`,
     );
   }
 

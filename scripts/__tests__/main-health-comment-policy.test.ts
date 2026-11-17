@@ -225,17 +225,30 @@ describe('main-health comment policy transitions', () => {
     expect(parseMainHealthState(decision.body)?.redRunsSinceComment).toBe(0);
   });
 
-  it('comments when a different step fails, however soon', () => {
+  it('records a different failing step at once and comments on it at most once a day', () => {
     const tracker = new Tracker();
     tracker.run({ failures: [GATE_FAILURE], now: START });
-    const decision = tracker.run({
+    const quiet = tracker.run({
       failures: ['policy > Publish the report (failure)'],
       now: START + 60_000,
     });
+    expect(quiet.action).toBe('update-marker');
+    expect(quiet.reason).toBe('failure-changed-within-a-day');
+    expect(quiet.body).toContain('- policy > Publish the report (failure)');
+    // Flipping back inside the day is still quiet.
+    const flip = tracker.run({
+      failures: [GATE_FAILURE],
+      now: START + 120_000,
+    });
+    expect(flip.action).toBe('update-marker');
+    expect(tracker.comments).toHaveLength(1);
 
-    expect(decision.action).toBe('create-comment');
-    expect(decision.reason).toBe('failure-changed');
-    expect(decision.body).toContain('- policy > Publish the report (failure)');
+    const spoken = tracker.run({
+      failures: ['policy > Publish the report (failure)'],
+      now: START + HEARTBEAT_INTERVAL_MS + 1,
+    });
+    expect(spoken.action).toBe('create-comment');
+    expect(spoken.reason).toBe('failure-changed');
     expect(tracker.comments).toHaveLength(2);
   });
 
@@ -279,11 +292,29 @@ describe('a changed failure is never silent, past the display cap', () => {
           user: BOT,
         },
       ],
-      now: START + 1000,
+      now: START + HEARTBEAT_INTERVAL_MS + 1,
     });
 
     expect(decision.action).toBe('create-comment');
     expect(decision.reason).toBe('failure-changed');
+  });
+
+  it('records a change past the cap at once, in the marker, within the day', () => {
+    const next = [...twentyFive.slice(0, 20), 'zzz-brand-new (failure)'];
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: next,
+      comments: [
+        {
+          id: 1,
+          body: renderMainHealthComment(RUN, stateFor(twentyFive)),
+          user: BOT,
+        },
+      ],
+      now: START + 1000,
+    });
+    expect(decision.reason).toBe('failure-changed-within-a-day');
+    expect(decision.state.digest).toBe(failureDigest(next.sort()));
   });
 
   it('still stays quiet when the untruncated set really is identical', () => {

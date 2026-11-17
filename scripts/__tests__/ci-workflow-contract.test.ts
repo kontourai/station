@@ -624,7 +624,7 @@ describe('CI verification workflow contracts', () => {
     return { createComment, updateComment, updateIssue };
   }
 
-  function recordedComment(failure: string) {
+  function recordedComment(failure: string, ageMs = 0) {
     return renderMainHealthComment(
       {
         workflowName: 'Repo: Backlog policy',
@@ -637,7 +637,7 @@ describe('CI verification workflow contracts', () => {
         failureCount: 1,
         digest: failureDigest([failure]),
         redRunsSinceComment: 4,
-        commentedAt: new Date().toISOString(),
+        commentedAt: new Date(Date.now() - ageMs).toISOString(),
       },
     );
   }
@@ -661,12 +661,15 @@ describe('CI verification workflow contracts', () => {
     expect(parseMainHealthState(call[0].body)?.redRunsSinceComment).toBe(5);
   });
 
-  it('comments when a different step fails than the last comment recorded', async () => {
+  it('comments when a different step fails than a day-old comment recorded', async () => {
     const { createComment, updateComment } = await runReportFailure({
       comments: [
         {
           id: 7,
-          body: recordedComment('policy > Run the gate (failure)'),
+          body: recordedComment(
+            'policy > Run the gate (failure)',
+            25 * 60 * 60 * 1000,
+          ),
           user: { type: 'Bot' },
         },
       ],
