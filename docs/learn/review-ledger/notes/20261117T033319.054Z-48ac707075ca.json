@@ -1,0 +1,7 @@
+{
+  "revision": "be64c7c6fda5c9640cfc571a9a272d44c33587f6",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"This lane adds the attached source activity and adoption refusal passages; ADR 0010's reference to the session API remains accurate.","inputs":["docs/reference/session-api.md"]}
+  ]
+}
