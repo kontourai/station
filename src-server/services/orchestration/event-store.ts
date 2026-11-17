@@ -97,6 +97,7 @@ import {
   type TurnDispatchOrigin,
   turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
+import { isSessionLifecycleStateAtRest } from '@kontourai/station-contracts/session-lifecycle';
 import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
@@ -413,6 +414,7 @@ import type {
   RecoveryLedger,
   RecoveryLedgerCoordinator,
 } from './recovery-ledger-binding.js';
+import { projectSessionLifecycle } from './session-lifecycle-service.js';
 import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
@@ -16298,7 +16300,13 @@ export class EventStore {
           offset + EVENT_STORE_BATCH_CHUNK_SIZE,
         );
         const relations = z
-          .array(z.object({ root_id: z.string(), child_id: z.string() }))
+          .array(
+            z.object({
+              root_id: z.string(),
+              child_id: z.string(),
+              starting: z.number(),
+            }),
+          )
           .parse(
             this.db
               .prepare(`WITH RECURSIVE
@@ -16310,13 +16318,75 @@ export class EventStore {
           owned(root_id, child_id) AS (
             SELECT root_id, root_id FROM requested
             UNION SELECT owned.root_id, edges.child_id FROM owned JOIN edges ON edges.parent_id = owned.child_id
-          ) SELECT root_id, child_id FROM owned`)
+          ) SELECT root_id, child_id,
+            EXISTS (SELECT 1 FROM orchestration_ownership_starts WHERE child_session_id = owned.child_id) AS starting
+            FROM owned`)
               .all(...chunk),
           );
         const facts = readCascadeSessionFacts(
           this.db,
           relations.map((row) => row.child_id),
         );
+        const childIds = [
+          ...new Set(
+            relations
+              .filter((row) => row.child_id !== row.root_id)
+              .map((row) => row.child_id),
+          ),
+        ];
+        const starting = new Set(
+          relations.filter((row) => row.starting).map((row) => row.child_id),
+        );
+        const events = this.listSessionProjectionEventsForThreads(childIds);
+        const sessions = new Map<string, ProviderSession>();
+        for (
+          let offset = 0;
+          offset < childIds.length;
+          offset += EVENT_STORE_BATCH_CHUNK_SIZE
+        ) {
+          const ids = childIds.slice(
+            offset,
+            offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+          );
+          for (const session of this.db
+            .prepare(
+              `SELECT thread_id, provider, status, created_at, updated_at
+               FROM provider_session_state WHERE thread_id IN (${ids.map(() => '?').join(',')})`,
+            )
+            .all(...ids)
+            .map(mapPersistedSessionRow))
+            sessions.set(session.threadId, session);
+        }
+        const activeChildren = new Set<string>();
+        for (const childId of childIds) {
+          const current = facts.get(childId)!;
+          const session = sessions.get(childId);
+          const pendingInvocation =
+            current.owner &&
+            ['prepared', 'invoking', 'accepted', 'indeterminate'].includes(
+              current.owner.state,
+            );
+          // An idle adapter may remain attached. Work activity follows the same
+          // event fold as the child's summary, not its persisted provider status.
+          const active =
+            starting.has(childId) ||
+            pendingInvocation ||
+            (session
+              ? !isSessionLifecycleStateAtRest(
+                  projectSessionLifecycle({
+                    session,
+                    events: (events.get(childId) ?? []).map(
+                      (event) => event.payload,
+                    ),
+                  }).lifecycleState,
+                )
+              : current.active);
+          if (
+            active &&
+            !isCascadeStopSettled(current, this.hasSessionBinding(childId))
+          )
+            activeChildren.add(childId);
+        }
         for (const rootId of chunk) {
           const children = new Set(
             relations
@@ -16343,12 +16413,7 @@ export class EventStore {
           }
           let runningChildCount = 0;
           for (const childId of children) {
-            const current = facts.get(childId)!;
-            if (
-              childId !== rootId &&
-              current.active &&
-              !isCascadeStopSettled(current, this.hasSessionBinding(childId))
-            )
+            if (childId !== rootId && activeChildren.has(childId))
               runningChildCount++;
           }
           result.set(rootId, {
