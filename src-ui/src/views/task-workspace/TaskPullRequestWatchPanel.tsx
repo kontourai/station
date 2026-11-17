@@ -14,6 +14,7 @@ import {
 import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { ErrorState, SkeletonList } from '../../components/state';
@@ -132,7 +133,7 @@ export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
       aria-labelledby="task-pr-watch-heading"
       className="task-pr-watch content-stack"
     >
-      <div className="task-pr-watch__header">
+      <div className="task-pr-watch__title">
         <h2 id="task-pr-watch-heading">Pull request watch</h2>
         {data && (
           <Badge
@@ -170,25 +171,30 @@ export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
                 : 'This Project does not watch Task pull requests.'}
           </p>
           {!ended && (
-            <div className="task-pr-watch__actions">
-              <Button
-                size="sm"
-                disabled={setMode.isPending}
-                onClick={() => setMode.mutate(data.watching ? 'off' : 'on')}
-              >
-                {data.watching ? 'Stop watching' : 'Watch pull requests'}
-              </Button>
-              {data.mode !== 'project' && (
+            <ActionRow
+              overflowLabel="More pull request watch actions"
+              primary={
                 <Button
                   size="sm"
-                  variant="ghost"
                   disabled={setMode.isPending}
-                  onClick={() => setMode.mutate('project')}
+                  onClick={() => setMode.mutate(data.watching ? 'off' : 'on')}
                 >
-                  Use Project setting
+                  {data.watching ? 'Stop watching' : 'Watch pull requests'}
                 </Button>
-              )}
-            </div>
+              }
+              secondary={
+                data.mode !== 'project' ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={setMode.isPending}
+                    onClick={() => setMode.mutate('project')}
+                  >
+                    Use Project setting
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
           {setMode.error && (
             <ErrorState

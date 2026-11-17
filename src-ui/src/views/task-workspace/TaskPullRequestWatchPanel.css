@@ -1,23 +1,17 @@
-.task-pr-watch__header {
+.task-pr-watch__title {
   display: flex;
   align-items: center;
   gap: var(--k-space-2);
   flex-wrap: wrap;
 }
 
-.task-pr-watch__header h2 {
+.task-pr-watch__title h2 {
   margin: 0;
 }
 
 .task-pr-watch__meta {
   margin: 0;
   color: var(--k-text-secondary);
-}
-
-.task-pr-watch__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--k-space-2);
 }
 
 .task-pr-watch__list {
