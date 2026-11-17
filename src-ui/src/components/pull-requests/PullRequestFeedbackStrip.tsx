@@ -107,6 +107,7 @@ export function PullRequestFeedbackStrip({
       {open && (
         <PullRequestFeedbackDialog
           reference={reference}
+          headReview={chat.headReview}
           {...(data.owner?.readable &&
           data.owner.conversationId !== activeConversationId
             ? { chatTitle: data.owner.title }

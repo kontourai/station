@@ -174,3 +174,44 @@ export async function turnOffPullRequestFeedback(
     }),
   );
 }
+
+/**
+ * Run Station's review of the pull request's current head again (or for
+ * the first time, before it held still). Refused (409) while the Project's
+ * review limit is reached or the head cannot be reviewed.
+ */
+export async function reviewPullRequestHeadAgain(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<void> {
+  await read<{ conversationId: string }>(
+    await mutateJson(
+      path(apiBase, conversationId, '/head-review/again'),
+      'POST',
+      options,
+      { identity },
+    ),
+  );
+}
+
+/**
+ * Send the current head review's required findings to the agent, even
+ * with "Address review comments" off. The feedback caps still apply.
+ */
+export async function sendPullRequestHeadReviewFindings(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<void> {
+  await read<{ conversationId: string }>(
+    await mutateJson(
+      path(apiBase, conversationId, '/head-review/send'),
+      'POST',
+      options,
+      { identity },
+    ),
+  );
+}

@@ -8,7 +8,11 @@ vi.mock('../client/http', async (importOriginal) => ({
   ...transport,
 }));
 
-import { turnOffPullRequestFeedback } from '../client/pull-request-feedback';
+import {
+  reviewPullRequestHeadAgain,
+  sendPullRequestHeadReviewFindings,
+  turnOffPullRequestFeedback,
+} from '../client/pull-request-feedback';
 
 const options = {
   requestScope: { apiBase: 'http://station.test', authorityKey: 'owner' },
@@ -55,4 +59,52 @@ test('a refusal is an error, not a view', async () => {
   await expect(
     turnOffPullRequestFeedback('http://station.test', 'chat-a', identity),
   ).rejects.toThrow();
+});
+
+test("Review again and Send to agent post to the chat's head review", async () => {
+  const ok = () =>
+    new Response(
+      JSON.stringify({ success: true, data: { conversationId: 'chat/a' } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  transport.mutateJson.mockImplementation(async () => ok());
+  await reviewPullRequestHeadAgain(
+    'http://station.test',
+    'chat/a',
+    identity,
+    options,
+  );
+  await sendPullRequestHeadReviewFindings(
+    'http://station.test',
+    'chat/a',
+    identity,
+    options,
+  );
+  expect(transport.mutateJson.mock.calls).toEqual([
+    [
+      'http://station.test/api/pull-request-feedback/conversations/chat%2Fa/head-review/again',
+      'POST',
+      options,
+      { identity },
+    ],
+    [
+      'http://station.test/api/pull-request-feedback/conversations/chat%2Fa/head-review/send',
+      'POST',
+      options,
+      { identity },
+    ],
+  ]);
+  transport.mutateJson.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        success: false,
+        code: 'pull_request_head_review_not_started',
+        error: 'Station already ran 10 reviews in this Project today.',
+      }),
+      { status: 409, headers: { 'content-type': 'application/json' } },
+    ),
+  );
+  await expect(
+    reviewPullRequestHeadAgain('http://station.test', 'chat-a', identity),
+  ).rejects.toThrow('10 reviews');
 });
