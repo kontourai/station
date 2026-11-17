@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  describeActivationDeadline,
   type PluginLifecycleUnapplied,
   type PluginManifest,
   readPluginLifecycleResponse,
@@ -116,7 +117,7 @@ function unappliedLines(
       '  Open Plugins on the Station host; if it reads Needs recovery, recover it there.',
     ];
   const stopped = unapplied.deadlineMs
-    ? `Station was too busy to activate it within ${Math.round(unapplied.deadlineMs / 1000)} seconds`
+    ? `Station was too busy to activate it within ${describeActivationDeadline(unapplied.deadlineMs)}`
     : 'its activation did not finish';
   return [
     `⚠️ ${verb} ${name}, but ${stopped}, so it is not active.`,
@@ -619,7 +620,7 @@ export async function recover(
   if (unapplied) {
     if (unapplied.kind === 'activation' && unapplied.recovery !== 'none') {
       const stopped = unapplied.deadlineMs
-        ? `Station was too busy to finish activating it within ${Math.round(unapplied.deadlineMs / 1000)} seconds`
+        ? `Station was too busy to finish activating it within ${describeActivationDeadline(unapplied.deadlineMs)}`
         : 'its activation did not finish';
       console.log(
         `⚠️ Recovery of ${label} was saved, but it is still not active: ${stopped}.`,

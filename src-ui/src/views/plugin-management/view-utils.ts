@@ -1,4 +1,7 @@
-import type { PluginLifecycleUnapplied } from '@kontourai/station-contracts/plugin';
+import {
+  describeActivationDeadline,
+  type PluginLifecycleUnapplied,
+} from '@kontourai/station-contracts/plugin';
 import {
   isRejectedPlugin,
   type Plugin,
@@ -266,7 +269,7 @@ export function unappliedMessage(
   if (unapplied.recovery === 'unknown')
     return `${pluginName} was ${verb}, but Station did not say whether it is active. If its row reads Needs recovery, choose Recover plugin there.`;
   const stopped = unapplied.deadlineMs
-    ? `Station was too busy to activate it within ${Math.round(unapplied.deadlineMs / 1000)} seconds`
+    ? `Station was too busy to activate it within ${describeActivationDeadline(unapplied.deadlineMs)}`
     : 'its activation did not finish';
   return `${pluginName} was ${verb}, but ${stopped}, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.`;
 }
@@ -288,7 +291,7 @@ export function unappliedTone(
 export function recoveryStoppedNotice(unapplied: PluginLifecycleUnapplied) {
   const stopped =
     unapplied.kind === 'activation' && unapplied.deadlineMs
-      ? `Station was too busy to finish activating it within ${Math.round(unapplied.deadlineMs / 1000)} seconds`
+      ? `Station was too busy to finish activating it within ${describeActivationDeadline(unapplied.deadlineMs)}`
       : 'its activation did not finish';
   return `Recovery was saved, but the plugin is still not active: ${stopped}. Trying again when the host is idle usually works; Remove plugin is the way out.`;
 }

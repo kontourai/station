@@ -143,6 +143,14 @@ export function pluginLifecycleUnapplied(
 }
 
 /**
+ * A receipt's `deadlineMs` as people read it: whole seconds, never "0".
+ */
+export function describeActivationDeadline(deadlineMs: number): string {
+  const seconds = Math.max(1, Math.round(deadlineMs / 1000));
+  return `${seconds} second${seconds === 1 ? '' : 's'}`;
+}
+
+/**
  * How a caller reads a plugin install, registry install, update, removal or
  * recovery response: `applied` is a 2xx with `success: true`; `saved` is the
  * designed `202` above; everything else is `refused` and carries its own
