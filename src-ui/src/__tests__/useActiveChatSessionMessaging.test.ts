@@ -2352,6 +2352,55 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);
   });
 
+  // A send refused because an earlier start on this Session is held (the
+  // REAL fetcher's error). Nothing was sent, nothing failed: the chat is not
+  // marked failed and there is no blind Retry.
+  it.each([
+    'turn_start_held',
+    'turn_start_held_until_restart',
+    'turn_start_busy',
+  ])(
+    'a %s refusal neither marks the chat failed nor offers Retry',
+    async (code) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const previous = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: `Session already has a turn start in progress: ${sessionId}.`,
+            code,
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        )) as typeof fetch;
+      let refusal: unknown;
+      try {
+        refusal = await actual
+          .sendExecutionMessage('http://api.test', {} as never)
+          .catch((caught: unknown) => caught);
+      } finally {
+        globalThis.fetch = previous;
+      }
+      expect(refusal).toMatchObject({ code });
+      sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+      await act(async () => {
+        await result.current(sessionId, 'station', undefined, 'hello');
+      });
+
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      expect(chat?.status).not.toBe('error');
+      const notice = chat?.ephemeralMessages?.at(-1);
+      expect(notice?.content).toMatch(
+        /Your earlier message may still be running|Another start is still in progress/,
+      );
+      expect(notice?.action).toBeUndefined();
+    },
+  );
+
   it('restores supervised attachments and stage refs after a definitive rejection', async () => {
     activeChatsStore.updateChat(sessionId, {
       attachments: [stagedAttachment],

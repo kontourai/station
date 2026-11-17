@@ -1,7 +1,10 @@
 import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
-import type {
-  InterruptTurnResult,
-  OrchestrationSessionSummary,
+import {
+  type InterruptTurnResult,
+  type OrchestrationSessionSummary,
+  TURN_START_BUSY_CODE,
+  TURN_START_HELD_CODE,
+  TURN_START_HELD_UNTIL_RESTART_CODE,
 } from '@kontourai/station-contracts/orchestration';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -1940,6 +1943,15 @@ export function useSendMessage(
         const terminalSession = foregroundIndeterminate
           ? false
           : (translated as ChatErrorTranslation).terminalSession;
+        // Refused because an earlier start on this Session blocks it: nothing
+        // was sent and nothing failed (that turn may still be running). The
+        // chat is not marked failed, and there is no blind Retry; the notice
+        // says what clears it, and the text is back in the composer.
+        const turnStartBlocked =
+          !foregroundIndeterminate &&
+          (err.code === TURN_START_HELD_CODE ||
+            err.code === TURN_START_HELD_UNTIL_RESTART_CODE ||
+            err.code === TURN_START_BUSY_CODE);
         const dispatchClaim = options?.dispatch;
         if (dispatchClaim) {
           // Once the foreground call has begun, neither an abort, a network
@@ -1969,7 +1981,10 @@ export function useSendMessage(
           // non-error and let the persisted server lifecycle name it. The
           // refusal itself is carried by the ephemeral notice below, which
           // already suppresses Retry for exactly this case.
-          status: foregroundIndeterminate || terminalSession ? 'idle' : 'error',
+          status:
+            foregroundIndeterminate || terminalSession || turnStartBlocked
+              ? 'idle'
+              : 'error',
           error: userFacingErrorMessage(err),
           abortController: undefined,
           ...(foregroundIndeterminate
@@ -2055,6 +2070,7 @@ export function useSendMessage(
                 }
               : terminalSession ||
                   foregroundIndeterminate ||
+                  turnStartBlocked ||
                   dispatchClaim ||
                   err.code === SESSION_START_INDETERMINATE_CODE ||
                   // #3290: refused again until the configuration or mode
