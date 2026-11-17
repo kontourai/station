@@ -115,6 +115,7 @@ export async function getPullRequestFeedbackByPullRequest(
 /**
  * Set a pull request's switches in this chat. Another chat's feedback is
  * refused (409, see {@link pullRequestFeedbackOwnerOf}) unless `move`.
+ * Leaving `reviewEachHead` out keeps the value this chat stored.
  */
 export async function writePullRequestFeedback(
   apiBase: string,
@@ -124,7 +125,8 @@ export async function writePullRequestFeedback(
     settings: Pick<
       PullRequestFeedbackSettings,
       'fixFailingChecks' | 'addressReviewComments'
-    >;
+    > &
+      Partial<Pick<PullRequestFeedbackSettings, 'reviewEachHead'>>;
     move?: boolean;
   },
   options?: ClientRequestOptions,

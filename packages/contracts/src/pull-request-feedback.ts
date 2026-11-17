@@ -13,8 +13,14 @@ import type { PullRequestLinkIdentity } from './conversation-pull-request-links.
 export const PULL_REQUEST_FEEDBACK_PREVIEW_ID = 'pull-request-agent-feedback';
 
 /**
- * What one delivery is about. `review-findings` is reserved for Station's
- * own independent review of each new head; nothing produces it yet.
+ * Station's independent review of each new head: behind this preview as
+ * well as `pull-request-agent-feedback`.
+ */
+export const PULL_REQUEST_HEAD_REVIEW_PREVIEW_ID = 'pull-request-head-review';
+
+/**
+ * What one delivery is about. `review-findings` is the required findings of
+ * Station's own independent review of a head.
  */
 export type PullRequestFeedbackCategory =
   | 'failing-checks'
@@ -25,8 +31,10 @@ export type PullRequestFeedbackCategory =
 /**
  * A person's switches for one pull request. `fixFailingChecks` covers
  * failing checks and merge conflicts; `addressReviewComments` covers
- * unresolved review threads and change requests. `reviewEachHead` is
- * accepted and stored for the later head review; nothing reads it yet.
+ * unresolved review threads and change requests. `reviewEachHead` runs
+ * Station's own independent review on each new head (behind the
+ * `pull-request-head-review` preview); its required findings go to the agent
+ * under `addressReviewComments`, or when a person sends them.
  */
 export interface PullRequestFeedbackSettings {
   fixFailingChecks: boolean;
@@ -46,6 +54,17 @@ export function pullRequestFeedbackSends(
   settings: PullRequestFeedbackSettings,
 ): boolean {
   return settings.fixFailingChecks || settings.addressReviewComments;
+}
+
+/**
+ * Whether the claim does anything at all: a switch that sends, or Station's
+ * own review of each new head. A review-only claim is still read, still
+ * owned and still placed (its findings go out on a person's Send to agent).
+ */
+export function pullRequestFeedbackActive(
+  settings: PullRequestFeedbackSettings,
+): boolean {
+  return pullRequestFeedbackSends(settings) || settings.reviewEachHead;
 }
 
 /** A settings body as a client sent it, or undefined when it is not one. */
@@ -277,6 +296,49 @@ export interface PullRequestFeedbackByPullRequest {
     headSha: string;
     checks: Array<{ name: string; url?: string; at: string }>;
   };
+  /** Station's newest head review, while the head review preview is on. */
+  headReview?: PullRequestHeadReview;
+}
+
+/** One finding of Station's review of a head, as a person reads it. */
+export interface PullRequestHeadReviewFinding {
+  file: string;
+  line: number;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  confidence: 'high' | 'medium' | 'low';
+  summary: string;
+  /** Goes to the agent: critical or high, with high or medium confidence. */
+  required: boolean;
+  /** A previous head's finding the reviewer found still present. */
+  carried?: true;
+}
+
+/**
+ * Station's newest review of one of the pull request's heads.
+ * `unknown`: Station restarted (or the reviewer gave no answer) before it
+ * knew how the review ended; it is never run again by itself.
+ */
+export interface PullRequestHeadReview {
+  headSha: string;
+  state:
+    | 'reviewing'
+    | 'reviewed'
+    | 'head-not-local'
+    | 'no-reviewer'
+    | 'unknown'
+    | 'not-verified';
+  /** When it started, or settled once it did. */
+  at: string;
+  /** `delta` reviewed only what changed since the previous reviewed head. */
+  mode?: 'initial' | 'delta';
+  /** reviewed: required first, at most 100. */
+  findings?: PullRequestHeadReviewFinding[];
+  required?: number;
+  others?: number;
+  /** not-verified: why, as the review said it. */
+  failureReason?: string;
+  /** The message that carried the required findings, when there was one. */
+  delivery?: { state: 'sent' | 'queued' | 'held'; at: string };
 }
 
 /** One pull request's feedback, as one conversation's reader sees it. */
@@ -292,6 +354,8 @@ export interface PullRequestFeedbackView {
   last?: PullRequestFeedbackDelivery;
   /** Newest first, at most 20. */
   history: PullRequestFeedbackDelivery[];
+  /** Station's newest head review, for the owning chat's reader. */
+  headReview?: PullRequestHeadReview;
 }
 
 export interface ConversationPullRequestFeedback {

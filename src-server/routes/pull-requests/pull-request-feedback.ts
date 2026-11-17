@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { PullRequestFeedbackDelivery } from '../../services/pull-requests/pull-request-feedback-delivery.js';
 import type { PullRequestFeedbackOwnership } from '../../services/pull-requests/pull-request-feedback-ownership.js';
+import type { PullRequestHeadReviewer } from '../../services/pull-requests/pull-request-head-review.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 import { pullRequestLinkIdentitySchema } from './conversation-pull-request-links.js';
 
@@ -84,6 +85,13 @@ export function createPullRequestFeedbackRoutes(
   delivery: () => PullRequestFeedbackDelivery | undefined,
   refresh: (conversationId: string) => void,
   access: PullRequestFeedbackRouteAccess,
+  /**
+   * Station's review of each head; undefined while the
+   * `pull-request-head-review` preview is off (its routes then answer 404).
+   */
+  headReview: () =>
+    | Pick<PullRequestHeadReviewer, 'reviewAgain' | 'sendFindings'>
+    | undefined = () => undefined,
 ) {
   const app = new Hono();
   // Before any body is parsed: while the preview is off every route answers
@@ -162,10 +170,16 @@ export function createPullRequestFeedbackRoutes(
       const settings = parsePullRequestFeedbackSettings(body.settings);
       if (!settings)
         return c.json({ success: false, error: 'Settings are invalid' }, 400);
+      // Left out, "Review each new head" keeps what this chat stored: a
+      // client that knows only the two sending switches must not turn it off.
+      const { reviewEachHead, ...sends } = settings;
       const result = await ownership.write({
         conversationId,
         identity: lower(body.identity),
-        settings,
+        settings:
+          body.settings.reviewEachHead === undefined
+            ? sends
+            : { ...sends, reviewEachHead },
         viewer: actor,
         ...(body.move ? { move: true } : {}),
       });
@@ -249,6 +263,62 @@ export function createPullRequestFeedbackRoutes(
         );
       return c.json({ success: true, data: { conversationId } });
     },
+  );
+
+  // Station's review of the pull request's current head: run it again, or
+  // send its required findings to the agent with "Address review comments"
+  // off. Only the owning chat, by the same writer rule as the switches.
+  const headReviewAction = (action: 'again' | 'send') => async (c: any) => {
+    const conversationId = param(c, 'conversationId');
+    const actor = writer(c, conversationId);
+    const reviewer = headReview();
+    if (!actor || !reviewer) return unavailable(c);
+    const body = getBody(c) as z.infer<typeof identityBodySchema>;
+    const claim = ownership.ownedClaim(conversationId, lower(body.identity));
+    if (!claim) return unavailable(c);
+    if (action === 'send') {
+      const outcome = await reviewer.sendFindings(claim.prKey);
+      return outcome === 'queued'
+        ? c.json({ success: true, data: { conversationId } })
+        : c.json(
+            {
+              success: false,
+              code: 'pull_request_head_review_nothing_to_send',
+              error: 'This head has no required findings to send.',
+            },
+            409,
+          );
+    }
+    const outcome = await reviewer.reviewAgain(claim.prKey);
+    if (outcome === 'started' || outcome === 'running')
+      return c.json({ success: true, data: { conversationId } });
+    return c.json(
+      {
+        success: false,
+        code: 'pull_request_head_review_not_started',
+        error:
+          outcome === 'project-busy'
+            ? "Station is reviewing another pull request in this Project. Try again when it's done."
+            : outcome === 'daily-limit'
+              ? 'Station already ran 10 reviews in this Project today.'
+              : outcome === 'head-not-local' ||
+                  outcome === 'no-reviewer' ||
+                  outcome === 'not-verified'
+                ? 'Station could not start the review. The review shows why.'
+                : 'Turn on "Review each new head" for an open pull request first.',
+      },
+      409,
+    );
+  };
+  app.post(
+    '/conversations/:conversationId/head-review/again',
+    validate(identityBodySchema),
+    headReviewAction('again'),
+  );
+  app.post(
+    '/conversations/:conversationId/head-review/send',
+    validate(identityBodySchema),
+    headReviewAction('send'),
   );
 
   return app;

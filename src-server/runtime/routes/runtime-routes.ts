@@ -11117,6 +11117,25 @@ export function configureRuntimeRoutes(
         reviewObserver.diagnostic({ operation, error }),
     },
   );
+  const repoMapReviewSelection = new RepoMapReviewSelection({
+    target: (projectSlug) => {
+      const project = context.projectService.getProject(projectSlug);
+      const workspace = project?.workingDirectory
+        ? expandTilde(project.workingDirectory)
+        : undefined;
+      if (!project || !workspace) return undefined;
+      return {
+        projectSlug: project.slug,
+        workspace,
+        globalAgentSlugs: [...(project.agents ?? [])].map(String).sort(),
+      };
+    },
+    listAgents: () => context.configLoader.listAgents(),
+    supportsReadOnlyReview: (provider) =>
+      context.orchestrationService.supportsReadOnlyReview(provider),
+    isCodexReviewerAvailable: (agent) =>
+      agent.execution?.agentConnectionId === 'codex',
+  });
   const reviewEvidence = new ReviewEvidenceModule({
     source: new GitReviewWorkspaceSource(
       { workspace: resolveWorkspacePath },
@@ -11150,25 +11169,31 @@ export function configureRuntimeRoutes(
       flowRunService,
       resolveWorkspacePath,
     ),
-    selectionResolver: new RepoMapReviewSelection({
-      target: (projectSlug) => {
-        const project = context.projectService.getProject(projectSlug);
-        const workspace = project?.workingDirectory
-          ? expandTilde(project.workingDirectory)
-          : undefined;
-        if (!project || !workspace) return undefined;
-        return {
-          projectSlug: project.slug,
-          workspace,
-          globalAgentSlugs: [...(project.agents ?? [])].map(String).sort(),
-        };
-      },
-      listAgents: () => context.configLoader.listAgents(),
-      supportsReadOnlyReview: (provider) =>
-        context.orchestrationService.supportsReadOnlyReview(provider),
-      isCodexReviewerAvailable: (agent) =>
-        agent.execution?.agentConnectionId === 'codex',
-    }),
+    selectionResolver: repoMapReviewSelection,
+  });
+  pullRequestFeedback?.bindHeadReview({
+    reviews: reviewEvidence,
+    selection: repoMapReviewSelection,
+    projectRoot: resolveWorkspacePath,
+    // The Task code review's reviewer rule, below.
+    fallbackReviewer: async (projectSlug, implementer) => {
+      const project = context.projectService.getProject(projectSlug);
+      return (await context.agentService.listAgents())
+        .filter(
+          (agent) =>
+            String(agent.slug) !== implementer &&
+            (agent.project === projectSlug ||
+              (agent.project === undefined &&
+                project?.agents?.some(
+                  (id) => String(id) === String(agent.slug),
+                ))) &&
+            agent.execution?.agentConnectionId === 'codex',
+        )
+        .map((agent) => String(agent.slug))
+        .sort()[0];
+    },
+    taskBaseCommit: (taskId) =>
+      context.taskGraphService.readTaskWorktree(taskId)?.baseCommit,
   });
   const reviewReadAccess: NonNullable<
     Parameters<typeof createReviewEvidenceRoutes>[1]['readAccess']
