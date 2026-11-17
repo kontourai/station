@@ -875,7 +875,7 @@ describe('the head review routes', () => {
     // Owned here, but Station has not read the pull request yet.
     const refused = await again();
     expect(refused.status).toBe(409);
-    expect((await refused.json()).code).toBe(
+    expect(((await refused.json()) as { code?: string }).code).toBe(
       'pull_request_head_review_not_started',
     );
     previews.headReview = false;
