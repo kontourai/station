@@ -448,7 +448,10 @@ scan of every issue or a search; report and close runs for one workflow share
 a concurrency group, so a second red reads the first one's tracker. When
 several trackers with one title are open, the oldest is kept and the others
 are closed as duplicates; a tracker closed as a duplicate is never reopened.
-Only an issue whose body Main: Health wrote (its marker, or the `Workflow:
+In `main-health.yml` and `container-smoke.yml`, a job holding any write scope
+checks out only the default branch, without credentials (a test pins this for
+those two files; release, Nightly and TestFlight jobs elsewhere legitimately
+check out the exact source they build). Only an issue whose body Main: Health wrote (its marker, or the `Workflow:
 <name>` line) counts as a tracker, so a bot issue a person renamed to a
 tracker title is neither reused nor closed. A tracker closed as not planned is
 reopened by the next red: to stop watching a workflow, remove it from the

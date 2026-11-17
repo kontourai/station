@@ -664,7 +664,10 @@ describe('scheduled workflow failure reporting', () => {
     ).toBe(false);
   });
 
-  it('never gives a job that can write a checkout of anything but the default branch', () => {
+  it('never gives a write-scoped job in the reporter or the smoke a checkout of anything but the default branch', () => {
+    // Scoped to the two workflows this change touches. Repo-wide the rule
+    // does not hold by design: release, Nightly and TestFlight jobs hold
+    // write scopes and check out the exact source they build.
     // A job holding a write scope must not check out (and so run) the code
     // of the commit it was triggered by or reports on.
     const touched = [MAIN_HEALTH, '.github/workflows/container-smoke.yml'];
@@ -1120,6 +1123,24 @@ describe('scheduled workflow failure reporting', () => {
       { only: REPORT },
     );
     expect(fake.writes).toEqual([]);
+  });
+
+  it('reports a cancel with jobs and no recognised annotation even when a newer run exists', async () => {
+    // Only a run that never got a job was replaced while pending; a run whose
+    // jobs started and were cancelled without a recognised cause is reported.
+    const fake = fakeGithub();
+    fake.otherRuns.push(NEWER, SUPERSEDED_PENDING);
+    fake.setRun({ jobs: [job(91, 'health', 'cancelled')], annotations: {} });
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Qualification health', 'cancelled', {
+        ...SUPERSEDED_PENDING,
+        event: 'workflow_run',
+      }),
+      { only: REPORT },
+    );
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].body).toContain('the cause was not recognised');
   });
 
   it('reports a job-less unannotated cancel with no newer run', async () => {
