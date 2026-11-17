@@ -670,6 +670,11 @@
 }
 
 /* #5068 Project usage. */
+.project-settings__usage--stale dl,
+.project-settings__usage--stale table {
+  opacity: 0.6;
+}
+
 .project-settings__usage-totals {
   display: flex;
   flex-wrap: wrap;

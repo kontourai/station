@@ -280,6 +280,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
   // #4517: a managed policy locks the setting a write would change.
   managed_setting_locked: 'permission_denied',
+  // #5065: a Project's memory holds its maximum notes. Not retryable: it
+  // conflicts with what is stored until a person or agent forgets a note.
+  project_memory_full: 'conflict',
   // #4520: an engine the managed policy does not allow, or a launch that
   // cannot honor a locked pin.
   [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',

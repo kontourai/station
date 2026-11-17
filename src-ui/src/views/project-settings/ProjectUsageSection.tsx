@@ -70,12 +70,9 @@ function UsageTable({
  */
 export function ProjectUsageSection({ slug }: { slug: string }) {
   const scope = useHostRequestAuthorityScope();
-  const options = {
-    requestScope: scope ?? undefined,
-    requireRequestScope: true,
-    keepPreviousData: false,
-  } as const;
-  const byTask = useUsageRollupQuery(
+  // A held render (`isPlaceholderData`) is the previous Project's or
+  // grouping's rows while this one loads; it is dimmed and labelled below.
+  const { isPlaceholderData: taskRowsHeld, ...byTask } = useUsageRollupQuery(
     {
       days: DAYS,
       groupBy: 'task',
@@ -83,9 +80,9 @@ export function ProjectUsageSection({ slug }: { slug: string }) {
       localOnly: true,
       pageSize: 100,
     },
-    options,
+    { requestScope: scope ?? undefined, requireRequestScope: true },
   );
-  const byModel = useUsageRollupQuery(
+  const { isPlaceholderData: modelRowsHeld, ...byModel } = useUsageRollupQuery(
     {
       days: DAYS,
       groupBy: 'model',
@@ -93,8 +90,9 @@ export function ProjectUsageSection({ slug }: { slug: string }) {
       localOnly: true,
       pageSize: 100,
     },
-    options,
+    { requestScope: scope ?? undefined, requireRequestScope: true },
   );
+  const showingPreviousData = taskRowsHeld || modelRowsHeld;
   const taskRows = byTask.data?.rows ?? [];
   const modelRows = byModel.data?.rows ?? [];
   const { total, coordinator } = projectUsageTotals(taskRows);
@@ -138,7 +136,15 @@ export function ProjectUsageSection({ slug }: { slug: string }) {
           description="Usage appears after a Session in this Project reports it."
         />
       ) : (
-        <div className="content-stack">
+        <div
+          className={`content-stack${showingPreviousData ? ' project-settings__usage--stale' : ''}`}
+          aria-busy={showingPreviousData || undefined}
+        >
+          {showingPreviousData && (
+            <p className="project-settings__usage-note" role="status">
+              Updating for this Project — showing the previous figures.
+            </p>
+          )}
           <dl className="project-settings__usage-totals">
             <div>
               <dt>Project total</dt>
