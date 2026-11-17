@@ -18,10 +18,10 @@ import { api, jsonToolResult } from './station-control-shared.js';
 const LIBRARY_API_PATH = '/api/orchestration/station-control/project-library';
 
 const LIST_DESCRIPTION =
-  "List your Project's Library: files people added (`kind: upload`, named by `relativePath`) and files the Project's Tasks kept (`kind: task-output`, named by `outputId`, with the Task that kept it, or `task.state: orphaned` when that Task was deleted). Read one with `read_project_library_file`. Fails with `no_project` when this session was not started in a Project.";
+  "List your Project's Library: uploads by relativePath, Task-kept files by outputId (orphaned when their Task was deleted).";
 
 const READ_DESCRIPTION =
-  "Read one file from your Project's Library. Pass `path` (an upload's `relativePath`) or `outputId` (a Task output), never both. Text comes back as `text`; anything else as `base64`. Both stop at 256 KiB (`truncated: true`).";
+  'Read one Library file by path or outputId. Returns text or base64, up to 256 KiB.';
 
 export function registerProjectLibraryTools(
   registry: StationControlToolRegistry,
@@ -38,13 +38,13 @@ export function registerProjectLibraryTools(
         .min(1)
         .max(1024)
         .optional()
-        .describe("An upload's relativePath from list_project_library."),
+        .describe('An upload relativePath.'),
       outputId: z
         .string()
         .min(1)
         .max(240)
         .optional()
-        .describe("A Task output's outputId from list_project_library."),
+        .describe('A Task output outputId.'),
     },
     async (args) => {
       const query = new URLSearchParams();

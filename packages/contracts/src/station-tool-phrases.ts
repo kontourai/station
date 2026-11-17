@@ -570,6 +570,10 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   list_projects: listed('Projects'),
   get_project: read(named('Project', 'slug', 'a Project')),
   list_project_layouts: listed('Project layouts'),
+  list_project_library: listed('the Project Library'),
+  read_project_library_file: read(
+    named('Library file', 'path', 'a Library file'),
+  ),
 
   // Delegation and environments
   list_delegation_environments: listed('delegation environments'),
