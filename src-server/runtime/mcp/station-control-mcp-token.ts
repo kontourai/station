@@ -388,10 +388,16 @@ export function verifyStationControlMcpTokenEntry(
   return undefined;
 }
 
-/** One disclosure object belongs to the token's private record and dies with it. */
+/**
+ * One disclosure object belongs to the token's private record and dies with
+ * it. A credential minted with `toolFamilies` keeps disclosure for its whole
+ * life: the engine re-lists only on `list_changed`, which a later switch-off
+ * could not send, so withdrawing it would strand an engine on an index whose
+ * tools no longer answer. The `codex-tool-families` preview decides only
+ * which credentials are minted that way.
+ */
 export function stationControlDisclosureForToken(
   candidate: string,
-  enabled: () => boolean,
 ): StationControlDisclosure | undefined {
   if (!verifyStationControlMcpTokenEntry(candidate)) return undefined;
   const tokenDigest = digest(candidate),
@@ -408,8 +414,7 @@ export function stationControlDisclosureForToken(
     () =>
       tokensByDigest.get(tokenDigest) === entry &&
       entry.expiresAt > Date.now() &&
-      (!entry.isIssuerCurrent || entry.isIssuerCurrent()) &&
-      enabled(),
+      (!entry.isIssuerCurrent || entry.isIssuerCurrent()),
   );
   return entry.disclosure;
 }

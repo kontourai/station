@@ -690,7 +690,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await adapter.stopSession('hosted');
   });
 
-  it('codex-tool-families preview: off by default; on, a qualified Codex header credential starts at the family index and the route follows the choice', async () => {
+  it('codex-tool-families preview: off by default; on, a qualified Codex header credential starts at the family index and keeps it after a switch-off', async () => {
     home = await createSchemaHome('station-codex-tool-families-');
     const agentDir = join(home, 'agents', 'families-test');
     mkdirSync(agentDir, { recursive: true });
@@ -712,8 +712,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await runtime.initialize();
     await routeMocks.routesConfigured;
     const subject = runtime as any;
-    const routeContext =
-      routeMocks.configureRuntimeRoutes.mock.calls.at(-1)![0];
     const adapter = subject.codexAdapter;
     // The version gate has its own tests; here the binary qualifies.
     const probe = vi
@@ -760,25 +758,20 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       ].Authorization.replace('Bearer ', '');
       return { config: thread.params.config, token };
     };
-    expect(routeContext.progressiveToolsEnabled()).toBe(false);
     const off = await start('families-preview-off');
     expect(off.config).not.toHaveProperty('features.mcp_tool_list_changed');
-    expect(stationControlDisclosureForToken(off.token, () => true)).toBe(
-      undefined,
-    );
+    expect(stationControlDisclosureForToken(off.token)).toBe(undefined);
     expect(probe).not.toHaveBeenCalled();
     await adapter.stopSession('families-preview-off');
     await subject.featurePreviews.setEnabled('codex-tool-families', true);
-    expect(routeContext.progressiveToolsEnabled()).toBe(true);
     const on = await start('families-preview-on');
     expect(on.config).toMatchObject({
       'features.mcp_tool_list_changed': true,
     });
     // The runtime's own mint made this credential start at the index.
-    expect(
-      stationControlDisclosureForToken(on.token, () => true)?.has('Agents'),
-    ).toBe(false);
-    await adapter.stopSession('families-preview-on');
+    expect(stationControlDisclosureForToken(on.token)?.has('Agents')).toBe(
+      false,
+    );
     // The composed session resolver asks the same admission question for
     // the instructions' families line.
     await subject.featurePreviews.setEnabled(
@@ -801,12 +794,16 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const withFamilies = await instructions();
     expect(withFamilies).toContain('delegate_task');
     expect(withFamilies).toContain('list_tool_families');
-    // Turning it off is the route's kill switch for running Sessions.
+    // Turning it off changes new Sessions only: the running one keeps its
+    // family credential, which Codex cannot be told to re-list away from.
     await subject.featurePreviews.setEnabled('codex-tool-families', false);
-    expect(routeContext.progressiveToolsEnabled()).toBe(false);
     const withoutFamilies = await instructions();
     expect(withoutFamilies).toContain('delegate_task');
     expect(withoutFamilies).not.toContain('list_tool_families');
+    const kept = stationControlDisclosureForToken(on.token);
+    expect(kept?.load('Agents')).toBe(true);
+    expect(kept?.has('Agents')).toBe(true);
+    await adapter.stopSession('families-preview-on');
   });
 
   it('rejects an incompatible home before EventStore can create SQLite state', () => {

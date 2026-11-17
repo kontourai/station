@@ -1817,7 +1817,7 @@ export class StationRuntime {
         id: 'codex-tool-families',
         label: 'Codex tool families',
         description:
-          'Start new Codex Sessions that use Station Control over its header token with a short index of tool families instead of every tool; the agent loads a family when it needs one. Needs Codex 0.167.0 or later, and stays off for the Codex browser and device tools channel. Turning it off gives running Sessions every tool again.',
+          'Start new Codex Sessions that use Station Control over its header token with a short index of tool families instead of every tool; the agent loads a family when it needs one. Needs Codex 0.167.0 or later, and stays off for the Codex browser and device tools channel. A change applies to new and resumed Sessions; a running Session keeps what it started with.',
       });
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
@@ -4531,8 +4531,8 @@ export class StationRuntime {
             }) ?? false,
           // The adapter's own admission question, so the families line in
           // the instructions and the credential's listing agree.
-          codexToolFamiliesAdmitted: () =>
-            this.codexAdapter.toolFamiliesAdmitted(),
+          codexToolFamiliesAdmitted: (threadId) =>
+            this.codexAdapter.toolFamiliesAdmitted(threadId),
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];
@@ -5574,9 +5574,6 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
-      // The live kill switch for every family-index credential: off, each
-      // lists the whole catalog again (`station-control-mcp-route.ts`).
-      progressiveToolsEnabled: () => this.codexToolFamiliesEnabled(),
       coordinatorSessionPreview: this.coordinatorSessionPreview,
       projectWorkingConfiguration: this.projectWorkingConfiguration,
       learningReview: this.learningReview,

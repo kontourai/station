@@ -39,6 +39,8 @@ import {
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import {
+  CODEX_VERSION_FAILURE_TTL_MS,
+  CODEX_VERSION_TTL_MS,
   codexVersionAdmitsToolFamilies,
   parseCodexCliVersion,
 } from '../adapters/codex-tool-families.js';
@@ -66,7 +68,6 @@ afterEach(() => __resetStationControlMcpTokensForTests());
 
 const route = createStationControlMcpRoutes({
   port: PORT,
-  progressiveToolsEnabled: () => true,
   resolveCallerRecord: () => ({
     principal: { id: 'person:reader', source: 'session-owner' },
     localProjectId: 'project-one',
@@ -136,6 +137,8 @@ interface HarnessOptions {
 
 function harness(options: HarnessOptions = {}) {
   const child = new FakeCodexProcess();
+  // The adapter's clock, which the version cache reads.
+  const clock = { ms: Date.parse('2026-11-17T00:00:00.000Z') };
   const runCommand = vi.fn(
     async (): Promise<CliCommandResult | null> =>
       options.version === null
@@ -168,7 +171,8 @@ function harness(options: HarnessOptions = {}) {
   );
   const adapter = new CodexAdapter({
     processFactory: () => child as never,
-    toolFamiliesEnabled: options.preview ?? (() => true),
+    now: () => new Date(clock.ms),
+    toolFamiliesEnabled: () => (options.preview ?? (() => true))(),
     findBinary: () => binary,
     runCommand,
     mintStationControlMcpAuth: mint,
@@ -176,6 +180,7 @@ function harness(options: HarnessOptions = {}) {
       ? {
           boundToolsEnabled: () => true,
           boundToolsEpoch: () => 1,
+          resolveSourceHome: () => tmpdir(),
           createBoundTools: (input) =>
             createCodexBoundToolServer({
               ...input,
@@ -207,7 +212,7 @@ function harness(options: HarnessOptions = {}) {
     const session = await withTimeout(started, 'start');
     return { params: request.params, session };
   };
-  return { adapter, runCommand, mint, start };
+  return { adapter, runCommand, mint, start, options, clock };
 }
 
 /** The station-control credential in the private thread configuration. */
@@ -235,7 +240,8 @@ function resolverFor(h: ReturnType<typeof harness>, codexBound = false) {
     resolveSkillDir: async () => null,
     stationInstructionsEnabled: () => true,
     codexBoundToolsEnabled: () => codexBound,
-    codexToolFamiliesAdmitted: () => h.adapter.toolFamiliesAdmitted(),
+    codexToolFamiliesAdmitted: (threadId) =>
+      h.adapter.toolFamiliesAdmitted(threadId),
   });
 }
 
@@ -316,11 +322,77 @@ describe('admission for a new Codex Session', () => {
     expect(h.runCommand).not.toHaveBeenCalled();
   });
 
-  test('the version is probed once per installed binary', async () => {
-    const h = harness();
+  test('a shim that switches Codex versions is re-read once the answer expires', async () => {
+    // A mise or asdf shim keeps its path, size and time while the Codex
+    // behind it changes, so only the answer's age can retire it.
+    const h = harness({ version: 'codex-cli 0.167.0' });
     await expect(h.adapter.toolFamiliesAdmitted()).resolves.toBe(true);
+    h.options.version = 'codex-cli 0.164.0';
+    h.clock.ms += CODEX_VERSION_TTL_MS - 1;
     await expect(h.adapter.toolFamiliesAdmitted()).resolves.toBe(true);
     expect(h.runCommand).toHaveBeenCalledOnce();
+    h.clock.ms += 1;
+    await expect(h.adapter.toolFamiliesAdmitted()).resolves.toBe(false);
+    expect(h.runCommand).toHaveBeenCalledTimes(2);
+  });
+
+  test('a failed probe is held briefly, then retried', async () => {
+    const h = harness({ version: null });
+    await expect(h.adapter.toolFamiliesAdmitted()).resolves.toBe(false);
+    h.clock.ms += CODEX_VERSION_FAILURE_TTL_MS - 1;
+    await expect(h.adapter.toolFamiliesAdmitted()).resolves.toBe(false);
+    // Repeated starts inside the hold do not each wait out a hanging probe.
+    expect(h.runCommand).toHaveBeenCalledOnce();
+    h.options.version = 'codex-cli 0.167.0';
+    h.clock.ms += 1;
+    await expect(h.adapter.toolFamiliesAdmitted()).resolves.toBe(true);
+    expect(h.runCommand).toHaveBeenCalledTimes(2);
+  });
+
+  test('one Session start probes once, and the start uses the answer its instructions got', async () => {
+    const h = harness({ version: 'codex-cli 0.167.0' });
+    const resolved = await resolverFor(h)({
+      threadId: 'families-shared',
+      cwd: tmpdir(),
+      provider: 'codex',
+      metadata: { agentSlug: 'ops-agent' },
+    });
+    expect(firstTurnText(resolved)).toContain('list_tool_families');
+    // The shim switches and the version answer expires before the engine
+    // starts; the start still keeps the families its instructions promised.
+    h.options.version = 'codex-cli 0.164.0';
+    h.clock.ms += CODEX_VERSION_TTL_MS + 1;
+    const { params } = await h.start(resolved, 'native-shared');
+    expect(params.config).toMatchObject({ [FEATURE]: true });
+    expect(await listed(credentialOf(params)!)).toEqual(INDEX);
+    expect(h.runCommand).toHaveBeenCalledOnce();
+    // The answer was used once: the next start asks again.
+    await expect(
+      h.adapter.toolFamiliesAdmitted('families-shared'),
+    ).resolves.toBe(false);
+    await h.adapter.stopSession('families-shared');
+  });
+
+  test('turning the preview off leaves a running admitted Session its index and families', async () => {
+    let preview = true;
+    const h = harness({ preview: () => preview });
+    const resolved = await resolverFor(h)({
+      threadId: 'families-switch',
+      cwd: tmpdir(),
+      provider: 'codex',
+      metadata: { agentSlug: 'ops-agent' },
+    });
+    const { params } = await h.start(resolved, 'native-switch');
+    const token = credentialOf(params)!;
+    preview = false;
+    // Codex re-lists only after list_changed, so this Session keeps the
+    // index it was given; its index tools and families must still answer.
+    expect(await listed(token)).toEqual(INDEX);
+    expect(await loadFamily(token, 'Agents')).toMatchObject({ loaded: true });
+    expect(await listed(token)).toContain('list_agents');
+    // New Sessions follow the preview.
+    await expect(h.adapter.toolFamiliesAdmitted()).resolves.toBe(false);
+    await h.adapter.stopSession('families-switch');
   });
 
   test('never on the Codex bound catalog: no header credential, no feature, no families line', async () => {
@@ -374,10 +446,7 @@ describe('admission for a new Codex Session', () => {
     expect(params.config).toMatchObject({ [FEATURE]: true });
     // A coordinator credential's route call also needs a designated caller
     // record; what matters here is that the credential starts at the index.
-    const disclosure = stationControlDisclosureForToken(
-      credentialOf(params)!,
-      () => true,
-    );
+    const disclosure = stationControlDisclosureForToken(credentialOf(params)!);
     expect(disclosure).toBeDefined();
     expect(disclosure!.has('Agents')).toBe(false);
     await h.adapter.stopSession('families-coordinator');
@@ -419,6 +488,30 @@ describe('resume', () => {
       toolFamilies: true,
     });
     await second.adapter.stopSession('families-resume');
+  });
+
+  test('a continuation that serves the bound catalog beside the header server gets no families', async () => {
+    // A source-affinity continuation with the bound preview on serves the
+    // persisted catalog on the bound channel and still mints the header
+    // server; that header server is not given families.
+    const h = harness({ bound: true });
+    const { params, session } = await h.start(
+      input({
+        codexThreadId: 'native-sa',
+        toolFamilies: true,
+        sourceAffinity: { kind: 'codex-config-home', ref: 'a'.repeat(64) },
+      }),
+      'native-sa',
+    );
+    expect(h.mint).toHaveBeenCalledOnce();
+    expect(h.mint.mock.calls[0]).not.toContain(true);
+    expect(params.config).toHaveProperty('mcp_servers.station-control.url');
+    expect(params.config).not.toHaveProperty(FEATURE);
+    // Not listed through the route: the bound server's in-process mint for
+    // this Session replaces the header credential (a slice-2 behaviour of
+    // this continuation, reported separately), so it answers 401 here.
+    expect(session.resumeCursor).toMatchObject({ toolFamilies: true });
+    await h.adapter.stopSession('families-resume');
   });
 
   test('a thread that started without families keeps the static catalog on resume', async () => {

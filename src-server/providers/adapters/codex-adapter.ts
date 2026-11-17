@@ -589,6 +589,9 @@ type CodexModelListResult = {
 
 /** The executable name this adapter probes and spawns. */
 const CODEX_CLI_COMMAND = 'codex';
+/** How long a resolver's admission answer waits for its Session start. */
+const TOOL_FAMILY_ADMISSION_HOLD_MS = 5 * 60_000;
+const TOOL_FAMILY_ADMISSIONS_MAX = 256;
 
 const CODEX_MODEL_MAX_ENTRIES = 1000;
 const CODEX_MODEL_MAX_PAGES = 32;
@@ -1087,6 +1090,11 @@ export class CodexAdapter implements ProviderAdapterShape {
   >();
   private quotaSnapshotGeneration = 0;
   private readonly toolFamilyQualification: CodexToolFamilyQualification;
+  /** One admission answer per Session start, shared by resolver and start. */
+  private readonly toolFamilyAdmissions = new Map<
+    string,
+    { admitted: Promise<boolean>; at: number }
+  >();
 
   constructor(private readonly options: CodexAdapterOptions = {}) {
     // The binary a session spawn resolves (`spawnCodexProcess`).
@@ -1095,6 +1103,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         managedEngineBinaryPath('codex') ??
         (options.findBinary ?? findCliBinary)(CODEX_CLI_COMMAND),
       (command, args) => (options.runCommand ?? runCliCommand)(command, args),
+      () => this.now().getTime(),
     );
     if (options.nativeSessionOwnership)
       this.continuity.nativeReturn = 'same-binding';
@@ -1125,13 +1134,44 @@ export class CodexAdapter implements ProviderAdapterShape {
   /**
    * #2376 slice 3: whether Codex may get Station Control as tool families:
    * the preview is on and the installed Codex is at least the qualified
-   * version. The session resolver asks the same question for the
-   * orchestration instructions' families line; `startWithReservation`
-   * narrows it to the header-token path.
+   * version. The session resolver asks for a new Session's `threadId` when
+   * it composes the instructions' families line; that start then takes the
+   * same answer (`takeToolFamilyAdmission`), so the line and the credential
+   * cannot disagree and one start probes the version at most once.
+   * `startWithReservation` narrows the answer to the header-token path.
    */
-  async toolFamiliesAdmitted(): Promise<boolean> {
-    if (this.options.toolFamiliesEnabled?.() !== true) return false;
-    return this.toolFamilyQualification.admitted();
+  toolFamiliesAdmitted(threadId?: string): Promise<boolean> {
+    const now = this.now().getTime();
+    const enabled = this.options.toolFamiliesEnabled?.() === true;
+    const held = threadId ? this.toolFamilyAdmissions.get(threadId) : undefined;
+    // A held answer can only narrow: the preview switched off since then
+    // withdraws it, and one that said no never turns into yes (its
+    // instructions carry no families line).
+    if (held && now - held.at < TOOL_FAMILY_ADMISSION_HOLD_MS)
+      return enabled ? held.admitted : Promise.resolve(false);
+    const admitted = enabled
+      ? this.toolFamilyQualification.admitted()
+      : Promise.resolve(false);
+    if (threadId) {
+      // An answer nobody took (the start failed or never came) is dropped
+      // once it is older than the hold, and the map stays bounded.
+      for (const [key, entry] of this.toolFamilyAdmissions)
+        if (now - entry.at >= TOOL_FAMILY_ADMISSION_HOLD_MS)
+          this.toolFamilyAdmissions.delete(key);
+      if (this.toolFamilyAdmissions.size >= TOOL_FAMILY_ADMISSIONS_MAX)
+        this.toolFamilyAdmissions.delete(
+          this.toolFamilyAdmissions.keys().next().value!,
+        );
+      this.toolFamilyAdmissions.set(threadId, { admitted, at: now });
+    }
+    return admitted;
+  }
+
+  /** The answer the resolver got for this start, or a fresh one; used once. */
+  private takeToolFamilyAdmission(threadId: string): Promise<boolean> {
+    const admitted = this.toolFamiliesAdmitted(threadId);
+    this.toolFamilyAdmissions.delete(threadId);
+    return admitted;
   }
 
   async getPrerequisites(options?: {
@@ -2259,13 +2299,17 @@ export class CodexAdapter implements ProviderAdapterShape {
     // gets families only when its thread started with them (the cursor's
     // `toolFamilies`): a thread told nothing about families keeps the whole
     // catalog it has been using.
-    const toolFamiliesAdmitted =
+    // `servesCatalog` covers `boundCatalog` and also a source-affinity
+    // continuation that serves the catalog beside the header server.
+    const toolFamiliesEligible =
       !!boundControl &&
-      !boundCatalog &&
       !servesCatalog &&
       !adoption &&
-      (resumeCursor ? resumeCursor.toolFamilies === true : true) &&
-      (await this.toolFamiliesAdmitted());
+      (resumeCursor ? resumeCursor.toolFamilies === true : true);
+    let toolFamiliesAdmitted = false;
+    if (toolFamiliesEligible)
+      toolFamiliesAdmitted = await this.takeToolFamilyAdmission(input.threadId);
+    else this.toolFamilyAdmissions.delete(input.threadId);
     const toolServers = await this.resolveAgentToolServers(
       input,
       boundCatalog,

@@ -10,7 +10,6 @@
  * least the qualified one; an unreadable or older version keeps the static
  * catalog. Re-run the qualification after each Codex upgrade.
  */
-import { realpathSync, statSync } from 'node:fs';
 import type { CliCommandResult } from '../auth/cli-auth.js';
 
 /** The oldest codex-cli the live qualification passed. */
@@ -56,15 +55,22 @@ export function codexVersionAdmitsToolFamilies(stdout: string): boolean {
   return !version.prerelease;
 }
 
+/** How long an answered probe stands: a shim can switch versions behind one path. */
+export const CODEX_VERSION_TTL_MS = 60_000;
+/** How long a failed probe (no answer, error, timeout) stands before a retry. */
+export const CODEX_VERSION_FAILURE_TTL_MS = 30_000;
+
 /**
- * Reads the version of the binary Station launches, once per installed
- * binary: the cache key is the resolved file's path, size and modification
- * time, so an upgrade in place or a switched symlink is probed again. A
- * failed probe is not cached.
+ * Reads the version of the binary Station launches. The launcher's path says
+ * nothing about the version behind it (a mise or asdf shim keeps its path,
+ * size and time while the selected Codex changes), so an answer stands for
+ * `CODEX_VERSION_TTL_MS` only, and a failed probe for
+ * `CODEX_VERSION_FAILURE_TTL_MS`, so that repeated starts do not each wait out
+ * a hanging `--version`. Concurrent callers share one probe.
  */
 export class CodexToolFamilyQualification {
-  private cached?: { identity: string; admitted: boolean };
-  private inflight?: { identity: string; verdict: Promise<boolean> };
+  private cached?: { binary: string; admitted: boolean; expiresAt: number };
+  private inflight?: { binary: string; verdict: Promise<boolean> };
 
   constructor(
     private readonly resolveBinary: () => string | null | undefined,
@@ -72,21 +78,16 @@ export class CodexToolFamilyQualification {
       command: string,
       args: string[],
     ) => Promise<CliCommandResult | null>,
+    private readonly now: () => number = Date.now,
   ) {}
 
   async admitted(): Promise<boolean> {
     const binary = this.resolveBinary();
     if (!binary) return false;
-    let identity: string;
-    try {
-      const real = realpathSync(binary);
-      const stat = statSync(real);
-      identity = `${real}\0${stat.size}\0${stat.mtimeMs}`;
-    } catch {
-      return false;
-    }
-    if (this.cached?.identity === identity) return this.cached.admitted;
-    if (this.inflight?.identity === identity) return this.inflight.verdict;
+    const cached = this.cached;
+    if (cached?.binary === binary && cached.expiresAt > this.now())
+      return cached.admitted;
+    if (this.inflight?.binary === binary) return this.inflight.verdict;
     const verdict = this.run(binary, ['--version']).then(
       (result) => {
         if (!result || result.code !== 0 || result.timedOut) return undefined;
@@ -95,10 +96,18 @@ export class CodexToolFamilyQualification {
       () => undefined,
     );
     const shared = verdict.then((admitted) => admitted === true);
-    this.inflight = { identity, verdict: shared };
+    this.inflight = { binary, verdict: shared };
     try {
       const admitted = await verdict;
-      if (admitted !== undefined) this.cached = { identity, admitted };
+      this.cached = {
+        binary,
+        admitted: admitted === true,
+        expiresAt:
+          this.now() +
+          (admitted === undefined
+            ? CODEX_VERSION_FAILURE_TTL_MS
+            : CODEX_VERSION_TTL_MS),
+      };
       return admitted === true;
     } finally {
       if (this.inflight?.verdict === shared) this.inflight = undefined;

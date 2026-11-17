@@ -378,7 +378,6 @@ async function startStation(observed: Observations) {
     '/',
     createStationControlMcpRoutes({
       port,
-      progressiveToolsEnabled: () => true,
       resolveCallerRecord: () => ({
         principal: { id: 'person:qualification', source: 'session-owner' },
         localProjectId: 'qualification',

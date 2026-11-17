@@ -199,7 +199,7 @@ export interface InitializeRuntimeDeps {
   /** `codex-bound-browser-device-tools` Feature Preview, read per Session start. */
   codexBoundToolsEnabled?: () => boolean;
   /** #2376 slice 3: `CodexAdapter.toolFamiliesAdmitted`, read per Session start. */
-  codexToolFamiliesAdmitted?: () => Promise<boolean>;
+  codexToolFamiliesAdmitted?: (threadId: string) => Promise<boolean>;
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;

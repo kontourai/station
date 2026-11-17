@@ -115,7 +115,7 @@ interface SessionAgentResolverOptions {
    * instructions carry the family-loading line. Claude and ACP engines never
    * get families.
    */
-  codexToolFamiliesAdmitted?: () => Promise<boolean>;
+  codexToolFamiliesAdmitted?: (threadId: string) => Promise<boolean>;
   /** The `codex-bound-browser-device-tools` preview (Codex browser/device tools). */
   codexBoundToolsEnabled?: () => boolean;
 }
@@ -380,7 +380,7 @@ async function resolveStationInstructions(args: {
       provider === 'codex' &&
       assurance !== 'bound' &&
       input.resumeCursor === undefined &&
-      (await options.codexToolFamiliesAdmitted?.()) === true,
+      (await options.codexToolFamiliesAdmitted?.(input.threadId)) === true,
   });
   if (!composed) return;
   const base = {
