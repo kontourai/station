@@ -96,7 +96,7 @@ attempts used**, with the failing checks named, and Station notifies you once. M
 agent's attempts to merge, arm auto-merge or force-push are refused, a change
 to CI configuration asks you first, and each is listed under **Refused
 actions**. **Stop watching** turns it off for that Task. See
-[Task-owned pull requests](../decisions/task-owned-pull-requests.md) for what
+[Task-owned pull requests](https://github.com/kontourai/station/blob/main/docs/decisions/task-owned-pull-requests.md) for what
 this does and does not cover.
 
 Example: “Explain this function” can be a direct chat. “Refactor this module,
