@@ -2780,13 +2780,39 @@ export class BrowserAutomation {
           return refuse('not-permitted', EVALUATE_NOT_PERMITTED, {
             setting: 'browserEvaluate',
           });
-        // Read from Station's isolated world, so the page cannot answer it.
-        // Anything but a definite "not a site-less blank page" is refused.
-        const blank = await this.isolatedEval<boolean>(
-          selected,
-          control.send,
-          SITELESS_BLANK_PAGE,
+        // The check and the script run in ONE page-world context, named by
+        // its unique id: a navigation between them (a person's address bar,
+        // Back, Reload, or the page itself) destroys that context, so the
+        // script then fails instead of running in the new document. On a
+        // site-less blank page no page script has ever run (its origin is
+        // opaque and unique, so no other document reaches it), and
+        // `location` is unforgeable, so the page world answers truthfully
+        // where it matters. Anything but a definite "no" is refused.
+        // Idempotent; reports existing contexts if nobody had enabled it.
+        await control.send('Runtime.enable', {});
+        const world = selected.live.host.mainWorld?.(
+          selected.live.target.targetId,
         );
+        if (world === undefined)
+          return refuse('browser-error', EVALUATE_NO_PAGE_WORLD);
+        let blank: { result?: { value?: unknown } } | undefined;
+        try {
+          blank = await control.send(
+            'Runtime.evaluate',
+            {
+              expression: SITELESS_BLANK_PAGE,
+              uniqueContextId: world,
+              returnByValue: true,
+              silent: true,
+              timeout: this.stepMs,
+            },
+            this.stepMs + 500,
+          );
+        } catch (error) {
+          if (isGoneContext(error) || isNavigatedWhileRunning(error))
+            return refuse('browser-error', EVALUATE_PAGE_NAVIGATED);
+          throw error;
+        }
         if (blank?.result?.value !== false)
           return refuse('browser-refused', EVALUATE_ON_BLANK_PAGE);
         let outcome:
@@ -2804,11 +2830,13 @@ export class BrowserAutomation {
             }
           | 'timeout';
         try {
-          // The page's OWN world: this is the page's JavaScript by design.
+          // The page's OWN world: this is the page's JavaScript by design,
+          // bound to the context the check above read.
           outcome = await control.send(
             'Runtime.evaluate',
             {
               expression: input.expression,
+              uniqueContextId: world,
               returnByValue: true,
               awaitPromise: true,
               userGesture: false,
@@ -2817,6 +2845,18 @@ export class BrowserAutomation {
             timeoutMs + 1_000,
           );
         } catch (error) {
+          // The checked document is gone, so the script did not run.
+          if (isGoneContext(error))
+            return refuse('browser-error', EVALUATE_PAGE_NAVIGATED);
+          if (isNavigatedWhileRunning(error)) {
+            this.record(
+              authority,
+              selected,
+              'script-evaluated',
+              `${input.expression.length}-character script (page navigated while it ran)`,
+            );
+            return refuse('browser-error', EVALUATE_NAVIGATED_WHILE_RUNNING);
+          }
           if (!(error instanceof StepTimeout)) throw error;
           outcome = 'timeout';
         }
@@ -2886,6 +2926,38 @@ export class BrowserAutomation {
  */
 const SITELESS_BLANK_PAGE =
   "location.href === 'about:blank' && self.origin === 'null'";
+
+/**
+ * Chromium's answer to a command bound to a script context that no longer
+ * exists (its document was replaced): "uniqueContextId not found" on Chrome
+ * 157 and 158. Matched on the protocol's message; an unmatched failure keeps
+ * its ordinary mapping, which also never runs the script.
+ */
+function isGoneContext(error: unknown): boolean {
+  return (
+    error instanceof CdpProtocolError &&
+    /uniqueContextId not found|cannot find context with specified id/i.test(
+      error.protocolMessage,
+    )
+  );
+}
+
+/** Chromium's answer when the page navigated while the script ran. */
+function isNavigatedWhileRunning(error: unknown): boolean {
+  return (
+    error instanceof CdpProtocolError &&
+    /inspected target navigated or closed/i.test(error.protocolMessage)
+  );
+}
+
+const EVALUATE_PAGE_NAVIGATED =
+  'The page navigated before the script ran, so it did not run. Check where the page is now (browser_snapshot), then try again.';
+
+const EVALUATE_NAVIGATED_WHILE_RUNNING =
+  'The page navigated while the script was running, so its result is lost; it may have run in part. Check where the page is now (browser_snapshot) before trying again.';
+
+const EVALUATE_NO_PAGE_WORLD =
+  'The page is between documents (it is loading), so the script did not run. Try again in a moment.';
 
 const EVALUATE_ON_BLANK_PAGE =
   'This tab has no page loaded (about:blank), so Station does not run scripts in it: there, a script that adds a sandboxed frame can make the browser quit and close every tab. Open a page with browser_navigate first.';

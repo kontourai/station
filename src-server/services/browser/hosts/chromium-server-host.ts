@@ -783,6 +783,8 @@ interface Running {
   created: Set<string>;
   /** Page targets awaiting the untracked-target check. */
   pendingUntracked: Map<string, NodeJS.Timeout>;
+  /** Each target's current main-frame page-world script context. */
+  mainWorlds: Map<string, { id: number; uniqueId: string }>;
 }
 
 /** Grace before an unknown page target (not ours, not a popup) is closed. */
@@ -1029,6 +1031,10 @@ export class ChromiumServerHost implements BrowserHost {
     return this.guarded;
   }
 
+  mainWorld(targetId: string): string | undefined {
+    return this.running?.mainWorlds.get(targetId)?.uniqueId;
+  }
+
   async closeTarget(
     targetId: string,
     origin: CloseOrigin = 'owned-close',
@@ -1230,6 +1236,7 @@ export class ChromiumServerHost implements BrowserHost {
       creating: 0,
       created: new Set(),
       pendingUntracked: new Map(),
+      mainWorlds: new Map(),
     };
     void launch.exited.then((reason) => {
       this.reportDiagnostic({
@@ -2105,7 +2112,9 @@ export class ChromiumServerHost implements BrowserHost {
     const offParsed = transport.on('Page.domContentEventFired', readTitle);
     const offLoaded = transport.on('Page.loadEventFired', readTitle);
     const offCommitted = this.watchCommittedUrls(running, targetId, sessionId);
+    const offMainWorld = this.watchMainWorld(running, targetId, sessionId);
     return () => {
+      offMainWorld();
       offIconNavigation();
       offIconResponse();
       offIconFinished();
@@ -2113,6 +2122,72 @@ export class ChromiumServerHost implements BrowserHost {
       offParsed();
       offLoaded();
       offCommitted();
+    };
+  }
+
+  /**
+   * Track the main frame's page-world script context from `Runtime` events.
+   * Subscribed at attach, before anyone can enable `Runtime` on the session,
+   * so the enable's report of existing contexts is never missed. A context
+   * is forgotten when it is destroyed or cleared, so a navigation never
+   * leaves a stale one here for longer than its events take to arrive (and
+   * a stale one names a context the browser no longer runs anything in).
+   */
+  private watchMainWorld(
+    running: Running,
+    targetId: string,
+    sessionId: string,
+  ): () => void {
+    const transport = running.launch.transport;
+    const forget = () => running.mainWorlds.delete(targetId);
+    const offs = [
+      transport.on('Runtime.executionContextCreated', (params, session) => {
+        if (session !== sessionId) return;
+        const context = (
+          params as {
+            context?: {
+              id?: unknown;
+              uniqueId?: unknown;
+              auxData?: { isDefault?: unknown; frameId?: unknown };
+            };
+          }
+        )?.context;
+        // A top-level page's main frame id is its target id.
+        if (
+          context?.auxData?.isDefault !== true ||
+          context.auxData.frameId !== targetId ||
+          typeof context.id !== 'number' ||
+          typeof context.uniqueId !== 'string' ||
+          context.uniqueId === ''
+        )
+          return;
+        running.mainWorlds.set(targetId, {
+          id: context.id,
+          uniqueId: context.uniqueId,
+        });
+      }),
+      transport.on('Runtime.executionContextDestroyed', (params, session) => {
+        if (session !== sessionId) return;
+        const current = running.mainWorlds.get(targetId);
+        const destroyed = params as {
+          executionContextId?: unknown;
+          executionContextUniqueId?: unknown;
+        };
+        if (
+          current &&
+          (destroyed?.executionContextUniqueId === current.uniqueId ||
+            (destroyed?.executionContextUniqueId === undefined &&
+              destroyed?.executionContextId === current.id))
+        )
+          forget();
+      }),
+      transport.on('Runtime.executionContextsCleared', (_params, session) => {
+        if (session === sessionId) forget();
+      }),
+    ];
+    return () => {
+      for (const off of offs) off();
+      forget();
     };
   }
 

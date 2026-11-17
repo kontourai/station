@@ -86,16 +86,35 @@ new tab and a tab sent to `about:blank` through the address bar or
 opened (`window.open('')`) or navigated to itself inherits that page's site;
 on 158 the same frame loads there without an abort.
 
-`browser_evaluate` first reads, in Station's isolated world, whether the main
-frame is `about:blank` with an opaque origin, and refuses with
-`browser-refused` unless the answer is a definite no. The check also refuses
-opaque-origin blank pages that did not abort on 158, such as the blank page
-Station leaves after refusing a page's own `blob:` navigation; the cost is an
-Agent opening a page first. The check and the Agent's script are two CDP calls, so a
-browser-initiated navigation to `about:blank` landing between them is not
-excluded. Station does not turn off `IsolateSandboxedIframes`, which would
-remove the process boundary around sandboxed content, and does not change
-the blank start page a person sees.
+`browser_evaluate` first reads whether the main frame is `about:blank` with
+an opaque origin, and refuses with `browser-refused` unless the answer is a
+definite no. The check also refuses opaque-origin blank pages that did not
+abort on 158, such as the blank page Station leaves after refusing a page's
+own `blob:` navigation; the cost is an Agent opening a page first.
+
+The check and the Agent's script are two CDP calls, and a person's
+navigation does not wait for an Agent's call: the address bar, Back, Forward
+and Reload act at once. On 158, an address-bar navigation to `about:blank`
+sent 0 to 11 ms after the Agent's call aborted the browser in 6 of 6 runs,
+and a Forward onto a browser-made `about:blank` entry aborted it too. Both
+calls are therefore bound to one page-world script context, named by the
+`uniqueContextId` the host records from `Runtime.executionContextCreated`.
+A navigation that replaces the document destroys that context, so a script
+sent after it fails ("uniqueContextId not found") and the tool answers that
+the page navigated before the script ran, instead of running it in the new
+document. The check runs in that page world rather than Station's isolated
+world, because only the page world can be bound this way. It still cannot
+be talked out of a refusal: `location` is unforgeable, and a site-less blank
+page has run no page script and is reachable from no other document. On 158,
+300 rounds each of an Agent's trigger racing an address-bar navigation to
+`about:blank` (either order), a Back and a Forward onto such an entry ended
+with no abort; with the binding removed, the Forward race aborted again
+(Back did not abort in 150 unbound rounds). Reload was not raced: it reloads
+the same address, so it cannot turn a page with a site into a site-less one.
+
+Station does not turn off `IsolateSandboxedIframes`, which would remove the
+process boundary around sandboxed content, and does not change the blank
+start page a person sees.
 
 ## Why passthrough tokens cannot simply become bound
 

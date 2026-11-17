@@ -5,7 +5,9 @@
  * `sandbox="allow-scripts"` srcdoc frame (`site_instance_impl.cc` CHECK
  * `has_site_`); Chrome 157 does not. Station refuses evaluation on such a
  * page and keeps it on pages that have a site, including an about:blank a
- * page navigated to itself.
+ * page navigated to itself. The check and the script share one page-world
+ * context, so a navigation landing between them fails the script instead of
+ * running it in the new blank document.
  *
  * Runs against an INSTALLED Chrome/Edge only (never a download). Hosted full
  * regression binds Playwright's pinned Chrome for Testing as `google-chrome`
@@ -27,7 +29,10 @@ import {
   type BrowserAgentAuthority,
 } from '../browser-agent-authority.js';
 import { BrowserAutomation } from '../browser-automation.js';
-import { createLocalBrowserHostResolver } from '../browser-host.js';
+import {
+  type CdpTransport,
+  createLocalBrowserHostResolver,
+} from '../browser-host.js';
 import { BrowserLiveSurfaces } from '../browser-live-surfaces.js';
 import { loadLocatorEngineInstallExpression } from '../browser-locator-engine.js';
 import { BrowserProjectSettingsStore } from '../browser-project-settings.js';
@@ -84,6 +89,16 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
   let binder: BrowserLiveSurfaces;
   let automation: BrowserAutomation;
   let authority: BrowserAgentAuthority;
+  let host: ChromiumServerHost | undefined;
+  /** Runs before each page CDP call the tools send; a test sets it. */
+  let interpose:
+    | ((
+        method: string,
+        params: object | undefined,
+        sessionId: string | undefined,
+        transport: CdpTransport,
+      ) => Promise<void>)
+    | undefined;
 
   const open = async (url?: string) => {
     const opened = await automation.open(authority, {
@@ -126,18 +141,32 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
     });
     sessions = new BrowserSessionRegistry({
       stationHome: home,
-      hostResolver: createLocalBrowserHostResolver(
-        () =>
-          new ChromiumServerHost({
-            executablePath: chromium,
-            egressPolicy: {
-              listeners: () => listeners,
-              interfaceAddresses: localInterfaceAddresses,
-              reach: { kind: 'operator' },
+      hostResolver: createLocalBrowserHostResolver(() => {
+        const created = new ChromiumServerHost({
+          executablePath: chromium,
+          egressPolicy: {
+            listeners: () => listeners,
+            interfaceAddresses: localInterfaceAddresses,
+            reach: { kind: 'operator' },
+          },
+          launchTimeoutMs: 120_000,
+        });
+        const guarded = created.cdp.bind(created);
+        created.cdp = () => {
+          const transport = guarded();
+          return {
+            send: async (method, params, sessionId) => {
+              await interpose?.(method, params, sessionId, transport);
+              return transport.send(method, params, sessionId);
             },
-            launchTimeoutMs: 120_000,
-          }),
-      ),
+            on: (event, fn) => transport.on(event, fn),
+            close: () => transport.close(),
+            closed: transport.closed,
+          };
+        };
+        host = created;
+        return created;
+      }),
     });
     surfaces = new LiveSurfaceRegistry({ dispatchTimeoutMs: 10_000 });
     binder = new BrowserLiveSurfaces({
@@ -170,6 +199,7 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
   }, 60_000);
 
   afterAll(async () => {
+    interpose = undefined;
     if (executablePath) {
       await binder?.dispose().catch(() => {});
       await sessions?.shutdown().catch(() => {});
@@ -222,6 +252,51 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
       ok: false,
       code: 'browser-refused',
     });
+  }, 120_000);
+
+  test(`a navigation to about:blank between the check and the script: the script does not run there, and the browser keeps answering`, async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    const other = await open(fixtureUrl);
+    const site = await open(`${fixtureUrl}race`);
+    await answers(site);
+    const target = sessions.liveTarget(site)!.target;
+    // The address bar's navigation lands after the check answered and
+    // before the agent's script reaches the page: the race, made certain.
+    interpose = async (method, params, sessionId, transport) => {
+      const p = params as { uniqueContextId?: string; silent?: boolean };
+      if (
+        method !== 'Runtime.evaluate' ||
+        sessionId !== target.cdpSessionId ||
+        p.uniqueContextId === undefined ||
+        p.silent === true
+      )
+        return;
+      interpose = undefined;
+      await transport.send('Page.navigate', { url: 'about:blank' }, sessionId);
+      const deadline = Date.now() + 10_000;
+      while (
+        [undefined, p.uniqueContextId].includes(
+          host?.mainWorld(target.targetId),
+        ) &&
+        Date.now() < deadline
+      )
+        await new Promise((r) => setTimeout(r, 20));
+      expect(host?.mainWorld(target.targetId)).not.toBe(p.uniqueContextId);
+    };
+    const result = await evaluate(site, SANDBOXED_SRCDOC);
+    expect(interpose).toBeUndefined();
+    expect(result).toMatchObject({ ok: false, code: 'browser-error' });
+    expect((result as { message: string }).message).toMatch(
+      /navigated before the script ran, so it did not run/,
+    );
+    // The tab is on the site-less blank page now, and refused there.
+    expect(await evaluate(site, SANDBOXED_SRCDOC)).toMatchObject({
+      ok: false,
+      code: 'browser-refused',
+    });
+    await answers(other);
+    expect(sessions.getSession(site)?.state).toBe('live');
+    expect(sessions.getSession(other)?.state).toBe('live');
   }, 120_000);
 
   test('under Chrome 158 the refused trigger leaves the browser and its other tab answering', async (ctx) => {
