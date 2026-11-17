@@ -1,0 +1,7 @@
+{
+  "revision": "0a2b19721dd788427254cc93957fa0195d659958",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"actionlint-gate.test.ts now counts five fleet capacity jobs (container smoke left the fleet); releasing.md claims about landing and hosted capacity are unaffected.","inputs":["docs/guides/releasing.md","scripts/__tests__/actionlint-gate.test.ts"]}
+  ]
+}

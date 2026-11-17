@@ -1,0 +1,7 @@
+{
+  "revision": "0a2b19721dd788427254cc93957fa0195d659958",
+
+  "notes": [
+    {"path":"docs/design/private-cloud-environment.md","note":"Container smoke still exercises the same script and contracts; only its runner changed.","inputs":["docs/design/private-cloud-environment.md",".github/workflows/container-smoke.yml"]}
+  ]
+}

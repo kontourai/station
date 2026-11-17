@@ -1,0 +1,7 @@
+{
+  "revision": "0a2b19721dd788427254cc93957fa0195d659958",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Cites testing.md sections (lanes, test-effectiveness, heavy-check slots) this change did not alter; only a scheduled-failure section and two table rows changed.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

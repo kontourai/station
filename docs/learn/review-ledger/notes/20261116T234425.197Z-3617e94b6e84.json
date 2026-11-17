@@ -1,0 +1,7 @@
+{
+  "revision": "0a2b19721dd788427254cc93957fa0195d659958",
+
+  "notes": [
+    {"path":"docs/guides/private-runner-partition.md","note":"Container smoke now runs on ubuntu-22.04; only dispatch-only ci-extended and recover-terminal-capacity-owner still request heavy Linux labels (checked runs-on in each workflow).","inputs":["docs/guides/private-runner-partition.md",".github/workflows/container-smoke.yml"]}
+  ]
+}
