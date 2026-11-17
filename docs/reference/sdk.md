@@ -6344,7 +6344,9 @@ read is `{ readable: false }`, and a 409 about such a chat reads through
 (`getTaskPullRequestWatch`), sets the Task's own choice
 (`setTaskPullRequestWatch` with `on`, `off` or `project`) and sets a Project's
 setting (`setProjectPullRequestWatch`). Gate it like pull request feedback, on
-`readPullRequestFeedbackCapability`. The
+`readPullRequestFeedbackCapability`. The barrel's React hooks wrap them:
+`usePullRequestFeedbackCapability`, `useTaskPullRequestWatchQuery`,
+`useSetTaskPullRequestWatchMutation` and `useSetProjectPullRequestWatchMutation`. The
 [client](../../packages/sdk/src/client/pull-request-watch.ts) calls the
 [Task routes](../../src-server/routes/orchestration/tasks.ts) and the
 [Project route](../../src-server/routes/projects/projects.ts).
