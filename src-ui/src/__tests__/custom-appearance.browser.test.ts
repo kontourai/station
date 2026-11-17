@@ -143,7 +143,7 @@ describe('custom appearance in Chromium', () => {
   });
 
   test('typed visual styling reaches its consumers, pauses for approvals, and clears', async () => {
-    await call('setVisual', { radius: 20, fontSize: 18, panelOpacity: 0.6 });
+    await harness('setVisual', { radius: 20, fontSize: 18, panelOpacity: 0.6 });
     expect(
       await page.evaluate(
         () =>
@@ -158,7 +158,7 @@ describe('custom appearance in Chromium', () => {
           .trim(),
       ),
     ).toBe('18px');
-    await call('showApproval', true);
+    await harness('showApproval', true);
     expect(
       await page.evaluate(
         () =>
@@ -166,7 +166,7 @@ describe('custom appearance in Chromium', () => {
             .borderRadius,
       ),
     ).not.toBe('20px');
-    await call('showApproval', false);
+    await harness('showApproval', false);
     expect(
       await page.evaluate(
         () =>
@@ -174,7 +174,7 @@ describe('custom appearance in Chromium', () => {
             .borderRadius,
       ),
     ).toBe('20px');
-    await call('setActive', null);
+    await harness('setActive', null);
     expect(
       await page.evaluate(() =>
         getComputedStyle(document.documentElement)
@@ -392,7 +392,8 @@ describe('custom appearance in Chromium', () => {
     expect(report.proposalId).toBe('proposal-1');
     expect(report.mode).toBe('dark');
     expect(report.hooks.find((h) => h.id === 'sidebar')?.matched).toBe(1);
-    expect(report.hooks.find((h) => h.id === 'composer')?.matched).toBe(0);
+    expect(report.hooks.find((h) => h.id === 'composer')?.matched).toBe(1);
+    expect(report.hooks.find((h) => h.id === 'menu')?.matched).toBe(0);
     // The text it made unreadable is reported; a pair it did not touch is not.
     expect(report.contrast).toContainEqual(
       expect.objectContaining({

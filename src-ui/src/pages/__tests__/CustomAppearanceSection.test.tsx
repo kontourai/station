@@ -183,7 +183,7 @@ describe('Appearance studio', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     expect(screen.queryByText('Visual style')).toBeNull();
     expect(screen.getByLabelText('CSS')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(mutate).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'save', revision: 'r1' }),
       expect.anything(),
@@ -204,9 +204,7 @@ describe('Appearance studio', () => {
     fireEvent.change(screen.getByLabelText('Accent color picker'), {
       target: { value: '#123456' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     expect(preview).toHaveBeenCalledWith(
       expect.objectContaining({
         visual: { panelOpacity: 0.65, radius: 20 },
@@ -289,14 +287,10 @@ describe('Appearance studio', () => {
       'value',
       'Imported harbor',
     );
-    expect(
-      screen.queryByRole('button', { name: 'Save', exact: true }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     expect(mutate).not.toHaveBeenCalled();
     expect(saveAppearance).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     expect(preview).toHaveBeenCalledWith(imported, expect.anything());
   });
 
@@ -339,7 +333,7 @@ describe('Appearance studio', () => {
       ],
     };
     render(<CustomAppearanceSection studioEnabled />);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Harbor updated' },
     });
@@ -418,9 +412,7 @@ describe('Appearance studio', () => {
     });
     await screen.findByText('Choose a PNG, JPEG or WebP image.');
     expect(screen.getByText('Image did not load')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Preview', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     expect(preview.mock.calls[0]![0].visual).toBeUndefined();
   });
 

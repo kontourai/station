@@ -2439,7 +2439,7 @@ function snapshotEvent(
     const refusal =
       parseStationControlRefusal(toolName, payload.error) ??
       parseStationControlRefusal(toolName, payload.output);
-    const appearance = appearanceProposalReferenceOfEvent(payload);
+    const appearance = appearanceProposalReferenceOfEvent(event.payload);
     snapshotPayload = {
       ...payload,
       ...(appearance

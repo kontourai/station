@@ -1,6 +1,9 @@
 /** @vitest-environment jsdom */
 import type { CustomAppearanceDocument } from '@kontourai/station-contracts/custom-appearance';
-import { setClientCredentialResolver } from '@kontourai/station-sdk';
+import {
+  customAppearanceKey,
+  setClientCredentialResolver,
+} from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -49,7 +52,7 @@ import {
 } from '../../../lib/custom-appearance/controller';
 import { cancelCustomAppearancePreview } from '../../../lib/custom-appearance/preview';
 import { ConversationConnectionProvider } from '../../conversation/ConversationConnectionContext';
-import { ToolCallDisplay } from '../ToolCallDisplay';
+import { type ToolCallData, ToolCallDisplay } from '../ToolCallDisplay';
 import { foldTurnWork } from '../tool-call-runs';
 
 const proposalId = 'a'.repeat(64);
@@ -66,13 +69,15 @@ const proposal = {
 };
 let documentState: CustomAppearanceDocument;
 let failKeep: boolean;
+let holdReport: boolean;
+let resolveReport: ((response: Response) => void) | undefined;
 let reads: string[];
 let writes: { url: string; method: string; body: Record<string, unknown> }[];
 const response = (data: unknown) =>
   new Response(JSON.stringify({ success: true, data }), {
     headers: { 'Content-Type': 'application/json' },
   });
-const tool = {
+const tool: ToolCallData = {
   type: 'tool-invocation',
   toolCallId: 'call-a',
   toolName: 'mcp__station-control__propose_appearance',
@@ -88,7 +93,7 @@ function mount(
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <ConversationConnectionProvider
         value={{ apiBase: scope.apiBase, requestScope: scope }}
@@ -101,12 +106,15 @@ function mount(
       </ConversationConnectionProvider>
     </QueryClientProvider>,
   );
+  return { ...view, client };
 }
 
 beforeEach(() => {
   identity.current = true;
   identity.host = 'a';
   failKeep = false;
+  holdReport = false;
+  resolveReport = undefined;
   reads = [];
   writes = [];
   keepBar.options = undefined;
@@ -155,6 +163,11 @@ beforeEach(() => {
       }
       const body = JSON.parse(String(init.body));
       writes.push({ url, method: init.method, body });
+      if (url.endsWith('/report') && holdReport) {
+        return new Promise<Response>((resolve) => {
+          resolveReport = resolve;
+        });
+      }
       if (url.endsWith('/keep') && failKeep) {
         documentState = {
           ...documentState,
@@ -214,6 +227,36 @@ test('a retained tool result previews the exact server proposal through the prot
     proposalId,
   });
   expect(getCustomAppearanceSnapshot().active?.name).toBe('Seaside');
+});
+
+test('Dismiss rechecks the current revision, settles the exact proposal, and preserves the saved appearance', async () => {
+  documentState = {
+    ...documentState,
+    active: { ...appearance, name: 'Before' },
+  };
+  setActiveCustomAppearance(documentState.active);
+  const { client } = mount();
+  await previewButton();
+  documentState = { ...documentState, revision: 'r-fresh' };
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+  await screen.findByText('Dismissed');
+  expect(writes).toEqual([
+    {
+      url: `${host.apiBase}/api/me/appearance/proposal`,
+      method: 'DELETE',
+      body: { revision: 'r-fresh' },
+    },
+  ]);
+  expect(keepBar.options).toBeUndefined();
+  expect(getCustomAppearanceSnapshot().active?.name).toBe('Before');
+  expect(
+    client.getQueryData<CustomAppearanceDocument>(customAppearanceKey(host))
+      ?.proposal,
+  ).toBeNull();
+  expect(
+    (screen.getByRole('button', { name: 'Preview' }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
 });
 
 test('a newer proposal disables the old card and an action-time replacement is never previewed or dismissed', async () => {
@@ -292,6 +335,30 @@ test('revoking the shell lease cancels its preview and a late Keep cannot write'
   expect(writes.filter((write) => write.url.endsWith('/keep'))).toHaveLength(0);
 });
 
+test('a late render report cannot restore a pending proposal after Keep', async () => {
+  holdReport = true;
+  const { client } = mount();
+  fireEvent.click(await previewButton());
+  await waitFor(() => expect(resolveReport).toBeDefined());
+  const reportDocument = structuredClone(documentState);
+  await act(async () => keepBar.options!.onKeep());
+  await screen.findByText('Kept');
+  await act(async () => resolveReport!(response(reportDocument)));
+  expect(
+    client.getQueryData<CustomAppearanceDocument>(customAppearanceKey(host))
+      ?.proposal,
+  ).toBeNull();
+  expect(
+    client.getQueryData<CustomAppearanceDocument>(customAppearanceKey(host))
+      ?.active?.name,
+  ).toBe('Seaside');
+});
+
+test('a qualified tool name stays actionable when a provider also includes its bare original name', async () => {
+  mount({ call: { ...tool, originalName: 'propose_appearance' } });
+  expect(await previewButton()).toBeTruthy();
+});
+
 test('a tool from another server cannot create an appearance card and mobile work folding preserves the real proposal row', () => {
   mount({ call: { ...tool, toolName: 'mcp__other__propose_appearance' } });
   expect(
@@ -311,11 +378,13 @@ test('a tool from another server cannot create an appearance card and mobile wor
     { ...ordinary, toolCallId: 'last' },
   ]);
   expect(
-    blocks.some(
-      (block) =>
-        block.type === 'tool-call-run' &&
-        block.calls.length === 1 &&
-        block.calls[0]?.part.toolCallId === tool.toolCallId,
-    ),
+    blocks.some((block) => {
+      if (block.type !== 'tool-call-run' || block.calls.length !== 1)
+        return false;
+      const part = block.calls[0]?.part;
+      return (
+        !!part && 'toolCallId' in part && part.toolCallId === tool.toolCallId
+      );
+    }),
   ).toBe(true);
 });

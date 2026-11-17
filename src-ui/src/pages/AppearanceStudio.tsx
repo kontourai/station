@@ -29,7 +29,7 @@ const failureText = (error: unknown) =>
 export function exportAppearance(appearance: CustomAppearance) {
   const pack = createCustomAppearanceThemePack(appearance);
   const url = URL.createObjectURL(
-    new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' }),
+    new Blob([JSON.stringify(pack)], { type: 'application/json' }),
   );
   const link = document.createElement('a');
   link.href = url;

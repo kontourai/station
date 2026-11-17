@@ -22,7 +22,9 @@ interface AppearanceCall {
 
 function nameOf(call: AppearanceCall) {
   if (call.server && call.server !== 'station-control') return undefined;
-  const name = call.originalName ?? call.toolName ?? call.name;
+  const name = call.server
+    ? (call.originalName ?? call.toolName ?? call.name)
+    : (call.toolName ?? call.name ?? call.originalName);
   return call.server === 'station-control' && !stationControlToolName(name)
     ? `station-control/${name}`
     : name;

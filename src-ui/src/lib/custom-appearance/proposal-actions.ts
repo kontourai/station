@@ -137,7 +137,14 @@ export async function previewAppearanceProposal(
       }).then(
         (next) => {
           if (target.scope.isCurrent() && target.isCurrent())
-            target.client.setQueryData(customAppearanceKey(target.scope), next);
+            target.client.setQueryData<CustomAppearanceDocument>(
+              customAppearanceKey(target.scope),
+              (current) =>
+                current?.revision === next.revision &&
+                current.proposal?.id === target.proposalId
+                  ? next
+                  : current,
+            );
         },
         () => undefined,
       );
