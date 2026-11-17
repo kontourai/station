@@ -577,8 +577,8 @@ holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
 
-Choosing on a chip starts nothing, and Station remembers it. The Agent is
-remembered for each project and for **No project** on this browser and
+Choosing on a chip starts nothing, and Station remembers it. An Agent is
+remembered only once it can start, and for each project and for **No project** on this browser and
 Station access, and the Model for each Agent. The project is remembered as the
 chat dock's project for new chats, the same setting the dock's project
 switcher changes, so Home and the dock always open on the same choices.
@@ -704,9 +704,10 @@ next navigation; answers that already saved remain saved.
 Opening the composer or changing a chip starts no conversation or engine;
 **Start** opens the conversation and submits the message once. With no
 remembered Agent, the composer uses the project’s **Default agent**, then the
-current layout default or Station’s runnable suggestion. A remembered Agent
-needing repair stays visible with its setup action; a removed choice asks you
-to choose another.
+current layout default or Station’s runnable suggestion. Any of these that
+is not set up is skipped for the next one that is, so a new chat never opens on
+an Agent that cannot start. An Agent you pick from the menu in this tab stays
+visible with its setup action.
 
 Escape, Back, or opening another chat closes the draft; collapsing the dock
 keeps it. On a phone the draft opens full screen; closing it, or starting the
@@ -894,9 +895,10 @@ durable request flow.
 
 ### Finish setup and return
 
-When no selected Agent can respond, the composer shows a setup helper alongside
-your message and recent chats. It offers engine setup, a model connection,
-and **Check again**. Available engine prerequisites include installation steps,
+When no Agent can respond, the composer shows a setup card with your message.
+It lists each Agent with its status and repair, and offers engine setup, a
+model connection and **Check again**. Each Agent's **Details** holds its
+reason and any installation steps,
 commands, and links supplied by that engine’s integration. Commands are shown
 for you to run; opening a guide does not install software. Install engines on
 the computer running Station, including when using Station from a phone.

@@ -433,6 +433,72 @@ test('a draft can choose an unavailable profile to configure another execution S
   expect(dockSelect).not.toHaveBeenCalled();
 });
 
+describe('an Agent that is not set up is never selected for you', () => {
+  const MUSE = {
+    slug: 'muse',
+    name: 'Muse Code',
+    available: false,
+    unavailableReason:
+      "Agent 'muse' has no authored Agent definition, so Station cannot start new sessions.",
+    unavailableFix: { kind: 'unknown' },
+  } as unknown as AgentData;
+  const remember = (slug: string) =>
+    localStorage.setItem(
+      'station.newChat.lastAgentByContext',
+      JSON.stringify({ [JSON.stringify(['ns-1', '__global__'])]: slug }),
+    );
+  const remembered = () =>
+    JSON.parse(
+      localStorage.getItem('station.newChat.lastAgentByContext') ?? '{}',
+    )[JSON.stringify(['ns-1', '__global__'])];
+
+  test('a remembered Agent that cannot start yields to one that can, with no setup panel', async () => {
+    state.agents = [MUSE, CLAUDE];
+    remember('muse');
+    const { dock, home } = renderBoth();
+    expect(agentChip(dock()).textContent).toContain('Claude');
+    expect(agentChip(screen.getByTestId('home')).textContent).toContain(
+      'Claude',
+    );
+    expect(
+      within(dock()).queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+    expect(
+      home().queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+  });
+
+  test('picking an Agent that cannot start shows it in this tab but does not remember it', async () => {
+    state.agents = [CLAUDE, MUSE];
+    const { dock } = renderBoth();
+    fireEvent.click(agentChip(dock()));
+    await screen.findAllByRole('button', { name: /Muse Code/ });
+    const rows = document.querySelectorAll<HTMLButtonElement>(
+      'button[data-agent-slug="muse"]',
+    );
+    expect(rows).toHaveLength(1);
+    fireEvent.click(rows[0]);
+    expect(agentChip(dock()).textContent).toContain('Muse Code');
+    expect(remembered()).toBeUndefined();
+  });
+
+  test('when nothing can start, setup is one compact card with the reason folded away', async () => {
+    state.agents = [MUSE];
+    const { dock } = renderBoth();
+    const card = await within(dock()).findByRole(
+      'region',
+      { name: 'Set up an engine' },
+      { timeout: 15_000 },
+    );
+    expect(within(card).getByText('Not set up')).toBeTruthy();
+    const reason = within(card).getByText(/no authored Agent definition/);
+    expect(reason.closest('details')?.open).toBe(false);
+    expect(
+      within(card).getByRole('button', { name: 'Set up an engine' }),
+    ).toBeTruthy();
+  }, 30_000);
+});
+
 describe('a Project’s new-chat defaults preselect the composer', () => {
   const CLAUDE_APP = {
     ...CLAUDE,
