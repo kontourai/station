@@ -37,9 +37,10 @@ const HOUR = 3_600_000;
 /**
  * Scheduled workflows that report through something other than main-health,
  * each with the reason. A new scheduled workflow fails this suite until it is
- * watched by main-health or added here. An entry must name a workflow file
- * that exists; it need not still be scheduled, so dropping a cron from one of
- * these does not fail this suite.
+ * watched by main-health or added here, and an entry for a workflow that is
+ * gone or no longer scheduled fails it too, so the list cannot rot. The
+ * duplicate-sweep entry goes when the branch dropping that workflow's cron
+ * lands.
  */
 const REPORTED_ELSEWHERE: Record<string, string> = {
   '.github/workflows/pr-duplicate-sweep.yml':
@@ -551,13 +552,17 @@ describe('scheduled workflow failure reporting', () => {
       )
       .map(({ file }) => file);
     expect(unreported).toEqual([]);
-    // An allowlist entry must name a workflow that exists and that
-    // main-health does not also watch.
+    // An allowlist entry must name a workflow that exists, is still
+    // scheduled, and that main-health does not also watch.
     for (const file of Object.keys(REPORTED_ELSEWHERE)) {
       expect(existsSync(new URL(file, root)), `${file} does not exist`).toBe(
         true,
       );
-      const entry = documents().find((candidate) => candidate.file === file);
+      const entry = scheduled().find((candidate) => candidate.file === file);
+      expect(
+        entry,
+        `${file} is no longer scheduled; drop its entry`,
+      ).toBeDefined();
       const document = entry?.document as WorkflowDocument | undefined;
       expect(watched.has(String(document?.name))).toBe(false);
       expect(REPORTED_ELSEWHERE[file].length).toBeGreaterThan(40);

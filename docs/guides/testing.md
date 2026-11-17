@@ -481,12 +481,19 @@ cron that just landed or changed gets one full tolerance first. GitHub fires
 this repository's schedules late and sparsely (largest gaps measured
 2026-10-17..11-16: 10.8 h for hourly crons, 15.8 h for six-hourly, 28.6 h for
 daily, 170 h for weekly), so the tolerance is 20 h, 20 h, 48 h and 14 days.
-The next scheduled run closes a tracker that check opened.
+The next successful scheduled run closes a tracker that check opened. The
+check runs only when Main: Health runs, that is when some watched workflow
+completes on `main`. Hourly `Nightly` and `Repo: Starved PR report` and every
+main push's secret scan normally trigger it many times a day; on a day when
+no watched workflow completes on `main` at all, nothing checks, and the next
+completion catches up on every overdue schedule at once.
 
 `scripts/__tests__/scheduled-failure-reporting.test.ts` refuses a scheduled
 workflow that is neither watched nor on its justified allowlist: `Main:
 Qualification` (its repair episode and health trackers report it) and `Repo:
-Duplicate sweep` (its scheduled output has no reader).
+Duplicate sweep`, which breaks the rule as written: its scheduled output has
+no reader, so its cron is being removed rather than reported. An allowlist
+entry for a workflow that is gone or no longer scheduled fails the test.
 
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes or a main schedule; `Main:` qualification runs after main
