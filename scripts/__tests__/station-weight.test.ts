@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   contextSwitchDelta,
+  evaluateRun,
   formatAttribution,
   hostFingerprint,
   hostFingerprintInputs,
@@ -14,6 +15,7 @@ import {
   killEligibility,
   LEFTOVER_GAP,
   linuxProcessTable,
+  measureRequestConversation,
   memoryByRole,
   ownedTree,
   parseFootprint,
@@ -41,9 +43,11 @@ import {
   STATION_WEIGHT_BUDGETS,
 } from '../bench/station-weight-budgets.mjs';
 import {
+  analyzeConversationTurn,
   diffAgainstControl,
   findTurnRequest,
   markersReached,
+  requestConversationTurns,
   summarizeRequest,
 } from '../bench/station-weight-request.mjs';
 import {
@@ -105,7 +109,7 @@ function engineTurn({
     tools: [...ENGINE_TOOLS, ...extraTools],
     messages: [
       {
-        role: 'user' as const,
+        role: 'user' as 'user' | 'assistant',
         content: [
           {
             type: 'text' as const,
@@ -174,6 +178,178 @@ describe('station-weight stub endpoint', () => {
 });
 
 describe('station-weight request analysis', () => {
+  test.each(['refused dispatch', 'replayed completion'])(
+    'the diagnostic caller fails closed on %s',
+    async (fault) => {
+      const turns = requestConversationTurns('caller');
+      const result = await measureRequestConversation({
+        api: {
+          call: async (method: string) =>
+            method === 'POST'
+              ? fault === 'refused dispatch'
+                ? { status: 409, json: { success: false }, text: 'refused' }
+                : {
+                    status: 200,
+                    json: {
+                      data: {
+                        sessionId: 'session',
+                        providerTurnId: 'old-turn',
+                      },
+                    },
+                    text: '',
+                  }
+              : {
+                  status: 200,
+                  json: {
+                    data: {
+                      events: [
+                        {
+                          method: 'turn.completed',
+                          turnId: 'old-turn',
+                          finishReason: 'stop',
+                          outputText: 'ok',
+                        },
+                      ],
+                    },
+                  },
+                  text: '',
+                },
+        },
+        turns,
+        markers: {},
+        stub: { requests: [] },
+        sideCallWindowMs: 0,
+      });
+      expect(result.status).toBe('not_measured');
+      expect(
+        result.turns.map((turn: { status: string }) => turn.status),
+      ).toEqual(['not_measured', 'not_measured', 'not_measured']);
+      expect(result.reason).toContain(
+        fault === 'refused dispatch' ? 'HTTP 409' : 'expected successful reply',
+      );
+      const evaluated = evaluateRun(
+        { ...resultAtBaseline(), requestConversation: result },
+        { reportOnly: true },
+      );
+      expect(evaluated.gate.passed).toBe(false);
+      expect(evaluated.gate.reasons.join()).toContain(
+        'request conversation NOT_MEASURED',
+      );
+    },
+  );
+
+  test('pairs HTTP-captured ordinals, observes duplicated guidance and rejects missing rules or replayed history', async () => {
+    const turns = requestConversationTurns('fixture');
+    const endpoint = await startStubAnthropic({ turns });
+    stubs.push(endpoint);
+    const rules = { claudeMd: 'fixture-claude', agentsMd: 'fixture-agents' };
+    const first = engineTurn({
+      sessionId: 'station',
+      versionSuffix: 'aaa',
+      userText: turns[0].prompt,
+      extraLines: Object.values(rules),
+    });
+    expect(await sendThrough(endpoint, first)).toBe(turns[0].reply);
+    const firstAnalysis = analyzeConversationTurn({
+      calls: endpoint.requests.slice(0, 1),
+      turns,
+      index: 0,
+      markers: rules,
+    });
+    const next = structuredClone(first);
+    next.messages.push(
+      { role: 'assistant', content: [{ type: 'text', text: turns[0].reply }] },
+      { role: 'user', content: [{ type: 'text', text: turns[1].prompt }] },
+    );
+    await sendThrough(endpoint, next);
+    const second = analyzeConversationTurn({
+      calls: endpoint.requests.slice(1, 2),
+      turns,
+      index: 1,
+      markers: rules,
+      previous: firstAnalysis.request.body,
+    });
+    expect(second.report.text.repeatedFromPrevious.bytes).toBeGreaterThan(0);
+    expect(second.report.text.newSincePrevious.excerpts).toEqual([
+      turns[0].reply,
+      turns[1].prompt,
+    ]);
+    const duplicate = structuredClone(next);
+    duplicate.system.push({
+      type: 'text',
+      text: 'Station guidance\nStation guidance',
+    });
+    await sendThrough(endpoint, duplicate);
+    const changed = analyzeConversationTurn({
+      calls: endpoint.requests.slice(2, 3),
+      turns,
+      index: 1,
+      markers: rules,
+    });
+    expect(
+      diffAgainstControl(changed.request.body, second.request.body).addedText,
+    ).toMatchObject({
+      bytes: 34,
+      lineCount: 2,
+      excerpts: ['Station guidance', 'Station guidance'],
+    });
+    for (const [name, broken, reason] of [
+      [
+        'missing rules',
+        {
+          ...next,
+          messages: next.messages.map((message, index) =>
+            index
+              ? message
+              : {
+                  ...message,
+                  content: [{ type: 'text', text: turns[0].prompt }],
+                },
+          ),
+        },
+        'repository rules missing',
+      ],
+      [
+        'replayed reply',
+        {
+          ...next,
+          messages: next.messages.map((message) =>
+            message.role === 'assistant'
+              ? { ...message, content: [{ type: 'text', text: 'ok' }] }
+              : message,
+          ),
+        },
+        'reply history',
+      ],
+      [
+        'skipped ordinal',
+        { ...next, messages: [next.messages.at(-1)] },
+        'prompt history',
+      ],
+    ] as const) {
+      const from = endpoint.requests.length;
+      await sendThrough(endpoint, broken as typeof first);
+      expect(
+        () =>
+          analyzeConversationTurn({
+            calls: endpoint.requests.slice(from),
+            turns,
+            index: 1,
+            markers: rules,
+          }),
+        name,
+      ).toThrow(reason);
+    }
+    expect(() =>
+      analyzeConversationTurn({
+        calls: endpoint.requests.slice(1, 3),
+        turns,
+        index: 1,
+        markers: rules,
+      }),
+    ).toThrow('expected one request, found 2');
+  });
+
   test('isolates exactly what the Station turn adds beyond the control turn', async () => {
     const endpoint = await stub();
     await sendThrough(
@@ -954,7 +1130,7 @@ describe('station-weight process identity', () => {
         { pid: 9, exactStart: 'linux:boot:700', killEligible: false },
         { pid: 10, killEligible: true },
         // An omitted flag is not eligible, even with a birth that holds.
-        { pid: 11, exactStart: 'linux:boot:800' } as never,
+        { pid: 11, exactStart: 'linux:boot:800' },
       ],
       'SIGKILL',
       {
