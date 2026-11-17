@@ -43,7 +43,10 @@ import {
   installedDependencyPermissions,
   type PreviewData,
 } from './plugin-management/types';
-import { installUnappliedMessage } from './plugin-management/view-utils';
+import {
+  unappliedMessage,
+  unappliedTone,
+} from './plugin-management/view-utils';
 import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
@@ -452,13 +455,13 @@ export function RegistryView({
       onSuccess: async (result: unknown) => {
         const unapplied = pluginLifecycleUnapplied(result);
         if (unapplied) {
-          // Accepted, not active: the same outcome the Plugins view reports.
+          // Saved, not applied: the same outcome the Plugins view reports.
           // No dependency host review now; it refuses a plugin that is not
           // active, and the plugin's own row finishes the activation.
           actionCallbacks(tab, item, itemId, false, () => {
             setMessage(null);
             showToast(
-              installUnappliedMessage(displayName, unapplied),
+              unappliedMessage('installed', displayName, unapplied),
               undefined,
               undefined,
               installedPluginName
@@ -473,7 +476,7 @@ export function RegistryView({
                     },
                   ]
                 : undefined,
-              'warning',
+              unappliedTone(unapplied),
             );
           }).onSuccess();
           if (unapplied.kind === 'projection')

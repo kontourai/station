@@ -2416,6 +2416,7 @@ export class StationRuntime {
             activation.status = 'pending';
             activation.reason =
               'Configuration was saved, but runtime activation is pending reconciliation.';
+            activation.recovery = 'none';
             // The durable write has landed and the runtime has NOT caught up
             // yet. Record that for this slug so a read route can say
             // "activating" instead of "exists but is not active" — the whole
@@ -2544,6 +2545,7 @@ export class StationRuntime {
           activation.reason = options?.pluginActivation
             ? PLUGIN_ACTIVATION_STOPPED_REASON
             : 'Configuration was saved, but runtime activation is pending reconciliation.';
+          activation.recovery = options?.pluginActivation ? 'required' : 'none';
           this.logger?.error?.(
             'Configuration activation failed after persistence',
             {
@@ -2562,6 +2564,8 @@ export class StationRuntime {
             ? PLUGIN_ACTIVATION_STOPPED_REASON
             : 'Configuration was saved, but runtime activation did not finish ' +
               'within its deadline and is continuing in the background.';
+          activation.recovery = options?.pluginActivation ? 'required' : 'none';
+          activation.deadlineMs = this.activationDeadlineMs();
         }
         return result as T;
       }),

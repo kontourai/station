@@ -3634,8 +3634,12 @@ which returns `{ kind: 'activation' }` or `{ kind: 'projection' }`, or
 completes [retained plugin recovery](#retained-plugin-recovery). Do not replay
 the install. Its trusted permissions stay in `pendingConsent`, but their host
 approval refuses a plugin that is not ready, so ask for them after recovery.
-`usePluginUpdateMutation` resolves a saved update the same way, with the same
-recovery requirement. `usePluginRemoveMutation` resolves a saved removal too;
+The activation kind also carries the receipt's `recovery`: `required` for a
+plugin activation nothing resumes, `none` when Station finishes on its own (a
+removal, or a legacy git update), and `unknown` for a server that predates the
+field, where the plugin's `installationReadiness` decides. Branch on it, not on
+the reason text. `usePluginUpdateMutation` resolves a saved update the same
+way. `usePluginRemoveMutation` resolves a saved removal too;
 a removal activates nothing, so Station's next reconciliation finishes
 unloading it without any action. `requestPluginRegistryInstallAction(id,
 'install')` reads the registry install the same way.

@@ -92,24 +92,37 @@ async function pluginLifecycleRequest<T>(
 }
 
 /**
- * What a saved-but-unapplied install or update means. An activation that did
- * not complete is not continuing: the plugin stays inactive until recovered.
+ * What a saved-but-unapplied install or update means, from the receipt's
+ * `recovery` (never its reason text): `required` is a plugin activation that
+ * nothing resumes; `none` finishes on its own; `unknown` is an older server.
  */
 function unappliedLines(
   verb: 'Installed' | 'Updated',
   name: string,
   unapplied: PluginLifecycleUnapplied,
 ): string[] {
-  return unapplied.kind === 'projection'
-    ? [
-        `⚠️ ${verb} ${name}, but Station has not finished listing it.`,
-        '  Reload plugins on the Station host to pick it up; its code and data are kept.',
-      ]
-    : [
-        `⚠️ ${verb} ${name}, but its activation did not finish, so it is not active.`,
-        '  Open Plugins on the Station host, select it, and choose Recover plugin to activate it.',
-        `  Do not ${verb === 'Installed' ? 'install' : 'update'} it again; trusted permissions are approved after recovery.`,
-      ];
+  if (unapplied.kind === 'projection')
+    return [
+      `⚠️ ${verb} ${name}, but Station has not finished listing it.`,
+      '  Reload plugins on the Station host to pick it up; its code and data are kept.',
+    ];
+  if (unapplied.recovery === 'none')
+    return [
+      `✅ ${verb} ${name} through Station; it finishes applying in the background.`,
+    ];
+  if (unapplied.recovery === 'unknown')
+    return [
+      `⚠️ ${verb} ${name}, but Station did not say whether it is active.`,
+      '  Open Plugins on the Station host; if it reads Needs recovery, recover it there.',
+    ];
+  const stopped = unapplied.deadlineMs
+    ? `Station was too busy to activate it within ${Math.round(unapplied.deadlineMs / 1000)} seconds`
+    : 'its activation did not finish';
+  return [
+    `⚠️ ${verb} ${name}, but ${stopped}, so it is not active.`,
+    '  Choose Recover plugin in Plugins on the Station host to activate it.',
+    `  Do not ${verb === 'Installed' ? 'install' : 'update'} it again; trusted permissions are approved after recovery.`,
+  ];
 }
 
 async function pluginRequest<T>(

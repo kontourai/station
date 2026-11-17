@@ -54,12 +54,12 @@ import {
 import {
   buildPluginListItems,
   filterPlugins,
-  installUnappliedMessage,
   pluginSelectionId,
   slugifyProjectName,
   soleLayoutTargetProject,
   toggleSetValue,
-  updateUnappliedMessage,
+  unappliedMessage,
+  unappliedTone,
 } from './view-utils';
 
 export function consentFailureMessage(
@@ -546,8 +546,8 @@ export function usePluginManagementViewModel() {
             const installedName =
               data.plugin?.displayName || data.plugin?.name || displayName;
             setMessage({
-              type: 'warning',
-              text: installUnappliedMessage(installedName, unapplied),
+              type: unappliedTone(unapplied),
+              text: unappliedMessage('installed', installedName, unapplied),
             });
             if (data.plugin?.name) selectPlugin(data.plugin.name);
             // The server's own instruction for an unlisted selection; a
@@ -759,11 +759,15 @@ export function usePluginManagementViewModel() {
       onSuccess: (data) => {
         const unapplied = pluginLifecycleUnapplied(data);
         if (unapplied) {
-          // The new version is installed but not active: the row turns to
-          // Needs recovery, so open it.
+          // Saved, not applied. The receipt's `recovery` says whether the
+          // row now needs recovery; open it either way.
           setMessage({
-            type: 'warning',
-            text: updateUnappliedMessage(data.plugin?.name || name, unapplied),
+            type: unappliedTone(unapplied),
+            text: unappliedMessage(
+              'updated',
+              data.plugin?.name || name,
+              unapplied,
+            ),
           });
           selectPlugin(data.plugin?.name || name);
           if (unapplied.kind === 'projection')

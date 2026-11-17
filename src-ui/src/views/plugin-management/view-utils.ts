@@ -247,27 +247,48 @@ export function reinstallDelta(
 }
 
 /**
- * An install the server saved but did not apply (its designed `202`). Not a
- * failure, so no retry is offered: a second install would install the plugin
- * again. Not in progress either: an activation that did not complete is not
- * resumed, so the plugin stays inactive until the person recovers it from its
- * row, which is what the message points at.
+ * An install or update the server saved but did not apply (its designed
+ * `202`). Not a failure, so no retry is offered: a second install would
+ * install the plugin again. What follows comes from the receipt's
+ * `recovery`, never its reason text: `required` means nothing resumes the
+ * activation and the person recovers it from its row; `none` means Station
+ * finishes on its own; `unknown` (an older server) defers to the row.
  */
-export function installUnappliedMessage(
+export function unappliedMessage(
+  verb: 'installed' | 'updated',
   pluginName: string,
   unapplied: PluginLifecycleUnapplied,
 ) {
-  return unapplied.kind === 'projection'
-    ? `${pluginName} was installed, but Station had not finished listing it, so plugins are being reloaded to pick it up. Its code and data are kept.`
-    : `${pluginName} was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are approved after that.`;
+  if (unapplied.kind === 'projection')
+    return `${pluginName} was ${verb}, but Station had not finished listing it, so plugins are being reloaded to pick it up. Its code and data are kept.`;
+  if (unapplied.recovery === 'none')
+    return `${pluginName} was ${verb}. Station finishes applying it in the background.`;
+  if (unapplied.recovery === 'unknown')
+    return `${pluginName} was ${verb}, but Station did not say whether it is active. If its row reads Needs recovery, choose Recover plugin there.`;
+  const stopped = unapplied.deadlineMs
+    ? `Station was too busy to activate it within ${Math.round(unapplied.deadlineMs / 1000)} seconds`
+    : 'its activation did not finish';
+  return `${pluginName} was ${verb}, but ${stopped}, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.`;
 }
 
-/** The same outcome for an update: the new version is saved, not active. */
-export function updateUnappliedMessage(
-  pluginName: string,
+/** Only a change Station finishes on its own reads as a success. */
+export function unappliedTone(
   unapplied: PluginLifecycleUnapplied,
-) {
-  return unapplied.kind === 'projection'
-    ? `${pluginName} was updated, but Station had not finished listing it, so plugins are being reloaded to pick it up. Its code and data are kept.`
-    : `${pluginName} was updated, but its activation did not finish, so it is not active. Choose Recover plugin to activate it.`;
+): 'success' | 'warning' {
+  return unapplied.kind === 'activation' && unapplied.recovery === 'none'
+    ? 'success'
+    : 'warning';
+}
+
+/**
+ * A recovery that was stopped again. Recovery runs under the same deadline,
+ * so on a busy host the useful advice is to wait for a quieter moment, and
+ * Remove is the way out.
+ */
+export function recoveryStoppedNotice(unapplied: PluginLifecycleUnapplied) {
+  const stopped =
+    unapplied.kind === 'activation' && unapplied.deadlineMs
+      ? `Station was too busy to finish activating it within ${Math.round(unapplied.deadlineMs / 1000)} seconds`
+      : 'its activation did not finish';
+  return `Recovery was saved, but the plugin is still not active: ${stopped}. Trying again when the host is idle usually works; Remove plugin is the way out.`;
 }

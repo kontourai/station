@@ -61,24 +61,45 @@ export interface PluginInstallResult {
    * Present (as `pending`) only on a `202` whose change was saved but not
    * applied to the runtime. See {@link PluginLifecycleUnapplied}.
    */
-  configurationActivation?: { status: 'applied' | 'pending'; reason?: string };
+  configurationActivation?: {
+    status: 'applied' | 'pending';
+    reason?: string;
+    /**
+     * Set by servers that know which it is. `required`: a plugin activation
+     * that did not complete; nothing resumes it, so the plugin is inactive
+     * until a person recovers it. `none`: the runtime finishes applying the
+     * change on its own.
+     */
+    recovery?: 'required' | 'none';
+    /** When the pass was stopped at its deadline, that deadline. */
+    deadlineMs?: number;
+  };
 }
 
 /**
  * Why a saved plugin lifecycle change is not applied.
  *
  * `activation`: the change was saved, but its runtime pass did not complete
- * (it outran the server's deadline, or failed after saving). For an install,
- * update or recovery the plugin is then NOT active and nothing activates it
- * on its own: its `installationReadiness` reads `pending` with
- * `recovery: 'review'` until a person runs recovery. For a removal, which
- * activates nothing, the runtime finishes unloading the plugin on its next
- * reconciliation.
+ * (it outran the server's deadline, or failed after saving). Its `recovery`
+ * says what follows: `required` (a plugin activation; the plugin is NOT
+ * active and its `installationReadiness` reads `pending` with
+ * `recovery: 'review'` until a person runs recovery) or `none` (the runtime
+ * finishes on its own, as for a removal).
  * `projection`: the selection was recorded but the catalog projection was
  * not; reloading plugins reconciles it.
  */
 export type PluginLifecycleUnapplied =
-  | { kind: 'activation'; reason?: string }
+  | {
+      kind: 'activation';
+      /**
+       * From the receipt's `recovery`. `unknown` is a server that predates
+       * the field: it cannot say, so a reader must not claim either way and
+       * defers to the plugin's `installationReadiness`.
+       */
+      recovery: 'required' | 'none' | 'unknown';
+      deadlineMs?: number;
+      reason?: string;
+    }
   | { kind: 'projection'; reason?: string };
 
 /**
@@ -99,6 +120,15 @@ export function pluginLifecycleUnapplied(
   if (activation && activation.status === 'pending')
     return {
       kind: 'activation',
+      recovery:
+        activation.recovery === 'required' || activation.recovery === 'none'
+          ? activation.recovery
+          : 'unknown',
+      ...(typeof activation.deadlineMs === 'number' &&
+      Number.isFinite(activation.deadlineMs) &&
+      activation.deadlineMs > 0
+        ? { deadlineMs: activation.deadlineMs }
+        : {}),
       ...(typeof activation.reason === 'string'
         ? { reason: activation.reason }
         : {}),

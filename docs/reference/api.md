@@ -5179,9 +5179,12 @@ The successful result carries plugin/tools/dependencies and permission state.
 approval needs, not merely the preview's requirements. Older responses can omit
 it, which means unknown. An install saved without completing its activation
 returns 202 with `success: false` and `configurationActivation` (status
-`pending`), or a pending lifecycle receipt. The activation is not continuing:
-its `reason` says the plugin is not active, and its `installationReadiness`
-reads `pending` with `recovery: "review"` until a person recovers it. It is
+`pending`) whose `recovery` is `"required"`, or a pending lifecycle receipt.
+The activation is not continuing: the plugin is not active, and its
+`installationReadiness` reads `pending` with `recovery: "review"` until a
+person recovers it. A receipt stopped at the deadline also carries
+`deadlineMs`. Changes that finish on the reconciliation rail (a removal, a
+legacy git update) carry `recovery: "none"`. It is
 not complete solely because the HTTP request was accepted. Clients read these
 responses with `readPluginLifecycleResponse` from
 `@kontourai/station-contracts/plugin`.

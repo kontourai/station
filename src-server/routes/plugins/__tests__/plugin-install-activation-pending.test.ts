@@ -138,6 +138,8 @@ test('an install whose activation outruns its deadline is saved but not active, 
       state: 'saved',
       unapplied: {
         kind: 'activation',
+        recovery: 'required',
+        deadlineMs: 200,
         reason: PLUGIN_ACTIVATION_STOPPED_REASON,
       },
     });
@@ -209,6 +211,8 @@ test('an install whose activation outruns its deadline is saved but not active, 
       state: 'saved',
       unapplied: {
         kind: 'activation',
+        recovery: 'none',
+        deadlineMs: 200,
         reason: expect.stringContaining('continuing in the background'),
       },
     });

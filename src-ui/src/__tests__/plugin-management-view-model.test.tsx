@@ -1309,8 +1309,8 @@ describe('usePluginManagementViewModel', () => {
     },
     configurationActivation: {
       status: 'pending',
-      reason:
-        'Configuration was saved, but runtime activation did not finish within its deadline and is continuing in the background.',
+      recovery: 'required',
+      reason: 'The plugin was saved, but its activation did not finish.',
     },
   };
 
@@ -1341,7 +1341,7 @@ describe('usePluginManagementViewModel', () => {
 
     expect(result.current.message).toEqual({
       type: 'warning',
-      text: 'Network Kit was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are approved after that.',
+      text: 'Network Kit was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.',
     });
     expect(result.current.showInstallModal).toBe(false);
     expect(result.current.installMessage).toBeNull();
@@ -1397,7 +1397,12 @@ describe('update and remove saved without being applied', () => {
   const SAVED = {
     success: false,
     plugin: { name: 'network-kit', version: '1.1.0' },
-    configurationActivation: { status: 'pending', reason: 'saved' },
+    configurationActivation: {
+      status: 'pending',
+      recovery: 'required',
+      deadlineMs: 10_000,
+      reason: 'saved',
+    },
   };
 
   test('an update whose activation did not finish says the plugin is not active and opens its row', () => {
@@ -1409,9 +1414,35 @@ describe('update and remove saved without being applied', () => {
 
     expect(result.current.message).toEqual({
       type: 'warning',
-      text: 'network-kit was updated, but its activation did not finish, so it is not active. Choose Recover plugin to activate it.',
+      text: 'network-kit was updated, but Station was too busy to activate it within 10 seconds, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.',
     });
     expect(mocks.selectPlugin).toHaveBeenCalledWith('network-kit');
+  });
+
+  test('an update the server says finishes on its own reads as a success, and an older server defers to the row', () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    mocks.updateMutate.mockImplementationOnce((_target, options) =>
+      options.onSuccess({
+        ...SAVED,
+        configurationActivation: { status: 'pending', recovery: 'none' },
+      }),
+    );
+    act(() => result.current.updatePlugin('network-kit'));
+    expect(result.current.message).toEqual({
+      type: 'success',
+      text: 'network-kit was updated. Station finishes applying it in the background.',
+    });
+    mocks.updateMutate.mockImplementationOnce((_target, options) =>
+      options.onSuccess({
+        ...SAVED,
+        configurationActivation: { status: 'pending' },
+      }),
+    );
+    act(() => result.current.updatePlugin('network-kit'));
+    expect(result.current.message).toEqual({
+      type: 'warning',
+      text: 'network-kit was updated, but Station did not say whether it is active. If its row reads Needs recovery, choose Recover plugin there.',
+    });
   });
 
   test('a saved removal is reported as removed, finishing in the background, not as a failure', async () => {

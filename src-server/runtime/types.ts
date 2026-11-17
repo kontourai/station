@@ -593,6 +593,15 @@ export interface AgentConfigurationActivation {
    */
   status: 'applied' | 'pending';
   reason?: string;
+  /**
+   * Set on a pending receipt. `required`: a plugin activation that did not
+   * complete; nothing resumes it, and the plugin stays inactive until a
+   * person recovers it. `none`: the runtime reload continues on the
+   * reconciliation rail and finishes without anyone's action.
+   */
+  recovery?: 'required' | 'none';
+  /** Set when the pass was stopped at its deadline: that deadline. */
+  deadlineMs?: number;
 }
 
 export interface AgentConfigurationMutationOptions<T> {

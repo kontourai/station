@@ -137,6 +137,10 @@ test.each(['applied', 'failed', 'deadline'] as const)(
       expect(receipt?.reason).toBe(
         outcome === 'applied' ? undefined : PLUGIN_ACTIVATION_STOPPED_REASON,
       );
+      // Readers branch on this structured field, never on the reason text.
+      expect((receipt as { recovery?: string } | undefined)?.recovery).toBe(
+        outcome === 'applied' ? undefined : 'required',
+      );
       expect(journal.admissionOpen(record.installation)).toBe(
         outcome === 'applied',
       );

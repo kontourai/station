@@ -19,8 +19,8 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 /**
- * The body `POST /api/plugins/install` sent when activation outran its
- * deadline, as captured from the real route
+ * The body `POST /api/plugins/install` sends when activation outruns its
+ * deadline, in the shape the real route produces
  * (src-server/routes/plugins/__tests__/plugin-install-activation-pending.test.ts).
  */
 const PENDING_BODY = {
@@ -61,7 +61,9 @@ const PENDING_BODY = {
   configurationActivation: {
     status: 'pending',
     reason:
-      'Configuration was saved, but runtime activation did not finish within its deadline and is continuing in the background.',
+      'The plugin was saved, but its activation did not finish and was stopped. It is not active; recover it to activate it.',
+    recovery: 'required',
+    deadlineMs: 10_000,
   },
 };
 
@@ -100,6 +102,8 @@ test('an install saved without completing its activation resolves as saved, not 
     });
     expect(pluginLifecycleUnapplied(installed)).toEqual({
       kind: 'activation',
+      recovery: 'required',
+      deadlineMs: 10_000,
       reason: PENDING_BODY.configurationActivation.reason,
     });
     expect(installed).toMatchObject({ plugin: { name: 'slow-activation' } });

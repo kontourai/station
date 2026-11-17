@@ -1336,7 +1336,11 @@ describe('RegistryView', () => {
           },
         ],
       },
-      configurationActivation: { status: 'pending', reason: 'saved' },
+      configurationActivation: {
+        status: 'pending',
+        recovery: 'required',
+        reason: 'saved',
+      },
     };
     render(<RegistryView initialTab="plugins" />);
     fireEvent.click(
@@ -1355,7 +1359,7 @@ describe('RegistryView', () => {
       string,
     ];
     expect(text).toBe(
-      'Demo Layout was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are approved after that.',
+      'Demo Layout was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are asked for after that.',
     );
     expect(tone).toBe('warning');
     actions?.[0]?.onClick();

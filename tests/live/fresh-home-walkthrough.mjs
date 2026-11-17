@@ -411,7 +411,8 @@ async function installBundledPlugin(page, plugin) {
     // failure; the plugin still has to become active (below).
     { acceptSaved: true },
   );
-  if (pluginLifecycleUnapplied(installed))
+  const unapplied = pluginLifecycleUnapplied(installed);
+  if (unapplied?.kind === 'activation' && unapplied.recovery !== 'none')
     await recoverOnce(
       page,
       installed.plugin?.name ?? previewed.manifest?.name ?? plugin.id,

@@ -460,7 +460,11 @@ describe('plugin CLI API authority', () => {
                 { permission: 'plugin.server', tier: 'trusted' },
               ],
             },
-            configurationActivation: { status: 'pending', reason: 'saved' },
+            configurationActivation: {
+              status: 'pending',
+              recovery: 'required',
+              reason: 'saved',
+            },
           },
           { status: 202 },
         ),
@@ -489,26 +493,41 @@ describe('plugin CLI API authority', () => {
     );
   });
 
-  test('reports a saved update as not active and a saved removal as removed', async () => {
+  test('reports a saved update by its recovery field and a saved removal as removed', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const saved = {
       success: false,
       plugin: { name: 'demo', version: '1.1.0' },
-      configurationActivation: { status: 'pending', reason: 'saved' },
+      configurationActivation: {
+        status: 'pending',
+        recovery: 'required',
+        deadlineMs: 10_000,
+        reason: 'saved',
+      },
+    };
+    const finishing = {
+      ...saved,
+      configurationActivation: { status: 'pending', recovery: 'none' },
     };
     authenticatedFetch
       .mockResolvedValueOnce(Response.json(saved, { status: 202 }))
-      .mockResolvedValueOnce(Response.json(saved, { status: 202 }))
+      .mockResolvedValueOnce(Response.json(finishing, { status: 202 }))
+      .mockResolvedValueOnce(Response.json(finishing, { status: 202 }))
       .mockResolvedValueOnce(
         Response.json({ success: false }, { status: 202 }),
       );
     const { update, remove } = await import('../commands/install.js');
 
     await update('demo', parsed);
+    await update('demo', parsed);
     await remove('demo', parsed);
     const printed = log.mock.calls.map((call) => String(call[0]));
     expect(printed).toContain(
-      '⚠️ Updated demo@1.1.0, but its activation did not finish, so it is not active.',
+      '⚠️ Updated demo@1.1.0, but Station was too busy to activate it within 10 seconds, so it is not active.',
+    );
+    // A legacy update the server says finishes on its own is not a recovery.
+    expect(printed).toContain(
+      '✅ Updated demo@1.1.0 through Station; it finishes applying in the background.',
     );
     expect(printed).toContain(
       '✅ Removed demo through Station; it finishes unloading in the background',
