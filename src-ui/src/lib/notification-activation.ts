@@ -8,6 +8,7 @@ import { markNotificationRead } from '@kontourai/station-sdk/notification-read';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { navigationStore } from '../contexts/NavigationContext';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../hooks/clientDocumentSession';
+import { notificationOpenTarget as linkTarget } from './notificationOpen';
 import { openNotificationTargetHere } from './notificationStationOpen';
 
 /** `from <agent> · session <id>` — derived from the envelope, never the title. */
@@ -24,8 +25,10 @@ export function agentAttributionLabel(
 /**
  * Where opening an enveloped notification goes (#2587).
  *
- * `path` targets were validated as same-origin relative Station paths by the
- * envelope reader. A `session` target — or an agent notification with no
+ * A `path` target is split by the same in-app link parser the OS channels and
+ * attention links use, so a `chat` it names is marked like a tap and a
+ * missing or refused conversation is reported. A `session` target — or an
+ * agent notification with no
  * target at all, whose default is the calling session (design §2) — opens
  * that chat in the dock: the notification href every channel opens
  * (`notificationSessionHref`, which the server's OS links use too). A toast
@@ -35,7 +38,10 @@ export function notificationOpenTarget(
   envelope: NotificationEnvelopeV1,
 ): { path: string; params?: Record<string, string> } | undefined {
   const target = envelope.target;
-  if (target?.kind === 'path') return { path: target.path };
+  if (target?.kind === 'path') {
+    const link = linkTarget(target.path);
+    return link ? { path: link.pathname, params: link.params } : undefined;
+  }
   const sessionId =
     target?.kind === 'session'
       ? target.sessionId
