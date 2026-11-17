@@ -1,0 +1,7 @@
+{
+  "revision": "bbd4ca4407ac2930c2f6863973e06ee8987780bf",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added the return-to-working-parent sentence; checked against useChatDockOverlays.onChildCoveredChange and ChatDock wiring.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

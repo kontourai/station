@@ -928,7 +928,12 @@ propose the job instead:
 job that trusts every tool is never proposable (`station_control_person_only`).
 Station records the proposing chat as the job's `target`: once approved, each
 run is a turn in this chat, on its own engine, so a Claude Code or Codex chat
-can propose work for itself.
+can propose work for itself. With `projectId` (a Project's id) the proposal is
+a Project schedule instead: each run starts a new Task in that Project, and no
+`target` is recorded. That needs the chat to be able to start work in the
+Project itself (`job_proposal_project_out_of_scope`) and the
+`project-schedules` Feature Preview to be on
+(`job_proposal_project_unavailable`).
 The agent learns only the proposal's id and `open`. A conversation holds at
 most 3 open proposals (`job_proposal_limit_reached`).
 

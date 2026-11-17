@@ -170,6 +170,11 @@ Choose **⋯ → Close session** to stop it. If the browser or Station
 restarts, the session shows **needs reopen**; reopening starts a fresh browser
 for it.
 
+A session can also be closed elsewhere, for example by an Agent closing the page
+it opened. The pane then keeps its tab, dimmed with its address bar, and says
+**This session was closed**. **Reopen** opens a new session at the last
+address; **Open a new session** starts from a blank page.
+
 ## Troubleshooting
 
 A browser that exits at launch, or starts but does not answer within 30

@@ -1,0 +1,7 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Adds the ./project-lifecycle export subpath; contracts.md lists it.","inputs":["packages/contracts/package.json"]}
+  ]
+}

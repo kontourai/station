@@ -1,3 +1,7 @@
+import type {
+  WorkloadScopeCleanupErrorKind,
+  WorkloadScopeCleanupStatus,
+} from '@kontourai/station-contracts/system-status';
 import {
   useFeaturePreviewsQuery,
   useUpdateWorkloadBudgetSettingsMutation,
@@ -10,6 +14,7 @@ import { Button } from '../../components/Button';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { formatDateTime } from '../../utils/relativeTime';
 import { describeStationFailure } from '../../utils/stationFailure';
 
 /** The Feature Preview that offers this editor (server-bound id). */
@@ -34,10 +39,93 @@ function enforcementSentence(status: WorkloadBudgetStatus): string {
   return `Not enforced on this host (${platform}). Budgets apply only when Station runs as a Linux systemd user service.`;
 }
 
+const CLEANUP_ERROR: Record<WorkloadScopeCleanupErrorKind, string> = {
+  bus_unavailable: 'Couldn’t reach the service manager',
+  command_failed: 'Stop command failed',
+  other: 'Stop failed',
+};
+
+/**
+ * Engine workloads Station failed to stop and no longer retries
+ * (`cleanup.abandoned`). Renders nothing when there are none, or when an
+ * older host omits `cleanup`.
+ */
+function AbandonedWorkloads({
+  cleanup,
+}: {
+  cleanup: WorkloadScopeCleanupStatus | undefined;
+}) {
+  if (!cleanup) return null;
+  const { abandoned, abandonedDropped, pending } = cleanup;
+  if (abandoned.length === 0 && abandonedDropped === 0) return null;
+  return (
+    <section
+      className="settings__subsection workload-cleanup"
+      aria-labelledby="workload-cleanup-title"
+    >
+      <h3 id="workload-cleanup-title" className="settings__field-label">
+        Workloads Station couldn’t stop
+      </h3>
+      <p className="settings__field-hint">
+        They may still be running and using memory. Restart Station to clear
+        them.
+      </p>
+      <ul className="workload-cleanup__list">
+        {abandoned.map((scope) => (
+          <li key={scope.unit} className="workload-cleanup__item">
+            <code className="workload-cleanup__unit">{scope.unit}</code>
+            <span className="settings__field-hint">
+              {CLEANUP_ERROR[scope.errorKind] ?? CLEANUP_ERROR.other} ·{' '}
+              {scope.attempts} {scope.attempts === 1 ? 'attempt' : 'attempts'}
+              {' · '}
+              {formatDateTime(scope.abandonedAt ?? scope.firstFailedAt)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {abandonedDropped > 0 && (
+        <p className="settings__field-hint">
+          {abandonedDropped} more not listed.
+        </p>
+      )}
+      {pending.length > 0 && (
+        <p className="settings__field-hint">
+          Station is still retrying {pending.length} more.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Abandoned workloads while the budget editor's preview is off (the read is
+ * not behind it). Loading and an unsupported host show nothing; a failed
+ * read offers a retry.
+ */
+function WorkloadCleanupNotice() {
+  const status = useWorkloadBudgetsQuery();
+  if (
+    status.isLoading ||
+    status.error instanceof WorkloadBudgetsUnsupportedError
+  )
+    return null;
+  if (status.error)
+    return (
+      <ErrorState
+        variant="compact"
+        title="Couldn’t check engine workloads"
+        description="Station did not report its workload status."
+        action={<Button onClick={() => status.refetch()}>Retry</Button>}
+      />
+    );
+  return <AbandonedWorkloads cleanup={status.data?.cleanup} />;
+}
+
 /**
  * Host options: the per-engine and total memory budgets for engine
- * workloads. Rendered only while the `workload-budget-settings` Feature
- * Preview is enabled; the server refuses the write while it is off.
+ * workloads, rendered only while the `workload-budget-settings` Feature
+ * Preview is enabled (the server refuses the write while it is off). Engine
+ * workloads Station couldn't stop show either way.
  */
 export function WorkloadBudgetSettings() {
   const previews = useFeaturePreviewsQuery();
@@ -46,7 +134,7 @@ export function WorkloadBudgetSettings() {
       (preview) =>
         preview.id === WORKLOAD_BUDGET_SETTINGS_PREVIEW_ID && preview.enabled,
     ) === true;
-  if (!enabled) return null;
+  if (!enabled) return <WorkloadCleanupNotice />;
   return <WorkloadBudgetEditor />;
 }
 
@@ -183,6 +271,7 @@ function WorkloadBudgetEditor() {
             Discard changes
           </Button>
         </ResponsiveSurfaceActions>
+        <AbandonedWorkloads cleanup={data.cleanup} />
       </>
     );
   }

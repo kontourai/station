@@ -1118,7 +1118,13 @@ export function ChatInputArea({
   useEffect(() => () => setShortcutContext('composerFocused', false), []);
 
   return (
-    <div className="chat-input" data-surface="composer" ref={composerRootRef}>
+    <div
+      className="chat-input"
+      data-surface="composer"
+      // Composer popovers stay inside this column (ResponsiveDialogSurface).
+      data-popover-boundary=""
+      ref={composerRootRef}
+    >
       {modelQuery !== null && !input.startsWith('/model ') && (
         <ResponsiveDialogSurface
           layer="popover"

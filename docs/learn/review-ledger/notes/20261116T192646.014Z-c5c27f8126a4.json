@@ -1,0 +1,23 @@
+{
+  "revision": "61456989822bfc7e38dafb3437b32b18a881aaff",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock now treats a local chat (no route needed) as host-bound, matches a child request's reporting session with threadInChat (including earlier sessions of the conversation), and holds a child request until a cold-loaded chat binds. No composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

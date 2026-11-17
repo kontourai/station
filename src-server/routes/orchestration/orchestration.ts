@@ -377,8 +377,13 @@ const childWorkTranscriptQuerySchema = z
       .min(1)
       .max(CHILD_WORK_TRANSCRIPT_PAGE_MAX)
       .default(30),
+    // The latest messages; a tail read names no offset.
+    tail: z.literal('1').optional(),
   })
-  .strict();
+  .strict()
+  .refine((query) => !(query.tail && query.offset > 0), {
+    message: 'A tail read names no offset',
+  });
 const sessionInventoryQueryBaseSchema = z
   .object({
     scope: z.enum(['whole-session', 'current-answer']),
@@ -6422,6 +6427,7 @@ export function createOrchestrationRoutes(
     const parsed = childWorkTranscriptQuerySchema.safeParse({
       offset: c.req.query('offset'),
       limit: c.req.query('limit'),
+      tail: c.req.query('tail'),
     });
     if (!parsed.success)
       return c.json({ success: false, error: 'Invalid transcript page' }, 400);
@@ -6434,7 +6440,9 @@ export function createOrchestrationRoutes(
     const outcome = await orchestrationService.childWorkTranscripts.read({
       threadId,
       childId: param(c, 'childId'),
-      ...parsed.data,
+      offset: parsed.data.offset,
+      limit: parsed.data.limit,
+      tail: parsed.data.tail === '1',
       authority,
     });
     if (outcome.status === 'unavailable') return unavailable(503);

@@ -1,0 +1,21 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Adds a paused/archived banner with Resume or Unarchive above the Project page content; layout, navigation and the captured page structure are otherwise unchanged. The cited project-start captures show active Projects, which render no banner.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Adds a paused/archived banner with Resume or Unarchive above the Project page content; layout, navigation and the captured page structure are otherwise unchanged. The cited project-start captures show active Projects, which render no banner.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Adds a paused/archived banner with Resume or Unarchive above the Project page content; layout, navigation and the captured page structure are otherwise unchanged. The cited project-start captures show active Projects, which render no banner.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Adds a paused/archived banner with Resume or Unarchive above the Project page content; layout, navigation and the captured page structure are otherwise unchanged. The cited project-start captures show active Projects, which render no banner.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Adds a paused/archived banner with Resume or Unarchive above the Project page content; layout, navigation and the captured page structure are otherwise unchanged. The cited project-start captures show active Projects, which render no banner.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Adds a paused/archived banner with Resume or Unarchive above the Project page content; layout, navigation and the captured page structure are otherwise unchanged. The cited project-start captures show active Projects, which render no banner.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds a paused/archived banner with Resume or Unarchive above the Project page content; layout, navigation and the captured page structure are otherwise unchanged. The cited project-start captures show active Projects, which render no banner.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Adds a paused/archived banner with Resume or Unarchive above the Project page content; layout, navigation and the captured page structure are otherwise unchanged. The cited project-start captures show active Projects, which render no banner.","inputs":["src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}
