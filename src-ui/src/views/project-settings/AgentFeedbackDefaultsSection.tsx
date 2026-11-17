@@ -1,4 +1,7 @@
-import type { ProjectPullRequestFeedbackDefaults } from '@kontourai/station-contracts/pull-request-feedback';
+import {
+  type ProjectPullRequestFeedbackDefaults,
+  PULL_REQUEST_HEAD_REVIEW_PREVIEW_ID,
+} from '@kontourai/station-contracts/pull-request-feedback';
 import {
   getProjectPullRequestFeedbackDefaults,
   writeProjectPullRequestFeedbackDefaults,
@@ -11,16 +14,20 @@ import { PageSection } from '../../components/PageSection';
 import { ErrorState, Skeleton } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import './AgentFeedbackDefaultsSection.css';
 
 type Switches = Pick<
   ProjectPullRequestFeedbackDefaults['settings'],
   'fixFailingChecks' | 'addressReviewComments'
->;
+> &
+  Partial<
+    Pick<ProjectPullRequestFeedbackDefaults['settings'], 'reviewEachHead'>
+  >;
 
 const SWITCHES: Array<{
-  key: keyof Switches;
+  key: 'fixFailingChecks' | 'addressReviewComments' | 'reviewEachHead';
   label: string;
   description: string;
 }> = [
@@ -35,6 +42,12 @@ const SWITCHES: Array<{
     label: 'Address review comments automatically',
     description:
       "Sends unresolved review threads and change requests to the Task's agent.",
+  },
+  {
+    key: 'reviewEachHead',
+    label: 'Review each new head',
+    description:
+      "Station's Codex reviewers read each push; you choose what reaches the agent.",
   },
 ];
 
@@ -53,6 +66,11 @@ function stillOnLine(count: number): string {
 export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
   const scope = useHostRequestAuthorityScope();
   const queryClient = useQueryClient();
+  // "Review each new head" only while its preview is on; left out of a
+  // write otherwise, so the server keeps what it stored.
+  const headReview = useSurfaceVisibilityFlags().has(
+    PULL_REQUEST_HEAD_REVIEW_PREVIEW_ID,
+  );
   const queryKey = [
     'pull-request-feedback-defaults',
     scope?.apiBase,
@@ -100,14 +118,19 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
   const data = defaults.data;
   const on =
     !!data &&
-    (data.settings.fixFailingChecks || data.settings.addressReviewComments);
+    (data.settings.fixFailingChecks ||
+      data.settings.addressReviewComments ||
+      (headReview && data.settings.reviewEachHead));
+  const switches = SWITCHES.filter(
+    (entry) => headReview || entry.key !== 'reviewEachHead',
+  );
 
   return (
     <PageSection
       id="section-agent-feedback"
       className="project-settings__section"
       title="Agent feedback"
-      description="For pull requests from this Project's Tasks. Pull requests already set up keep theirs."
+      description="For pull requests a Task opens from its branch and doesn't watch. Existing ones keep theirs."
     >
       {defaults.isPending ? (
         <Skeleton variant="block" />
@@ -124,7 +147,7 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
         />
       ) : (
         <>
-          {SWITCHES.map((entry) => (
+          {switches.map((entry) => (
             <PageRow
               key={entry.key}
               title={entry.label}
@@ -139,6 +162,9 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
                       fixFailingChecks: data.settings.fixFailingChecks,
                       addressReviewComments:
                         data.settings.addressReviewComments,
+                      ...(headReview
+                        ? { reviewEachHead: data.settings.reviewEachHead }
+                        : {}),
                       [entry.key]: checked,
                     })
                   }

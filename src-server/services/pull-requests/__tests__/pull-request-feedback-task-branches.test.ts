@@ -87,6 +87,8 @@ function setup(
   const state = {
     project: { ...PROJECT },
     now: T0,
+    /** The head review preview. */
+    headReview: false,
     mayContinue: true,
     stopped: false,
     repositories: {
@@ -143,18 +145,22 @@ function setup(
       mayContinueCalls.push([conversationId, userId]);
       return state.mayContinue;
     },
+    headReviewEnabled: () => state.headReview,
     logger: { warn },
     now: () => state.now,
   });
-  const turnOn = (setBy = 'owner') =>
+  const turnOn = (
+    setBy = 'owner',
+    settings = {
+      fixFailingChecks: true,
+      addressReviewComments: false,
+      reviewEachHead: false,
+    },
+  ) =>
     store.writeProjectDefaults({
       projectId: PROJECT.id,
       projectCreatedAt: PROJECT.createdAt,
-      settings: {
-        fixFailingChecks: true,
-        addressReviewComments: false,
-        reviewEachHead: false,
-      },
+      settings,
       setBy,
       now: new Date(T0).toISOString(),
     });
@@ -593,5 +599,57 @@ describe('Task-branch discovery', () => {
       at: new Date(T0).toISOString(),
     });
     expect(t.branches.defaults('widgets', true, () => true)?.stillOn).toBe(0);
+  });
+});
+
+describe('"Review each new head" in Project defaults', () => {
+  const REVIEW_ONLY = {
+    fixFailingChecks: false,
+    addressReviewComments: false,
+    reviewEachHead: true,
+  };
+
+  it('a default with only review on claims the Task branch pull request, and counts it still on', async () => {
+    const t = setup();
+    t.state.headReview = true;
+    t.turnOn('owner', REVIEW_ONLY);
+    expect(await t.discover()).toBe('ok');
+    expect(t.store.claim(PR_KEY)?.settings).toEqual(REVIEW_ONLY);
+    // Turned off at the Project: the review-only claim still gets review.
+    t.turnOn('owner', { ...REVIEW_ONLY, reviewEachHead: false });
+    expect(t.branches.defaults('widgets', true, () => true)?.stillOn).toBe(1);
+    // While review is not offered it does nothing, so it is not counted.
+    t.state.headReview = false;
+    expect(t.branches.defaults('widgets', true, () => true)?.stillOn).toBe(0);
+  });
+
+  it('with the preview off, review alone claims nothing, is never copied, and cannot be set', async () => {
+    const t = setup();
+    t.turnOn('owner', REVIEW_ONLY);
+    expect(await t.discover()).toBe('ok');
+    expect(t.reads).toEqual([]);
+    expect(t.store.claim(PR_KEY)).toBeUndefined();
+    // A default that also sends claims, without the review switch.
+    t.turnOn('owner', { ...REVIEW_ONLY, fixFailingChecks: true });
+    expect(await t.discover()).toBe('ok');
+    expect(t.store.claim(PR_KEY)?.settings).toEqual({
+      fixFailingChecks: true,
+      addressReviewComments: false,
+      reviewEachHead: false,
+    });
+    // Off at the Project: that claim (it sends) is still on.
+    t.turnOn('owner', { ...REVIEW_ONLY, reviewEachHead: false });
+    expect(t.branches.defaults('widgets', true, () => true)?.stillOn).toBe(1);
+    // The write cannot change review while it is not offered.
+    t.turnOn('owner', { ...REVIEW_ONLY, fixFailingChecks: true });
+    t.branches.writeDefaults(
+      'widgets',
+      { fixFailingChecks: false, reviewEachHead: false },
+      'owner',
+    );
+    expect(
+      t.store.projectDefaults(PROJECT.id, PROJECT.createdAt)?.settings
+        .reviewEachHead,
+    ).toBe(true);
   });
 });

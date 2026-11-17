@@ -1,0 +1,7 @@
+{
+  "revision": "cd49bdf3bc94a4332bbabfd736005485c2acb191",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Checked the head review row against runtime-pull-request-feedback.ts's preview description and the keep-stored-value rule in the feedback routes.","inputs":["docs/user/settings.md"]}
+  ]
+}

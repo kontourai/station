@@ -3,9 +3,11 @@
  * request's feedback (claims), what the forge last showed (observations),
  * what Station decided to tell the agent (deliveries, unique per pull
  * request, category and signature, so the same feedback is never sent
- * twice), the inbox messages that carried them (batches), and how many
- * rounds each head has had. Also each Project's defaults and the pull
- * requests Station found opened from a Task's own branch (derived links).
+ * twice), the inbox messages that carried them (batches), how many
+ * rounds each head has had, Station's own review of each head (head
+ * reviews, one row per pull request and head), each Project's defaults and
+ * the pull requests Station found opened from a Task's own branch (derived
+ * links).
  *
  * One SQLite file in the Station home, opened only once something writes to
  * it, like the Task follow-up store.
@@ -28,11 +30,14 @@ import {
   type PullRequestFeedbackSettings,
   type PullRequestFeedbackUnavailableCause,
   parsePullRequestFeedbackSettings,
+  pullRequestFeedbackActive,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { PullRequestWatchRefusalKind } from '@kontourai/station-contracts/pull-request-watch';
 
 /** Deliveries kept per pull request; the oldest settled go past it. */
 const MAX_DELIVERIES_PER_PULL_REQUEST = 200;
+/** Head reviews kept per pull request; a delta review reads back this far. */
+const MAX_HEAD_REVIEWS_PER_PULL_REQUEST = 50;
 /** A closed pull request's claim and history are kept this long. */
 const CLOSED_CLAIM_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 /** A watched Task's refusals are kept this long. */
@@ -214,6 +219,63 @@ export interface StoredObservation {
   digest: string;
   /** Per check name, when it was first seen incomplete on this head. */
   incompleteSince?: Record<string, string>;
+  /** When this head was first observed; absent on a row written before. */
+  headFirstSeenAt?: string;
+}
+
+/**
+ * Where Station's review of one head stands. `head-not-local` and
+ * `no-reviewer` (and a `not-verified` that never reached the review
+ * module, so has no `requestId`) are tried again on a later observation;
+ * the rest are final for that head until a person asks for Review again.
+ */
+export type StoredHeadReviewState =
+  | 'running'
+  | 'reviewed'
+  | 'not-verified'
+  | 'unknown'
+  | 'head-not-local'
+  | 'no-reviewer';
+
+export interface StoredHeadReviewFinding {
+  id: string;
+  file: string;
+  line: number;
+  severity: string;
+  confidence: string;
+  basis: string;
+  summary: string;
+  stateOrInput: string;
+  wrongOutcome: string;
+  /** Goes to the agent (see `requiredHeadReviewFindings`). */
+  required: boolean;
+  /** A prior head's finding the reviewer found still present or regressed. */
+  carried?: true;
+}
+
+export interface StoredHeadReview {
+  prKey: string;
+  headSha: string;
+  state: StoredHeadReviewState;
+  /** The review module's request; absent until one was submitted. */
+  requestId?: string;
+  projectSlug?: string;
+  mode?: 'initial' | 'delta';
+  priorReceiptId?: string;
+  baseSha?: string;
+  receiptId?: string;
+  /** Required first, then the rest. */
+  findings: StoredHeadReviewFinding[];
+  requiredIds: string[];
+  /** Findings shown only in Station. */
+  others: number;
+  failureReason?: string;
+  startedAt: string;
+  settledAt?: string;
+  /** Review again count on this head. */
+  rerun: number;
+  /** A person asked for the required findings to go to the agent. */
+  sendRequestedAt?: string;
 }
 
 const SCHEMA = [
@@ -266,6 +328,45 @@ const SCHEMA = [
     settled_at TEXT
   ) STRICT`,
   `CREATE INDEX IF NOT EXISTS batches_by_conversation ON batches (conversation_id, state)`,
+  `CREATE TABLE IF NOT EXISTS head_reviews (
+    pr_key TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    request_id TEXT,
+    project_slug TEXT,
+    mode TEXT,
+    prior_receipt_id TEXT,
+    base_sha TEXT,
+    state TEXT NOT NULL,
+    receipt_id TEXT,
+    findings TEXT NOT NULL,
+    required_ids TEXT NOT NULL,
+    others INTEGER NOT NULL,
+    failure_reason TEXT,
+    started_at TEXT NOT NULL,
+    settled_at TEXT,
+    rerun INTEGER NOT NULL,
+    send_requested_at TEXT,
+    PRIMARY KEY (pr_key, head_sha)
+  ) STRICT`,
+  `CREATE INDEX IF NOT EXISTS head_reviews_by_project ON head_reviews (project_slug, started_at)`,
+  // Every review request submitted, reruns included, kept for the daily
+  // limit; a head review row is replaced by its rerun, this is not.
+  `CREATE TABLE IF NOT EXISTS head_review_requests (
+    request_id TEXT PRIMARY KEY,
+    project_slug TEXT NOT NULL,
+    pr_key TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    submitted_at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE INDEX IF NOT EXISTS head_review_requests_by_project ON head_review_requests (project_slug, submitted_at)`,
+  // Per pull request, how many times its claim moved or was turned off:
+  // part of every head review request id, so a new owner or a re-enable
+  // never reuses an earlier owner's id. Never deleted, not even with the
+  // claim, so a claim made again later cannot count from zero.
+  `CREATE TABLE IF NOT EXISTS head_review_epochs (
+    pr_key TEXT PRIMARY KEY,
+    epoch INTEGER NOT NULL
+  ) STRICT`,
   `CREATE TABLE IF NOT EXISTS watch_reports (
     pr_key TEXT NOT NULL,
     head_sha TEXT NOT NULL,
@@ -390,6 +491,33 @@ function readDelivery(row: Record<string, unknown>): StoredDelivery {
   };
 }
 
+function readHeadReview(row: Record<string, unknown>): StoredHeadReview {
+  const optional = {
+    requestId: optStr(row, 'request_id'),
+    projectSlug: optStr(row, 'project_slug'),
+    mode: optStr(row, 'mode') as StoredHeadReview['mode'],
+    priorReceiptId: optStr(row, 'prior_receipt_id'),
+    baseSha: optStr(row, 'base_sha'),
+    receiptId: optStr(row, 'receipt_id'),
+    failureReason: optStr(row, 'failure_reason'),
+    settledAt: optStr(row, 'settled_at'),
+    sendRequestedAt: optStr(row, 'send_requested_at'),
+  };
+  return {
+    prKey: str(row, 'pr_key'),
+    headSha: str(row, 'head_sha'),
+    state: str(row, 'state') as StoredHeadReviewState,
+    findings: JSON.parse(str(row, 'findings')),
+    requiredIds: JSON.parse(str(row, 'required_ids')),
+    others: int(row, 'others'),
+    startedAt: str(row, 'started_at'),
+    rerun: int(row, 'rerun'),
+    ...Object.fromEntries(
+      Object.entries(optional).filter(([, value]) => value !== undefined),
+    ),
+  };
+}
+
 function readBatch(row: Record<string, unknown>): StoredBatch {
   const reasonCode = optStr(row, 'reason_code');
   const settledAt = optStr(row, 'settled_at');
@@ -433,6 +561,8 @@ export class PullRequestFeedbackStore {
         .map((row) => row.name);
       if (!columns.includes('incomplete_since'))
         db.exec('ALTER TABLE observations ADD COLUMN incomplete_since TEXT');
+      if (!columns.includes('head_first_seen_at'))
+        db.exec('ALTER TABLE observations ADD COLUMN head_first_seen_at TEXT');
       const claimColumns = db
         .prepare('PRAGMA table_info(claims)')
         .all()
@@ -525,13 +655,20 @@ export class PullRequestFeedbackStore {
           generation,
           input.watch ? JSON.stringify(input.watch) : null,
         );
-      if (moved)
+      if (moved) {
         // What waited for the old owner is not the new owner's.
         this.db
           .prepare(
             "UPDATE deliveries SET state = 'superseded', settled_at = ? WHERE pr_key = ? AND state = 'pending'",
           )
           .run(input.now, input.prKey);
+        // Nor are its head reviews: the new owner's chat reviews afresh,
+        // under request ids of its own.
+        this.db
+          .prepare('DELETE FROM head_reviews WHERE pr_key = ?')
+          .run(input.prKey);
+        this.bumpHeadReviewEpoch(input.prKey);
+      }
       return this.claim(input.prKey)!;
     });
   }
@@ -587,6 +724,9 @@ export class PullRequestFeedbackStore {
       this.db.prepare('DELETE FROM observations WHERE pr_key = ?').run(prKey);
       this.db.prepare('DELETE FROM deliveries WHERE pr_key = ?').run(prKey);
       this.db.prepare('DELETE FROM rounds WHERE pr_key = ?').run(prKey);
+      this.db.prepare('DELETE FROM head_reviews WHERE pr_key = ?').run(prKey);
+      // Claimed again later, it reviews under request ids of its own.
+      this.bumpHeadReviewEpoch(prKey);
       this.db.prepare('DELETE FROM watch_reports WHERE pr_key = ?').run(prKey);
     });
   }
@@ -615,6 +755,10 @@ export class PullRequestFeedbackStore {
           "UPDATE deliveries SET state = 'superseded', settled_at = ? WHERE pr_key = ? AND state = 'pending'",
         )
         .run(now, prKey);
+      // A released claim's head reviews were for the chat that let it go;
+      // turned on again, it reviews under request ids of its own.
+      this.db.prepare('DELETE FROM head_reviews WHERE pr_key = ?').run(prKey);
+      this.bumpHeadReviewEpoch(prKey);
     });
   }
 
@@ -656,8 +800,12 @@ export class PullRequestFeedbackStore {
     return { settings, setBy: str(row, 'set_by'), setAt: str(row, 'set_at') };
   }
 
-  /** Whether any Project's defaults send anything: discovery's cheap gate. */
-  anyProjectDefaultsOn(): boolean {
+  /**
+   * Whether any Project's defaults do anything: discovery's cheap gate.
+   * `headReview`: the head review preview, so review alone counts only
+   * while it is on.
+   */
+  anyProjectDefaultsOn(headReview: boolean): boolean {
     return this.db
       .prepare('SELECT settings FROM project_defaults')
       .all()
@@ -665,10 +813,7 @@ export class PullRequestFeedbackStore {
         const settings = parsePullRequestFeedbackSettings(
           JSON.parse(str(row, 'settings')),
         );
-        return (
-          !!settings &&
-          (settings.fixFailingChecks || settings.addressReviewComments)
-        );
+        return !!settings && pullRequestFeedbackActive(settings, headReview);
       });
   }
 
@@ -702,6 +847,8 @@ export class PullRequestFeedbackStore {
   projectDefaultClaimsOn(
     projectId: string,
     canRead: (conversationId: string) => boolean,
+    /** The head review preview: a review-only claim counts only while on. */
+    headReview: boolean,
   ): number {
     return this.db
       .prepare(
@@ -713,8 +860,7 @@ export class PullRequestFeedbackStore {
       .map(readClaim)
       .filter(
         (claim) =>
-          (claim.settings.fixFailingChecks ||
-            claim.settings.addressReviewComments) &&
+          pullRequestFeedbackActive(claim.settings, headReview) &&
           claim.condition?.state !== 'closed' &&
           canRead(claim.conversationId),
       ).length;
@@ -799,18 +945,22 @@ export class PullRequestFeedbackStore {
       ...(optStr(row, 'incomplete_since')
         ? { incompleteSince: JSON.parse(optStr(row, 'incomplete_since')!) }
         : {}),
+      ...(optStr(row, 'head_first_seen_at')
+        ? { headFirstSeenAt: optStr(row, 'head_first_seen_at')! }
+        : {}),
     };
   }
 
   writeObservation(prKey: string, value: StoredObservation): void {
     this.db
       .prepare(
-        `INSERT INTO observations (pr_key, observation, observed_at, unchanged_since, digest, incomplete_since)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO observations (pr_key, observation, observed_at, unchanged_since, digest, incomplete_since, head_first_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (pr_key) DO UPDATE SET observation = excluded.observation,
            observed_at = excluded.observed_at,
            unchanged_since = excluded.unchanged_since, digest = excluded.digest,
-           incomplete_since = excluded.incomplete_since`,
+           incomplete_since = excluded.incomplete_since,
+           head_first_seen_at = excluded.head_first_seen_at`,
       )
       .run(
         prKey,
@@ -819,6 +969,7 @@ export class PullRequestFeedbackStore {
         value.unchangedSince,
         value.digest,
         value.incompleteSince ? JSON.stringify(value.incompleteSince) : null,
+        value.headFirstSeenAt ?? null,
       );
   }
 
@@ -1186,6 +1337,118 @@ export class PullRequestFeedbackStore {
     return row ? int(row, 'sent') : 0;
   }
 
+  // Head reviews -------------------------------------------------------------
+
+  headReview(prKey: string, headSha: string): StoredHeadReview | undefined {
+    const row = this.db
+      .prepare('SELECT * FROM head_reviews WHERE pr_key = ? AND head_sha = ?')
+      .get(prKey, headSha);
+    return row ? readHeadReview(row) : undefined;
+  }
+
+  /** This pull request's head reviews, newest first. */
+  headReviews(prKey: string): StoredHeadReview[] {
+    return this.db
+      .prepare(
+        'SELECT * FROM head_reviews WHERE pr_key = ? ORDER BY started_at DESC, rowid DESC',
+      )
+      .all(prKey)
+      .map(readHeadReview);
+  }
+
+  /** Reviews left running: after a restart nobody is waiting on them. */
+  runningHeadReviews(): StoredHeadReview[] {
+    return this.db
+      .prepare("SELECT * FROM head_reviews WHERE state = 'running'")
+      .all()
+      .map(readHeadReview);
+  }
+
+  writeHeadReview(review: StoredHeadReview): void {
+    this.db
+      .prepare(
+        `INSERT INTO head_reviews (pr_key, head_sha, request_id, project_slug, mode, prior_receipt_id, base_sha, state, receipt_id, findings, required_ids, others, failure_reason, started_at, settled_at, rerun, send_requested_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (pr_key, head_sha) DO UPDATE SET request_id = excluded.request_id,
+           project_slug = excluded.project_slug, mode = excluded.mode,
+           prior_receipt_id = excluded.prior_receipt_id, base_sha = excluded.base_sha,
+           state = excluded.state, receipt_id = excluded.receipt_id,
+           findings = excluded.findings, required_ids = excluded.required_ids,
+           others = excluded.others, failure_reason = excluded.failure_reason,
+           started_at = excluded.started_at, settled_at = excluded.settled_at,
+           rerun = excluded.rerun, send_requested_at = excluded.send_requested_at`,
+      )
+      .run(
+        review.prKey,
+        review.headSha,
+        review.requestId ?? null,
+        review.projectSlug ?? null,
+        review.mode ?? null,
+        review.priorReceiptId ?? null,
+        review.baseSha ?? null,
+        review.state,
+        review.receiptId ?? null,
+        JSON.stringify(review.findings),
+        JSON.stringify(review.requiredIds),
+        review.others,
+        review.failureReason ?? null,
+        review.startedAt,
+        review.settledAt ?? null,
+        review.rerun,
+        review.sendRequestedAt ?? null,
+      );
+  }
+
+  /** How many times this pull request's claim moved or was turned off. */
+  headReviewEpoch(prKey: string): number {
+    const row = this.db
+      .prepare('SELECT epoch FROM head_review_epochs WHERE pr_key = ?')
+      .get(prKey);
+    return row ? int(row, 'epoch') : 0;
+  }
+
+  private bumpHeadReviewEpoch(prKey: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO head_review_epochs (pr_key, epoch) VALUES (?, 1)
+         ON CONFLICT (pr_key) DO UPDATE SET epoch = epoch + 1`,
+      )
+      .run(prKey);
+  }
+
+  /** Record one submitted review request, a rerun included. */
+  recordHeadReviewRequest(input: {
+    requestId: string;
+    projectSlug: string;
+    prKey: string;
+    headSha: string;
+    at: string;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO head_review_requests (request_id, project_slug, pr_key, head_sha, submitted_at)
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT (request_id) DO NOTHING`,
+      )
+      .run(
+        input.requestId,
+        input.projectSlug,
+        input.prKey,
+        input.headSha,
+        input.at,
+      );
+  }
+
+  /** Review requests this Project submitted since `since` (the daily cap). */
+  headReviewsStartedSince(projectSlug: string, since: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS started FROM head_review_requests
+         WHERE project_slug = ? AND submitted_at >= ?`,
+      )
+      .get(projectSlug, since);
+    return row ? int(row, 'started') : 0;
+  }
+
   // Retention ----------------------------------------------------------------
 
   /** Drop history past its bounds and claims closed long enough ago. */
@@ -1206,11 +1469,14 @@ export class PullRequestFeedbackStore {
             'observations',
             'deliveries',
             'rounds',
+            'head_reviews',
             'watch_reports',
           ])
             this.db
               .prepare(`DELETE FROM ${table} WHERE pr_key = ?`)
               .run(claim.prKey);
+          // Reopened and claimed again, it reviews under new request ids.
+          this.bumpHeadReviewEpoch(claim.prKey);
           continue;
         }
         this.db
@@ -1219,7 +1485,17 @@ export class PullRequestFeedbackStore {
              AND id NOT IN (SELECT id FROM deliveries WHERE pr_key = ? ORDER BY created_at DESC, id DESC LIMIT ?)`,
           )
           .run(claim.prKey, claim.prKey, MAX_DELIVERIES_PER_PULL_REQUEST);
+        this.db
+          .prepare(
+            `DELETE FROM head_reviews WHERE pr_key = ? AND state != 'running'
+             AND rowid NOT IN (SELECT rowid FROM head_reviews WHERE pr_key = ? ORDER BY started_at DESC LIMIT ?)`,
+          )
+          .run(claim.prKey, claim.prKey, MAX_HEAD_REVIEWS_PER_PULL_REQUEST);
       }
+      // Two days: the daily limit reads back one.
+      this.db
+        .prepare('DELETE FROM head_review_requests WHERE submitted_at < ?')
+        .run(new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString());
       this.db
         .prepare('DELETE FROM watch_refusals WHERE at < ?')
         .run(new Date(now - REFUSAL_RETENTION_MS).toISOString());

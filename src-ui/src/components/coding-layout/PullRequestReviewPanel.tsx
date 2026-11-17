@@ -48,6 +48,7 @@ import {
   PullRequestFeedbackStrip,
   usePullRequestFeedbackStrip,
 } from '../pull-requests/PullRequestFeedbackStrip';
+import { PullRequestHeadReviewSection } from '../pull-requests/PullRequestHeadReviewSection';
 import {
   humanise,
   PullRequestChip,
@@ -1003,6 +1004,7 @@ function ReviewOwner({
             strip={feedback}
             reference={`${target.owner}/${target.repository} #${target.ref}`}
           />
+          <PullRequestHeadReviewSection strip={feedback} />
           <p
             className="pull-request-review__status pull-request-review__status--live"
             role="status"

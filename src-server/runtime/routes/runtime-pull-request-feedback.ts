@@ -15,11 +15,13 @@ import type {
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
+  pullRequestFeedbackActive,
   pullRequestFeedbackKey,
   pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type { ProjectPullRequestWatchSettings } from '@kontourai/station-contracts/pull-request-watch';
+import type { IndependentReviewRequest } from '@kontourai/station-contracts/review-evidence';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
 import type {
@@ -38,6 +40,7 @@ import {
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { readReviewRepositoryIdentity } from '../../services/evidence/git-review-workspace-source.js';
+import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
@@ -72,6 +75,7 @@ import {
   type TaskBranchTask as PullRequestFeedbackTaskBranchTask,
 } from '../../services/pull-requests/pull-request-feedback-task-branches.js';
 import { pullRequestFeedbackTaskFact } from '../../services/pull-requests/pull-request-feedback-task-fact.js';
+import { PullRequestHeadReviewer } from '../../services/pull-requests/pull-request-head-review.js';
 import { PullRequestWatch } from '../../services/pull-requests/pull-request-watch.js';
 import { expandTilde } from '../../utils/paths.js';
 import type { PullRequestWatchPolicy } from '../agents/pre-tool-policy.js';
@@ -155,6 +159,9 @@ export interface PullRequestFeedbackRuntimeDeps {
   orchestration: {
     currentConversationSessionId(conversationId: string): string;
     sessionRecordedOwnerId(threadId: string): string | undefined;
+    firstStartedMetadataOfThread(
+      threadId: string,
+    ): Record<string, unknown> | undefined;
   };
   eventBus: {
     subscribe(
@@ -253,12 +260,49 @@ export interface PullRequestFeedbackRuntime {
   bindNotifier(service: FeedbackNotifier): void;
   /** Whether this request could Send again or turn feedback off for the chat. */
   viewerMayChange(request: Request, conversationId: string): boolean;
+  /**
+   * Station's review of each new head, once the review module is composed
+   * (after this runtime). Until then no head review starts.
+   */
+  bindHeadReview(deps: HeadReviewDeps): void;
   /** #5066: a Task's pull request watch, when Tasks are composed. */
   watch?: PullRequestWatch;
   /** #5066: the pre-tool refusals for a watching Task's agent. */
   pullRequestWatchPolicy?: PullRequestWatchPolicy;
   close(): Promise<void>;
 }
+
+/** What a head review needs from the rest of the runtime. */
+export interface HeadReviewDeps {
+  reviews: Pick<ReviewEvidenceModule, 'run' | 'status' | 'read'>;
+  /** Repo Map selection for a request, as the review module would make it. */
+  selection: {
+    resolve(
+      request: IndependentReviewRequest,
+      context: Record<string, never>,
+    ): Promise<{ kind: string }>;
+  };
+  /** The Project's folder, when it has one. */
+  projectRoot(projectSlug: string): string | undefined;
+  /**
+   * The single `correctness` reviewer when Repo Map selection is
+   * unavailable: the Task code review's rule (a read-only capable Agent of
+   * the Project that is not the implementer).
+   */
+  fallbackReviewer(
+    projectSlug: string,
+    implementerAgentSlug: string,
+  ): Promise<string | undefined>;
+  /** A Task's recorded base commit. */
+  taskBaseCommit(taskId: string): string | undefined;
+}
+
+/** The lens a head review falls back to without Repo Map selection. */
+const CORRECTNESS_LENS = {
+  id: 'correctness',
+  instructions:
+    'Review the exact committed change for correctness, security and data integrity. Report only actionable findings with a concrete failure scenario. Do not edit files.',
+};
 
 /**
  * The owning conversation's agent, read without waiting (the inbox's
@@ -458,6 +502,16 @@ export function composePullRequestFeedbackRuntime(
   });
   const enabled = () =>
     preview.select({ enabled: () => true, disabled: () => false });
+  const headReviewPreview = deps.featurePreviews.bind({
+    // A literal, as docs:feature-previews:check reads it.
+    id: 'pull-request-head-review',
+    label: 'Pull request head review',
+    description:
+      "Run Station's independent review on each new head of a pull request a chat owns, and send its required findings to the agent. Needs Pull request agent feedback. Pull requests already set to review resume when you turn this on.",
+  });
+  const headReviewEnabled = () =>
+    enabled() &&
+    headReviewPreview.select({ enabled: () => true, disabled: () => false });
   const holder = new PullRequestFeedbackStoreHolder(() =>
     pullRequestFeedbackStorePath(deps.homeDir),
   );
@@ -576,6 +630,7 @@ export function composePullRequestFeedbackRuntime(
     linked: linkedNow,
     store: () => holder.forRead(),
     enabled,
+    headReviewEnabled,
     session,
     mayContinue: (conversationId, userId) =>
       inbox.mayContinue(conversationId, userId),
@@ -604,8 +659,77 @@ export function composePullRequestFeedbackRuntime(
       session,
       mayContinue: (conversationId, userId) =>
         inbox.mayContinue(conversationId, userId),
+      headReviewEnabled,
       logger: deps.logger,
     });
+  let headReviewDeps: HeadReviewDeps | undefined;
+  const headReview = new PullRequestHeadReviewer({
+    enabled: headReviewEnabled,
+    store: () => holder.forRead(),
+    session,
+    lastTurnAt,
+    mayContinue: (conversationId, userId) =>
+      inbox.mayContinue(conversationId, userId),
+    chat: (conversationId) => {
+      const sessionId =
+        deps.orchestration.currentConversationSessionId(conversationId);
+      const metadata =
+        deps.orchestration.firstStartedMetadataOfThread(sessionId) ?? {};
+      const agent = metadata.agentSlug ?? metadata.executionAgentId;
+      const projectSlug = lineage(conversationId)
+        .map((id) => eventStore.readConversationProjectSlug(id))
+        .find((slug) => slug !== undefined);
+      const binding = eventStore.readProjectTaskRoomExecutionBinding(sessionId);
+      const taskBaseCommit = binding
+        ? headReviewDeps?.taskBaseCommit(binding.taskId)
+        : undefined;
+      const ownerUserId = deps.orchestration.sessionRecordedOwnerId(sessionId);
+      return {
+        ...(projectSlug ? { projectSlug } : {}),
+        ...(typeof agent === 'string' && agent
+          ? { implementerAgentSlug: agent }
+          : {}),
+        ...(ownerUserId ? { ownerUserId } : {}),
+        // A chat an unverified agent started acts for no one: so does its
+        // review.
+        ...(metadata.ownerAttribution === 'unattributed-agent'
+          ? { ownerAttribution: 'unattributed-agent' as const }
+          : {}),
+        ...(taskBaseCommit ? { taskBaseCommit } : {}),
+      };
+    },
+    projectRoot: (projectSlug) => headReviewDeps?.projectRoot(projectSlug),
+    reviewers: async (request) => {
+      const bound = headReviewDeps;
+      if (!bound) return undefined;
+      let selected = false;
+      try {
+        selected =
+          (await bound.selection.resolve(request, {})).kind === 'selected';
+      } catch {
+        selected = false;
+      }
+      if (selected) return { reviewers: [], selection: { kind: 'repo-map' } };
+      const slug = await bound.fallbackReviewer(
+        request.target.projectSlug,
+        request.implementerAgentSlug,
+      );
+      return slug
+        ? {
+            reviewers: [
+              {
+                reviewerId: 'head-review',
+                executorAgentSlug: slug,
+                lens: CORRECTNESS_LENS,
+              },
+            ],
+          }
+        : undefined;
+    },
+    reviews: () => headReviewDeps?.reviews,
+    delivery: () => delivery,
+    logger: deps.logger,
+  });
   const poller = new PullRequestFeedbackPoller({
     ...(taskBranches
       ? { discover: (input) => taskBranches!.discover(input) }
@@ -617,6 +741,8 @@ export function composePullRequestFeedbackRuntime(
     session,
     lastTurnAt,
     delivery: () => delivery,
+    headReview: () => headReview,
+    headReviewEnabled,
     logger: deps.logger,
   });
   const ownership = new PullRequestFeedbackOwnership({
@@ -628,6 +754,9 @@ export function composePullRequestFeedbackRuntime(
       inbox.mayContinue(conversationId, userId),
     title: (conversationId) =>
       eventStore.conversationTitle(lineage(conversationId)),
+    headReview: (prKey) => headReview.view(prKey),
+    headReviewWaiting: (prKey) => headReview.waiting(prKey),
+    headReviewEnabled,
   });
   attentionSources = () => {
     const store = enabled() ? holder.forRead() : undefined;
@@ -645,7 +774,7 @@ export function composePullRequestFeedbackRuntime(
     for (const claim of store.allClaims()) {
       const condition = claim.condition;
       if (
-        !pullRequestFeedbackSends(claim.settings) ||
+        !pullRequestFeedbackActive(claim.settings, headReviewEnabled()) ||
         (condition && condition.state !== 'paused') ||
         // Unlinked: delivery releases it on its next run.
         !stillLinked(claim.conversationId, claim.prKey)
@@ -675,6 +804,9 @@ export function composePullRequestFeedbackRuntime(
             ? { failing: condition.shown ?? condition.failing }
             : {}),
           ...(condition.rounds ? { rounds: condition.rounds } : {}),
+          ...(pullRequestFeedbackSends(claim.settings)
+            ? {}
+            : { reviewOnly: true as const }),
           at: condition.at ?? backfillPausedAt(store, claim.prKey, condition),
         });
         continue;
@@ -706,7 +838,11 @@ export function composePullRequestFeedbackRuntime(
     conversationOf,
     hasClaims,
     refresh: (conversationId) => void poller.refresh(conversationId),
-    deliver: (conversationId) => void delivery.deliver(conversationId),
+    // An agent that just became idle may let a head review start.
+    deliver: (conversationId) =>
+      void delivery
+        .deliver(conversationId)
+        .then(() => headReview.consider(conversationId)),
     turnCompleted: (conversationId, sessionId) =>
       taskBranches?.nudge(conversationId, sessionId),
   });
@@ -725,6 +861,7 @@ export function composePullRequestFeedbackRuntime(
               void delivery.deliver(conversationId),
           }
         : undefined,
+      () => (headReviewEnabled() && headReviewDeps ? headReview : undefined),
     ],
     placementRefusal: (input) => delivery.placementRefusal(input),
     // Fail-soft: the chat's pull request list never depends on agent
@@ -752,7 +889,7 @@ export function composePullRequestFeedbackRuntime(
             canRead: (conversationId) =>
               deps.access.canRead(request, conversationId),
           },
-          { sentChecks: false },
+          { sentChecks: false, headReview: false },
         ),
         store,
         openTurnKey,
@@ -804,6 +941,9 @@ export function composePullRequestFeedbackRuntime(
     bindNotifier: (service) => {
       notifier = service;
     },
+    bindHeadReview: (bound) => {
+      headReviewDeps = bound;
+    },
     viewerMayChange: (request, conversationId) => {
       try {
         return !!pullRequestFeedbackWriterId(access, request, conversationId);
@@ -816,6 +956,8 @@ export function composePullRequestFeedbackRuntime(
       closing = true;
       unsubscribe();
       await poller.close();
+      // A review still running settles into a store that is closing: its
+      // row stays `running` and reads "unknown" after the restart.
       holder.close();
     },
   };

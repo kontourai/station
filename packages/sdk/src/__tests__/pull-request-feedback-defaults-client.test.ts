@@ -63,6 +63,30 @@ test('writes only the two switches, so a stored third is kept', async () => {
     options,
     { settings: { fixFailingChecks: true, addressReviewComments: false } },
   );
+  // "Review each new head" goes only when given.
+  transport.mutateJson.mockResolvedValue(ok(defaults));
+  await writeProjectPullRequestFeedbackDefaults(
+    'http://station.test',
+    'my project',
+    {
+      fixFailingChecks: true,
+      addressReviewComments: false,
+      reviewEachHead: true,
+    },
+    options,
+  );
+  expect(transport.mutateJson).toHaveBeenLastCalledWith(
+    'http://station.test/api/pull-request-feedback/projects/my%20project/defaults',
+    'PUT',
+    options,
+    {
+      settings: {
+        fixFailingChecks: true,
+        addressReviewComments: false,
+        reviewEachHead: true,
+      },
+    },
+  );
 });
 
 test('refuses an answer for another Project', async () => {

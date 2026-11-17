@@ -6355,6 +6355,14 @@ refuses an answer about another pull request. An owner the reader may not
 read is `{ readable: false }`, and a 409 about such a chat reads through
 `pullRequestFeedbackOwnerOf` as `{}` (no id, no title).
 
+With the `pull-request-head-review` preview on, `reviewPullRequestHeadAgain`
+runs Station's review of the pull request's current head again and
+`sendPullRequestHeadReviewFindings` sends that review's required findings to
+the agent. `pullRequestHeadReviewRefusal(error)` reads either one's refusal
+as Station's own sentence (a busy Project, the daily limit, no reviewer, a
+pause), to show as it comes. `writePullRequestFeedback` takes an optional `reviewEachHead`;
+leaving it out keeps what the chat stored.
+
 `@kontourai/station-sdk/pull-request-watch` reads a Task's pull request watch
 (`getTaskPullRequestWatch`), sets the Task's own choice
 (`setTaskPullRequestWatch` with `on`, `off` or `project`) and sets a Project's
