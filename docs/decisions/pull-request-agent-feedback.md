@@ -325,6 +325,26 @@ existing independent review (`ReviewEvidenceModule`) once per head.
     is made inert like forge text. The head reviewer has no forge provider:
     it never approves, merges, comments or posts a review.
 
+With a Task watching the pull request ([task-owned pull requests](task-owned-pull-requests.md)):
+
+- Review of each head stays its own opt-in. A watch claim turns on the two
+  sending switches only; "Review each new head" is turned on in the chat or
+  the Project's Agent feedback defaults, under the same preview rule.
+- Required findings are not failing checks, so a message carrying them is
+  not a fix attempt (the budget counts only messages that carried failing
+  checks). They share the 3-rounds-per-head and 10-a-day caps.
+- A watch that stops or moves a claim releases or rewrites it through the
+  same store paths, so the review epoch goes up with it; the watch adds no
+  other way to drop a claim's reviews.
+- With "Review each new head" on, Ready for you waits for Station's review
+  of that head: until one has run (any outcome) and its required findings
+  were sent. One held by the Project's daily review limit holds Ready until
+  a review runs.
+- Project settings keep two sections: Pull requests (a Task watches the pull
+  requests kept on it) and Agent feedback (defaults for a pull request
+  opened from a Task's own branch). Agent feedback's lead now says which
+  pull requests it is for; folding both into one section is a follow-up.
+
 Departures from the plan:
 
 - The panel reads "2 required findings · Sent 1m", not "sent to agent 1m
