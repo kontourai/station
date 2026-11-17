@@ -95,6 +95,8 @@ export interface AgentScheduleCompositionDeps {
   dispatchActor(c: Context): AgentScheduleActor;
   /** The Project an Agent belongs to (`undefined`: global); throws when none. */
   agentProject(agentSlug: string): Promise<string | undefined>;
+  /** #5070: whether a job proposal may name a Project. */
+  projectSchedulesEnabled?(): boolean;
   /**
    * The automations whose runs land in a conversation. Absent (hosted, no
    * scheduler): the chat's schedule lists none.
@@ -474,6 +476,19 @@ export function composeAgentSchedule(
     dispatchActor: deps.dispatchActor,
     person,
     jobAgentTarget,
+    ...(deps.projectSchedulesEnabled
+      ? { projectSchedulesEnabled: deps.projectSchedulesEnabled }
+      : {}),
+    // #5070: a Project schedule needs the same `execute` reach a dispatch
+    // into the Project answers.
+    jobProjectTarget: async (projectId, ownerId) => {
+      const projectSlug = proposals?.projectSlugForId(projectId);
+      if (ownerId === undefined || projectSlug === undefined) return undefined;
+      return deps.scope?.target(
+        { kind: 'new', ownerId, projectSlug, remote: false },
+        'execute',
+      );
+    },
     hosted: deps.hosted,
     ...(proposalStore
       ? {

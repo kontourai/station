@@ -1,0 +1,7 @@
+{
+  "revision": "46768f0accfae9abb46e9cfe322d77ea7a4c31f1",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#5077: event-page paragraph now documents highWaterSequence, non-contiguous per-thread sequences, eventCount as a count rather than a cursor bound, and the fallback for older hosts; checked against listEventPage, session-event-reads and the OrchestrationSessionEventPage contract.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

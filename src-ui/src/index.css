@@ -1205,6 +1205,12 @@ button:hover {
   z-index: var(--layer-system) !important;
 }
 
+/* A popover opened from inside this one stands in for it
+   (`yieldToChildPopover`): one surface shows at a time. */
+.responsive-surface-overlay[data-yielded] > .responsive-surface-panel {
+  visibility: hidden;
+}
+
 /* station#753: one open transition for every dialog/sheet that renders
    through `ResponsiveDialogSurface` (NewChatModal, the ACP setup dialog, the
    model picker, confirm/prompt modals, …) — a single declaration at the
@@ -1770,8 +1776,23 @@ button:hover {
 
 .region-tabs__item {
   display: flex;
-  flex: 0 0 auto;
+  /* Unselected tabs give way first, down to a few letters with an ellipsis,
+     so a narrow side bar keeps the selected pane's name whole instead of
+     scrolling it out behind the bar's buttons ("Agen"). */
+  flex: 0 1 auto;
+  min-width: 4em;
   align-items: center;
+}
+
+.region-tabs__item:has(> [aria-selected="true"]) {
+  flex-shrink: 0;
+  min-width: max-content;
+}
+
+.region-tabs__item > .region-tabs__tab {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .region-tabs__tab {
@@ -4043,16 +4064,24 @@ button:hover {
   }
 }
 
-/* Backgrounded provider tasks that outlive the assistant turn. */
+/* Backgrounded work that outlives the assistant turn: the strip's card holds
+   its count line and the running tasks the transcript does not show. It does
+   not clip its content, so the product-wide focus ring (offset outside the
+   button) stays whole. */
+.background-tasks-strip {
+  margin: 8px 0;
+  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+}
+
 .background-tasks-banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .background-tasks-banner__label {
@@ -4074,6 +4103,18 @@ button.background-tasks-banner {
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+/* The card's inner radius (10px less its 1px border), so the hover fill
+   meets its corners; square at the bottom when task rows follow. */
+button.background-tasks-banner {
+  border-radius: 9px;
+}
+
+.background-tasks-strip:has(.background-tasks-banner__tasks)
+  > button.background-tasks-banner {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 button.background-tasks-banner:hover,
@@ -5855,167 +5896,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   pointer-events: none;
 }
 
-/* Attachment Preview Menu */
-.attachment-menu {
-  position: fixed;
-  bottom: 80px;
-  right: 20px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 10000;
-  min-width: 280px;
-  max-width: 400px;
-}
-
-.attachment-menu__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.attachment-menu__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.attachment-menu__count {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.attachment-menu__list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.attachment-menu__item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  background: var(--bg-secondary) !important;
-  border-radius: 4px;
-  border: none !important;
-}
-
-.attachment-menu__item:hover {
-  background: var(--bg-secondary) !important;
-  transform: none !important;
-}
-
-/* The preview trigger is a real button: keyboard users tab to it and press
-   Enter. (The old clickable img carried a keydown handler it could never
-   receive — an img is not focusable — so the preview was pointer-only.) */
-.attachment-menu__thumbnail-button {
-  padding: 0;
-  border: none !important;
-  background: none !important;
-  cursor: pointer;
-  border-radius: 4px;
-  /* The img fills the box; keep the button's own box the same 48px square. */
-  line-height: 0;
-  flex: 0 0 auto !important;
-  transition: box-shadow var(--motion-base) var(--ease-standard);
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__thumbnail-button:hover {
-  background: none !important;
-  transform: none !important;
-}
-
-.attachment-menu__thumbnail-button:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
-
-.attachment-menu__thumbnail {
-  display: block;
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 4px;
-}
-
-.attachment-menu__file-icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  font-size: var(--text-5xl);
-  flex-shrink: 0;
-}
-
-.attachment-menu__info {
-  flex: 1;
-  min-width: 0;
-}
-
-.attachment-menu__name {
-  font-size: var(--text-base);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attachment-menu__size {
-  font-size: var(--k-text-xs);
-  color: var(--text-muted);
-}
-
-.attachment-menu__remove-btn {
-  background: none !important;
-  border: none !important;
-  cursor: pointer;
-  padding: 4px;
-  color: var(--text-muted);
-  font-size: var(--text-2xl);
-  line-height: 1;
-  flex: 0 0 auto !important;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__remove-btn:hover {
-  background: none !important;
-  transform: none !important;
-  color: var(--text-primary);
-}
-
-.attachment-menu__add-btn,
-.attachment-menu__clear-btn {
-  background: none !important;
-  border: none !important;
-  cursor: pointer;
-  font-size: var(--k-text-sm);
-  color: var(--color-primary);
-  font-weight: 600;
-  padding: 2px 4px;
-  flex: 0 0 auto !important;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.attachment-menu__add-btn:hover,
-.attachment-menu__clear-btn:hover {
-  background: none !important;
-  transform: none !important;
-}
-
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   :root {
     /* Mobile toolbar controls are 44px tall with 4px block padding. Keep the
@@ -6547,41 +6427,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     inset: 0;
     background: rgba(0, 0, 0, 0.3);
     z-index: 19;
-  }
-
-  .attachment-menu {
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    top: calc(
-      var(--responsive-visual-viewport-top, 0px) +
-      var(--app-toolbar-total-height) +
-      var(--space-3)
-    );
-    right: max(12px, var(--safe-right, 0px));
-    bottom: auto;
-    left: max(12px, var(--safe-left, 0px));
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    max-height: min(
-      60dvh,
-      calc(var(--responsive-visual-viewport-height, 100dvh) - 96px)
-    );
-    overflow: hidden;
-  }
-
-  .attachment-menu__list {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
-  }
-
-  .attachment-menu__add-btn,
-  .attachment-menu__clear-btn,
-  .attachment-menu__remove-btn {
-    min-width: 44px;
-    min-height: 44px;
   }
 }
 
@@ -9361,6 +9206,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     > .chat-input__meta:not(
       :has(
         .chat-input__next-turn-notice,
+        .chat-input__composer-notice,
         .chat-status-pill,
         .chat-scroll-to-bottom
       )
@@ -9437,6 +9283,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-height: 56px;
   justify-content: flex-start;
 }
+/* Glyph and radio mark sit on the title's line, not the middle of a wrapped
+   description. Compounded: chat.css loads after this file and its
+   `.composer-actions-menu__item` centres every row. */
+.composer-actions-menu__item.composer-mode-sheet__option {
+  align-items: flex-start;
+  padding-block: var(--k-space-2);
+}
 
 /* The notes above the list start where a row's content does: the list's
    padding (`--space-2`, i.e. `--k-space-1`) plus the row's own
@@ -9477,9 +9330,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-glyph {
   flex: 0 0 auto;
+  display: grid;
+  place-items: center;
   width: 24px;
-  text-align: center;
+  height: var(--composer-mode-sheet-title-line, 24px);
   font-size: var(--text-lg);
+  line-height: 1;
 }
 
 .composer-mode-sheet__option-body {
@@ -9490,6 +9346,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-width: 0;
 }
 
+.composer-mode-sheet__option-body strong {
+  line-height: var(--composer-mode-sheet-title-line, 24px);
+}
+
 .composer-mode-sheet__option-body small {
   color: var(--text-muted);
   font-size: var(--k-text-sm);
@@ -9498,6 +9358,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-mark {
   flex: 0 0 auto;
+  /* Centred on the 24px title line. */
+  margin-block-start: 2px;
   width: 20px;
   height: 20px;
   border: 2px solid var(--border-secondary);
@@ -9532,6 +9394,24 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
   font-size: var(--k-text-sm);
   line-height: 1.4;
+}
+
+/* What is running now: the one note a reader needs before choosing. */
+.composer-mode-sheet__status {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--k-text-sm);
+  line-height: 1.4;
+}
+
+/* The shared Checkbox, on a row tall enough to hit comfortably. */
+.composer-mode-sheet__save-default {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+.composer-mode-sheet__save-default .cb__label {
+  font-size: var(--k-text-sm);
 }
 
 /* #3290: the read-only approval explanation of an engine-decided engine. */

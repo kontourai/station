@@ -5112,7 +5112,10 @@ engine launch names, which the [workload routes](../../src-server/routes/system/
 and the [workload_status tool](../../src-server/tools/station-control-workload-tools.ts)
 read from cgroup v2 files, including each scope's kernel `oom_kill` count
 (scopes launch with `OOMPolicy=continue`, so a command, not the engine, is
-normally killed). Orchestration's first-turn composition adds the
+normally killed). The launcher's 1 s poll logs each kill as it sees it with
+the scope's largest processes, reports near-cap memory pressure on entering
+and leaving it, and raises an engine's commands' `oom_score_adj` above the
+engine's so the kernel takes a command first. Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
@@ -5413,6 +5416,21 @@ principal through private async context. Omitted/legacy `default` selects the
 public `station` Agent; the adapter alone maps it to the private runtime key.
 The operator projection exposes the principal for standing-grant management,
 but creation/update does not accept caller-declared execution authority.
+
+**Project jobs and Project lifecycle (#5069, #5070).** A job with a
+`projectId` replaces the scheduled-turn adapter with
+[ScheduledProjectRuns](../../src-server/services/scheduling/scheduled-project-runs.ts):
+each run creates a Task in that Project (keyed by run id), dispatches it
+through the Task dispatcher, queues the prompt on the Task's chat through
+ScheduledConversationRuns, and writes a run summary as the Task summary. The
+[ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
+composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
+is an orchestration turn admission (a paused or archived Project's chats admit
+no turn), interrupts a Project's running turns through
+`OrchestrationService.interruptTurn`, and tells the scheduler which Projects
+hold their jobs: `SchedulerLedger.claimDue`'s `held` predicate leaves those
+occurrences unclaimed. Both are behind Feature Previews (`project-pause-archive`,
+`project-schedules`).
 
 **Conversation targets (Automations).** A job with a `target` never uses the
 scheduled-turn adapter. [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
@@ -6567,7 +6585,9 @@ exactly-once presentation. Bounded pending-call and late-result state keep a
 stuck OS backend from opening unlimited threads. Linux can retract a notification
 this process posted; the current macOS/Windows backends can suppress an unposted
 alert but cannot close an already displayed one. Clicks focus Station and pass
-only a validated in-app path to the main WebView.
+only a validated in-app path to the main WebView, with the Station origin the
+alert was read from, so the WebView's notification opener opens it on that
+Station (`src-ui/src/lib/notificationStationOpen.ts`).
 
 **Evidence and change guidance.** Rust tests in the owner cover cursor/epoch and
 surface changes, handoff, focus, malformed feeds, refused/timed-out/unstarted

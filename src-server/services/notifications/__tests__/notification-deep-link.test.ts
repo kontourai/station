@@ -1,9 +1,12 @@
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
+import type { NotificationEnvelopeV1 } from '@kontourai/station-contracts/notification';
 import { describe, expect, test } from 'vitest';
 import {
+  notificationOpenLink,
   resolveNotificationOpenHref,
+  resolveNotificationTarget,
   withOpenedNotification,
 } from '../notification-deep-link.js';
+import { nativeSessionReference } from '../notification-session.js';
 
 describe('resolveNotificationOpenHref', () => {
   test('prefers a project-scoped chat link when projectSlug + sessionId resolve', () => {
@@ -18,10 +21,10 @@ describe('resolveNotificationOpenHref', () => {
     ).toBe('/projects/my%20project?chat=thread-1&dock=open');
   });
 
-  test('falls back to Activity for a runtime session with no project', () => {
-    // Activity is not a dock target — no dock=open here (archive#1284).
+  test('opens a runtime session with no project in the dock, like a managed one', () => {
+    // One href for every session kind; the dock resolves the id.
     expect(resolveNotificationOpenHref({}, 'thread/one', 'runtime')).toBe(
-      activityDeepLink({ sessionId: 'thread/one' }),
+      '/?chat=thread%2Fone&dock=open',
     );
   });
 
@@ -165,5 +168,106 @@ describe('withOpenedNotification never leaves Station', () => {
         link: `/x#station-ui-bootstrap=${'A'.repeat(40)}`,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('the open link names the sending Station', () => {
+  const origin = 'https://station.test';
+  test('a Station id is added, and one already in the link is replaced', () => {
+    const link = withOpenedNotification(
+      '/schedule?job=a&station=env-victim',
+      'n-1',
+      'env-a',
+    );
+    const url = new URL(link, `${origin}/`);
+    expect(url.pathname).toBe('/schedule');
+    expect(url.searchParams.getAll('station')).toEqual(['env-a']);
+    expect(url.searchParams.get('job')).toBe('a');
+    expect(url.searchParams.get('openedNotification')).toBe('n-1');
+  });
+
+  test('a forged Station id is dropped even when this Station has none to add', () => {
+    const link = withOpenedNotification('/x?station=env-victim', 'n-1');
+    expect(link).toBe('/x?openedNotification=n-1');
+  });
+
+  test.each(['', ' env', 'env/a', '../a', 'a'.repeat(129)])(
+    'an id outside the grammar (%j) is left out',
+    (stationId) => {
+      expect(withOpenedNotification('/x', 'n-1', stationId)).toBe(
+        '/x?openedNotification=n-1',
+      );
+    },
+  );
+});
+
+describe('resolveNotificationTarget: one target for every channel', () => {
+  const envelope = (
+    fields: Partial<NotificationEnvelopeV1>,
+  ): NotificationEnvelopeV1 =>
+    ({
+      v: 1,
+      source: { kind: 'system', subsystem: 'test' },
+      audience: { kind: 'owner' },
+      urgency: 'info',
+      ...fields,
+    }) as NotificationEnvelopeV1;
+
+  test('a path target wins over the metadata session', () => {
+    expect(
+      resolveNotificationTarget(
+        { metadata: { sessionId: 's-1', sessionKind: 'managed' } },
+        envelope({ target: { kind: 'path', path: '/automations?job=a' } }),
+      ),
+    ).toBe('/automations?job=a');
+  });
+
+  test('a session target opens that session, in the Project the metadata names', () => {
+    expect(
+      resolveNotificationTarget(
+        { metadata: { projectSlug: 'alpha' } },
+        envelope({ target: { kind: 'session', sessionId: 's-1' } }),
+      ),
+    ).toBe('/projects/alpha?chat=s-1&dock=open');
+  });
+
+  test('the metadata session wins, as it does for the read gate and the phones', () => {
+    // `notificationSessionIdentity`: the session the audience was checked
+    // against is the one a tap opens, on every channel.
+    expect(
+      resolveNotificationTarget(
+        { metadata: { sessionId: 's-other', projectSlug: 'alpha' } },
+        envelope({ target: { kind: 'session', sessionId: 's-1' } }),
+      ),
+    ).toBe('/projects/alpha?chat=s-other&dock=open');
+    expect(
+      nativeSessionReference(
+        { metadata: { sessionId: 's-other', projectSlug: 'alpha' } },
+        envelope({ target: { kind: 'session', sessionId: 's-1' } }),
+      ),
+    ).toEqual({ session_id: 's-other', project_slug: 'alpha' });
+  });
+
+  test("an agent's record with no target opens the agent's session (design §2)", () => {
+    expect(
+      resolveNotificationTarget(
+        { metadata: {} },
+        envelope({
+          source: { kind: 'agent', sessionId: 'agent-session' },
+        } as Partial<NotificationEnvelopeV1>),
+      ),
+    ).toBe('/?chat=agent-session&dock=open');
+  });
+
+  test('nothing to open: the inbox, still naming the Station', () => {
+    expect(
+      notificationOpenLink(
+        {
+          id: 'n-1',
+          metadata: {},
+        } as unknown as Parameters<typeof notificationOpenLink>[0],
+        'env-a',
+      ),
+    ).toBe('/notifications?openedNotification=n-1&station=env-a');
   });
 });

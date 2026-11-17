@@ -1,0 +1,7 @@
+{
+  "revision": "cd5f59d514e5225de8712bb41baa731640c7e124",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"fast-checks plan/shard/statics split unchanged; the plan step's escalated-path line now prints the union and names uncovered paths.","inputs":["docs/guides/development.md","scripts/fast-checks-shard.mjs"]}
+  ]
+}

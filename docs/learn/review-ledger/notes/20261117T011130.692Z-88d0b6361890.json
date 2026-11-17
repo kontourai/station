@@ -1,0 +1,7 @@
+{
+  "revision": "cd5f59d514e5225de8712bb41baa731640c7e124",
+
+  "notes": [
+    {"path":"tests/AGENTS.md","note":"No tests/ guidance affected by the testing guide's selection paragraph.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

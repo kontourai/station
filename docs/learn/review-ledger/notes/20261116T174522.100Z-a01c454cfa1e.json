@@ -1,0 +1,7 @@
+{
+  "revision": "e6379790f297f4bf8dc11ae1b4dfc0cc697204dd",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Only the SDK reference's child-reader paragraph changed (return to the working parent); this guide's routing to the SDK reference is unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

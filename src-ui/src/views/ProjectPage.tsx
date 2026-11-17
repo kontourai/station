@@ -37,6 +37,7 @@ import {
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
 import { MemberProjectPage } from './project-page/MemberProjectPage';
+import { ProjectHeldBanner } from './project-page/ProjectHeldBanner';
 import { ProjectKnowledgeSection } from './project-page/ProjectKnowledgeSection';
 import {
   ProjectAddLayoutModal,
@@ -361,6 +362,9 @@ function ProjectOperatorPage({
             gitStatus={gitStatus}
             navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
           />
+        )}
+        {!roomScreen && (
+          <ProjectHeldBanner slug={slug} lifecycle={project.lifecycle} />
         )}
 
         <div className="section-nav-rail project-page__layout">
