@@ -6571,6 +6571,16 @@ const SCREENS: Screen[] = [
                 .getByRole('textbox', { name: 'Message', exact: true })
                 .fill('Follow up on this');
             }
+            // The Inbox row learns about the draft after the fill settles; the
+            // audit reads its name, so capture only once the row says so.
+            await expect(
+              page
+                .locator(
+                  '[data-testid=inbox-row] button.chat-dock-inbox__item' +
+                    '[aria-label^="Toolbar layout,"][aria-label$=", unsent draft"]',
+                )
+                .first(),
+            ).toBeAttached();
           },
           true,
           false,

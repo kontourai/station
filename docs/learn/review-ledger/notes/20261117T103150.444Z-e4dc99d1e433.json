@@ -1,0 +1,11 @@
+{
+  "revision": "161c3a1fbe1a4a1d5572e1900a50e766010ee039",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"The reply-composer gallery screens now wait for the Inbox row name to include unsent draft before the audit runs; no screen, mock, viewport or audit rule changed, so no documented claim changes.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The reply-composer gallery screens now wait for the Inbox row name to include unsent draft before the audit runs; no screen, mock, viewport or audit rule changed, so no documented claim changes.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The reply-composer gallery screens now wait for the Inbox row name to include unsent draft before the audit runs; no screen, mock, viewport or audit rule changed, so no documented claim changes.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}
