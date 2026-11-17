@@ -4278,8 +4278,12 @@ function roomConversationScreens(): Screen[] {
                   ),
                 ),
               });
+              // The staged image's thumbnail is its Preview button (the image
+              // inside is decorative).
               await expect(
-                roomRegion.getByRole('img', { name: 'checkout-flow.png' }),
+                roomRegion.getByRole('button', {
+                  name: 'Preview checkout-flow.png',
+                }),
               ).toBeVisible();
               await expect(
                 roomRegion.getByRole('button', { name: 'Send message' }),

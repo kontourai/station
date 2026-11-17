@@ -29,7 +29,10 @@ vi.mock('../../utils/chatAttachments', () => ({
   readChatAttachmentFiles,
 }));
 
-import { useComposerAttachments } from '../useComposerAttachments';
+import {
+  hasUploadsInFlight,
+  useComposerAttachments,
+} from '../useComposerAttachments';
 
 const attachment = (id: string): FileAttachment => ({
   id,
@@ -48,6 +51,43 @@ describe('useComposerAttachments', () => {
   });
 
   afterEach(() => vi.useRealTimers());
+
+  test('an upload still in flight is progress, not a reason to refuse Send', () => {
+    const file = attachment('notes');
+    const stageIn = (
+      state: ComposerAttachmentStageSnapshot['state'],
+    ): ComposerAttachmentStageSnapshot => ({
+      clientAttachmentId: 'notes',
+      name: 'notes.txt',
+      mimeType: 'text/plain',
+      size: 5,
+      state,
+      progress: state === 'uploading' ? 0.5 : 1,
+      delivery: 'staged',
+    });
+    const gate = (stage: ComposerAttachmentStageSnapshot) =>
+      renderHook(() =>
+        useComposerAttachments({
+          apiBase: 'http://station.test',
+          ownerKey: 'in-flight',
+          attachments: [file],
+          stages: [stage],
+          capabilities: { images: true, files: true },
+          onAddAttachments: vi.fn(),
+          onStagesChange: vi.fn(),
+        }),
+      ).result.current.sendBlockedReason;
+
+    for (const state of ['queued', 'uploading'] as const) {
+      expect(gate(stageIn(state))).toBeUndefined();
+      expect(hasUploadsInFlight([stageIn(state)])).toBe(true);
+    }
+    expect(hasUploadsInFlight([stageIn('complete')])).toBe(false);
+    // An upload that actually failed still blocks, with its fix.
+    expect(gate({ ...stageIn('retryable'), error: 'network' })).toBe(
+      'An upload did not finish. Retry it or remove it before sending.',
+    );
+  });
 
   test('an image staged before the engine refused images blocks Send with the refusal', () => {
     const image: FileAttachment = {

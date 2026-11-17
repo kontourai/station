@@ -43,6 +43,23 @@ export function personTypedRequest(
   request: Request,
   inboundDeviceKind?: 'device' | 'delegation',
 ): boolean {
+  return (
+    personCredentialRequest(request, inboundDeviceKind) &&
+    isPersonComposerSurface(resolveClientOriginForRequest(request).reported)
+  );
+}
+
+/**
+ * The first two rules of {@link personTypedRequest} without the composer
+ * surface: a person's own credential, on a request no agent may have made.
+ * The CLI and a person's scripts pass. For facts about the person's own
+ * view (reopening a conversation they settled), never for the guardian's
+ * "typed by a person" marker.
+ */
+export function personCredentialRequest(
+  request: Request,
+  inboundDeviceKind?: 'device' | 'delegation',
+): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (principal?.kind !== 'credential') return false;
   if (requestMayBeAnAgent(request)) return false;
@@ -56,10 +73,7 @@ export function personTypedRequest(
     principal.authority === 'operator-session' ||
     (principal.authority === 'device-credential' &&
       (principal.deviceKind === 'device' || inboundDeviceKind === 'device'));
-  if (!personCredential) return false;
-  return isPersonComposerSurface(
-    resolveClientOriginForRequest(request).reported,
-  );
+  return personCredential;
 }
 
 function isPersonComposerSurface(reported: ClientReportedOrigin): boolean {

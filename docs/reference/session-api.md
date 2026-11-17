@@ -1852,7 +1852,12 @@ that file is the source of truth for shapes, not this doc.
 
 For paging through a live-growing event log without re-fetching everything, use
 `GET /api/orchestration/sessions/:threadId/event-page?afterSequence=<n>&limit=<1-100>`,
-which returns `{ session, events: {sequence, event}[], hasMore, nextSequence }`.
+which returns `{ session, events: {sequence, event}[], hasMore, nextSequence, highWaterSequence }`.
+`sequence` is the thread's own ordinal. Sequences are increasing but need not be
+contiguous, so `session.eventCount` counts events and does not bound a cursor.
+`highWaterSequence` is the thread's highest sequence, read with the page; a
+cursor above it is ahead of the history. Hosts before #5077 omit it; their
+sequences have no gaps, so `session.eventCount` is their high water.
 
 **A polling gotcha:** if you call `/events` immediately after the foreground execution
 endpoint returns, you may see only lifecycle events — the accepted turn may not have

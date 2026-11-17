@@ -6582,7 +6582,9 @@ exactly-once presentation. Bounded pending-call and late-result state keep a
 stuck OS backend from opening unlimited threads. Linux can retract a notification
 this process posted; the current macOS/Windows backends can suppress an unposted
 alert but cannot close an already displayed one. Clicks focus Station and pass
-only a validated in-app path to the main WebView.
+only a validated in-app path to the main WebView, with the Station origin the
+alert was read from, so the WebView's notification opener opens it on that
+Station (`src-ui/src/lib/notificationStationOpen.ts`).
 
 **Evidence and change guidance.** Rust tests in the owner cover cursor/epoch and
 surface changes, handoff, focus, malformed feeds, refused/timed-out/unstarted
