@@ -85,6 +85,17 @@ export interface NovaVoiceSessionAdapterDependencies {
   ) => void;
 }
 
+/**
+ * #2377 slice D: the query flag a loopback voice client sets to present its
+ * credential in the authentication frame (`VOICE_AUTHENTICATE_QUERY` on the
+ * server). The credential itself never goes in the URL.
+ */
+export function withVoiceAuthenticateFlag(url: string): string {
+  const parsed = new URL(url);
+  parsed.searchParams.set('authenticate', '1');
+  return parsed.toString();
+}
+
 export function createNovaVoiceSessionAdapterDependencies(
   apiBase: string,
   credentialProvider: WebSocketCredentialResolver,
@@ -254,12 +265,26 @@ export class NovaVoiceSessionAdapter
       );
 
       const pageHref = this.dependencies.pageHref();
+      const remote = this.dependencies.isRemoteEndpoint(
+        this.dependencies.apiBase,
+        pageHref,
+      );
+      // #2377 slice D: a voice session's Station tools act for the person
+      // who signed in. A client holding a bearer credential presents it in
+      // the auth frame, loopback included (asking with a flag, never the
+      // credential, in its URL). The local UI's own credential is its
+      // HttpOnly device cookie, which the browser carries on the loopback
+      // upgrade itself; the voice server reads it there.
+      const authenticate =
+        remote ||
+        this.dependencies.credentialProvider.getCredential() !== undefined;
+      const url = this.dependencies.deriveVoiceWsUrl(
+        this.dependencies.apiBase,
+        pageHref,
+        voicePort,
+      );
       const socket = this.dependencies.createSocket(
-        this.dependencies.deriveVoiceWsUrl(
-          this.dependencies.apiBase,
-          pageHref,
-          voicePort,
-        ),
+        remote || !authenticate ? url : withVoiceAuthenticateFlag(url),
       );
       if (!this.isCurrent(generation)) {
         socket.close();
@@ -267,7 +292,7 @@ export class NovaVoiceSessionAdapter
       }
       this.socket = socket;
       const authGate = this.dependencies.createAuthGate(
-        this.dependencies.isRemoteEndpoint(this.dependencies.apiBase, pageHref),
+        authenticate,
         this.dependencies.credentialProvider,
         () => void this.completeAuthentication(generation),
         () =>

@@ -1,0 +1,7 @@
+{
+  "revision": "8a3f115aff55313e24953eac023f931d7d92d03e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Cap test now draws its real suites from the incident fixture instead of a tree walk; the guide's cap and disposition claims are unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts"]}
+  ]
+}

@@ -35,6 +35,7 @@ import {
 } from '../../providers/sessions/session-source-affinity.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrantor } from '../../security/coding-authority.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
@@ -859,20 +860,24 @@ export class AttachedSessionAdoption {
       context.providerAdoptionStarted = true;
     };
     if (adapter.adoptionLifecycle !== 'reported') startCreation();
-    const adopted = await adapter.adoptSession!(adoptionInput, {
-      onProviderChildCreationStarted: startCreation,
-      onProviderChildCreated: (cursor) => {
-        const missingStart = !context.providerAdoptionStarted;
-        if (missingStart) startCreation();
-        this.requireAdoptionTransition(
-          this.requireOwnedAdoption(context).recordProviderCursor(cursor),
-        );
-        if (missingStart)
-          throw new Error(
-            'Provider created a child without reporting its creation boundary.',
+    // #2377 slice D: the adopted engine never inherits a dispatch route's
+    // server scope.
+    const adopted = await runEngineOutsideStationServerScope(() =>
+      adapter.adoptSession!(adoptionInput, {
+        onProviderChildCreationStarted: startCreation,
+        onProviderChildCreated: (cursor) => {
+          const missingStart = !context.providerAdoptionStarted;
+          if (missingStart) startCreation();
+          this.requireAdoptionTransition(
+            this.requireOwnedAdoption(context).recordProviderCursor(cursor),
           );
-      },
-    });
+          if (missingStart)
+            throw new Error(
+              'Provider created a child without reporting its creation boundary.',
+            );
+        },
+      }),
+    );
     this.deps.recordAcceptedModelLaunchPlan(
       adapter,
       this.deps.modelLaunchPlanFromInput(adoptionInput),

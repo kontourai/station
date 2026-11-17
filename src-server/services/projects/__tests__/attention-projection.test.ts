@@ -367,7 +367,8 @@ describe('AttentionProjectionService', () => {
       items: expect.arrayContaining([
         expect.objectContaining({
           kind: 'approval',
-          openHref: activityDeepLink({ sessionId: 'thread/one' }),
+          // The notification href every channel opens (`notificationSessionHref`).
+          openHref: '/?chat=thread%2Fone&dock=open',
         }),
         expect.objectContaining({
           kind: 'needs_input',

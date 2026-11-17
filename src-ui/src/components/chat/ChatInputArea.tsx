@@ -13,6 +13,7 @@ import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
+import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
 import { useDockSlotDevice, useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
@@ -314,10 +315,17 @@ interface ChatInputAreaProps {
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
   /**
+   * The host already sends this draft once its uploads finish (a new chat's
+   * first message), so Send waits with it instead of sending a second time.
+   */
+  sendQueuedForUploads?: boolean;
+  /**
    * The latest send-failure notice, one line. Shown in the composer only when
    * a dock too short for the transcript steps it aside (the notice lives there).
    */
   sendFailureNotice?: string;
+  /** A quiet line above the draft about what the next send also does. */
+  composerNotice?: string;
   /**
    * A send queued to retry by itself, with its Discard. The controls row shows
    * the button only when the dock is too short to show the transcript that
@@ -546,12 +554,14 @@ export function ChatInputArea({
   attachmentError = null,
   attachmentNotice,
   sendFailureNotice,
+  composerNotice,
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
   removalUnblocksSend: removalUnblocksSendProp = false,
   attachmentStages = [],
   sendBlockedReason: sendBlockedReasonProp,
+  sendQueuedForUploads = false,
   onRetryAttachmentStage,
   onCancelAttachmentStage,
   onReplaceAttachmentFile,
@@ -658,6 +668,7 @@ export function ChatInputArea({
     void sessionId;
     setSendMode(null);
     setSendModeOpen(false);
+    setSendAfterUploads(false);
   }, [sessionId]);
   const { chatReturnBehavior } = useDeviceSettings();
   const { coarsePointer } = useDockSlotDevice();
@@ -666,8 +677,19 @@ export function ChatInputArea({
     (chatReturnBehavior === 'auto' && !coarsePointer);
   const submitPending = useRef(false);
   const [submitting, setSubmitting] = useState(false);
+  // Send while a file is still uploading: the send waits for the upload and
+  // goes by itself once every file is staged, never without its files. An
+  // upload that fails (or is stopped or removed) drops the wait; its chip
+  // then says why, with Retry or Remove.
+  const uploadsInFlight = hasUploadsInFlight(attachmentStages);
+  const [sendAfterUploads, setSendAfterUploads] = useState(false);
+  const waitingForUploads = sendQueuedForUploads || sendAfterUploads;
   const submit = async () => {
-    if (submitPending.current) return;
+    if (submitPending.current || sendQueuedForUploads) return;
+    if (uploadsInFlight) {
+      setSendAfterUploads(true);
+      return;
+    }
     submitPending.current = true;
     setSubmitting(true);
     try {
@@ -684,6 +706,27 @@ export function ChatInputArea({
       submitPending.current = false;
       setSubmitting(false);
     }
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `submit` is this render's closure over the settled draft; the wait's own state is the trigger.
+  useEffect(() => {
+    if (!sendAfterUploads) return;
+    if (sendBlockedReason || attachmentError || disabled) {
+      setSendAfterUploads(false);
+      return;
+    }
+    if (uploadsInFlight) return;
+    setSendAfterUploads(false);
+    void submit();
+  }, [
+    sendAfterUploads,
+    uploadsInFlight,
+    sendBlockedReason,
+    attachmentError,
+    disabled,
+  ]);
+  const removeAttachment = (id: string) => {
+    setSendAfterUploads(false);
+    onRemoveAttachment(id);
   };
   const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
   const [sessionReferencesOpen, setSessionReferencesOpen] = useState(false);
@@ -862,6 +905,7 @@ export function ChatInputArea({
   const sendReady =
     !isOverLimit &&
     !sendBlockedReason &&
+    !waitingForUploads &&
     (workspaceRefused || hasSendableDraft);
   const mentionAutocompleteAvailable = Boolean(
     mentionLocation && mentionRequestScope,
@@ -1207,6 +1251,9 @@ export function ChatInputArea({
             </span>
           </p>
         )}
+        {composerNotice && (
+          <p className="chat-input__composer-notice">{composerNotice}</p>
+        )}
         <div className="chat-input__activity" ref={activityRef}>
           {activity}
         </div>
@@ -1225,7 +1272,7 @@ export function ChatInputArea({
               <ComposerAttachmentStrip
                 attachments={attachments}
                 stages={attachmentStages}
-                onRemove={onRemoveAttachment}
+                onRemove={removeAttachment}
                 onRetry={onRetryAttachmentStage}
                 onCancel={onCancelAttachmentStage}
                 onReplaceFile={onReplaceAttachmentFile}
@@ -1261,11 +1308,33 @@ export function ChatInputArea({
               )}
             </div>
           )}
-          {attachmentNotice && !sendBlockedReason && !attachmentError && (
-            <div className="chat-input__attachment-notice" role="status">
-              {attachmentNotice}
+          {waitingForUploads && !sendBlockedReason && !attachmentError && (
+            <div
+              className="chat-input__attachment-notice chat-input__upload-wait"
+              role="status"
+            >
+              Sends when uploads finish
+              {sendAfterUploads && (
+                <span className="chat-input__blocked-actions">
+                  <button
+                    type="button"
+                    className="chat-input__blocked-action"
+                    onClick={() => setSendAfterUploads(false)}
+                  >
+                    Don't send
+                  </button>
+                </span>
+              )}
             </div>
           )}
+          {attachmentNotice &&
+            !waitingForUploads &&
+            !sendBlockedReason &&
+            !attachmentError && (
+              <div className="chat-input__attachment-notice" role="status">
+                {attachmentNotice}
+              </div>
+            )}
           {sendFailureNotice && (
             <div className="chat-input__send-failure" role="status">
               {sendFailureNotice}
@@ -1642,8 +1711,6 @@ export function ChatInputArea({
             <FileAttachmentInput
               attachments={attachments}
               onFilesSelected={selectAttachmentFiles ?? (async () => {})}
-              onRemove={onRemoveAttachment}
-              onClearAll={onClearAttachments}
               // A running turn does not disable the paperclip: files join the
               // draft for the next message (`busyAttachmentReason` says why
               // they cannot steer or queue). Only a composer that cannot
@@ -2000,6 +2067,7 @@ export function ChatInputArea({
                 disabled={
                   disabled ||
                   submitting ||
+                  waitingForUploads ||
                   isOverLimit ||
                   !!sendBlockedReason ||
                   (workspaceRefused

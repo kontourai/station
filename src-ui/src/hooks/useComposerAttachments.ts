@@ -20,6 +20,18 @@ interface ComposerAttachmentCapabilities {
   imageCaveat?: string;
 }
 
+/**
+ * A file is still on its way to the Station. That is progress, not a reason
+ * to refuse Send: the composer holds the send until the upload settles.
+ */
+export function hasUploadsInFlight(
+  stages: readonly ComposerAttachmentStageSnapshot[],
+): boolean {
+  return stages.some(
+    (stage) => stage.state === 'queued' || stage.state === 'uploading',
+  );
+}
+
 function isImageMime(mimeType: string | undefined): boolean {
   return typeof mimeType === 'string' && mimeType.startsWith('image/');
 }
@@ -678,9 +690,6 @@ export function useComposerAttachments(options: {
   const hasUnavailableStage = options.stages.some(
     (stage) => stage.state === 'failed' || stage.state === 'cancelled',
   );
-  const hasInFlightStage = options.stages.some(
-    (stage) => stage.state === 'queued' || stage.state === 'uploading',
-  );
   // Images attached before the engine's answer was known (or before the
   // model changed) cannot be sent once it says no: the server refuses the
   // whole send. Say so here, before Send, instead of after a round trip.
@@ -712,9 +721,10 @@ export function useComposerAttachments(options: {
                 : 'An upload did not finish. Retry it or remove it before sending.'
               : hasUnavailableStage
                 ? 'Choose the file again or remove it before sending.'
-                : hasInFlightStage
-                  ? 'Wait until every selected file finishes staging before sending.'
-                  : undefined;
+                : // An upload still in flight is not a block: the chip shows
+                  // its progress and the composer sends once it completes
+                  // (`hasUploadsInFlight`).
+                  undefined;
 
   return {
     error,

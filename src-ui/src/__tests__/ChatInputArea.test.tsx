@@ -89,8 +89,8 @@ beforeAll(() => {
   });
 });
 
-function renderChatInputArea(overrides: Record<string, unknown> = {}) {
-  const props = {
+function chatInputAreaProps(overrides: Record<string, unknown> = {}) {
+  return {
     agentSlug: 'station',
     conversationId: undefined,
     messageCount: 0,
@@ -133,7 +133,11 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
     updateFromInput: vi.fn(),
     closeAll: vi.fn(),
     ...overrides,
-  };
+  } as React.ComponentProps<typeof ChatInputArea>;
+}
+
+function renderChatInputArea(overrides: Record<string, unknown> = {}) {
+  const props = chatInputAreaProps(overrides);
 
   render(<ChatInputArea {...props} />);
   if (props.modelQuery === null)
@@ -250,7 +254,7 @@ describe('ChatInputArea', () => {
 
   test('a send blocked for another reason offers no removal', () => {
     renderChatInputArea({
-      sendBlockedReason: 'Wait until every selected file finishes staging.',
+      sendBlockedReason: "You can read this chat but can't send to it.",
     });
     expect(
       screen.queryByRole('button', { name: 'Remove attachments' }),
@@ -2642,4 +2646,150 @@ test('reply setup names a requested effort after the model, never a guessed one'
       .getByTestId('run-setup-trigger')
       .querySelector('.composer-run-control__label')?.textContent,
   ).toBe('Opus');
+});
+
+describe('ChatInputArea: Send while a file is uploading', () => {
+  const FILE = {
+    id: 'f1',
+    name: 'shot.png',
+    type: 'image/png',
+    size: 10,
+    data: 'data:image/png;base64,AAAA',
+    preview: 'data:image/png;base64,AAAA',
+  };
+  const stage = (
+    state: 'uploading' | 'complete' | 'retryable',
+    extra: Record<string, unknown> = {},
+  ) => ({
+    clientAttachmentId: 'f1',
+    name: 'shot.png',
+    mimeType: 'image/png',
+    size: 10,
+    state,
+    progress: state === 'uploading' ? 0.4 : 1,
+    delivery: 'staged',
+    ...extra,
+  });
+
+  function renderUploading(overrides: Record<string, unknown> = {}) {
+    const onSend = vi.fn(async () => {});
+    const base = {
+      input: 'look at this',
+      attachments: [FILE],
+      attachmentStages: [stage('uploading')],
+      onSend,
+      ...overrides,
+    };
+    const view = render(<ChatInputArea {...chatInputAreaProps(base)} />);
+    return {
+      onSend,
+      rerender: (next: Record<string, unknown>) =>
+        view.rerender(
+          <ChatInputArea {...chatInputAreaProps({ ...base, ...next })} />,
+        ),
+    };
+  }
+
+  test('an upload in progress shows its progress, not an error', async () => {
+    renderUploading();
+    expect(await screen.findByText('Uploading 40%')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(document.querySelector('.chat-input__attachment-error')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+    ).toBe(false);
+  });
+
+  test('Send waits for the upload and then sends by itself, with the file', async () => {
+    const { onSend, rerender } = renderUploading();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Held, not refused: no error line, and nothing sent without the file.
+    expect(await screen.findByText('Sends when uploads finish')).toBeTruthy();
+    expect(document.querySelector('.chat-input__attachment-error')).toBeNull();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'),
+    ).toBe(true);
+
+    rerender({ attachmentStages: [stage('complete')] });
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(screen.queryByText('Sends when uploads finish')).toBeNull();
+  });
+
+  test('Return during an upload waits the same way', async () => {
+    const { onSend, rerender } = renderUploading();
+    fireEvent.keyDown(screen.getByRole('textbox'), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
+    expect(await screen.findByText('Sends when uploads finish')).toBeTruthy();
+    expect(onSend).not.toHaveBeenCalled();
+    rerender({ attachmentStages: [stage('complete')] });
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+  });
+
+  test('a failed upload drops the waiting send and says why', async () => {
+    const { onSend, rerender } = renderUploading();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Sends when uploads finish')).toBeTruthy();
+
+    rerender({
+      attachmentStages: [stage('retryable', { error: 'network' })],
+      sendBlockedReason:
+        'An upload did not finish. Retry it or remove it before sending.',
+    });
+    expect(
+      await screen.findByText(
+        'An upload did not finish. Retry it or remove it before sending.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Sends when uploads finish')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry shot.png' })).toBeTruthy();
+
+    // A later successful retry does not send on the earlier click's behalf.
+    rerender({
+      attachmentStages: [stage('complete')],
+      sendBlockedReason: undefined,
+    });
+    await act(async () => {});
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test("Don't send cancels the wait", async () => {
+    const { onSend, rerender } = renderUploading();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(await screen.findByRole('button', { name: "Don't send" }));
+    expect(screen.queryByText('Sends when uploads finish')).toBeNull();
+    rerender({ attachmentStages: [stage('complete')] });
+    await act(async () => {});
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test('removing a file cancels the wait instead of sending without it', async () => {
+    const onRemoveAttachment = vi.fn();
+    const { onSend, rerender } = renderUploading({ onRemoveAttachment });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Remove shot.png' }),
+    );
+    expect(onRemoveAttachment).toHaveBeenCalledWith('f1');
+    rerender({ attachments: [], attachmentStages: [] });
+    await act(async () => {});
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  test('a send the host already holds for the uploads is not offered twice', async () => {
+    const { onSend } = renderUploading({ sendQueuedForUploads: true });
+    expect(await screen.findByText('Sends when uploads finish')).toBeTruthy();
+    const send = screen.getByRole('button', { name: 'Send' });
+    expect(send.hasAttribute('disabled')).toBe(true);
+    fireEvent.keyDown(screen.getByRole('textbox'), {
+      key: 'Enter',
+      ctrlKey: true,
+    });
+    await act(async () => {});
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: "Don't send" })).toBeNull();
+  });
 });

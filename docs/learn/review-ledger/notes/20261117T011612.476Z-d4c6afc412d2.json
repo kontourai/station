@@ -1,0 +1,13 @@
+{
+  "revision": "1e21a6478680606801a5d95cb7e73d24305310c2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked against the #2377 slice D round-3 change: an operator-override edit that sets a target on another person's untargeted job is refused 403 automation_target_owner_only. docs/reference/api.md and docs/user/automations.md now say so; other pages' scheduler-route claims (stored-target admission, hosted 404, read projection) are unchanged.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked against the #2377 slice D round-3 change: an operator-override edit that sets a target on another person's untargeted job is refused 403 automation_target_owner_only. docs/reference/api.md and docs/user/automations.md now say so; other pages' scheduler-route claims (stored-target admission, hosted 404, read projection) are unchanged.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked against the #2377 slice D round-3 change: an operator-override edit that sets a target on another person's untargeted job is refused 403 automation_target_owner_only. docs/reference/api.md and docs/user/automations.md now say so; other pages' scheduler-route claims (stored-target admission, hosted 404, read projection) are unchanged.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked against the #2377 slice D round-3 change: an operator-override edit that sets a target on another person's untargeted job is refused 403 automation_target_owner_only. docs/reference/api.md and docs/user/automations.md now say so; other pages' scheduler-route claims (stored-target admission, hosted 404, read projection) are unchanged.","inputs":["src-server/routes/operations/scheduler.ts"]}
+  ]
+}

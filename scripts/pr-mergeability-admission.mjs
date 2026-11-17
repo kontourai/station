@@ -1,6 +1,3 @@
-#!/usr/bin/env node
-import { writeFileSync } from 'node:fs';
-import { invokedDirectly } from './lib/module-entry.mjs';
 import { github } from './qualification-evidence.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -78,57 +75,3 @@ export async function checkPrMergeability({ number, head, repository, env }) {
     return { eligible: false, reason: 'merge-identity-unknown', head, base };
   return { eligible: true, reason: 'mergeable', head, base };
 }
-
-/** Emit a diagnostic only; this receipt cannot qualify a source revision. */
-export async function runDiagnostic(env) {
-  if (
-    env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
-    env.GITHUB_REF !== 'refs/heads/main' ||
-    !/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ID ?? '') ||
-    !/^[1-9][0-9]*$/.test(env.GITHUB_RUN_ATTEMPT ?? '') ||
-    !SHA.test(env.GITHUB_WORKFLOW_SHA ?? '') ||
-    env.GITHUB_SHA !== env.GITHUB_WORKFLOW_SHA ||
-    !/^[1-9][0-9]*$/.test(env.STATION_DIAGNOSTIC_PR ?? '') ||
-    !Number.isSafeInteger(Number(env.STATION_DIAGNOSTIC_PR)) ||
-    !env.STATION_CONFLICT_RECEIPT_PATH
-  )
-    throw new Error('untrusted diagnostic event');
-  const number = Number(env.STATION_DIAGNOSTIC_PR);
-  const pr = await github(`pulls/${number}`, { env });
-  const result = await checkPrMergeability({
-    number,
-    head: pr.head?.sha,
-    repository: env.GITHUB_REPOSITORY,
-    env,
-  });
-  if (result.reason !== 'conflict' || result.base !== env.GITHUB_WORKFLOW_SHA)
-    throw new Error('current conflict unavailable');
-  writeFileSync(
-    env.STATION_CONFLICT_RECEIPT_PATH,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      kind: 'station-pr-conflict-signer-diagnostic',
-      repository: env.GITHUB_REPOSITORY,
-      pr: number,
-      head: result.head,
-      base: result.base,
-      workflowSha: env.GITHUB_WORKFLOW_SHA,
-      runId: env.GITHUB_RUN_ID,
-      attempt: Number(env.GITHUB_RUN_ATTEMPT),
-    })}\n`,
-    { flag: 'wx', mode: 0o600 },
-  );
-  return result;
-}
-
-async function main() {
-  const env = process.env;
-  const result = await runDiagnostic(env);
-  console.log(JSON.stringify(result));
-}
-
-if (invokedDirectly(import.meta.url))
-  main().catch((error) => {
-    console.error(`Signer diagnostic unavailable: ${error.message}`);
-    process.exitCode = 1;
-  });

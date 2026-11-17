@@ -514,8 +514,13 @@ layer replaces the personal default in **Permissions**
 message to the dock’s existing sender once; Home's Start hands the dock its
 exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
-explicit replacement; an unavailable preference keeps its reason and repair.
-Home’s composer shows the same remembered Agent, repair included; only with no Agent to offer does its Start run the quick-start preparation. The mobile overflow holds
+explicit replacement. Only an Agent that can start is remembered or chosen by
+default: a remembered, recent or configured Agent that cannot start yields to
+the next one that can, and an Agent chosen on the way into setup shows only
+once setup makes it ready. An Agent picked from the menu in this tab still
+shows with its repair, so it can run on another Station. The dock's setup card appears
+only when no Agent can start, with each reason under **Details**.
+Home’s composer shows the same Agent and offers setup only for a menu pick that cannot start; with no Agent to offer, its Start runs the quick-start preparation instead. The mobile overflow holds
 chat actions rather than repeating the app header’s connection-health row.
 When fullscreen chat hides that header, its actions sheet retains Station
 management and connection state.
@@ -1246,7 +1251,9 @@ simple per-device preference rather than claiming to detect an attached keyboard
   dictates through its mic, like a reply. Folder drops show a file-selection
   error; ordinary text paste keeps its normal behavior. It cannot know what the new chat's
   engine accepts, so Start hands the files to the chat it opens, which runs
-  them through its own intake and staging before its first send. If that
+  them through its own intake and staging before its first send. While they
+  upload, that chat's composer shows their progress and **Sends when uploads
+  finish**, with Send disabled so the message cannot go twice. If that
   engine refuses a file or a file does not stage, the message waits in the
   chat's composer with the reason instead of going out without it. A task
   started on another Station takes text only, so Start with files attached
@@ -1279,6 +1286,23 @@ simple per-device preference rather than claiming to detect an attached keyboard
   listed, listing unavailable or not yet read) to the note above; absent is
   never treated as "no". It outranks the Bedrock-only capability catalog,
   which has no row for an OpenCode model id.
+- The chip strip above the draft is the one place attachments are reviewed.
+  An image thumbnail (reply, room and start composers) is a **Preview**
+  button that opens the same previewer as an image in a sent message, with
+  prev/next across the draft's images. The paperclip always opens the file
+  picker and adds to what is attached; there is no separate attachments
+  panel and no bulk clear, since each chip has its own **Remove**.
+- An upload in progress is not an error. Its chip reads **Uploading N%**
+  with a progress bar (or **Waiting to upload**) and **Stop**, and Send stays
+  enabled. Sending (button or Return) while a file is still uploading holds
+  the message: Send is disabled, the line under the chips reads **Sends when
+  uploads finish** with **Don't send**, and the message goes by itself once
+  every upload completes (or joins Queue then, during a running turn). The
+  hold is dropped, and nothing is sent, when an upload fails, expires or is
+  stopped (the chip then shows why, with Retry or Remove), when a file is
+  removed, or when the chat changes. Dispatch independently refuses any
+  attachment that is not completely staged, so a message never goes without
+  its files.
 - Each chip shows one short status that names what happened, such as
   **Upload expired**, **Upload didn't finish** or **Upload limit reached**, and
   its action (**Upload again**, **Retry**, **Remove**). A full staging capacity
@@ -1458,6 +1482,22 @@ the host, shared across their owner devices, separately from last-viewed state,
 snoozing, dismissal and deletion. A closed Task is Settled; automatic Task closure
 continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
+
+Settled stays a decision about the conversation's current state, so the host
+clears it when the conversation needs the person again. The person's own
+message (a send, a steer or a queued message, from any client including the
+CLI) clears that person's record at the send route
+([`createSenderReopen`](../../src-server/services/orchestration/conversation-resolution-reopen.ts));
+another person's record is untouched. A question or approval request, a failed
+turn or a stop clears every person's record for the conversation through an
+event observer (`wireConversationResolutionReopen`). A turn the engine opens on
+its own (a background-task reply, a scheduled wake-up) that starts and finishes
+normally keeps it settled, as it keeps a dismissal. A delegated, automatic
+background or agent-sent message is not the person's and reopens nothing. The
+end of a settled conversation's transcript reads "Settled 2h ago · Reopen", and
+the composer says "Sending reopens this conversation". Agents settle or reopen
+with Station Control's `settle_conversation` only when the person asks; people
+can also use `station conversation settle|reopen`.
 
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
 work, with Settled at the bottom by default. With no shelf expanded they stack

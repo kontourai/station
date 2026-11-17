@@ -28,18 +28,33 @@ export function assertPositiveTurnStartIndex(db: SqliteDatabase): void {
 }
 
 /** Build existing data atomically; a same-name unrelated index cannot satisfy the contract. */
-export function ensurePositiveTurnStartIndex(db: SqliteDatabase): void {
-  db.exec('SAVEPOINT station_positive_turn_start_index');
+export function ensurePositiveTurnStartIndex(
+  db: SqliteDatabase & { readonly isTransaction: boolean },
+): void {
+  // A deferred schema read can become an un-upgradable WAL snapshot when a
+  // peer commits. Reserve the writer before reading migration state.
+  const ownsTransaction = !db.isTransaction;
+  db.exec(
+    ownsTransaction
+      ? 'BEGIN IMMEDIATE'
+      : 'SAVEPOINT station_positive_turn_start_index',
+  );
   try {
     const existing = db
       .prepare("SELECT 1 FROM sqlite_schema WHERE type = 'index' AND name = ?")
       .get(POSITIVE_TURN_START_INDEX);
     if (!existing) db.exec(INDEX_SQL);
     assertPositiveTurnStartIndex(db);
-    db.exec('RELEASE station_positive_turn_start_index');
+    db.exec(
+      ownsTransaction ? 'COMMIT' : 'RELEASE station_positive_turn_start_index',
+    );
   } catch (cause) {
-    db.exec('ROLLBACK TO station_positive_turn_start_index');
-    db.exec('RELEASE station_positive_turn_start_index');
+    if (db.isTransaction)
+      db.exec(
+        ownsTransaction
+          ? 'ROLLBACK'
+          : 'ROLLBACK TO station_positive_turn_start_index; RELEASE station_positive_turn_start_index',
+      );
     throw cause;
   }
 }

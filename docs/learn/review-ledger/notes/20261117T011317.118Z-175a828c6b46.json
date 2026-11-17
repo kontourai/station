@@ -1,0 +1,7 @@
+{
+  "revision": "4430a6d6da4872b0eff555107a0971519f4991b2",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Governance description unaffected by the fast-checks plan's escalated-path log line.","inputs":[".veritas/README.md","scripts/fast-checks-shard.mjs"]}
+  ]
+}

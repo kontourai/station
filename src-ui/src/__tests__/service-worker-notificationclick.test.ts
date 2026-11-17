@@ -15,11 +15,23 @@ const SOURCE = readFileSync(
   'utf8',
 );
 
-function loadWorker(existingWindow: boolean) {
+function loadWorker(
+  existingWindow: boolean,
+  /** How the open tab's app answers the worker's open message. */
+  app?: (message: unknown, port: MessagePort) => void,
+) {
   const handlers = new Map<string, (event: unknown) => void>();
   const navigate = vi.fn(async (_url: string) => undefined);
   const openWindow = vi.fn(async (_url: string) => undefined);
-  const client = { focus: vi.fn(async () => undefined), navigate };
+  const postMessage = vi.fn((message: unknown, transfer: MessagePort[]) =>
+    app?.(message, transfer[0]!),
+  );
+  const client = {
+    focus: vi.fn(async () => undefined),
+    focused: true,
+    navigate,
+    ...(app ? { postMessage } : {}),
+  };
   const self = {
     location: { origin: ORIGIN },
     addEventListener: (type: string, handler: (event: unknown) => void) =>
@@ -33,7 +45,15 @@ function loadWorker(existingWindow: boolean) {
     skipWaiting: () => undefined,
   };
   const fetch = vi.fn(async (_url: string, _init?: unknown) => undefined);
-  runInNewContext(SOURCE, { self, URL, fetch, console });
+  runInNewContext(SOURCE, {
+    self,
+    URL,
+    fetch,
+    console,
+    MessageChannel,
+    setTimeout,
+    clearTimeout,
+  });
   async function click(action: string, data: Record<string, unknown>) {
     let pending: Promise<unknown> = Promise.resolve();
     handlers.get('notificationclick')!({
@@ -58,7 +78,7 @@ function loadWorker(existingWindow: boolean) {
     await pending;
     return (existingWindow ? navigate : openWindow).mock.calls.at(-1)?.[0];
   }
-  return { tap, click };
+  return { tap, click, navigate, openWindow, postMessage };
 }
 
 describe('service worker notification tap', () => {
@@ -102,6 +122,50 @@ describe('service worker notification tap', () => {
   test('no URL opens the inbox', async () => {
     const { tap } = loadWorker(false);
     expect(await tap(undefined)).toBe(`${ORIGIN}/notifications`);
+  });
+});
+
+describe('service worker tap hands the link to the open app', () => {
+  test('a running app that answers opens it in place: no reload', async () => {
+    const worker = loadWorker(true, (_message, port) =>
+      port.postMessage({ handled: true }),
+    );
+    await worker.tap('/?chat=s-1&dock=open&station=env-a');
+    expect(worker.postMessage).toHaveBeenCalledWith(
+      {
+        type: 'station-notification-open',
+        url: `${ORIGIN}/?chat=s-1&dock=open&station=env-a`,
+      },
+      [expect.anything()],
+    );
+    expect(worker.navigate).not.toHaveBeenCalled();
+    expect(worker.openWindow).not.toHaveBeenCalled();
+  });
+
+  test('a tab that does not answer is navigated to the link', async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = loadWorker(true, () => {});
+      const done = worker.tap('/?chat=s-1&dock=open');
+      await vi.advanceTimersByTimeAsync(1500);
+      await done;
+      expect(worker.navigate).toHaveBeenCalledWith(
+        `${ORIGIN}/?chat=s-1&dock=open`,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the message carries only the on-Station link, never a payload origin', async () => {
+    const worker = loadWorker(true, (_message, port) =>
+      port.postMessage({ handled: true }),
+    );
+    await worker.tap('https://evil.example/phish');
+    expect(worker.postMessage.mock.calls[0]?.[0]).toEqual({
+      type: 'station-notification-open',
+      url: `${ORIGIN}/notifications`,
+    });
   });
 });
 

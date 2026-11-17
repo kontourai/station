@@ -6,6 +6,7 @@ import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
 } from '../../providers/adapter-shape.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
@@ -234,20 +235,22 @@ export class CredentialProfileRecovery {
       );
       await this.deps.assertRetainedWorkspaceAuthorized(input.threadId);
       sendInvoked = true;
-      result = await adapter.sendTurn({
-        threadId: input.threadId,
-        input: composeAmbientTurnText(input.ambientContext, input.input),
-        displayInput: input.input,
-        ...(input.attachments ? { attachments: input.attachments } : {}),
-        ...(input.ambientContext
-          ? { ambientContext: input.ambientContext }
-          : {}),
-        ...(input.modelId ? { modelId: input.modelId } : {}),
-        ...(modelOptions ? { modelOptions } : {}),
-        confinement: this.deps.replayConfinement(input.threadId),
-        recoveryCorrelationId: input.recoveryCorrelationId,
-        signal: input.signal,
-      });
+      result = await runEngineOutsideStationServerScope(() =>
+        adapter.sendTurn({
+          threadId: input.threadId,
+          input: composeAmbientTurnText(input.ambientContext, input.input),
+          displayInput: input.input,
+          ...(input.attachments ? { attachments: input.attachments } : {}),
+          ...(input.ambientContext
+            ? { ambientContext: input.ambientContext }
+            : {}),
+          ...(input.modelId ? { modelId: input.modelId } : {}),
+          ...(modelOptions ? { modelOptions } : {}),
+          confinement: this.deps.replayConfinement(input.threadId),
+          recoveryCorrelationId: input.recoveryCorrelationId,
+          signal: input.signal,
+        }),
+      );
     } catch (error) {
       this.deps.reportRedispatchFailed(
         input.threadId,

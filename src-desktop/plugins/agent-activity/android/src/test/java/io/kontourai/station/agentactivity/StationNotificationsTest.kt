@@ -52,7 +52,8 @@ class StationNotificationsTest {
         urgency = NotificationUrgency.ATTENTION,
         createdAt = sentAt,
         expiresAt = sentAt + 3_600_000,
-        route = SessionRoute(stationId, "thread-1", "login-app")
+        // The alert's own record rides the route, so the tap reads it.
+        route = SessionRoute(stationId, "thread-1", "login-app", "notification-0001")
       ),
       notification
     )

@@ -72,8 +72,6 @@
 
     "scripts/release-pipeline.mjs",
 
-    ".github/workflows/hosted-capacity-probe.yml",
-
     "scripts/release-advisory-gate.mjs",
 
     "scripts/lib/release-advisory-collection.mjs",

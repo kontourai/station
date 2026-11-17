@@ -1,0 +1,11 @@
+{
+  "revision": "56b39aa885ac9d25a929748260dc5a6bb8385a53",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"motion, testing and usage-telemetry cite the gallery spec for its SCREENS list, capture modes, animation freezing and viewports; the change only switches the room-attachment scene's staged-image assertion to the thumbnail's Preview button, so none of those claims change.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"motion, testing and usage-telemetry cite the gallery spec for its SCREENS list, capture modes, animation freezing and viewports; the change only switches the room-attachment scene's staged-image assertion to the thumbnail's Preview button, so none of those claims change.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"motion, testing and usage-telemetry cite the gallery spec for its SCREENS list, capture modes, animation freezing and viewports; the change only switches the room-attachment scene's staged-image assertion to the thumbnail's Preview button, so none of those claims change.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}
