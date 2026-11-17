@@ -1,4 +1,5 @@
 import { useEngineInstallTerminal } from '@kontourai/station-sdk/engine-setup';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
@@ -145,7 +146,7 @@ function ScopedInstaller({
                     (terminal.status === 'exited' ||
                       terminal.status === 'failed'))
                 )
-                  request.current = crypto.randomUUID();
+                  request.current = randomCorrelationId();
                 setConfirmation({
                   command: view.command,
                   operationId: request.current,

@@ -37,6 +37,7 @@ afterEach(() => {
   clients.length = 0;
   setClientCredentialResolver(undefined);
   scope = owner;
+  vi.unstubAllGlobals();
 });
 function mount(component: React.ReactElement) {
   const client = new QueryClient({
@@ -143,6 +144,9 @@ function serve({
   return calls;
 }
 test('installation requires review of the exact command and attaches only to the server-created terminal', async () => {
+  vi.stubGlobal('crypto', {
+    getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
+  });
   const calls = serve();
   mount(<EngineInstallTerminal id="antigravity" onFinished={vi.fn()} />);
   const install = await screen.findByRole('button', {
