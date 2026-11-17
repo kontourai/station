@@ -389,6 +389,46 @@ visible and retryable; a failed Task stop keeps the confirmation open.
 Full access, arbitrary folders, remote mentions, offline copies/replay, personal
 defaults and local skill/workspace integrations are unavailable on relayed chats.
 
+### Continuing a chat on a paired Station
+
+The Agent handoff picker ([ConversationHandoffDialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx))
+offers paired Stations when the preview is on, this Station advertises
+`conversationStationHandoff` and the caller is offered one. The chat must be
+this Station's own. [ConversationStationHandoff](../../src-ui/src/components/chat-dock/ConversationStationHandoff.tsx)
+keeps the Agent, which that Station must have under the same definition
+fingerprint, and offers its verified engines and its own Projects. Nothing is
+inferred from the source Project's slug.
+
+A conversation identity does not cross Stations. The source's
+[handoff route](../../src-server/routes/environments/peer-chat-routes.ts) reads the
+history with the caller's authority, through the lineage and text projection an
+Agent/engine handoff seeds from
+(`ConversationLineage.readConversationCarriedMessages`). It sends that history,
+bounded, to the receiver's [import](../../src-server/routes/chat/conversations.ts),
+which saves it as a fork context. Only an authenticated paired Station may
+import, and the receiver names it from that credential. That Station's first
+`/chat` start and every later continuation and handoff seed from it, and it
+discloses what the sender left out. The copied rows carry `importedFrom`;
+`transcriptSeedSource` quotes every such row, so each seed and the target
+Agent's memory copy quote each carried line, and shortening keeps whole quoted
+lines. Its transcript views show them as ordinary rows; the tunnel admits no
+conversation-messages read. A peer added by hand with a person's device
+credential is refused with `peer_conversation_handoff_pairing_required`, and
+the picker asks to pair it as a Station. A relayed tab
+therefore shows messages from the handoff on, and the source chat keeps the
+earlier ones. The source conversation is left as it was.
+
+Recovery matches the Agent handoff. The request is kept in session storage under
+one key until a definite answer, and the receiver answers a repeated key with the
+conversation it created. The dock then opens a tab bound to that Station's
+connection under the imported id. The first turn goes through the tab's own
+durable sender and relay `chat` leaf, like any paired chat message.
+
+No files cross. The picker names uncommitted changes and unpushed commits in the
+chat's Project folder, read with `git status`, that stay on this machine, and
+asks for a commit and push first. It does not read a worktree-isolated chat's
+own folder. SSH environments are not offered; they have no relay connection.
+
 Dock, attached records and coding tabs use the same conversation body.
 Attached records retain their read-only access and explicit **Continue in Station**
 action, which confirms continuation into an owned child.
@@ -424,7 +464,8 @@ captures establish layout only; two-machine provider execution, reconnect,
 Windows lifecycle, and approval journeys require separate qualification before
 promoting this preview.
 
-The Project header leads with its name, description and observed Git branch.
+The Project header leads with its name, description and observed Git branch,
+and with the `project-coordination` preview on, the Project's one-line goal.
 Files & connections holds source controls and the **Where Agent work starts**
 workspace selector; specialist management remains in Project Settings. A branch badge does not claim a GitHub integration or whole
 Project synchronization: portable Project identity and per-Station resource

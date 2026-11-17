@@ -39,6 +39,7 @@ import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { projectEffortApplies } from '@kontourai/station-contracts/project';
 import type {
   EngineId,
   ProviderSession,
@@ -336,6 +337,49 @@ interface TaskGraphServiceDeps {
 }
 
 /** Concrete integrations captured at the TaskDispatcher composition Seam. */
+/** #5068: a Project's Task model and effort (`ProjectConfig.task*`). */
+export interface ProjectTaskDefaults {
+  modelId?: string;
+  /** The engine `modelId` belongs to; another engine's Agent ignores it. */
+  providerId?: string;
+  effort?: string;
+}
+
+/**
+ * The dispatch start with the Project's Task defaults filled in, or
+ * `undefined` when none applies. The model applies only to an Agent on the
+ * engine it belongs to; the effort only on an engine that takes one
+ * (`projectEffortApplies`). What the dispatch named itself always wins.
+ */
+export function withProjectTaskDefaults<T extends object>(
+  start: T & {
+    modelId?: string;
+    modelOptions?: Readonly<Record<string, unknown>>;
+  },
+  provider: string,
+  defaults: ProjectTaskDefaults | undefined,
+): T | undefined {
+  if (!defaults) return undefined;
+  const modelId =
+    !start.modelId &&
+    defaults.modelId &&
+    (!defaults.providerId || defaults.providerId === provider)
+      ? defaults.modelId
+      : undefined;
+  const effort =
+    start.modelOptions?.effort === undefined &&
+    defaults.effort &&
+    projectEffortApplies(provider)
+      ? defaults.effort
+      : undefined;
+  if (!modelId && !effort) return undefined;
+  return {
+    ...start,
+    ...(modelId ? { modelId } : {}),
+    ...(effort ? { modelOptions: { ...start.modelOptions, effort } } : {}),
+  };
+}
+
 export interface TaskDispatchAdapterDeps {
   orchestrationService?: TaskDispatchOrchestration;
   assignmentClaimService?: Pick<
@@ -370,6 +414,15 @@ export interface TaskDispatchAdapterDeps {
     modelId?: string;
     modelOptions?: Readonly<Record<string, unknown>>;
   }) => Promise<TaskDispatchAgentStart>;
+  /**
+   * #5068: the Project's Task model and effort, read at each dispatch so a
+   * change reaches the next dispatched Task only. A dispatch that names its
+   * own model or effort keeps it. Absent (or `undefined`, while the
+   * `project-coordination` preview is off): the Agent's own defaults.
+   */
+  projectTaskDefaults?: (
+    projectSlug: string,
+  ) => ProjectTaskDefaults | undefined;
 }
 
 /**
@@ -4102,6 +4155,7 @@ export class TaskGraphService {
       deps.resolveProjectWorkspace ?? this.resolveProjectWorkspace;
     const taskBrief = deps.taskBrief;
     const resolveAgentStart = deps.resolveAgentStart;
+    const projectTaskDefaults = deps.projectTaskDefaults;
     const assertAgentExists = deps.assertAgentExists;
     const graph: TaskDispatchGraphState = {
       reserve: async (taskId, input, agentStart) => {
@@ -4222,9 +4276,10 @@ export class TaskGraphService {
           };
         let agentStart: TaskDispatchAgentStart;
         try {
-          agentStart = await resolveAgentStart({
+          const projectSlug = this.projectSlugFor(task.projectId);
+          const startInput = {
             agentId,
-            projectSlug: this.projectSlugFor(task.projectId),
+            projectSlug,
             ...(input.runtimeConfig?.cwd !== undefined
               ? { cwd: input.runtimeConfig.cwd }
               : {}),
@@ -4234,7 +4289,16 @@ export class TaskGraphService {
             ...(input.runtimeConfig?.modelOptions
               ? { modelOptions: input.runtimeConfig.modelOptions }
               : {}),
-          });
+          };
+          agentStart = await resolveAgentStart(startInput);
+          // #5068: the Project's Task model and effort, where the dispatch
+          // chose none and the Agent's engine takes them.
+          const withDefaults = withProjectTaskDefaults(
+            startInput,
+            agentStart.provider,
+            projectTaskDefaults?.(projectSlug),
+          );
+          if (withDefaults) agentStart = await resolveAgentStart(withDefaults);
         } catch (error) {
           return {
             kind: 'refused' as const,

@@ -834,6 +834,7 @@ describe('station-control authority table: declare_pull_request and Task close-o
       'terminal_run',
       'task_summary_update',
       'task_record',
+      'remember_project_note',
       'task_thread_reply',
       'task_thread_resolve',
       'html_render',

@@ -257,6 +257,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Fake systemd manager; reaps one real short-lived process for a dead pid.
   'src-server/services/infra/__tests__/workload-scope-cleanup.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
+  // #5120: runs a copy of the readiness wrapper as a node child against a
+  // disposable Git repository with short-lived git children; no wall-clock assertion.
+  'scripts/__tests__/run-veritas-readiness.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Runs the UI copy length gate as a node child against a disposable Git tree.
   'scripts/__tests__/ui-copy-length.process.test.ts',
@@ -923,6 +926,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // throwaway git repository to prove its base snapshot lands in the Station
   // temp root rather than the system temp directory.
   'scripts/__tests__/fallow-base-cache.test.ts',
+  // #5111: runs a fake analyzer through the fallow memory-scope wrapper (and,
+  // where a systemd user manager exists, a real 192 MiB user scope whose
+  // kernel OOM kill it provokes) to prove the budget refusal end to end.
+  // Single-shot children, each bounded by its budget or the fallow watchdog.
+  'scripts/__tests__/fallow-memory-bound.test.ts',
   // Runs `install-script-generated.mjs --check` as a child against this
   // checkout and a stale scratch copy, so the gate's exit status is proven.
   'scripts/__tests__/install-script-generated.test.ts',
@@ -1692,6 +1700,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/coding-mobile-tools.browser.test.tsx',
   // Mounted local restart notice recovery owns a Chromium instance.
   'src-ui/src/__tests__/local-restart-notice.browser.test.tsx',
+  // Owns Chromium to render Project brief, memory, models and usage (#5062).
+  'src-ui/src/__tests__/project-coordination-settings.browser.test.tsx',
   // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
   'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // Owns Chromium and a local HTTP fixture for strict-durability IndexedDB custody.

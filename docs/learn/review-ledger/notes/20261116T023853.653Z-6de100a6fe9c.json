@@ -1,0 +1,145 @@
+{
+  "revision": "fb2119be763891c9689149520ff527062de091e0",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked against cb5dd941b4: access and pairing refusal codes map from the receiver's 401/403 and paired_station_required (peer-chat-routes.ts), and a receiver failure after the save began answers 500 indeterminate (conversations.ts afterSave); each has a test that fails when reverted.","inputs":["docs/reference/api.md","packages/contracts/src/peer-chat.ts","src-server/routes/chat/conversations.ts","src-server/routes/environments/peer-chat-routes.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against cb5dd941b4: transcriptSeedSource quotes importedFrom rows, covering first-turn, engine handoff, successor Session and memory copies (tests executed and fault-injected), shortening keeps whole quoted lines (sweep test), summary generation reads runtime events only (context-efficiency-runtime readSource via readConversationEventWindow, which has no fork rows), and the sender name is the Device name requested at pairing.","inputs":["docs/security/remote-access-threat-model.md","packages/contracts/src/peer-chat.ts","src-server/routes/environments/peer-chat-routes.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the quoting, shortening and device-credential refusal statements against conversation-transcript-seed.ts, conversations.ts, peer-chat-routes.ts and ConversationStationHandoff.tsx.","inputs":["docs/design/chat-composer.md","packages/contracts/src/peer-chat.ts","src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the device sign-in sentence against the pairing-required refusal and its picker message.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"cb5dd941b4 replaces the inline import-caller with pairedStationImportCaller (same decision, now tested behind production admission); no other composition changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Adds the access and pairing refusal codes and PAIRED_STATION_REQUIRED_CODE; existing shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Adds the access and pairing refusal codes and PAIRED_STATION_REQUIRED_CODE; existing shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Adds the access and pairing refusal codes and PAIRED_STATION_REQUIRED_CODE; existing shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Adds the access and pairing refusal codes and PAIRED_STATION_REQUIRED_CODE; existing shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds the access and pairing refusal codes and PAIRED_STATION_REQUIRED_CODE; existing shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds the access and pairing refusal codes and PAIRED_STATION_REQUIRED_CODE; existing shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Adds the access and pairing refusal codes and PAIRED_STATION_REQUIRED_CODE; existing shapes unchanged.","inputs":["packages/contracts/src/peer-chat.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Maps receiver 401/403 and paired_station_required to distinct codes; definite/indeterminate classification unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Maps receiver 401/403 and paired_station_required to distinct codes; definite/indeterminate classification unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Maps receiver 401/403 and paired_station_required to distinct codes; definite/indeterminate classification unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Maps receiver 401/403 and paired_station_required to distinct codes; definite/indeterminate classification unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Maps receiver 401/403 and paired_station_required to distinct codes; definite/indeterminate classification unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Maps receiver 401/403 and paired_station_required to distinct codes; definite/indeterminate classification unchanged.","inputs":["src-server/routes/environments/peer-chat-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Only the paired-Station handoff section changed; citing pages refer to other sections.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the paired-Station handoff section changed; citing pages refer to other sections.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"Import route: coded paired-only refusal and afterSave indeterminate handling after the save begins; other routes unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Import route: coded paired-only refusal and afterSave indeterminate handling after the save begins; other routes unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Only the owner-device bullet's handoff sentence changed; citing pages refer to other sections.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"importedFrom comment corrected to the requested Device name; field unchanged.","inputs":["packages/shared/src/conversation-message.ts"]}
+  ]
+}

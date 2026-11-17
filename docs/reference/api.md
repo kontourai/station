@@ -48,6 +48,36 @@ relayed, without source authority; loss/unknown outcomes stay uncertain. Source
 401 still means reconnect to S. See the [threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)
 and [connection design](../design/station-connection.md) for limits and evidence.
 
+### Continue a conversation on a paired Station
+
+`POST /api/environments/peers/:id/conversation-handoffs` takes
+`{idempotencyKey, conversationId, targetAgent, projectSlug?}`
+(`PeerConversationHandoffRequestV1`). Admission matches the tunnel: an owner
+Device or the operator, the preview on, never an agent. The source reads the
+conversation's text history with the caller's own authority (the lineage and
+projection an Agent/engine handoff seeds from), bounds it to 400 messages and
+512 KB, newest first, cutting a message over 64 KB with a marker, and sends it
+with the saved peer credential to the receiver's
+`POST /agents/:slug/conversation-imports` (`ConversationImportRequestV1`). The
+bounds count JSON-encoded bytes, and the sender refuses (**413**) an encoded
+request over 768 KB rather than send it. The receiver accepts only an
+authenticated paired Station (**403** otherwise), names it from that credential,
+and saves the history as a fork context on a new conversation for the same
+Agent, in one of its own Projects. Its answer reports the counts it saved. Answers: **200** `PeerConversationHandoffReceiptV1`
+(no turn has run); **409** before sending (the receiver lacks
+`conversationStationHandoff`, nothing to carry, identity unconfirmed); **424**
+`peer_conversation_handoff_refused` when the receiver definitely refused, any
+4xx carrying its Station envelope, middleware refusals included (its text is
+not relayed), with `peer_conversation_handoff_access_refused` for its 401/403
+and `peer_conversation_handoff_pairing_required` when it reaches the receiver
+with a person's device credential rather than a Station pairing. A receiver
+failure after the save began answers **500** `outcome:'indeterminate'`, so the
+same key is retried; **409** when this Station cannot read or hand off its own chat; **502** with `outcome:'indeterminate'` once sent without a
+confirmed answer. A same-key retry returns the same conversation with
+`idempotent:true`. The client sends the first turn through the tunnel's `chat`
+leaf to the returned conversation. Both Stations advertise the
+`conversationStationHandoff` capability; hosted deployments withdraw it.
+
 ## Session Goals
 
 While the default-off **Session goals** Feature Preview is enabled,
@@ -424,6 +454,21 @@ working directory checkout is behind its upstream branch, behind the
 404 with `code: 'feature_preview_disabled'`, `previewId` and `settingsPath`, and
 reads nothing. A shared member, like an unknown Project, gets 404
 `Project not found`: the answer names a host path.
+
+`GET /api/projects/:slug/memory` lists a Project's memory notes without their
+bodies, newest change first; `GET /api/projects/:slug/memory/:id` reads one;
+`POST /api/projects/:slug/memory` saves `{title, body}` (201);
+`PUT /api/projects/:slug/memory/:id` changes one; and
+`DELETE /api/projects/:slug/memory/:id` forgets one (#5065). They sit behind the
+`project-coordination` Feature Preview (404 `feature_preview_disabled` while
+off) and answer only the Station operator, the Project's owner (403
+`restricted` otherwise). A title is one line of at most 120 characters, a body
+at most 4,000 characters, and a Project holds at most 200 notes (409
+`project_memory_full`). Shapes are in `@kontourai/station-contracts/project-session-context`.
+Agents use the Station Control tools `list_project_notes`, `read_project_note`,
+`remember_project_note` and `forget_project_note`, whose internal-only
+`/api/orchestration/station-control/project-memory` routes read the Project from
+the calling Session's start record.
 
 The [reader](../../src-server/services/projects/project-checkout-freshness.ts)
 uses local refs only and never fetches, so `behind` counts what the last fetch
@@ -2770,8 +2815,9 @@ by this read, export, fork, summary and stats, rather than read partially. Messa
 every message having the old `content: string`/`timestamp` pair.
 
 A stored user turn is the typed text (and its attachments) alone. Ambient
-context such as `[Timezone: …]`, skill instructions, project rules and
-retrieved knowledge reach only the model's input for that turn.
+context such as `[Timezone: …]`, skill instructions, the Project brief and
+memory index, project rules and retrieved knowledge reach only the model's
+input for that turn.
 
 A `/chat` turn that failed before producing output is recorded as its prompt
 followed by a user-role `[SYSTEM_EVENT] [CHAT_ERROR] <text>` message, with no
@@ -3611,7 +3657,7 @@ statement or complete provider-wide usage. See [measurement coverage](../guides/
 `GET /api/analytics/usage-rollup` reads authorized canonical observations, with
 an exact 7-, 14-, or 30-day Station-observation window. `days` defaults to 14;
 `from` and `to` can supply the exact window. `groupBy` accepts `provider`,
-`model`, `station`, `conversation`, `task`, `day`, `connection`, or
+`model`, `station`, `conversation`, `task`, `project`, `day`, `connection`, or
 `modelConnection`. `pageSize` accepts 1–100;
 `cursor` advances the receipt drilldown without changing the aggregate.
 `localOnly=1` excludes configured peer Stations. The normal response is
@@ -7206,6 +7252,12 @@ starts return a safe reason, with Codex outcomes when available.
 attributed account receipts before aggregation. An empty `credentialProfileRef`
 selects the default profile; omitting it includes all accounts. An engine filter
 is required. Older/source-home usage without `accountKey` remains unattributed.
+
+`projectSlug` keeps receipts whose Session's start recorded that Project of
+this Station, and `groupBy=project` groups by it (#5068). Projects belong to
+this Station, so both require `localOnly=1` (400 otherwise), and a slug of any
+other shape is a 400. With `groupBy=task`, the row without a `taskId` is the
+Project's own chats. The usage export omits the Project attribution.
 
 `GET /api/analytics/usage-rollup` accepts `provider` and `localOnly=1` for
 engine activity. `provider` must be a provider kind with declared usage

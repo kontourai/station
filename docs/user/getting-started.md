@@ -550,6 +550,19 @@ Stop and approval answers use that Station. A refused message offers **Retry**
 and **Edit**. If delivery is uncertain, use **Check** before sending a
 changed copy. Station keeps the original pending message.
 
+To move a chat you already have to a paired Station, open the Agent picker in
+**Run setup** and choose that Station; the dialog becomes **Continue
+elsewhere**. Pick its engine and
+one of its Projects, then **Continue on <Station>**. A new chat opens there,
+and its Agent gets this chat's messages as context. The new chat shows messages
+from the handoff on; this chat keeps the earlier ones. Its first message is your
+draft or a short catch-up request. Files are not copied: the picker lists uncommitted changes and unpushed
+commits that stay on this machine, so commit and push first if you need them.
+The original chat stays here. If Station can't confirm the move, **Retry
+safely** reuses the same request and never creates a second chat. A Station
+you added with a device sign-in can't take a chat: pair it as a Station in
+**Connections** first.
+
 Full access, choosing a folder, mentions, offline copies and local skill or
 workspace integrations are unavailable on a relayed chat. Turning the preview
 off keeps saved text and drafts visible. An older held chat offers **Reconnect

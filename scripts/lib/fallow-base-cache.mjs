@@ -26,14 +26,14 @@ import { isAbsolute, join } from 'node:path';
  * nine seconds here.
  *
  * A run that is killed before its `finally` leaves its directory behind. Runs
- * are bounded at two minutes (`runFallowAnalysis`), so a run directory older
+ * are bounded at four minutes (`runFallowAnalysis`), so a run directory older
  * than {@link FALLOW_RUN_DIRECTORY_MAX_AGE_MS} belongs to no live run, and the
  * next run removes it. That rests on the bound being enforced: if the audit
  * script itself dies and the fallow child it detached then hangs for over an
  * hour, a later run would remove the hung child's directory.
  */
 
-/** Older than this, a run directory belongs to no live run (runs are bounded at two minutes). */
+/** Older than this, a run directory belongs to no live run (runs are bounded at four minutes). */
 const FALLOW_RUN_DIRECTORY_MAX_AGE_MS = 60 * 60 * 1000;
 
 const RUN_DIRECTORY_PREFIX = 'run-';

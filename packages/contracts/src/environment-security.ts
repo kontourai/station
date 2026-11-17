@@ -1222,6 +1222,13 @@ export interface EnvironmentSecurityRecord {
 export interface StationCapabilityFlags {
   peerChatTunnelV1?: boolean;
   delegationLocalConversationV1?: boolean;
+  /**
+   * Continue a conversation on a paired Station: this Station serves
+   * `POST /api/environments/peers/:id/conversation-handoffs` (the source side)
+   * and `POST /agents/:slug/conversation-imports` (the receiver side). Both
+   * Stations must advertise it.
+   */
+  conversationStationHandoff?: boolean;
   /** Child steering and its separately paged instruction history. */
   childWorkSteering?: boolean;
   /** Consented private terminal outcome reads. */

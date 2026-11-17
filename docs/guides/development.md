@@ -1096,6 +1096,22 @@ host-coordinated lanes consume shared CPU and mutable-output leases.
 worktree, so concurrent runs from several agents serialize instead of sharing
 one memory limit. Let them wait rather than working around the queue.
 
+To check a branch's committed changes with Veritas readiness, go through
+Station's wrapper:
+
+```bash
+node scripts/run-veritas-readiness.mjs --changed-from origin/main --changed-to HEAD
+```
+
+Veritas diffs `--changed-from A --changed-to B` as the two-point range `A..B`.
+Once `origin/main` moves past the branch's base, that range includes files
+from newer `main` that the worktree doesn't have, and readiness fails with
+`ENOENT`. The wrapper replaces a `--changed-from` ref that is not an ancestor
+of `--changed-to` with their `git merge-base` (the `A...B` base) and passes an
+ancestor such as an explicit base SHA through unchanged. Calling
+`npx --no @kontourai/veritas readiness --changed-from origin/main` directly
+skips that step, so pass `$(git merge-base origin/main HEAD)` there instead.
+
 `npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,

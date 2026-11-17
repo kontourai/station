@@ -1876,6 +1876,8 @@ export interface ConversationReadMessage {
   textTruncated?: { originalBytes: number };
   tools?: string[];
   createdAt?: string;
+  /** Another Station's record (`importedFrom`), not a row of this conversation. */
+  importedFrom?: string;
 }
 
 export type ConversationReadProvenance =

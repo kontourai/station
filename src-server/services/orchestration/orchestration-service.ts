@@ -88,6 +88,13 @@ import {
   PENDING_TURN_INTERRUPT_TTL_MS,
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import { projectEffortApplies } from '@kontourai/station-contracts/project';
+import {
+  type ProjectSessionContext,
+  type ProjectSessionContextComposed,
+  parseProjectSessionContext,
+  parseProjectSessionContextComposed,
+} from '@kontourai/station-contracts/project-session-context';
 import type {
   ApprovalMode,
   DelegationProvenance,
@@ -109,6 +116,8 @@ import {
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_METADATA_KEY,
   PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
@@ -350,6 +359,10 @@ import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
+import {
+  type ProjectSessionContextSource,
+  projectSessionContextDigest,
+} from '../projects/project-session-context-source.js';
 import {
   TASK_BRIEF_MAX_CHARS,
   TASK_BRIEF_VERSION,
@@ -1202,6 +1215,18 @@ interface OrchestrationServiceOptions {
     'approvalDefault' | 'recordStart'
   >;
   /**
+   * #5062/#5065: what a new Session in a Project starts from, the Project
+   * brief and memory index, read once at each start and composed into the
+   * first turn on every engine. Absent: no Project context is composed.
+   */
+  projectSessionContext?: ProjectSessionContextSource;
+  /**
+   * #5068: the effort a Project's own (non-Task) Sessions start at when the
+   * start chose none. `undefined` (always, while the preview is off): the
+   * engine's or Agent's own.
+   */
+  projectCoordinatorEffort?: (projectSlug: string) => string | undefined;
+  /**
    * #3157: `AppConfig.usageLimitAutoResume`, loaded per call like the
    * defaults above. Absent means off: an unattended resume spends quota.
    */
@@ -1670,6 +1695,35 @@ function pendingStationInstructions(
     return undefined;
   }
   return text;
+}
+
+/**
+ * #5062/#5065: the Project context the start recorded
+ * (`PROJECT_SESSION_CONTEXT_METADATA_KEY`), while the engine's context has
+ * had no turn yet. Same first-turn rule as {@link pendingTaskBrief}; a record
+ * of any other shape composes nothing.
+ */
+function pendingProjectSessionContext(
+  events: readonly { method?: unknown; metadata?: unknown; code?: unknown }[],
+): ProjectSessionContext | undefined {
+  if (turnStartedSinceEngineContextBegan(events)) return undefined;
+  let context: ProjectSessionContext | undefined;
+  for (const event of events) {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    )
+      continue;
+    const record =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)[
+            PROJECT_SESSION_CONTEXT_METADATA_KEY
+          ]
+        : undefined;
+    const parsed = parseProjectSessionContext(record);
+    if (parsed) context = parsed;
+  }
+  return context;
 }
 
 function taskBriefStartRecord(brief: {
@@ -5839,6 +5893,41 @@ export class OrchestrationService {
   }
 
   /**
+   * #5062/#5065: the Project context a new Session's start records. A
+   * successor in the same conversation carries its predecessor's record (or
+   * none); any other Session in a Project reads it fresh. Fail-open: a read
+   * that fails starts the Session without it, and says so in the log.
+   */
+  private async projectSessionContextForStart(
+    startInput: { threadId: string; metadata?: Record<string, unknown> },
+    predecessorSessionId: string | undefined,
+  ): Promise<ProjectSessionContext | undefined> {
+    const projectSlug = startInput.metadata?.projectSlug;
+    if (typeof projectSlug !== 'string' || !projectSlug) return undefined;
+    if (predecessorSessionId) {
+      const carried = parseProjectSessionContext(
+        this.firstStartedMetadataOfThread(predecessorSessionId)?.[
+          PROJECT_SESSION_CONTEXT_METADATA_KEY
+        ],
+      );
+      return carried?.projectSlug === projectSlug ? carried : undefined;
+    }
+    const source = this.options.projectSessionContext;
+    if (!source) return undefined;
+    try {
+      const context = await source.resolve(projectSlug);
+      return context?.projectSlug === projectSlug ? context : undefined;
+    } catch (error) {
+      this.options.logger.warn('Project brief and memory were not read', {
+        threadId: startInput.threadId,
+        projectSlug,
+        error: errorMessage(error),
+      });
+      return undefined;
+    }
+  }
+
+  /**
    * Station #90 lane D (R2): the metadata a session was STARTED with, from
    * its first `session.started` event (else its first `session.configured`).
    * Unlike {@link latestStartedMetadataOfThread}, later reconfiguration events
@@ -6509,6 +6598,58 @@ export class OrchestrationService {
       authority,
       target,
     );
+  }
+
+  /**
+   * What a handoff to another Station carries: the conversation's current
+   * Agent and title, and its history read exactly as an Agent/engine handoff
+   * reads it. A portable-marked conversation is refused, as that handoff is,
+   * because no receiver offer admits it. `undefined` when the caller cannot
+   * read the conversation.
+   */
+  async readConversationCarriedHistory(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): Promise<
+    | {
+        agentSlug: string;
+        title: string;
+        projectSlug?: string;
+        messages: ConversationMessage[];
+      }
+    | undefined
+  > {
+    this.initialize();
+    const currentSessionId = this.currentConversationSessionId(conversationId);
+    const conversation =
+      (await this.conversationLineage.readSessionConversation(
+        currentSessionId,
+        authority,
+      )) ??
+      (currentSessionId === conversationId
+        ? null
+        : await this.conversationLineage.readSessionConversation(
+            conversationId,
+            authority,
+          ));
+    if (!conversation) return undefined;
+    const consent =
+      this.persistedPortableConsentOfThread(conversationId) ??
+      this.persistedPortableConsentOfThread(currentSessionId);
+    if (consent) throw portableRefusalForUnadmittedThread(consent);
+    const messages =
+      await this.conversationLineage.readConversationCarriedMessages(
+        conversationId,
+        authority,
+      );
+    return {
+      agentSlug: conversation.agentSlug,
+      title: conversation.title,
+      ...(conversation.projectSlug
+        ? { projectSlug: conversation.projectSlug }
+        : {}),
+      messages,
+    };
   }
 
   /** Read-only delivery lookup; see `ConversationLineage.inspectTurnDelivery`. */
@@ -8598,9 +8739,30 @@ export class OrchestrationService {
           });
           const { modelOptions: _startOptions, ...startWithoutOptions } =
             postureInput;
-          const input: typeof postureInput = startModelOptions
+          const postureApplied: typeof postureInput = startModelOptions
             ? { ...startWithoutOptions, modelOptions: startModelOptions }
             : startWithoutOptions;
+          // #5068: a Project's own conversations (not its Tasks, not a
+          // delegated Session) run at the Project's coordinator effort, on an
+          // engine that takes one, unless this start chose its own.
+          const startProjectSlug = postureApplied.metadata?.projectSlug;
+          const coordinatorEffort =
+            typeof startProjectSlug === 'string' &&
+            postureApplied.metadata?.taskId === undefined &&
+            postureApplied.metadata?.delegation === undefined &&
+            postureApplied.modelOptions?.effort === undefined &&
+            projectEffortApplies(adapter.provider)
+              ? this.options.projectCoordinatorEffort?.(startProjectSlug)
+              : undefined;
+          const input: typeof postureInput = coordinatorEffort
+            ? {
+                ...postureApplied,
+                modelOptions: {
+                  ...postureApplied.modelOptions,
+                  effort: coordinatorEffort,
+                },
+              }
+            : postureApplied;
           // #484 correction: a handoff-reserved child of a portable-marked
           // predecessor starts with no portable admission (the handoff seam
           // carries none), so it refuses here — before cwd resolution and
@@ -8867,6 +9029,26 @@ export class OrchestrationService {
                 ...startInput.metadata,
                 [TASK_BRIEF_METADATA_KEY]:
                   taskBriefStartRecord(admittedTaskBrief),
+              },
+            };
+          }
+          // #5062/#5065: the Project brief and memory index this Session
+          // starts from, stamped after the reserved-key strip removed any
+          // caller-supplied value, for the first turn to compose
+          // (`pendingProjectSessionContext`). Read once, here: an edit
+          // reaches new Sessions, never a running one. A successor in the
+          // same conversation carries its predecessor's record instead, so
+          // a running conversation keeps what it started with.
+          const projectContext = await this.projectSessionContextForStart(
+            startInput,
+            lineage?.predecessorSessionId,
+          );
+          if (projectContext) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [PROJECT_SESSION_CONTEXT_METADATA_KEY]: projectContext,
               },
             };
           }
@@ -9843,10 +10025,33 @@ export class OrchestrationService {
             current && engineContextFirstTurn && !resumedNativeConversation
               ? await this.hostImages.instructionFor(submittedInput.threadId)
               : undefined;
+          // #5062/#5065: the Project brief and memory index, on the same
+          // genuine first turn of every engine (Station's own relays it to
+          // `/chat` as ambient context), after Station's instructions and
+          // before the Task brief. An engine that resumed the predecessor's
+          // native transcript already holds it.
+          const pendingProjectContext =
+            engineEvents && !resumedNativeConversation
+              ? pendingProjectSessionContext(engineEvents)
+              : undefined;
+          const projectContextComposed:
+            | ProjectSessionContextComposed
+            | undefined = pendingProjectContext
+            ? {
+                digest: projectSessionContextDigest(pendingProjectContext.text),
+                ...(pendingProjectContext.brief
+                  ? { brief: pendingProjectContext.brief }
+                  : {}),
+                ...(pendingProjectContext.memory
+                  ? { memory: pendingProjectContext.memory }
+                  : {}),
+              }
+            : undefined;
           const firstTurnContext = [
             ...stationContext,
             pendingPrompt,
             pendingStationGuide,
+            pendingProjectContext?.text,
             pendingBrief?.retainedByBoundary ? undefined : pendingBrief?.text,
             pendingHostImageGuide,
             publicTurnInput.ambientContext?.trim()
@@ -9856,6 +10061,7 @@ export class OrchestrationService {
           const turnInputWithFirstTurnPrompt =
             pendingPrompt ||
             pendingStationGuide ||
+            pendingProjectContext ||
             pendingBrief ||
             pendingHostImageGuide ||
             stationContext.length > 0
@@ -9924,6 +10130,12 @@ export class OrchestrationService {
                     [TASK_BRIEF_COMPOSED_METADATA_KEY]: pendingBrief.digest,
                     [TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY]:
                       pendingBrief.learningContributions,
+                  }
+                : {}),
+              ...(projectContextComposed
+                ? {
+                    [PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY]:
+                      projectContextComposed,
                   }
                 : {}),
             },
@@ -16084,9 +16296,11 @@ export class OrchestrationService {
       const metadata = { ...event.metadata };
       let projected =
         Object.hasOwn(metadata, TASK_BRIEF_COMPOSED_METADATA_KEY) ||
-        Object.hasOwn(metadata, TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY);
+        Object.hasOwn(metadata, TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY) ||
+        Object.hasOwn(metadata, PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY);
       delete metadata[TASK_BRIEF_COMPOSED_METADATA_KEY];
       delete metadata[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY];
+      delete metadata[PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY];
       if (event.invocationId) {
         const stored = this.options.eventStore?.readPreparedTurnIntent(
           event.threadId,
@@ -16117,6 +16331,24 @@ export class OrchestrationService {
         ) {
           metadata[TASK_BRIEF_COMPOSED_METADATA_KEY] = digest;
           if (refs) metadata[TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY] = refs;
+          projected = true;
+        }
+        // #5062: the Project context receipt, from the same prepared
+        // dispatch record only (never from what an adapter echoed), on the
+        // same witness rule.
+        const projectComposed = parseProjectSessionContextComposed(
+          input?.[PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY],
+        );
+        const projectWitnessed =
+          stored &&
+          (stored.state === 'invoking' ||
+            stored.state === 'accepted' ||
+            JSON.stringify(
+              replay?.[PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY],
+            ) === JSON.stringify(projectComposed));
+        if (projectWitnessed && projectComposed) {
+          metadata[PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY] =
+            projectComposed;
           projected = true;
         }
       }

@@ -283,13 +283,11 @@ describe('evidence-check execution gate', () => {
     );
     writeFileSync(wrapper, source);
     expect(runGate(root).status).toBe(0);
-    writeFileSync(
-      wrapper,
-      source.replace(
-        "[entry, 'readiness', ...process.argv.slice(2)]",
-        '[entry]',
-      ),
-    );
+    const invocation =
+      "[entry, 'readiness', ...branchScopedArgs(process.argv.slice(2))]";
+    // The negative case must mutate the real wrapper, not a stale anchor.
+    expect(source).toContain(invocation);
+    writeFileSync(wrapper, source.replace(invocation, '[entry]'));
     const broken = runGate(root);
     expect(broken.status).toBe(1);
     expect(broken.output).toContain(

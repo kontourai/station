@@ -2,6 +2,7 @@ import { CLEAN_ID_PATTERN } from '@kontourai/station-contracts/agent-identity';
 import { LAYOUT_CATALOG_ITEM_ID_PATTERN } from '@kontourai/station-contracts/distribution';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import {
+  PROJECT_EFFORTS,
   PROJECT_ICON_PROBLEM_MESSAGES,
   projectIconProblem,
 } from '@kontourai/station-contracts/project';
@@ -9,6 +10,10 @@ import {
   PROJECT_CHAT_APPROVAL_POSTURES,
   PROJECT_CHAT_DEFAULT_SELECTIONS,
 } from '@kontourai/station-contracts/project-chat-defaults';
+import {
+  PROJECT_GOAL_MAX_CHARS,
+  PROJECT_INSTRUCTIONS_MAX_CHARS,
+} from '@kontourai/station-contracts/project-session-context';
 import {
   SKILL_COMMAND_NAME_PATTERN,
   SKILL_COMMAND_NAME_RULE,
@@ -237,6 +242,25 @@ export const projectCreateSchema = z
       .nullable()
       .optional(),
     description: z.string().optional(),
+    // #5062: the Project brief. `null` or an empty string drops it.
+    goal: z
+      .string()
+      .max(PROJECT_GOAL_MAX_CHARS)
+      .refine((value) => !/[\r\n]/.test(value), {
+        message: 'The goal is one line',
+      })
+      .nullable()
+      .optional(),
+    instructions: z
+      .string()
+      .max(PROJECT_INSTRUCTIONS_MAX_CHARS)
+      .nullable()
+      .optional(),
+    // #5068: coordinator and Task model and effort. `null` drops each.
+    coordinatorEffort: z.enum(PROJECT_EFFORTS).nullable().optional(),
+    taskModel: z.string().max(256).nullable().optional(),
+    taskProviderId: z.string().max(128).nullable().optional(),
+    taskEffort: z.enum(PROJECT_EFFORTS).nullable().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
     toolDefaults: z
       .object({

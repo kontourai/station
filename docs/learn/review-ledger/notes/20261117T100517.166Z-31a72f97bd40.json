@@ -1,0 +1,7 @@
+{
+  "revision": "a82ab2a382dbeab6adbfa49a0ca7e49368556682",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the provider-failure section against the pinned wire test after main's merge: the test pins project_held once (main's row) beside this branch's five paired-Station handoff codes; the table here is not exhaustive and its claims about the pinned test still hold. Removed a duplicate conversation_handoff_predecessor_busy row left by two merges, keeping the alphabetical one.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

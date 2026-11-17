@@ -3768,6 +3768,25 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // bounded Task-memory revision or record version.
     { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
     { method: 'POST', path: '/api/orchestration/station-control/task-record' },
+    // #5065 Project memory tools' REST side. Internal-only at the route like
+    // the leaves above; the Project they read and write is the verified
+    // caller Session's own, and each write is one bounded note.
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-memory',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/project-memory',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-memory/:id',
+    },
+    {
+      method: 'DELETE',
+      path: '/api/orchestration/station-control/project-memory/:id',
+    },
     { method: 'GET', path: '/api/orchestration/station-control/task-threads' },
     {
       method: 'POST',
@@ -4275,6 +4294,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/agents/:slug/conversations/:conversationId/fork',
+    },
+    // A paired Station continues one of its conversations here: like a fork,
+    // it creates a conversation for this Agent from history, but the history
+    // is the caller's own bounded record rather than one this Station holds.
+    // It reads and returns nothing of any other conversation, so it is no
+    // more sensitive than fork or POST /agents and takes the operate tier.
+    {
+      method: 'POST',
+      path: '/agents/:slug/conversation-imports',
     },
     {
       method: 'GET',
@@ -4994,6 +5022,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // and the model and approval mode the caller's own last chat here
     // started with. A read of the caller's own history; mutates nothing.
     { method: 'GET', path: '/api/projects/:slug/chat-defaults' },
+    // #5065: the Project's memory notes, behind the `project-coordination`
+    // preview. Project-scoped notes in this Station's own Project data; every
+    // leaf separately requires the current operator. No peer or other-Station
+    // data, no model call, and no execution grant.
+    { method: 'GET', path: '/api/projects/:slug/memory' },
+    { method: 'POST', path: '/api/projects/:slug/memory' },
+    { method: 'GET', path: '/api/projects/:slug/memory/:id' },
+    { method: 'PUT', path: '/api/projects/:slug/memory/:id' },
+    { method: 'DELETE', path: '/api/projects/:slug/memory/:id' },
     // This Station's Project-scoped learning records and canonical sources.
     // Intents change owner lifecycle state, not execution/installation grants;
     // POST source/evidence reads conservatively retain the operate tier.

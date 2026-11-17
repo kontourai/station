@@ -2242,6 +2242,17 @@ refresh combines copied parent rows with subsequent runtime turns. Deletion
 before first send tombstones the context under the lifecycle guard before file
 cleanup, so failed cleanup cannot reactivate the seed.
 
+A conversation continued from a paired Station is saved the same way.
+`POST /agents/:slug/conversation-imports` in the
+[conversation routes](../../src-server/routes/chat/conversations.ts) builds the
+fork context from the sender's bounded text history
+([peer-conversation-handoff](../../src-server/services/peers/peer-conversation-handoff.ts)).
+Its source identity names the other Station, so it never resolves to a
+conversation here. The sending side is the
+[peer chat routes](../../src-server/routes/environments/peer-chat-routes.ts)'
+`conversation-handoffs` leaf, which reads history through
+`ConversationLineage.readConversationCarriedMessages`.
+
 Native-fork persistence has a separate, fail-closed recovery boundary. Its
 [private SQLite intent](../../src-server/services/orchestration/event-store.ts)
 joins the existing Session-start claim before invocation. A possible native
@@ -5127,6 +5138,10 @@ result) or, with no tool first, its next `UserPromptSubmit`; Codex through a
 `turn/steer` into the running turn or, between turns or when refused, an extra
 input item of the next `turn/start`. Both adapters also publish a
 `runtime.warning` the transcript shows at once. Orchestration's first-turn composition adds the
+Project brief and memory index a Session's start recorded
+([`project-session-context-source.ts`](../../src-server/services/projects/project-session-context-source.ts),
+read once at start, behind the `project-coordination` preview; its receipt
+rides `turn.started` for every engine), the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already

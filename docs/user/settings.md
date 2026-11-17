@@ -32,6 +32,55 @@ device. **Sources** shows repository links and checkout locations. Use
 **Add a repository** to attach a checkout and **Advanced: checkout repair**
 for filesystem repair. **Workspace** edits the Project's local working folder.
 
+### Project brief, memory and models
+
+With the **Project brief, memory and models** preview on
+(`project-coordination`), Project settings gain four sections. Each new
+Session in the Project starts with the brief and the memory index, whatever
+engine runs it: Station's own, Claude Code, Codex, an ACP engine, a Task's
+Session, a delegated Session or a scheduled run in the Project. Sessions
+already running keep what they started with; an edit reaches the next one.
+The turn's **Added context** lists **Project brief** and **Project memory**
+with approximate tokens, so you can see that they arrived.
+
+- **Brief**: the Project's one-line **Goal**, shown under its name on the
+  Project page, and its **Instructions** (up to 16,000 characters). The empty
+  field suggests what to cover: what the Project is for, where work happens,
+  how a Session checks its work, what to do when something is missing, and
+  what needs your go-ahead. Saved with **Save**.
+- **Memory**: short notes agents save when you ask them to remember
+  something or correct them, and that you can add, edit or delete here. Each
+  note shows who last changed it and when. A new Session sees the note titles
+  as background, not instructions, and opens a note when it needs it. Changes
+  apply at once. Notes stay in this Station's data for the Project, never in
+  a repository, and only the Project's owner sees them. Agents use the
+  `remember_project_note`, `list_project_notes`, `read_project_note` and
+  `forget_project_note` tools, which reach only their own Project.
+- **Models and effort**: the reasoning effort for the Project's own chats
+  (those that are not Tasks; their model is the Project's **AI model**), and
+  the engine, model and effort for the Tasks it dispatches. A Task dispatched
+  with its own model or effort keeps it. Effort applies on Claude Code, Codex
+  and Muse. A new Project starts its chats at medium effort. Each Task runs
+  its own Session, so parallel Tasks multiply usage. Saved with **Save**;
+  each change reaches the next chat or Task.
+- **Usage**: tokens the Project's Sessions used on this Station in the last
+  30 days, the Project chats' share, and the split by Task and by model.
+
+Three kinds of instructions reach a Session. The **brief** is your standing
+instruction for every Session in the Project. **Memory** is notes agents keep
+as they work, read as background. **Repository instructions** stay in each
+repository's `AGENTS.md` or `CLAUDE.md`.
+
+The first time a Session starts in a Project after you turn the preview on,
+Station copies the Project's existing rules (`project-rules.md` in Project
+knowledge) into the brief's instructions, after any instructions already
+there. The copy is word for word, runs once, and leaves the rules document in
+place; from then on the brief carries them on every engine, without a vector
+database or embedding provider. Rules longer than the brief allows are not
+copied and keep working as before. Turning the preview off restores the old
+behavior: no brief or memory, and the rules inject only on Station's engine
+when knowledge search is configured.
+
 ### Pause, archive, delete
 
 The last section of Project settings stops or removes a Project's work.
@@ -120,6 +169,7 @@ only when this Station's build can run it; if none is, the section says
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 | `project-sharing-setting` | Project sharing setting | Shows **Project sharing with local accounts** under **Settings → System**, where the Station operator turns on invitations with username and password accounts and picks the sign-in address. | Only the control is the preview. Applying restarts Station through its process supervisor. Turning the preview off keeps the saved choice in force; environment variables set by the deployment always win. See [deployment authentication](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#turn-it-on-from-settings). |
+| `project-coordination` | Project brief, memory and models | Starts every new Session in a Project with its goal, instructions and memory notes on every engine, and adds Brief, Memory, Models and effort, and Usage to Project settings ([details](#project-brief-memory-and-models)). | Adds the brief and memory index to each new Session's first turn, which costs tokens. Copies a Project's rules into its brief once. Turning it off stops adding them; saved briefs and notes remain. |
 | `session-cli-reads` | Session reads from the station CLI | Lets a person wait on, digest and list their own Sessions from the CLI: `station sessions wait`, `station sessions digest` and `station activity`. | Read-only. A wait holds one connection for up to 50 seconds at a time, from a bounded per-person pool. |
 
 For **Crash-durable Station Agent**, an output-limit message means you should start a new turn to continue. Recovery replay for finished turns (completed, failed or cancelled) expires after seven days; this cleanup does not delete conversation history.

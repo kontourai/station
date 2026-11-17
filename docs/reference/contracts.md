@@ -405,6 +405,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-checkout-freshness` | How far a Project's checkout is behind its upstream, from local git refs: the `GET /api/projects/:slug/checkout-freshness` view (`stale`, `not-stale` or `unknown` with a reason), the default thresholds, `resolveProjectCheckoutStaleThresholds` and `projectCheckoutStaleReasons` |
 | `@kontourai/station-contracts/project-lifecycle` | Pause, Archive and Delete for a Project: the `ProjectConfig.lifecycle` state, the `POST /api/projects/:slug/lifecycle` request and result (turns interrupted, still running after `PROJECT_LIFECYCLE_STOP_WAIT_MS`), `projectLifecycleHoldsWork`, the held-turn refusal, and the `GET /api/projects/:slug/deletion-preview` counts |
+| `@kontourai/station-contracts/project-session-context` | What a new Session in a Project starts from (#5062, #5065): the brief and memory note shapes and limits, their parsers, `composeProjectSessionContext` (the one composer of the brief and memory index, labelled as background) and the per-turn `ProjectSessionContextComposed` receipt. |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
@@ -1080,7 +1081,6 @@ non-retryable.
 | `acp-approval-takeover-failed` | `warning` | `false` |
 | `acp_approval_governance_refused` | `permission_denied` | `false` |
 | `adoption_continuation_in_progress` | `busy` | `true` |
-| `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `approval-escalation-requires-restart` | `warning` | `false` |
 | `approval-full-access-not-granted` | `permission_denied` | `false` |
 | `attachment_input_unsupported` | `input_unsupported` | `false` |
@@ -2403,6 +2403,9 @@ Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
 Optional `connectionId` and `modelConnectionId` name the engine and model
 connections the session recorded; absence means none was recorded. They are
 local to the Station's rollup and are not part of export or peer transfer.
+Optional `projectSlug` (#5068) is the Project the Session's start recorded; it is
+likewise local, groups `groupBy: 'project'` rows, and `projectUsageTotals` sums a
+Project's per-Task rows into its total and its own chats' share.
 `aggregateReceipts` is bounded logical transfer material, separate from the
 receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
 for limits and observation-window semantics.

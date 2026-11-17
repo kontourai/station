@@ -28,9 +28,12 @@ export const TURN_PROVENANCE_MAX_CONTEXT_SOURCES = 8;
  * slot (station#2649). The only producer today is the `/chat` execution
  * engine's own record of what IT composed into the model input, relayed by
  * the station-agent adapter onto the turn's `turn.completed` event. External
- * engines (Claude Code, Codex, ACP runtimes) own their context end-to-end
- * and never stamp this key — their turns honestly carry no Station context
- * claim at all.
+ * engines (Claude Code, Codex, ACP runtimes) own the rest of their context
+ * and never stamp this key. The one Station-composed context they do carry,
+ * the Project brief and memory index (#5062), is recorded by Station's own
+ * dispatch on the turn's `turn.started`
+ * (`PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY`), and the provenance fold
+ * reads it there for every engine.
  */
 export const CONTEXT_INJECTION_METADATA_KEY = 'contextInjection';
 
@@ -96,6 +99,23 @@ export interface TurnProvenanceContextMemoryBrief {
 }
 
 /**
+ * #5062: the Project brief (goal and instructions) a new Session in a Project
+ * starts from, composed on its first turn on every engine.
+ */
+export interface TurnProvenanceContextProjectBrief {
+  approxTokens: number;
+}
+
+/**
+ * #5065: the Project memory index, composed beside the brief as background
+ * notes. `entries` is the number of notes listed.
+ */
+export interface TurnProvenanceContextProjectMemory {
+  entries: number;
+  approxTokens: number;
+}
+
+/**
  * What Station itself injected into this turn's model input, recorded AT
  * DISPATCH from the exact strings composed into the input — never
  * reconstructed after the fact (station#2649).
@@ -127,6 +147,8 @@ export interface TurnProvenanceContextInjection {
   conversationFeedback?: TurnProvenanceContextConversationFeedback;
   ambient?: TurnProvenanceContextAmbient;
   memoryBrief?: TurnProvenanceContextMemoryBrief;
+  projectBrief?: TurnProvenanceContextProjectBrief;
+  projectMemory?: TurnProvenanceContextProjectMemory;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -242,6 +264,27 @@ export function parseTurnProvenanceContextInjection(
     )
       return undefined;
     out.memoryBrief = {
+      entries: raw.entries,
+      approxTokens: raw.approxTokens,
+    };
+  }
+
+  if (value.projectBrief !== undefined) {
+    const raw = value.projectBrief;
+    if (!isObjectRecord(raw) || !isCountField(raw.approxTokens))
+      return undefined;
+    out.projectBrief = { approxTokens: raw.approxTokens };
+  }
+
+  if (value.projectMemory !== undefined) {
+    const raw = value.projectMemory;
+    if (
+      !isObjectRecord(raw) ||
+      !isCountField(raw.entries) ||
+      !isCountField(raw.approxTokens)
+    )
+      return undefined;
+    out.projectMemory = {
       entries: raw.entries,
       approxTokens: raw.approxTokens,
     };

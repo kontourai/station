@@ -22,6 +22,13 @@ import {
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
+import {
+  CONVERSATION_IMPORT_DELETED_CODE,
+  PAIRED_STATION_REQUIRED_CODE,
+  PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
+  PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
+  PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+} from './peer-chat.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
 import { PROJECT_HELD_REFUSAL_CODE } from './project-lifecycle.js';
@@ -30,6 +37,7 @@ import {
   PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
 } from './project-room.js';
+import { PROJECT_MEMORY_FULL_CODE } from './project-session-context.js';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -192,6 +200,15 @@ export const PROVIDER_FAILURE_KINDS = {
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   // The current Session still has a turn running; the handoff waits for it.
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
+  // Continuing a conversation on a paired Station: the paired Station refused
+  // the import outright (not retryable as sent), refused this Station's
+  // credential, or takes imports only from a Station paired as a Station.
+  [PEER_CONVERSATION_HANDOFF_REFUSAL_CODE]: 'conflict',
+  [PEER_CONVERSATION_HANDOFF_ACCESS_CODE]: 'permission_denied',
+  [PEER_CONVERSATION_HANDOFF_PAIRING_CODE]: 'permission_denied',
+  [PAIRED_STATION_REQUIRED_CODE]: 'permission_denied',
+  // The import this key saved was deleted before it started.
+  [CONVERSATION_IMPORT_DELETED_CODE]: 'session_gone',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
   [ADOPTION_SOURCE_ACTIVE_CODE]: 'busy',
   // A second consumer violates Station's internal queue-ownership invariant.
@@ -291,6 +308,10 @@ export const PROVIDER_FAILURE_KINDS = {
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
   // #4517: a managed policy locks the setting a write would change.
   managed_setting_locked: 'permission_denied',
+  // #5065: a Project's memory holds its maximum notes. Not retryable: like
+  // `project_held`, it is a state refusal that lasts until the state changes
+  // (a person or agent forgets a note), not a transient capacity limit.
+  [PROJECT_MEMORY_FULL_CODE]: 'conflict',
   // #4520: an engine the managed policy does not allow, or a launch that
   // cannot honor a locked pin.
   [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',
