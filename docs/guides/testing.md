@@ -2334,6 +2334,13 @@ whole test run.
 - A queued check prints `[heavy-check-slots] waiting for a heavy-check slot
   for <label>: 1/1 held by pid <N> (<holder label>) in <worktree>`, repeated
   every minute.
+- That message leaves the inherited stdout or stderr non-blocking, and the
+  flag survives execve. Before a slot holder execs the slotted program on
+  macOS or Linux, `scripts/lib/slot-holder-exec.mjs` (also used by
+  `scripts/run-biome.mjs`) restores blocking stdio. Otherwise a native program
+  such as Biome fails with `Resource temporarily unavailable` (EAGAIN) as soon
+  as the process reading its output falls behind
+  ([#5119](https://github.com/kontourai/station/issues/5119)).
 - Waiters are admitted in arrival order. Each waiter writes a ticket under the
   pool's `queue/` directory, and only the earliest N live tickets may claim a
   slot. A ticket whose waiter died is removed by the next reader.
