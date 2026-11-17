@@ -1162,12 +1162,10 @@ legacy `parentConversationId`, or a `parentTaskId` the request names. The
 backfills existing events and maintains mentions in the event write transaction.
 The read preserves context precedence and matching-start provenance; these
 mentions describe naming, not authority to stop a child. They do not record an
-exact initiating Session or a detached lifetime. For a Claude Code or Codex
-session's `delegate_task` call Station derives the context from the calling
-session's own record; for Station's own agent the runtime attests it from the
-conversation the tool call ran in. A task launched through a caller-less
-station-control process (as a Strands-runtime agent uses) names neither, so it
-is not found and not shown as missing. A task you can't read is never named
+exact initiating Session or a detached lifetime. For a `delegate_task` call
+from Claude Code, Codex or Station's own agent, Station derives the context
+from the calling session's own record. A station-control request with no
+verified caller is refused, so it launches no task. A task you can't read is never named
 or figured. When Station derived or attested its link to your conversation
 (in hosted mode, a delegate Station couldn't attribute to a bound caller is
 the Station operator's), the total is partial and says how many such tasks

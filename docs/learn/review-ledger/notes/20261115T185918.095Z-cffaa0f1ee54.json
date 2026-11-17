@@ -1,0 +1,37 @@
+{
+  "revision": "ff991e6aac3cf42ea8aa1603e6065f8cb9a7f208",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Re-reviewed the opening section against notificationStationOpen.ts, the opener, dock sync, native routes and wiring: added the newest-tap/committed-Station fence, desktop origin outranking the link id, the unconfirmed-identity notice, held-request supersession by navigation, Station-bound unreachable Retry, toast/attention marking, 403 scope, native record ids reaching openedNotification, and the visible opening label/header.","inputs":["docs/design/notification-delivery.md","src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentActivityModel.kt","src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/AgentActivityPlugin.kt","src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/StationNotifications.kt","src-ui/src/platform/native/agentActivity.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"ChatDockColdChatHydration test gained a warm deep-link case with a stubbed reader; no module ownership or boundary in the map changes.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"main.tsx now installs the navigation position before holding a cold notification link; shared-answer paths skip that block as before, so permalink loading is unchanged.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/design/automations.md","note":"notification-delivery.md changed only its opening section (tap routing and notices); the automations repair/notification references remain accurate.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"ChatDock shows a neutral opening header and hides the stale reader during a deep-link open; useChatDockActiveChatSync keeps 403 retry for non-notification links. No composer claim here changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/useChatDockActiveChatSync.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"tauri.ts launch-route parser now passes an optional notificationId; the launch-route subscribe-then-take ordering and share-intent claims here are unchanged.","inputs":["docs/design/native-capabilities.md","src-ui/src/platform/native/tauri.ts","src-ui/src/platform/native/types.ts"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock opening state only hides the covered reader and neutralizes header, inbox selection and This Chat card; pane relations, fences and openers are unchanged.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock deep-link opening cover does not touch region placement, URL adoption or dock snap rules described here.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Test-only change in ChatDockColdChatHydration (warm deep-link case); no plugin or distribution claim is affected.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx"]},
+
+    {"path":"docs/guides/android-build.md","note":"tauri.ts carries an optional notificationId on launch routes; build steps and deep-link verification limits here are unchanged.","inputs":["docs/guides/android-build.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"tauri.ts launch-route parsing gained an optional field used only on phones; desktop build and plugin claims are unchanged.","inputs":["docs/guides/desktop-build.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"tauri.ts change is limited to the phone launch-route reply; tray behavior is unchanged.","inputs":["docs/guides/desktop-tray.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"main.tsx boot adds a navigation-position reader for held notification links; the native launch, deep-link and reopen authority described here is unchanged.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Test-only change in ChatDockColdChatHydration; plugin install and grant claims are unaffected.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"tauri.ts launch-route parser change does not affect release channel ports or schemes.","inputs":["docs/guides/release-channel-ports.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock opening state and the main.tsx hold change no layout rule here; the notification notice now sits above the collapsed dock at phone width using --dock-bottom-clearance, consistent with this guide's dock clearance owner.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/main.tsx"]}
+  ]
+}

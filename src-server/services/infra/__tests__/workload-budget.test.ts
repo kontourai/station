@@ -49,7 +49,7 @@ async function writeScopeFixture(directory: string, oomKills = 0) {
     'memory.swap.current': '0\n',
     'memory.swap.max': '268435456\n',
     'memory.events': `low 0\nhigh 0\nmax 12\noom ${oomKills}\noom_kill ${oomKills}\noom_group_kill 0\n`,
-    'memory.stat': 'anon 1500000000\nfile 100000000\n',
+    'memory.stat': 'anon 1500000000\nfile 100000000\ninactive_file 100000000\n',
     'pids.current': '57\n',
     'pids.max': '512\n',
   };
@@ -231,6 +231,8 @@ describe('cgroup v2 scope reading', () => {
       swapCurrentBytes: 0,
       swapMaxBytes: 'max',
       oomKills: 1,
+      workingSetBytes: 1510612736,
+      memoryEvents: { high: 0, max: 12, oom: 1 },
       tasksCurrent: 57,
       tasksMax: 512,
     });

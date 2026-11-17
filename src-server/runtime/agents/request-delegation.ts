@@ -24,10 +24,12 @@
  *    this derivation then names THAT session's lineage, which is the most a
  *    copied credential can claim. Treating such callers as unverified would
  *    let every Codex model omit its lineage again.
- *  - Any other Station-internal request (Station's pooled engine child, or
- *    any holder of the internal token) keeps a body context only when
+ *  - Any other Station-internal request keeps a body context only when
  *    Station's runtime attested it (`delegation-attestation.ts`). Otherwise
- *    it claims no lineage: the session it starts is a root.
+ *    it claims no lineage: the session it starts is a root. Since #2377
+ *    slice D Station's own engine calls with a verified caller (above), so
+ *    no runtime path mints an attestation any more, and a caller-less
+ *    station-control request never reaches a dispatch route.
  *  - A request from outside this Station's process passes its context
  *    through unchanged: a peer Station forwarding its own child, or an
  *    operator, paired-device or hosted-user credential. None of those is

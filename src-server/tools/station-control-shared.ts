@@ -295,12 +295,10 @@ export async function requireStationControlCaller(): Promise<StationControlCalle
 function executionContextHeaders(): Record<string, string> {
   const context = executionContexts.getStore();
   const callerToken = callerCredential();
-  // In-process HTTP requests always prefer their AsyncLocal request context.
-  // A spawned stdio station-control child is already one-session/one-tenant
-  // and receives that immutable binding in its process environment; retain
-  // that separately reviewed delivery path rather than making hosted stdio
-  // tools silently lose all tenant authority.
-  const tenantId = context?.tenantId ?? process.env.STATION_INTERNAL_TENANT;
+  // The AsyncLocal request context is the only tenant source. #2377 slice D:
+  // no stdio child receives a tenant binding (or any credential) in its
+  // environment any more.
+  const tenantId = context?.tenantId;
   return {
     ...(tenantId ? { 'x-station-internal-tenant': tenantId } : {}),
     ...serverSelfHeaders(),

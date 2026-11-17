@@ -1,0 +1,7 @@
+{
+  "revision": "8a7dee80b0b050d312da8caa6176d86776d85fa5",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"No UI guidance affected by the testing guide's selection paragraph.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

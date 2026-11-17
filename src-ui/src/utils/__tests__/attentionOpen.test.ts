@@ -1,18 +1,20 @@
+// @vitest-environment jsdom
 /**
  * archive#3203. The tray badge counts attention items with no
- * `acknowledgedAt`, and until this change only Dismiss recorded one — so
- * acting on a row left the number where it was and the bell stopped meaning
- * "things you have not seen".
- *
- * The ORDER is the contract, not an implementation detail: "Open session" is a
- * real document navigation, so an acknowledgement fired alongside it races the
- * unload, and the destination reads `/api/attention` on mount. These assert
- * that the write completes before the navigation, on both the success and the
- * failure path.
+ * `acknowledgedAt`; opening a row records one. Opening navigates inside the
+ * app, so the navigation no longer waits for the write: these pin that the
+ * user is taken there at once, the write still happens, and its failure
+ * changes nothing they asked for. `navigateToAttentionTarget` is the
+ * in-app navigation itself, observed on the real navigation store.
  */
 
 import { describe, expect, test, vi } from 'vitest';
-import { acknowledgeThenOpen, isPlainLeftClick } from '../attentionOpen';
+import { navigationStore } from '../../contexts/NavigationContext';
+import {
+  isPlainLeftClick,
+  navigateToAttentionTarget,
+  openThenAcknowledge,
+} from '../attentionOpen';
 
 function plainClick(overrides: Record<string, unknown> = {}) {
   return {
@@ -26,61 +28,60 @@ function plainClick(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('acknowledgeThenOpen', () => {
-  test('navigates only after the acknowledgement has resolved', async () => {
+describe('openThenAcknowledge', () => {
+  test('navigates at once, before the acknowledgement resolves', async () => {
     const order: string[] = [];
     let release: () => void = () => {};
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-
-    const done = acknowledgeThenOpen({
+    const done = openThenAcknowledge({
       acknowledge: () => {
         order.push('acknowledge');
         return pending;
       },
       navigate: () => order.push('navigate'),
     });
-
-    // The whole point of awaiting: while the ack is in flight the user is
-    // still on this document, so the write can actually land.
-    expect(order).toEqual(['acknowledge']);
+    expect(order).toEqual(['navigate', 'acknowledge']);
     release();
     await done;
-    expect(order).toEqual(['acknowledge', 'navigate']);
+    expect(order).toEqual(['navigate', 'acknowledge']);
   });
 
-  test('still navigates when the acknowledgement fails', async () => {
-    // A failed ack must not trap the user on the tray — what they asked for
-    // was "open this", and the next attention read is the count's authority.
+  test('a failing acknowledgement neither rejects nor navigates twice', async () => {
     const navigate = vi.fn();
-
-    await acknowledgeThenOpen({
-      acknowledge: () => Promise.reject(new Error('offline')),
-      navigate,
-    });
-
-    expect(navigate).toHaveBeenCalledTimes(1);
-  });
-
-  test('navigates exactly once', async () => {
-    const navigate = vi.fn();
-
-    await acknowledgeThenOpen({
-      acknowledge: () => Promise.resolve(),
-      navigate,
-    });
-
-    expect(navigate).toHaveBeenCalledTimes(1);
-  });
-
-  test('does not reject when the acknowledgement rejects', async () => {
     await expect(
-      acknowledgeThenOpen({
+      openThenAcknowledge({
         acknowledge: () => Promise.reject(new Error('offline')),
-        navigate: () => {},
+        navigate,
       }),
     ).resolves.toBeUndefined();
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+
+  test('nothing to acknowledge: it only navigates', async () => {
+    const navigate = vi.fn();
+    await openThenAcknowledge({ navigate });
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('navigateToAttentionTarget', () => {
+  test('navigates in the app, without a document load', () => {
+    // jsdom does not implement document navigation: a `location.assign`
+    // would leave the path where it was, so a changed path is the in-app one.
+    navigateToAttentionTarget('/projects/demo?chat=thread-1&dock=open');
+    expect(window.location.pathname).toBe('/projects/demo');
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'thread-1',
+    );
+    expect(navigationStore.getSnapshot().activeChat).toBe('thread-1');
+  });
+
+  test('a stored Activity link opens the Chat surface that replaced it', () => {
+    navigateToAttentionTarget('/?surface=activity&session=thread-boom');
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get('surface') ?? 'chat').toBe('chat');
   });
 });
 
