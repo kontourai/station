@@ -785,6 +785,8 @@ interface Running {
   pendingUntracked: Map<string, NodeJS.Timeout>;
   /** One-shot documents this host serves to its own targets' main frames. */
   served: Map<string, string>;
+  /** Recently destroyed targets: a late info event must not re-close them. */
+  destroyed: Set<string>;
 }
 
 /**
@@ -796,6 +798,9 @@ interface Running {
  * frame while sandboxed frames get their own process (#4917).
  */
 export const SERVED_DOCUMENT_URL = 'http://station-document.invalid/';
+
+/** Destroyed target ids remembered against late `targetInfoChanged` events. */
+const DESTROYED_TARGET_MEMORY = 256;
 
 /** Grace before an unknown page target (not ours, not a popup) is closed. */
 const UNTRACKED_TARGET_GRACE_MS = 1_000;
@@ -1247,6 +1252,7 @@ export class ChromiumServerHost implements BrowserHost {
       created: new Set(),
       pendingUntracked: new Map(),
       served: new Map(),
+      destroyed: new Set(),
     };
     void launch.exited.then((reason) => {
       this.reportDiagnostic({
@@ -1608,6 +1614,11 @@ export class ChromiumServerHost implements BrowserHost {
         const targetId = (params as { targetId?: unknown })?.targetId;
         if (typeof targetId !== 'string') return;
         this.closeDiagnostic(targetId, 'unknown', 'destroyed');
+        running.destroyed.add(targetId);
+        if (running.destroyed.size > DESTROYED_TARGET_MEMORY)
+          running.destroyed.delete(running.destroyed.values().next().value!);
+        clearTimeout(running.pendingUntracked.get(targetId));
+        running.pendingUntracked.delete(targetId);
         const target = running.targets.get(targetId);
         target?.unsubscribe();
         running.targets.delete(targetId);
@@ -1775,6 +1786,8 @@ export class ChromiumServerHost implements BrowserHost {
     if (info?.type !== 'page' || typeof info.targetId !== 'string') return;
     const targetId = info.targetId;
     if (running.targets.has(targetId) || running.created.has(targetId)) return;
+    // Chromium can report a target's info after it was destroyed; it is gone.
+    if (running.destroyed.has(targetId)) return;
     const url = typeof info.url === 'string' ? info.url : '';
     let popup = running.popups.get(targetId);
     if (!popup) {

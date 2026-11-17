@@ -798,6 +798,26 @@ describe('ChromiumServerHost with a fake browser', () => {
     });
   });
 
+  test('a target already destroyed is not closed again when its info arrives late', async () => {
+    const { host, profileDir, emit, calls, events } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    // Ours, then closed: Chromium may still report its info afterwards.
+    emit('Target.targetDestroyed', { targetId: 'T1' });
+    emit('Target.targetInfoChanged', {
+      targetInfo: { targetId: 'T1', type: 'page', url: 'about:blank' },
+    });
+    // Unknown, destroyed during its grace.
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'X', type: 'page', url: 'about:blank' },
+    });
+    emit('Target.targetDestroyed', { targetId: 'X' });
+    await new Promise((r) => setTimeout(r, 1_100));
+    expect(calls.filter((c) => c.method === 'Target.closeTarget')).toEqual([]);
+    expect(events.filter((e) => e.kind === 'untracked-target-closed')).toEqual(
+      [],
+    );
+  });
+
   test('our own target is never mistaken for an untracked one, however slow the attach', async () => {
     let emitCreated: ((id: string) => void) | undefined;
     const { host, profileDir, calls, emit } = harness(undefined, {
