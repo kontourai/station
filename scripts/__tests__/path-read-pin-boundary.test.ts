@@ -105,6 +105,10 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads each workflow under .github/workflows by a name taken from a
+  // directory listing, to check which pull-request workflows no source event
+  // triggers. Its ci-health.mjs import selects it for changes to that script.
+  'scripts/__tests__/ci-health.test.ts',
   // Reads only package.json created in a trackTempDirs checkout fixture,
   // never repository source. Its real service and route imports select it.
   'src-server/services/projects/__tests__/project-working-configuration.test.ts',

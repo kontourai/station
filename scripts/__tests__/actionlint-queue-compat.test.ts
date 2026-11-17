@@ -253,45 +253,6 @@ describe('reviewed GitHub FIFO schema compatibility', () => {
       legacyActionlintSources([{ file: full.file, document: changed }]),
     ).toThrow(/Unreviewed FIFO/);
   });
-  test('the manual admission-only probe joins the same FIFO without candidate execution or write authority', () => {
-    const probe = readWorkflowDocuments().find(
-      (workflow) =>
-        workflow.file === '.github/workflows/hosted-capacity-probe.yml',
-    );
-    if (!probe) throw new Error('Missing admission-only probe');
-    const original = structuredClone(probe.document) as {
-      on: Record<string, unknown>;
-      permissions: Record<string, string>;
-      jobs: Record<
-        string,
-        {
-          'timeout-minutes': number;
-          steps: Array<{ run?: string; uses?: string }>;
-        }
-      >;
-      concurrency: Record<string, unknown>;
-    };
-    expect(original.on).toEqual({ workflow_dispatch: null });
-    expect(original.permissions).toEqual({});
-    expect(Object.keys(original.jobs)).toEqual(['admission-only']);
-    const job = original.jobs['admission-only'];
-    expect(job['timeout-minutes']).toBe(2);
-    expect(job.steps).toHaveLength(1);
-    expect(job.steps[0].uses).toBeUndefined();
-    expect(job.steps[0].run).toContain('"kind": "ADMISSION_ONLY"');
-    expect(job.steps[0].run).toContain('time.sleep(10)');
-    expect(job.steps[0].run).not.toMatch(
-      /checkout|secrets|install|qualification/,
-    );
-    const [adapted] = legacyActionlintSources([
-      { file: probe.file, document: original },
-    ]);
-    expect(lint(adapted.source)).toBe('');
-    original.concurrency.queue = true;
-    expect(() =>
-      legacyActionlintSources([{ file: probe.file, document: original }]),
-    ).toThrow(/Unreviewed FIFO/);
-  });
   test.each([
     'per-PR escape',
     'active cancellation',

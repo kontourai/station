@@ -126,12 +126,10 @@ runner availability. Other repositories still consume the shared hosted pool.
 `release-pipeline.mjs profile` validates the execution envelope without polling
 GitHub. Its explicit `observe` command is a one-shot diagnostic snapshot; it
 allocates no work and grants no admission. The old fifteen-minute runner-held
-capacity loop is removed. A manual `hosted-capacity-probe.yml` can demonstrate
-native queue retention and non-overlap with a ten-second `ADMISSION_ONLY` job;
-it performs no source qualification, installs nothing and publishes nothing.
+capacity loop is removed.
 
 Pinned actionlint does not yet parse GitHub's queue field. The workflow gate
-validates the three reviewed workflow-level queues and the two PR source-job
+validates the two reviewed workflow-level queues and the two PR source-job
 queues, then removes that field
 from private lint copies. All other actionlint checks and the original-document
 security checks still run; unknown queue shapes fail rather than being ignored.
