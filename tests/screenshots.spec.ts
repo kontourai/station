@@ -2934,6 +2934,18 @@ function pullRequestWatchScreens(): Screen[] {
                   fixAttempts: 3,
                   maxFixAttempts: 3,
                 },
+                {
+                  identity: identity('63'),
+                  url: 'https://github.com/acme/widgets/pull/63',
+                  watch: {
+                    state: 'review-needed',
+                    headSha: 'c3d4e5f60718293a4b5c6d7e8f90123456789012',
+                    detail:
+                      'Required findings were dismissed. Open the pull request in its chat and choose Review again.',
+                  },
+                  fixAttempts: 1,
+                  maxFixAttempts: 3,
+                },
               ],
               refusals: [
                 {
@@ -3004,6 +3016,7 @@ function pullRequestWatchScreens(): Screen[] {
           });
           await expect(panel).toBeVisible();
           await expect(panel.getByText('Ready for you')).toBeVisible();
+          await expect(panel.getByText('Review needs you')).toBeVisible();
           await expect(
             panel.getByText('Still failing: ci / unit-tests, ci / lint'),
           ).toBeVisible();

@@ -35,6 +35,10 @@ export function watchStateBadge(state: TaskPullRequestWatchState): {
       return { word: 'Ready for you', tone: 'positive' };
     case 'fixing':
       return { word: 'Fixing', tone: 'active' };
+    case 'reviewing':
+      return { word: 'Review pending', tone: 'active' };
+    case 'review-needed':
+      return { word: 'Review needs you', tone: 'caution' };
     case 'budget-spent':
       return { word: 'Fix attempts used', tone: 'caution' };
     case 'elsewhere':
@@ -53,6 +57,8 @@ export function watchStateLine(
   pullRequest: TaskPullRequestWatchView['pullRequests'][number],
 ): string | undefined {
   const state = pullRequest.watch;
+  if (state.state === 'reviewing' || state.state === 'review-needed')
+    return state.detail;
   if (state.state === 'budget-spent')
     return state.failing.length
       ? `Still failing: ${state.failing.join(', ')}`

@@ -327,12 +327,10 @@ existing independent review (`ReviewEvidenceModule`) once per head.
 
 With a Task watching the pull request ([task-owned pull requests](task-owned-pull-requests.md)):
 
-- A Task's watch claim and "Review each new head" do not combine today. A
-  watch claim turns on the two sending switches only. Turning review on in
-  the chat makes it a person's claim, which ends the Task's watch for that
-  pull request (its Ready for you report and fix budget; the merge refusals
-  still apply while the Task watches). Turning both sending switches off in
-  the chat ends it the same way, so the watch does not turn it back on.
+- Turning "Review each new head" on in the chat keeps the Task's watch,
+  fix budget and Ready for you report. Turning both sending switches off
+  ends the watch for that pull request, so the watch does not turn them
+  back on. Moving the claim to another chat also ends its Task ownership.
 - Required findings are not failing checks, so a message carrying them is
   not a fix attempt (the budget counts only messages that carried failing
   checks). They share the 3-rounds-per-head and 10-a-day caps.
@@ -343,13 +341,13 @@ With a Task watching the pull request ([task-owned pull requests](task-owned-pul
   requests kept on it) and Agent feedback (defaults for a pull request a
   Task opens from its branch and does not watch). Folding both into one
   section is a follow-up.
-- Follow-up: compose a Task's watch with review of each head (review on
-  watch claims, and Ready for you waiting for the head's review). Whoever
-  builds it must handle four cases that would otherwise hold Ready for
-  good: a findings delivery a person dismissed; feedback waiting on another
-  pull request of the same chat, which keeps the agent from counting as
-  idle and so blocks this head's review; a fix-budget pause; and the person
-  who turned review on losing permission to continue the chat.
+- When head review is enabled, Ready for you waits for this head's completed
+  review with no required findings. Pending review and recovery reasons show
+  on the Task watch panel. Dismissed findings remain dismissed and direct
+  the person to Review again; a pause directs them to Send again; lost
+  permission asks a current person to turn review off and on. Pending
+  feedback for another pull request does not block this head's review,
+  although an active inbox message or a busy agent still does.
 
 Departures from the plan:
 

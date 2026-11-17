@@ -144,6 +144,43 @@ test('Stop watching sends off; a Task off by its own choice can follow its Proje
   expect(state.mutate).toHaveBeenLastCalledWith('project');
 });
 
+test('a head waiting for review or needing recovery never says Ready for you', () => {
+  state.view = {
+    ...watching,
+    pullRequests: [
+      {
+        ...watching.pullRequests[0]!,
+        watch: {
+          state: 'reviewing',
+          headSha: 'a1b2c3d',
+          detail: 'Reviewing this head before reporting it ready.',
+        },
+      },
+    ],
+  };
+  const { rerender } = render(<TaskPullRequestWatchPanel task={task} />);
+  expect(screen.getByText('Review pending')).toBeTruthy();
+  expect(screen.queryByText('Ready for you')).toBeNull();
+  state.view = {
+    ...state.view,
+    pullRequests: [
+      {
+        ...watching.pullRequests[0]!,
+        watch: {
+          state: 'review-needed',
+          headSha: 'a1b2c3d',
+          detail:
+            'Required findings were dismissed. Open the pull request in its chat and choose Review again.',
+        },
+      },
+    ],
+  };
+  rerender(<TaskPullRequestWatchPanel task={task} />);
+  expect(screen.getByText('Review needs you')).toBeTruthy();
+  expect(screen.getByText(/Required findings were dismissed/)).toBeTruthy();
+  expect(screen.queryByText('Ready for you')).toBeNull();
+});
+
 test('a done Task offers no watch controls', () => {
   render(<TaskPullRequestWatchPanel task={{ ...task, status: 'done' }} />);
   expect(screen.queryByRole('button', { name: 'Stop watching' })).toBeNull();
