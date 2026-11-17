@@ -1,0 +1,21 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"The builder passes attachedSource.lastWriteAt to the activity derivation; other summary claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/development.md","note":"The builder passes attachedSource.lastWriteAt to the activity derivation; other summary claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The builder passes attachedSource.lastWriteAt to the activity derivation; other summary claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The builder passes attachedSource.lastWriteAt to the activity derivation; other summary claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The builder passes attachedSource.lastWriteAt to the activity derivation; other summary claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The builder passes attachedSource.lastWriteAt to the activity derivation; other summary claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The builder passes attachedSource.lastWriteAt to the activity derivation; other summary claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The builder passes attachedSource.lastWriteAt to the activity derivation; other summary claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

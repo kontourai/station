@@ -1378,7 +1378,7 @@ The remaining controls are defined by
   reconnect/list reads and the client's safety poll recover a missed notice.
 
 The other lifecycle controls are `adoptSession`
-(`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target? }`, create an independent continuation of a
+(`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target?, continueWhileSourceActive? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
 `alreadyAdopted: true`; `target` is described below),
@@ -1386,7 +1386,45 @@ Continue intent and returns the existing continuation with
 and `stopSession` (`{ type: 'stopSession', threadId }`).
 
 External transcript observation does not grant control of the original terminal
-process. The engine capability matrix declares independent continuation support;
+process.
+
+A read-only attached session's summary carries `attachedSourceActivity`
+(`{ state: 'active' | 'quiet' | 'idle', lastWriteAt? }`), derived at read time
+by [`deriveAttachedSourceActivity`](../../src-server/services/orchestration/attached-source-activity.ts)
+from what Station observed of the transcript. `active` means the latest turn has no
+completion and the session was written within
+`ATTACHED_SOURCE_ACTIVE_WINDOW_MS` (five minutes). `quiet` means a turn is open
+but nothing was written for longer than that, so it was interrupted, crashed, or is running a
+silent tool; Station cannot tell which. `idle` means the latest turn ended.
+`lastWriteAt` is the later of the newest imported event's source time and
+`attachedSource.lastWriteAt`, the newest write the source itself reported
+(recorded in 30-second steps), which covers writes that produce no event:
+
+- Claude Code: the transcript's modification time and, while that changed in
+  the last two hours, the newest `<session>/subagents/*.jsonl`. A directory
+  with more than 1024 transcripts or 4096 entries is not read at all, and a
+  scan is reused for up to 25 seconds while no subagent is added, so an append
+  can be seen that much later.
+- OpenCode: the session row, the messages read, and the parts of a message
+  still being written (`time_updated`).
+- Codex and Grok report none; their imported records' times are used.
+
+A write dated more than `ATTACHED_SOURCE_CLOCK_SKEW_MS` (one minute) after the
+read is not counted. Station does not
+read process state: Claude Code holds no handle on its transcript, and a Codex
+app-server holds every loaded rollout open whether it is working or not.
+
+`adoptSession` re-derives this from the same projection before reserving. When
+it reads `active`, the command is refused with HTTP 409,
+`code: 'continuation_source_active'`, `kind: 'busy'`, `retryable: true`, and
+nothing is created. The same command with `continueWhileSourceActive: true`
+proceeds. A retry that names an existing continuation's idempotency key still
+returns that continuation. Continuing never stops the original: the child is an
+independent native session that misses whatever the original writes later.
+Station has no "take over" action because it does not own, and cannot
+reliably identify, the process that writes the transcript.
+
+The engine capability matrix declares independent continuation support;
 known unsupported and unknown engines keep the conversation's message box
 disabled with a reason. The adoption owner enforces the same declaration before
 invoking an adapter, then checks current source, Project, ownership, and runtime
@@ -1548,7 +1586,10 @@ reason and offer no retry. The Starter Work launch reports it with
 `retrySafe: false`. An engine that fails its readiness check before
 anything is created answers 400 with `code: 'continuation_engine_not_ready'`,
 `retryable: true` and the engine's readiness report in `error`; the Starter
-Work launch settles it as `failed` with `retrySafe: true`. Other adoption
+Work launch settles it as `failed` with `retrySafe: true`. A source still
+running answers 409 with `code: 'continuation_source_active'` (above); the
+Starter Work launch settles it as `failed` with `retrySafe: true` and the same
+`code`, and `AdoptSessionError.code` carries it in the SDK. Other adoption
 failures keep their retryable answers.
 
 `target` accepts only these two shapes; any other field, such as a path, is

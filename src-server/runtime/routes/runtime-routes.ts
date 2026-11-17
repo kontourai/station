@@ -1172,7 +1172,10 @@ import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
-import { composePullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
+import {
+  composePullRequestFeedbackRuntime,
+  pullRequestFeedbackTaskBranchPorts,
+} from './runtime-pull-request-feedback.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -10793,6 +10796,7 @@ export function configureRuntimeRoutes(
             conversationId,
           );
         },
+        derived: (id) => pullRequestFeedback?.derivedLinks(id) ?? [],
       },
     ),
   );
@@ -10817,6 +10821,16 @@ export function configureRuntimeRoutes(
       listProviders('pullRequest').map((entry) => entry.provider),
     keptForSessions: (ids) =>
       context.taskGraphService.listKeptDeclaredPullRequestsForSessions(ids),
+    taskBranches: pullRequestFeedbackTaskBranchPorts({
+      taskGraph: context.taskGraphService,
+      projects: context.projectService,
+      eventStore: context.orchestrationEventStore,
+      canReadProject: (request, slug) =>
+        requireAuthenticatedProjectRead(request, slug).then(
+          () => true,
+          () => false,
+        ),
+    }),
     access: {
       current: isRequestPrincipalCurrent,
       // The operator in person (never an agent), as the principal

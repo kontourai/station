@@ -381,6 +381,32 @@
   white-space: nowrap;
 }
 
+/* The source is still running: its caution and two choices take a full row
+   under the header, where the continuation notice sits, not a dialog and not
+   the header's action slot. */
+.sessions-detail__source-active {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: var(--k-space-1) var(--chat-message-gutter) 0;
+}
+
+.sessions-detail__source-active-text {
+  flex: 1 1 16rem;
+  margin: 0;
+  color: var(--k-caution);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.sessions-detail__source-active-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--k-space-2);
+}
+
 .sessions-detail__adoption-reason {
   margin: 0;
   color: var(--k-text-muted);

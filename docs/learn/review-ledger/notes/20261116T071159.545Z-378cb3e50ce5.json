@@ -1,0 +1,11 @@
+{
+  "revision": "a6a5de0b4d3441e57239bbb889660cf98fabfee4",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Only failure-table rows were added (continuation_source_active, conversation_handoff_predecessor_busy); the glossary, integrating-station and contracts AGENTS references to the table remain accurate.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only failure-table rows were added (continuation_source_active, conversation_handoff_predecessor_busy); the glossary, integrating-station and contracts AGENTS references to the table remain accurate.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Only failure-table rows were added (continuation_source_active, conversation_handoff_predecessor_busy); the glossary, integrating-station and contracts AGENTS references to the table remain accurate.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

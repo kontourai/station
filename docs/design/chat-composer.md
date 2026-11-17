@@ -63,7 +63,16 @@ with **Send**: Send (or the configured Return shortcut, except during IME
 composition) continues with the draft; Shift+Return adds a line. Either way the continuation opens
 through the normal dock controller, and a draft, when there is one, goes to the
 normal sender once. The original conversation
-remains available in its original app. A failed opening retains the reader and offers a
+remains available in its original app. When the server reads the original as
+still mid-turn (`attachedSourceActivity` is `active`), or refuses the
+continuation for that reason, a caution row appears under the origin, at
+the top of the content area rather than in the title bar's action slot:
+"Still running in Claude Code. Continuing now forks it", with **Continue
+anyway** and **Not now**; it is not a dialog. Focus moves to **Continue anyway**,
+which the caution describes, and returns to **Continue in Station** on **Not
+now** or when Continue anyway fails; the caution is a status announcement, so a
+refusal of a stale read is heard too. Station offers no take-over: it cannot
+stop the original app. A failed opening retains the reader and offers a
 retry that does not create another continuation. Metadata is available through
 an explicit Details action.
 

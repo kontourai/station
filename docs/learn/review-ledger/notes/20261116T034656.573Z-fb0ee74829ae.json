@@ -1,0 +1,15 @@
+{
+  "revision": "8cbe9bbfd1addb45446dce86d51850f87b118b7a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"An overriding request refused through a joined attempt now re-reads the in-flight intent and joins a newer one, and an attempt deletes only its own entry; ledger, reservation and rollback claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"An overriding request refused through a joined attempt now re-reads the in-flight intent and joins a newer one, and an attempt deletes only its own entry; ledger, reservation and rollback claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"An overriding request refused through a joined attempt now re-reads the in-flight intent and joins a newer one, and an attempt deletes only its own entry; ledger, reservation and rollback claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"An overriding request refused through a joined attempt now re-reads the in-flight intent and joins a newer one, and an attempt deletes only its own entry; ledger, reservation and rollback claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"An overriding request refused through a joined attempt now re-reads the in-flight intent and joins a newer one, and an attempt deletes only its own entry; ledger, reservation and rollback claims in citing pages are unchanged.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]}
+  ]
+}

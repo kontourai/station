@@ -20,6 +20,7 @@ import {
 import {
   MAX_PER_TICK,
   PullRequestFeedbackPoller,
+  type PullRequestFeedbackPollerPorts,
 } from '../pull-request-feedback-poller.js';
 import { PullRequestFeedbackStore } from '../pull-request-feedback-store.js';
 import recordedFixture from './fixtures/github-feedback-observation.json' with {
@@ -47,7 +48,7 @@ afterEach(() => {
   for (const close of closers.splice(0)) close();
 });
 
-function setup() {
+function setup(discover?: PullRequestFeedbackPollerPorts['discover']) {
   const store = new PullRequestFeedbackStore(
     join(tempDir('pr-feedback-poll-'), 'pull-request-feedback.sqlite'),
   );
@@ -95,6 +96,7 @@ function setup() {
   let clock = NOW;
   const links: { list?: PullRequestLinkIdentity[] } = {};
   const poller = new PullRequestFeedbackPoller({
+    ...(discover ? { discover } : {}),
     linked: () => links.list ?? [pr('1'), pr('2')],
     enabled: () => state.enabled,
     store: () => store,
@@ -420,5 +422,32 @@ describe('pull request feedback detection', () => {
     expect(t.store.observation(key)?.incompleteSince).toEqual({
       'ci / e2e': new Date(NOW + 40 * MINUTE).toISOString(),
     });
+  });
+});
+
+describe('Task-branch discovery on the tick', () => {
+  it('runs first, so a pull request it claims is read the same tick', async () => {
+    let t: ReturnType<typeof setup> | undefined;
+    const discover = vi.fn(async () => {
+      t!.claim(pr('1'), 'chat-lead');
+      return 'ok' as const;
+    });
+    t = setup(discover);
+    expect(await t.poll(NOW)).toEqual({ outcome: 'polled', read: 1 });
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(t.reads).toEqual(['github.com#1']);
+  });
+
+  it('a rate-limited discovery backs every read off', async () => {
+    const discover = vi.fn(async () => 'rate-limited' as const);
+    const t = setup(discover);
+    t.claim(pr('1'), 'chat-a');
+    expect(await t.poll(NOW)).toEqual({ outcome: 'backing-off', read: 0 });
+    expect(await t.poll(NOW + MINUTE)).toEqual({
+      outcome: 'backing-off',
+      read: 0,
+    });
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(t.reads).toEqual([]);
   });
 });

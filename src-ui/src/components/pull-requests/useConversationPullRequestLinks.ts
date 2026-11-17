@@ -4,7 +4,8 @@ import {
   linkConversationPullRequest,
   unlinkConversationPullRequest,
 } from '@kontourai/station-sdk/conversation-pull-request-links';
-import { useQuery } from '@tanstack/react-query';
+import { removeDerivedPullRequest } from '@kontourai/station-sdk/pull-request-feedback';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -25,6 +26,7 @@ export const linkKey = (link: PullRequestLinkIdentity) =>
  */
 export function useConversationPullRequestLinks(conversationId: string) {
   const scope = useHostRequestAuthorityScope();
+  const queryClient = useQueryClient();
   const [pending, setPending] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const links = useQuery({
@@ -45,7 +47,11 @@ export function useConversationPullRequestLinks(conversationId: string) {
     refetchOnMount: 'always',
   });
   const mutate = async (
-    action: 'link' | 'unlink',
+    /**
+     * `remove-derived`: a pull request found on the chat's Task branch,
+     * removed from the chat for good (its agent feedback stops with it).
+     */
+    action: 'link' | 'unlink' | 'remove-derived',
     identity: PullRequestLinkIdentity,
   ): Promise<boolean> => {
     if (!scope?.isCurrent() || pending) return false;
@@ -59,7 +65,30 @@ export function useConversationPullRequestLinks(conversationId: string) {
           identity,
           { requestScope: scope },
         );
-      else
+      else if (action === 'remove-derived') {
+        await removeDerivedPullRequest(
+          scope.apiBase,
+          conversationId,
+          {
+            provider: identity.provider,
+            host: identity.host,
+            repository: {
+              owner: identity.repository.owner,
+              name: identity.repository.name,
+            },
+            ref: identity.ref,
+          },
+          { requestScope: scope },
+        );
+        // The chat's feedback, and a Project's count of what its defaults
+        // still have on.
+        void queryClient.invalidateQueries({
+          queryKey: ['pull-request-feedback'],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ['pull-request-feedback-defaults'],
+        });
+      } else
         await unlinkConversationPullRequest(
           scope.apiBase,
           conversationId,
