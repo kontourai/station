@@ -8246,12 +8246,12 @@ Older hosts or disabled previews return unavailable/preview guidance.
 | Method | Path | Operation |
 | --- | --- | --- |
 | GET | `/api/projects/:slug/working-configuration` | Discover bounded repository guidance and read the current reviewed defaults. |
+| PUT | `/api/projects/:slug/working-configuration` | Apply an exact Project/revision/source-digest draft with a stable operation id. Runs no command. |
 | GET | `/api/projects/:slug/library` | The Project Library: uploads and kept Task outputs, newest first (`project-library` preview, Project operator). |
 | PUT | `/api/projects/:slug/library/uploads?path=` | Add or replace one upload (raw bytes, up to 25 MB). Hidden paths and `node_modules` are refused. |
 | DELETE | `/api/projects/:slug/library/uploads?path=` | Remove one upload. |
 | GET | `/api/projects/:slug/library/uploads/content?path=` | One upload's bytes; text, JSON and a validated PNG inline, everything else as a download. |
 | GET | `/api/projects/:slug/library/outputs/:outputId/content` | One kept Task output's bytes, also after its Task was deleted. |
-| PUT | `/api/projects/:slug/working-configuration` | Apply an exact Project/revision/source-digest draft with a stable operation id. Runs no command. |
 | GET | `/api/projects/:slug/learning` | Read the owner queue with complete or partial coverage. |
 | GET | `/api/projects/:slug/learning/:id` | Inspect one owner projection; optional `compareId` selects a comparison. |
 | POST | `/api/projects/:slug/learning/proposals` | Propose wording from an exact canonical Task-standing or rated-response source. |
@@ -8259,6 +8259,12 @@ Older hosts or disabled previews return unavailable/preview guidance.
 | POST | `/api/projects/:slug/learning/:id/intents` | Evaluate, decide, activate, observe effect, retire or supersede at an expected owner revision. |
 | GET | `/api/analytics/reviewed-tariffs` | Read the private reviewed tariff configuration and revision. |
 | PUT | `/api/analytics/reviewed-tariffs` | Review bounded Bearing catalog bytes and exact tariff bindings under a stable operation id/revision. |
+
+The Project Library routes serve only while the `project-library` Feature
+Preview is on; with it off they answer 404 `feature_preview_disabled`. A
+personal Station advertises the `projectLibrary` capability flag either way, as
+it does `pullRequestFeedback` and `projectSchedules`; a hosted Station mounts
+none of them and withdraws the flag.
 
 Learning requests include `x-station-learning-project-id` with the immutable
 Project incarnation. It grants no authority; a reused slug refuses before owner
