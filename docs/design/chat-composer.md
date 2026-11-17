@@ -1448,6 +1448,22 @@ snoozing, dismissal and deletion. A closed Task is Settled; automatic Task closu
 continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
 
+Settled stays a decision about the conversation's current state, so the host
+clears it when the conversation needs the person again. The person's own
+message (a send, a steer or a queued message, from any client including the
+CLI) clears that person's record at the send route
+([`createSenderReopen`](../../src-server/services/orchestration/conversation-resolution-reopen.ts));
+another person's record is untouched. A question or approval request, a failed
+turn or a stop clears every person's record for the conversation through an
+event observer (`wireConversationResolutionReopen`). A turn the engine opens on
+its own (a background-task reply, a scheduled wake-up) that starts and finishes
+normally keeps it settled, as it keeps a dismissal. A delegated, automatic
+background or agent-sent message is not the person's and reopens nothing. The
+end of a settled conversation's transcript reads "Settled 2h ago · Reopen", and
+the composer says "Sending reopens this conversation". Agents settle or reopen
+with Station Control's `settle_conversation` only when the person asks; people
+can also use `station conversation settle|reopen`.
+
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
 work, with Settled at the bottom by default. With no shelf expanded they stack
 from the top of the list. A collapsed shelf still lists the row of the chat on

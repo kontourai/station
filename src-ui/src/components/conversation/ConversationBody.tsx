@@ -161,6 +161,11 @@ import {
   RecordConversationBody,
   type RecordConversationBodyProps,
 } from './RecordConversationBody';
+import {
+  SETTLED_COMPOSER_NOTICE,
+  SettledConversationFooter,
+  useSettledConversation,
+} from './SettledConversationNotes';
 import { useConversationController } from './useConversationController';
 
 /** The station-control tools that change what a chat has scheduled. */
@@ -596,6 +601,15 @@ function LiveConversationBody({
   const visibilityFlags = useSurfaceVisibilityFlags();
   const { transport, transcript, streamStatus, turnInFlight } =
     useConversationController(activeSession);
+  // Open and Settled inbox: this host's own record for this person. A replay
+  // or another Station's conversation has none here.
+  const settledConversationId =
+    activeSession.conversationId &&
+    !activeSession.replay &&
+    (!station || station.routeKind === 'host')
+      ? activeSession.conversationId
+      : undefined;
+  const settled = useSettledConversation(settledConversationId, turnInFlight);
   const secondaryActions =
     station && station.routeKind !== 'host' ? undefined : dockSecondaryActions;
   // Read only when it decides something: a turn is running and the draft
@@ -2021,6 +2035,11 @@ function LiveConversationBody({
               renderAfterMessage,
               emptyState: historyFailureNotice,
               historyNotice: historyElisionNotice,
+              transcriptFooter: settled ? (
+                <SettledConversationFooter
+                  conversationId={settledConversationId}
+                />
+              ) : undefined,
               hasOlderMessages: transcript.enabled && transcript.hasMore,
               // #2316: the pending-approvals strip derives from the window's
               // events inside the lazily loaded list.
@@ -2906,6 +2925,7 @@ function LiveConversationBody({
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
             sendFailureNotice={sendFailureNotice}
+            composerNotice={settled ? SETTLED_COMPOSER_NOTICE : undefined}
             queuedRetryNotice={queuedRetryNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}

@@ -318,6 +318,8 @@ interface ChatInputAreaProps {
    * a dock too short for the transcript steps it aside (the notice lives there).
    */
   sendFailureNotice?: string;
+  /** A quiet line above the draft about what the next send also does. */
+  composerNotice?: string;
   /**
    * A send queued to retry by itself, with its Discard. The controls row shows
    * the button only when the dock is too short to show the transcript that
@@ -545,6 +547,7 @@ export function ChatInputArea({
   attachmentError = null,
   attachmentNotice,
   sendFailureNotice,
+  composerNotice,
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
@@ -1203,6 +1206,9 @@ export function ChatInputArea({
               {agentEngineMove.to}
             </span>
           </p>
+        )}
+        {composerNotice && (
+          <p className="chat-input__composer-notice">{composerNotice}</p>
         )}
         <div className="chat-input__activity" ref={activityRef}>
           {activity}

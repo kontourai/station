@@ -17,6 +17,9 @@ import { api, jsonToolResult } from './station-control-shared.js';
  * and answers as the calling session's owner; `rename_session` is its own
  * leaf (`POST /api/conversations/:id/agent-title`), never the person's
  * `PATCH`, because it must refuse to replace a title a person set.
+ * `settle_conversation` is the person's own inbox route
+ * (`PUT /api/conversations/:id/work-state`), recorded for the person the
+ * session acts for, behind the same preview and conversation admission.
  *
  * A bound is a refusal here too, not a truncation: the route validates the
  * same limits again, so a caller that skips this schema is refused there.
@@ -207,6 +210,27 @@ export function registerSessionSearchTools(server: StationControlToolRegistry) {
         await api(
           `/api/conversations/${encodeURIComponent(conversationId)}/agent-title`,
           { method: 'POST', body: JSON.stringify({ title }) },
+        ),
+      ),
+  );
+
+  server.tool(
+    'settle_conversation',
+    "Settle or reopen a conversation in the person's Open and Settled inbox. " +
+      'Only when the person asks you to; never settle on your own judgment. ' +
+      "`settled: true` moves it to Settled, `false` reopens it. It is the person's own record " +
+      "(their inbox, not anyone else's) and changes nothing in the conversation. The person's next message, " +
+      'a question, a failure or a stop reopens it on its own. ' +
+      'Refused with `feature_preview_disabled` while the Open and Settled inbox preview is off.',
+    {
+      conversationId: z.string().min(1).max(512),
+      settled: z.boolean().describe('true to settle, false to reopen'),
+    },
+    async ({ conversationId, settled }) =>
+      jsonToolResult(
+        await api(
+          `/api/conversations/${encodeURIComponent(conversationId)}/work-state`,
+          { method: 'PUT', body: JSON.stringify({ settled }) },
         ),
       ),
   );

@@ -1819,7 +1819,8 @@
 }
 
 /* The next-send destination stays visible while Run setup is closed. */
-.chat-input__next-turn-notice {
+.chat-input__next-turn-notice,
+.chat-input__composer-notice {
   display: block;
   flex-basis: 100%;
   margin: 0;
@@ -3564,7 +3565,8 @@
     display: none;
   }
 
-  .chat-input__next-turn-notice {
+  .chat-input__next-turn-notice,
+  .chat-input__composer-notice {
     display: block;
   }
 
@@ -3718,7 +3720,12 @@ div.chat-input
   margin-inline-start: 0;
 }
 .chat-input__meta:not(
-  :has(.chat-input__next-turn-notice, .chat-status-pill, .chat-scroll-to-bottom)
+  :has(
+    .chat-input__next-turn-notice,
+    .chat-input__composer-notice,
+    .chat-status-pill,
+    .chat-scroll-to-bottom
+  )
 ) {
   display: none;
 }
