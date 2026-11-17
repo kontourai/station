@@ -277,6 +277,21 @@ export const TASK_BRIEF_METADATA_KEY = 'stationTaskBrief';
  * brief's digest: that turn's own record of what it carried.
  */
 export const TASK_BRIEF_COMPOSED_METADATA_KEY = 'stationTaskBriefComposed';
+/**
+ * #5062/#5065: what a new Session in a Project starts from, the
+ * `ProjectSessionContext` (`project-session-context.ts`): the Project brief and
+ * memory index, read once when the Session starts. Stamped into start
+ * metadata by Station's start choke point after the reserved-key strip, and
+ * prepended to the first turn's ambient context on every engine, like the
+ * Task brief.
+ */
+export const PROJECT_SESSION_CONTEXT_METADATA_KEY = 'stationProjectContext';
+/**
+ * Stamped on the one turn that composed the Project context, with a
+ * `ProjectSessionContextComposed` receipt (digest and approximate tokens).
+ */
+export const PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY =
+  'stationProjectContextComposed';
 export const TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY =
   'stationLearningContextContributions';
 export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
@@ -368,6 +383,8 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   TASK_BRIEF_METADATA_KEY,
   TASK_BRIEF_COMPOSED_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_METADATA_KEY,
+  PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY,
   TASK_LEARNING_CONTRIBUTIONS_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,

@@ -5150,6 +5150,10 @@ result) or, with no tool first, its next `UserPromptSubmit`; Codex through a
 `turn/steer` into the running turn or, between turns or when refused, an extra
 input item of the next `turn/start`. Both adapters also publish a
 `runtime.warning` the transcript shows at once. Orchestration's first-turn composition adds the
+Project brief and memory index a Session's start recorded
+([`project-session-context-source.ts`](../../src-server/services/projects/project-session-context-source.ts),
+read once at start, behind the `project-coordination` preview; its receipt
+rides `turn.started` for every engine), the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already

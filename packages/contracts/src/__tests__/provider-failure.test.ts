@@ -119,6 +119,8 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['principal_unresolved', 'auth', false],
     ['project_held', 'conflict', false],
     ['project_identity_not_prepared', 'input_unsupported', false],
+    // #5065: a full Project memory is a state refusal, like project_held.
+    ['project_memory_full', 'conflict', false],
     ['project_room_files_unavailable', 'unavailable', true],
     ['project_room_forbidden', 'permission_denied', false],
     ['project_room_project_not_found', 'input_unsupported', false],

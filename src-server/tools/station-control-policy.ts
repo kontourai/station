@@ -1207,6 +1207,36 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [post('/api/orchestration/station-control/task-record')],
   },
 
+  // #5065: the memory of the caller Session's OWN Project. The routes read
+  // the Session from the verified caller and the Project from that Session's
+  // start, never the arguments, and hold it to the one scope rule. list and
+  // read are reads. remember is a bounded write: it appends one note, capped
+  // in count and size, and never overwrites or deletes; a note is never an
+  // instruction or a grant. forget deletes a note (possibly one a person
+  // wrote), so it is mutating and keeps the normal approval posture.
+  list_project_notes: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-memory')],
+  },
+  read_project_note: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-memory/:id')],
+  },
+  remember_project_note: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/project-memory')],
+  },
+  forget_project_note: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [del('/api/orchestration/station-control/project-memory/:id')],
+  },
+
   task_thread_list: {
     ...SELF_READ,
     routes: [get('/api/orchestration/station-control/task-threads')],
@@ -2118,6 +2148,11 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'list_projects',
     'get_project',
     'list_project_layouts',
+    // #5065: the caller Session's own Project memory, bounded notes.
+    'list_project_notes',
+    'read_project_note',
+    'remember_project_note',
+    'forget_project_note',
     'wait_session',
     'list_walkthroughs',
     'get_walkthrough',

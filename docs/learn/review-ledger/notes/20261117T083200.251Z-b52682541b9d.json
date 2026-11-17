@@ -1,0 +1,7 @@
+{
+  "revision": "915d957bdc059e4954e266d14bf66cb383152ddc",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Added the Project brief, memory and models section and preview row; checked each claim against the four settings sections, the session-context seam, the memory routes and tools, Task dispatch defaults and the rules migration.","inputs":["docs/user/settings.md"]}
+  ]
+}

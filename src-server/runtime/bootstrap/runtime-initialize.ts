@@ -115,6 +115,7 @@ import type {
 import { createProjectChatDefaultsService } from '../../services/projects/project-chat-defaults.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import { observeCwdShadow } from '../../services/projects/project-resource-shadow.js';
+import type { ProjectSessionContextSource } from '../../services/projects/project-session-context-source.js';
 import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
@@ -280,6 +281,10 @@ export interface InitializeRuntimeDeps {
   hostImagesPreview?: FeaturePreviewSelector;
   /** #3628: absent on a hosted Station, where no chat is a coordinator. */
   coordinatorSessionPreview?: FeaturePreviewSelector;
+  /** #5062/#5065: the Project brief and memory every new Session starts from. */
+  projectSessionContext?: ProjectSessionContextSource;
+  /** #5068: a Project's coordinator effort, while its preview is on. */
+  projectCoordinatorEffort?: (projectSlug: string) => string | undefined;
   /**
    * `opencode-native-engine`: whether new chats on an OpenCode connection
    * run on the `opencode` engine, and whether it may use OpenCode 2's own
@@ -744,6 +749,12 @@ export async function initializeRuntime(
     nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
+      : {}),
+    ...(deps.projectSessionContext
+      ? { projectSessionContext: deps.projectSessionContext }
+      : {}),
+    ...(deps.projectCoordinatorEffort
+      ? { projectCoordinatorEffort: deps.projectCoordinatorEffort }
       : {}),
     ...(idleSessionParkAfterMs !== undefined ? { idleSessionParkAfterMs } : {}),
     // #1796: revoking a device's full access re-confines the sessions its

@@ -4,6 +4,8 @@ import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { BUILTIN_KNOWLEDGE_NAMESPACES } from '@kontourai/station-contracts/knowledge';
 import {
+  DEFAULT_PROJECT_COORDINATOR_EFFORT,
+  PROJECT_BRIEF_RECORD_FIELDS,
   PROJECT_ICON_PROBLEM_MESSAGES,
   type ProjectConfig,
   type ProjectMetadata,
@@ -635,8 +637,19 @@ export class ProjectService {
     }
 
     const now = new Date().toISOString();
+    // #5062/#5068: a blank or `null` brief field is no value.
+    for (const field of PROJECT_BRIEF_RECORD_FIELDS) {
+      const value = (input as Record<string, unknown>)[field];
+      if (value === null || (typeof value === 'string' && !value.trim()))
+        delete (input as Record<string, unknown>)[field];
+    }
     const project: ProjectConfig = {
+      // A new Project starts with a modest coordinator effort (#5068), and
+      // has no legacy rules to copy into its brief (#5062).
+      coordinatorEffort: DEFAULT_PROJECT_COORDINATOR_EFFORT,
+      instructionsMigratedAt: now,
       ...input,
+      ...(typeof input.goal === 'string' ? { goal: input.goal.trim() } : {}),
       name,
       slug,
       id: reservedId ?? randomUUID(),
@@ -699,6 +712,13 @@ export class ProjectService {
         delete updated[field];
       }
     }
+    // #5062/#5068: the brief and model fields drop on `null` or blank text.
+    for (const field of PROJECT_BRIEF_RECORD_FIELDS) {
+      const value = (updates as Record<string, unknown>)[field];
+      if (value === null || (typeof value === 'string' && !value.trim()))
+        delete updated[field];
+    }
+    if (typeof updated.goal === 'string') updated.goal = updated.goal.trim();
     if (updates.defaultAgent === null) delete updated.defaultAgent;
     if (updated.defaultEnvironment?.kind === 'current') {
       delete updated.defaultEnvironment;

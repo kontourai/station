@@ -47,6 +47,13 @@ export interface UsageRollupQuery {
   connectionId?: string;
   /** Model connection of an accepted launch plan; gated like `connectionId`. */
   modelConnectionId?: string;
+  /**
+   * #5068: only this Project's Sessions. Requires `localOnly`, since Projects
+   * are per Station. Send it only while the host offers the
+   * `project-coordination` preview: an older host ignores it and answers
+   * unfiltered totals.
+   */
+  projectSlug?: string;
   localOnly?: boolean;
   days: 7 | 14 | 30;
   groupBy?: UsageRollupGroupBy;
@@ -97,6 +104,8 @@ export async function fetchUsageRollup(
     params.set('connectionId', query.connectionId);
   if (query.modelConnectionId !== undefined)
     params.set('modelConnectionId', query.modelConnectionId);
+  if (query.projectSlug !== undefined)
+    params.set('projectSlug', query.projectSlug);
   if (query.localOnly) params.set('localOnly', '1');
   if (query.groupBy) params.set('groupBy', query.groupBy);
   if (query.cursor) params.set('cursor', query.cursor);

@@ -1526,3 +1526,17 @@
     padding: var(--k-space-4);
   }
 }
+
+/* #5062: the Project's goal, one line under its name. */
+.project-page__goal {
+  margin: var(--k-space-1) 0 0;
+  font-size: var(--k-text-md);
+  overflow-wrap: anywhere;
+}
+
+.project-page__goal-label {
+  margin-inline-end: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}

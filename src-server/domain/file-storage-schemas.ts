@@ -10,11 +10,18 @@ import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
-import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import {
+  PROJECT_EFFORTS,
+  type ProjectConfig,
+} from '@kontourai/station-contracts/project';
 import {
   PROJECT_CHAT_APPROVAL_POSTURES,
   PROJECT_CHAT_DEFAULT_SELECTIONS,
 } from '@kontourai/station-contracts/project-chat-defaults';
+import {
+  PROJECT_GOAL_MAX_CHARS,
+  PROJECT_INSTRUCTIONS_MAX_CHARS,
+} from '@kontourai/station-contracts/project-session-context';
 import { MAX_PULL_REQUEST_FIX_ATTEMPTS } from '@kontourai/station-contracts/pull-request-watch';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import { z } from 'zod';
@@ -57,6 +64,13 @@ const projectSchema = z
     icon: optionalString,
     iconDisabled: z.boolean().optional(),
     description: optionalString,
+    goal: z.string().max(PROJECT_GOAL_MAX_CHARS).optional(),
+    instructions: z.string().max(PROJECT_INSTRUCTIONS_MAX_CHARS).optional(),
+    instructionsMigratedAt: timestamp.optional(),
+    coordinatorEffort: z.enum(PROJECT_EFFORTS).optional(),
+    taskModel: optionalString,
+    taskProviderId: optionalString,
+    taskEffort: z.enum(PROJECT_EFFORTS).optional(),
     workingDirectory: optionalString,
     repositorySource: z
       .object({

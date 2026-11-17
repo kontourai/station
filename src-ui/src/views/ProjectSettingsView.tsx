@@ -51,14 +51,19 @@ import { userFacingErrorMessage } from '../utils/errorText';
 import { AccessSection } from './project-settings/AccessSection';
 import { AgentFeedbackDefaultsSection } from './project-settings/AgentFeedbackDefaultsSection';
 import { AgentsSection } from './project-settings/AgentsSection';
+import { BriefSection } from './project-settings/BriefSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
+import { MemorySection } from './project-settings/MemorySection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
 import { ProjectLifecycleSection } from './project-settings/ProjectLifecycleSection';
+import { ProjectModelsSection } from './project-settings/ProjectModelsSection';
 import { ProjectSchedulesSection } from './project-settings/ProjectSchedulesSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import { ProjectUsageSection } from './project-settings/ProjectUsageSection';
 import { PullRequestWatchSection } from './project-settings/PullRequestWatchSection';
+import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
@@ -72,7 +77,11 @@ import './ProjectSettingsView.css';
 const PROJECT_SETTINGS_SECTIONS = [
   ['workspace', 'Workspace'],
   ['basic-info', 'Basic info'],
+  ['brief', 'Brief'],
+  ['memory', 'Memory'],
   ['model', 'Model'],
+  ['models', 'Models and effort'],
+  ['usage', 'Usage'],
   ['new-chat', 'New chats'],
   ['thread-execution', 'Chat workspace'],
   ['agents', 'Agents'],
@@ -87,6 +96,14 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['danger', 'Danger zone'],
 ] as const;
 
+/** Sections only the `project-coordination` preview shows. */
+const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
+  'brief',
+  'memory',
+  'models',
+  'usage',
+]);
+
 /**
  * Sections that do not go through the page's Save, and how each applies.
  * Every other section is saved with Save.
@@ -97,6 +114,11 @@ const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
   resources: 'Actions in this section apply when confirmed.',
   access: 'Actions in this section apply when confirmed.',
   knowledge: 'Actions in this section apply when confirmed.',
+  memory: 'Actions in this section apply when confirmed.',
+  brief: 'Save to apply. Changes reach new Sessions, not ones already running.',
+  models:
+    'Save to apply. Changes reach new Sessions, not ones already running.',
+  usage: 'Usage on this Station only.',
 };
 
 /** How each stored workspace mode reads in this picker. */
@@ -195,11 +217,18 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const previewFlags = useSurfaceVisibilityFlags();
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const projectCoordination = useProjectCoordinationPreview();
+  const settingsSections = PROJECT_SETTINGS_SECTIONS.filter(
+    ([id]) => projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id),
+  );
   // Like Schedules: always a section (so a link to it survives a reload),
   // offered in the list and rendered only with its Feature Preview, which a
   // Station that cannot serve agent feedback never registers.
   const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
   const { activeSection, hrefForSection, navigateToSection } =
+    // Every section stays navigable, so a link to a preview's section
+    // survives a reload before the preview flags load; the list and the
+    // panels show it only with its preview (like agent feedback).
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
       'workspace',
@@ -367,7 +396,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     try {
       const saved = await saveMutation.mutateAsync({
         slug,
-        ...buildProjectSavePayload(form, workingDirectory, savedForm),
+        ...buildProjectSavePayload(form, workingDirectory, savedForm, {
+          projectCoordination,
+        }),
       });
       const savedProjectForm = buildProjectForm(saved);
       setSavedForm(savedProjectForm);
@@ -410,13 +441,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <SectionNavigation
           label="Project settings sections"
           pickerLabel="Project settings section"
-          items={PROJECT_SETTINGS_SECTIONS.filter(
-            ([id]) => id !== 'agent-feedback' || agentFeedback,
-          ).map(([id, label]) => ({
-            key: id,
-            label,
-            href: hrefForSection(id),
-          }))}
+          items={settingsSections
+            .filter(([id]) => id !== 'agent-feedback' || agentFeedback)
+            .map(([id, label]) => ({
+              key: id,
+              label,
+              href: hrefForSection(id),
+            }))}
           activeKey={activeSection}
           onNavigate={navigateToSection}
         />
@@ -626,6 +657,23 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             </PageSection>
           </div>
 
+          {projectCoordination && (
+            <>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'brief'}
+              >
+                <BriefSection form={form} setField={setField} />
+              </div>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'memory'}
+              >
+                {activeSection === 'memory' && <MemorySection slug={slug} />}
+              </div>
+            </>
+          )}
+
           {/* Default AI Model */}
           <div
             className="project-settings__panel"
@@ -733,6 +781,25 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               )}
             </PageSection>
           </div>
+
+          {projectCoordination && (
+            <>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'models'}
+              >
+                <ProjectModelsSection form={form} setField={setField} />
+              </div>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'usage'}
+              >
+                {activeSection === 'usage' && (
+                  <ProjectUsageSection slug={slug} />
+                )}
+              </div>
+            </>
+          )}
 
           <div
             className="project-settings__panel"
