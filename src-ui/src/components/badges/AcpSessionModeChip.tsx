@@ -34,10 +34,9 @@ export function AcpSessionModeChip({
         className="chat-input__approval-chip chat-input__approval-chip--default"
         aria-haspopup="dialog"
         aria-expanded={isSheetOpen}
-        aria-label={`Session mode: ${selectedLabel}. Engine advertised control.`}
-        title={`Session mode for this engine: ${selectedLabel}${
-          selected.description ? ` — ${selected.description}` : ''
-        }`}
+        /* The visible "Mode {name}" stays inside the accessible name
+           (WCAG 2.5.3 Label in Name); the sheet carries each mode's description. */
+        aria-label={`Session mode: ${selectedLabel}. Mode ${selectedLabel}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Mode"
         value={selectedLabel}

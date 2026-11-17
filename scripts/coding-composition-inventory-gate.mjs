@@ -106,19 +106,14 @@ const expectedDependencies = new Map(
     // sentence per unavailable reason, not a receipt the composition emits.
     'src-ui/src/app-shell/codingEvidenceUnavailableCopy.ts': 'presentation',
     'src-ui/src/components/chat-dock/ChatDock.tsx': 'chat-handoff',
+    // The composer "+" offers Open in Coding (the chat's coding layout, which
+    // shows this chat) as a row; ChatDock supplies the layout and the open.
+    'src-ui/src/components/chat-dock/ComposerActionsMenu.tsx': 'chat-handoff',
     // The composer’s bounded file mention picker reads the project-scoped
     // Coding file-search projection through the SDK. It renders no Coding
     // pane and grants no workspace authority; classify the dependency at the
     // chat handoff seam so the inventory remains explicit.
     'src-ui/src/components/chat/FileMentionAutocomplete.tsx': 'chat-handoff',
-    // `ChatDockProjectContext.tsx` was declared here for its
-    // `codingLayoutSlug` prop: the project row's directory segment doubled as
-    // a link into the session's Coding layout. #1536 F retired that segment
-    // (it was leaving the conversation title beside it about one character
-    // wide) and the route moved to `ChatDock.tsx`'s own "Open code layout"
-    // menu row, which is already declared above. The row itself now names a
-    // project and a branch and knows nothing about Coding, so it is no longer
-    // a Coding dependency to declare.
     'src-ui/src/components/chat-dock/dockSnap.ts': 'presentation',
     'src-ui/src/components/chat-dock/useChatDockViewModel.ts': 'navigation',
     'src-ui/src/components/coding-layout/CodingInspectorPanel.css':
@@ -263,6 +258,10 @@ const expectedDependencies = new Map(
     // program and the working directory; neither file names one.
     'src-ui/src/workspace-panes/TerminalSessionPane.tsx': 'terminal-process',
     'src-ui/src/workspace-panes/relatedTerminalSessions.ts': 'terminal-process',
+    // A one-shot request, from an explicit Open terminal, that the Project's
+    // Terminal pane open (or adopt) a shell; it starts nothing itself.
+    'src-ui/src/components/coding-layout/terminalShellRequest.ts':
+      'terminal-process',
   }),
 );
 const semantic =

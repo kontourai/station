@@ -9,6 +9,7 @@ import {
   type SessionChildWork,
 } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationEvent } from '../hooks/orchestration/types';
+import { parseEpochMs } from '../utils/parseEpochMs';
 
 /**
  * #2459: every ENGINE subagent this window has heard about, across every
@@ -92,8 +93,7 @@ function within(apiBase: string, operation: () => void): void {
 }
 
 function eventTime(iso: string | undefined): number {
-  const parsed = iso ? Date.parse(iso) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : Date.now();
+  return parseEpochMs(iso) ?? Date.now();
 }
 
 function commit(next: GlobalChildWorkState): void {

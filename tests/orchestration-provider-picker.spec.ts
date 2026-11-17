@@ -55,12 +55,12 @@ test.describe('Orchestration Execution Settings', () => {
     await expect(dockActions).toBeVisible();
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
 
-    await dockActions.click();
+    // Chat settings is the bar's gear, beside ⋯.
     await page
-      .getByRole('menuitem', { name: 'Chat settings', exact: true })
+      .getByRole('button', { name: 'Chat settings', exact: true })
       .click();
     await expect(
-      page.getByRole('heading', { name: 'Chat Settings' }),
+      page.getByRole('heading', { name: 'Chat settings' }),
     ).toBeVisible();
     await expect(
       page.getByRole('switch', { name: 'Show reasoning' }),

@@ -245,6 +245,10 @@ interface AgentPickerGroup {
   agents: AgentData[];
 }
 
+/** Shared by every Agent picker that can come up empty. */
+export const NO_AGENT_SETUP_HINT =
+  'Connect an engine (Claude Code, Codex, OpenCode…) or add a model connection.';
+
 /**
  * The grouped rows of a start picker. Both hosts own their own search,
  * loading and error states around it; this is only the list both share.

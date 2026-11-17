@@ -733,7 +733,6 @@ describe('systemd service backend', () => {
   test.each([
     ['base', { baseDir: '/tmp/station\nhijack' }],
     ['host', { host: '127.0.0.1%I' }],
-    ['features', { features: 'voice\u0007' }],
   ])('rejects unsafe %s values', (_label, override) => {
     expect(() =>
       renderSystemdUnit({

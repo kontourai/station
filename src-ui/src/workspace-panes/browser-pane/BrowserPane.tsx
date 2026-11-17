@@ -16,6 +16,7 @@ import {
   useState,
 } from 'react';
 import { showChatPageOrDock } from '../../app-shell/chat-placement';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
 import {
@@ -51,7 +52,10 @@ import {
   useOptionalKeyboardShortcuts,
 } from '../../contexts/KeyboardShortcutsContext';
 import { navigationStore } from '../../contexts/navigation-store';
-import { browserFloatSourceKey } from '../../float-over-chat/floatSource';
+import {
+  browserFloatSourceKey,
+  browserShownSourceKey,
+} from '../../float-over-chat/floatSource';
 import {
   isFloatSourceOpen,
   requestFloat,
@@ -63,7 +67,7 @@ import {
   DRIVER_TEXT,
   useRecentDriver,
 } from '../../float-over-chat/recentDriver';
-import { useAnnounceShownSource } from '../../float-over-chat/shownSources';
+import { usePaneSourceVisibility } from '../../float-over-chat/shownSources';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
@@ -455,7 +459,7 @@ export default function BrowserPane({
                 className="browser-pane__control"
                 onClick={() => void access.refetch()}
               >
-                Try again
+                Retry
               </Button>
             }
           />
@@ -468,7 +472,7 @@ export default function BrowserPane({
                 className="browser-pane__control"
                 onClick={() => void access.refetch()}
               >
-                Try again
+                Retry
               </Button>
             }
           />
@@ -621,7 +625,7 @@ function BrowserMigration({
             className="browser-pane__control"
             onClick={() => migrate.mutate()}
           >
-            Try again
+            Retry
           </Button>
         }
       />
@@ -729,7 +733,7 @@ function BrowserNewSession({
                   className="browser-pane__control"
                   onClick={() => void targets.refetch()}
                 >
-                  Try again
+                  Retry
                 </Button>
               }
             />
@@ -879,12 +883,16 @@ function BrowserSessionPane({
   const pendingDialog = record?.pendingDialog;
   // #90 D9: while this pane's live view is on screen, the float-over-chat
   // hides for this session (and so never streams it a second time).
-  useAnnounceShownSource(
+  const ownsLiveView = usePaneSourceVisibility(
     !floating &&
       !session.isError &&
       record?.state === 'live' &&
       record.surfaceId
-      ? browserFloatSourceKey(record.browserSessionId)
+      ? browserShownSourceKey(
+          record.browserSessionId,
+          apiBase,
+          requestScope?.authorityKey,
+        )
       : null,
     stageRef,
   );
@@ -1076,7 +1084,9 @@ function BrowserSessionPane({
       ),
   });
   const openNew = useMutation({
-    mutationFn: () => api.create({ projectSlug, url: 'about:blank' }),
+    // A blank page, or the closed session's last address ("Reopen …").
+    mutationFn: (url?: string) =>
+      api.create({ projectSlug, url: url ?? 'about:blank' }),
     onSuccess: (next) => {
       sizeToOpeningPane.add(next.browserSessionId);
       onAttach(next.browserSessionId);
@@ -1528,7 +1538,7 @@ function BrowserSessionPane({
               variant="primary"
               className="browser-pane__control"
               pending={openNew.isPending}
-              onClick={() => openNew.mutate()}
+              onClick={() => openNew.mutate(undefined)}
             >
               Open a new session
             </Button>
@@ -1544,7 +1554,7 @@ function BrowserSessionPane({
             className="browser-pane__control"
             onClick={() => void session.refetch()}
           >
-            Try again
+            Retry
           </Button>
         }
       />
@@ -1572,20 +1582,45 @@ function BrowserSessionPane({
       />
     );
   } else if (record?.state === 'closed') {
+    // The last address is known, so the obvious next step is to go back to
+    // it; a blank session stays one click away.
+    const lastUrl =
+      record.url && record.url !== 'about:blank' ? record.url : null;
+    const openBlank = (
+      <Button
+        variant={lastUrl ? 'secondary' : 'primary'}
+        className="browser-pane__control"
+        pending={openNew.isPending && openNew.variables === undefined}
+        disabled={openNew.isPending}
+        onClick={() => openNew.mutate(undefined)}
+      >
+        Open a new session
+      </Button>
+    );
     body = (
       <Empty
         label="This session was closed"
         action={
-          canDrive ? (
-            <Button
-              variant="primary"
-              className="browser-pane__control"
-              pending={openNew.isPending}
-              onClick={() => openNew.mutate()}
-            >
-              Open a new session
-            </Button>
-          ) : undefined
+          !canDrive ? undefined : lastUrl ? (
+            <ActionRow
+              primary={
+                <Button
+                  variant="primary"
+                  className="browser-pane__control"
+                  title={lastUrl}
+                  pending={openNew.isPending && openNew.variables === lastUrl}
+                  disabled={openNew.isPending}
+                  onClick={() => openNew.mutate(lastUrl)}
+                >
+                  Reopen {hostOf(lastUrl)}
+                </Button>
+              }
+              secondary={openBlank}
+              overflowLabel="More browser session actions"
+            />
+          ) : (
+            openBlank
+          )
         }
       />
     );
@@ -1593,6 +1628,8 @@ function BrowserSessionPane({
     body = (
       <Empty label="The live view isn't available for this session right now" />
     );
+  } else if (record?.surfaceId && !ownsLiveView) {
+    body = <Empty label="This Browser is shown in another view" />;
   } else if (record?.surfaceId) {
     body = (
       <LiveSurfaceCanvas
@@ -1863,6 +1900,9 @@ function BrowserSessionPane({
   return (
     <div
       className="browser-pane"
+      // A closed session: its toolbar is dimmed and its message centred, so
+      // the last page's address no longer reads as a live one.
+      data-closed={record?.state === 'closed' || undefined}
       data-coarse={coarsePointer || undefined}
       data-narrow={narrow || undefined}
       ref={paneRef}
@@ -1924,7 +1964,6 @@ function BrowserSessionPane({
           <IconButton
             className="browser-pane__omni-reveal browser-pane__nav-action"
             aria-label="Back"
-            title="Back"
             disabled={
               !canDriveLive ||
               busy ||
@@ -1938,7 +1977,6 @@ function BrowserSessionPane({
           <IconButton
             className="browser-pane__omni-reveal browser-pane__nav-action"
             aria-label="Forward"
-            title="Forward"
             disabled={
               !canDriveLive ||
               busy ||
@@ -1952,7 +1990,6 @@ function BrowserSessionPane({
           <IconButton
             className="browser-pane__nav-action"
             aria-label="Reload"
-            title="Reload"
             disabled={!canDriveLive || busy}
             onClick={() => history.mutate('reload')}
           >

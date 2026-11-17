@@ -1,0 +1,7 @@
+{
+  "revision": "97e1eefda198a51bd315b249b226e75f4655f5a5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Gallery sections re-read against the capture: new 'Gallery app error states and layout shift' section traced to tests/screenshots.spec.ts (before-screenshot and after-audit surface checks, single second capture in the loop, appErrorRetries, transients PNG, layoutShift/controlsAfterPhoto, end-of-run table) and tests/helpers/gallery-app-error-state.ts (surface hooks, identity format, fault-injection guards); attribution normalisation paragraph updated now that telemetry-feedback-mobile's one-screen check is gone; asset-diagnostics paragraph renamed to asset-network-v3.json with per-screen buckets and failed-request fields from tests/helpers/gallery-asset-diagnostics.ts and gallery-document-tracker.ts; new browser test classification in scripts/vitest-resource-manifest.mjs does not change any lane claim. Verified with focused vitest suites and local fault-injected captures; not run on a hosted runner.","inputs":["docs/guides/testing.md","scripts/__tests__/gallery-asset-diagnostics.test.ts","scripts/vitest-resource-manifest.mjs","tests/helpers/gallery-asset-diagnostics.ts","tests/screenshots.spec.ts","tests/helpers/gallery-app-error-state.ts","tests/helpers/gallery-document-tracker.ts"]}
+  ]
+}

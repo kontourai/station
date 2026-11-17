@@ -1,0 +1,9 @@
+{
+  "revision": "d5dddce44b67fe22a8ae7d71c8491f8e7ea33bc4",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Checked the diff: the portable list gains scripts/lib/server-static-imports.mjs next to server-bundle-ascii.mjs because esbuild.config.mjs imports it. It only widens which changes trigger the portable-archive lane; the delivery planner, ring and workflow behavior these guides describe is unchanged.","inputs":["scripts/pr-delivery-paths.json"]},
+
+    {"path":"docs/guides/releasing.md","note":"Checked the diff: the portable list gains scripts/lib/server-static-imports.mjs next to server-bundle-ascii.mjs because esbuild.config.mjs imports it. It only widens which changes trigger the portable-archive lane; the delivery planner, ring and workflow behavior these guides describe is unchanged.","inputs":["scripts/pr-delivery-paths.json"]}
+  ]
+}

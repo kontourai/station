@@ -22,7 +22,8 @@
         "Whole Task Basis collection",
         "Project session directory",
         "StarterWorkRegistry",
-        "Project working configuration"
+        "Project working configuration",
+        "Project Library"
       ],
       "questions": [
         "Which record owns the work when no engine is running?",
@@ -40,14 +41,17 @@
         "docs/design/orchestration-decomposition-map.md",
         "docs/guides/agent-configuration.md",
         "docs/guides/acp.md",
+        "docs/guides/native-model-channel-lab.md",
         "docs/user/workspace-checkpoints.md",
         "docs/design/terminal.md"
       ],
       "modules": [
         "Durable Station Agent",
+        "NativeModelStdioChannel",
         "StationOrchestrationInstructions",
         "SessionQueryModule",
         "SessionGoalModule",
+        "MuseCodeAdapter",
         "ConversationSessionLineage",
         "SessionCommandModule",
         "SkillExperienceRuntime",
@@ -90,6 +94,7 @@
         "DestinationRegistry",
         "Keyboard shortcuts",
         "ColorThemes",
+        "Custom appearance",
         "UnifiedSearchService",
         "WorkspacePaneHostContributions",
         "WorkspacePaneHostAdmission",

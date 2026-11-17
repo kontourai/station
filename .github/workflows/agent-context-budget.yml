@@ -2,7 +2,7 @@ name: "PR: Agent context budget"
 
 # SECURITY: this is a pull_request_target workflow. It must NEVER check out or
 # execute pull-request head code. It has no checkout step and no actions: it
-# reads the head's and main's agent-context-budget.json as data through the
+# reads the head's and merge base's agent-context-budget.json as data through the
 # GitHub contents API with the read-only job token, and parses them with jq
 # only. Permissions are contents: read; the label override comes from the
 # event payload and needs no further scope. scripts/actionlint-gate.mjs
@@ -10,7 +10,9 @@ name: "PR: Agent context budget"
 # wider permission here.
 #
 # Fails when a pull request raises any value in agent-context-budget.json
-# above main's. src-server/runtime/agents/__tests__/agent-context-budget.test.ts
+# above its merge base's, so only the PR's own change counts: a branch is
+# never blamed for numbers main lowered after it, and a branch that predates
+# the file passes until it merges main. src-server/runtime/agents/__tests__/agent-context-budget.test.ts
 # keeps that file equal to the context Station measurably injects, so the
 # context cannot grow without the file growing too. To accept growth on
 # purpose, a maintainer adds the agent-context-increase label
@@ -37,7 +39,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Compare with main
+      - name: Compare with the merge base
         env:
           BUDGET: src-server/runtime/agents/agent-context-budget.json
           GH_TOKEN: ${{ github.token }}
@@ -58,9 +60,15 @@ jobs:
           valid='type == "object" and (to_entries | all(
             (.key | test("^[A-Za-z][A-Za-z0-9]{0,63}$")) and
             (.value | type == "number" and . >= 0 and . == floor)))'
-          fetch main main.json; status=$?
+          if ! merge_base=$(gh api "repos/$REPO/compare/main...$HEAD_SHA" \
+            --jq .merge_base_commit.sha 2> fetch.err) ||
+            ! printf '%s' "$merge_base" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Could not resolve the merge base of main and $HEAD_SHA."
+            exit 1
+          fi
+          fetch "$merge_base" base.json; status=$?
           if [ "$status" = 1 ]; then
-            echo "main has no agent context budget yet."
+            echo "This branch predates the agent context budget; merge main to measure it."
             exit 0
           fi
           [ "$status" = 0 ] || exit 1
@@ -75,19 +83,19 @@ jobs:
             echo "::error::$BUDGET must be a JSON object of non-negative integer byte counts with identifier keys."
             exit 1
           fi
-          grown=$(jq -r --slurpfile main main.json '
+          grown=$(jq -r --slurpfile base base.json '
             to_entries[]
-            | select($main[0][.key] == null or .value > $main[0][.key])
-            | "\(.key): \($main[0][.key] // "new") -> \(.value)"
+            | select($base[0][.key] == null or .value > $base[0][.key])
+            | "\(.key): \($base[0][.key] // "new") -> \(.value)"
           ' head.json)
           if [ -z "$grown" ]; then
-            echo "Agent context is not larger than main."
+            echo "Agent context is not larger than at the merge base."
             exit 0
           fi
-          printf 'Agent context grew compared to main:\n%s\n' "$grown"
+          printf 'Agent context grew compared to the merge base:\n%s\n' "$grown"
           if [ "$ALLOW_INCREASE" = "true" ]; then
             echo "Accepted by the agent-context-increase label."
             exit 0
           fi
-          echo "::error file=$BUDGET::Agent context grew compared to main. Cut the added text, or ask a maintainer to add the agent-context-increase label."
+          echo "::error file=$BUDGET::Agent context grew compared to the merge base. Cut the added text, or ask a maintainer to add the agent-context-increase label."
           exit 1

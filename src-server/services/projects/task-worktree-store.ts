@@ -27,6 +27,8 @@ import {
   acquireFileMutationLockAsync,
   type FileMutationLock,
 } from '@kontourai/station-shared/lifecycle-events';
+import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
@@ -81,10 +83,6 @@ const KEPT_REASONS: readonly TaskWorktreeKeptReason[] = [
   'unsafe-config',
   'failed',
 ];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function nonBlank(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -215,7 +213,7 @@ export class TaskWorktreeStore {
         this.unreadableLogged = true;
         logger.warn('Task worktree store is unreadable; reading no entries', {
           path: this.path,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
       return { version: 1, entries: {}, unreadable: true };

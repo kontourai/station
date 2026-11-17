@@ -184,3 +184,12 @@ export function composeQuotedReply(
     .filter(Boolean)
     .join('\n\n');
 }
+
+/**
+ * A draft's quotes as one comparable key: two drafts hold the same quotes
+ * when their keys match. Used to tell whether a retried handoff still owns
+ * the composer's draft.
+ */
+export function draftQuoteKeys(quotes: readonly DraftQuote[]): string {
+  return JSON.stringify(quotes);
+}

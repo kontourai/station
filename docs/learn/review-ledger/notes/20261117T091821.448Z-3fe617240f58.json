@@ -1,0 +1,7 @@
+{
+  "revision": "50151a4fa88ff42de721bf8ef44c314dd174fc3e",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"On touch widths the info-tip trigger gains an absolutely positioned 44px ::before hit area centred on it; its drawn 24px size and layout are unchanged. Full gallery on Kontour showed no new findings.","inputs":["src-ui/src/components/InfoTip.css"]}
+  ]
+}

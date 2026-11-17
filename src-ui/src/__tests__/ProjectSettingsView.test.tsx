@@ -61,6 +61,7 @@ const sdkMocks = vi.hoisted(() => ({
   chatDefaultsQuery: vi.fn(),
   // Station-wide previews the host reports, and the checkout freshness read.
   previews: [] as Array<{ id: string; enabled: boolean }>,
+  setPullRequestWatch: vi.fn(),
   checkoutFreshness: undefined as ProjectCheckoutFreshness | null | undefined,
   checkoutFreshnessError: null as Error | null,
   checkoutFreshnessQuery: vi.fn(),
@@ -134,6 +135,9 @@ vi.mock('../components/ModelSelector', () => ({
   ),
 }));
 
+vi.mock('../views/project-settings/AgentFeedbackDefaultsSection', () => ({
+  AgentFeedbackDefaultsSection: () => <p>Agent feedback defaults</p>,
+}));
 vi.mock('../components/PathAutocomplete', () => ({
   PathAutocomplete: ({
     value,
@@ -324,6 +328,47 @@ vi.mock('@kontourai/station-sdk', () => ({
       if (sdkMocks.deleteFailure) throw sdkMocks.deleteFailure;
     },
   })),
+  // #5069/#5070: the Pause, archive, delete and Schedules sections.
+  useProjectLifecycleMutation: () => ({
+    isPending: false,
+    error: null,
+    mutateAsync: async () => ({ interrupted: 0, stillRunning: 0, failed: 0 }),
+  }),
+  useProjectDeletionPreviewQuery: (
+    _slug: string,
+    config?: { enabled?: boolean },
+  ) =>
+    config?.enabled
+      ? {
+          data: {
+            removes: { layouts: 1, knowledgeDocuments: 0, schedules: 0 },
+            stops: { runningSessions: 0 },
+            keeps: { tasks: 0, sessions: 0 },
+          },
+          error: null,
+          isError: false,
+          refetch: vi.fn(),
+        }
+      : { data: undefined, error: null, isError: false, refetch: vi.fn() },
+  useProjectSchedulesCapability: () => ({ data: true }),
+  // #5066: the Pull requests section saves through this mutation.
+  useSetProjectPullRequestWatchMutation: (slug: string) => ({
+    isPending: false,
+    error: null,
+    mutate: (
+      settings: { enabled: boolean; maxFixAttempts: number },
+      options?: { onSuccess?: () => void },
+    ) => {
+      sdkMocks.setPullRequestWatch(slug, settings);
+      options?.onSuccess?.();
+    },
+  }),
+  useSchedulerJobs: () => ({
+    data: [],
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
 }));
 
 import { ProjectSettingsView } from '../views/ProjectSettingsView';
@@ -492,6 +537,11 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       }),
     ).toBeTruthy();
     expect(container.querySelector('#section-danger')).toBeTruthy();
+    // Sections rendered for real here (Agents, Layouts and Knowledge are
+    // mocked; their own tests cover them) carry no eyebrow label.
+    expect(container.querySelectorAll('.page-section__eyebrow')).toHaveLength(
+      0,
+    );
   });
 
   test('clearing the working directory reaches the update instead of retaining the old folder', async () => {
@@ -907,6 +957,25 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ].map((option) => option.value);
       expect(options).toEqual(['', 'openai-main']);
     });
+  });
+
+  test('offers Agent feedback only with its preview', () => {
+    const { unmount } = renderProjectSettings('agent-feedback');
+    expect(screen.queryByRole('link', { name: 'Agent feedback' })).toBeNull();
+    expect(screen.queryByText('Agent feedback defaults')).toBeNull();
+    unmount();
+    sdkMocks.previews = [{ id: 'pull-request-agent-feedback', enabled: true }];
+    renderProjectSettings('agent-feedback');
+    expect(
+      screen
+        .getByRole('link', { name: 'Agent feedback' })
+        .getAttribute('aria-current'),
+    ).toBe('location');
+    expect(screen.getByText('Agent feedback defaults')).toBeTruthy();
+    // It saves on its own, not with the page's Save.
+    expect(
+      screen.getByText('Changes in this section save automatically.'),
+    ).toBeTruthy();
   });
 
   test('section picker shows one topic and keeps hidden project drafts mounted', () => {
@@ -1392,7 +1461,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       'Try again in a moment.',
     );
     expect(screen.queryByText('Station connection was interrupted')).toBeNull();
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
     expect(navigationMocks.showSurface).not.toHaveBeenCalled();
   });
@@ -1412,16 +1481,17 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
   });
 
-  test('explains that deleting a Project retains Tasks and chats without a live workspace', () => {
+  test('explains that deleting a Project keeps its Tasks, chats and checkout', () => {
     renderProjectSettings('danger');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
 
-    expect(screen.getByRole('dialog').textContent).toContain(
-      'Tasks and chats stay in history',
-    );
-    expect(screen.getByRole('dialog').textContent).toContain(
-      'no longer have a live Project workspace',
+    // #5069: the confirmation counts what Delete removes and keeps.
+    const dialog = screen.getByRole('alertdialog').textContent;
+    expect(dialog).toContain('Removes');
+    expect(dialog).toContain('Project settings, 1 Layout');
+    expect(dialog).toContain(
+      'Keeps0 Tasks, 0 chats, the repository checkout, pushed branches and pull requests',
     );
   });
 
@@ -1651,6 +1721,22 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
     expect(screen.queryByText('unsaved')).toBeNull();
   });
 
+  test('detected notice follows unsaved icon visibility in both directions', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      icon: undefined,
+      derivedIcon: FAVICON.dataUrl,
+    };
+    renderProjectSettings();
+    openPicker();
+    const notice = 'Detected icon · Choose No icon to hide it.';
+    expect(screen.getByText(notice)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'No icon' }));
+    expect(screen.queryByText(notice)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Use detected icon' }));
+    expect(screen.getByText(notice)).toBeTruthy();
+  });
+
   test('No icon saves the clear the route understands', async () => {
     renderProjectSettings();
     openPicker();
@@ -1768,5 +1854,50 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
     save();
     await waitFor(() => expect(sdkMocks.updateProject).toHaveBeenCalled());
     expect(sdkMocks.updateProject.mock.calls[0][0]).not.toHaveProperty('icon');
+  });
+});
+
+describe('Pull requests section (#5066)', () => {
+  beforeEach(() => {
+    sdkMocks.setPullRequestWatch.mockClear();
+    sdkMocks.refetch.mockClear();
+  });
+
+  test('cannot be changed while the pull request agent feedback preview is off', () => {
+    sdkMocks.project = projectFixture;
+    renderProjectSettings('pull-requests');
+    const toggle = screen.getByRole('switch', {
+      name: 'Watch Task pull requests',
+    });
+    expect(toggle).toHaveProperty('disabled', true);
+    expect(
+      screen.getByText(/Turn on Pull request agent feedback/),
+    ).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(sdkMocks.setPullRequestWatch).not.toHaveBeenCalled();
+  });
+
+  test('saves the Project setting as it changes and refreshes the Project', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      pullRequestWatch: { enabled: false, maxFixAttempts: 3 },
+    };
+    sdkMocks.previews = [{ id: 'pull-request-agent-feedback', enabled: true }];
+    renderProjectSettings('pull-requests');
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    );
+    expect(sdkMocks.setPullRequestWatch).toHaveBeenLastCalledWith('demo', {
+      enabled: true,
+      maxFixAttempts: 3,
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fix attempts' }), {
+      target: { value: '5' },
+    });
+    expect(sdkMocks.setPullRequestWatch).toHaveBeenLastCalledWith('demo', {
+      enabled: false,
+      maxFixAttempts: 5,
+    });
+    expect(sdkMocks.refetch).toHaveBeenCalledTimes(2);
   });
 });

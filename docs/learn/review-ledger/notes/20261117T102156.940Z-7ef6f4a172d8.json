@@ -1,0 +1,11 @@
+{
+  "revision": "34ca2b3cfacba8a7db4c356b33d856f8895a7850",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked: the change only gives the Project settings scenes taller whole-page frames (1440x2500 desktop, 390x1200 phone for brief and models); the gallery screen list, desktop and 390px mobile scenes, animation freezing and telemetry scenes these pages cite are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked: the change only gives the Project settings scenes taller whole-page frames (1440x2500 desktop, 390x1200 phone for brief and models); the gallery screen list, desktop and 390px mobile scenes, animation freezing and telemetry scenes these pages cite are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked: the change only gives the Project settings scenes taller whole-page frames (1440x2500 desktop, 390x1200 phone for brief and models); the gallery screen list, desktop and 390px mobile scenes, animation freezing and telemetry scenes these pages cite are unchanged.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

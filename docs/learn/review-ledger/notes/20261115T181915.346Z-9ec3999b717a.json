@@ -1,0 +1,9 @@
+{
+  "revision": "e3822450d337a642661a7b9f48a863a84bde6d07",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"No change to claude-adapter.test.ts in this round. Its options-shape test still isolates CLAUDE_CONFIG_DIR and expects the agents-md setting. Citing pages on tool-policy delivery and smoke confidence are unaffected.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"No change to claude-adapter.test.ts in this round. Its options-shape test still isolates CLAUDE_CONFIG_DIR and expects the agents-md setting. Citing pages on tool-policy delivery and smoke confidence are unaffected.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

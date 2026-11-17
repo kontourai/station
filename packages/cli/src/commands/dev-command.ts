@@ -21,6 +21,7 @@ import {
   resolveWorktreePath,
 } from './dev-ports.js';
 import { clean, start } from './lifecycle.js';
+import { refuseStrandsRuntimeEnvironment } from './retired-features-option.js';
 
 /** Hosts a dev server binds to; a genuinely-taken port shows up on one of them. */
 const DEV_PORT_PROBE_HOSTS = ['127.0.0.1', '::1'] as const;
@@ -135,6 +136,8 @@ export async function runDevCommand(
   deps: DevCommandDeps = {},
 ): Promise<void> {
   const env = deps.env ?? process.env;
+  // Before `--clean` can wipe the dev home.
+  refuseStrandsRuntimeEnvironment(env);
   const cwd = deps.cwd ?? process.cwd();
   const log = deps.log ?? ((message: string) => console.log(message));
   const startImpl = deps.startImpl ?? start;
@@ -145,7 +148,6 @@ export async function runDevCommand(
 
   let portOffsetFlag: number | undefined;
   let host: string | undefined;
-  let features: string | undefined;
   let dryRun = false;
   let build = false;
   let watch = false;
@@ -167,8 +169,6 @@ export async function runDevCommand(
       portOffsetFlag = Number(value);
     } else if (arg.startsWith('--host=')) {
       host = arg.slice('--host='.length);
-    } else if (arg.startsWith('--features=')) {
-      features = arg.slice('--features='.length);
     } else if (arg === '--dry-run') {
       dryRun = true;
     } else if (arg === '--build') {
@@ -248,7 +248,6 @@ export async function runDevCommand(
     build,
     ...(watch ? { watch } : {}),
     force,
-    ...(features ? { features } : {}),
     // start() defaults an unset host to 0.0.0.0; pass it through only when the
     // user overrode it so the default stays owned by one place.
     ...(host ? { host } : {}),

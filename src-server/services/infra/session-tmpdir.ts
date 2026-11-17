@@ -66,9 +66,6 @@ export function sessionTmpRoot(homeDir: string = resolveHomeDir()): string {
  */
 export const SESSION_TMPDIR_MAX_BYTES = 104 - 40;
 
-/** Test seam: the system temp bases a short root may sit under. */
-export const sessionTmpDirTestHooks: { shortBases?: () => string[] } = {};
-
 /** Names an older Station gave its in-home session directories. */
 const LEGACY_SESSION_DIR = /^session-(\d+)-[0-9a-f]{24}$/;
 
@@ -78,7 +75,7 @@ const LEGACY_SESSION_DIR = /^session-(\d+)-[0-9a-f]{24}$/;
  */
 export function shortSessionTmpRoots(): string[] {
   if (process.platform === 'win32') return [];
-  const bases = sessionTmpDirTestHooks.shortBases?.() ?? [tmpdir(), '/tmp'];
+  const bases = [tmpdir(), '/tmp'];
   const roots: string[] = [];
   for (const base of bases) {
     let real: string;

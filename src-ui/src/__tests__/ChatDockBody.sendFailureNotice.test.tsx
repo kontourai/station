@@ -199,7 +199,6 @@ function buildSession(overrides: Partial<ChatSession> = {}): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: Date.now(),
     updatedAt: Date.now(),

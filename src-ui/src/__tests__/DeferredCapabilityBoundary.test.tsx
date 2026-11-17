@@ -256,6 +256,58 @@ describe('DeferredCapabilityBoundary', () => {
     expect(bannerStore.getSnapshot()).toEqual([]);
   });
 
+  test('retries a rejected capability import once before notifying', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('chunk request aborted'))
+      .mockResolvedValueOnce({ default: () => <div>Extensions ready</div> });
+    render(
+      <DeferredCapabilityBoundary
+        id="extension-registry"
+        copy={copy}
+        failurePresentation="notification"
+        load={load}
+      />,
+    );
+    expect(await screen.findByText('Extensions ready')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(toastStore.getSnapshot()).toEqual([]);
+    expect(bannerStore.getSnapshot()).toEqual([]);
+  });
+
+  test('a health transition does not reload an already mounted capability', async () => {
+    const load = vi
+      .fn()
+      .mockResolvedValue({ default: () => <div>Extensions ready</div> });
+    const view = render(
+      <DeferredCapabilityBoundary
+        id="extension-registry"
+        copy={copy}
+        load={load}
+      />,
+    );
+    await screen.findByText('Extensions ready');
+    connection.status = 'error';
+    view.rerender(
+      <DeferredCapabilityBoundary
+        id="extension-registry"
+        copy={copy}
+        load={load}
+      />,
+    );
+    connection.status = 'connected';
+    view.rerender(
+      <DeferredCapabilityBoundary
+        id="extension-registry"
+        copy={copy}
+        load={load}
+      />,
+    );
+    expect(screen.getByText('Extensions ready')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   test('keeps a genuine import failure loud when the connection is healthy', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const load = vi.fn().mockRejectedValue(new Error('broken bundle'));
@@ -273,6 +325,7 @@ describe('DeferredCapabilityBoundary', () => {
     );
 
     await waitFor(() => expect(bannerStore.getSnapshot()).toHaveLength(1));
+    expect(load).toHaveBeenCalledTimes(2);
     expect(bannerStore.getSnapshot()[0]?.badge).toBe(copy.failureTitle);
     fireEvent.click(screen.getByRole('button', { name: 'Review Station' }));
     expect(

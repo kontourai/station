@@ -1,0 +1,13 @@
+{
+  "revision": "0307fa3e7ee403413a5e38ffdd3e684c18901210",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"#5052 registers notification-tombstones.json as home state beside notifications.json, so backup, transfer and update rollback keep it; checked cli.md home backup, config.md, local-speech and ADR 0020 citations: no class, exclusion or SQLite claim changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"#5052 registers notification-tombstones.json as home state beside notifications.json, so backup, transfer and update rollback keep it; checked cli.md home backup, config.md, local-speech and ADR 0020 citations: no class, exclusion or SQLite claim changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"#5052 registers notification-tombstones.json as home state beside notifications.json, so backup, transfer and update rollback keep it; checked cli.md home backup, config.md, local-speech and ADR 0020 citations: no class, exclusion or SQLite claim changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#5052 registers notification-tombstones.json as home state beside notifications.json, so backup, transfer and update rollback keep it; checked cli.md home backup, config.md, local-speech and ADR 0020 citations: no class, exclusion or SQLite claim changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

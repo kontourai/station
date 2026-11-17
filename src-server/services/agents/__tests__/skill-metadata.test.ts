@@ -14,6 +14,13 @@ describe('isDirectoryWithin', () => {
     expect(isDirectoryWithin('/home/skills', '/home/skills/a/b')).toBe(true);
   });
 
+  test('a child whose name merely starts with two dots is still a child', () => {
+    // Containment is by whole path segments: `..draft` is a name, not a climb.
+    expect(isDirectoryWithin('/home/skills', '/home/skills/..draft')).toBe(
+      true,
+    );
+  });
+
   test('the root itself is not "within" it — a skill needs its own directory', () => {
     expect(isDirectoryWithin('/home/skills', '/home/skills')).toBe(false);
   });

@@ -179,7 +179,13 @@ describe('the last-applied appearance cache', () => {
     try {
       expect(
         parseAppearanceCache(localStorage.getItem(APPEARANCE_CACHE_KEY)),
-      ).toEqual({ version: 1, source: 'device', ...DEVICE_VALUES });
+      ).toEqual({
+        version: 1,
+        source: 'device',
+        ...DEVICE_VALUES,
+        density: 'comfortable',
+        motion: 'system',
+      });
       const unbind = deviceSettingsStore.bindAccountPreferences(
         {
           theme: 'light',
@@ -197,6 +203,8 @@ describe('the last-applied appearance cache', () => {
         colorTheme: 'tokyo-night',
         colorThemeFlavor: 'storm',
         colorThemeAccent: null,
+        density: 'comfortable',
+        motion: 'system',
       });
       // Stop rendering first, as a page unload would, then sign out.
       stop();
@@ -211,6 +219,45 @@ describe('the last-applied appearance cache', () => {
     again();
     expect(deviceSettingsStore.getAppearanceSource()).toBe('cache');
     expect(localStorage.getItem(APPEARANCE_CACHE_KEY)).toBe(before);
+  });
+
+  test('density and motion are cached with the appearance, and a cache from before them reads their defaults (#4692)', () => {
+    // A cache written before density and motion existed still parses.
+    expect(parseAppearanceCache(JSON.stringify(ACCOUNT_CACHE))).toMatchObject({
+      density: 'comfortable',
+      motion: 'system',
+    });
+    seed({ ...ACCOUNT_CACHE, density: 'compact', motion: 'reduce' });
+    // Before the account answers, the cached choices are in force...
+    expect(deviceSettingsStore.getSnapshot()).toMatchObject({
+      density: 'compact',
+      motion: 'reduce',
+    });
+    const root = document.documentElement;
+    const stop = bindColorThemeToSettings(root, deviceSettingsStore);
+    try {
+      expect(root.getAttribute('data-density')).toBe('compact');
+      expect(root.getAttribute('data-motion')).toBe('reduce');
+      // ...and the account's own answer replaces them.
+      const unbind = deviceSettingsStore.bindAccountPreferences(
+        { density: 'comfortable' },
+        () => {},
+      );
+      expect(root.getAttribute('data-density')).toBe('comfortable');
+      expect(root.hasAttribute('data-motion')).toBe(false);
+      expect(
+        parseAppearanceCache(localStorage.getItem(APPEARANCE_CACHE_KEY)),
+      ).toMatchObject({
+        source: 'account',
+        density: 'comfortable',
+        motion: 'system',
+      });
+      unbind();
+    } finally {
+      stop();
+      root.removeAttribute('data-density');
+      root.removeAttribute('data-motion');
+    }
   });
 
   test('main.tsx boot mode follows the same precedence', () => {

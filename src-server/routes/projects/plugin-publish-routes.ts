@@ -8,6 +8,7 @@ import {
   publishPlugin,
   summarizePluginPublish,
 } from '../../services/projects/plugin-publish-service.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   operatorOnly,
@@ -192,7 +193,7 @@ export function createPluginPublishRoutes(deps: PluginPublishRouteDeps) {
       } catch (error) {
         logger.warn('Plugin publish inspection failed', {
           project: param(c, 'slug'),
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
         return c.json(
           {

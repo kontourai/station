@@ -139,7 +139,7 @@ describe('NotificationContainer', () => {
   test('renders tool activity toasts with their label and detail', () => {
     render(<NotificationContainer />);
 
-    expect(screen.getByText('Tool Activity')).toBeTruthy();
+    expect(screen.getByText('Tool activity')).toBeTruthy();
     expect(screen.getByText('Dev Agent failed shell exec')).toBeTruthy();
     expect(screen.getByText('Permission denied')).toBeTruthy();
 
@@ -886,5 +886,103 @@ describe('NotificationContainer', () => {
       '/projects/research/layouts/rss-reader',
     );
     expect(dismissToast).toHaveBeenCalledWith('rss-2');
+  });
+
+  describe('touch swipe to dismiss', () => {
+    const touch = {
+      pointerId: 7,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+    };
+    function swipe(
+      card: HTMLElement,
+      dx: number,
+      dy = 0,
+      pointerType = 'touch',
+    ) {
+      const init = { ...touch, pointerType };
+      fireEvent.pointerDown(card, { ...init, clientX: 200, clientY: 100 });
+      fireEvent.pointerMove(card, {
+        ...init,
+        clientX: 200 + dx / 2,
+        clientY: 100 + dy / 2,
+      });
+      fireEvent.pointerMove(card, {
+        ...init,
+        clientX: 200 + dx,
+        clientY: 100 + dy,
+      });
+      fireEvent.pointerUp(card, {
+        ...init,
+        clientX: 200 + dx,
+        clientY: 100 + dy,
+      });
+    }
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    test('a sideways swipe dismisses the toast without activating it', () => {
+      const onNavigate = vi.fn();
+      notifications = [
+        {
+          id: 'swipe-1',
+          message: 'Build finished',
+          type: 'info',
+          timestamp: Date.now(),
+          dismissed: false,
+          onNavigate,
+        },
+      ];
+      render(<NotificationContainer />);
+      const card = screen.getByTestId('toast-card');
+      swipe(card, -140);
+      fireEvent.click(card, { detail: 1 });
+      expect(card.className).toContain('toast-card--leaving');
+      act(() => vi.runAllTimers());
+      expect(dismissToast).toHaveBeenCalledWith('swipe-1');
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    test('a short drag, a vertical scroll and a mouse drag leave the toast', () => {
+      notifications = [
+        {
+          id: 'swipe-2',
+          message: 'Still here',
+          type: 'info',
+          timestamp: Date.now(),
+          dismissed: false,
+        },
+      ];
+      render(<NotificationContainer />);
+      const card = screen.getByTestId('toast-card');
+      vi.advanceTimersByTime(1_000);
+      swipe(card, 30);
+      vi.advanceTimersByTime(1_000);
+      swipe(card, 10, 160);
+      swipe(card, -200, 0, 'mouse');
+      act(() => vi.runAllTimers());
+      expect(dismissToast).not.toHaveBeenCalled();
+      expect(card.className).not.toContain('toast-card--leaving');
+    });
+
+    test('an approval card in the queue is not swiped away', () => {
+      notifications = [
+        {
+          id: 'approval-swipe',
+          message: 'Codex wants to run a command',
+          type: 'tool-approval',
+          timestamp: Date.now(),
+          dismissed: false,
+          actions: [],
+        },
+      ];
+      render(<NotificationContainer />);
+      const card = screen.getByTestId('toast-card');
+      expect(card.className).not.toContain('toast-card--swipe');
+      swipe(card, -200);
+      act(() => vi.runAllTimers());
+      expect(dismissToast).not.toHaveBeenCalled();
+    });
   });
 });

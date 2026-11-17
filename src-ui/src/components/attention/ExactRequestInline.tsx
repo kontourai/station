@@ -9,6 +9,7 @@ import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { describeReadFailure, ErrorState, SkeletonBlock } from '../state';
 import { useExactRequestDecision } from './RequestInspectionDialog';
 import './ExactRequestInline.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 type CapturedAuthority = NonNullable<
   ReturnType<typeof useHostRequestAuthorityScope>
@@ -86,6 +87,7 @@ function ExactRequestDecisionRow({
   quiet?: ReactNode;
   open?: ReactNode;
 }) {
+  useDecisionSurface('exact-request-decision');
   const answer = useApprovalAnswering(authority.apiBase);
   const decision = useExactRequestDecision(reference, authority, answer);
   // An accepted decision opens its conversation, as every approval action in
@@ -153,7 +155,7 @@ function ExactRequestDecisionRow({
     if (result.requiresAnswers)
       note = <>Answer the agent's questions in the chat. {openLink}</>;
     else if (!result.canRespond)
-      note = <>This chat can't answer the request right now. {openLink}</>;
+      note = <>This chat can’t answer the request right now. {openLink}</>;
     else if (decision.capacityReached)
       note = (
         <>
@@ -163,7 +165,10 @@ function ExactRequestDecisionRow({
       );
     else if (decision.attempted)
       note = (
-        <>A decision was already sent. Confirm it in the chat. {openLink}</>
+        <>
+          A decision was already tried. Check its outcome in the chat.{' '}
+          {openLink}
+        </>
       );
   }
 

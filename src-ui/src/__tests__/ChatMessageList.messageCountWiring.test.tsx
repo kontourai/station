@@ -79,7 +79,6 @@ function listFor(messages: typeof MESSAGES) {
           attachments: [],
           queuedMessages: [],
           inputHistory: [],
-          hasUnread: false,
           status: 'idle',
           createdAt: 0,
           updatedAt: 0,

@@ -1,0 +1,7 @@
+{
+  "revision": "77ed9afe6f8a3fbfb2959a0b2156731bb096be84",
+
+  "notes": [
+    {"path":"README.md","note":"nightly.md delta (#3593): retention of versioned nightly-desktop downloads and 'normally' for fixed names. README only links getting-started#nightly-desktop-downloads for the installers; that anchor still exists (heading unchanged) and the README claim (download the installer for your computer, Nightly is a testing channel) is unaffected.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

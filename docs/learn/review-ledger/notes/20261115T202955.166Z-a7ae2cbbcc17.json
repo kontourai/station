@@ -1,0 +1,7 @@
+{
+  "revision": "889577837cc2a943e9ed66047283f89ada5e89d5",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"Checked the diff: scripts/pr-delivery-paths.json gains scripts/lib/server-bundle-ascii.mjs in the portable list, because esbuild.config.mjs imports it. It only widens which changes trigger the portable-archive lane; the delivery planner, ring and workflow behavior these guides describe is unchanged.","inputs":["docs/guides/release-rings.md","scripts/pr-delivery-paths.json"]}
+  ]
+}

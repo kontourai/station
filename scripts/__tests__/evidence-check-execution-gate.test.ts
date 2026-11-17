@@ -45,13 +45,22 @@ const MENTIONING_CORPUS_TEST = [
   "import { readFileSync } from 'node:fs';",
   "const source = readFileSync('scripts/proof-repo-guardrails.mjs', 'utf8');",
 ].join('\n');
+// The real mapping also acknowledges fallow-advisory's executor (#5080): the
+// heavy-check slot test spawns scripts/run-fallow-audit.mjs to prove it queues.
+const FALLOW_CORPUS_TEST_PATH = 'scripts/__tests__/heavy-check-slots.test.ts';
+const FALLOW_SPAWNING_CORPUS_TEST = [
+  "import { spawn } from 'node:child_process';",
+  "const args = ['scripts/run-fallow-audit.mjs'];",
+  'spawn(process.execPath, args, { cwd: repoRoot });',
+].join('\n');
 const DEFAULT_CORPUS: Record<string, string> = {
   [CORPUS_TEST_PATH]: SPAWNING_CORPUS_TEST,
+  [FALLOW_CORPUS_TEST_PATH]: FALLOW_SPAWNING_CORPUS_TEST,
 };
 // The gate confirms the acknowledged executor is a classified child-process
 // test, so the fixture carries the same declaration the real repository does.
 const RESOURCE_MANIFEST_PATH = 'scripts/vitest-resource-manifest.mjs';
-const CLASSIFYING_RESOURCE_MANIFEST = `export const PROCESS_HEAVY_VITEST_FILES = ['${CORPUS_TEST_PATH}'];\n`;
+const CLASSIFYING_RESOURCE_MANIFEST = `export const PROCESS_HEAVY_VITEST_FILES = ['${CORPUS_TEST_PATH}', '${FALLOW_CORPUS_TEST_PATH}'];\n`;
 const EMPTY_RESOURCE_MANIFEST =
   'export const PROCESS_HEAVY_VITEST_FILES = [];\n';
 
@@ -96,7 +105,7 @@ function baseScripts() {
     'veritas:readiness': 'npm exec -- veritas readiness --working-tree',
     'proof:sdk-builds': pass,
     'proof:app-builds': pass,
-    'veritas:fallow:advisory': pass,
+    'veritas:fallow:advisory': 'node scripts/run-fallow-audit.mjs',
   };
 }
 
@@ -274,13 +283,11 @@ describe('evidence-check execution gate', () => {
     );
     writeFileSync(wrapper, source);
     expect(runGate(root).status).toBe(0);
-    writeFileSync(
-      wrapper,
-      source.replace(
-        "[entry, 'readiness', ...process.argv.slice(2)]",
-        '[entry]',
-      ),
-    );
+    const invocation =
+      "[entry, 'readiness', ...branchScopedArgs(process.argv.slice(2))]";
+    // The negative case must mutate the real wrapper, not a stale anchor.
+    expect(source).toContain(invocation);
+    writeFileSync(wrapper, source.replace(invocation, '[entry]'));
     const broken = runGate(root);
     expect(broken.status).toBe(1);
     expect(broken.output).toContain(

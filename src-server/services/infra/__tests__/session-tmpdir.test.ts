@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import { createServer } from 'node:net';
 import { basename, dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { HostImageTurnCapture } from '../../orchestration/host-image-turn-capture.js';
 import {
@@ -28,11 +28,33 @@ import {
   SESSION_TMPDIR_MAX_BYTES,
   sessionTempRoot,
   sessionTmpDirPath,
-  sessionTmpDirTestHooks,
   sessionTmpRoot,
   shortSessionTmpRoots,
   stampLaunchExit,
 } from '../session-tmpdir.js';
+
+const shortBases = vi.hoisted(() => ({ paths: [] as string[] }));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  const { tmpdir } = await import('node:os');
+  const systemBases = [tmpdir(), '/tmp'];
+  return {
+    ...fs,
+    realpathSync: Object.assign(
+      (...args: Parameters<typeof fs.realpathSync>) => {
+        const index = systemBases.indexOf(String(args[0]));
+        if (index !== -1) {
+          const base = shortBases.paths[index] ?? shortBases.paths[0];
+          if (!base) throw new Error('System temp base unavailable');
+          args[0] = base;
+        }
+        return fs.realpathSync(...args);
+      },
+      { native: fs.realpathSync.native },
+    ),
+  };
+});
 
 const makeTempDir = trackTempDirs();
 
@@ -57,11 +79,11 @@ describe('per-session engine TMPDIR (chat-host-images)', () => {
     previousHome = process.env.STATION_HOME;
     process.env.STATION_HOME = home;
     // These cases cover the in-home root; the short roots are covered below.
-    sessionTmpDirTestHooks.shortBases = () => [];
+    shortBases.paths = [];
   });
 
   afterEach(() => {
-    sessionTmpDirTestHooks.shortBases = undefined;
+    shortBases.paths = [];
     uninstall?.();
     uninstall = undefined;
     if (previousHome === undefined) delete process.env.STATION_HOME;
@@ -398,11 +420,12 @@ describe.skipIf(process.platform === 'win32')(
 
     beforeEach(() => {
       previousHome = process.env.STATION_HOME;
+      shortBases.paths = [shortBase()];
       uninstall = installSessionTmpDirPolicy(() => true);
     });
 
     afterEach(() => {
-      sessionTmpDirTestHooks.shortBases = undefined;
+      shortBases.paths = [];
       uninstall?.();
       uninstall = undefined;
       if (previousHome === undefined) delete process.env.STATION_HOME;
@@ -420,7 +443,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(Buffer.byteLength(inHome)).toBeGreaterThan(
         SESSION_TMPDIR_MAX_BYTES,
       );
-      // The real roots (this process's temp directory, else /tmp).
+      // Real filesystem roots under a test-owned system-temp base.
       const dir = launch(thread)!;
       try {
         expect(dir).toBe(sessionTmpDirPath(thread, home));
@@ -469,7 +492,7 @@ describe.skipIf(process.platform === 'win32')(
 
     test('a short STATION_HOME keeps the directory in its own tmp tree', () => {
       const home = withHome(shortBase());
-      sessionTmpDirTestHooks.shortBases = () => [shortBase()];
+      shortBases.paths = [shortBase()];
       const dir = launch('thread-short-home')!;
       expect(dir).toBe(
         join(
@@ -486,7 +509,7 @@ describe.skipIf(process.platform === 'win32')(
     test('a short root that is a link, or not private to this user, is passed over', () => {
       const home = longHome();
       const base = shortBase();
-      sessionTmpDirTestHooks.shortBases = () => [base];
+      shortBases.paths = [base];
       const [root] = shortSessionTmpRoots();
       const elsewhere = shortBase();
       symlinkSync(elsewhere, root!);
@@ -508,7 +531,7 @@ describe.skipIf(process.platform === 'win32')(
     test('the sweep reaps a short root by owner process, and never through a link', () => {
       longHome();
       const base = shortBase();
-      sessionTmpDirTestHooks.shortBases = () => [base];
+      shortBases.paths = [base];
       const [root] = shortSessionTmpRoots();
       mkdirSync(root!, { mode: 0o700 });
       const dead = join(root!, `999999-${'a'.repeat(16)}`);
@@ -525,7 +548,7 @@ describe.skipIf(process.platform === 'win32')(
       const victim = join(target, `999999-${'e'.repeat(16)}`);
       mkdirSync(victim);
       symlinkSync(target, join(linkedBase, basename(root!)));
-      sessionTmpDirTestHooks.shortBases = () => [linkedBase];
+      shortBases.paths = [linkedBase];
       // realpath of the base is taken, but the root itself is the link.
       expect(reapStaleSessionTmpDirs(undefined, { isAlive })).toBe(0);
       expect(existsSync(victim)).toBe(true);

@@ -26,6 +26,9 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { observedConfinementRecord } from '../../../security/confinement/confinement-provider.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
@@ -41,6 +44,26 @@ import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 /** Every host tool invocation the tools service asked for. */
 const toolCalls: { tool: string; args: string[] }[] = vi.hoisted(() => []);
+/** #4769: the deps the composition handed the device-agent routes. */
+const deviceAgentDeps = vi.hoisted(() => ({
+  latest: undefined as
+    | { networkRestrictedSession?: (sessionId: string) => boolean }
+    | undefined,
+}));
+
+vi.mock('../../../routes/device-agent.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../routes/device-agent.js')>();
+  return {
+    ...actual,
+    createDeviceAgentRoutes: (
+      deps: Parameters<typeof actual.createDeviceAgentRoutes>[0],
+    ) => {
+      deviceAgentDeps.latest = deps;
+      return actual.createDeviceAgentRoutes(deps);
+    },
+  };
+});
 
 vi.mock('../../../services/devices/device-tools.js', async (importOriginal) => {
   const actual =
@@ -135,6 +158,8 @@ async function fakeHub(): Promise<{ url: string; server: Server }> {
 }
 
 describe('device tools lease rule in the runtime composition (S3)', () => {
+  // #4769: removed in an after-hook even when the test fails.
+  const makeStoreDir = trackTempDirs();
   const directories: string[] = [];
   const servers: Server[] = [];
   const originalHub = process.env[HUB_ENV];
@@ -188,7 +213,12 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
     });
   }
 
-  async function setup() {
+  async function setup(
+    options: {
+      /** #4769: a real store the composition reads start records from. */
+      eventStore?: EventStore;
+    } = {},
+  ) {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-device-tools-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
@@ -251,6 +281,13 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
         }),
+        ...(options.eventStore
+          ? {
+              latestEventByMethod: (
+                ...args: Parameters<EventStore['latestEventByMethod']>
+              ) => options.eventStore!.latestEventByMethod(...args),
+            }
+          : {}),
       }),
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
@@ -464,6 +501,91 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
       });
     } finally {
       revokeStationControlMcpToken(sessionId);
+      await result.deviceSessions?.dispose();
+      await result.liveSurfaceRegistry?.dispose();
+      await result.deviceToolchainService?.shutdown();
+    }
+  });
+
+  test('#4769: through the composed routes, a session that started restricted is refused the device route and an open one reaches it', async () => {
+    const hub = await fakeHub();
+    servers.push(hub.server);
+    process.env[HUB_ENV] = hub.url;
+    const storeDir = makeStoreDir('station-device-network-');
+    const store = new EventStore(join(storeDir, 'orchestration.sqlite'));
+    const plan = {
+      requiredLevel: 'os-profile',
+      policyBasis: 'workspace-floor',
+      mechanism: 'seatbelt',
+      level: 'os-profile',
+      workspaceAccess: 'mounted',
+    } as const;
+    const startedAs = (threadId: string, network: 'full' | 'restricted') =>
+      store.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        sessionId: threadId,
+        createdAt: '2026-11-11T00:00:00.000Z',
+        method: 'session.started',
+        metadata: {
+          stationConfinementRecord: observedConfinementRecord(
+            network === 'restricted'
+              ? { ...plan, network: { policy: 'restricted', allowedHosts: [] } }
+              : plan,
+            'confined',
+            [],
+            network,
+          ),
+        },
+      } as never);
+    startedAs('device-restricted', 'restricted');
+    startedAs('device-open', 'full');
+    const { app, result } = await setup({ eventStore: store });
+    const call = (sessionId: string) =>
+      app.request(
+        '/api/device-agent/list',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+            [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+            [STATION_CONTROL_CALLER_TOKEN_HEADER]: mintStationControlMcpToken(
+              sessionId,
+              'sdk-in-process',
+            ).token,
+          },
+          body: '{}',
+        },
+        LOOPBACK,
+      );
+    try {
+      // The guard, as composed, reads the session's stored start record.
+      const refused = await call('device-restricted');
+      expect(refused.status).toBe(403);
+      expect(await readJson(refused)).toMatchObject({
+        code: 'station_control_network_restricted',
+      });
+      // The open session passes the guard and reaches the device route
+      // (refused there only because Agent device access is off here).
+      const open = await call('device-open');
+      expect(open.status).toBe(200);
+      expect(await readJson(open)).toMatchObject({
+        ok: false,
+        code: 'agent-access-disabled',
+      });
+      // The device route, as composed, reads the same store: the guard
+      // refuses first, so its own check is exercised through its deps.
+      const reader = deviceAgentDeps.latest?.networkRestrictedSession;
+      expect(reader).toBeTypeOf('function');
+      expect(reader!('device-restricted')).toBe(true);
+      expect(reader!('device-open')).toBe(false);
+      expect(reader!('never-started')).toBe(false);
+    } finally {
+      revokeStationControlMcpToken('device-restricted');
+      revokeStationControlMcpToken('device-open');
+      store.close();
       await result.deviceSessions?.dispose();
       await result.liveSurfaceRegistry?.dispose();
       await result.deviceToolchainService?.shutdown();

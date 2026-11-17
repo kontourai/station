@@ -339,9 +339,15 @@ the table, `:id` is one validated decoded segment, not an arbitrary suffix.
 | Foreground send and continue | POST orchestration `chat` and `chat/:id/continue` with receiver schemas reparsed and a mandatory current-Station target/environment. |
 | Commands | POST `commands` restricted to `interruptTurn`, `steerTurn`, `steerTurnOnce`, `inspectSteerInput`, `respondToRequest`, `stopSession` and `discardDraft`; GET exact command receipt(s). These are the actual wire discriminants. |
 | Transcript and requests | GET session content, request/content-binding, input-request and child-work transcript/instructions leaves required by shared readers. Child instructions write stays denied until separately admitted and tested. |
-| Checkpoints and usage | GET checkpoint/restore history, usage-limit/tree/stat reads consumed by shared controls; POST exact restore-preview/restore only. No goal or other session mutation wildcard. |
+| Checkpoints and usage | GET checkpoint history (its only query is the transcript's `revision`), restore history, usage-limit and usage-tree reads consumed by shared controls; POST exact restore-preview/restore only. No goal or other session mutation wildcard. The agent conversation-stats read is not admitted, so a relay chat does not request it. |
 | Target choices | GET exact Projects list, agents list/detail, orchestration provider list/commands/models, `/api/connections/agents` and `/api/connections/models`. The exact `/api/settings/managed-policy` GET exposes the approval-policy summary. No secret/config indexes or model-inventory requiring inference scope. |
 | Attachments | GET exact attachment bytes and staging capability; POST staging prepare/reconcile, PUT one stage, DELETE one stage. Bound each body with its domain limit. |
+
+A chat another Station owns does not read the source Station's own
+per-conversation records (summary, skill experience, pull-request links,
+Scheduled); the source holds none for it and the tunnel admits none.
+The connection provider re-resolves a chat only when a profile fact it routes
+on changes, not when a health tick refreshes profile timestamps.
 
 Always deny peer/enrollment/pairing/auth/access/users/people/groups, config,
 settings/secrets except that summary read, connections writes and credential/sign-in leaves, ACP,
@@ -350,6 +356,12 @@ terminals, unattended grants, station-control, `chat/background`,
 Canonicalize once; reject encoded separators, nested encodings, traversal,
 invalid segments, unsupported query keys and excessive query/body sizes.
 Request budget, CSRF, scope coverage and agent-origin checks remain active.
+
+Continuing a source conversation on the paired Station is not a tunnel
+operation. The source's own `conversation-handoffs` route sends its history and
+the receiver saves it as a new conversation; only that conversation's first
+turn then goes through the tunnel's `chat` leaf. See
+[continuing a chat on a paired Station](chat-composer.md#continuing-a-chat-on-a-paired-station).
 
 Every admitted mutation reparses its body and rejects spoofed actor,
 delegation, preparation and background fields. The relay chat schema explicitly
@@ -483,7 +495,7 @@ expansion, Markdown, attachments and accessibility shared.
 | Audit finding | End state / retired implementation |
 | --- | --- |
 | 1. Mutable session detail versus dock | MutableSessionDetail uses ConversationBody at record density and retains session metadata and evidence panels. SessionTranscript and SessionReplyComposer are deleted. |
-| 2. Attached-session third stack | AttachedSessionDetail uses the same body and composer with its real permissions and confirmed Continue in Station action. Its separate message loop and textarea are deleted; the original record remains read-only. |
+| 2. Attached-session third stack | AttachedSessionDetail uses the same body and composer with its real permissions and one-step Continue in Station action. Its separate message loop and textarea are deleted; the original record remains read-only. |
 | 3. Five Stops | ConversationStopControl and the controller own immediate turn interruption, confirmed Task stop, busy state and translated failures. ComposerStopButton is the styled leaf. |
 | 4. Delivery notes | MessageDeliveryNote takes a DeliveryPort instead of reading activeChatsStore. Child instruction, review, queued, unsent and peer adapters retain distinct queued/received/refused/uncertain states through that port. |
 | 5. Approval controls | useApprovalAnswering owns answers and inspection through connection/Task ports for ToolCallDisplay, ChatMessageList, attention cards and details. Existing trust and content gates remain. |

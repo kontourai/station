@@ -56,6 +56,7 @@ import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   type TransactionalSqliteDatabase,
   writeTransaction,
@@ -442,6 +443,14 @@ export function createSqliteAgentScheduleStore(
       });
     },
     wakeUp: readWakeUp,
+    nextArmedWakeUps(): Map<string, string> {
+      const rows = db
+        .prepare(
+          "SELECT conversation_id, MIN(due_at) AS due_at FROM agent_wake_ups WHERE state = 'pending' GROUP BY conversation_id",
+        )
+        .all() as { conversation_id: string; due_at: number }[];
+      return new Map(rows.map((row) => [row.conversation_id, iso(row.due_at)]));
+    },
     /**
      * A conversation's wake-ups still waiting (armed, or waiting for a
      * person's approval), soonest first.
@@ -843,7 +852,7 @@ export class AgentWakeUpDelivery {
     } catch (error) {
       this.ports.logger.warn('agent wake-up could not be sent', {
         wakeUpId: id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       this.ports.store.settleWakeUp(id, 'failed', now, {
         reasonCode: 'send_failed',

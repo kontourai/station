@@ -14,6 +14,10 @@ not fetch its trust key from a third origin or require manifest/artifact hosts
 to be distinct. A key URL is accepted only behind the explicit insecure-test
 override; do not use fixture overrides as a production trust configuration.
 
+Pinned-key verification validates the complete key table, including unused
+entries. Malformed entries, duplicate key IDs and grants for unsupported or
+retired rings are refused before a manifest is accepted.
+
 Signature and hash checks establish an authorized signer and named bytes, not
 freshness or safe behavior. Existing-install version checks refuse ordinary
 downgrades, same-version byte replacement within one layout, and any manifest
@@ -41,7 +45,7 @@ shape is no longer accepted by the installer or manifest CLI.
 
 | Signed payload | Producer or fixture | Current consumer |
 | --- | --- | --- |
-| v1: `artifacts.macos` and `artifacts.portable`, stable/preview | Manifest CLI `create`; ecosystem dry-run fixture | CLI `verify`/`cask`; `install.sh` selects `station-portable.tar.gz` |
+| v1: `artifacts.macos` and `artifacts.portable`, legacy Stable/preview | Manifest CLI `create` for Stable; legacy preview requires an explicit fixture key | CLI `verify`/`cask`; `install.sh` selects `station-portable.tar.gz` |
 | Former v2: `artifacts.portable`, including Nightly | Historical installer fixtures | Refused by current `install.sh` and manifest CLI |
 | Platform v2: `artifacts[]` with OS, architecture, format, size and digest; `nodeVersion`; `launcherProtocol` | CLI `assemble` then `create`; owner-gated portable Nightly workflow | CLI `verify`, shared verifier, macOS/Linux `install.sh` host selection, and the Windows `install.ps1` core; no cask rendering |
 
@@ -52,7 +56,11 @@ identity, a common Node version equal to the pin in
 [`config/portable-server-node-runtime.json`](../../config/portable-server-node-runtime.json),
 and required target coverage; when an archive sits
 beside its descriptor, it also checks those bytes. A descriptor without that
-archive is not a download/readback receipt.
+archive is not a download/readback receipt. For a Stable release candidate,
+`assemble --location-tag vX.Y.Z-rc.N` keeps the payload's `version` and
+`releaseTag` at the base `X.Y.Z` and lets the artifact URLs name the
+candidate's own release, where its archives are staged
+([#4929](https://github.com/kontourai/station/issues/4929)).
 
 The [archive workflow](../../.github/workflows/portable-server-archives.yml)
 builds, smokes and uploads CI artifacts. The separate
@@ -70,7 +78,7 @@ needs companion-specific runtime qualification before installing or starting it.
 The [ecosystem dry-run](../../scripts/exercise-ecosystem-packaging-dry-run.sh)
 uses v1 through a disposable local endpoint. The separate
 [prebuilt installer smoke](../../scripts/smoke-install-prebuilt-archive.sh)
-uses two locally built preview archives and fixture signing keys to exercise
+uses two locally built Stable archives and fixture signing keys to exercise
 install, start, upgrade and uninstall without Node.js on the installer's PATH.
 Its workflow covers Linux x64 and macOS arm64; only the Linux leg also installs
 a systemd user service that runs the fixed service launcher, and checks that

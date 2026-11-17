@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed and updated four claims: the supersession controller skips metadata-only PR: CI runs at job level (base retargets still run); ci:fast now runs the merge-queue diff job's git diff --check on the change's own lines (diff-whitespace-gate.mjs); a test-runtime environment package bump (jsdom) selects every suite in that Vitest environment while ci-fast/test-full deferrals stay explicit; FAST_CHECKS_FILES_PER_SHARD is 100 with the 1/2/3/4 bands and hosted evidence. Other dependency paths (actionlint digests, policy-gate allowlist mirror, run-ci-fast tests) do not change other claims here.","inputs":["docs/guides/testing.md",".github/workflows/pr-ci-supersession.yml","scripts/__tests__/pr-ci-supersession.test.ts","scripts/__tests__/run-ci-fast.test.ts","scripts/__tests__/source-verification-policy.test.ts","scripts/actionlint-gate.mjs","scripts/lib/fast-checks-shards.mjs","scripts/run-ci-fast.mjs","scripts/test-impact-manifest.mjs","scripts/verification-policy-gate.mjs"]}
+  ]
+}

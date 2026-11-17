@@ -1,4 +1,3 @@
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_AGENTS_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-agents-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -77,6 +76,7 @@ import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ChatWorkspacePane } from '../chat-dock/ChatDock';
 import { inboxToggleLabel } from '../chat-dock/inbox-toggle-label';
+import { MobileDockHeaderLeadingContext } from '../chat-dock/MobileDockHeaderLeading';
 import { Dialog } from '../Dialog';
 import {
   ArrowDownGlyph,
@@ -85,7 +85,6 @@ import {
   BoardGlyph,
   BranchGlyph,
   CameraGlyph,
-  ChartGlyph,
   CheckGlyph,
   CloseGlyph,
   CodeGlyph,
@@ -1141,6 +1140,35 @@ export function CodingWorkbench({
   const inboxEdge = wide && centerChat && !inboxOpen && !coarsePointer;
   const inboxEdgeName = inboxToggleLabel(false, inboxNeedsYou);
   const chatBar = centerChat && page === 'chat';
+  const mobileChatPage = isMobile && centerChat && page === 'chat';
+  // The phone's tool picker. On the Chat page it rides at the start of the
+  // chat's own header (glyph and caret only, named for a screen reader);
+  // drilled into a tool it stays in this bar beside the way back to Chat.
+  const toolTrigger = (
+    <button
+      type="button"
+      className={`choice-trigger coding-workbench__tool-trigger${mobileChatPage ? ' coding-workbench__tool-trigger--compact' : ''}`}
+      ref={(node) => {
+        currentCrumbRef.current = node;
+      }}
+      aria-label={`Switch tool, current: ${page === 'drill-in' ? drillInLabel : 'Chat'}`}
+      title={mobileChatPage ? 'Switch tool' : undefined}
+      aria-haspopup="dialog"
+      aria-expanded={toolPickerOpen}
+      data-no-dock-drag=""
+      onClick={() => setToolPickerOpen(true)}
+    >
+      {page === 'drill-in' && drilledIn ? (
+        railGlyph(drilledIn.descriptorId, drillInLabel)
+      ) : (
+        <MessageGlyph />
+      )}
+      {mobileChatPage ? null : (
+        <span>{page === 'drill-in' ? drillInLabel : 'Chat'}</span>
+      )}
+      <ArrowDownGlyph className="choice-caret" />
+    </button>
+  );
   const [barStart, setBarStart] = useState<HTMLElement | null>(null);
   const [barLeading, setBarLeading] = useState<HTMLElement | null>(null);
   const [barTrailing, setBarTrailing] = useState<HTMLElement | null>(null);
@@ -1285,7 +1313,12 @@ export function CodingWorkbench({
       }
     >
       <div className="coding-workbench__main">
-        <div className="coding-workbench__bar">
+        <div
+          className="coding-workbench__bar"
+          // Phone, Chat page: the chat's own header carries the tool picker
+          // and its Inbox button, so this bar would be a row of nothing.
+          hidden={mobileChatPage || undefined}
+        >
           {/* The rail is last in the tab order (bar, Chat, the open panel,
               then the rail); a reader who wants a tool first skips to it. */}
           {!isMobile && (
@@ -1314,30 +1347,12 @@ export function CodingWorkbench({
               <Button
                 variant="ghost"
                 className="coding-workbench__mobile-back"
-                onClick={page === 'drill-in' ? returnToChatPage : openInbox}
+                onClick={returnToChatPage}
               >
                 <ArrowLeftGlyph />
-                {page === 'drill-in' ? 'Chat' : 'Inbox'}
+                Chat
               </Button>
-              <button
-                type="button"
-                className="choice-trigger coding-workbench__tool-trigger"
-                ref={(node) => {
-                  currentCrumbRef.current = node;
-                }}
-                aria-label={`Switch tool, current: ${page === 'drill-in' ? drillInLabel : 'Chat'}`}
-                aria-haspopup="dialog"
-                aria-expanded={toolPickerOpen}
-                onClick={() => setToolPickerOpen(true)}
-              >
-                {page === 'drill-in' && drilledIn ? (
-                  railGlyph(drilledIn.descriptorId, drillInLabel)
-                ) : (
-                  <MessageGlyph />
-                )}
-                <span>{page === 'drill-in' ? drillInLabel : 'Chat'}</span>
-                <ArrowDownGlyph className="choice-caret" />
-              </button>
+              {toolTrigger}
             </nav>
           ) : (
             <nav
@@ -1402,10 +1417,13 @@ export function CodingWorkbench({
               ref={setBarTrailing}
             />
           ) : null}
-          {browserExperienceEnabled && browserPreviewAvailability ? (
+          {browserExperienceEnabled &&
+          browserPreviewAvailability &&
+          !isMobile ? (
             <Button
               variant="ghost"
               size="sm"
+              className="coding-workbench__open-browser"
               disabled={
                 !hostOpen || browserPreviewAvailability.state !== 'available'
               }
@@ -1462,12 +1480,16 @@ export function CodingWorkbench({
               {...pageState('chat', page === 'chat')}
             >
               {centerChat ? (
-                <CenterChat
-                  slots={chatBarSlots}
-                  onScreen={page === 'chat'}
-                  onPresentationTitleChange={setChatTitle}
-                  onInboxNeedsYouChange={setInboxNeedsYou}
-                />
+                <MobileDockHeaderLeadingContext.Provider
+                  value={mobileChatPage ? toolTrigger : null}
+                >
+                  <CenterChat
+                    slots={chatBarSlots}
+                    onScreen={page === 'chat'}
+                    onPresentationTitleChange={setChatTitle}
+                    onInboxNeedsYouChange={setInboxNeedsYou}
+                  />
+                </MobileDockHeaderLeadingContext.Provider>
               ) : (
                 <DockChatNotice />
               )}
@@ -1707,7 +1729,7 @@ export function CodingWorkbench({
                 key={instance.instanceId}
                 variant="ghost"
                 aria-label={
-                  badges[instance.descriptorId] === undefined
+                  shownCount(badges[instance.descriptorId]) === undefined
                     ? paneLabel(instance)
                     : `${paneLabel(instance)}, ${badges[instance.descriptorId]} changed ${badges[instance.descriptorId] === 1 ? 'file' : 'files'}`
                 }
@@ -1722,7 +1744,8 @@ export function CodingWorkbench({
               >
                 {railGlyph(instance.descriptorId, paneLabel(instance))}
                 <span>{paneLabel(instance)}</span>
-                {badges[instance.descriptorId] === undefined ? null : (
+                {shownCount(badges[instance.descriptorId]) ===
+                undefined ? null : (
                   <span className="coding-workbench__tool-count">
                     {badges[instance.descriptorId]}
                   </span>
@@ -1956,6 +1979,14 @@ const CenterChat = memo(function CenterChat({
   );
 });
 
+/**
+ * A rail count worth drawing: a badge of 0 says nothing a plain icon does
+ * not, so it is never drawn (or announced).
+ */
+function shownCount(count: number | undefined): number | undefined {
+  return count !== undefined && count > 0 ? count : undefined;
+}
+
 /** A glyph per built-in drill-in; anything else draws the generic pane mark. */
 function railGlyph(descriptorId: string, label: string): ReactNode {
   switch (descriptorId) {
@@ -1985,8 +2016,6 @@ function railGlyph(descriptorId: string, label: string): ReactNode {
       return <PhoneGlyph />;
     case WORKSPACE_AGENTS_PANE_DESCRIPTOR_ID:
       return <PeopleGlyph />;
-    case WORKSPACE_ACTIVITY_PANE_DESCRIPTOR_ID:
-      return <ChartGlyph />;
     case WORKSPACE_LAYOUT_PANE_DESCRIPTOR_ID:
       return <BoardGlyph />;
     case WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR_ID:
@@ -2037,7 +2066,7 @@ function CodingViewRail({
     <nav className="coding-workbench__rail" aria-label="Views">
       {instances.map((instance) => {
         const label = paneLabel(instance);
-        const count: number | undefined = badges[instance.descriptorId];
+        const count = shownCount(badges[instance.descriptorId]);
         const name =
           count === undefined
             ? label
@@ -2217,7 +2246,9 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
   }, [open, panelRef]);
   return (
     <div className="coding-workbench__rail-slot">
-      <RailTip label="Open Browser">
+      {/* Opens ANOTHER Browser pane, beside any Browser already on the rail:
+          the "+" mark and the tip say so, or the two globes read as one. */}
+      <RailTip label="Open a new Browser pane">
         <button
           ref={triggerRef}
           type="button"
@@ -2228,6 +2259,9 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
           onClick={() => setOpen((value) => !value)}
         >
           <GlobeGlyph />
+          <span className="coding-workbench__rail-add-mark" aria-hidden="true">
+            +
+          </span>
         </button>
       </RailTip>
       {open

@@ -57,6 +57,7 @@ import {
   type TaskMemoryRecord,
 } from '@kontourai/station-contracts/task-memory';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
 import { quotedLines } from './quoted-text.js';
@@ -439,10 +440,7 @@ export class TaskQuestionWake {
         clientTurnId,
       };
     } catch (error) {
-      return fail(
-        'error',
-        error instanceof Error ? error.message : String(error),
-      );
+      return fail('error', errorMessage(error));
     }
   }
 }

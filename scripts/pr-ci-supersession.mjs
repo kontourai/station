@@ -15,6 +15,16 @@ const WORKFLOWS = new Set([
 ]);
 
 const SHA = /^[0-9a-f]{40}$/;
+
+// A run whose cancellation GitHub has accepted but not yet carried out, or
+// will not accept now (HTTP 409). These outcomes leave nothing unsafe
+// behind: no run is cancelled on stale authority. For obsolete PR runs and
+// replaced merge candidates the next event for the branch or PR retries;
+// the merged-close path has no later event, so failing would retry nothing
+// either. They are reported per target so one stuck run cannot stop the pass
+// from reaching the others. Every other error (ambiguous metadata, changed
+// identity, API failure) stays fatal.
+class CancellationNotSettled extends Error {}
 const LIVE_RUN_STATES = new Set([
   'queued',
   'in_progress',
@@ -25,6 +35,7 @@ const LIVE_RUN_STATES = new Set([
 const SOURCE_JOBS = new Set([
   'Repository source scans',
   'PR source admission',
+  'Pinned actionlint artifact',
   'fast-checks plan',
   'fast-checks statics',
   'PR title status publisher',
@@ -80,6 +91,9 @@ function mergedOwner(pr, number, repository) {
 
 // These inventories authorize cancellation, so truncation, duplicate identities
 // and changing total counts are errors rather than an incomplete success.
+// InconsistentInventory marks a listing that disagreed with itself while runs
+// were changing state; malformed listings are plain errors.
+class InconsistentInventory extends Error {}
 async function completeListing(path, key) {
   const result = [];
   let total;
@@ -91,28 +105,70 @@ async function completeListing(path, key) {
     if (!Array.isArray(items) || items.length > 100)
       throw new Error('Incomplete retirement inventory');
     if (key) {
-      if (
-        !Number.isSafeInteger(data.total_count) ||
-        data.total_count < 0 ||
-        (total !== undefined && total !== data.total_count)
-      )
-        throw new Error('Changing retirement inventory');
+      if (!Number.isSafeInteger(data.total_count) || data.total_count < 0)
+        throw new Error('Malformed retirement inventory count');
+      if (total !== undefined && total !== data.total_count)
+        throw new InconsistentInventory('Changing retirement inventory');
       total = data.total_count;
     }
     result.push(...items);
-    const ids = result.map((item) => (key ? item.id : item.number));
-    if (
-      ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
-      new Set(ids).size !== ids.length
-    )
-      throw new Error('Ambiguous retirement inventory');
+    checkInventoryIds(result.map((item) => (key ? item.id : item.number)));
     if (items.length < 100) {
       if (total !== undefined && total !== result.length)
-        throw new Error('Truncated retirement inventory');
+        throw new InconsistentInventory('Truncated retirement inventory');
       return result;
     }
   }
   throw new Error('Retirement inventory pagination exceeded bound');
+}
+
+function checkInventoryIds(ids) {
+  if (ids.some((id) => !Number.isSafeInteger(id) || id <= 0))
+    throw new Error('Ambiguous retirement inventory');
+  if (new Set(ids).size !== ids.length)
+    throw new InconsistentInventory('Duplicate retirement inventory');
+}
+
+const GROUP_LISTING_ATTEMPTS = 3;
+function listingPauseMs() {
+  const raw = process.env.PR_CI_SUPERSESSION_LISTING_PAUSE_MS;
+  if (raw === undefined) return 2_000;
+  const value = Number(raw);
+  if (!/^[0-9]+$/.test(raw) || value > 10_000)
+    throw new Error('PR_CI_SUPERSESSION_LISTING_PAUSE_MS must be 0-10000');
+  return value;
+}
+
+// Live merge-group runs of every workflow. GitHub's counts disagree with the
+// returned page while a new group's runs are being created, so an
+// inconsistent listing is re-read a bounded number of times. If it stays
+// inconsistent, this pass retires nothing (null): the next queue event retries,
+// and a missed retirement only spends runner time.
+async function liveGroupRuns(number) {
+  const pause = listingPauseMs();
+  let reason = '';
+  for (let attempt = 1; attempt <= GROUP_LISTING_ATTEMPTS; attempt++) {
+    try {
+      const runs = [];
+      for (const status of ['queued', 'pending', 'in_progress'])
+        runs.push(
+          ...(await completeListing(
+            `actions/runs?event=merge_group&status=${status}`,
+            'workflow_runs',
+          )),
+        );
+      return runs;
+    } catch (error) {
+      if (!(error instanceof InconsistentInventory)) throw error;
+      reason = error.message;
+      if (attempt < GROUP_LISTING_ATTEMPTS)
+        await new Promise((resolve) => setTimeout(resolve, pause));
+    }
+  }
+  console.log(
+    `::warning::Merge retirement skipped for #${number}: ${reason} on all ${GROUP_LISTING_ATTEMPTS} listing attempts; nothing was cancelled`,
+  );
+  return null;
 }
 
 function qualifiedOptionalTail(jobs, run) {
@@ -333,10 +389,9 @@ async function retireMergedDelivery(pr, number, repository) {
       attemptAtEffect.run_attempt !== run.run_attempt
     )
       continue;
-    await github(`actions/runs/${run.id}/cancel`, {
-      method: 'POST',
-      responseBody: 'none',
-    });
+    // A 409 cancels nothing; this one-shot close event never retries it, so
+    // stopping would only leave the remaining holder runs uncancelled too.
+    if (!(await requestOrWarn(run))) continue;
     console.log(
       `Requested cancellation of merged PR #${number} optional delivery run ${run.id} attempt ${run.run_attempt}; terminal cancellation is not yet verified`,
     );
@@ -402,7 +457,7 @@ async function settleObsoleteCancellation(run, pr, number, repository) {
   )
     throw new Error(`Obsolete run ${run.id} has ambiguous runner metadata`);
   if (jobs.some((job) => job.status !== 'completed' && job.runner_id))
-    throw new Error(
+    throw new CancellationNotSettled(
       `Obsolete run ${run.id} still has an assigned runner; force-cancel refused`,
     );
   live = await github(`actions/runs/${run.id}`);
@@ -420,10 +475,26 @@ async function settleObsoleteCancellation(run, pr, number, repository) {
     finalOwner.head?.repo?.full_name !== repository
   )
     return;
-  await github(`actions/runs/${run.id}/force-cancel`, {
-    method: 'POST',
-    responseBody: 'none',
-  });
+  const forcePath = `actions/runs/${run.id}/force-cancel`;
+  try {
+    await github(forcePath, { method: 'POST', responseBody: 'none' });
+  } catch (error) {
+    if (error.message !== `GitHub POST ${forcePath}: HTTP 409`) throw error;
+    // Observed when the normal cancellation finishes around this POST: the
+    // run reads cancelled within a second of the refusal. GitHub documents
+    // the status only as "Conflict", so the run's own state decides.
+    live = await github(`actions/runs/${run.id}`);
+    if (!sameObsoleteRun(live, run, pr, number, repository)) return;
+    if (live.status === 'completed') {
+      console.log(`Obsolete run ${run.id} is terminal: ${live.conclusion}`);
+      return;
+    }
+    if (!LIVE_RUN_STATES.has(live.status))
+      throw new Error(`Unknown cancellation state for obsolete run ${run.id}`);
+    throw new CancellationNotSettled(
+      `GitHub refused force cancellation of obsolete run ${run.id} (HTTP 409)`,
+    );
+  }
   live = await github(`actions/runs/${run.id}`);
   if (
     sameObsoleteRun(live, run, pr, number, repository) &&
@@ -436,7 +507,7 @@ async function settleObsoleteCancellation(run, pr, number, repository) {
     !sameObsoleteRun(live, run, pr, number, repository) ||
     live.status !== 'completed'
   )
-    throw new Error(
+    throw new CancellationNotSettled(
       `Force cancellation of obsolete run ${run.id} is not terminal`,
     );
   console.log(
@@ -477,6 +548,17 @@ function sameGroupRun(live, run, workflow, repository) {
     live.head_branch === run.head_branch &&
     GROUP_BRANCH.test(live.head_branch ?? '')
   );
+}
+
+// A listed run's own workflow identity, which every later read of that run
+// must repeat.
+function runWorkflow(run) {
+  return Number.isSafeInteger(run.workflow_id) &&
+    run.workflow_id > 0 &&
+    typeof run.path === 'string' &&
+    run.path
+    ? { id: run.workflow_id, path: run.path }
+    : null;
 }
 
 // Queue squash commits intentionally do not retain the original PR head ancestry.
@@ -591,27 +673,27 @@ async function retireReplacedGroups(trigger, repository) {
     return;
   }
   let requested = 0;
-  const runs = [];
-  for (const status of ['queued', 'pending', 'in_progress']) {
-    runs.push(
-      ...(await completeListing(
-        `actions/workflows/${workflow.id}/runs?event=merge_group&status=${status}`,
-        'workflow_runs',
-      )),
-    );
-  }
+  let refused = 0;
+  // Every workflow's merge-group runs, not only PR: CI: a superseded group's
+  // other runs belong to the same dead candidate commit. The deadness proof
+  // below is per candidate (PR number, commit, ref), never per workflow.
+  const runs = await liveGroupRuns(number);
+  if (!runs) return;
   for (const run of new Map(runs.map((run) => [run.id, run])).values()) {
+    const own = runWorkflow(run);
     if (
-      !sameGroupRun(run, run, workflow, repository) ||
+      !own ||
+      !sameGroupRun(run, run, own, repository) ||
       Number(GROUP_BRANCH.exec(run.head_branch)[1]) !== number ||
       run.head_sha === replacement.head_sha ||
+      // Implied by the sha check: a run's head_sha never changes.
       run.id === replacement.id ||
       !(Date.parse(run.created_at) < Date.parse(replacement.created_at))
     )
       continue;
     const live = await github(`actions/runs/${run.id}`);
     if (
-      !sameGroupRun(live, run, workflow, repository) ||
+      !sameGroupRun(live, run, own, repository) ||
       !LIVE_RUN_STATES.has(live.status)
     )
       continue;
@@ -636,7 +718,7 @@ async function retireReplacedGroups(trigger, repository) {
     const finalRun = await github(`actions/runs/${run.id}`);
     if (
       !sameGroupRun(latest, replacement, workflow, repository) ||
-      !sameGroupRun(finalRun, run, workflow, repository) ||
+      !sameGroupRun(finalRun, run, own, repository) ||
       !LIVE_RUN_STATES.has(finalRun.status) ||
       currentOwner.state !== 'open' ||
       currentOwner.base?.ref !== 'main' ||
@@ -658,21 +740,22 @@ async function retireReplacedGroups(trigger, repository) {
       );
       return;
     }
-    await github(`actions/runs/${run.id}/cancel`, {
-      method: 'POST',
-      responseBody: 'none',
-    });
+    // A 409 cancels nothing; the next queue event for this PR retries it.
+    if (!(await requestOrWarn(run))) {
+      refused++;
+      continue;
+    }
     requested++;
     const settled = await github(`actions/runs/${run.id}`);
     const terminal =
-      sameGroupRun(settled, run, workflow, repository) &&
+      sameGroupRun(settled, run, own, repository) &&
       settled.status === 'completed';
     console.log(
-      `Replaced merge candidate #${number}: run ${run.id}/${run.run_attempt}, ${run.head_sha}; replacement ${replacement.id}/${replacement.run_attempt}, ${replacement.head_sha}; normal cancellation ${terminal ? `terminal ${settled.conclusion}` : 'requested, terminal state not verified'}`,
+      `Replaced merge candidate #${number}: ${run.path} run ${run.id}/${run.run_attempt}, ${run.head_sha}; replacement ${replacement.id}/${replacement.run_attempt}, ${replacement.head_sha}; normal cancellation ${terminal ? `terminal ${settled.conclusion}` : 'requested, terminal state not verified'}`,
     );
   }
   console.log(
-    `Merge retirement #${number}: ${requested} normal cancellation request(s); candidates with live refs or mismatched identities were preserved`,
+    `Merge retirement #${number}: ${requested} normal cancellation request(s), ${refused} refused (HTTP 409); candidates with live refs or mismatched identities were preserved`,
   );
 }
 
@@ -683,6 +766,7 @@ async function main() {
     await retireReplacedGroups(event.workflow_run, repository);
     return;
   }
+  const unsettled = [];
   const numbers = event.pull_request
     ? [event.pull_request.number]
     : (event.workflow_run?.pull_requests ?? []).map((pr) => pr.number);
@@ -740,15 +824,50 @@ async function main() {
         current.head?.repo?.full_name !== repository
       )
         break;
-      await github(`actions/runs/${run.id}/cancel`, {
-        method: 'POST',
-        responseBody: 'none',
-      });
-      console.log(
-        `Requested cancellation of obsolete PR #${number} run ${run.id} (${run.head_sha}); current head ${pr.head.sha}`,
-      );
-      await settleObsoleteCancellation(run, pr, number, repository);
+      try {
+        await requestCancellation(run);
+        console.log(
+          `Requested cancellation of obsolete PR #${number} run ${run.id} (${run.head_sha}); current head ${pr.head.sha}`,
+        );
+        await settleObsoleteCancellation(run, pr, number, repository);
+      } catch (error) {
+        if (!(error instanceof CancellationNotSettled)) throw error;
+        unsettled.push(error.message);
+        console.log(`::warning::${error.message}`);
+      }
     }
+  }
+  if (unsettled.length)
+    console.log(
+      `${unsettled.length} obsolete run(s) not yet terminal; the next PR: CI event for the branch retries them:\n${unsettled.join('\n')}`,
+    );
+}
+
+/** Requests cancellation; a 409 refusal is warned about and returns false. */
+async function requestOrWarn(run) {
+  try {
+    await requestCancellation(run);
+    return true;
+  } catch (error) {
+    if (!(error instanceof CancellationNotSettled)) throw error;
+    console.log(`::warning::${error.message}`);
+    return false;
+  }
+}
+
+async function requestCancellation(run) {
+  const path = `actions/runs/${run.id}/cancel`;
+  try {
+    await github(path, { method: 'POST', responseBody: 'none' });
+  } catch (error) {
+    // GitHub answers 409 when it will not cancel the run in its current
+    // state (observed on runs stuck queued with no jobs). Nothing was
+    // cancelled, so there is nothing to settle.
+    if (error.message === `GitHub POST ${path}: HTTP 409`)
+      throw new CancellationNotSettled(
+        `GitHub refused cancellation of run ${run.id} (HTTP 409)`,
+      );
+    throw error;
   }
 }
 

@@ -43,6 +43,7 @@ import { CLIENT_DOCUMENT_SESSION_ID } from '../../clientDocumentSession';
 import {
   ensureOrchestrationEventStream,
   resyncOrchestrationEventStream,
+  wakeOrchestrationEventStreams,
 } from '../ensureOrchestrationEventStream';
 import { subscribeSharedOrchestrationStream } from '../sharedStreamListeners';
 import { getStreamConnectionState } from '../streamConnectionState';
@@ -413,6 +414,30 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     await settle();
     expect(requestsTo(a)).toHaveLength(2);
     expect(requestsTo(b)).toHaveLength(1);
+  });
+
+  test('a health-recovery wake cuts a transient backoff short and leaves a parked stream to its floor', async () => {
+    const apiBase = 'http://recovery.test/health-wake';
+    const parked = 'http://recovery.test/parked-health-wake';
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith(parked)) return new Response('', { status: 401 });
+      throw new TypeError('network down');
+    });
+    ensureOrchestrationEventStream(apiBase);
+    ensureOrchestrationEventStream(parked);
+    await settle();
+    // One failed attempt each: `apiBase` waits out a 2s backoff, `parked`
+    // waits for a credential.
+    expect(requestsTo(apiBase)).toHaveLength(1);
+    expect(requestsTo(parked)).toHaveLength(1);
+
+    wakeOrchestrationEventStreams();
+    await settle();
+    expect(requestsTo(apiBase)).toHaveLength(2);
+    // A refused credential is not repaired by the server answering again, and
+    // every retry of it is a failed authentication the runtime rate-limits.
+    expect(requestsTo(parked)).toHaveLength(1);
   });
 
   test('a stream resumed from its park is no longer treated as parked', async () => {

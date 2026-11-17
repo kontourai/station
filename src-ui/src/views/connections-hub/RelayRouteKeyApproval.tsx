@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { copyToClipboard } from '../../lib/clipboard';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { cancelNativeRelayLink } from '../../platform/native/nativeRelayLinkCancellation';
 import { publishNativeRelaySetupChange } from '../../platform/native/nativeRelaySetupState';
 import {
@@ -9,6 +10,7 @@ import {
   type RelayKeyApprovalSurface,
   type RelayKeyCandidate,
 } from '../../platform/native/relayKeyApproval';
+import { formatDateTime } from '../../utils/relativeTime';
 import { RelaySetupHelp } from './RelaySetupHelp';
 
 function normalizeConfirmationCode(value: string): string | null {
@@ -49,6 +51,7 @@ export function RelayRouteKeyApproval({
     expiresAt: number;
   };
 }) {
+  useDecisionSurface('relay-route-key-approval');
   const linkedPendingId = linkedInvitation?.pendingId;
   const id = useId();
   const queryClient = useQueryClient();
@@ -120,7 +123,7 @@ export function RelayRouteKeyApproval({
       setConfirmationCode('');
       setApprovalKeyId('');
       setSeparateChannelConfirmed(false);
-      setMessage('Enter both values from the Station owner, then confirm.');
+      setMessage('Enter both values from the Station operator, then confirm.');
       await refresh();
     },
     onError: (_error, attemptId) => {
@@ -356,7 +359,7 @@ export function RelayRouteKeyApproval({
         <p className="connections-computers__note">
           {linkedInvitation.expiresAt === Number.MAX_SAFE_INTEGER
             ? 'Setup link: no expiry.'
-            : `Setup link expires ${new Date(linkedInvitation.expiresAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}.`}
+            : `Setup link expires ${formatDateTime(linkedInvitation.expiresAt)}.`}
         </p>
       )}
       <div
@@ -382,7 +385,7 @@ export function RelayRouteKeyApproval({
               ? null
               : statusQuery.isError
                 ? 'Try again when this device’s secure storage is available.'
-                : 'Ask the Station owner to help you confirm its identity.'}
+                : 'Ask the Station operator to help you confirm its identity.'}
           </span>
         )}
       </div>
@@ -642,7 +645,7 @@ export function RelayRouteKeyApproval({
               </div>
               <div>
                 <dt>Expires</dt>
-                <dd>{new Date(candidate.expiresAt).toLocaleString()}</dd>
+                <dd>{formatDateTime(candidate.expiresAt)}</dd>
               </div>
             </dl>
           </details>

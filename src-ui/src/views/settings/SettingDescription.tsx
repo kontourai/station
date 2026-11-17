@@ -11,6 +11,8 @@ const SUMMARIES: Readonly<Record<string, string>> = {
     'Maximum tokens per response. Leave empty to use the model’s limit.',
   defaultWorkspaceIsolation:
     'Start chats in the shared checkout or a separate Git worktree. Worktrees require a Git repository.',
+  knowledgeStores:
+    'Searchable after a Knowledge reindex; applies after a restart. Turning it off later does not remove them.',
   workspaceCheckpoints:
     'Keep Git snapshots of each turn for 90 days. Uses disk space; changes apply after restarting Station.',
   usageLimitAutoResume:

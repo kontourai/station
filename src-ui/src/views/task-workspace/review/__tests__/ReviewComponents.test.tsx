@@ -1142,6 +1142,28 @@ it('copies a standalone thread with artifact context when an agent cannot receiv
   }
 });
 
+it('reports a link copy the origin cannot do instead of failing with a TypeError', async () => {
+  // Plain http: `navigator.clipboard` does not exist at all.
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: undefined,
+  });
+  try {
+    render(<ReviewThreadCard thread={threads[0]} {...actions()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Thread 1 actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link' }));
+    expect(
+      await screen.findByText(
+        "Couldn't copy — this browser refused clipboard access",
+      ),
+    ).toBeTruthy();
+  } finally {
+    if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
+
 it('prevents a second reopen while the collapsed thread action is pending', async () => {
   const resolutions: { resolve: () => void }[] = [];
   const reopen = vi.fn(

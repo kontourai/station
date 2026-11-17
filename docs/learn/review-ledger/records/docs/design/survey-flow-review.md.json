@@ -16,8 +16,6 @@
 
     "src-server/routes/schemas/schema-definitions/flow.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/services/flow/__tests__/survey-flow-review-service.test.ts",
 
     "src-server/services/flow/survey-flow-review-service.ts",
@@ -28,9 +26,7 @@
 
     "package.json#/dependencies/@kontourai~1flow-agents",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots"
+    "src-server/runtime/routes/runtime-routes.ts"
   ],
 
   "checks": [

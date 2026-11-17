@@ -1,0 +1,7 @@
+{
+  "revision": "93b71142022deef3119a3c68ef1c702040a65659",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Fix round 1: checked the edited head review sentences against pull-request-head-review.ts, the feedback routes (409 codes, details.outcome, PUT ignoring reviewEachHead while the preview is off) and the SDK refusal helper.","inputs":["docs/reference/api.md"]}
+  ]
+}

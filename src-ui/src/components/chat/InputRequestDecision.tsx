@@ -5,14 +5,20 @@ import type {
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import './InputRequestDecision.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * #3390: the renderer for a `decision` body — an approval's choices. It reads
  * the options' effect and scope, never a source. Answering one is a grant,
  * so it hands the choice to the approval's own authority path
- * (`onApprove`'s `once` / `trust` / `trust-server` / `deny`).
+ * (`onApprove`'s `once` / `trust` / `trust-server` / `trust-rule` / `deny`).
  */
-export type ApprovalAction = 'once' | 'trust' | 'trust-server' | 'deny';
+export type ApprovalAction =
+  | 'once'
+  | 'trust'
+  | 'trust-server'
+  | 'trust-rule'
+  | 'deny';
 
 function approvalActionForOption(
   option: InputRequestDecisionOption,
@@ -21,7 +27,9 @@ function approvalActionForOption(
   return option.scope === 'session'
     ? option.sessionGrantScope === 'server'
       ? 'trust-server'
-      : 'trust'
+      : option.sessionGrantScope === 'rule'
+        ? 'trust-rule'
+        : 'trust'
     : 'once';
 }
 
@@ -29,17 +37,23 @@ function approvalActionForOption(
 export function DecisionButtons({
   body,
   busy,
+  inFlight = false,
+  chosen,
   onChoose,
 }: {
   body: InputRequestDecisionBody;
   busy: boolean;
+  inFlight?: boolean;
+  chosen?: ApprovalAction;
   onChoose: (action: ApprovalAction) => void;
 }) {
+  useDecisionSurface('tool-approval-decision');
   return (
     <DecisionActionRow
       body={body}
       busy={busy}
-      inFlight={false}
+      inFlight={inFlight}
+      chosen={chosen}
       onChoose={onChoose}
       overflowLabel="More ways to allow this request"
     />
@@ -65,6 +79,7 @@ export function DecisionActionRow({
   overflowLabel?: string;
   onChoose: (action: ApprovalAction) => void;
 }) {
+  useDecisionSurface('tool-approval-decision');
   const deny = body.options.find((option) => option.effect === 'deny');
   const once = body.options.find(
     (option) => option.effect === 'allow' && option.scope === 'once',

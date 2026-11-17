@@ -309,6 +309,34 @@ describe('JobFormModal schedule compatibility', () => {
     );
   });
 
+  // The Project is required for a pull-request monitor (the form and the
+  // server refuse without it), so its hint must not say "If set".
+  test('the monitor Project hint states what the required field does', () => {
+    const job = {
+      name: 'pr-monitor',
+      provider: 'built-in',
+      cron: '0 9 * * *',
+      prompt: 'Observe',
+      agent: 'station',
+      enabled: true,
+      monitor: {
+        kind: 'github-pull-request' as const,
+        objective: 'review-ready' as const,
+        target: 'https://github.com/kontourai/station/pull/4210',
+        projectId: 'station',
+        agentId: 'station',
+        budget: { maxTurns: 2, maxTokens: 200, maxRuntimeMs: 300 },
+      },
+    };
+    render(<JobFormModal job={job} onClose={vi.fn()} />);
+    expect(
+      screen.getByText(
+        'A pull request that needs changes opens or continues one Task in this Project.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/If set/)).toBeNull();
+  });
+
   test('formats every and one-time jobs instead of leaking object coercion', () => {
     expect(
       formatSchedule(
@@ -505,10 +533,28 @@ describe('JobFormModal schedule compatibility', () => {
     expect(addMutate).not.toHaveBeenCalled();
     expect(
       screen.getByText(
-        'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.',
+        "Scheduled jobs need an agent that runs on Station's engine.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/No Agent named/)).toBeNull();
+  });
+
+  // A host that runs chat automations accepts any engine, so the setup
+  // guidance must not claim Station's engine is required there.
+  test('with chat automations available, setup guidance names readiness, not an engine', () => {
+    hostCapability.conversationTarget = true;
+    try {
+      agentCatalog.agents = [];
+      render(<JobFormModal onClose={vi.fn()} onSetupAgent={vi.fn()} />);
+      expect(
+        screen.getByText(
+          'Scheduled jobs need an agent that is set up and ready.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Station's engine/)).toBeNull();
+    } finally {
+      hostCapability.conversationTarget = false;
+    }
   });
 
   test('adopts a runnable agent as the default instead of the station literal', () => {
@@ -605,7 +651,7 @@ describe('JobFormModal schedule compatibility', () => {
       expect(screen.queryByText(/No Agent named/)).toBeNull();
       expect(screen.queryByLabelText('Loading agents')).toBeNull();
       expect(screen.queryByText('No runnable agents')).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledTimes(1);
     });
 
@@ -621,9 +667,9 @@ describe('JobFormModal schedule compatibility', () => {
 
       render(<JobFormModal onClose={vi.fn()} />);
 
-      const retrying = screen.getByRole('button', { name: 'Trying…' });
+      const retrying = screen.getByRole('button', { name: 'Retrying…' });
       expect((retrying as HTMLButtonElement).disabled).toBe(true);
-      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     });
 
     test('still refuses a new job once the catalog HAS answered and the agent cannot run', () => {

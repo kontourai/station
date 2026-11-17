@@ -12,6 +12,7 @@
  *   {@link managedEngineLaunch}, so a pinned binary, argument list and
  *   environment reach the child whichever path started it.
  */
+
 import type { ManagedPolicySummary } from '@kontourai/station-contracts/managed-policy';
 import { managedPolicyDenial } from '@kontourai/station-contracts/managed-policy';
 import {
@@ -20,6 +21,7 @@ import {
   type ManagedPolicyEngineLimits,
   managedEngineAllowed,
 } from '@kontourai/station-contracts/managed-policy-engines';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import type { LoadedManagedPolicy } from '@kontourai/station-shared/managed-policy';
 import { SendTurnRefusedError } from '../providers/adapter-shape.js';
@@ -68,14 +70,33 @@ function denial(subject: string): string {
  * The policy id of an adapter's provider or engine id. Station's own agent
  * is the provider `station-agent` and the engine `station`
  * (`station-agent-adapter.ts`); a policy names it `station-agent`.
+ *
+ * Ruling R5′: the `opencode` provider (the `opencode-native-engine` Feature
+ * Preview) is governed by the policy's `acp` entry, natively or over ACP,
+ * preview on or off, exactly as an OpenCode ACP connection was before the
+ * provider existed. A policy cannot name `opencode` yet
+ * (`MANAGED_POLICY_ENGINE_IDS`): whether a connection runs OpenCode is read
+ * from its user-controlled id and command, so an `opencode` entry could be
+ * bypassed and could not pin a binary. Naming it is deferred.
  */
 function managedPolicyEngineId(engine: string): string {
-  return engine === 'station' ? 'station-agent' : engine;
+  if (engine === 'station') return 'station-agent';
+  return isAcpFamilyEngine(engine) ? 'acp' : engine;
 }
 
 /** Whether the policy lets `engine` run (no allow list: every engine may). */
 export function engineAllowedByManagedPolicy(engine: string): boolean {
   return managedEngineAllowed(installedEngines, managedPolicyEngineId(engine));
+}
+
+/**
+ * Whether Station may issue a credential from its engine host-auth vault to
+ * an engine: `off` when the policy sets `limits.engines.engineHostAuth: 'off'`
+ * or does not let ACP engines run at all.
+ */
+export function engineHostAuthPolicy(): 'allowed' | 'off' {
+  if (installedEngines?.engineHostAuth === 'off') return 'off';
+  return engineAllowedByManagedPolicy('acp') ? 'allowed' : 'off';
 }
 
 /** False when the policy sets `limits.engines.acpRegistryAgents: false`. */
@@ -98,7 +119,7 @@ export function assertEngineAllowedByManagedPolicy(
       ),
     );
   if (
-    engine === 'acp' &&
+    isAcpFamilyEngine(engine) &&
     connection?.publicRegistry !== undefined &&
     !acpRegistryAgentsAllowedByManagedPolicy()
   )
@@ -223,7 +244,8 @@ export function managedEnginePin(
   const instances = installedEngines?.instances as
     | Record<string, ManagedPolicyEngineInstance | undefined>
     | undefined;
-  return instances?.[engine];
+  // R5′: an `opencode` session is pinned by the `acp` entry.
+  return instances?.[managedPolicyEngineId(engine)];
 }
 
 /**

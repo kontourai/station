@@ -1,3 +1,5 @@
+import { isObjectRecord } from './record-guard.js';
+
 /**
  * Client-side routing configuration for one Station API endpoint.
  *
@@ -143,10 +145,6 @@ const LOCAL_SERVICE_FIELDS = new Set([
 ]);
 const CREDENTIAL_REF_FIELDS = new Set(['kind', 'id']);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
 function isSafeStationOrigin(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 2048)
     return false;
@@ -187,7 +185,7 @@ function hasOnlyFields(
 function isValidCredentialRef(value: unknown): boolean {
   return (
     value === undefined ||
-    (isRecord(value) &&
+    (isObjectRecord(value) &&
       hasOnlyFields(value, CREDENTIAL_REF_FIELDS) &&
       value.kind === 'station-bearer' &&
       typeof value.id === 'string' &&
@@ -210,7 +208,7 @@ function isValidStationPort(value: unknown): boolean {
 
 function isValidLocalService(value: unknown): boolean {
   if (value === undefined) return true;
-  if (!isRecord(value) || !hasOnlyFields(value, LOCAL_SERVICE_FIELDS))
+  if (!isObjectRecord(value) || !hasOnlyFields(value, LOCAL_SERVICE_FIELDS))
     return false;
   return (
     isNonEmptyString(value.instanceId) &&
@@ -223,7 +221,7 @@ function isValidLocalService(value: unknown): boolean {
 function isValidRelayRoute(value: unknown): boolean {
   if (value === undefined) return true;
   return (
-    isRecord(value) &&
+    isObjectRecord(value) &&
     hasOnlyFields(value, RELAY_ROUTE_FIELDS) &&
     isSafeStationOrigin(value.brokerOrigin) &&
     isSafeRelayIdentifier(value.stationId) &&
@@ -245,7 +243,7 @@ function isValidRelayProfileState(value: Record<string, unknown>): boolean {
     isValidCredentialRef(value.credentialRef) &&
     typeof value.clientInstanceId === 'string' &&
     CLIENT_INSTANCE_ID_PATTERN.test(value.clientInstanceId) &&
-    isRecord(value.relayRoute) &&
+    isObjectRecord(value.relayRoute) &&
     value.environmentId === value.relayRoute.stationId &&
     value.localService === undefined
   );
@@ -300,7 +298,7 @@ function isValidClientInstanceId(value: Record<string, unknown>): boolean {
 
 /** Strict structural validation; corrupt or future metadata fails closed. */
 export function isStationProfile(value: unknown): value is StationProfile {
-  if (!isRecord(value) || !hasOnlyFields(value, STATION_PROFILE_FIELDS))
+  if (!isObjectRecord(value) || !hasOnlyFields(value, STATION_PROFILE_FIELDS))
     return false;
   return (
     isValidProfileCore(value) &&
@@ -321,7 +319,7 @@ export function isStationProfileStore(
   value: unknown,
 ): value is StationProfileStore {
   if (
-    !isRecord(value) ||
+    !isObjectRecord(value) ||
     value.schemaVersion !== STATION_PROFILE_SCHEMA_VERSION
   ) {
     return false;
@@ -338,7 +336,7 @@ export function isStationProfileStore(
     return false;
   }
   if (
-    !isRecord(value.projectProfiles) ||
+    !isObjectRecord(value.projectProfiles) ||
     Object.entries(value.projectProfiles).some(
       ([project, profile]) =>
         project.length === 0 ||

@@ -50,7 +50,9 @@ Devices belong to the operator. In **Settings → Advanced → Browser & devices
 
 - share a device with a Project, so that Project's admins and owners can view
   and drive it;
-- turn on agent device access, so bound Agents can use the `device_*` tools.
+- turn on agent device access, so bound Agents can use the `device_*` tools
+  (except a session whose network Station restricts, which is never given
+  them: a device has its own network, outside that session's sandbox).
 
 Turning agent access off also revokes Agents' current access. See
 [Agent tools](../reference/browser-and-devices.md#view-control-and-end-a-session)

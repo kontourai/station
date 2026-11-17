@@ -32,6 +32,8 @@ const CAPABILITY_STATES: Record<NativeCapabilityId, NativeCapabilityState> = {
   'native-consent-broker': 'enabled',
   'remote-push': 'unsupported',
   'share-intake': 'disabled',
+  'image-share-intake': 'enabled',
+  'clipboard-image': 'enabled',
 };
 
 const CAPABILITIES = Object.entries(CAPABILITY_STATES).map(([id, state]) => ({
@@ -51,17 +53,66 @@ describe('capability report carries the dev-build flag across the adapter', () =
   it('preserves the native channel identity', async () => {
     const result = await adapterReporting({
       platform: 'android',
-      channel: 'beta',
+      channel: 'nightly',
       capabilities: CAPABILITIES,
       devBuild: false,
     }).getCapabilityReport();
 
-    expect(result.status === 'ok' && result.value.channel).toBe('beta');
+    expect(result.status === 'ok' && result.value.channel).toBe('nightly');
   });
+  it.each(['retired-channel', 'transport-failure'])(
+    'revokes cached native consent after %s and restores it only from a fresh valid report',
+    async (failure) => {
+      const valid = {
+        platform: 'android',
+        channel: 'nightly',
+        capabilities: CAPABILITIES,
+      };
+      let payload: unknown = valid;
+      const calls: string[] = [];
+      const adapter = new TauriNativePlatformAdapter({
+        invoke: async (command) => {
+          calls.push(command);
+          if (command === 'native_capability_report') {
+            if (payload instanceof Error) throw payload;
+            return payload as never;
+          }
+          if (command === 'station_native_consent_review')
+            return { status: 'approved' } as never;
+          throw new Error(`Unexpected native invocation: ${command}`);
+        },
+        listen: async () => () => {},
+      });
+      expect((await adapter.getCapabilityReport()).status).toBe('ok');
+      expect((await adapter.reviewConsentNatively('request')).status).toBe(
+        'ok',
+      );
+      payload =
+        failure === 'retired-channel'
+          ? { ...valid, channel: 'beta' }
+          : new Error('host unavailable');
+      expect((await adapter.getCapabilityReport()).status).toBe('error');
+      expect((await adapter.reviewConsentNatively('request')).status).toBe(
+        'unsupported',
+      );
+      expect(
+        calls.filter((command) => command === 'station_native_consent_review'),
+      ).toHaveLength(1);
+      payload = valid;
+      expect((await adapter.getCapabilityReport()).status).toBe('ok');
+      expect((await adapter.reviewConsentNatively('request')).status).toBe(
+        'ok',
+      );
+      expect(
+        calls.filter((command) => command === 'station_native_consent_review'),
+      ).toHaveLength(2);
+    },
+  );
+
   it('drops legacy build-default connection metadata from the native host', async () => {
     const result = await adapterReporting({
       platform: 'android',
-      channel: 'beta',
+      channel: 'nightly',
       capabilities: CAPABILITIES,
       devBuild: false,
       mobileDefaultEndpoint: 'https://station.example.test:8442',
@@ -121,5 +172,85 @@ describe('capability report carries the dev-build flag across the adapter', () =
     }).getCapabilityReport();
 
     expect(result.status).toBe('error');
+  });
+});
+
+describe('capability report forward compatibility', () => {
+  const report = (capabilities: unknown[]) =>
+    adapterReporting({
+      platform: 'android',
+      capabilities,
+    }).getCapabilityReport();
+
+  it('skips a capability id this UI does not know and keeps the rest', async () => {
+    const adapter = adapterReporting({
+      platform: 'android',
+      capabilities: [
+        ...CAPABILITIES,
+        { id: 'future-capability', state: 'enabled', reason: 'newer shell' },
+      ],
+    });
+    const result = await adapter.getCapabilityReport();
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('Expected a valid report');
+    expect(result.value.capabilities.map(({ id }) => id)).not.toContain(
+      'future-capability',
+    );
+    expect(adapter.capability('image-share-intake').state).toBe('enabled');
+    expect(
+      adapter.capability('image-share-intake').reportVerified,
+    ).toBeUndefined();
+  });
+
+  it('still rejects a malformed entry for a known id', async () => {
+    const malformed = CAPABILITIES.map((capability) =>
+      capability.id === 'haptics'
+        ? { ...capability, state: 'sometimes' }
+        : capability,
+    );
+    expect((await report(malformed)).status).toBe('error');
+    const noReason = CAPABILITIES.map((capability) =>
+      capability.id === 'haptics' ? { ...capability, reason: '' } : capability,
+    );
+    expect((await report(noReason)).status).toBe('error');
+  });
+
+  it('rejects a malformed entry for an optional known id', async () => {
+    for (const id of ['image-share-intake', 'clipboard-image']) {
+      const corrupted = CAPABILITIES.map((capability) =>
+        capability.id === id
+          ? { ...capability, state: 'sometimes' }
+          : capability,
+      );
+      expect((await report(corrupted)).status).toBe('error');
+    }
+  });
+
+  it('still rejects an entry that is not a capability at all', async () => {
+    expect((await report([...CAPABILITIES, 'haptics'])).status).toBe('error');
+    expect((await report([...CAPABILITIES, { state: 'enabled' }])).status).toBe(
+      'error',
+    );
+  });
+
+  it('still rejects duplicates and a missing required id', async () => {
+    expect((await report([...CAPABILITIES, CAPABILITIES[0]])).status).toBe(
+      'error',
+    );
+    expect(
+      (
+        await report(
+          CAPABILITIES.filter(({ id }) => id !== 'capability-report'),
+        )
+      ).status,
+    ).toBe('error');
+    const unknownTwice = {
+      id: 'future-capability',
+      state: 'enabled',
+      reason: 'x',
+    };
+    expect(
+      (await report([...CAPABILITIES, unknownTwice, unknownTwice])).status,
+    ).toBe('error');
   });
 });

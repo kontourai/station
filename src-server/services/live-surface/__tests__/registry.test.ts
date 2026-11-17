@@ -5,11 +5,13 @@ import type { LiveSurfaceHeldInput } from '../producer.js';
 import {
   claimAgentControl,
   claimHumanControl,
+  closeHumanInputSource,
   dispatchAgentInput,
   dispatchHumanInput,
   type LiveSurfaceAuthorizer,
   LiveSurfaceRegistry,
   type LiveSurfaceRegistryOptions,
+  openHumanInputSource,
   releaseHumanControl,
 } from '../registry.js';
 
@@ -700,4 +702,109 @@ describe('onExplicitControl (#90: only a person’s explicit claim or release)',
       after: null,
     });
   });
+});
+
+test('closing one viewer seals queued input and preserves a newer same-human press', async () => {
+  const { producer, entry } = setup();
+  const first = openHumanInputSource(entry, human)!;
+  const second = openHumanInputSource(entry, human)!;
+  let release!: () => void;
+  let started!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  producer.dispatchImpl = async (event) => {
+    if (event.kind === 'key' && event.key === 'a') {
+      started();
+      await delayed;
+    }
+  };
+  const old = dispatchHumanInput(entry, human, 0, [key('a'), key('b')], first);
+  await entered;
+  const closing = closeHumanInputSource(entry, human, first);
+  const fresh = dispatchHumanInput(entry, human, 1, [key('c')], second);
+  release();
+  expect(await closing).toBe(true);
+  expect(await old).toMatchObject({
+    ok: false,
+    code: 'invalid-source',
+    accepted: 1,
+  });
+  expect(await fresh).toMatchObject({ ok: true });
+  await settleChain();
+  expect(keysOf(producer.dispatched)).toEqual(['down:a', 'up:a', 'down:c']);
+  expect(
+    await dispatchHumanInput(entry, human, 1, [key('d')], first),
+  ).toMatchObject({ ok: false, code: 'invalid-source' });
+  expect(
+    await closeHumanInputSource(entry, { ...human, device: 'other' }, second),
+  ).toBeNull();
+  expect(await closeHumanInputSource(entry, human, second)).toBe(true);
+  await settleChain();
+  expect(keysOf(producer.dispatched)).toEqual([
+    'down:a',
+    'up:a',
+    'down:c',
+    'up:c',
+  ]);
+});
+
+test('closing an older source does not cancel a newer source holding the same key', async () => {
+  const { producer, entry } = setup();
+  const first = openHumanInputSource(entry, human)!;
+  const second = openHumanInputSource(entry, human)!;
+  await dispatchHumanInput(entry, human, 0, [key('a')], first);
+  await dispatchHumanInput(entry, human, 1, [key('a')], second);
+  await closeHumanInputSource(entry, human, first);
+  await settleChain();
+  expect(keysOf(producer.dispatched)).toEqual(['down:a', 'down:a']);
+  await closeHumanInputSource(entry, human, second);
+  await settleChain();
+  expect(keysOf(producer.dispatched)).toEqual(['down:a', 'down:a', 'up:a']);
+});
+
+test('failed source cleanup fences input until a whole-surface cleanup succeeds', async () => {
+  const { producer, entry } = setup();
+  const first = openHumanInputSource(entry, human)!;
+  const empty = openHumanInputSource(entry, human)!;
+  let failRelease = true;
+  producer.dispatchImpl = async (event) => {
+    if (event.kind === 'key' && event.type === 'up' && failRelease)
+      throw new Error('release failed');
+  };
+  expect(
+    (await dispatchHumanInput(entry, human, 0, [key('a')], first)).ok,
+  ).toBe(true);
+  expect(await closeHumanInputSource(entry, human, first)).toBe(false);
+  expect(
+    await dispatchHumanInput(entry, human, 1, [key('b')], empty),
+  ).toMatchObject({ ok: false, code: 'surface-wedged' });
+  expect(await closeHumanInputSource(entry, human, empty)).toBe(true);
+  expect(await dispatchHumanInput(entry, human, 1, [key('b')])).toMatchObject({
+    ok: false,
+    code: 'surface-wedged',
+  });
+  expect(releaseHumanControl(entry, human, 1).ok).toBe(true);
+  await settleChain();
+  expect(await dispatchHumanInput(entry, human, 1, [key('b')])).toMatchObject({
+    ok: false,
+    code: 'surface-wedged',
+  });
+  failRelease = false;
+  expect(claimHumanControl(entry, human).ok).toBe(true);
+  expect(releaseHumanControl(entry, human, 1).ok).toBe(true);
+  await settleChain();
+  expect(await dispatchHumanInput(entry, human, 1, [key('b')])).toMatchObject({
+    ok: true,
+  });
+  expect(keysOf(producer.dispatched)).toEqual([
+    'down:a',
+    'up:a',
+    'up:a',
+    'up:a',
+    'down:b',
+  ]);
 });

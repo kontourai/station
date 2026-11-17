@@ -74,8 +74,6 @@
 
     "src-server/runtime/bootstrap/runtime-startup.ts",
 
-    "src-server/runtime/bootstrap/station-runtime.ts",
-
     "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
 
     "src-server/runtime/mcp/mcp-manager.ts",
@@ -105,8 +103,6 @@
     "src-server/services/execution-target/execution-target-resolver.ts",
 
     "src-server/services/orchestration/approval-posture.ts",
-
-    "src-server/services/orchestration/orchestration-service.ts",
 
     "src-server/tools/station-control-catalog-tools.ts",
 
@@ -144,7 +140,9 @@
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+
+    "examples/self-configuring-agent/agent.json"
   ],
 
   "checks": [

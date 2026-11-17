@@ -2,10 +2,7 @@ import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
 import { Button } from '../components/Button';
 import { PageRow } from '../components/PageRow';
-import {
-  activeChatsStore,
-  useActiveChatActions,
-} from '../contexts/ActiveChatsContext';
+import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useModels } from '../contexts/ModelsContext';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -31,7 +28,6 @@ export function CommandsView() {
   const agents = useAgents();
   const models = useModels();
   const { data: agentConnections = [] } = useEngineConnectionsQuery();
-  const { updateChat } = useActiveChatActions();
   const createChatSession = useCreateChatSession();
   const activeEntry = Object.entries(chats).find(
     ([sessionId, chat]) =>
@@ -79,7 +75,6 @@ export function CommandsView() {
     activeChatsStore.updateChat(sessionId, { input: `${command} ` });
     navigation.setActiveChat(sessionId);
     navigation.setDockState(true);
-    updateChat(sessionId, { hasUnread: false });
   }
 
   return (

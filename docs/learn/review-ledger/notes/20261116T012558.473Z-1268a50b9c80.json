@@ -1,0 +1,9 @@
+{
+  "revision": "acc566cbb1648118eb6654d0aec9dc5228bd6aca",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Merged handoff-ux's guarded startContinuation (in-flight ref, disabled guards for every entry) with the still-running check and override; starter-work.md's continuation claims match and pane-relationships.md makes no claim about the attached reader's continue flow.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Merged handoff-ux's guarded startContinuation (in-flight ref, disabled guards for every entry) with the still-running check and override; starter-work.md's continuation claims match and pane-relationships.md makes no claim about the attached reader's continue flow.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

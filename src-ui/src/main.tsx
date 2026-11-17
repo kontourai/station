@@ -5,6 +5,7 @@ import React, { lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { buildInfo } from './build-info';
 import { BrandingThemeBridge } from './components/BrandingThemeBridge';
+import { CustomAppearanceBridge } from './components/CustomAppearanceBridge';
 import { LazyBoundary } from './components/LazyBoundary';
 import { SkeletonBlock } from './components/state';
 import { AccountPreferencesProvider } from './contexts/AccountPreferencesProvider';
@@ -54,8 +55,8 @@ import { ConversationWorkStateProvider } from './components/chat-dock/useConvers
 import { DeferredCapabilityBoundary } from './components/DeferredCapabilityBoundary';
 import { NotificationContainer } from './components/notifications/NotificationContainer';
 import { StartupHandoff } from './components/StartupHandoff';
+import { UndoableActionShortcut } from './components/undo/UndoableActionShortcut';
 import { ActiveChatsProvider } from './contexts/ActiveChatsContext';
-import { ActivityReviewProvider } from './contexts/ActivityReviewContext';
 import { AnalyticsProvider } from './contexts/AnalyticsContext';
 import { ApiBaseProvider } from './contexts/ApiBaseContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -63,7 +64,10 @@ import { AuthorityQueryProvider } from './contexts/AuthorityQueryContext';
 import { ConversationsProvider } from './contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
-import { NavigationProvider } from './contexts/NavigationContext';
+import {
+  NavigationProvider,
+  navigationStore,
+} from './contexts/NavigationContext';
 import { PaneRelationsProvider } from './contexts/PaneRelationsContext';
 import { PreviewProvider } from './contexts/PreviewContext';
 import { RecoveryQueryBoundary } from './contexts/RecoveryQueryBoundary';
@@ -87,11 +91,16 @@ import {
   bindColorThemeToSettings,
   renderWhenColorThemeSettled,
 } from './lib/color-theme-apply';
+import { applyCachedCustomAppearance } from './lib/custom-appearance/controller';
 import {
   deviceSettingsStore,
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
+import {
+  holdColdNotificationLink,
+  installNavigationPosition,
+} from './lib/notificationStationOpen';
 import {
   stationMutationDefaults,
   stationQueryDefaults,
@@ -273,8 +282,22 @@ if (_bootBrandingTheme)
 // device settings now (startup-theme.js already stamped them before first
 // paint), account preferences once they bind. See lib/color-theme-apply.ts.
 bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
+// The person's custom appearance (palette and sanitized CSS), from the copy
+// this browser last applied, so a reload does not flash Station's look first.
+// CustomAppearanceBridge replaces it with the server's answer. Skipped in a
+// tab opened with ?appearance=safe. See lib/custom-appearance/controller.ts.
+applyCachedCustomAppearance();
 
 function renderApp(): void {
+  // A notification link loaded cold names its Station: hold its conversation
+  // back from the URL until the opener knows which Station that is. A
+  // navigation before then supersedes it.
+  if (!isAccountPath && !isSharedAnswerPath) {
+    installNavigationPosition(() => navigationStore.getHistoryIndex());
+    holdColdNotificationLink(window.location, (params) =>
+      navigationStore.updateParams(params),
+    );
+  }
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>
@@ -369,16 +392,17 @@ function renderApp(): void {
                                                         >
                                                           <RegionModelProvider>
                                                             <PaneRelationsProvider>
-                                                              <ActivityReviewProvider>
-                                                                <BrandingThemeBridge />
-                                                                <WorkClaimsProvider>
-                                                                  <ConversationWorkStateProvider>
-                                                                    <InboxDismissUndo>
+                                                              <BrandingThemeBridge />
+                                                              <CustomAppearanceBridge />
+                                                              <WorkClaimsProvider>
+                                                                <ConversationWorkStateProvider>
+                                                                  <InboxDismissUndo>
+                                                                    <UndoableActionShortcut>
                                                                       <App />
-                                                                    </InboxDismissUndo>
-                                                                  </ConversationWorkStateProvider>
-                                                                </WorkClaimsProvider>
-                                                              </ActivityReviewProvider>
+                                                                    </UndoableActionShortcut>
+                                                                  </InboxDismissUndo>
+                                                                </ConversationWorkStateProvider>
+                                                              </WorkClaimsProvider>
                                                             </PaneRelationsProvider>
                                                           </RegionModelProvider>
                                                           <NotificationContainer />

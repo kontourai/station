@@ -456,7 +456,7 @@ async function requestRemoval() {
 test('removing a filtered skill preserves the query and returns keyboard focus to search', async () => {
   const removal = deferRemoval();
   mountRoutedLibrary();
-  fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+  fireEvent.change(screen.getByPlaceholderText('Search skills…'), {
     target: { value: 'skill-a' },
   });
   await requestRemoval();
@@ -472,7 +472,7 @@ test('removing a filtered skill preserves the query and returns keyboard focus t
       }),
   );
 
-  const search = screen.getByPlaceholderText('Search skills...');
+  const search = screen.getByPlaceholderText('Search skills…');
   expect.soft((search as HTMLInputElement).value).toBe('skill-a');
   expect.soft(document.activeElement).toBe(search);
   expect(navigationStore.getSnapshot().pathname).toBe('/guidance');
@@ -482,7 +482,7 @@ test('removing a filtered skill preserves the query and returns keyboard focus t
 test('a refused removal preserves the filtered selection and its retry trigger', async () => {
   const removal = deferRemoval();
   mountRoutedLibrary();
-  fireEvent.change(screen.getByPlaceholderText('Search skills...'), {
+  fireEvent.change(screen.getByPlaceholderText('Search skills…'), {
     target: { value: 'skill-a' },
   });
   await requestRemoval();
@@ -500,7 +500,7 @@ test('a refused removal preserves the filtered selection and its retry trigger',
 
   expect(navigationStore.getSnapshot().pathname).toBe('/guidance/skill-a');
   expect(
-    (screen.getByPlaceholderText('Search skills...') as HTMLInputElement).value,
+    (screen.getByPlaceholderText('Search skills…') as HTMLInputElement).value,
   ).toBe('skill-a');
   expect(screen.getByRole('region', { name: 'Skill overview' })).toBeTruthy();
   expect(document.activeElement).toBe(
@@ -516,7 +516,7 @@ test.each(['connected control', 'another skill', 'outside Guidance'])(
     mountRoutedLibrary();
     await requestRemoval();
     if (destination === 'connected control') {
-      screen.getByPlaceholderText('Search skills...').focus();
+      screen.getByPlaceholderText('Search skills…').focus();
     } else if (destination === 'another skill') {
       fireEvent.click(screen.getByRole('button', { name: 'skill-b' }));
       screen.getByRole('button', { name: 'Edit skill' }).focus();

@@ -1,0 +1,7 @@
+{
+  "revision": "5cfa1f33214feca9e7654dafc90069bba32f1477",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"UsageRollupPanel.tsx: the missing-value explainer now reads 'A dash (—) means not reported.' instead of '— means not reported.'. The guide (~1200) says a missing value 'shows a dash' and reported cost and estimates stay separate; still accurate, no prose change.","inputs":["docs/guides/monitoring.md","packages/sdk/src/query-domains/usageRollup.ts","packages/shared/src/usage-rollup.ts","src-server/analytics/usage-aggregator.ts","src-ui/src/components/usage-stats/UsageRollupPanel.tsx"]}
+  ]
+}

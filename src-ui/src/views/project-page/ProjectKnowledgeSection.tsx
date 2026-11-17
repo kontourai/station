@@ -17,7 +17,9 @@ import {
   FolderGlyph,
   TimeGlyph,
 } from '../../components/icons/Glyph';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { describeReadFailure, ErrorState } from '../../components/state';
+import { plural } from '../../utils/plural';
 import { ProjectKnowledgeDocGroup } from './ProjectKnowledgeDocGroup';
 import { ProjectKnowledgeNamespaceConfig } from './ProjectKnowledgeNamespaceConfig';
 import { ProjectKnowledgeRulesEditor } from './ProjectKnowledgeRulesEditor';
@@ -82,6 +84,11 @@ export function ProjectKnowledgeSection({
   const [uploadOpen, setUploadOpen] = useState(true);
   const [storageDirDraft, setStorageDirDraft] = useState('');
   const [viewingDoc, setViewingDoc] = useState<DocMeta | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<
+    | { kind: 'document'; id: string }
+    | { kind: 'selected'; ids: string[] }
+    | null
+  >(null);
 
   const {
     data: rulesSearchData,
@@ -177,6 +184,23 @@ export function ProjectKnowledgeSection({
     });
   }
 
+  // The dialog stays open, pending, until the request settles.
+  function confirmRemoval() {
+    const removal = pendingRemoval;
+    if (!removal) return;
+    const close = () => setPendingRemoval(null);
+    if (removal.kind === 'document') {
+      deleteMutation.mutate(removal.id, { onSettled: close });
+    } else {
+      bulkDeleteMutation.mutate(removal.ids, { onSettled: close });
+    }
+  }
+
+  const removalSubject =
+    pendingRemoval?.kind === 'document'
+      ? `"${docs.find((doc) => doc.id === pendingRemoval.id)?.filename ?? 'this document'}"`
+      : plural(pendingRemoval?.ids.length ?? 0, 'document');
+
   function toggleDoc(id: string) {
     setSelectedDocs((current) => {
       const next = new Set(current);
@@ -211,12 +235,15 @@ export function ProjectKnowledgeSection({
               <button
                 type="button"
                 className="project-page__add-btn project-page__add-btn--danger"
-                onClick={() => bulkDeleteMutation.mutate([...selectedDocs])}
+                onClick={() =>
+                  setPendingRemoval({
+                    kind: 'selected',
+                    ids: [...selectedDocs],
+                  })
+                }
                 disabled={bulkDeleteMutation.isPending}
               >
-                {bulkDeleteMutation.isPending
-                  ? 'Deleting…'
-                  : `Delete ${selectedDocs.size}`}
+                {`Remove ${selectedDocs.size}`}
               </button>
             )}
             {projectWorkingDirectory && (
@@ -369,7 +396,7 @@ export function ProjectKnowledgeSection({
             </div>
           }
           onToggleDoc={toggleDoc}
-          onDeleteDoc={(id) => deleteMutation.mutate(id)}
+          onDeleteDoc={(id) => setPendingRemoval({ kind: 'document', id })}
           onViewDoc={setViewingDoc}
           selectedDocs={selectedDocs}
         />
@@ -387,7 +414,7 @@ export function ProjectKnowledgeSection({
         onToggleOpen={() => setUploadOpen((open) => !open)}
         onToggleAll={() => toggleAllInGroup(uploadDocs)}
         onToggleDoc={toggleDoc}
-        onDeleteDoc={(id) => deleteMutation.mutate(id)}
+        onDeleteDoc={(id) => setPendingRemoval({ kind: 'document', id })}
         onViewDoc={setViewingDoc}
         selectedDocs={selectedDocs}
       >
@@ -451,6 +478,22 @@ export function ProjectKnowledgeSection({
           onClose={() => setViewingDoc(null)}
         />
       )}
+
+      {/* Removing an indexed document is destructive and was a bare click. */}
+      <ConfirmModal
+        isOpen={pendingRemoval !== null}
+        variant="danger"
+        title={
+          pendingRemoval?.kind === 'selected' && pendingRemoval.ids.length !== 1
+            ? 'Remove documents'
+            : 'Remove document'
+        }
+        message={`Remove ${removalSubject} from this project's knowledge? Indexed chunks are deleted too.`}
+        confirmLabel="Remove"
+        pending={deleteMutation.isPending || bulkDeleteMutation.isPending}
+        onConfirm={confirmRemoval}
+        onCancel={() => setPendingRemoval(null)}
+      />
 
       {showScanDialog && (
         <ProjectKnowledgeScanModal

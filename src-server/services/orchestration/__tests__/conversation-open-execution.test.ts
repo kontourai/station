@@ -292,3 +292,81 @@ test('#2309: an open resolution carries the conversation activity read with the 
   });
   expect(resolved.activity?.asOfSequence).toBe(store.headGlobalSequence());
 });
+
+test('opening a conversation reads the current child history once', async () => {
+  // Spy on the prototype before the service binds any store method.
+  const listEvents = vi.spyOn(EventStore.prototype, 'listEvents');
+  const listEventPayloads = vi.spyOn(EventStore.prototype, 'listEventPayloads');
+  try {
+    const { store, service } = readerFixture();
+    const threadId = 'single-replay-conversation';
+    store.upsertSession({
+      threadId,
+      provider: 'claude',
+      status: 'ready',
+      createdAt: '2026-09-01T00:00:00Z',
+      updatedAt: '2026-09-01T00:01:00Z',
+    });
+    store.appendEvent({
+      eventId: 'single-replay-start',
+      threadId,
+      sessionId: threadId,
+      provider: 'claude',
+      method: 'session.started',
+      metadata: { userId: 'owner', agentSlug: 'claude' },
+      createdAt: '2026-09-01T00:00:01Z',
+    });
+    store.appendEvent({
+      eventId: 'single-replay-turn',
+      threadId,
+      turnId: 'turn-1',
+      provider: 'claude',
+      method: 'turn.started',
+      prompt: 'Plan the garden beds',
+      createdAt: '2026-09-01T00:00:02Z',
+    });
+    store.appendEvent({
+      eventId: 'single-replay-done',
+      threadId,
+      turnId: 'turn-1',
+      provider: 'claude',
+      method: 'turn.completed',
+      outputText: 'Three beds along the fence.',
+      createdAt: '2026-09-01T00:00:03Z',
+    });
+    const authority = sessionReadAuthorityFromRequest(
+      'owner',
+      undefined,
+      undefined,
+    );
+    const expectedMessageCount = service.readSessionMessages(
+      threadId,
+      authority,
+    ).length;
+    listEvents.mockClear();
+    listEventPayloads.mockClear();
+
+    const resolved = await service.resolveConversationOpen(threadId, authority);
+
+    const wholeHistoryReads =
+      listEvents.mock.calls.filter(([id]) => id === threadId).length +
+      listEventPayloads.mock.calls.filter(
+        ([id, methods]) => id === threadId && methods === undefined,
+      ).length;
+    expect(wholeHistoryReads).toBe(1);
+    // The single read still answers the same public fields.
+    expect(expectedMessageCount).toBe(2);
+    expect(resolved).toMatchObject({
+      status: 'resolved',
+      currentSessionId: threadId,
+      conversation: {
+        title: 'Plan the garden beds',
+        messageCount: expectedMessageCount,
+      },
+      transcript: { messageCount: expectedMessageCount },
+    });
+  } finally {
+    listEvents.mockRestore();
+    listEventPayloads.mockRestore();
+  }
+});

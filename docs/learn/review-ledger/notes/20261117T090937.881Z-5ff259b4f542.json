@@ -1,0 +1,13 @@
+{
+  "revision": "28564509b31fc4ea94ae3f58f56103b24622d466",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Only the PullRequestHeadReviewSection.tsx row's measurements and fold description changed; the guides citing the inventory describe its format, unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Only the PullRequestHeadReviewSection.tsx row's measurements and fold description changed; the guides citing the inventory describe its format, unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Only the PullRequestHeadReviewSection.tsx row's measurements and fold description changed; the guides citing the inventory describe its format, unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Only the PullRequestHeadReviewSection.tsx row's measurements and fold description changed; the guides citing the inventory describe its format, unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

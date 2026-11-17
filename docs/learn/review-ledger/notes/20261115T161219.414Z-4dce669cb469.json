@@ -1,0 +1,7 @@
+{
+  "revision": "7741f351e5c6e604023fbbde424617c8eedd4d68",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"startup-presentation.ts gained display-only rememberPreparingStation/preparingStationTitle; no telemetry activation, event or startup timing behavior changed.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/lib/startup-presentation.ts"]}
+  ]
+}

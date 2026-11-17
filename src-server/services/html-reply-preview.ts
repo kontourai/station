@@ -3,10 +3,13 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildHtmlReplyDocument } from '@kontourai/station-shared/html-reply-document';
+import { createLogger } from '../utils/logger.js';
 import { ChromiumAcquisition } from './browser/chromium-acquisition.js';
 import {
   BrowserHostPolicyError,
+  type ChromiumHostEvent,
   ChromiumServerHost,
+  type PreviewDiagnostic,
 } from './browser/hosts/chromium-server-host.js';
 import { HtmlReplyRefusal } from './html-reply-errors.js';
 
@@ -18,9 +21,235 @@ const LIMIT = {
   height: 2000,
 };
 
+const logger = createLogger({ name: 'html-preview-diagnostic' });
+type Phase =
+  | 'primary'
+  | 'surfaced'
+  | 'shutdown'
+  | 'workSettlement'
+  | 'profileRemoval'
+  | 'slotRelease'
+  | 'browserClose'
+  | 'terminate'
+  | 'proxyClose';
+type PhaseState = 'NOT_REACHED' | 'STARTED' | 'RESOLVED' | 'REJECTED';
+
+function previewDiagnostics() {
+  const attempt = randomBytes(8).toString('hex');
+  const phases: Record<Phase, PhaseState> = {
+    primary: 'NOT_REACHED',
+    surfaced: 'NOT_REACHED',
+    shutdown: 'NOT_REACHED',
+    workSettlement: 'NOT_REACHED',
+    profileRemoval: 'NOT_REACHED',
+    slotRelease: 'NOT_REACHED',
+    browserClose: 'NOT_REACHED',
+    terminate: 'NOT_REACHED',
+    proxyClose: 'NOT_REACHED',
+  };
+  const closes: {
+    at: number;
+    origin: string;
+    state: string;
+    target: string | null;
+    session: string | null;
+  }[] = [];
+  let child: Extract<PreviewDiagnostic, { type: 'child-exit' }> | undefined;
+  let pipe: Extract<PreviewDiagnostic, { type: 'pipe' }> | undefined;
+  let stderr: Extract<PreviewDiagnostic, { type: 'stderr' }> | undefined;
+  let spawnError:
+    | Extract<PreviewDiagnostic, { type: 'spawn-error' }>['category']
+    | undefined;
+  let sequence = 0;
+  let closeFactsDropped = 0;
+  let identityExhausted = false;
+  let countersSaturated = false;
+  let finished = false;
+  const transitions = new Set<string>();
+  const proxyCloses: Partial<
+    Record<
+      Extract<
+        PreviewDiagnostic,
+        { type: 'step'; step: 'proxyClose' }
+      >['origin'],
+      PhaseState
+    >
+  > = {};
+  const stderrStates: Partial<
+    Record<Extract<PreviewDiagnostic, { type: 'stderr' }>['state'], number>
+  > = {};
+  const order: Partial<
+    Record<
+      | `${Phase}Started`
+      | `${Phase}Settled`
+      | 'child'
+      | 'pipe'
+      | 'stderr'
+      | 'spawnError',
+      number
+    >
+  > = {};
+  const advance = () => {
+    if (sequence === 65535) countersSaturated = true;
+    else sequence++;
+  };
+  const emit = (late: boolean) => {
+    try {
+      const terminal = {
+        phases: { ...phases },
+        order: { ...order },
+        child: child ?? 'UNOBSERVED',
+        pipe: pipe ?? 'UNOBSERVED',
+        stderr: stderr ?? 'UNOBSERVED',
+        stderrStates: { ...stderrStates },
+        spawnError: spawnError ?? 'UNOBSERVED',
+      };
+      const snapshot = {
+        schemaVersion: 1,
+        attempt,
+        sequence,
+        late,
+        terminal,
+        closes: late ? [] : closes,
+        closeFactsDropped,
+        identityExhausted,
+        countersSaturated,
+      };
+      const text = JSON.stringify(snapshot);
+      logger.info('HTML preview safe terminal receipt', {
+        previewTerminalReceipt:
+          Buffer.byteLength(JSON.stringify(terminal)) <= 2048 &&
+          Buffer.byteLength(text) <= 6144
+            ? JSON.parse(text)
+            : { schemaVersion: 1, attempt, unavailable: true },
+      });
+    } catch {
+      // Diagnostic output cannot replace a render or cleanup failure.
+    }
+  };
+  const phase = (key: Phase, state: PhaseState) => {
+    if (phases[key] === state) return;
+    phases[key] = state;
+    advance();
+    order[`${key}${state === 'STARTED' ? 'Started' : 'Settled'}`] = sequence;
+  };
+  return {
+    phase,
+    onEvent(event: ChromiumHostEvent) {
+      if (event.kind !== 'preview-diagnostic') return;
+      const d = event.diagnostic;
+      if (d.type === 'close') {
+        if (finished) return;
+        identityExhausted ||= d.exhausted;
+        advance();
+        const fact = {
+          at: sequence,
+          origin: d.origin,
+          state: d.state,
+          target: d.target,
+          session: d.session,
+        };
+        if (
+          closes.length < 16 &&
+          Buffer.byteLength(JSON.stringify(fact)) <= 128
+        )
+          closes.push(fact);
+        else if (closeFactsDropped < 65535) closeFactsDropped++;
+        else countersSaturated = true;
+        return;
+      }
+      const transition =
+        d.type === 'step'
+          ? d.step === 'proxyClose'
+            ? `${d.step}:${d.origin}:${d.state}`
+            : `${d.step}:${d.state}`
+          : d.type === 'stderr'
+            ? `stderr:${d.state}`
+            : d.type;
+      if (transitions.has(transition)) return;
+      transitions.add(transition);
+      switch (d.type) {
+        case 'child-exit':
+          child = { type: 'child-exit', code: d.code, signal: d.signal };
+          break;
+        case 'spawn-error':
+          spawnError = d.category;
+          break;
+        case 'pipe':
+          pipe = {
+            type: 'pipe',
+            origin: d.origin,
+            pending: d.pending,
+            remaining: d.remaining,
+            saturated: d.saturated,
+          };
+          break;
+        case 'stderr':
+          stderr = {
+            type: 'stderr',
+            state: d.state,
+            counts: {
+              sandbox: d.counts.sandbox,
+              assertion: d.counts.assertion,
+              fatal: d.counts.fatal,
+              abort: d.counts.abort,
+              signal: d.counts.signal,
+              oom: d.counts.oom,
+              stack: d.counts.stack,
+              other: d.counts.other,
+            },
+            scanned: d.scanned,
+            observed: d.observed,
+            scanExhausted: d.scanExhausted,
+            overlongLine: d.overlongLine,
+            saturated: d.saturated,
+          };
+          break;
+        case 'step':
+          if (d.step === 'proxyClose') {
+            proxyCloses[d.origin] = d.state;
+            const states = Object.values(proxyCloses);
+            phase(
+              'proxyClose',
+              states.includes('STARTED')
+                ? 'STARTED'
+                : states.includes('REJECTED')
+                  ? 'REJECTED'
+                  : 'RESOLVED',
+            );
+          } else phase(d.step, d.state);
+          break;
+      }
+      advance();
+      if (d.type === 'child-exit') order.child = sequence;
+      if (d.type === 'pipe') order.pipe = sequence;
+      if (d.type === 'stderr') {
+        order.stderr = sequence;
+        stderrStates[d.state] = sequence;
+      }
+      if (d.type === 'spawn-error') order.spawnError = sequence;
+      if (finished) emit(true);
+    },
+    finish() {
+      if (phases.surfaced === 'NOT_REACHED') phase('surfaced', 'RESOLVED');
+      finished = true;
+      emit(false);
+      closes.length = 0;
+    },
+  };
+}
+
+/**
+ * The constant page that hosts the sandboxed frame; it carries no authored
+ * bytes. No referrer, so the frame sees an empty `document.referrer` as it did
+ * under about:blank, and an inert icon, so the browser requests nothing else.
+ */
+export const BOOTSTRAP_PAGE =
+  '<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><link rel="icon" href="data:,"></head><body></body></html>';
+
 // Keep authored values in CDP call arguments, never in JavaScript source.
 const PREVIEW_BOOTSTRAP = `function(documentHtml, token, theme, appearance) {
-  return new Promise(resolve=>{const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.style='border:0;width:100%;height:100%';frame.srcdoc=documentHtml;document.documentElement.style='height:100%';document.body.style='margin:0;height:100%';const capture=globalThis.__htmlPreview={height:0,entries:[],bytes:0,exceeded:false};let settled=false;addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.data?.token!==token)return;const data=event.data;if(data?.type==='html-preview-overflow')capture.exceeded=true;if(data?.type==='html-preview-console'&&typeof data.text==='string'){capture.bytes+=new TextEncoder().encode(JSON.stringify(data)).length;if(capture.entries.length>=128||capture.bytes>65536)capture.exceeded=true;else capture.entries.push({level:data.level,text:data.text,stack:data.stack});}if(data?.type==='html-preview-size'){capture.height=data.height;if(!settled){settled=true;setTimeout(()=>resolve(true),150)}}});frame.onload=()=>frame.contentWindow.postMessage({type:'html-reply-theme',theme:theme,tokens:appearance},'*');document.body.append(frame)});
+  return new Promise(resolve=>{const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.referrerPolicy='no-referrer';frame.style='border:0;width:100%;height:100%';frame.srcdoc=documentHtml;document.documentElement.style='height:100%';document.body.style='margin:0;height:100%';const capture=globalThis.__htmlPreview={height:0,entries:[],bytes:0,exceeded:false};let settled=false;addEventListener('message',event=>{if(event.source!==frame.contentWindow||event.data?.token!==token)return;const data=event.data;if(data?.type==='html-preview-overflow')capture.exceeded=true;if(data?.type==='html-preview-console'&&typeof data.text==='string'){capture.bytes+=new TextEncoder().encode(JSON.stringify(data)).length;if(capture.entries.length>=128||capture.bytes>65536)capture.exceeded=true;else capture.entries.push({level:data.level,text:data.text,stack:data.stack});}if(data?.type==='html-preview-size'){capture.height=data.height;if(!settled){settled=true;setTimeout(()=>resolve(true),150)}}});frame.onload=()=>frame.contentWindow.postMessage({type:'html-reply-theme',theme:theme,tokens:appearance},'*');document.body.append(frame)});
 }`;
 
 /** A fresh profile/process per render; never the person's browser-pane profile. */
@@ -33,187 +262,223 @@ export class HtmlReplyPreview {
     width: number,
     theme: 'light' | 'dark',
   ) {
-    if (this.active >= 2)
-      throw new HtmlReplyRefusal('HTML preview concurrency limit exceeded');
-    if (!Number.isInteger(width) || width < 320 || width > 1920)
-      throw new HtmlReplyRefusal('HTML preview width must be 320–1920');
-    const executablePath = new ChromiumAcquisition(
-      this.home,
-    ).resolveExecutable();
-    if (!executablePath)
-      throw new HtmlReplyRefusal(
-        'HTML preview needs Chromium. Install it through the Browser workspace first.',
-      );
-    this.active++;
-    const host = new ChromiumServerHost({
-      executablePath,
-      launchTimeoutMs: 15_000,
-      jsHeapLimitMb: 128,
-      denyHostResolution: true,
-      requireRestrictedWebRtc: true,
-      egressPolicy: {
-        listeners: () => ({ ports: [], hostnames: [] }),
-        interfaceAddresses: () => [],
-        reach: { kind: 'none' },
-      },
-    });
-    let directory: string | undefined;
-    let expired = false;
-    let workPromise: Promise<unknown> | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const diagnostic = previewDiagnostics();
     try {
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          expired = true;
-          reject(new HtmlReplyRefusal('HTML preview exceeded 15 seconds'));
-        }, LIMIT.milliseconds);
+      if (this.active >= 2)
+        throw new HtmlReplyRefusal('HTML preview concurrency limit exceeded');
+      if (!Number.isInteger(width) || width < 320 || width > 1920)
+        throw new HtmlReplyRefusal('HTML preview width must be 320–1920');
+      const executablePath = new ChromiumAcquisition(
+        this.home,
+      ).resolveExecutable();
+      if (!executablePath)
+        throw new HtmlReplyRefusal(
+          'HTML preview needs Chromium. Install it through the Browser workspace first.',
+        );
+      this.active++;
+      const host = new ChromiumServerHost({
+        executablePath,
+        launchTimeoutMs: 15_000,
+        jsHeapLimitMb: 128,
+        denyHostResolution: true,
+        requireRestrictedWebRtc: true,
+        onEvent: diagnostic.onEvent,
+        egressPolicy: {
+          listeners: () => ({ ports: [], hostnames: [] }),
+          interfaceAddresses: () => [],
+          reach: { kind: 'none' },
+        },
       });
-      const work = async () => {
-        directory = await mkdtemp(join(tmpdir(), 'station-html-preview-'));
-        if (expired) throw new HtmlReplyRefusal('HTML preview expired');
-        // The launch flag alone does not enforce this in every Chrome build.
-        // Preferences apply to every realm, including fresh srcdoc windows.
-        await mkdir(join(directory, 'Default'));
-        await writeFile(
-          join(directory, 'Default', 'Preferences'),
-          JSON.stringify({
-            webrtc: {
-              ip_handling_policy: 'disable_non_proxied_udp',
-            },
-          }),
-        );
-        const target = await host.openTarget({
-          profileDir: directory,
-          viewport: { width, height: page.height, deviceScaleFactor: 1 },
+      let directory: string | undefined;
+      let expired = false;
+      let workPromise: Promise<unknown> | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            expired = true;
+            reject(new HtmlReplyRefusal('HTML preview exceeded 15 seconds'));
+          }, LIMIT.milliseconds);
         });
-        const cdp = host.cdp();
-        const send = <T>(method: string, params?: object) =>
-          cdp.send<T>(method, params, target.cdpSessionId);
-        await send('Runtime.enable');
-        await send('Emulation.setEmulatedMedia', {
-          features: [{ name: 'prefers-color-scheme', value: theme }],
-        });
-        const token = randomBytes(32).toString('base64url');
-        const document = buildHtmlReplyDocument(page.html, token);
-        const tokens =
-          theme === 'dark'
-            ? {
-                background: '#0a0e13',
-                foreground: '#eef3f8',
-                muted: '#aebccb',
-                border: '#263040',
-                accent: '#5ce0c6',
-              }
-            : {
-                background: '#f5f4ef',
-                foreground: '#202124',
-                muted: '#5b626b',
-                border: '#d5d6d8',
-                accent: '#0e7c64',
-              };
-        const appearance = {
-          ...tokens,
-          destructive: '#c83b3b',
-          success: '#168257',
-          warning: '#8a5a00',
-          'chart-1': tokens.accent,
-          'chart-2': '#3f6fd6',
-          'chart-3': '#168257',
-          'chart-4': '#8a5a00',
-          'chart-5': '#c83b3b',
-          'chart-6': '#966aff',
-          radius: '8px',
-          'font-sans': 'system-ui,sans-serif',
-          'font-mono': 'monospace',
-        };
-        const global = await send<{
-          result: { objectId?: string };
-          exceptionDetails?: unknown;
-        }>('Runtime.evaluate', { expression: 'globalThis' });
-        if (global.exceptionDetails || !global.result.objectId)
-          throw new HtmlReplyRefusal('HTML preview bootstrap failed');
-        const evaluated = await send<{ exceptionDetails?: unknown }>(
-          'Runtime.callFunctionOn',
-          {
-            objectId: global.result.objectId,
-            functionDeclaration: PREVIEW_BOOTSTRAP,
-            arguments: [document, token, theme, appearance].map((value) => ({
-              value,
-            })),
-            awaitPromise: true,
-            returnByValue: true,
-          },
-        );
-        if (evaluated.exceptionDetails)
-          throw new HtmlReplyRefusal('HTML preview bootstrap failed');
-        const size = await send<{
-          result: {
-            value?: {
-              height: number;
-              entries: { level: string; text: string; stack?: string }[];
-              exceeded: boolean;
-            };
+        const work = async () => {
+          directory = await mkdtemp(join(tmpdir(), 'station-html-preview-'));
+          if (expired) throw new HtmlReplyRefusal('HTML preview expired');
+          // The launch flag alone does not enforce this in every Chrome build.
+          // Preferences apply to every realm, including fresh srcdoc windows.
+          await mkdir(join(directory, 'Default'));
+          await writeFile(
+            join(directory, 'Default', 'Preferences'),
+            JSON.stringify({
+              webrtc: {
+                ip_handling_policy: 'disable_non_proxied_udp',
+              },
+            }),
+          );
+          // A served host page, not about:blank: Chrome 158 aborts when an
+          // about:blank page adds the sandboxed frame (#4917). The frame keeps
+          // its own process and opaque origin.
+          const target = await host.openTarget({
+            profileDir: directory,
+            viewport: { width, height: page.height, deviceScaleFactor: 1 },
+            document: BOOTSTRAP_PAGE,
+          });
+          const cdp = host.cdp();
+          const send = <T>(method: string, params?: object) =>
+            cdp.send<T>(method, params, target.cdpSessionId);
+          await send('Runtime.enable');
+          await send('Emulation.setEmulatedMedia', {
+            features: [{ name: 'prefers-color-scheme', value: theme }],
+          });
+          const token = randomBytes(32).toString('base64url');
+          const document = buildHtmlReplyDocument(page.html, token);
+          const tokens =
+            theme === 'dark'
+              ? {
+                  background: '#0a0e13',
+                  foreground: '#eef3f8',
+                  muted: '#aebccb',
+                  border: '#263040',
+                  accent: '#5ce0c6',
+                }
+              : {
+                  background: '#f5f4ef',
+                  foreground: '#202124',
+                  muted: '#5b626b',
+                  border: '#d5d6d8',
+                  accent: '#0e7c64',
+                };
+          const appearance = {
+            ...tokens,
+            destructive: '#c83b3b',
+            success: '#168257',
+            warning: '#8a5a00',
+            'chart-1': tokens.accent,
+            'chart-2': '#3f6fd6',
+            'chart-3': '#168257',
+            'chart-4': '#8a5a00',
+            'chart-5': '#c83b3b',
+            'chart-6': '#966aff',
+            radius: '8px',
+            'font-sans': 'system-ui,sans-serif',
+            'font-mono': 'monospace',
           };
-        }>('Runtime.evaluate', {
-          expression: 'globalThis.__htmlPreview',
-          returnByValue: true,
-        });
-        if (!size.result.value)
-          throw new HtmlReplyRefusal('HTML preview measurement failed');
-        const capture = size.result.value;
-        const contentHeight = capture.height;
+          const global = await send<{
+            result: { objectId?: string };
+            exceptionDetails?: unknown;
+          }>('Runtime.evaluate', { expression: 'globalThis' });
+          if (global.exceptionDetails || !global.result.objectId)
+            throw new HtmlReplyRefusal('HTML preview bootstrap failed');
+          const evaluated = await send<{ exceptionDetails?: unknown }>(
+            'Runtime.callFunctionOn',
+            {
+              objectId: global.result.objectId,
+              functionDeclaration: PREVIEW_BOOTSTRAP,
+              arguments: [document, token, theme, appearance].map((value) => ({
+                value,
+              })),
+              awaitPromise: true,
+              returnByValue: true,
+            },
+          );
+          if (evaluated.exceptionDetails)
+            throw new HtmlReplyRefusal('HTML preview bootstrap failed');
+          const size = await send<{
+            result: {
+              value?: {
+                height: number;
+                entries: { level: string; text: string; stack?: string }[];
+                exceeded: boolean;
+              };
+            };
+          }>('Runtime.evaluate', {
+            expression: 'globalThis.__htmlPreview',
+            returnByValue: true,
+          });
+          if (!size.result.value)
+            throw new HtmlReplyRefusal('HTML preview measurement failed');
+          const capture = size.result.value;
+          const contentHeight = capture.height;
+          if (
+            !Number.isInteger(contentHeight) ||
+            typeof contentHeight !== 'number' ||
+            contentHeight < 1 ||
+            contentHeight > LIMIT.height
+          )
+            throw new HtmlReplyRefusal(
+              'HTML preview content height exceeds 2000 pixels or is invalid',
+            );
+          if (capture.exceeded)
+            throw new HtmlReplyRefusal(
+              'HTML preview console exceeds 128 entries or 64 KiB',
+            );
+          await send('Emulation.setDeviceMetricsOverride', {
+            width,
+            height: contentHeight,
+            deviceScaleFactor: 1,
+            mobile: false,
+          });
+          const png = await send<{ data: string }>('Page.captureScreenshot', {
+            format: 'png',
+            captureBeyondViewport: false,
+          });
+          if (Buffer.byteLength(png.data, 'base64') > LIMIT.pngBytes)
+            throw new HtmlReplyRefusal('HTML preview screenshot exceeds 8 MiB');
+          if (capture.exceeded)
+            throw new HtmlReplyRefusal(
+              'HTML preview console exceeds its limit',
+            );
+          return {
+            png: png.data,
+            contentHeight,
+            width,
+            console: capture.entries,
+          };
+        };
+        const running = work();
+        workPromise = running;
+        diagnostic.phase('primary', 'STARTED');
+        const result = await Promise.race([running, timeout]);
+        diagnostic.phase('primary', 'RESOLVED');
+        return result;
+      } catch (error) {
+        diagnostic.phase('primary', 'REJECTED');
         if (
-          !Number.isInteger(contentHeight) ||
-          typeof contentHeight !== 'number' ||
-          contentHeight < 1 ||
-          contentHeight > LIMIT.height
+          error instanceof BrowserHostPolicyError &&
+          error.code === 'webrtc-policy-unverified'
         )
           throw new HtmlReplyRefusal(
-            'HTML preview content height exceeds 2000 pixels or is invalid',
+            'HTML preview requires effective WebRTC policy disable_non_proxied_udp without URL overrides. This browser is unsupported or enterprise policy overrides the profile.',
           );
-        if (capture.exceeded)
-          throw new HtmlReplyRefusal(
-            'HTML preview console exceeds 128 entries or 64 KiB',
+        throw error;
+      } finally {
+        if (timer) clearTimeout(timer);
+        diagnostic.phase('shutdown', 'STARTED');
+        await host.shutdown().catch((error) => {
+          diagnostic.phase('shutdown', 'REJECTED');
+          throw error;
+        });
+        diagnostic.phase('shutdown', 'RESOLVED');
+        if (workPromise) diagnostic.phase('workSettlement', 'STARTED');
+        await workPromise?.catch(() => {});
+        if (workPromise) diagnostic.phase('workSettlement', 'RESOLVED');
+        if (directory) {
+          diagnostic.phase('profileRemoval', 'STARTED');
+          await rm(directory, { recursive: true, force: true }).catch(
+            (error) => {
+              diagnostic.phase('profileRemoval', 'REJECTED');
+              throw error;
+            },
           );
-        await send('Emulation.setDeviceMetricsOverride', {
-          width,
-          height: contentHeight,
-          deviceScaleFactor: 1,
-          mobile: false,
-        });
-        const png = await send<{ data: string }>('Page.captureScreenshot', {
-          format: 'png',
-          captureBeyondViewport: false,
-        });
-        if (Buffer.byteLength(png.data, 'base64') > LIMIT.pngBytes)
-          throw new HtmlReplyRefusal('HTML preview screenshot exceeds 8 MiB');
-        if (capture.exceeded)
-          throw new HtmlReplyRefusal('HTML preview console exceeds its limit');
-        return {
-          png: png.data,
-          contentHeight,
-          width,
-          console: capture.entries,
-        };
-      };
-      const running = work();
-      workPromise = running;
-      return await Promise.race([running, timeout]);
+          diagnostic.phase('profileRemoval', 'RESOLVED');
+        }
+        this.active--;
+        diagnostic.phase('slotRelease', 'RESOLVED');
+      }
     } catch (error) {
-      if (
-        error instanceof BrowserHostPolicyError &&
-        error.code === 'webrtc-policy-unverified'
-      )
-        throw new HtmlReplyRefusal(
-          'HTML preview requires effective WebRTC policy disable_non_proxied_udp without URL overrides. This browser is unsupported or enterprise policy overrides the profile.',
-        );
+      diagnostic.phase('surfaced', 'REJECTED');
       throw error;
     } finally {
-      if (timer) clearTimeout(timer);
-      await host.shutdown();
-      await workPromise?.catch(() => {});
-      if (directory) await rm(directory, { recursive: true, force: true });
-      this.active--;
+      diagnostic.finish();
     }
   }
 }

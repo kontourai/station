@@ -54,7 +54,7 @@ export interface PlatformProfile {
   isDevBuild: boolean;
   /** Configured local Tauri package identity, never remote Station branding. */
   productName?: string;
-  channel?: 'stable' | 'dev' | 'beta' | 'nightly';
+  channel?: 'stable' | 'dev' | 'nightly';
   /** Native scheme selected by this installed client, never a backend URL. */
   pairingDeepLinkScheme?: string;
   /** Build evidence for this native app, never the connected Station host. */
@@ -177,6 +177,10 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
 let profileRepository: NativeStationProfileStorage | null = null;
 let nativeBootstrapRecoveryError: string | undefined;
 
+/** Safe copy for a mobile launch whose saved Station the host would not authorize. */
+const LAUNCH_AUTHORIZATION_FAILURE =
+  'Station couldn’t reconnect to your saved Station. Open Connections to pair this device again.';
+
 export function nativeProfileRepository(): NativeStationProfileStorage {
   if (!profileRepository)
     throw new Error('The native Station list is not ready yet.');
@@ -237,10 +241,22 @@ const profileReady: Promise<PlatformProfile> = platformResolution.then(
         const { deviceSettingsStore } = await import(
           '../lib/device-settings-store'
         );
-        if (deviceSettingsStore.get('openLastStationOnLaunch')) {
-          await profileRepository.authorizeRememberedProfile();
-        } else {
-          await profileRepository.authorizeDefaultProfile(true);
+        // The same holds on mobile: a re-pairing interrupted before its final
+        // write leaves the launch Station requires-auth, and the host refuses
+        // to authorize it on every later start. Record that instead of failing
+        // the whole start, so the shell mounts and Connections is reachable.
+        try {
+          if (deviceSettingsStore.get('openLastStationOnLaunch')) {
+            await profileRepository.authorizeRememberedProfile();
+          } else {
+            await profileRepository.authorizeDefaultProfile(true);
+          }
+        } catch (error) {
+          console.warn(
+            'The launch Station could not be authorized; starting without it.',
+            error,
+          );
+          nativeBootstrapRecoveryError = LAUNCH_AUTHORIZATION_FAILURE;
         }
       }
       // Ask for notification permission here rather than when one arrives: a
@@ -439,6 +455,25 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     };
   }, [profile]);
 
+  // The installed app (native mobile shell or a home-screen web app) does not
+  // page-zoom; a browser tab keeps pinch zoom. See `installedAppZoom.ts`,
+  // loaded lazily so the lock and its stylesheet stay out of the entry chunk.
+  useEffect(() => {
+    let disposed = false;
+    let release: (() => void) | undefined;
+    void import('./installedAppZoom').then((zoom) => {
+      if (disposed) return;
+      release = zoom.setInstalledAppZoomLock(
+        Boolean(profile?.isMobile && profile.isTauri) ||
+          zoom.isStandaloneDisplay(),
+      );
+    });
+    return () => {
+      disposed = true;
+      release?.();
+    };
+  }, [profile]);
+
   useEffect(() => {
     if (!profile?.isMobile || !profile.isTauri) return;
     let disposed = false;
@@ -458,15 +493,21 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   // render, and a stale tint would be a lie about which app is on screen.
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.appChannel = profile?.channel ?? 'stable';
+    if (profile?.channel) root.dataset.appChannel = profile.channel;
+    else delete root.dataset.appChannel;
     root.classList.toggle('is-dev-build', profile?.isDevBuild === true);
     // Remember which mark this install shows, so public/startup-theme.js can
     // put it on the next launch's splash before the host report arrives.
     if (profile) {
-      const mark = profile.isDevBuild ? 'dev' : (profile.channel ?? 'stable');
-      root.dataset.startupMark = mark;
+      const mark = profile.isDevBuild ? 'dev' : profile.channel;
       try {
-        localStorage.setItem('station-startup-mark', mark);
+        if (mark) {
+          root.dataset.startupMark = mark;
+          localStorage.setItem('station-startup-mark', mark);
+        } else {
+          delete root.dataset.startupMark;
+          localStorage.removeItem('station-startup-mark');
+        }
       } catch {
         // Storage can be unavailable in a WebView; the splash then shows
         // the stable mark until the report arrives, as on a first launch.

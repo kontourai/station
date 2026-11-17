@@ -15,6 +15,7 @@ let pendingCount = 0;
 let connectionStatus: 'connected' | 'connecting' | 'error' = 'connected';
 let connectionReason: string | null = null;
 let connectionFailureStreak = 0;
+let connectionCheckedAt: number | null = null;
 let bundledStatus: { ownership: 'sidecar' | 'service' | 'none' } | null = null;
 // archive#4512 — null unless a test arms a locally-tracked pending access
 // request; `usePendingPairingApproval` is otherwise stubbed to whatever this
@@ -44,6 +45,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
     status: connectionStatus,
     reason: connectionReason,
     failureStreak: connectionFailureStreak,
+    checkedAt: connectionCheckedAt,
     recheck,
   }),
   useConnections: () => ({
@@ -94,6 +96,33 @@ import {
   OPEN_CONNECTIONS_MODAL_EVENT,
 } from '../lib/connectionModalEvents';
 import { readRecentStations } from '../lib/stationSwitcher';
+
+test("the chooser's current Station says why its health check failed and when it ran", async () => {
+  connectionStatus = 'error';
+  connectionReason = 'timeout';
+  connectionFailureStreak = 3;
+  connectionCheckedAt = Date.now() - 2 * 60_000;
+  try {
+    renderHeader();
+    // A failing chip is named for managing Stations, and still opens the chooser.
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Manage Stations — Can't connect/ }),
+    );
+    expect(
+      await screen.findByRole('menuitemradio', {
+        name: /· no answer in time · checked 2m ago$/,
+      }),
+    ).toBeTruthy();
+  } finally {
+    connectionStatus = 'connected';
+    connectionReason = null;
+    connectionFailureStreak = 0;
+    connectionCheckedAt = null;
+    // Tapping a failing chip re-probes; that is not this test's subject.
+    recheck.mockClear();
+    cleanup();
+  }
+});
 
 test('Manage hands the manager a surviving header opener', async () => {
   const onOpenConnections = vi.fn(() => document.activeElement);

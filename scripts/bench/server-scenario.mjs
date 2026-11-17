@@ -26,7 +26,6 @@ import { STATION_SERVER_EXTERNALS } from '../lib/server-build-config.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const git = (root, ...args) =>
   execFileSyncBounded('git', args, {
     cwd: root,
@@ -102,7 +101,7 @@ function children(pid) {
 }
 
 /**
- * @typedef {{ elapsedMs: number, cpuMs: number, requests: number, rssBytes: number, eventLoopDelayMs: { samples: number, p50: number|null, p99: number|null, max: number|null }, latencyMs?: number, eventCount?: number, imageCount?: number, sessionCount?: number, hasMore?: boolean, childProcessCount?: number }} ScenarioPhase
+ * @typedef {{ elapsedMs: number, cpuMs: number, requests: number, rssBytes: number, sampleSettlementMs: number, eventLoopDelayMs: { samples: number, p50: number|null, p99: number|null, max: number|null }, latencyMs?: number, eventCount?: number, imageCount?: number, sessionCount?: number, hasMore?: boolean, childProcessCount?: number }} ScenarioPhase
  * @typedef {{ outcome: string, spawnToReadyMs: number, spawnToBootMs: number, fixture: { sessions: number, events: number, images: number }, phases: Record<string, ScenarioPhase>, cleanup: { settled: boolean } }} ServerScenarioReceipt
  */
 
@@ -223,6 +222,10 @@ export async function runServerScenario({
     },
     instrumentation: {
       eventLoopResolutionMs: 1,
+      sampleWindow:
+        'probe reset (preload for startup) through actual sample observation; includes sampler settlement',
+      sampleSettlement:
+        'child monotonic time from sample IPC handling to actual histogram observation; not IPC round trip',
       idle: 'process.cpuUsage delta; no HTTP polling',
       startup:
         'spawn to structured listening handshake; excludes build and seed',
@@ -297,20 +300,101 @@ export async function runServerScenario({
     const probe = (action) =>
       new Promise((done, reject) => {
         const id = ++sequence;
-        const timer = setTimeout(() => {
-          server.off('message', onMessage);
-          reject(Error(`probe ${action} timed out`));
-        }, 30_000);
-        function onMessage(value) {
-          if (value?.type !== 'server-scenario-probe' || value.id !== id)
-            return;
+        const deadline = performance.now() + 30_000;
+        let settled = false;
+        const finish = (error, sample) => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timer);
           server.off('message', onMessage);
+          server.off('exit', onExit);
+          server.off('disconnect', onDisconnect);
+          controller.signal.removeEventListener('abort', onAbort);
+          sample === undefined ? reject(error) : done(sample);
+        };
+        const cancel = () => {
+          if (!server.connected) return;
+          try {
+            server.send(
+              { type: 'server-scenario-probe', id, action: 'cancel' },
+              () => {},
+            );
+          } catch {
+            // Cancellation is best effort; owned-process cleanup is authoritative.
+          }
+        };
+        const refuse = (error) => {
+          cancel();
+          finish(error);
+        };
+        const canAccept = () => {
+          if (settled) return false;
+          if (controller.signal.aborted) {
+            refuse(controller.signal.reason);
+            return false;
+          }
+          if (performance.now() >= deadline) {
+            refuse(Error(`probe ${action} timed out`));
+            return false;
+          }
+          return true;
+        };
+        let timer;
+        const onDeadline = () => {
+          if (!canAccept()) return;
+          timer = setTimeout(
+            onDeadline,
+            Math.max(1, deadline - performance.now()),
+          );
+        };
+        timer = setTimeout(
+          onDeadline,
+          Math.max(1, deadline - performance.now()),
+        );
+        const onExit = () =>
+          finish(
+            controller.signal.aborted
+              ? controller.signal.reason
+              : Error(`server exited during probe ${action}`),
+          );
+        const onDisconnect = () =>
+          finish(
+            controller.signal.aborted
+              ? controller.signal.reason
+              : Error(`server disconnected during probe ${action}`),
+          );
+        const onAbort = () => refuse(controller.signal.reason);
+        function onMessage(value) {
+          if (!canAccept()) return;
+          if (value?.type !== 'server-scenario-probe' || value.id !== id)
+            return;
+          if (value.error) {
+            const error = Error(value.error);
+            if (canAccept()) finish(error);
+            return;
+          }
           const { type: _type, id: _id, ...sample } = value;
-          done(sample);
+          if (canAccept()) finish(undefined, sample);
         }
         server.on('message', onMessage);
-        server.send({ type: 'server-scenario-probe', id, action });
+        server.once('exit', onExit);
+        server.once('disconnect', onDisconnect);
+        controller.signal.addEventListener('abort', onAbort, { once: true });
+        if (!canAccept()) return;
+        if (!server.connected) return onDisconnect();
+        const remainingBudgetMs = deadline - performance.now();
+        if (!canAccept()) return;
+        try {
+          server.send(
+            { type: 'server-scenario-probe', id, action, remainingBudgetMs },
+            (error) => {
+              if (!canAccept()) return;
+              if (error) finish(error);
+            },
+          );
+        } catch (error) {
+          if (canAccept()) finish(error);
+        }
       });
     await new Promise((done, reject) => {
       let buffer = '';
@@ -382,8 +466,6 @@ export async function runServerScenario({
       const start = performance.now();
       const facts = await action();
       const elapsedMs = performance.now() - start;
-      // Let a pending histogram tick observe a synchronous request stall.
-      await sleep(5);
       receipt.phases[name] = {
         ...(await probe('sample')),
         latencyMs: elapsedMs,

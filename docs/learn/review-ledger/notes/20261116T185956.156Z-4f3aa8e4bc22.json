@@ -1,0 +1,47 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Checked pages citing pairing-route-scopes: the change only declares POST /api/projects/:slug/lifecycle and GET /api/projects/:slug/deletion-preview in the existing /api/projects family tier, beside DELETE /:slug. No page enumerates the projects family leaves in a way this contradicts.","inputs":["src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

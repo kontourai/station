@@ -1,3 +1,4 @@
+import { childWorkKindOf } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
@@ -5,6 +6,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -15,11 +17,15 @@ import {
   backgroundTaskElapsedMs,
   TaskRow,
 } from '../components/chat-dock/backgroundTaskRows';
+import { DisclosureToggle } from '../components/DisclosureToggle';
 import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useClientBootstrapReadiness } from '../contexts/AuthorityPersistenceContext';
-import type { ChatUIState } from '../contexts/active-chats-state';
+import {
+  activeChatDurableId,
+  type ChatUIState,
+} from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   type BackgroundTaskEntry,
@@ -41,29 +47,39 @@ import { useElapsedClock } from '../hooks/useElapsedClock';
 import { sessionIconAgent } from '../utils/sessionDisplay';
 import { ChildWorkRow } from './agents/ChildWorkRow';
 import {
+  type AllChatsGroup,
+  type AllChatsRow,
   type ChildWorkListView,
   type ChildWorkRowModel,
   type ChildWorkScope,
   type ChildWorkSelectorInput,
+  countWork,
   emptyStateFor,
+  isListedTaskCard,
+  selectAllChatsWork,
   selectChatChildWork,
   selectGlobalChildWork,
   subagentNoticeFor,
   threadInChat,
   uniqueChatKey,
+  workCountLabel,
 } from './agents/childWorkSelectors';
 import './agents/AgentsWorkspacePane.css';
 
 /**
- * The Agents pane (#2050, #2459): the work the conversation on screen set
- * running, or every conversation's child work.
+ * The Agents pane (#2050, #2459): the work the chat on screen set running,
+ * or every chat's.
  *
- * "This conversation" reads the chat's tool calls and delegated tasks from
- * the background-tasks store through `TaskRow` — the SAME list, live and
+ * "This chat" reads the chat's tool calls and delegated tasks from the
+ * background-tasks store through `TaskRow` — the SAME list, live and
  * bounded, that the dock's badge counts and the sheet shows — and the chat's
  * engine subagents from the child-work contract through `ChildWorkRow`.
- * "All" reads every delegate from the session read model and every engine
- * subagent from the window-wide child-work registry.
+ * "All chats" reads every delegate from the session read model, every engine
+ * subagent from the window-wide child-work registry, and every chat's
+ * tool-call and delegated-task cards from the same background-tasks store,
+ * so it lists at least what any one chat lists. It groups that work by chat.
+ * The store holds what this window has seen: tool calls from when it
+ * connected, and finished ones only while their chat is open.
  *
  * One bridge, and it retires itself: a running engine subagent whose child
  * item carries the pre-contract per-task stop seam (Claude's legacy path),
@@ -81,7 +97,34 @@ import './agents/AgentsWorkspacePane.css';
  */
 
 const SCOPE_STORAGE_KEY = 'station.agents-pane.scope';
+const COLLAPSED_STORAGE_KEY = 'station.agents-pane.collapsed-chats';
+/** Remembered collapsed chats, newest last; older ones are forgotten. */
+const COLLAPSED_LIMIT = 100;
 const EMPTY_SESSIONS: OrchestrationSessionSummary[] = [];
+
+function readCollapsed(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      localStorage.getItem(COLLAPSED_STORAGE_KEY) ?? '[]',
+    );
+    return Array.isArray(parsed)
+      ? parsed.filter((key): key is string => typeof key === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCollapsed(keys: readonly string[]): void {
+  try {
+    localStorage.setItem(
+      COLLAPSED_STORAGE_KEY,
+      JSON.stringify(keys.slice(-COLLAPSED_LIMIT)),
+    );
+  } catch {
+    /* Remembered collapse is a convenience; storage failure must not break the pane. */
+  }
+}
 
 function readScope(): ChildWorkScope | undefined {
   try {
@@ -114,6 +157,7 @@ function chatIndexSignature(chats: Record<string, ChatUIState>): string {
         chat.conversationId ?? '',
         chat.orchestrationProvider ?? '',
         chat.title ?? '',
+        chat.projectName ?? '',
       ].join('\u0000'),
     )
     .join('\u0001');
@@ -135,7 +179,10 @@ function useChildWorkInput(
   sessions: readonly OrchestrationSessionSummary[],
   global: GlobalChildWorkState,
   apiBase: string,
-): ChildWorkSelectorInput {
+): {
+  input: ChildWorkSelectorInput;
+  tasks: ReturnType<typeof backgroundTasksStore.getSnapshot>;
+} {
   const readTasks = useCallback(
     () => backgroundTasksStore.getSnapshot(apiBase),
     [apiBase],
@@ -150,7 +197,7 @@ function useChildWorkInput(
     readChatIndexSignature,
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: chatSignature is the change signal for the chat-store reads below.
-  return useMemo(
+  const input = useMemo(
     () => ({
       sessions,
       engine: global.registry,
@@ -161,13 +208,20 @@ function useChildWorkInput(
         uniqueChatKey(activeChatsStore.getSnapshot(), threadId),
       chatFacts: (chatKey: string) => {
         const chat = activeChatsStore.getSnapshot()[chatKey];
-        return { provider: chat?.orchestrationProvider, title: chat?.title };
+        return {
+          provider: chat?.orchestrationProvider,
+          title: chat?.title,
+          project: chat?.projectName,
+          durableId: activeChatDurableId(chatKey, chat),
+        };
       },
+      reporterChatOf: (threadId: string) => tasks.providerReporters?.[threadId],
       toolCallStartedAt: (toolCallId: string) =>
         tasks.entries[toolCallId]?.startedAt,
     }),
     [sessions, global, tasks, chatSignature],
   );
+  return { input, tasks };
 }
 
 /** The engine subagent a provider-task card stands for, in the global registry. */
@@ -198,7 +252,12 @@ export function AgentsWorkspacePane() {
   const sessionsQuery = useOrchestrationSessionsQuery();
   const sessions = sessionsQuery.data ?? EMPTY_SESSIONS;
   const global = useChildWorkPartition(apiBase);
-  const input = useChildWorkInput(sessions, global, apiBase);
+  const { input, tasks: tasksState } = useChildWorkInput(
+    sessions,
+    global,
+    apiBase,
+  );
+  const [collapsed, setCollapsed] = useState(readCollapsed);
   const showSurface = useShowSurface();
 
   // #2307, the mechanism ChatDock uses: register this authority's client
@@ -295,17 +354,50 @@ export function AgentsWorkspacePane() {
   // Per chat, tool calls AND delegated tasks are the background-tasks
   // store's cards, exactly as the badge and the sheet select them.
   const isTaskRow = (entry: BackgroundTaskEntry) =>
-    entry.source === 'delegate-session' ||
-    (entry.source === 'tool-event' && !spawningToolCalls.has(entry.id));
+    isListedTaskCard(entry, spawningToolCalls);
   const taskRunning =
     scope === 'chat' ? [...tools.running.filter(isTaskRow), ...bridged] : [];
   const taskFinished = scope === 'chat' ? tools.finished.filter(isTaskRow) : [];
 
-  const runningCount = taskRunning.length + childRunning.length;
-  const finishedCount = taskFinished.length + view.finished.length;
-  const finishedHasSubagents = view.finished.some(
-    (row) => row.item.producer === 'engine-subagent',
+  const allChats = useMemo(
+    () =>
+      scope === 'all'
+        ? selectAllChatsWork(
+            input,
+            view,
+            Object.values(tasksState.entries),
+            chatKey ?? undefined,
+          )
+        : undefined,
+    [scope, input, view, tasksState, chatKey],
   );
+
+  const runningRows: AllChatsRow[] = allChats
+    ? allChats.groups.flatMap((group) => group.running)
+    : [
+        ...taskRunning.map((entry) => {
+          // A bridged card stands for an engine child; count it as one.
+          const item =
+            entry.source === 'provider-task'
+              ? engineItemFor(global, entry)
+              : undefined;
+          return {
+            kind: 'task' as const,
+            entry,
+            ...(item ? { workKind: childWorkKindOf(item) } : {}),
+          };
+        }),
+        ...childRunning.map((row) => ({ kind: 'child' as const, row })),
+      ];
+  const finishedRows: AllChatsRow[] = allChats
+    ? allChats.groups.flatMap((group) => group.finished)
+    : [
+        ...view.finished.map((row) => ({ kind: 'child' as const, row })),
+        ...taskFinished.map((entry) => ({ kind: 'task' as const, entry })),
+      ];
+  const runningCount = runningRows.length;
+  const finishedCount = finishedRows.length;
+  const finishedOmitted = allChats?.finishedOmitted ?? view.finishedOmitted;
 
   // The shared elapsed clock for every Running row, only while one runs.
   const now = useElapsedClock(runningCount > 0);
@@ -329,7 +421,7 @@ export function AgentsWorkspacePane() {
       : undefined;
 
   const openSession = (threadId: string) =>
-    showSurface('activity', { session: threadId });
+    showSurface('chat', { session: threadId });
 
   const sessionByThread = useMemo(
     () => new Map(sessions.map((session) => [session.threadId, session])),
@@ -339,7 +431,24 @@ export function AgentsWorkspacePane() {
     const session = threadId ? sessionByThread.get(threadId) : undefined;
     return session ? sessionIconAgent(session, agents) : undefined;
   };
-  const childRow = (row: ChildWorkRowModel) => (
+  const taskRow = (entry: BackgroundTaskEntry) => (
+    <TaskRow
+      key={entry.id}
+      entry={entry}
+      agent={delegateIcon(entry.delegateThreadId)}
+      provider={
+        sessionByThread.get(
+          entry.sessionThreadId ?? entry.delegateThreadId ?? '',
+        )?.provider
+      }
+      elapsedMs={backgroundTaskElapsedMs(entry, now)}
+      // Every row in this pane carries its status, as `ChildWorkRow` does:
+      // All mixes running and finished work in one chat's group.
+      outcomeChip={entry.state}
+      onOpenTranscript={openSession}
+    />
+  );
+  const childRow = (row: ChildWorkRowModel, showProvenance: boolean) => (
     <ChildWorkRow
       key={row.key}
       row={row}
@@ -350,10 +459,47 @@ export function AgentsWorkspacePane() {
           ? delegateIcon(row.item.childId)
           : undefined
       }
-      showProvenance={scope === 'all'}
+      showProvenance={showProvenance}
       onOpenSession={openSession}
+      onOpenChild={(item, title) => {
+        if (item.producer === 'station-delegate') {
+          const handle = item.result?.handle;
+          const sessionId =
+            handle?.kind === 'session' ? handle.threadId : item.childId;
+          showSurface(
+            'chat',
+            item.reporterThreadId === sessionId
+              ? { session: sessionId }
+              : {
+                  session: item.reporterThreadId,
+                  childSessionId: sessionId,
+                  childTitle: title,
+                },
+          );
+        } else
+          showSurface('chat', {
+            session: item.reporterThreadId,
+            childId: item.childId,
+            childTitle: title,
+          });
+      }}
     />
   );
+  // Inside a chat's group the chat is the heading; only work from outside
+  // any chat says where it came from.
+  const workRow = (row: AllChatsRow, showProvenance: boolean) =>
+    row.kind === 'task'
+      ? taskRow(row.entry)
+      : childRow(row.row, showProvenance);
+
+  const toggleGroup = (key: string) =>
+    setCollapsed((current) => {
+      const next = current.includes(key)
+        ? current.filter((entry) => entry !== key)
+        : [...current, key];
+      writeCollapsed(next);
+      return next;
+    });
 
   // "All" reads delegates from the session read model. Until it answers, or
   // when it cannot, an empty list is not "no agent work".
@@ -363,6 +509,22 @@ export function AgentsWorkspacePane() {
   const readModelStale =
     scope === 'all' && !readModelPending && sessionsQuery.isError === true;
   const retry = () => void sessionsQuery.refetch();
+  const toolHistoryLimited =
+    scope === 'chat'
+      ? tools.toolHistoryLimited === true
+      : Object.keys(tasksState.limitedToolChats ?? {}).length > 0;
+
+  const sectionLabel = (label: string, rows: readonly AllChatsRow[]) => (
+    <h3 className="background-tasks-sheet__section-label">
+      <span>{label}</span>{' '}
+      <span className="agents-pane__section-qualifier">
+        · {workCountLabel(countWork(rows))}
+        {scope === 'chat' && toolHistoryLimited && label === 'Running'
+          ? ' shown'
+          : ''}
+      </span>
+    </h3>
+  );
 
   const nothing = runningCount === 0 && finishedCount === 0;
   let body: ReactNode;
@@ -378,7 +540,7 @@ export function AgentsWorkspacePane() {
         description="Delegated tasks come from this Station's session list, which did not answer."
         action={
           <Button size="sm" onClick={retry}>
-            Try again
+            Retry
           </Button>
         }
       />
@@ -411,7 +573,7 @@ export function AgentsWorkspacePane() {
           <p className="agents-pane__note" role="status">
             Delegated tasks could not be loaded.{' '}
             <Button size="sm" variant="link" onClick={retry}>
-              Try again
+              Retry
             </Button>
           </p>
         )}
@@ -419,77 +581,77 @@ export function AgentsWorkspacePane() {
           <p className="agents-pane__note" role="status">
             Delegated tasks may be out of date: the last refresh failed.{' '}
             <Button size="sm" variant="link" onClick={retry}>
-              Try again
+              Retry
             </Button>
           </p>
         )}
         {readModelPending && !readModelFailed && (
           <SkeletonBlock count={1} label="Loading delegated tasks" />
         )}
-        {tools.toolHistoryLimited && (
+        {toolHistoryLimited && (
           <p className="agents-pane__note" role="status">
             Older tool rows are omitted. Running counts cover retained rows.
           </p>
         )}
-        {runningCount > 0 && (
-          <section className="background-tasks-sheet__section">
-            <h3 className="background-tasks-sheet__section-label">
-              Running ({runningCount}
-              {scope === 'chat' && tools.toolHistoryLimited ? ' shown' : ''})
-            </h3>
-            <ul className="background-tasks-sheet__list">
-              {taskRunning.map((entry) => (
-                <TaskRow
-                  key={entry.id}
-                  entry={entry}
-                  agent={delegateIcon(entry.delegateThreadId)}
-                  provider={
-                    sessionByThread.get(
-                      entry.sessionThreadId ?? entry.delegateThreadId ?? '',
-                    )?.provider
-                  }
-                  elapsedMs={backgroundTaskElapsedMs(entry, now)}
-                  onOpenTranscript={openSession}
-                />
-              ))}
-              {childRunning.map(childRow)}
-            </ul>
-          </section>
-        )}
-        {finishedCount > 0 && (
-          <section className="background-tasks-sheet__section">
-            <h3 className="background-tasks-sheet__section-label">
-              <span>Finished ({finishedCount})</span>
-              {finishedHasSubagents && (
-                <span className="agents-pane__section-qualifier">
-                  subagents: recent history
-                </span>
+        {allChats ? (
+          <>
+            <p className="agents-pane__summary">
+              {runningCount > 0 && (
+                <span>Running: {workCountLabel(countWork(runningRows))}</span>
               )}
-            </h3>
-            <ul className="background-tasks-sheet__list">
-              {view.finished.map(childRow)}
-              {taskFinished.map((entry) => (
-                <TaskRow
-                  key={entry.id}
-                  entry={entry}
-                  agent={delegateIcon(entry.delegateThreadId)}
-                  provider={
-                    sessionByThread.get(
-                      entry.sessionThreadId ?? entry.delegateThreadId ?? '',
-                    )?.provider
-                  }
-                  elapsedMs={backgroundTaskElapsedMs(entry, now)}
-                  outcomeChip={entry.state}
-                  onOpenTranscript={openSession}
-                />
-              ))}
-            </ul>
-            {view.finishedOmitted > 0 && (
+              {finishedCount > 0 && (
+                <span>Finished: {workCountLabel(countWork(finishedRows))}</span>
+              )}
+            </p>
+            {allChats.groups.map((group) => (
+              <ChatWorkGroup
+                key={group.key}
+                group={group}
+                collapsed={collapsed.includes(group.key)}
+                onToggle={() => toggleGroup(group.key)}
+                onOpen={openSession}
+              >
+                {group.running.map((row) => workRow(row, group.outsideChat))}
+                {group.finished.map((row) => workRow(row, group.outsideChat))}
+              </ChatWorkGroup>
+            ))}
+            {finishedOmitted > 0 && (
               <p className="agents-pane__note">
-                {view.finishedOmitted} older not shown.
+                {finishedOmitted} older delegated tasks not shown.
               </p>
             )}
-          </section>
+            {[...runningRows, ...finishedRows].some(
+              (row) => row.kind === 'task' && row.entry.kind === 'tool',
+            ) && (
+              <p className="agents-pane__note">
+                Tool calls are listed from when this window opened.
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            {runningCount > 0 && (
+              <section className="background-tasks-sheet__section">
+                {sectionLabel('Running', runningRows)}
+                <ul className="background-tasks-sheet__list">
+                  {runningRows.map((row) => workRow(row, false))}
+                </ul>
+              </section>
+            )}
+            {finishedCount > 0 && (
+              <section className="background-tasks-sheet__section">
+                {sectionLabel('Finished', finishedRows)}
+                <ul className="background-tasks-sheet__list">
+                  {finishedRows.map((row) => workRow(row, false))}
+                </ul>
+                {finishedOmitted > 0 && (
+                  <p className="agents-pane__note">
+                    {finishedOmitted} older not shown.
+                  </p>
+                )}
+              </section>
+            )}
+          </>
         )}
       </div>
     );
@@ -506,7 +668,7 @@ export function AgentsWorkspacePane() {
           disabled={!chatKey}
           onClick={() => chooseScope('chat')}
         >
-          This conversation
+          This chat
         </Button>
         <Button
           size="sm"
@@ -515,11 +677,88 @@ export function AgentsWorkspacePane() {
           aria-pressed={scope === 'all'}
           onClick={() => chooseScope('all')}
         >
-          All
+          All chats
         </Button>
       </fieldset>
       {body}
     </div>
+  );
+}
+
+/**
+ * One chat's work in "All chats": a collapsible group whose title opens the
+ * chat. Work started outside any chat has no chat to open.
+ */
+function ChatWorkGroup({
+  group,
+  collapsed,
+  onToggle,
+  onOpen,
+  children,
+}: {
+  group: AllChatsGroup;
+  collapsed: boolean;
+  onToggle: () => void;
+  onOpen: (threadId: string) => void;
+  children: ReactNode;
+}) {
+  const listId = `agents-pane-group-${useId()}`;
+  const title = group.outsideChat
+    ? 'Started outside a chat'
+    : (group.title ?? 'Untitled chat');
+  const counts = [
+    ...(group.running.length > 0 ? [`${group.running.length} running`] : []),
+    ...(group.finished.length > 0 ? [`${group.finished.length} finished`] : []),
+  ].join(' · ');
+  const openThreadId = group.openThreadId;
+  return (
+    <section
+      className="background-tasks-sheet__section agents-pane__group"
+      data-current={group.current ? 'true' : undefined}
+    >
+      <div className="agents-pane__group-header">
+        <DisclosureToggle
+          expanded={!collapsed}
+          onToggle={onToggle}
+          controls={collapsed ? undefined : listId}
+          className="agents-pane__group-toggle"
+        >
+          <span className="sr-only">
+            {collapsed ? 'Expand' : 'Collapse'} {title}
+          </span>
+        </DisclosureToggle>
+        <span className="agents-pane__group-text">
+          <h3 className="agents-pane__group-heading">
+            {openThreadId && !group.outsideChat ? (
+              <button
+                type="button"
+                className="agents-pane__group-title"
+                // Distinct from the caret's "Collapse …"; starts with the
+                // visible title's words after the verb.
+                aria-label={`Open ${title}`}
+                onClick={() => onOpen(openThreadId)}
+              >
+                {title}
+              </button>
+            ) : (
+              <span className="agents-pane__group-title">{title}</span>
+            )}
+          </h3>
+          <span className="agents-pane__group-meta">
+            {[
+              ...(group.current ? ['This chat'] : []),
+              ...(group.project ? [group.project] : []),
+              counts,
+            ].join(' · ')}
+          </span>
+        </span>
+      </div>
+      {!collapsed && (
+        <ul id={listId} className="background-tasks-sheet__list">
+          {children}
+        </ul>
+      )}
+    </section>
   );
 }
 

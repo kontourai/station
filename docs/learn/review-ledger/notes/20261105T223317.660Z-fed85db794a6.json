@@ -1,7 +1,0 @@
-{
-  "revision": "0532a3f4a0df84289eada6cdf15677942c5a2dda",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"connect-remote-auth-recovery still covers phone-sized connection access and auth recovery; only the pending-request assertion changed to the waiting-for-approval status.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-remote-auth-recovery.spec.ts"]}
-  ]
-}

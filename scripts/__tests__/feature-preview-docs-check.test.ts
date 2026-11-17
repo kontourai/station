@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -9,17 +9,10 @@ const script = join(root, 'scripts/feature-preview-docs-check.mjs');
 const registry =
   'src-server/services/feature-previews/feature-preview-registry.ts';
 const makeTempDir = trackTempDirs();
-// The copied registry offers this consumer itself, through rememberConsumer.
-const registryOffered = [
-  'integration-content-trust',
-  'task-review',
-  'continue-interrupted-turn',
-  'task-capabilities',
-  'task-collaboration',
-  'apps-library',
-  'chat-apps',
-  'visual-skills',
-];
+const registryFixture = `export class FeaturePreviewRegistry {
+  constructor(home: string, logger: unknown) {}
+  bind(definition: { id: string; label: string; description: string }) {}
+}`;
 
 function run(directory: string) {
   const result = spawnSyncBounded(process.execPath, [script, directory], {
@@ -33,14 +26,17 @@ function run(directory: string) {
   return { status: result.status, output: result.stdout + result.stderr };
 }
 
-function fixture(source: string, ids = ['example-preview']) {
+function fixture(
+  source: string,
+  ids = ['example-preview'],
+  registrySource = registryFixture,
+) {
   const directory = makeTempDir('station-preview-docs-');
   const write = (path: string, content: string) => {
     mkdirSync(dirname(join(directory, path)), { recursive: true });
     writeFileSync(join(directory, path), content);
   };
-  mkdirSync(dirname(join(directory, registry)), { recursive: true });
-  copyFileSync(join(root, registry), join(directory, registry));
+  write(registry, registrySource);
   write('src-server/consumer.ts', source);
   write(
     'docs/user/settings.md',
@@ -93,7 +89,7 @@ describe('feature preview documentation CLI', () => {
       // renamed.bind({ id: 'comment-preview' });
       const text = "renamed.bind({ id: 'string-preview' })";
     `,
-      ['example-preview', 'second-preview', ...registryOffered],
+      ['example-preview', 'second-preview'],
     );
     writeFileSync(
       join(directory, 'src-server/example.test.ts'),
@@ -101,9 +97,26 @@ describe('feature preview documentation CLI', () => {
     );
     const result = run(directory);
     expect(result.status, result.output).toBe(0);
-    expect(result.output).toContain(
-      `match ${2 + registryOffered.length} bound preview(s)`,
+    expect(result.output).toContain('match 2 bound preview(s)');
+  });
+
+  it('includes constructor consumers only when declared by the registry owner', () => {
+    const directory = fixture(
+      `${importRegistry}
+      const unrelated = { rememberConsumer(value: unknown) {} };
+      unrelated.rememberConsumer({ id: 'unrelated-preview' });`,
+      ['built-in-preview'],
+      `export class FeaturePreviewRegistry {
+        constructor() {
+          this.rememberConsumer({ id: 'built-in-preview', label: 'Built in', description: 'Built in' });
+        }
+        bind(definition: unknown) { this.rememberConsumer(definition); }
+        private rememberConsumer(definition: unknown) {}
+      }`,
     );
+    const result = run(directory);
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain('match 1 bound preview(s)');
   });
 
   it.each([

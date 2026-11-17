@@ -1,0 +1,7 @@
+{
+  "revision": "6184d08a9b6462c427979dfe509736ab6afbf351",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"After merging the handoff branch the failure table lists both new busy, retryable codes: continuation_source_active (this lane) and conversation_handoff_predecessor_busy (handoff); checked against PROVIDER_FAILURE_KINDS, PROVIDER_FAILURE_RETRYABLE and the pinned provider-failure test.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/provider-failure.ts"]}
+  ]
+}

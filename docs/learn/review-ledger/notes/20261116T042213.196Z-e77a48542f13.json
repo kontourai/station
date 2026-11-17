@@ -1,0 +1,45 @@
+{
+  "revision": "d9d748eaf38ba764377e78b91d6ea8655dd8e258",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against 6b156116f0: only the last origin hop is verified; origins are cleaned of control, escape, bidi and zero-width characters (cleanLabel); a blank origin is refused; length bounds keep the tail (boundLabelKeepingTail). Each is tested and fault-injected.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the paired-Station paragraph against the merged Switch agent dialog (6c8f7b6f5f) and the passing two-Station run, whose screenshots were reviewed.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts","src-ui/src/index.css"]},
+
+    {"path":"docs/architecture/module-map.md","note":"6b156116f0 cleans origin and sender labels with cleanLabel; behavior otherwise unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"6b156116f0 cleans origin and sender labels with cleanLabel; behavior otherwise unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"6b156116f0 cleans origin and sender labels with cleanLabel; behavior otherwise unchanged.","inputs":["src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/api.md","note":"6b156116f0: a deleted import answers a definite coded 409; an unreadable saved import stays 500 indeterminate.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"6b156116f0: a deleted import answers a definite coded 409; an unreadable saved import stays 500 indeterminate.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"importedFrom is bounded keeping its tail (the verified hop); paging unchanged.","inputs":["src-server/routes/chat/conversation-reference-read.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"importedFrom is bounded keeping its tail (the verified hop); paging unchanged.","inputs":["src-server/routes/chat/conversation-reference-read.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Only the owner-device bullet's handoff sentences changed; citing pages refer to other sections.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"This lane's change (readConversationCarriedMessages) is unchanged since its recorded review; the merge of feat/handoff-ux 57eed4e459 brought that lane's own edits, which its owner reviews.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"This lane's change (readConversationCarriedMessages) is unchanged since its recorded review; the merge of feat/handoff-ux 57eed4e459 brought that lane's own edits, which its owner reviews.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"This lane's change (readConversationCarriedMessages) is unchanged since its recorded review; the merge of feat/handoff-ux 57eed4e459 brought that lane's own edits, which its owner reviews.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"This lane's change (readConversationCarriedMessages) is unchanged since its recorded review; the merge of feat/handoff-ux 57eed4e459 brought that lane's own edits, which its owner reviews.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"This lane's change (readConversationCarriedMessages) is unchanged since its recorded review; the merge of feat/handoff-ux 57eed4e459 brought that lane's own edits, which its owner reviews.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"This lane adds only the optional ConversationReadMessage.importedFrom (reviewed earlier); other changes arrive from feat/handoff-ux 57eed4e459 and are that lane's to review.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"This lane adds only the optional ConversationReadMessage.importedFrom (reviewed earlier); other changes arrive from feat/handoff-ux 57eed4e459 and are that lane's to review.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"This lane adds only the optional ConversationReadMessage.importedFrom (reviewed earlier); other changes arrive from feat/handoff-ux 57eed4e459 and are that lane's to review.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"This lane adds only the optional ConversationReadMessage.importedFrom (reviewed earlier); other changes arrive from feat/handoff-ux 57eed4e459 and are that lane's to review.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"This lane adds only the optional ConversationReadMessage.importedFrom (reviewed earlier); other changes arrive from feat/handoff-ux 57eed4e459 and are that lane's to review.","inputs":["packages/contracts/src/orchestration.ts"]}
+  ]
+}

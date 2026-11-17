@@ -1,7 +1,0 @@
-{
-  "revision": "fe78a680b656d408eb18786d1832f418d8d59072",
-
-  "notes": [
-    {"path":"docs/guides/development.md","note":"Merge of origin/main into #4424: orchestration-session-state.ts only re-points the SESSION_START_INDETERMINATE_CODE/SessionStartIndeterminateError import from session-turn-boundary.js to session-turn-boundary-binding.js (recovery ledger moved into Monument). No behavior, command, or workflow described in the development guide changed.","inputs":["docs/guides/development.md","src-server/services/orchestration/orchestration-session-state.ts"]}
-  ]
-}

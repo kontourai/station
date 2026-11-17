@@ -149,6 +149,8 @@ export class FileStorageAdapter implements IStorageAdapter {
           slug: config.slug,
           name: config.name,
           icon: config.icon,
+          iconDisabled: config.iconDisabled,
+          repositorySource: config.repositorySource,
           description: config.description,
           hasWorkingDirectory: !!config.workingDirectory,
           workingDirectory: config.workingDirectory,
@@ -161,6 +163,7 @@ export class FileStorageAdapter implements IStorageAdapter {
           ...(config.position !== undefined
             ? { position: config.position }
             : {}),
+          ...(config.lifecycle ? { lifecycle: config.lifecycle } : {}),
         } satisfies ProjectMetadata,
       ];
     });

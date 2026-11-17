@@ -1,0 +1,7 @@
+{
+  "revision": "90cb5986f9466a059e4cb3ce310ee0d38ea5dc0c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the added landscape display assertion after the negative control exposed a zero-height flex row. The test now requires display:none as well as hidden geometry, while retaining real input and setup actions. Product bucket ownership is unchanged; suite outcomes remain separate evidence.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

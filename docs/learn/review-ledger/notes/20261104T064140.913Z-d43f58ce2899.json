@@ -1,9 +1,0 @@
-{
-  "revision": "62b74db6f647a6071035f8ca7bfe571b134728de",
-
-  "notes": [
-    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed the Knowledge guide's proposal-erasure limitation: an unsourced pending or rejected proposal remains outside the current record-purge contract. The canonical store and derived index decision is unchanged.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]},
-
-    {"path":"docs/guides/knowledge.md","note":"Reviewed the proposal retention clarification against the Corpus create-proposal and purge contracts and independent review probe. Self-rejection retains content; proposal erasure is tracked in corpus#62. No Station erasure route exists in this slice.","inputs":["docs/guides/knowledge.md"]}
-  ]
-}

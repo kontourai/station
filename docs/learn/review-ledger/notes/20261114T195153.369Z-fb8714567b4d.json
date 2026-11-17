@@ -1,0 +1,15 @@
+{
+  "revision": "7c6781866eb957abd08d478cb8b6ed208f30dfac",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Changed the Retry sentence: pressing Retry during a background re-read shows the loading state at once and reads again after the running re-read ends, like any other reload (the earlier 'shows its progress rather than starting another' described a join that was removed because it applied to every reload caller). Checked against PluginRegistry.reload (queues a fresh pass; sets loading when a background re-read is in flight) and performReload (background pass leaves the final status to the queued pass). Executed: PluginRegistry.timeout tests for Retry (loading then degraded, 9 reads) and a non-Retry reload getting a fresh successful read; live: Retry at 64 s showed the skeleton until the fresh pass failed at 161 s, then the error stayed through the next background re-read.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/reference/connect.md","note":"useConnectionStatus now keys its completed-probe baseline by connection, so a connection switch sets a new baseline rather than cueing. The reference says onHealthyProbe fires once per run that completes healthy after the consumer mounted; that still holds and is now also true across a switch. No prose change. Executed: useConnectionStatus suite (26 tests) incl. the new switch test; injection K3 (baseline not keyed) fails it.","inputs":["docs/reference/connect.md","packages/connect/src/react/useConnectionStatus.ts"]},
+
+    {"path":"README.md","note":"Re-checked after the plugins guide's Retry sentence changed. README links the guide as a route only. No prose change. Limits: source inspection.","inputs":["README.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-checked after the plugins guide's Retry sentence changed. This guide links the plugin guide for a route; no claim depends on Retry behaviour. No prose change. Limits: source inspection.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-checked the bullet saying a tab whose installed plugins could not be read offers Retry instead of Troubleshoot: still true; Retry now shows loading and reads again. No prose change. Executed: live Retry click at 64 s. Limits: not rendered at 390 px or dark theme.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]}
+  ]
+}

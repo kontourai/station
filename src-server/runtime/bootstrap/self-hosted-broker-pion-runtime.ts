@@ -645,7 +645,23 @@ export function createSelfHostedBrokerPionRuntime(
     poll: async (signal: AbortSignal) => {
       if (candidateIssuer)
         await connector.pollNativeKeyCandidates(candidateIssuer, signal);
-      return connector.poll(signal);
+      // At browser peer capacity, skip this tick: leave offers queued for a
+      // later one rather than reading an offer that cannot be served.
+      if (liveCount() >= maxPeers) return { observed: 0, answered: 0 };
+      try {
+        return await connector.poll(signal);
+      } catch (error) {
+        // Capacity can also be reached mid-loop while the connector drains
+        // its offer queue. The claim is refused BEFORE any peer is started,
+        // so there is nothing to dispose: treat it as backpressure for this
+        // tick instead of failing the broker, as the native lane does below.
+        if (
+          error instanceof Error &&
+          error.message === 'broker_runtime_peer_capacity'
+        )
+          return { observed: 0, answered: 0 };
+        throw error;
+      }
     },
     // The native lane exists only under explicit opt-in configuration: with
     // no native config the lifecycle has no pollNative at all, so the bounded

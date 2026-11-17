@@ -64,6 +64,8 @@ export function useStreamingContent(sessionId: string) {
   const latestStreamingTextRef = useRef(state.streamingText);
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFlushedRef = useRef(state.streamingText);
+  // The chat `state` and the refs above were last read for.
+  const syncedSessionIdRef = useRef(sessionId);
 
   const flushStreamingText = useCallback(() => {
     throttleTimerRef.current = null;
@@ -83,6 +85,19 @@ export function useStreamingContent(sessionId: string) {
   }, []);
 
   useEffect(() => {
+    if (syncedSessionIdRef.current !== sessionId) {
+      // The same row was handed another chat (the streaming row is not keyed
+      // by session). What was flushed belongs to the previous chat: `sync`
+      // below would keep that text for as long as this chat has any.
+      syncedSessionIdRef.current = sessionId;
+      const current = readStreamingContent(sessionId);
+      latestStreamingTextRef.current = current.streamingText;
+      lastFlushedRef.current = current.streamingText;
+      setState((prev) => ({
+        ...current,
+        contentRevision: prev.contentRevision + 1,
+      }));
+    }
     const sync = () => {
       const {
         hasContent,
@@ -140,7 +155,12 @@ export function useStreamingContent(sessionId: string) {
     return () => {
       unsubscribe();
       stopWatchingVisibility();
-      if (throttleTimerRef.current) clearTimeout(throttleTimerRef.current);
+      if (throttleTimerRef.current) {
+        clearTimeout(throttleTimerRef.current);
+        // A cleared id left here reads as "a flush is pending" to the next
+        // subscription, which then never schedules one.
+        throttleTimerRef.current = null;
+      }
     };
   }, [sessionId, flushStreamingText]);
 

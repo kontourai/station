@@ -142,7 +142,7 @@ test('keyboard search reveals historical A canonical event despite current child
     }).toPass({ timeout: 15000 });
     await page
       .getByRole('button', {
-        name: 'Workspace search (this Station)',
+        name: 'Search Tasks and messages',
         exact: true,
       })
       .click();
@@ -169,7 +169,7 @@ test('keyboard search reveals historical A canonical event despite current child
     await expect(input).toHaveAttribute('aria-activedescendant', id);
     await input.press('Enter');
     const inspector = page.getByRole('dialog', {
-      name: 'Matched message — read-only',
+      name: 'Matched message',
     });
     await expect(inspector).toBeVisible();
     const exact = inspector.getByRole('region', {

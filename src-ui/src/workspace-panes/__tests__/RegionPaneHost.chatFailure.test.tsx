@@ -195,7 +195,7 @@ test('a crashed Chat pane names the conversation, shows the error, and goes back
   // The raw details sit inside the failure card, under its actions.
   expect(
     within(failure)
-      .getByRole('button', { name: 'Try again' })
+      .getByRole('button', { name: 'Retry' })
       .closest('.workspace-pane-failure__card')
       ?.querySelector('details'),
   ).not.toBeNull();
@@ -212,7 +212,7 @@ test('a crashed Chat pane names the conversation, shows the error, and goes back
   expect(details?.textContent).not.toMatch(/[a-z]+:\/\//);
 
   // A plain retry reopens the same conversation and fails again.
-  fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
+  fireEvent.click(within(failure).getByRole('button', { name: 'Retry' }));
   expect(
     await screen.findByRole('region', { name: 'Chat unavailable' }),
   ).toBeTruthy();
@@ -250,7 +250,7 @@ test('with no conversation open the failure offers only the retry', async () => 
   expect(within(failure).queryByText(TITLE)).toBeNull();
 
   crash = false;
-  fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
+  fireEvent.click(within(failure).getByRole('button', { name: 'Retry' }));
   await waitFor(() => {
     expect(screen.queryByTestId('recovered')).not.toBeNull();
   });

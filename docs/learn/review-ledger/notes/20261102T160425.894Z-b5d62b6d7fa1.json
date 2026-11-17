@@ -1,7 +1,0 @@
-{
-  "revision": "441dce5250c60bcc9d1f1cb16ca4893fc93ee287",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed the regenerated 130-topic payload after isolating cascade evidence. The lifecycle topic links the new gap suite and distinguishes effectful binding evidence from the unchanged raw custody-read default; live-surface content is inherited from #4438 canonical inputs. Shipped docs remain a static manual/digest, not live Session state or new native qualification. No prose change required.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

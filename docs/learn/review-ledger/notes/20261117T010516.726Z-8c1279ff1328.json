@@ -1,0 +1,7 @@
+{
+  "revision": "cd5f59d514e5225de8712bb41baa731640c7e124",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Browser smoke ownership in fast-checks statics unchanged by the plan log line.","inputs":["docs/testing/browser-smoke.md","scripts/fast-checks-shard.mjs"]}
+  ]
+}

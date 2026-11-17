@@ -1,0 +1,7 @@
+{
+  "revision": "6ab7ba4e6d27e3458909f88c91c4a689f765c730",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed after moving the cross-runtime journey and gallery capture off the removed Inbox ⋯ menu (Browse button; notice Retry/Retrying…) and keeping the failed-refresh notice up during a retry (ChatDockInboxPanel.tsx); the inbox paragraph's 'a failed read offers Retry, disabled while the re-read runs' now also holds when the retry's start clears one failed source.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

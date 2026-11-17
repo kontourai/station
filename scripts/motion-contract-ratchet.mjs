@@ -25,6 +25,139 @@ const DURATION_LITERAL = /(?:^|[\s,(])(?:\d*\.)?\d+(?:ms|s)\b/i;
 const EASING_LITERAL =
   /(?:^|[\s,(])(?:ease(?:-in|-out|-in-out)?|linear|cubic-bezier\s*\()/i;
 const TRANSITION_ALL = /\btransition\s*:\s*all(?:\s|;|$)/i;
+// `ease-in-out` is a different curve. The keyword is one CSS ident: a
+// missing space still splits tokens (`var(--motion-fast)ease-in`), a hex
+// escape spells that ident (`\65 ase-in`, `ease-in\2d out`), and a
+// non-ASCII character continues it (`ease-iné`). Case folding is ASCII
+// only: Unicode `İ` lowercases to two code points and would shift a match
+// taken from the folded string. A quoted string is a name or a URL, not a
+// timing keyword. Custom properties are case-sensitive, so `var(--EASE-IN)`
+// is a different token. `var()` is a function name, and a fallback argument
+// is still a use. A declared `--ease-in` legalizes neither form. No ceiling.
+const EASE_IN_VAR = /[vV][aA][rR]\(\s*--ease-in\s*[,)]/;
+const CSS_HEX_DIGIT = /[0-9a-f]/i;
+// One whitespace code point terminates a hex escape and is not output.
+const CSS_ESCAPE_WHITESPACE = /[ \t\n\r\f]/;
+
+function consumeCssEscape(value, index) {
+  if (index + 1 >= value.length) return { char: '\uFFFD', next: value.length };
+  if (!CSS_HEX_DIGIT.test(value[index + 1])) {
+    return { char: value[index + 1], next: index + 2 };
+  }
+  let hex = '';
+  let cursor = index + 1;
+  while (
+    cursor < value.length &&
+    hex.length < 6 &&
+    CSS_HEX_DIGIT.test(value[cursor])
+  ) {
+    hex += value[cursor];
+    cursor += 1;
+  }
+  if (cursor < value.length && CSS_ESCAPE_WHITESPACE.test(value[cursor])) {
+    cursor += 1;
+  }
+  const code = Number.parseInt(hex, 16);
+  const illegal =
+    code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff);
+  return {
+    char: illegal ? '\uFFFD' : String.fromCodePoint(code),
+    next: cursor,
+  };
+}
+
+function skipCssString(value, index) {
+  const quote = value[index];
+  let cursor = index + 1;
+  while (cursor < value.length) {
+    if (value[cursor] === '\\') {
+      cursor = consumeCssEscape(value, cursor).next;
+      continue;
+    }
+    if (value[cursor] === quote) return cursor + 1;
+    if (
+      value[cursor] === '\n' ||
+      value[cursor] === '\r' ||
+      value[cursor] === '\f'
+    ) {
+      return cursor;
+    }
+    cursor += 1;
+  }
+  return value.length;
+}
+
+function isCssIdentStart(char) {
+  const code = char.codePointAt(0) ?? 0;
+  return code >= 0x80 || /[A-Za-z_]/.test(char);
+}
+
+function isCssIdentChar(char) {
+  const code = char.codePointAt(0) ?? 0;
+  return code >= 0x80 || /[A-Za-z0-9_-]/.test(char);
+}
+
+function consumeCssIdent(value, index) {
+  let text = '';
+  let cursor = index;
+  while (cursor < value.length) {
+    if (value[cursor] === '\\') {
+      const escaped = consumeCssEscape(value, cursor);
+      text += escaped.char;
+      cursor = escaped.next;
+      continue;
+    }
+    const char = value[cursor];
+    if (text.length === 0) {
+      if (char !== '-' && !isCssIdentStart(char)) break;
+    } else if (!isCssIdentChar(char)) {
+      break;
+    }
+    text += char;
+    cursor += 1;
+  }
+  return { text, next: cursor };
+}
+
+/** CSS keywords compare as ASCII. `İ`.toLowerCase() is two code points. */
+function asciiEqualsEaseIn(text) {
+  if (text.length !== 7) return false;
+  const expected = 'ease-in';
+  for (let index = 0; index < expected.length; index += 1) {
+    const code = text.charCodeAt(index);
+    const folded = code >= 65 && code <= 90 ? code + 32 : code;
+    if (folded !== expected.charCodeAt(index)) return false;
+  }
+  return true;
+}
+
+function layerUsesEaseIn(layer) {
+  let visible = '';
+  let index = 0;
+  while (index < layer.length) {
+    const char = layer[index];
+    if (char === '"' || char === "'") {
+      index = skipCssString(layer, index);
+      visible += ' ';
+      continue;
+    }
+    if (char === '\\' || char === '-' || isCssIdentStart(char)) {
+      const ident = consumeCssIdent(layer, index);
+      if (ident.next === index) {
+        visible += char;
+        index += 1;
+        continue;
+      }
+      if (asciiEqualsEaseIn(ident.text)) return true;
+      visible += ident.text;
+      index = ident.next;
+      continue;
+    }
+    visible += char;
+    index += 1;
+  }
+  return EASE_IN_VAR.test(visible);
+}
 
 // Matches a custom-property *declaration* (`--name:`), not a `var(--name)`
 // reference — the character before `--` must be whitespace, `;`, `{`, or the
@@ -117,23 +250,39 @@ export function findUnresolvedTokenReferences(value, declaredTokens) {
 }
 
 /**
- * Splits a shorthand value into its comma-separated layers, respecting
- * parentheses so `cubic-bezier(0.4, 0, 0.2, 1)` stays one layer rather than
- * four.
+ * Splits a shorthand value into its comma-separated layers. A comma inside
+ * parentheses, a quoted string, or a CSS escape is not a layer boundary.
+ * `cubic-bezier(0.4, 0, 0.2, 1)` stays one layer, and so does `"x,y"`.
  */
 export function motionLayers(value) {
   const layers = [];
   let depth = 0;
   let current = '';
-  for (const char of value) {
+  let index = 0;
+  while (index < value.length) {
+    const char = value[index];
+    if (char === '"' || char === "'") {
+      const next = skipCssString(value, index);
+      current += value.slice(index, next);
+      index = next;
+      continue;
+    }
+    if (char === '\\') {
+      const escaped = consumeCssEscape(value, index);
+      current += value.slice(index, escaped.next);
+      index = escaped.next;
+      continue;
+    }
     if (char === '(') depth += 1;
     else if (char === ')') depth -= 1;
     if (char === ',' && depth === 0) {
       layers.push(current);
       current = '';
+      index += 1;
       continue;
     }
     current += char;
+    index += 1;
   }
   if (current.trim()) layers.push(current);
   return layers.length > 0 ? layers : [value];
@@ -154,6 +303,7 @@ export function inspectMotionCss(content, declaredTokens) {
   const hardCoded = [];
   const transitionAll = [];
   const unresolvedToken = [];
+  const easeIn = [];
   let match;
   MOTION_DECLARATION.lastIndex = 0;
   // biome-ignore lint/suspicious/noAssignInExpressions: bounded RegExp scan
@@ -161,6 +311,9 @@ export function inspectMotionCss(content, declaredTokens) {
     const value = match[1].trim();
     const declaration = match[0];
     if (TRANSITION_ALL.test(declaration)) transitionAll.push(declaration);
+    if (motionLayers(value).some((layer) => layerUsesEaseIn(layer))) {
+      easeIn.push(declaration);
+    }
     // Per LAYER, not per declaration. Testing the whole value let a
     // partially tokenized declaration escape: a literal in one comma-separated
     // layer was excused by a `var(--motion-)` in a sibling layer, so
@@ -182,7 +335,7 @@ export function inspectMotionCss(content, declaredTokens) {
       if (tokens.length > 0) unresolvedToken.push({ declaration, tokens });
     }
   }
-  return { hardCoded, transitionAll, unresolvedToken };
+  return { hardCoded, transitionAll, unresolvedToken, easeIn };
 }
 
 export function inspectMotionFiles(files, readFile, declaredTokens) {
@@ -198,6 +351,9 @@ export function inspectMotionFiles(files, readFile, declaredTokens) {
     }
     for (const { declaration, tokens } of result.unresolvedToken) {
       findings.push({ file, kind: 'unresolved-token', declaration, tokens });
+    }
+    for (const declaration of result.easeIn) {
+      findings.push({ file, kind: 'ease-in', declaration });
     }
   }
   return findings;
@@ -248,6 +404,7 @@ export function evaluateMotionContract(
   const unresolvedToken = findings.filter(
     (finding) => finding.kind === 'unresolved-token',
   );
+  const easeIn = findings.filter((finding) => finding.kind === 'ease-in');
   const currentByFile = new Map();
   for (const finding of hardCoded) {
     currentByFile.set(finding.file, (currentByFile.get(finding.file) ?? 0) + 1);
@@ -263,10 +420,12 @@ export function evaluateMotionContract(
     hardCoded,
     transitionAll,
     unresolvedToken,
+    easeIn,
     perFileRegressions,
     passed:
       transitionAll.length === 0 &&
       unresolvedToken.length === 0 &&
+      easeIn.length === 0 &&
       hardCoded.length <= ceiling &&
       perFileRegressions.length === 0,
   };
@@ -318,11 +477,11 @@ function main() {
       );
     }
     throw new Error(
-      `motion contract failed: ${result.hardCoded.length} hard-coded declaration(s) (ceiling ${baseline.hardCodedDeclarationCeiling}), ${result.transitionAll.length} transition:all declaration(s), ${result.unresolvedToken.length} unresolved token reference(s)`,
+      `motion contract failed: ${result.hardCoded.length} hard-coded declaration(s) (ceiling ${baseline.hardCodedDeclarationCeiling}), ${result.transitionAll.length} transition:all declaration(s), ${result.unresolvedToken.length} unresolved token reference(s), ${result.easeIn.length} ease-in declaration(s)`,
     );
   }
   process.stdout.write(
-    `[motion-contract] OK: ${result.hardCoded.length} hard-coded declaration(s) <= ${baseline.hardCodedDeclarationCeiling}; no transition: all; no unresolved token references\n`,
+    `[motion-contract] OK: ${result.hardCoded.length} hard-coded declaration(s) <= ${baseline.hardCodedDeclarationCeiling}; no transition: all; no unresolved token references; no ease-in\n`,
   );
 }
 

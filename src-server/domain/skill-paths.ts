@@ -7,22 +7,16 @@
  * structural fact rather than a convention each caller has to remember (review
  * delta-3, item (a)).
  *
- * Deliberately dependency-free apart from `node:fs`/`node:path`, so nothing
- * here can create an import cycle between the domain and service layers.
+ * Deliberately free of domain and service imports (`node:fs`/`node:path`, the
+ * shared bounds and leaf `utils/` helpers only), so nothing here can create an
+ * import cycle between the domain and service layers.
  */
 
 import { lstatSync, realpathSync } from 'node:fs';
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
 import { errorMessage } from '../utils/error-message.js';
+import { isCanonicalPathStrictlyWithin } from '../utils/path-containment.js';
 
 /**
  * Keys that must never be used as a skill name. `JSON.parse` yields
@@ -120,12 +114,7 @@ export function skillsRootDir(
  * rather than assumed.
  */
 export function isDirectoryWithin(root: string, candidate: string): boolean {
-  const relativePath = relative(resolve(root), resolve(candidate));
-  return (
-    relativePath !== '' &&
-    !relativePath.startsWith('..') &&
-    !isAbsolute(relativePath)
-  );
+  return isCanonicalPathStrictlyWithin(root, candidate);
 }
 
 /**

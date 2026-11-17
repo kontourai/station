@@ -52,6 +52,7 @@ import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { adoptNativeEngineConnection } from '../../domain/agent-registry.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
@@ -92,6 +93,8 @@ import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-te
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import * as fakeGh from '../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
 import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import { builtinStationControlServerPath } from '../bootstrap/station-control-runtime-env.js';
+import { stationControlDisclosureForToken } from '../mcp/station-control-mcp-token.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
@@ -687,6 +690,133 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await adapter.stopSession('hosted');
   });
 
+  it('codex-tool-families preview: off by default; on, a qualified Codex header credential starts at the family index and keeps it after a switch-off', async () => {
+    home = await createSchemaHome('station-codex-tool-families-');
+    const agentDir = join(home, 'agents', 'families-test');
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, 'agent.json'),
+      JSON.stringify({
+        name: 'Families Test',
+        prompt: 'Test agent.',
+        model: 'anthropic.test-model',
+        tools: { mcpServers: ['station-control'] },
+      }),
+    );
+    routeMocks.armRoutesConfigured();
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    await routeMocks.routesConfigured;
+    const subject = runtime as any;
+    const adapter = subject.codexAdapter;
+    // The version gate has its own tests; here the binary qualifies.
+    const probe = vi
+      .spyOn(adapter.toolFamilyQualification, 'admitted')
+      .mockResolvedValue(true);
+    let child = new FakeCodexProcess();
+    adapter.processFactory = () => child;
+    const start = async (threadId: string) => {
+      child = new FakeCodexProcess();
+      const promise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: home,
+        agent: {
+          toolServers: [
+            {
+              id: 'station-control',
+              displayName: 'Station Control',
+              transport: 'stdio',
+              command: process.execPath,
+              args: [builtinStationControlServerPath()],
+            },
+          ],
+        },
+      });
+      const wire = (method: string) =>
+        waitFor(
+          () =>
+            child.stdin.lines
+              .map((line: string) => JSON.parse(line))
+              .find((line: any) => line.method === method),
+          method,
+        );
+      const initialize = await wire('initialize');
+      await emit(child, { id: initialize.id, result: { userAgent: 'test' } });
+      const thread = await wire('thread/start');
+      await emit(child, {
+        id: thread.id,
+        result: { thread: { id: `native-${threadId}` } },
+      });
+      await withTimeout(promise, 'families start');
+      const token = thread.params.config[
+        'mcp_servers.station-control.http_headers'
+      ].Authorization.replace('Bearer ', '');
+      return { config: thread.params.config, token };
+    };
+    // Sessions stop inside the case, even when it fails: a stop after the
+    // runtime's teardown emits session.exited, whose deferred worktree
+    // retry would land in a later case.
+    const stopAll = async () => {
+      for (const id of ['families-preview-off', 'families-preview-on'])
+        await adapter.stopSession(id).catch(() => undefined);
+      await new Promise((resolve) => setImmediate(resolve));
+    };
+    try {
+      const off = await start('families-preview-off');
+      expect(off.config).not.toHaveProperty('features.mcp_tool_list_changed');
+      expect(stationControlDisclosureForToken(off.token)).toBe(undefined);
+      expect(probe).not.toHaveBeenCalled();
+      await adapter.stopSession('families-preview-off');
+      await subject.featurePreviews.setEnabled('codex-tool-families', true);
+      const on = await start('families-preview-on');
+      expect(on.config).toMatchObject({
+        'features.mcp_tool_list_changed': true,
+      });
+      // The runtime's own mint made this credential start at the index.
+      expect(stationControlDisclosureForToken(on.token)?.has('Agents')).toBe(
+        false,
+      );
+      // The composed session resolver asks the same admission question for
+      // the instructions' families line.
+      await subject.featurePreviews.setEnabled(
+        'station-orchestration-instructions',
+        true,
+      );
+      const instructions = async () => {
+        const resolved =
+          await subject.orchestrationService.options.resolveSessionAgent({
+            provider: 'codex',
+            threadId: 'families-resolve',
+            cwd: home,
+            metadata: { agentSlug: 'families-test' },
+          });
+        return (
+          resolved.metadata?.capabilityDelivery?.stationInstructions
+            ?.firstTurnText ?? ''
+        );
+      };
+      const withFamilies = await instructions();
+      expect(withFamilies).toContain('delegate_task');
+      expect(withFamilies).toContain('list_tool_families');
+      // Turning it off changes new Sessions only: the running one keeps its
+      // family credential, which Codex cannot be told to re-list away from.
+      await subject.featurePreviews.setEnabled('codex-tool-families', false);
+      const withoutFamilies = await instructions();
+      expect(withoutFamilies).toContain('delegate_task');
+      expect(withoutFamilies).not.toContain('list_tool_families');
+      const kept = stationControlDisclosureForToken(on.token);
+      expect(kept?.load('Agents')).toBe(true);
+      expect(kept?.has('Agents')).toBe(true);
+    } finally {
+      await stopAll();
+    }
+  });
+
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
     home = mkdtempSync(join(tmpdir(), 'station-coldstart-incompatible-'));
     mkdirSync(join(home, 'config'), { recursive: true });
@@ -854,6 +984,75 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // is left racing the (about-to-be-deleted) home directory.
     expect(bootSettled).toBe(true);
     await boot;
+  });
+
+  it('resolves the built-in engine binding at boot without model discovery or commands', async () => {
+    // Either can start the engine's program: Claude's catalog probe spawns
+    // Claude Code and loads the Agent SDK. The binding reads readiness, which
+    // prerequisites decide, so a boot must not pay for either.
+    home = await createSchemaHome('station-coldstart-binding-');
+    mkdirSync(join(home, 'config'), { recursive: true });
+    writeFileSync(
+      join(home, 'config', 'app.json'),
+      JSON.stringify({
+        defaultModel: '',
+        invokeModel: '',
+        structureModel: '',
+        systemPrompt: 'You are {{AGENT_NAME}}.',
+        templateVariables: [],
+        region: 'eu-west-1',
+      }),
+    );
+    // Registered, so the inspector inspects Claude rather than skipping an
+    // engine the registry does not list.
+    await expect(
+      adoptNativeEngineConnection(
+        new ConfigLoader({ projectHomeDir: home }),
+        'claude',
+      ),
+    ).resolves.toBe('adopted');
+    // Restored below: this file does not restore spies between cases, and a
+    // ready Claude would change every later case's binding.
+    const getPrerequisites = vi
+      .spyOn(ClaudeAdapter.prototype, 'getPrerequisites')
+      .mockResolvedValue([]);
+    const listModelCatalog = vi
+      .spyOn(ClaudeAdapter.prototype, 'listModelCatalog')
+      .mockResolvedValue({ models: [] });
+    const getCommands = vi
+      .spyOn(ClaudeAdapter.prototype, 'getCommands')
+      .mockResolvedValue([]);
+    vi.spyOn(OllamaLLMProvider.prototype, 'healthCheck').mockResolvedValue(
+      false,
+    );
+    vi.spyOn(MCPManager, 'loadAgentTools').mockResolvedValue([]);
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    const resolveBinding = vi.spyOn(
+      runtime as unknown as {
+        resolveBuiltinEngineBinding: (...args: unknown[]) => Promise<unknown>;
+      },
+      'resolveBuiltinEngineBinding',
+    );
+
+    try {
+      await expect(runtime.initialize()).resolves.toBeUndefined();
+
+      // The seam was reached with Claude ready: it is the binding boot chose.
+      expect(resolveBinding).toHaveBeenCalled();
+      await expect(resolveBinding.mock.results[0]?.value).resolves.toEqual(
+        expect.objectContaining({ connectionId: 'claude' }),
+      );
+      expect(listModelCatalog).not.toHaveBeenCalled();
+      expect(getCommands).not.toHaveBeenCalled();
+    } finally {
+      getPrerequisites.mockRestore();
+      listModelCatalog.mockRestore();
+      getCommands.mockRestore();
+    }
   });
 
   it('primes engine prerequisites once at boot, on a signal shutdown aborts (station#1586)', async () => {

@@ -1,5 +1,7 @@
 import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
+  ChildWorkItem,
+  ChildWorkKind,
   ChildWorkModel,
   ChildWorkSummarySource,
   ChildWorkTerminalDisplayStatus,
@@ -18,12 +20,14 @@ import {
   type EngineId,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
+import type { ConversationEngineMcpServer } from '@kontourai/station-contracts/runtime';
 import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -171,6 +175,8 @@ export type ChatContentPart = {
   approvalSessionGrant?: ToolRequestSessionGrant;
   /** See `MessagePart.approvalServerGrant`. */
   approvalServerGrant?: ToolRequestServerGrant;
+  /** See `MessagePart.approvalRuleGrant`. */
+  approvalRuleGrant?: ToolRequestRuleGrant;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -210,6 +216,8 @@ export type ChatMessage = {
   stationMemoryContinuation?: boolean;
   /** See `ChatMessage.stationRestartContinuation` in types.ts. */
   stationRestartContinuation?: boolean;
+  /** See `ChatMessage.rewound` in types.ts. */
+  rewound?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;
@@ -250,6 +258,7 @@ export type ChatMessage = {
  * when the registry has none.
  */
 export interface BackgroundTaskNotice {
+  child?: ChildWorkItem;
   status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;
@@ -338,6 +347,8 @@ export type ChatBackgroundTask = {
   toolCallId?: string;
   description?: string;
   subagentType?: string;
+  /** What sort of work it is (`childWorkKindOf`): an agent, a command or a monitor. */
+  workKind?: ChildWorkKind;
   /** #3163: the child's own reported model, when its engine reported one. */
   model?: ChildWorkModel;
   backgrounded?: boolean;
@@ -388,7 +399,20 @@ export type ChatLiveUsage = {
   cacheWriteTokens?: number;
   contextTokens?: number;
   contextWindowTokens?: number;
+  /** The engine's own context reading, 0-100 (`token-usage.updated.contextPercent`). */
+  contextPercent?: number;
+  /**
+   * The latest cost the engine reported in its own unit, with its scope.
+   * Shown as reported (`0.07 credits`), never as USD.
+   */
+  reportedCost?: { amount: number; unit: string; scope: 'turn' | 'session' };
 };
+
+/**
+ * The engine's MCP servers as it last reported them (`engine-mcp.status`).
+ * Engine-attributed: Station's own MCP view is elsewhere.
+ */
+export type ChatEngineMcpServer = ConversationEngineMcpServer;
 
 export type ChatUIState = {
   retainedTranscript?: RetainedChatTranscript;
@@ -478,7 +502,6 @@ export type ChatUIState = {
   status?: 'idle' | 'sending' | 'error' | 'queued';
   isProcessingStep?: boolean;
   error?: string | null;
-  hasUnread: boolean;
   abortController?: AbortController;
   /**
    * a Stop request is in flight for this session. Set before the
@@ -735,6 +758,7 @@ export type ChatUIState = {
   defaultModelSource?: EffectiveModelSource;
   sessionAutoApprove?: string[];
   pendingApprovals?: string[];
+  pendingRequestKinds?: Record<string, 'input' | 'approval'>;
   /**
    * #3071: the turn each request in `pendingApprovals` names
    * (`request.opened.turnId`), for the requests that name one. It is what
@@ -800,6 +824,19 @@ export type ChatUIState = {
   activityHint?: ChatActivityHint;
   backgroundTasks?: ChatBackgroundTask[];
   liveUsage?: ChatLiveUsage;
+  /** The engine's MCP servers (`engine-mcp.status`), in the engine's order. */
+  engineMcpServers?: ChatEngineMcpServer[];
+  /**
+   * The latest `engine-mcp.status` said this session can reconnect a server
+   * (`reconnect: true`). Absent: no Reconnect or Sign in action is offered.
+   */
+  engineMcpReconnect?: true;
+  /**
+   * A complete `engine-mcp.status` arrived since this chat was opened, so
+   * `engineMcpServers` is the engine's whole list; until then it holds only
+   * the partial reports, which update the conversation's stored list.
+   */
+  engineMcpComplete?: true;
   /**
    * Synthetic event-replay occupant of this store key. Lineage ids stay
    * unset so live SSE cannot fuzzy-match the source thread into it.
@@ -1081,7 +1118,6 @@ export function createDefaultChatState(
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     providerOptions: {},
     orchestrationSessionStarted: false,
     createdAt,
@@ -1225,7 +1261,6 @@ export function hydrateActiveChats(
         : {}),
       ...(unsentMessages.length ? { unsentMessages } : {}),
       inputHistory: stringList(session.inputHistory),
-      hasUnread: false,
       agentSlug: session.agentSlug,
       stationBinding,
       stationBindingLegacy:

@@ -1,0 +1,7 @@
+{
+  "revision": "6ee5a4ff83ba6a31abfe9cbce7bdc8f3c810bcb7",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the finished-alert replay and quiet-end clauses against turn-completion-notifications.ts (replayWriting, endUnreleased, attemptWrite): a missing record is dropped as replay_ambiguous with no write, push, coordinator wake or card release (not exactly-once without tombstones); foreign, non-delivered including snoozed, leased or readerless records, a tag another producer owns, and a live skipped_no_recipient/skipped_external write end that one row with no card release, keeping a newer held finish and an earlier release; only an own delivered record with a reader is handed to the coordinator and released.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/turn-completion-notifications.ts"]}
+  ]
+}

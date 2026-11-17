@@ -135,6 +135,11 @@ export class OpenCodeFixtureWriter {
     return this.clock;
   }
 
+  /** Moves the writer's clock forward to `time` (epoch ms), never back. */
+  advanceTo(time: number): void {
+    this.clock = Math.max(this.clock, time);
+  }
+
   /** Ascending, prefix-typed ids like `Identifier.ascending`. */
   nextId(prefix: 'msg' | 'prt'): string {
     this.counter += 1;
@@ -260,6 +265,18 @@ export class OpenCodeFixtureWriter {
       )
       .run(id, messageId, sessionId, now, now, JSON.stringify(data));
     return id;
+  }
+
+  /**
+   * Rewrites a part the way OpenCode upserts a streaming one: the part row
+   * alone moves, not its message or session.
+   */
+  updatePart(partId: string, data: Record<string, unknown>): number {
+    const now = this.tick();
+    this.db
+      .prepare('UPDATE part SET data = ?, time_updated = ? WHERE id = ?')
+      .run(JSON.stringify(data), now, partId);
+    return now;
   }
 
   text(sessionId: string, messageId: string, value: string): string {

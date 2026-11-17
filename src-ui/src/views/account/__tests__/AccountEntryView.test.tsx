@@ -608,9 +608,7 @@ describe('invitation entry through real account SDK requests', () => {
     signedIn = true;
     projectFailureStatus = 503;
     mount({});
-    expect(
-      await screen.findByRole('button', { name: 'Try again' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Retry' })).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Request access for this browser' }),
     ).toBeNull();

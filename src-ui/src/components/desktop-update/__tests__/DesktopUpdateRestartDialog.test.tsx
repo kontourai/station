@@ -267,7 +267,7 @@ describe('DesktopUpdateRestartDialog', () => {
     expect(
       body.getByText('failed to move the new app into place'),
     ).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Try again' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry' })).not.toBeNull();
   });
 
   test('while installing it cannot be dismissed', () => {

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   closeSync,
   constants,
+  type Dirent,
   existsSync,
   fchmodSync,
   fstatSync,
@@ -19,6 +20,12 @@ import {
   writeFileSync,
   writeSync,
 } from 'node:fs';
+import {
+  lstat as lstatAsync,
+  readdir as readdirAsync,
+  readFile as readFileAsync,
+  unlink as unlinkAsync,
+} from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { setTimeout as sleepAsync } from 'node:timers/promises';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
@@ -372,6 +379,130 @@ function* ownerAliveGen(
  */
 export function lockOwnerAlive(owner: LockInspection['owner']): boolean {
   return runLockGenSync(ownerAliveGen(owner, 'default'), {});
+}
+
+/**
+ * The exact name `acquireGen` gives its owner-record temporary:
+ * `${path}.mutation.${randomUUID()}.tmp`. Nothing else in Station is named
+ * this way, so a sweep matching it cannot reach another writer's file.
+ */
+const FILE_MUTATION_LOCK_TEMPORARY =
+  /^.+\.mutation\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/;
+
+/**
+ * Far beyond any acquisition deadline (the longest, checkpoint restore, is 15
+ * minutes): an acquirer removes its temporary before its deadline passes, so
+ * a temporary this old has outlived every writer that could own it.
+ */
+export const FILE_MUTATION_LOCK_ORPHAN_MIN_AGE_MS = 24 * 60 * 60_000;
+
+export interface FileMutationLockTemporarySweepOptions {
+  minAgeMs?: number;
+  /** Directory levels below `root` to visit (0 = `root` only). */
+  maxDepth?: number;
+  /** Directory entries examined before the sweep stops (`truncated`). */
+  maxEntries?: number;
+  now?: () => number;
+}
+
+export interface FileMutationLockTemporarySweep {
+  removed: number;
+  /** Old enough, but still hard-linked as a lock or naming a live owner. */
+  retainedLive: number;
+  failed: number;
+  truncated: boolean;
+}
+
+/**
+ * #4995: removes `*.mutation.<uuid>.tmp` lock temporaries a dead acquirer
+ * left behind (a process killed, or a host that lost power, inside
+ * `acquireGen`). A temporary is removed only when ALL hold:
+ * - its name is exactly {@link FILE_MUTATION_LOCK_TEMPORARY};
+ * - it is a regular, unlinked-elsewhere file (`nlink === 1`: a temporary
+ *   that is currently the published lock is never touched);
+ * - its mtime is at least `minAgeMs` old (default
+ *   {@link FILE_MUTATION_LOCK_ORPHAN_MIN_AGE_MS});
+ * - it does not name a live owner (an empty or unreadable record names none).
+ * The walk is bounded by depth and entry count, never follows symlinks, and
+ * never throws for one entry; it reports what it did and the caller decides
+ * how to surface that.
+ */
+export async function sweepOrphanedFileMutationLockTemporaries(
+  root: string,
+  options: FileMutationLockTemporarySweepOptions = {},
+): Promise<FileMutationLockTemporarySweep> {
+  const minAgeMs = options.minAgeMs ?? FILE_MUTATION_LOCK_ORPHAN_MIN_AGE_MS;
+  const maxDepth = options.maxDepth ?? 3;
+  const maxEntries = options.maxEntries ?? 20_000;
+  const now = options.now ?? Date.now;
+  const result: FileMutationLockTemporarySweep = {
+    removed: 0,
+    retainedLive: 0,
+    failed: 0,
+    truncated: false,
+  };
+  let examined = 0;
+  const pending: Array<{ directory: string; depth: number }> = [
+    { directory: root, depth: 0 },
+  ];
+  while (pending.length > 0) {
+    const { directory, depth } = pending.shift()!;
+    let entries: Dirent[];
+    try {
+      entries = await readdirAsync(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (++examined > maxEntries) {
+        result.truncated = true;
+        return result;
+      }
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < maxDepth)
+          pending.push({ directory: path, depth: depth + 1 });
+        continue;
+      }
+      if (!entry.isFile() || !FILE_MUTATION_LOCK_TEMPORARY.test(entry.name))
+        continue;
+      try {
+        const info = await lstatAsync(path);
+        if (!info.isFile() || now() - info.mtimeMs < minAgeMs) continue;
+        if (info.nlink !== 1 || (await temporaryNamesLiveOwner(path))) {
+          result.retainedLive += 1;
+          continue;
+        }
+        await unlinkAsync(path);
+        result.removed += 1;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+          result.failed += 1;
+      }
+    }
+  }
+  return result;
+}
+
+async function temporaryNamesLiveOwner(path: string): Promise<boolean> {
+  let owner: { pid?: unknown; birth?: unknown };
+  try {
+    owner = JSON.parse(await readFileAsync(path, 'utf8'));
+  } catch {
+    // Zero bytes or a torn record: the acquirer died before it finished
+    // writing who it was, so nothing can be waiting on this file.
+    return false;
+  }
+  if (
+    !Number.isInteger(owner?.pid) ||
+    typeof owner.birth !== 'string' ||
+    owner.birth.length === 0
+  )
+    return false;
+  return runLockGenAsync(
+    ownerAliveGen({ pid: owner.pid as number, birth: owner.birth }, 'default'),
+    {},
+  );
 }
 
 function sameLock(left: LockInspection | null, right: LockInspection): boolean {
@@ -845,6 +976,38 @@ function* acquireGen(
   const token = randomUUID();
   const temporary = `${lock}.${token}.tmp`;
   const deadline = Date.now() + timeoutMs;
+  // #4995: this temporary carries the candidate owner record and is hard-
+  // linked onto `lock` to publish it. Every exit — success, deadline, or an
+  // error thrown anywhere below (a failed write, a non-EEXIST link error, a
+  // compare-delete that refused) — removes it; before, only the success and
+  // deadline paths did, and each other failure left one
+  // `<file>.mutation.<uuid>.tmp` behind for good. A process that dies inside
+  // this function still leaves one; `sweepOrphanedFileMutationLockTemporaries`
+  // reclaims those at startup.
+  try {
+    writeLockTemporary(temporary, birth, token);
+    return yield* acquireWithTemporaryGen(
+      lock,
+      temporary,
+      birth,
+      deadline,
+      options,
+    );
+  } finally {
+    try {
+      rmSync(temporary, { force: true });
+    } catch {
+      // Never mask the acquisition's own outcome; the startup sweep is the
+      // backstop for a temporary this could not remove.
+    }
+  }
+}
+
+function writeLockTemporary(
+  temporary: string,
+  birth: string,
+  token: string,
+): void {
   const descriptor = openSync(
     temporary,
     constants.O_WRONLY |
@@ -853,18 +1016,30 @@ function* acquireGen(
       (constants.O_NOFOLLOW ?? 0),
     0o600,
   );
-  writeFileSync(
-    descriptor,
-    `${JSON.stringify({
-      version: 1,
-      pid: process.pid,
-      birth,
-      token,
-      acquiredAt: new Date().toISOString(),
-    })}\n`,
-  );
-  fsyncSync(descriptor);
-  closeSync(descriptor);
+  try {
+    writeFileSync(
+      descriptor,
+      `${JSON.stringify({
+        version: 1,
+        pid: process.pid,
+        birth,
+        token,
+        acquiredAt: new Date().toISOString(),
+      })}\n`,
+    );
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function* acquireWithTemporaryGen(
+  lock: string,
+  temporary: string,
+  birth: string,
+  deadline: number,
+  options: FileMutationLockOptions,
+): LockGen<LockInspection> {
   while (true) {
     if (existsSync(`${lock}.guard`)) {
       try {
@@ -873,7 +1048,6 @@ function* acquireGen(
         // Invalid or unverifiable guard ownership fails closed.
       }
       if (Date.now() >= deadline) {
-        rmSync(temporary, { force: true });
         throw new Error('lifecycle journal lock guard is held');
       }
       yield* sleep(10);
@@ -881,7 +1055,6 @@ function* acquireGen(
     }
     if ((yield* activeClaimsGen(lock, undefined)).length > 0) {
       if (Date.now() >= deadline) {
-        rmSync(temporary, { force: true });
         throw new Error('lifecycle journal guard reclamation is active');
       }
       yield* sleep(10);
@@ -903,7 +1076,6 @@ function* acquireGen(
         continue;
       }
       if (Date.now() >= deadline) {
-        rmSync(temporary, { force: true });
         throw new Error('lifecycle journal lock is held by a live process');
       }
       yield* sleep(10);
@@ -927,12 +1099,10 @@ function* acquireGen(
       }
       if (Date.now() >= deadline && sameLock(inspectLock(lock), owned)) {
         yield* deletePublishedUnderExistingGuardGen(lock, owned);
-        rmSync(temporary, { force: true });
         throw new Error('lifecycle journal lock guard is held');
       }
       continue;
     }
-    rmSync(temporary, { force: true });
     return owned;
   }
 }

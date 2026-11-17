@@ -1,7 +1,0 @@
-{
-  "revision": "1766cd8bdff3c4d16e40aefd1f00ddb4c327047d",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"Lane B: reviewed the station-orchestration-instructions Feature Preview and first-turn/append delivery text against session-agent-resolution.ts and orchestration-service.ts; claims scoped to the added preview section/row.","inputs":["docs/user/settings.md","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

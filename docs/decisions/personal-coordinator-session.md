@@ -21,6 +21,8 @@ evidence:
     ref: src-ui/src/lib/productNames.ts
   - kind: doc
     ref: docs/user/houston.md
+  - kind: doc
+    ref: docs/guides/feature-previews.md
 ---
 
 # Personal coordinator Session
@@ -28,6 +30,19 @@ evidence:
 #3628 gives a person one persistent chat that delegates, is woken when their
 work needs them, and brings back results and decisions. The product calls it
 **Houston** and its overview **Mission Control**.
+
+## Feature Preview
+
+The coordinator was not hardened when it shipped, so it is behind the
+default-off `coordinator-session` Feature Preview (**Coordinator chat**). While
+it is off, every coordinator route but DELETE refuses with
+`feature_preview_disabled`; the wake records nothing, drops waiting items and
+refuses a queued wake at placement (`coordinator_preview_disabled`); the
+designated chat gets no coordinator tools or credentials; and Project
+supervision, the working picture and the UI are off too. Designations are kept.
+DELETE stays open so a person can withdraw their coordinator from a shared
+Station before someone turns the preview back on. The `coordinatorSession`
+capability stays static: an off preview answers its own refusal.
 
 ## Names
 

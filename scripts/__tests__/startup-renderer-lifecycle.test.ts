@@ -221,7 +221,7 @@ test.each([false, true])(
   },
 );
 
-test.each(['stable', 'dev', 'beta', 'nightly'])(
+test.each(['stable', 'dev', 'nightly'])(
   'canvas keeps the %s channel artwork',
   (channel) => {
     const scene = renderer({ channel });

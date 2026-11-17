@@ -11,6 +11,8 @@ import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
+import { isFlowGateKind } from '../../utils/attention';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 import { latestSessionPerConversation } from '../sessions/conversation-groups';
@@ -122,6 +124,8 @@ function AttentionSection({
 }) {
   const scope = useHostRequestAuthorityScope();
   const query = useBoardAttentionQuery(scope);
+  // No Flow console link while the Flow preview is off (`isFlowGateKind`).
+  const { flow } = useDeveloperFeatures();
   const rows = (query.data?.items ?? [])
     .filter(isPendingAttentionItem)
     .filter(
@@ -135,7 +139,9 @@ function AttentionSection({
         <ul className="personal-board__rows">
           {rows.map((item) => (
             <li key={item.id}>
-              {'openHref' in item && item.openHref ? (
+              {'openHref' in item &&
+              item.openHref &&
+              (flow || !isFlowGateKind(item.kind)) ? (
                 <StationLink href={item.openHref}>{item.title}</StationLink>
               ) : (
                 <span>{item.title}</span>
@@ -147,7 +153,7 @@ function AttentionSection({
       </ReadState>
       {query.data?.unavailableSources?.length ? (
         <p role="status">
-          Some attention sources are unavailable. Open Activity to inspect the
+          Some attention sources are unavailable. Open the inbox to inspect the
           remaining work.
         </p>
       ) : null}
@@ -176,7 +182,7 @@ function RecentSection({
         {rows.map((session) => (
           <li key={session.threadId}>
             <StationLink
-              href={`/?surface=activity&session=${encodeURIComponent(session.threadId)}`}
+              href={`/?surface=chat&session=${encodeURIComponent(session.threadId)}`}
             >
               {session.displayTitle || 'Untitled conversation'}
             </StationLink>

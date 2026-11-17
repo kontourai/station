@@ -1,0 +1,7 @@
+{
+  "revision": "cb69b57aa3b87a21ded01da72f46f7ddbf088904",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"The attached-session row now says one-step Continue in Station (confirmation dialog removed); other ConversationBody and chat.css claims unaffected.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx","tests/conversation-surfaces.spec.ts"]}
+  ]
+}

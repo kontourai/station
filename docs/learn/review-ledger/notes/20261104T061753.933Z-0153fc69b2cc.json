@@ -1,9 +1,0 @@
-{
-  "revision": "776d74345fae54155f2dcff8eb0e02d5ada256e4",
-
-  "notes": [
-    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed the Knowledge guide clarification that an operator-submitted proposal cannot be self-approved through a future review route, and that this preview has no decision or erasure route. The canonical-store and derived-index decision is unchanged.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]},
-
-    {"path":"docs/guides/knowledge.md","note":"Reviewed proposal attribution and self-approval against the memory route and Corpus create-proposal contract. Operator-submitted proposals remain self-proposed; this preview exposes no decision or erasure route.","inputs":["docs/guides/knowledge.md"]}
-  ]
-}

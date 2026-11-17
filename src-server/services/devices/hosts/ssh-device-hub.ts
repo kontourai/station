@@ -50,6 +50,7 @@ import type {
   DeviceSshHubState,
 } from '@kontourai/station-contracts/mobile-device';
 import { admitManagedListener } from '../../../security/managed-network-exposure.js';
+import { sleep } from '../../../utils/sleep.js';
 import {
   createDeviceHubConnection,
   type DeviceHubConnection,
@@ -195,7 +196,7 @@ async function defaultProbeReady(
     } catch {
       // The forward is not up yet.
     }
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await sleep(200);
   }
   return false;
 }

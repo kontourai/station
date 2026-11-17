@@ -1,0 +1,9 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"#4995: acquisition still uses the O_EXCL temp + linkSync publish and live-owner checks these designs describe; the temp is now removed on every exit, and a new exported sweep removes only old exactly-named temporaries with no live owner.","inputs":["packages/shared/src/lifecycle-events.ts"]},
+
+    {"path":"docs/design/station-instance-reconciler.md","note":"#4995: acquisition still uses the O_EXCL temp + linkSync publish and live-owner checks these designs describe; the temp is now removed on every exit, and a new exported sweep removes only old exactly-named temporaries with no live owner.","inputs":["packages/shared/src/lifecycle-events.ts"]}
+  ]
+}

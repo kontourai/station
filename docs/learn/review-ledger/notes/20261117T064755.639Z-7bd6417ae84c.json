@@ -1,0 +1,11 @@
+{
+  "revision": "a11d18779fb3f2ffa1d75c871173047e0c9e956a",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Atlas only adds the Project Library module to the Projects and Tasks group, matching the new module-map section; no existing group, module, question or reading list changed.","inputs":["docs/learn/atlas.json"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Atlas only adds the Project Library module to the Projects and Tasks group, matching the new module-map section; no existing group, module, question or reading list changed.","inputs":["docs/learn/atlas.json"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Atlas only adds the Project Library module to the Projects and Tasks group, matching the new module-map section; no existing group, module, question or reading list changed.","inputs":["docs/learn/atlas.json"]}
+  ]
+}

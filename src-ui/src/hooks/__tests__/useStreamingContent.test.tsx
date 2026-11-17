@@ -125,6 +125,34 @@ describe('useStreamingContent', () => {
     }
   });
 
+  test('a row handed another streaming chat shows that chat and keeps flushing', () => {
+    const streaming = (content: string): Partial<ChatUIState> => ({
+      streamingMessage: {
+        role: 'assistant',
+        content,
+        contentParts: [{ type: 'text', content }],
+      },
+    });
+    store.publish({ first: streaming('from first'), second: streaming('s') });
+    // Mounting mid-stream arms the first chat's 80ms flush.
+    const hook = renderHook(({ sessionId }) => useStreamingContent(sessionId), {
+      initialProps: { sessionId: 'first' },
+    });
+    expect(hook.result.current.streamingText).toBe('from first');
+
+    hook.rerender({ sessionId: 'second' });
+    expect(hook.result.current.streamingText).toBe('s');
+
+    act(() => {
+      store.publish({
+        first: streaming('from first'),
+        second: streaming('second grows'),
+      });
+      vi.advanceTimersByTime(80);
+    });
+    expect(hook.result.current.streamingText).toBe('second grows');
+  });
+
   test('publishes a completed text part immediately at a tool boundary', () => {
     const hook = renderHook(() => useStreamingContent('session'));
     act(() => {

@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import { redactInlineData } from '../model-image-attachments.js';
 import {
+  asRecord,
   createResolvedPathCache,
   directoryEntries as entriesOf,
   isRealDirectory,
@@ -74,12 +75,6 @@ function bounded(text: string): { text: string; truncated?: true } {
   );
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
 /** A tool result's text: a string, or the text blocks of its content. */
 function toolResultText(content: unknown): string | undefined {
   if (typeof content === 'string') return content;
@@ -109,11 +104,17 @@ function blockEntry(
     case 'tool_use': {
       if (typeof record.name !== 'string') return undefined;
       if (record.input === undefined)
-        return { message, kind: 'tool-call', name: record.name };
+        return {
+          message,
+          kind: 'tool-call',
+          ...(typeof record.id === 'string' ? { toolCallId: record.id } : {}),
+          name: record.name,
+        };
       const cut = bounded(JSON.stringify(record.input));
       return {
         message,
         kind: 'tool-call',
+        ...(typeof record.id === 'string' ? { toolCallId: record.id } : {}),
         name: record.name,
         input: cut.text,
         ...(cut.truncated ? { truncated: true as const } : {}),
@@ -125,6 +126,9 @@ function blockEntry(
       return {
         message,
         kind: 'tool-result',
+        ...(typeof record.tool_use_id === 'string'
+          ? { toolCallId: record.tool_use_id }
+          : {}),
         ...(cut ? { text: cut.text } : {}),
         ...(cut?.truncated ? { truncated: true as const } : {}),
         ...(record.is_error === true ? { isError: true as const } : {}),
@@ -249,29 +253,44 @@ function isConversationRecord(record: TranscriptRecord): boolean {
 }
 
 /**
- * The conversation records from `offset` until `limit` have been collected.
- * Memory holds the page plus at most one line's capped bytes.
+ * The conversation records from `offset` until `limit` have been collected,
+ * or, for a tail read, the last `limit` records. Memory holds the page plus
+ * at most one line's capped bytes. `start` is the first record's message
+ * index and `total` how many conversation records were seen.
  */
 async function readMessages(
   handle: FileHandle,
   offset: number,
   limit: number,
-): Promise<TranscriptRecord[]> {
+  tail: boolean,
+): Promise<{ records: TranscriptRecord[]; start: number; total: number }> {
   const page: TranscriptRecord[] = [];
   let index = 0;
   for await (const record of transcriptRecords(handle)) {
     if (!isConversationRecord(record)) continue;
-    if (index >= offset) page.push(record);
+    if (tail) {
+      page.push(record);
+      if (page.length > limit) page.shift();
+    } else if (index >= offset) page.push(record);
     index += 1;
-    if (page.length >= limit) break;
+    if (!tail && page.length >= limit) break;
   }
-  return page;
+  return {
+    records: page,
+    // A read from past the end starts at the end: a reader whose cursor is
+    // beyond it learns the transcript is now shorter.
+    start: tail ? index - page.length : Math.min(offset, index),
+    total: index,
+  };
 }
 
-/** A page of the subagent's transcript, starting at message `offset`. */
+/**
+ * A page of the subagent's transcript, starting at message `offset`, or,
+ * with `tail`, its last `limit` messages.
+ */
 export async function readClaudeSubagentTranscriptPage(
   ref: ClaudeSubagentTranscriptRef,
-  options: { offset: number; limit: number },
+  options: { offset: number; limit: number; tail?: boolean },
 ): Promise<ClaudeSubagentTranscriptOutcome> {
   const key = refKey(ref);
   let handle: FileHandle | undefined;
@@ -290,25 +309,30 @@ export async function readClaudeSubagentTranscriptPage(
     resolvedPaths.remember(key, path);
   }
   try {
-    // One past the page tells whether another page follows.
-    const messages = await readMessages(
+    const tail = options.tail === true;
+    // One past the page tells whether another page follows. A tail read is
+    // the end, so it reads exactly the page.
+    const read = await readMessages(
       handle,
       options.offset,
-      options.limit + 1,
+      tail ? options.limit : options.limit + 1,
+      tail,
     );
-    const page = messages.slice(0, options.limit);
+    const page = read.records.slice(0, options.limit);
     return {
       status: 'found',
       page: {
         entries: page.flatMap((record, index): ChildWorkTranscriptEntry[] =>
           record.tooLarge
-            ? [{ message: options.offset + index, kind: 'too-large' }]
+            ? [{ message: read.start + index, kind: 'too-large' }]
             : claudeTranscriptEntries(
                 { type: record.type, message: record.message },
-                options.offset + index,
+                read.start + index,
               ),
         ),
-        ...(messages.length > options.limit
+        offset: read.start,
+        endOffset: read.start + page.length,
+        ...(!tail && read.records.length > options.limit
           ? { nextOffset: options.offset + options.limit }
           : {}),
       },

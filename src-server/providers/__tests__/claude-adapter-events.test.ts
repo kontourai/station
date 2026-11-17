@@ -783,6 +783,7 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
           parent: { toolCallId: 'toolu-1', turnId: 'turn-1' },
           title: 'Explore the codebase',
           kindLabel: 'Explore',
+          workKind: 'agent',
           startedAt: expect.any(String),
           controls: { stop: 'provider-task-stop' },
         },
@@ -1048,6 +1049,63 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
       'tool.completed',
     ]);
     expect(childWorkDeltas(events)).toEqual([]);
+  });
+
+  test('each child says what it is: a local_bash is a command, a Monitor-launched one a monitor, any other task an agent', () => {
+    const record = makeRecord();
+    const events = feed(record, [
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu-mon', name: 'Monitor', input: {} },
+            { type: 'tool_use', id: 'toolu-sh', name: 'Bash', input: {} },
+          ],
+        },
+        uuid: 'u-launch',
+        session_id: 's-1',
+      } as unknown as SDKMessage,
+      task('task_started', {
+        task_id: 'bash-1',
+        tool_use_id: 'toolu-sh',
+        description: 'Push empty commit',
+        is_backgrounded: true,
+        task_type: 'local_bash',
+      }),
+      task('task_started', {
+        task_id: 'mon-1',
+        tool_use_id: 'toolu-mon',
+        description: 'Watch CI',
+        is_backgrounded: true,
+        task_type: 'local_bash',
+      }),
+      task('task_started', {
+        task_id: 'agent-1',
+        tool_use_id: 'toolu-agent',
+        description: 'Audit',
+        task_type: 'local_agent',
+        subagent_type: 'Explore',
+      }),
+      task('task_notification', {
+        task_id: 'bash-1',
+        tool_use_id: 'toolu-sh',
+        status: 'completed',
+        summary: 'Push empty commit',
+      }),
+    ]);
+    const kinds = Object.fromEntries(
+      fold(events).map((item) => [item.childId, item.workKind]),
+    );
+    expect(kinds).toEqual({
+      'bash-1': 'command',
+      'mon-1': 'monitor',
+      'agent-1': 'agent',
+    });
+    // The settle restates it, so a client that missed the start still knows.
+    expect(
+      childWorkDeltas(events).find((delta) => delta.kind === 'settle'),
+    ).toMatchObject({ identity: { workKind: 'command' } });
   });
 
   test('task_notification settles a tracked task: tool.completed plus a failed settle, no tuples', () => {

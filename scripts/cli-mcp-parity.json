@@ -236,6 +236,12 @@
     "conversation fork": {
       "tools": ["fork_conversation"]
     },
+    "conversation reopen": {
+      "tools": ["settle_conversation"]
+    },
+    "conversation settle": {
+      "tools": ["settle_conversation"]
+    },
     "delegate attempt": {
       "exempt": "client-local",
       "reason": "Looks up a CLI invocation's lost handle by client attempt id (GET /api/orchestration/delegations/attempts/:id); MCP returns the handle synchronously."
@@ -271,7 +277,7 @@
     },
     "doctor": {
       "exempt": "local-host",
-      "reason": "Acts on this machine's install, not a Station API."
+      "reason": "Acts on this machine's install; its one Station read (GET /api/diagnostics/confinement-preflight) reports the confinement facts of the selected Station, local or remote, and changes nothing there."
     },
     "environment access": {
       "exempt": "person-only",
@@ -1272,6 +1278,10 @@
     "enable_job": {
       "cli": ["schedule enable"]
     },
+    "forget_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "fork_conversation": {
       "cli": ["conversation fork"]
     },
@@ -1286,6 +1296,10 @@
     "get_answer_assessment_target": {
       "exempt": "agent-self",
       "reason": "Machine-produced Surface trust bundle for an answer; no person workflow publishes one."
+    },
+    "get_appearance": {
+      "exempt": "agent-proposal",
+      "reason": "An agent reads the person's custom appearance to propose a change; the person previews and keeps it in the Appearance page."
     },
     "get_basis": {
       "cli": ["tasks basis"],
@@ -1398,6 +1412,10 @@
       "cli": ["agents list"],
       "note": "Different route: MCP GET /agents, CLI GET /api/agents."
     },
+    "list_automation_proposals": {
+      "exempt": "agent-self",
+      "reason": "Lists the caller's own Automation proposals."
+    },
     "list_conversations": {
       "cli": ["agents conversations"]
     },
@@ -1441,6 +1459,14 @@
     "list_project_layouts": {
       "cli": ["projects layouts"],
       "note": "CLI layouts also creates/updates/deletes layouts; MCP is read-only."
+    },
+    "list_project_library": {
+      "exempt": "agent-self",
+      "reason": "The caller's own Project Library (route uses authority.caller's recorded Project). People use the Project page's Files & connections."
+    },
+    "list_project_notes": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
     },
     "list_project_s3_objects": {
       "missing": 4283,
@@ -1503,6 +1529,18 @@
     "preview_schedule": {
       "cli": ["schedule preview"]
     },
+    "propose_appearance": {
+      "exempt": "agent-proposal",
+      "reason": "An agent proposes, the person previews and keeps or discards it in the Appearance page."
+    },
+    "propose_automation_rule": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person; the operator creates rules directly through the Automation operator API."
+    },
+    "propose_automation_source": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person; the operator creates sources directly through the Automation operator API."
+    },
     "propose_job": {
       "exempt": "agent-proposal",
       "reason": "Agent asks a person; a person creates directly with `schedule create`."
@@ -1529,6 +1567,14 @@
     "read_monitoring_events": {
       "cli": ["monitoring events", "insights events"]
     },
+    "read_project_library_file": {
+      "exempt": "agent-self",
+      "reason": "One file from the caller's own Project Library (route uses authority.caller's recorded Project)."
+    },
+    "read_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "read_project_s3_object": {
       "missing": 4283,
       "want": "Knowledge s3 read"
@@ -1547,6 +1593,10 @@
     "release_claim": {
       "missing": 3427,
       "want": "Claims release"
+    },
+    "remember_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
     },
     "remove_answer_assessment": {
       "exempt": "agent-self",
@@ -1597,6 +1647,10 @@
     "send_to_session": {
       "cli": ["chat"],
       "note": "Different route and authority: MCP POST /api/orchestration/session-control/send (agent-to-agent, caller required, sender named); `chat --session <id>` is the person's own send via POST /api/orchestration/chat. Issue #3427 says the person send is the intended CLI equivalent. Modes (steer/auto/requestKey) not exposed by CLI."
+    },
+    "settle_conversation": {
+      "cli": ["conversation settle", "conversation reopen"],
+      "note": "Both reach PUT /api/conversations/:id/work-state, the person's own Open and Settled inbox record."
     },
     "system_status": {
       "missing": 4284,

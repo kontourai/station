@@ -193,7 +193,7 @@ test.describe('Bundled plugin registry lifecycle', () => {
         { timeout: 60_000 },
       );
       await removeDetail
-        .getByRole('button', { name: 'Remove Plugin', exact: true })
+        .getByRole('button', { name: 'Remove plugin', exact: true })
         .click();
       const removed = await pluginRemoval;
       expect(removed.ok()).toBe(true);

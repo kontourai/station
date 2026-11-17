@@ -14,6 +14,17 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * Any non-null object that is not an array, whatever its prototype: the loose
+ * form the boundary validators share. A class instance or an object with
+ * accessor members passes; use `isRecord` where only a plain object may.
+ */
+export function isObjectRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
  * `record[key]` only when it is the record's own member, never an inherited
  * one. Not `Object.hasOwn`: SDK consumers compile contracts for ES2020.
  */

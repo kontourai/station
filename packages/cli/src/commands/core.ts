@@ -1182,8 +1182,7 @@ async function runChat(
   // station#978 AC1/AC2/AC5/AC7: usage errors here throw before any request,
   // same as every other flag check above.
   const { modelOptions, cwd } = collectModelOptions(parsed);
-  const projectSlug =
-    typeof parsed.flags.project === 'string' ? parsed.flags.project : undefined;
+  const projectSlug = optionalValueFlag(parsed, 'project');
   // A shell already has an authoritative execution workspace: the directory
   // from which it was invoked. Never silently turn an ordinary CLI chat into
   // an unbound/home chat. A project, when selected, is a separate resource and
@@ -1301,8 +1300,7 @@ async function runSessionsCommand(
 
   if (action === 'interrupt') {
     const id = requirePositional(parsed, 2, 'session id');
-    const turnId =
-      typeof parsed.flags.turn === 'string' ? parsed.flags.turn : undefined;
+    const turnId = optionalValueFlag(parsed, 'turn');
     await client.interruptSession(id, turnId);
     printJson({ success: true, interrupted: id });
     return;

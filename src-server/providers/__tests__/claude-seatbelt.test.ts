@@ -16,7 +16,7 @@ import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { stationSessionTmpRootName } from '@kontourai/station-shared/temp-dir';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   canonicalPath,
@@ -26,7 +26,6 @@ import {
 } from '../../security/confinement/seatbelt.js';
 import {
   SESSION_TMPDIR_MAX_BYTES,
-  sessionTmpDirTestHooks,
   shortSessionTmpRoots,
 } from '../../services/infra/session-tmpdir.js';
 import {
@@ -38,6 +37,31 @@ import {
 } from '../adapters/claude-seatbelt.js';
 import { appHomeProfileDir } from '../app-home/app-home-profiles.js';
 import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
+
+const shortBases = vi.hoisted(() => ({
+  paths: undefined as string[] | undefined,
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  const { tmpdir } = await import('node:os');
+  const systemBases = [tmpdir(), '/tmp'];
+  return {
+    ...fs,
+    realpathSync: Object.assign(
+      (...args: Parameters<typeof fs.realpathSync>) => {
+        const index = systemBases.indexOf(String(args[0]));
+        if (shortBases.paths && index !== -1) {
+          const base = shortBases.paths[index] ?? shortBases.paths[0];
+          if (!base) throw new Error('System temp base unavailable');
+          args[0] = base;
+        }
+        return fs.realpathSync(...args);
+      },
+      { native: fs.realpathSync.native },
+    ),
+  };
+});
 
 const STATION_HOME = '/Users/op/.station/instances/stable';
 const CONFINED_ROOT = `${STATION_HOME}/confined-homes`;
@@ -194,7 +218,7 @@ describe.skipIf(process.platform === 'win32')(
     const makeShortDir = trackTempDirs({ base: '/tmp' });
 
     afterEach(() => {
-      sessionTmpDirTestHooks.shortBases = undefined;
+      shortBases.paths = undefined;
     });
 
     /** A macOS-style long home, a workspace, and a test-owned short root. */
@@ -211,7 +235,7 @@ describe.skipIf(process.platform === 'win32')(
       mkdirSync(stationHome, { recursive: true });
       mkdirSync(workspace, { recursive: true });
       const base = realpathSync(makeShortDir('st'));
-      sessionTmpDirTestHooks.shortBases = () => [base];
+      shortBases.paths = [base];
       const [shortRoot] = shortSessionTmpRoots();
       return { home, stationHome, workspace, base, shortRoot: shortRoot! };
     }

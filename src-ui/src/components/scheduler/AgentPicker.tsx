@@ -79,7 +79,7 @@ export function AgentPicker({
   //
   // #1536 D2: and it waits on SETTLED, not on loaded. Gating the skeleton on
   // `isSuccess` meant a FAILED read kept it spinning forever — beside the
-  // field's own "could not load the Agent catalog / Try again", which is the
+  // field's own "could not load the Agent catalog / Retry", which is the
   // sentence that actually explains it. Three states, three renderings.
   if (!agentsSettled && !eligible.length) {
     // Still arriving. The control itself is what is waiting, so the shared

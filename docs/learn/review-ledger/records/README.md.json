@@ -14,8 +14,6 @@
 
     "docker-compose.yml",
 
-    "docs/architecture/module-map.md",
-
     "docs/guides/deployment.md",
 
     "docs/guides/nightly.md",

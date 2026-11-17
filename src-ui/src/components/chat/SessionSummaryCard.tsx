@@ -1,3 +1,4 @@
+import { isSummaryContextBoundary } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
   useDeleteSessionSummaryMutation,
@@ -11,6 +12,7 @@ import type { ChatSession } from '../../types';
 import { log } from '../../utils/logger';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
+import { ConfirmModal } from '../modals/ConfirmModal';
 
 interface GenerateRunState {
   status: 'pending' | 'error' | 'success' | 'idle';
@@ -238,13 +240,15 @@ export function SessionSummaryCard({
           ) : null}
           {data.contextBoundaries?.length ? (
             <section className="session-summary__section">
-              <strong>Context boundary disclosure</strong>
+              <strong>Context resets</strong>
               <ul>
                 {data.contextBoundaries.map((boundary) => (
                   <li key={boundary.boundaryId}>
                     {boundary.policy === 'empty-next-cold-start'
-                      ? 'Prior transcript not injected. Summary separately reads canonical history.'
-                      : 'Prior transcript re-anchored and injected.'}
+                      ? 'The agent started fresh. This summary still reads the full chat.'
+                      : isSummaryContextBoundary(boundary.policy)
+                        ? 'The agent continued from a summary.'
+                        : 'The agent continued from chat history.'}
                   </li>
                 ))}
               </ul>
@@ -298,29 +302,18 @@ export function SessionSummaryCard({
               },
             ]}
           />
-          {deleteConfirmation ? (
-            <div role="alertdialog" aria-label="Delete derived summary">
-              <p>
-                Delete this derived summary? The transcript and Task evidence
-                stay unchanged.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  remove.mutate({ agentSlug, conversationId });
-                  setDeleteConfirmation(false);
-                }}
-              >
-                Delete summary
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmation(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : null}
+          <ConfirmModal
+            isOpen={deleteConfirmation}
+            variant="danger"
+            title="Delete derived summary"
+            message="Delete this derived summary? The transcript and Task evidence stay unchanged."
+            confirmLabel="Delete summary"
+            onConfirm={() => {
+              remove.mutate({ agentSlug, conversationId });
+              setDeleteConfirmation(false);
+            }}
+            onCancel={() => setDeleteConfirmation(false)}
+          />
         </>
       ) : isGenerating ? (
         <p className="session-summary__generating" role="status">

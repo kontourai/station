@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
+  compareEngineVersions,
   hasUnsafeTextChar,
   installRecipeForPlatform,
+  readEngineVersion,
   validateACPEngineDescriptor,
 } from '../acp.js';
 
@@ -300,5 +302,145 @@ describe('installRecipeForPlatform', () => {
     );
     expect(installRecipeForPlatform(valid.install, 'aix')).toBeUndefined();
     expect(installRecipeForPlatform(undefined, 'darwin')).toBeUndefined();
+  });
+});
+
+describe('managedRuntime', () => {
+  test('accepts an install id and argv naming the script once', () => {
+    expect(
+      validateACPEngineDescriptor({
+        managedRuntime: {
+          installId: 'kas-bundle',
+          argv: [
+            '--experimental-wasm-modules',
+            '{script}',
+            '--transport=stdio',
+            '--auth=acp-callback',
+          ],
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'no script token',
+      { installId: 'kas-bundle', argv: ['acp-server.js'] },
+      ['managedRuntime.argv must contain {script} exactly once'],
+    ],
+    [
+      'two script tokens',
+      { installId: 'kas-bundle', argv: ['{script}', '{script}'] },
+      ['managedRuntime.argv must contain {script} exactly once'],
+    ],
+    [
+      'an install id with a path in it',
+      { installId: '../kas', argv: ['{script}'] },
+      ['managedRuntime.installId is not valid'],
+    ],
+    [
+      'an upper-case install id',
+      { installId: 'KAS', argv: ['{script}'] },
+      ['managedRuntime.installId is not valid'],
+    ],
+    [
+      'an argument hiding a zero-width joiner',
+      { installId: 'kas-bundle', argv: ['{script}', '--a‍b'] },
+      ['managedRuntime.argv[1] is not valid'],
+    ],
+    [
+      'an empty argv',
+      { installId: 'kas-bundle', argv: [] },
+      ['managedRuntime.argv must be a list of 1-16 entries'],
+    ],
+    [
+      'a missing argv',
+      { installId: 'kas-bundle' },
+      ['managedRuntime.argv is required'],
+    ],
+    [
+      'an unknown field',
+      { installId: 'kas-bundle', argv: ['{script}'], command: 'sh' },
+      ['managedRuntime: unknown field command'],
+    ],
+  ])('refuses %s', (_, managedRuntime, errors) => {
+    expect(
+      validateACPEngineDescriptor({ managedRuntime: managedRuntime as never }),
+    ).toEqual(errors);
+  });
+
+  test('refuses a value that is not an object', () => {
+    expect(
+      validateACPEngineDescriptor({ managedRuntime: ['{script}'] as never }),
+    ).toEqual(['managedRuntime must be an object']);
+  });
+
+  test('admits the kiro-cli client-application launch variable', () => {
+    expect(
+      validateACPEngineDescriptor({
+        launchEnv: { KIRO_CLI_CLIENT_APPLICATION: 'station' },
+      }),
+    ).toEqual([]);
+    expect(
+      validateACPEngineDescriptor({ launchEnv: { KIRO_REGION: 'us-east-1' } }),
+    ).toEqual(['launchEnv.KIRO_REGION: not an engine-scoped launch variable']);
+  });
+});
+
+describe('minimumVersion', () => {
+  const floor = {
+    versionCommand: ['agy', '--version'],
+    minimum: '1.5.0',
+    updateHint: 'Run agy update.',
+  };
+
+  test('accepts a command, a plain version and a hint', () => {
+    expect(validateACPEngineDescriptor({ minimumVersion: floor })).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a pre-release minimum',
+      { ...floor, minimum: '1.5.0-beta' },
+      ['minimumVersion.minimum must be major.minor.patch'],
+    ],
+    [
+      'a two-part minimum',
+      { ...floor, minimum: '1.5' },
+      ['minimumVersion.minimum must be major.minor.patch'],
+    ],
+    [
+      'an empty command',
+      { ...floor, versionCommand: [] },
+      ['minimumVersion.versionCommand must be a list of 1-16 entries'],
+    ],
+    [
+      'a hint with a line break',
+      { ...floor, updateHint: 'Run\nthis' },
+      ['minimumVersion.updateHint is not valid'],
+    ],
+    [
+      'an unknown field',
+      { ...floor, autoUpdate: true },
+      ['minimumVersion: unknown field autoUpdate'],
+    ],
+  ])('refuses %s', (_label, minimumVersion, errors) => {
+    expect(
+      validateACPEngineDescriptor({ minimumVersion: minimumVersion as never }),
+    ).toEqual(errors);
+  });
+
+  test('reads the first plain version a command prints', () => {
+    // `agy --version` on Antigravity CLI 1.5.8 prints the bare version.
+    expect(readEngineVersion('1.5.8\n')).toBe('1.5.8');
+    expect(readEngineVersion('agy version 1.4.4 (build 12)')).toBe('1.4.4');
+    expect(readEngineVersion('no version here')).toBeUndefined();
+    expect(readEngineVersion('1.5')).toBeUndefined();
+  });
+
+  test('compares versions part by part, not as text', () => {
+    expect(compareEngineVersions('1.4.4', '1.5.0')).toBeLessThan(0);
+    expect(compareEngineVersions('1.10.0', '1.5.0')).toBeGreaterThan(0);
+    expect(compareEngineVersions('1.5.0', '1.5.0')).toBe(0);
   });
 });

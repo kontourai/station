@@ -42,6 +42,8 @@
 import { mkdirSync } from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
 import { BROWSER_PANE_TAB_LIMIT } from '@kontourai/station-contracts/workspace-browser-pane';
+import { errorMessage } from '../../../utils/error-message.js';
+import { sleep } from '../../../utils/sleep.js';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -59,6 +61,7 @@ import type {
   CdpTransport,
 } from '../browser-host.js';
 import {
+  type CdpPipeTerminal,
   CdpPipeTransport,
   CdpTransportClosedError,
 } from '../cdp-pipe-transport.js';
@@ -311,7 +314,80 @@ export interface ChromiumLaunch {
 export type ChromiumLauncher = (request: {
   executablePath: string;
   args: readonly string[];
+  onDiagnostic?: (event: PreviewDiagnostic) => void;
 }) => ChromiumLaunch;
+
+type CloseOrigin =
+  | 'policy-cleanup'
+  | 'startup-scan'
+  | 'untracked-grace'
+  | 'owned-close'
+  | 'open-failure'
+  | 'popup-fold'
+  | 'unknown';
+type DiagnosticStep = 'browserClose' | 'terminate' | 'proxyClose';
+type DiagnosticState = 'STARTED' | 'RESOLVED' | 'REJECTED';
+type StderrCounts = Record<
+  | 'sandbox'
+  | 'assertion'
+  | 'fatal'
+  | 'abort'
+  | 'signal'
+  | 'oom'
+  | 'stack'
+  | 'other',
+  number
+>;
+const DIAGNOSTIC_SIGNALS = [
+  'SIGABRT',
+  'SIGKILL',
+  'SIGTERM',
+  'SIGINT',
+  'SIGSEGV',
+  'SIGILL',
+  'SIGBUS',
+  'SIGFPE',
+  'SIGTRAP',
+  'SIGQUIT',
+  'SIGHUP',
+] as const;
+export type PreviewDiagnostic =
+  | {
+      type: 'child-exit';
+      code: number | null;
+      signal: (typeof DIAGNOSTIC_SIGNALS)[number] | 'none' | 'other';
+    }
+  | { type: 'spawn-error'; category: 'ENOENT' | 'EACCES' | 'EPERM' | 'other' }
+  | ({ type: 'pipe' } & CdpPipeTerminal)
+  | {
+      type: 'step';
+      step: Exclude<DiagnosticStep, 'proxyClose'>;
+      state: DiagnosticState;
+    }
+  | {
+      type: 'step';
+      step: 'proxyClose';
+      origin: 'exit' | 'shutdown' | 'launch-failure';
+      state: DiagnosticState;
+    }
+  | {
+      type: 'close';
+      origin: CloseOrigin;
+      state: 'sent' | 'answered' | 'rejected' | 'destroyed';
+      target: string | null;
+      session: string | null;
+      exhausted: boolean;
+    }
+  | {
+      type: 'stderr';
+      state: 'end' | 'close' | 'error' | 'drained' | 'expired';
+      counts: StderrCounts;
+      scanned: number;
+      observed: number;
+      scanExhausted: boolean;
+      overlongLine: boolean;
+      saturated: boolean;
+    };
 
 export interface ChromiumServerHostOptions {
   /** Trusted disposable renderers only; bounds V8 heap, not total process RSS. */
@@ -336,6 +412,7 @@ export interface ChromiumServerHostOptions {
 }
 
 export type ChromiumHostEvent =
+  | { kind: 'preview-diagnostic'; diagnostic: PreviewDiagnostic }
   | { kind: 'request-blocked'; reason: PausedRequestBlock; url: string }
   | { kind: 'popup-folded'; openerTargetId: string; url: string | undefined }
   | {
@@ -472,11 +549,116 @@ const STDERR_TAIL_BYTES = 4096;
 /** How long an exit waits for the rest of stderr (helpers can hold it open). */
 const STDERR_DRAIN_MS = 500;
 
+function stderrDiagnostics(report: (event: PreviewDiagnostic) => void) {
+  const counts: StderrCounts = {
+    sandbox: 0,
+    assertion: 0,
+    fatal: 0,
+    abort: 0,
+    signal: 0,
+    oom: 0,
+    stack: 0,
+    other: 0,
+  };
+  const markers: [keyof StderrCounts, readonly string[]][] = [
+    ['sandbox', ['No usable sandbox!']],
+    ['assertion', ['CHECK', 'Check failed', 'DCHECK']],
+    ['fatal', ['FATAL']],
+    ['abort', ['SIGABRT', 'Received signal 6']],
+    ['signal', ['SIGSEGV', 'SIGILL', 'SIGBUS', 'SIGFPE']],
+    ['oom', ['Out of memory', 'Allocation failed']],
+    ['stack', ['Stack trace:', '#0 ']],
+  ];
+  const seen = new Set<keyof StderrCounts>();
+  const emitted = new Set<string>();
+  let carry = '';
+  let prefix = 0;
+  let scanned = 0;
+  let observed = 0;
+  let scanExhausted = false;
+  let overlongLine = false;
+  let saturated = false;
+  let finished = false;
+  const bump = (key: keyof StderrCounts) => {
+    if (counts[key] === 65535) saturated = true;
+    else counts[key]++;
+  };
+  const endLine = () => {
+    if (prefix && seen.size === 0) bump('other');
+    prefix = 0;
+    carry = '';
+    seen.clear();
+  };
+  return {
+    consume(chunk: Buffer) {
+      if (observed + chunk.length > 65535) saturated = true;
+      observed = Math.min(65535, observed + chunk.length);
+      if (finished) return;
+      const limit = Math.min(chunk.length, 32768 - scanned);
+      scanExhausted ||= limit < chunk.length;
+      scanned += limit;
+      for (let offset = 0; offset < limit; offset += 64) {
+        const slice = chunk.subarray(offset, Math.min(offset + 64, limit));
+        let start = 0;
+        while (start < slice.length) {
+          const newline = slice.indexOf(10, start);
+          const end = newline < 0 ? slice.length : newline;
+          const take = Math.min(end - start, Math.max(0, 256 - prefix));
+          if (take) {
+            const text =
+              carry + slice.subarray(start, start + take).toString('latin1');
+            for (const [key, literals] of markers) {
+              if (
+                !seen.has(key) &&
+                literals.some((literal) => text.includes(literal))
+              ) {
+                seen.add(key);
+                bump(key);
+              }
+            }
+            carry = text.slice(-63);
+          }
+          prefix = Math.min(257, prefix + end - start);
+          overlongLine ||= prefix > 256;
+          if (newline < 0) break;
+          endLine();
+          start = end + 1;
+        }
+      }
+    },
+    finish(state: Extract<PreviewDiagnostic, { type: 'stderr' }>['state']) {
+      if (emitted.has(state)) return;
+      emitted.add(state);
+      if (!finished) endLine();
+      finished = true;
+      report({
+        type: 'stderr',
+        state,
+        counts: { ...counts },
+        scanned,
+        observed,
+        scanExhausted,
+        overlongLine,
+        saturated,
+      });
+    },
+  };
+}
+
 /** Production launcher: an owned, orphan-registered child with a CDP pipe. */
 export const launchChromiumProcess: ChromiumLauncher = ({
   executablePath,
   args,
+  onDiagnostic,
 }) => {
+  const report = (event: PreviewDiagnostic) => {
+    try {
+      onDiagnostic?.(event);
+    } catch {
+      /* Observers do not own launch outcomes. */
+    }
+  };
+  const diagnostic = onDiagnostic ? stderrDiagnostics(report) : undefined;
   const { proc, release } = spawnOwnedChild(executablePath, [...args], {
     stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'],
     env: chromiumEnvironment(process.env),
@@ -489,6 +671,7 @@ export const launchChromiumProcess: ChromiumLauncher = ({
   // across writes still classifies.
   let lineCarry = '';
   proc.stderr?.on('data', (chunk: Buffer) => {
+    diagnostic?.consume(chunk);
     const text = chunk.toString('utf8');
     const scanned = lineCarry + text;
     failure ??= classifyChromiumStderr(scanned);
@@ -496,31 +679,57 @@ export const launchChromiumProcess: ChromiumLauncher = ({
     lineCarry = scanned.slice(lastNewline + 1).slice(-STDERR_TAIL_BYTES);
     stderrTail = (stderrTail + text).slice(-STDERR_TAIL_BYTES);
   });
-  proc.stderr?.on('error', () => {});
+  proc.stderr?.on('error', () => diagnostic?.finish('error'));
+  let stderrDone = !proc.stderr;
   const stderrEnded = new Promise<void>((resolve) => {
     if (!proc.stderr) return resolve();
-    proc.stderr.once('end', resolve);
-    proc.stderr.once('close', resolve);
+    proc.stderr.once('end', () => {
+      stderrDone = true;
+      diagnostic?.finish('end');
+      resolve();
+    });
+    proc.stderr.once('close', () => {
+      stderrDone = true;
+      diagnostic?.finish('close');
+      resolve();
+    });
   });
   const transport = new CdpPipeTransport(
     proc.stdio[3] as Writable,
     proc.stdio[4] as Readable,
+    { onTerminal: (event) => report({ type: 'pipe', ...event }) },
   );
   const exited = new Promise<string>((resolve) => {
     proc.once('exit', async (code, signal) => {
+      report({
+        type: 'child-exit',
+        code,
+        signal:
+          signal === null
+            ? 'none'
+            : (DIAGNOSTIC_SIGNALS.find((candidate) => candidate === signal) ??
+              'other'),
+      });
       // 'exit' can precede the last stderr chunk; the cause is often in it.
-      await Promise.race([
-        stderrEnded,
-        new Promise((r) => setTimeout(r, STDERR_DRAIN_MS)),
-      ]);
+      await Promise.race([stderrEnded, sleep(STDERR_DRAIN_MS)]);
+      diagnostic?.finish(stderrDone ? 'drained' : 'expired');
       const tail = stderrTail.trim().split('\n').slice(-3).join(' | ');
       resolve(
         `browser process exited (code ${code ?? 'none'}, signal ${signal ?? 'none'})${tail ? `: ${tail}` : ''}`,
       );
     });
-    proc.once('error', (error) =>
-      resolve(`browser process failed to start: ${error.message}`),
-    );
+    proc.once('error', (error: NodeJS.ErrnoException) => {
+      report({
+        type: 'spawn-error',
+        category:
+          error.code === 'ENOENT' ||
+          error.code === 'EACCES' ||
+          error.code === 'EPERM'
+            ? error.code
+            : 'other',
+      });
+      resolve(`browser process failed to start: ${error.message}`);
+    });
   });
   void exited.then(() => {
     // The browser process died (crash, kill) but its helpers — renderers,
@@ -574,7 +783,24 @@ interface Running {
   created: Set<string>;
   /** Page targets awaiting the untracked-target check. */
   pendingUntracked: Map<string, NodeJS.Timeout>;
+  /** One-shot documents this host serves to its own targets' main frames. */
+  served: Map<string, string>;
+  /** Recently destroyed targets: a late info event must not re-close them. */
+  destroyed: Set<string>;
 }
+
+/**
+ * Where {@link ChromiumServerHost.openTarget} serves a caller's document. The
+ * `.invalid` name never resolves and the request never leaves the browser:
+ * CDP Fetch answers it for that one target's main frame, once. A page with a
+ * real site matters: Chrome 158 aborts the whole browser (CHECK `has_site_`
+ * in site_instance_impl.cc) when an about:blank page adds a sandboxed srcdoc
+ * frame while sandboxed frames get their own process (#4917).
+ */
+export const SERVED_DOCUMENT_URL = 'http://station-document.invalid/';
+
+/** Destroyed target ids remembered against late `targetInfoChanged` events. */
+const DESTROYED_TARGET_MEMORY = 256;
 
 /** Grace before an unknown page target (not ours, not a popup) is closed. */
 const UNTRACKED_TARGET_GRACE_MS = 1_000;
@@ -666,6 +892,77 @@ export class ChromiumServerHost implements BrowserHost {
   private readonly exitListeners = new Set<(reason: string) => void>();
   private readonly launcher: ChromiumLauncher;
   private readonly guarded: CdpTransport;
+  private readonly diagnosticIdentities = new Map<
+    string,
+    { alias: string; session: string | null; origin: CloseOrigin }
+  >();
+  private identitiesExhausted = false;
+
+  private reportDiagnostic(diagnostic: PreviewDiagnostic): void {
+    if (!this.options.requireRestrictedWebRtc) return;
+    try {
+      this.options.onEvent?.({ kind: 'preview-diagnostic', diagnostic });
+    } catch {
+      /* Observation must not replace the host outcome. */
+    }
+  }
+
+  private diagnosticIdentity(
+    kind: 'target' | 'session',
+    value: unknown,
+  ): string | null {
+    if (!this.options.requireRestrictedWebRtc || !this.options.onEvent)
+      return null;
+    if (typeof value !== 'string' || value.length > 128) {
+      this.identitiesExhausted = true;
+      return null;
+    }
+    const key = `${kind}:${value}`;
+    const existing = this.diagnosticIdentities.get(key);
+    if (existing) return existing.alias;
+    if (this.diagnosticIdentities.size >= 96) {
+      this.identitiesExhausted = true;
+      return null;
+    }
+    const alias = `${kind === 'target' ? 't' : 's'}${this.diagnosticIdentities.size + 1}`;
+    this.diagnosticIdentities.set(key, {
+      alias,
+      session: null,
+      origin: 'unknown',
+    });
+    return alias;
+  }
+
+  private linkDiagnosticTarget(targetId: string, sessionId: string): void {
+    const target = this.diagnosticIdentity('target', targetId);
+    const session = this.diagnosticIdentity('session', sessionId);
+    const entry =
+      target === null
+        ? undefined
+        : this.diagnosticIdentities.get(`target:${targetId}`);
+    if (entry) entry.session = session;
+  }
+
+  private closeDiagnostic(
+    targetId: string,
+    origin: CloseOrigin,
+    state: 'sent' | 'answered' | 'rejected' | 'destroyed',
+  ): void {
+    const target = this.diagnosticIdentity('target', targetId);
+    const entry =
+      target === null
+        ? undefined
+        : this.diagnosticIdentities.get(`target:${targetId}`);
+    if (entry && state === 'sent') entry.origin = origin;
+    this.reportDiagnostic({
+      type: 'close',
+      origin: state === 'destroyed' ? (entry?.origin ?? 'unknown') : origin,
+      state,
+      target,
+      session: entry?.session ?? null,
+      exhausted: this.identitiesExhausted,
+    });
+  }
 
   constructor(private readonly options: ChromiumServerHostOptions) {
     this.launcher = options.launcher ?? launchChromiumProcess;
@@ -684,6 +981,8 @@ export class ChromiumServerHost implements BrowserHost {
   async openTarget(p: {
     profileDir: string;
     viewport: BrowserViewport;
+    /** Load this HTML as the main document (see {@link SERVED_DOCUMENT_URL}). */
+    document?: string;
   }): Promise<BrowserTarget> {
     const running = await this.ensureRunning(p.profileDir);
     const transport = running.launch.transport;
@@ -700,6 +999,7 @@ export class ChromiumServerHost implements BrowserHost {
         'Target.attachToTarget',
         { targetId, flatten: true },
       );
+      this.linkDiagnosticTarget(targetId, sessionId);
       const unsubscribe = this.watchTarget(running, targetId, sessionId);
       running.targets.set(targetId, {
         sessionId,
@@ -734,9 +1034,12 @@ export class ChromiumServerHost implements BrowserHost {
           { enabled: true },
           sessionId,
         );
+      if (p.document !== undefined)
+        await this.loadServedDocument(running, targetId, sessionId, p.document);
       return { targetId, cdpSessionId: sessionId };
     } catch (error) {
-      if (targetId) await this.closeTarget(targetId).catch(() => {});
+      if (targetId)
+        await this.closeTarget(targetId, 'open-failure').catch(() => {});
       throw error;
     } finally {
       running.creating -= 1;
@@ -747,13 +1050,23 @@ export class ChromiumServerHost implements BrowserHost {
     return this.guarded;
   }
 
-  async closeTarget(targetId: string): Promise<void> {
+  async closeTarget(
+    targetId: string,
+    origin: CloseOrigin = 'owned-close',
+  ): Promise<void> {
     const running = this.requireRunning();
     const target = running.targets.get(targetId);
     target?.unsubscribe();
     running.targets.delete(targetId);
     running.created.delete(targetId);
-    await running.launch.transport.send('Target.closeTarget', { targetId });
+    this.closeDiagnostic(targetId, origin, 'sent');
+    try {
+      await running.launch.transport.send('Target.closeTarget', { targetId });
+      this.closeDiagnostic(targetId, origin, 'answered');
+    } catch (error) {
+      this.closeDiagnostic(targetId, origin, 'rejected');
+      throw error;
+    }
   }
 
   onExit(fn: (reason: string) => void): () => void {
@@ -777,13 +1090,73 @@ export class ChromiumServerHost implements BrowserHost {
       this.markExited('shutdown');
       return;
     }
+    this.reportDiagnostic({
+      type: 'step',
+      step: 'browserClose',
+      state: 'STARTED',
+    });
+    let closeFailed = false;
     await withTimeout(
       running.launch.transport.send('Browser.close'),
       2_000,
       'Browser.close',
-    ).catch(() => {});
-    await running.launch.terminate();
-    await running.proxy.close();
+    ).catch(() => {
+      closeFailed = true;
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'browserClose',
+        state: 'REJECTED',
+      });
+    });
+    if (!closeFailed)
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'browserClose',
+        state: 'RESOLVED',
+      });
+    this.reportDiagnostic({
+      type: 'step',
+      step: 'terminate',
+      state: 'STARTED',
+    });
+    try {
+      await running.launch.terminate();
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'terminate',
+        state: 'RESOLVED',
+      });
+    } catch (error) {
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'terminate',
+        state: 'REJECTED',
+      });
+      throw error;
+    }
+    this.reportDiagnostic({
+      type: 'step',
+      step: 'proxyClose',
+      origin: 'shutdown',
+      state: 'STARTED',
+    });
+    try {
+      await running.proxy.close();
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'proxyClose',
+        origin: 'shutdown',
+        state: 'RESOLVED',
+      });
+    } catch (error) {
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'proxyClose',
+        origin: 'shutdown',
+        state: 'REJECTED',
+      });
+      throw error;
+    }
     this.markExited('shutdown');
   }
 
@@ -825,6 +1198,9 @@ export class ChromiumServerHost implements BrowserHost {
     try {
       launch = this.launcher({
         executablePath: this.options.executablePath,
+        onDiagnostic: this.options.requireRestrictedWebRtc
+          ? (event) => this.reportDiagnostic(event)
+          : undefined,
         args: [
           ...buildChromiumArgs({
             profileDir,
@@ -839,7 +1215,29 @@ export class ChromiumServerHost implements BrowserHost {
         ],
       });
     } catch (error) {
-      await proxy.close();
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'proxyClose',
+        origin: 'launch-failure',
+        state: 'STARTED',
+      });
+      try {
+        await proxy.close();
+        this.reportDiagnostic({
+          type: 'step',
+          step: 'proxyClose',
+          origin: 'launch-failure',
+          state: 'RESOLVED',
+        });
+      } catch (closeError) {
+        this.reportDiagnostic({
+          type: 'step',
+          step: 'proxyClose',
+          origin: 'launch-failure',
+          state: 'REJECTED',
+        });
+        throw closeError;
+      }
       throw error;
     }
     const running: Running = {
@@ -853,9 +1251,34 @@ export class ChromiumServerHost implements BrowserHost {
       creating: 0,
       created: new Set(),
       pendingUntracked: new Map(),
+      served: new Map(),
+      destroyed: new Set(),
     };
     void launch.exited.then((reason) => {
-      void proxy.close();
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'proxyClose',
+        origin: 'exit',
+        state: 'STARTED',
+      });
+      void proxy.close().then(
+        () =>
+          this.reportDiagnostic({
+            type: 'step',
+            step: 'proxyClose',
+            origin: 'exit',
+            state: 'RESOLVED',
+          }),
+        (error) => {
+          this.reportDiagnostic({
+            type: 'step',
+            step: 'proxyClose',
+            origin: 'exit',
+            state: 'REJECTED',
+          });
+          throw error;
+        },
+      );
       this.markExited(reason);
     });
     try {
@@ -893,9 +1316,50 @@ export class ChromiumServerHost implements BrowserHost {
               ? new BrowserHostExitedError(error.message, launch.failure?.())
               : error;
       for (const off of running.unsubscribe) off();
-      await launch.terminate().catch(() => {});
-      await proxy.close();
-      const reason = `launch failed: ${failure instanceof Error ? failure.message : String(failure)}`;
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'terminate',
+        state: 'STARTED',
+      });
+      let terminateFailed = false;
+      await launch.terminate().catch(() => {
+        terminateFailed = true;
+        this.reportDiagnostic({
+          type: 'step',
+          step: 'terminate',
+          state: 'REJECTED',
+        });
+      });
+      if (!terminateFailed)
+        this.reportDiagnostic({
+          type: 'step',
+          step: 'terminate',
+          state: 'RESOLVED',
+        });
+      this.reportDiagnostic({
+        type: 'step',
+        step: 'proxyClose',
+        origin: 'launch-failure',
+        state: 'STARTED',
+      });
+      try {
+        await proxy.close();
+        this.reportDiagnostic({
+          type: 'step',
+          step: 'proxyClose',
+          origin: 'launch-failure',
+          state: 'RESOLVED',
+        });
+      } catch (error) {
+        this.reportDiagnostic({
+          type: 'step',
+          step: 'proxyClose',
+          origin: 'launch-failure',
+          state: 'REJECTED',
+        });
+        throw error;
+      }
+      const reason = `launch failed: ${errorMessage(failure)}`;
       if (failure instanceof BrowserHostExitedError) {
         this.exitFailure = failure.failure;
         this.options.onEvent?.({
@@ -918,11 +1382,13 @@ export class ChromiumServerHost implements BrowserHost {
     const closeProbe = async () => {
       if (!targetId) return;
       const closing = targetId;
+      this.closeDiagnostic(closing, 'policy-cleanup', 'sent');
       await withTimeout(
         transport.send('Target.closeTarget', { targetId: closing }),
         1000,
         'Preview policy target cleanup',
       );
+      this.closeDiagnostic(closing, 'policy-cleanup', 'answered');
       running.created.delete(closing);
       const timer = running.pendingUntracked.get(closing);
       if (timer) clearTimeout(timer);
@@ -948,6 +1414,7 @@ export class ChromiumServerHost implements BrowserHost {
           'Target.attachToTarget',
           { targetId, flatten: true },
         );
+        this.linkDiagnosticTarget(targetId, sessionId);
         type Frame = {
           id: string;
           loaderId: string;
@@ -1146,6 +1613,12 @@ export class ChromiumServerHost implements BrowserHost {
       transport.on('Target.targetDestroyed', (params) => {
         const targetId = (params as { targetId?: unknown })?.targetId;
         if (typeof targetId !== 'string') return;
+        this.closeDiagnostic(targetId, 'unknown', 'destroyed');
+        running.destroyed.add(targetId);
+        if (running.destroyed.size > DESTROYED_TARGET_MEMORY)
+          running.destroyed.delete(running.destroyed.values().next().value!);
+        clearTimeout(running.pendingUntracked.get(targetId));
+        running.pendingUntracked.delete(targetId);
         const target = running.targets.get(targetId);
         target?.unsubscribe();
         running.targets.delete(targetId);
@@ -1177,12 +1650,48 @@ export class ChromiumServerHost implements BrowserHost {
     }>('Target.getTargets');
     for (const info of targetInfos ?? []) {
       if (info.type !== 'page') continue;
+      this.closeDiagnostic(info.targetId, 'startup-scan', 'sent');
       await transport.send('Target.closeTarget', { targetId: info.targetId });
+      this.closeDiagnostic(info.targetId, 'startup-scan', 'answered');
       this.options.onEvent?.({
         kind: 'untracked-target-closed',
         targetId: info.targetId,
         url: info.url,
       });
+    }
+  }
+
+  private async loadServedDocument(
+    running: Running,
+    targetId: string,
+    sessionId: string,
+    document: string,
+  ): Promise<void> {
+    const transport = running.launch.transport;
+    running.served.set(targetId, document);
+    let off = () => {};
+    try {
+      const loaded = new Promise<void>((resolve) => {
+        off = transport.on('Page.loadEventFired', (_params, eventSessionId) => {
+          if (eventSessionId === sessionId) resolve();
+        });
+      });
+      const navigated = await transport.send<{ errorText?: string }>(
+        'Page.navigate',
+        { url: SERVED_DOCUMENT_URL },
+        sessionId,
+      );
+      if (navigated?.errorText)
+        throw new Error(`Served document failed: ${navigated.errorText}`);
+      await Promise.race([
+        loaded,
+        transport.closed.then(() => {
+          throw new Error('Browser closed while loading a served document');
+        }),
+      ]);
+    } finally {
+      off();
+      running.served.delete(targetId);
     }
   }
 
@@ -1194,6 +1703,27 @@ export class ChromiumServerHost implements BrowserHost {
       frameId?: string;
     };
     const transport = running.launch.transport;
+    const served =
+      p.resourceType === 'Document' &&
+      p.request.url === SERVED_DOCUMENT_URL &&
+      p.frameId !== undefined
+        ? running.served.get(p.frameId)
+        : undefined;
+    if (served !== undefined && p.frameId !== undefined) {
+      running.served.delete(p.frameId);
+      void transport
+        .send('Fetch.fulfillRequest', {
+          requestId: p.requestId,
+          responseCode: 200,
+          responseHeaders: [
+            { name: 'Content-Type', value: 'text/html; charset=utf-8' },
+            { name: 'Referrer-Policy', value: 'no-referrer' },
+          ],
+          body: Buffer.from(served, 'utf8').toString('base64'),
+        })
+        .catch(() => {});
+      return;
+    }
     const decision = decidePausedRequest(
       { url: p.request.url, resourceType: p.resourceType, frameId: p.frameId },
       {
@@ -1257,6 +1787,8 @@ export class ChromiumServerHost implements BrowserHost {
     if (info?.type !== 'page' || typeof info.targetId !== 'string') return;
     const targetId = info.targetId;
     if (running.targets.has(targetId) || running.created.has(targetId)) return;
+    // Chromium can report a target's info after it was destroyed; it is gone.
+    if (running.destroyed.has(targetId)) return;
     const url = typeof info.url === 'string' ? info.url : '';
     let popup = running.popups.get(targetId);
     if (!popup) {
@@ -1313,6 +1845,7 @@ export class ChromiumServerHost implements BrowserHost {
         );
         return;
       }
+      this.closeDiagnostic(targetId, 'untracked-grace', 'sent');
       void running.launch.transport
         .send('Target.closeTarget', { targetId })
         .catch(() => {});
@@ -1344,7 +1877,7 @@ export class ChromiumServerHost implements BrowserHost {
         popup.openerTargetId,
         url,
       ).catch(async () => {
-        await this.closeTarget(popupId).catch(() => {});
+        await this.closeTarget(popupId, 'popup-fold').catch(() => {});
         return false;
       });
       running.popupAdoptions.set(popupId, adoption);
@@ -1355,6 +1888,7 @@ export class ChromiumServerHost implements BrowserHost {
       return;
     }
     const transport = running.launch.transport;
+    this.closeDiagnostic(popupId, 'popup-fold', 'sent');
     void transport
       .send('Target.closeTarget', { targetId: popupId })
       .catch(() => {});
@@ -1393,7 +1927,7 @@ export class ChromiumServerHost implements BrowserHost {
       !isAllowedBrowserUrl(url) ||
       running.targets.size + running.creating >= BROWSER_PANE_TAB_LIMIT
     ) {
-      await this.closeTarget(targetId);
+      await this.closeTarget(targetId, 'popup-fold');
       return false;
     }
     const transport = running.launch.transport;
@@ -1403,6 +1937,7 @@ export class ChromiumServerHost implements BrowserHost {
         'Target.attachToTarget',
         { targetId, flatten: true },
       );
+      this.linkDiagnosticTarget(targetId, sessionId);
       const unsubscribe = this.watchTarget(running, targetId, sessionId);
       running.targets.set(targetId, {
         sessionId,

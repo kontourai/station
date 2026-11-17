@@ -1,4 +1,7 @@
-import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
+import {
+  CONVERSATION_REPORTED_COST_UNITS_MAX,
+  parseConversationStatsResponse,
+} from '@kontourai/station-contracts/runtime';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test, vi } from 'vitest';
@@ -653,5 +656,206 @@ describe('getConversationStats — bedrock reported usage renders as reported (s
     const classes = unreportedMeasurementClasses(view);
     expect(classes).not.toContain('token counts');
     expect(classes).toEqual(['cost', 'context usage']);
+  });
+});
+
+describe('getConversationStats — engine-reported cost and context reading', () => {
+  test('a folded ACP session carries credits in their unit and its own context reading, through the wire validator', async () => {
+    const events = [
+      { method: 'turn.started', turnId: 't1' },
+      {
+        method: 'token-usage.updated',
+        turnId: 't1',
+        contextPercent: 1.2,
+      },
+      {
+        method: 'token-usage.updated',
+        turnId: 't1',
+        reportedCost: { amount: 0.0745, unit: 'credit', scope: 'turn' },
+      },
+      { method: 'turn.completed', turnId: 't1' },
+    ].map(
+      (event, index) =>
+        ({
+          eventId: `e${index}`,
+          provider: 'acp',
+          threadId: 'thread-1',
+          createdAt: '2026-11-13T00:00:00.000Z',
+          ...event,
+        }) as unknown as CanonicalRuntimeEvent,
+    );
+    const data = await getConversationStats(
+      'kiro',
+      'thread-1',
+      new Map(),
+      new Map(),
+      new Map(),
+      createConfigLoader(),
+      appConfig,
+      undefined,
+      mockLogger,
+      () => foldUsageEvents(events),
+    );
+    const parsed = parseConversationStatsResponse(
+      JSON.parse(JSON.stringify(data)),
+    );
+    expect(parsed).toBeDefined();
+    expect(parsed?.reportedCosts).toEqual([{ unit: 'credit', amount: 0.0745 }]);
+    expect(parsed?.contextWindowPercentage).toBe(1.2);
+    // Credits are never a USD cost.
+    expect(parsed?.estimatedCost).toBeUndefined();
+    expect(parsed).not.toHaveProperty('contextPercent');
+  });
+
+  test('seventeen cost units still produce a stats response the wire parser accepts', async () => {
+    const units = Array.from({ length: 17 }, (_, i) => `U${i}`);
+    const events = units.map(
+      (unit, index) =>
+        ({
+          eventId: `e${index}`,
+          provider: 'acp',
+          threadId: 'thread-1',
+          createdAt: '2026-11-13T00:00:00.000Z',
+          method: 'token-usage.updated',
+          turnId: 't1',
+          reportedCost: { amount: 1, unit, scope: 'turn' },
+        }) as unknown as CanonicalRuntimeEvent,
+    );
+    const data = await getConversationStats(
+      'kiro',
+      'thread-1',
+      new Map(),
+      new Map(),
+      new Map(),
+      createConfigLoader(),
+      appConfig,
+      undefined,
+      mockLogger,
+      () => foldUsageEvents(events),
+    );
+    const parsed = parseConversationStatsResponse(
+      JSON.parse(JSON.stringify(data)),
+    );
+    expect(parsed).toBeDefined();
+    expect(parsed?.reportedCosts?.map((cost) => cost.unit)).toEqual(
+      units.slice(0, 16),
+    );
+  });
+
+  test('the wire parser keeps the first sixteen units rather than refusing the response', () => {
+    expect(CONVERSATION_REPORTED_COST_UNITS_MAX).toBe(16);
+    const parsed = parseConversationStatsResponse({
+      modelId: 'm',
+      turns: 0,
+      toolCalls: 0,
+      reportedCosts: Array.from({ length: 17 }, (_, i) => ({
+        unit: `U${i}`,
+        amount: i,
+      })),
+    });
+    expect(parsed?.reportedCosts).toHaveLength(16);
+    expect(parsed?.reportedCosts?.at(-1)).toEqual({ unit: 'U15', amount: 15 });
+  });
+
+  test('the wire validator refuses a malformed engine cost', () => {
+    const base = { modelId: 'm', turns: 0, toolCalls: 0 };
+    expect(
+      parseConversationStatsResponse({
+        ...base,
+        reportedCosts: [{ unit: 'credit', amount: -1 }],
+      }),
+    ).toBeUndefined();
+    expect(
+      parseConversationStatsResponse({
+        ...base,
+        reportedCosts: [{ unit: '<b>', amount: 1 }],
+      }),
+    ).toBeUndefined();
+    expect(
+      parseConversationStatsResponse({
+        ...base,
+        reportedCosts: [{ unit: 'credit', amount: 1 }],
+      })?.reportedCosts,
+    ).toEqual([{ unit: 'credit', amount: 1 }]);
+  });
+});
+
+describe('getConversationStats — engine MCP status after reopen', () => {
+  const mcpEvent = (
+    index: number,
+    servers: unknown[],
+    complete: boolean,
+    reconnect?: true,
+  ): CanonicalRuntimeEvent => ({
+    eventId: `mcp${index}`,
+    provider: 'acp',
+    threadId: 'thread-1',
+    createdAt: '2026-11-13T00:00:00.000Z',
+    method: 'engine-mcp.status',
+    servers: servers as never,
+    complete,
+    ...(reconnect ? { reconnect } : {}),
+  });
+
+  async function statsFor(events: CanonicalRuntimeEvent[]) {
+    const data = await getConversationStats(
+      'kiro',
+      'thread-1',
+      new Map(),
+      new Map(),
+      new Map(),
+      createConfigLoader(),
+      appConfig,
+      undefined,
+      mockLogger,
+      () => foldUsageEvents(events),
+    );
+    return parseConversationStatsResponse(JSON.parse(JSON.stringify(data)));
+  }
+
+  test('the folded MCP servers and reconnect bit reach the wire, even before a turn completes', async () => {
+    const parsed = await statsFor([
+      mcpEvent(
+        0,
+        [
+          { name: 'docs', state: 'starting', scope: 'engine-config' },
+          { name: 'tracker', state: 'ready', scope: 'session', toolCount: 4 },
+        ],
+        true,
+        true,
+      ),
+      mcpEvent(
+        1,
+        [{ name: 'docs', state: 'needs-auth', scope: 'engine-config' }],
+        false,
+        true,
+      ),
+    ]);
+    expect(parsed?.measurement).toEqual({
+      source: 'engine-events',
+      provider: 'acp',
+    });
+    expect(parsed?.engineMcp).toEqual({
+      servers: [
+        { name: 'docs', state: 'needs-auth', scope: 'engine-config' },
+        { name: 'tracker', state: 'ready', scope: 'session', toolCount: 4 },
+      ],
+      reconnect: true,
+    });
+  });
+
+  test('an engine that never reported MCP status has no engineMcp', async () => {
+    const parsed = await statsFor([
+      {
+        eventId: 'e0',
+        provider: 'acp',
+        threadId: 'thread-1',
+        createdAt: '2026-11-13T00:00:00.000Z',
+        method: 'turn.completed',
+        turnId: 't1',
+      } as CanonicalRuntimeEvent,
+    ]);
+    expect(parsed?.turns).toBe(1);
+    expect(parsed).not.toHaveProperty('engineMcp');
   });
 });

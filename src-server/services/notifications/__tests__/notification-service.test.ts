@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +23,7 @@ afterEach(stopLoggerCaptures);
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
 }));
 
 const {
@@ -31,6 +33,9 @@ const {
   NotificationShutdownTimeoutError,
 } = await import('../notification-service.js');
 const { EventBus } = await import('../../orchestration/event-bus.js');
+const { jsonFileStoreWriteBytes } = await import(
+  '../../../telemetry/metrics.js'
+);
 
 function deferred() {
   let resolve!: () => void;
@@ -68,6 +73,25 @@ describe('NotificationService', () => {
     });
     expect(n.status).toBe('delivered');
     expect(n.title).toBe('Hello');
+  });
+
+  // #4995: the feed has no retention and every change rewrites it plus its
+  // `.previous` copy; the store's bytes per write are what make that visible.
+  test('records the bytes each notifications write puts on disk, primary and previous', async () => {
+    const record = vi.mocked(jsonFileStoreWriteBytes.record);
+    record.mockClear();
+    await svc.schedule('test', { title: 'A', category: 'test' });
+    const firstSize = statSync(join(dir, 'notifications.json')).size;
+    await svc.schedule('test', { title: 'B', category: 'test' });
+
+    expect(record.mock.calls).toEqual([
+      [firstSize, { store: 'notifications', artifact: 'primary' }],
+      [
+        statSync(join(dir, 'notifications.json')).size,
+        { store: 'notifications', artifact: 'primary' },
+      ],
+      [firstSize, { store: 'notifications', artifact: 'previous' }],
+    ]);
   });
 
   test('list returns scheduled notifications', async () => {

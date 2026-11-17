@@ -9,7 +9,7 @@ Contributor and operator procedures are in the repository's
 
 ## What a normal packaged start does
 
-Stable, Beta, and Nightly configure their main desktop window to start hidden.
+Stable and Nightly configure their main desktop window to start hidden.
 For a Desktop-owned sidecar, the native host proves its exact generation,
 instance ID, boot ID, and local API base. Revealing application content also
 requires the main renderer to have mounted. The native shell starts the
@@ -19,8 +19,9 @@ cannot reveal a newer sidecar.
 If an installed service owns the home, or Desktop owns no sidecar, the host can
 instead reveal the mounted connection/recovery surface. That does not establish
 that a backend is reachable or ready. On macOS, an activation request can make
-a native startup cover visible while readiness is pending. It shows the app
-icon and **Starting Station**, and it does not expose application content.
+a native startup cover visible while readiness is pending. It looks like
+Station's own startup screen, with the Station wordmark and **Starting
+Station**, and it does not expose application content.
 
 This avoids showing a usable-looking window before its protected local surface
 is ready. The original native-startup work is recorded in
@@ -39,7 +40,9 @@ readiness has not completed after a 30-second startup epoch, Station keeps
 starting and offers a choice once for that epoch:
 
 - On macOS, the startup cover changes to **Station is taking longer than usual
-  to start.** with **Restart** and **Quit** buttons. Return selects
+  to start.** It adds that Station opens on its own when ready and that a
+  one-time upgrade after an update can take a few minutes, and shows
+  **Restart** and **Quit** buttons. Return selects
   **Restart**; with keyboard navigation turned on, Tab moves between the two
   buttons and Space presses the focused one. Escape does nothing. While the
   cover is shown, typing and editing shortcuts are ignored; the Quit, Close,
@@ -171,7 +174,7 @@ Keep shell and service logs separate:
 | Desktop shell panic record | `crash.log` beside `station.log` | `crash.log` beside `station.log` | `crash.log` beside `station.log` |
 | Installed service log | `<STATION_HOME>/logs/<instance>-service.out.log` and `<STATION_HOME>/logs/<instance>-service.err.log` | `journalctl --user -u station-<instance>.service` (no service log file) | `<STATION_HOME>/logs/<instance>-service.log` |
 
-Choose the app identifier for your installed channel (Stable, Beta, or Nightly)
+Choose the app identifier for your installed channel (Stable or Nightly)
 from the [channel log path table in the repository guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md).
 
 The desktop shell honors `STATION_DESKTOP_LOG_LEVEL` set before launch:

@@ -1,0 +1,7 @@
+{
+  "revision": "7ea07e98c65c24cac77cbf54404162254b32d696",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked: the manifest stays the source of truth; the test change only pins the new handoff spec in the shared-instance-exclusive list the manifest already declares.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts"]}
+  ]
+}

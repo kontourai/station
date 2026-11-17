@@ -101,7 +101,7 @@ export function TelemetryChoiceLimit({
         try again.{' '}
         {onRetry && (
           <Button variant="secondary" onClick={onRetry}>
-            Try again
+            Retry loading
           </Button>
         )}
       </p>

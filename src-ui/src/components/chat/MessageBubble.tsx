@@ -1,5 +1,6 @@
 import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import { Badge } from '@kontourai/ui/react';
 import {
   Fragment,
   memo,
@@ -73,6 +74,7 @@ import {
   hasAnswerText,
   useHasVisibleTranscriptContent,
 } from './message-bubble/visibleContent';
+import { useSessionRewindAction } from './SessionRewind';
 import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
@@ -226,7 +228,7 @@ interface MessageBubbleProps {
     agentSlug: string,
     approvalId: string,
     toolName: string,
-    action: 'once' | 'trust' | 'trust-server' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
     approvalThreadId?: string,
     approvalEventId?: string,
   ) => Promise<ToolApprovalOutcome>;
@@ -353,7 +355,7 @@ function MessageBubbleComponent({
   const handleContentToolApproval = useCallback(
     (
       part: MessageContentPart,
-      action: 'once' | 'trust' | 'trust-server' | 'deny',
+      action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
     ) => {
       if (!onToolApproval)
         return Promise.reject(new Error('This chat cannot answer requests.'));
@@ -384,6 +386,7 @@ function MessageBubbleComponent({
     textContent,
     { showReasoning },
   );
+  const rewindToHere = useSessionRewindAction(msg);
 
   const flowPart = msg.contentParts?.find(
     (part) =>
@@ -550,6 +553,8 @@ function MessageBubbleComponent({
     msg.role === 'user' && msg.stationRestartContinuation === true;
   const stationAuthored =
     stationCheckBack || stationMemoryContinuation || stationRestartContinuation;
+  // An in-place engine rewind hid this turn from the engine; the row stays.
+  const rewound = msg.rewound === true;
   const avatarContent = sender ? (
     <span className="agent-incoming__avatar" aria-hidden="true">
       <InboxGlyph />
@@ -665,7 +670,8 @@ function MessageBubbleComponent({
         discardUnsent),
   );
   const userMessageMenu =
-    msg.role === 'user' && (textMenuActions || menuTaskTarget) ? (
+    msg.role === 'user' &&
+    (textMenuActions || menuTaskTarget || rewindToHere) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
@@ -677,6 +683,7 @@ function MessageBubbleComponent({
               : undefined,
           onEditAndResend: textContent ? editAndResend : undefined,
           onDiscardUnsent: textContent ? discardUnsent : undefined,
+          onRewindToHere: rewindToHere,
           taskTarget: menuTaskTarget,
           handleRef: userMenuHandle,
           // The phone already opens a sheet for the row: its actions are
@@ -968,7 +975,10 @@ function MessageBubbleComponent({
     </>
   );
   // #926 amendment (owner, 2026-10): Basis stays visible at rest, beside
-  // the hover-revealed row rather than inside it.
+  // the hover-revealed row rather than inside it. It shows at the bar's end
+  // (chat.css `order`): the hidden row keeps its space, so a chip drawn
+  // before it sat apart from the bubble's edge. It stays first in the DOM so
+  // keyboard focus reaches the visible chip before the hidden row.
   const turnFooterBar = (
     <div className="turn-footer__bar">
       {basisChip}
@@ -1008,7 +1018,7 @@ function MessageBubbleComponent({
               {msg.changedFiles.reason === 'checkpoint_failed'
                 ? 'Station failed to capture a checkpoint for this turn.'
                 : msg.changedFiles.reason === 'checkpoint_refused'
-                  ? 'Station does not take checkpoints in this repository: its own git configuration defines a filter or diff program that Station will not run for you.'
+                  ? "No checkpoint: this repository's git config runs a custom filter or diff program, which Station won't execute."
                   : msg.changedFiles.reason === 'checkpoint_pruned'
                     ? 'This turn’s checkpoint expired and was pruned.'
                     : msg.changedFiles.reason === 'checkpoint_missing'
@@ -1016,8 +1026,8 @@ function MessageBubbleComponent({
                       : msg.changedFiles.reason === 'diff_output_limit_exceeded'
                         ? 'This turn changed too many files to summarize.'
                         : msg.changedFiles.reason === 'repository_changed'
-                          ? 'The turn crossed repository boundaries and cannot be compared.'
-                          : 'The turn’s checkpoint pair could not be compared.'}
+                          ? "This turn spanned more than one repository, so it can't be compared."
+                          : 'Couldn’t compare this turn’s checkpoints.'}
             </p>
           )}
           {msg.changedFiles.status === 'available' &&
@@ -1153,6 +1163,8 @@ function MessageBubbleComponent({
     return (
       <div
         className="message-row message-row--agent message-row--compact"
+        data-surface="message"
+        data-message-role="assistant"
         data-chat-message-key={anchorKey}
         data-message-mobile={isMobile}
         style={agentAccentStyle(sender)}
@@ -1183,6 +1195,9 @@ function MessageBubbleComponent({
           ? ' message-row--exchange-start'
           : ''
       }`}
+      data-surface="message"
+      // Another agent's message arrives as a user turn; it reads as the agent's.
+      data-message-role={sender ? 'assistant' : msg.role}
       data-chat-message-key={anchorKey}
       data-message-mobile={isMobile}
       // The sender's accent (agentSenderAccent.ts); the avatar and the bubble
@@ -1211,7 +1226,7 @@ function MessageBubbleComponent({
         onPointerDown={bubbleGesture.onPointerDown}
         onPointerUp={bubbleGesture.onPointerUp}
         onPointerCancel={bubbleGesture.onPointerCancel}
-        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationAuthored ? ' message--station-check-back' : ''}${
+        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationAuthored ? ' message--station-check-back' : ''}${rewound ? ' message--rewound' : ''}${
           // Outlined, not filled, until the agent has the message.
           undelivered
             ? ` message--undelivered message--delivery-${undelivered}`
@@ -1234,6 +1249,11 @@ function MessageBubbleComponent({
         {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
+        {rewound ? (
+          <div className="message__rewound-badge">
+            <Badge value="Rewound" tone="neutral" />
+          </div>
+        ) : null}
         {stationAuthored ? (
           <div className="message__station-label">
             {isMobile ? <TimeGlyph className="message__station-glyph" /> : null}

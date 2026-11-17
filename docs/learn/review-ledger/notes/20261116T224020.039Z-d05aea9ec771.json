@@ -1,0 +1,7 @@
+{
+  "revision": "f18db47905491b9778f928a5f3ffd28960c667a7",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"Connection routing, observation and delivery claims are unchanged; ConversationBody now reads station.stationName only to name the Station in the long-wait line.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

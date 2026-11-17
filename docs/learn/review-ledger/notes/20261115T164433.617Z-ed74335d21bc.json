@@ -1,0 +1,7 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Added the finished-alert section: hold table traced to finished-alert-hold.ts and OrchestrationService.readFinishedAlertHold plus the inbox composition in runtime-route-support.ts; 5 s confirmation and 10 s recheck constants in turn-completion-notifications.ts; delegated-child skip; record-at-decision and coordinator wake; restart loss. Card paragraph traced to agentActivityPhaseFor and refreshSnapshots; per-session focus traced to presence.ts, focus-presence.ts and policy.ts. Evidence: turn-completion-notifications, orchestration-service, policy, notification-delivery-focus, agent-activity-card/publisher tests. Not checked on a device.","inputs":["docs/design/notification-delivery.md","src-server/services/notifications/agent-activity-card.ts","src-server/services/orchestration/turn-completion-notifications.ts"]}
+  ]
+}

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSyncBounded } from './bounded-capture.mjs';
 import { createLearningSourceReader } from './learning-source-reader.mjs';
+import { releaseVersioningOutputsBetween } from './release-versioning-review.mjs';
 import { bindingDigest, bindingFile } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
 import {
@@ -340,11 +341,28 @@ export function deriveReviewHistory(root, state, committedNotes) {
   const pending = new Map(current.map((entry) => [entry.path, new Set()]));
   for (const commit of commits) {
     const changed = new Set(commit.changes.map(({ file }) => file));
+    // The same release-versioning contract the scoped check applies: a landed
+    // version bump or generated changelog section leaves no review gap.
+    const release = releaseVersioningOutputsBetween(
+      root,
+      `${commit.revision}^1`,
+      commit.revision,
+      commit.changes,
+    );
     for (const entry of current) {
       const outstanding = pending.get(entry.path);
       for (const input of inputs(entry)) {
         const file = bindingFile(input);
         if (!changed.has(file)) continue;
+        if (
+          input === file &&
+          ((input !== entry.path && release.manifests.has(file)) ||
+            (input === entry.path &&
+              !capturePaths.has(entry.path) &&
+              entry.kind === 'historical' &&
+              release.changelogs.has(file)))
+        )
+          continue;
         const a = blobs.get(`${commit.revision}^1:${file}`);
         const b = blobs.get(`${commit.revision}:${file}`);
         if (

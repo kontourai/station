@@ -1,0 +1,7 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Checked the outside-Station line: a Codex source root replaces the configured Codex homes too (constructor drops listConfiguredHomes), and STATION_EXTERNAL_ACP_SESSIONS=1 is read by acpSessionListingEnabled.","inputs":["docs/reference/env-vars.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f822466925647d8265d97b8623e01622c88f4450",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed after renaming the desktop scope badge's accessible name to 'N need you outside this filter. Show all work' (InboxScopeFilter.tsx); the Show work paragraph's badge sentence remains accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/InboxScopeFilter.tsx"]}
+  ]
+}

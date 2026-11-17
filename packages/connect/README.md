@@ -264,7 +264,9 @@ Station commits an origin-and-kind scoped IndexedDB claim with strict transactio
 durability. The browser implementation must report support or admission fails
 closed. Completion follows credential/profile custody. Uncertain attempts stay
 held across expiry, reload and ordinary pending-slot cleanup; only exact proven
-unconsumed responses release a claim for retry. Recovery inventory distinguishes
+unconsumed responses release a claim for retry. A flight stopped after its claim
+but before sending anything releases that claim and is not held. Recovery
+inventory distinguishes
 empty, unavailable and corrupt storage. Terminal receipts are retained through
 the original offer expiry; the server remains the authority for proof expiry.
 These guarantees rely on browser persistence and do not promise recovery after

@@ -25,6 +25,11 @@ import {
   type KontourDependencyState,
 } from '../lib/kontour-dependency-drift.js';
 import { loadInstalledManagedPolicyChecked } from './app-config-schema.js';
+import {
+  confinementDoctorChecks,
+  type DoctorConfinement,
+  describeConfinementTarget,
+} from './doctor-confinement.js';
 import { CWD, LIFECYCLE_CODE_ROOT, PROJECT_HOME } from './helpers.js';
 import {
   collectInstanceStatus,
@@ -33,6 +38,7 @@ import {
 } from './lifecycle.js';
 import {
   type LifecycleCodeRoot,
+  packagedReleaseVersion,
   resolveLifecycleStateLocation,
 } from './lifecycle-code-root.js';
 import { effectiveAppConfigOffline } from './managed-settings-guard.js';
@@ -68,6 +74,12 @@ export interface DoctorReport {
   };
   dependencyState: KontourDependencyState;
   fixCommands: DoctorFixCommand[];
+  /**
+   * #4774: the selected Station's confinement preflight, or why it was not
+   * obtained. Absent when the caller supplied no `inspectConfinement` (the
+   * server's own diagnostics callers do not).
+   */
+  confinement?: DoctorConfinement;
 }
 
 export interface DoctorDeps {
@@ -92,6 +104,11 @@ export interface DoctorDeps {
   processRuntime: { version: string; execPath: string };
   /** The installed managed policy, as server startup accepts it (#4517). */
   loadManagedPolicy: () => LoadedManagedPolicy | null;
+  /**
+   * #4774: asks the selected Station for its confinement preflight. Without
+   * it, the report has no confinement rows and no `confinement` field.
+   */
+  inspectConfinement?: () => Promise<DoctorConfinement>;
 }
 
 export interface DoctorJsonDocument {
@@ -432,7 +449,7 @@ export function prebuiltArchiveChecks(
       {
         label: 'Prebuilt archive',
         status: 'pass',
-        detail: `${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring, ${release.channel} channel) at ${archive.root}; lifecycle state in ${stateDir}`,
+        detail: `v${packagedReleaseVersion(release)} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring, ${release.channel} channel) at ${archive.root}; lifecycle state in ${stateDir}`,
       },
     ];
   });
@@ -488,6 +505,7 @@ export async function collectDoctorReport(
     'config',
     'providers.json',
   );
+  const acpConfigPath = join(runtimeDeps.projectHome, 'config', 'acp.json');
   const awsCredentialsPath = join(homedir(), '.aws', 'credentials');
   const awsConfigPath = join(homedir(), '.aws', 'config');
 
@@ -517,6 +535,7 @@ export async function collectDoctorReport(
   );
   const terminalCapability = runtimeDeps.probeTerminalPty(runtimeDeps.repoRoot);
   const shellHosts = runtimeDeps.inspectShellHosts(runtimeDeps.projectHome);
+  const confinement = await runtimeDeps.inspectConfinement?.();
 
   // #4517: readiness is derived from the settings in effect, with the
   // managed policy's locks and defaults applied the way the server applies
@@ -567,6 +586,29 @@ export async function collectDoctorReport(
   // Kiro is an ACP registry engine, not an `agentConnections` key, so only
   // an unusable policy gates it here.
   const kiroUsable = Boolean(kiroVersion) && managedPolicyProblem === null;
+  // ACP engine connections (OpenCode, Kiro, a custom command, …) are saved
+  // in `config/acp.json`, the file the server's ACP adapter reads, each with
+  // its own `enabled` flag; `agentConnections` has no entry for them.
+  const acpConfig = runtimeDeps.readJson<{ connections?: unknown }>(
+    acpConfigPath,
+    {},
+  );
+  const enabledAcpConnections = (
+    Array.isArray(acpConfig?.connections) ? acpConfig.connections : []
+  ).filter(
+    (connection): connection is { id: string; name?: unknown } =>
+      Boolean(connection) &&
+      typeof connection === 'object' &&
+      typeof (connection as { id?: unknown }).id === 'string' &&
+      (connection as { enabled?: unknown }).enabled === true,
+  );
+  const acpConnectionsUsable =
+    managedPolicyProblem === null && enabledAcpConnections.length > 0;
+  const acpConnectionNames = enabledAcpConnections.map((connection) =>
+    typeof connection.name === 'string' && connection.name.trim()
+      ? connection.name.trim()
+      : connection.id,
+  );
   const awsConfigured = Boolean(
     runtimeDeps.env.AWS_ACCESS_KEY_ID ||
       runtimeDeps.env.AWS_PROFILE ||
@@ -674,17 +716,24 @@ export async function collectDoctorReport(
     {
       label: 'ACP / external runtime',
       status:
-        kiroUsable || enabledRuntimeConnections.some(([id]) => id === 'acp')
+        kiroUsable ||
+        acpConnectionsUsable ||
+        enabledRuntimeConnections.some(([id]) => id === 'acp')
           ? 'pass'
           : 'warn',
-      detail: kiroUsable
-        ? (kiroVersion as string)
-        : kiroVersion
-          ? `${kiroVersion}, but the managed policy cannot be used.`
-          : enabledRuntimeConnections.some(([id]) => id === 'acp')
-            ? 'ACP runtime connection configured.'
-            : 'No ACP runtime detected.',
+      detail: acpConnectionsUsable
+        ? `${enabledAcpConnections.length} enabled ACP connection(s): ${acpConnectionNames.join(', ')}`
+        : kiroUsable
+          ? (kiroVersion as string)
+          : kiroVersion
+            ? `${kiroVersion}, but the managed policy cannot be used.`
+            : enabledAcpConnections.length > 0
+              ? 'ACP connections are saved, but the managed policy cannot be used.'
+              : enabledRuntimeConnections.some(([id]) => id === 'acp')
+                ? 'ACP runtime connection configured.'
+                : 'No ACP runtime detected.',
     },
+    ...(confinement ? confinementDoctorChecks(confinement) : []),
   ];
   const checks = archive
     ? prebuiltArchiveChecks(
@@ -699,16 +748,25 @@ export async function collectDoctorReport(
 
   const codexUsable = Boolean(codexVersion) && runtimeAllowed('codex');
   const claudeUsable = Boolean(claudeVersion) && runtimeAllowed('claude');
+  // A chat can run on a usable engine with no model connection, the same
+  // rule as the server's `chat.ready` (system-status-routes.ts), so an
+  // installed CLI or an enabled ACP connection makes chat ready here too.
+  const engineChatReady =
+    codexUsable || claudeUsable || kiroUsable || acpConnectionsUsable;
   // A policy server startup would refuse leaves nothing ready: the server
   // does not start.
   const chatReady =
     managedPolicyProblem === null &&
-    (enabledLlmProviders.length > 0 || ollamaReachable || awsConfigured);
+    (enabledLlmProviders.length > 0 ||
+      ollamaReachable ||
+      awsConfigured ||
+      engineChatReady);
   const runtimeReady =
     managedPolicyProblem === null &&
     (awsConfigured ||
       codexUsable ||
       claudeUsable ||
+      acpConnectionsUsable ||
       enabledRuntimeConnections.length > 0);
   const configuredProviderLabels = enabledLlmProviders
     .map(providerLabel)
@@ -717,7 +775,12 @@ export async function collectDoctorReport(
     ollamaReachable ? 'ollama' : null,
     awsConfigured ? 'bedrock' : null,
   ].filter((value): value is string => Boolean(value));
-  const configuredRuntimes = enabledRuntimeConnections.map(([id]) => id);
+  const configuredRuntimes = [
+    ...enabledRuntimeConnections.map(([id]) => id),
+    ...(acpConnectionsUsable
+      ? enabledAcpConnections.map((connection) => `acp:${connection.id}`)
+      : []),
+  ];
   const detectedRuntimes = [
     codexUsable ? 'codex-cli' : null,
     claudeUsable ? 'claude-cli' : null,
@@ -744,7 +807,9 @@ export async function collectDoctorReport(
         ? 'Ollama is reachable, but no saved model connection exists yet. Add an Ollama connection in Connections.'
         : awsConfigured
           ? 'AWS credentials are available. Add or enable a Bedrock model connection in Connections.'
-          : 'No chat-capable path is ready yet. Start Ollama locally or add a model connection first.';
+          : engineChatReady
+            ? 'Chat can run on a connected engine. Add a model connection in Connections if you also want Station-managed models.'
+            : 'No chat-capable path is ready yet. Start Ollama locally or add a model connection first.';
 
   return {
     checks,
@@ -771,12 +836,15 @@ export async function collectDoctorReport(
     },
     dependencyState,
     fixCommands,
+    ...(confinement ? { confinement } : {}),
   };
 }
 
-export async function doctor(): Promise<void> {
+export async function doctor(
+  reportDeps: Partial<DoctorDeps> = {},
+): Promise<void> {
   console.log('Checking prerequisites and runtime readiness...\n');
-  const report = await collectDoctorReport();
+  const report = await collectDoctorReport(reportDeps);
 
   for (const check of report.checks) {
     console.log(
@@ -835,6 +903,10 @@ export async function doctor(): Promise<void> {
         : 'none'
     }`,
   );
+  if (report.confinement?.checked)
+    console.log(
+      `  Confinement: host facts from ${describeConfinementTarget(report.confinement.target)}; ${report.confinement.preflight.decidedAtStart.join(', ')} depend on the workspace or conversation and are decided when a Session starts.`,
+    );
   console.log(`\n  Next: ${report.recommendation}`);
 
   if (report.fixCommands.length > 0) {
@@ -862,9 +934,10 @@ export async function doctor(): Promise<void> {
 
 export async function doctorJson(
   deps: Partial<DoctorJsonDeps> = {},
+  reportDeps: Partial<DoctorDeps> = {},
 ): Promise<void> {
   const runtimeDeps: DoctorJsonDeps = {
-    collectReport: collectDoctorReport,
+    collectReport: () => collectDoctorReport(reportDeps),
     now: () => new Date(),
     write: (document) => process.stdout.write(`${document}\n`),
     setExitCode: (code) => {

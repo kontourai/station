@@ -2,15 +2,19 @@ import type {
   AgentJobProposal,
   ConversationAgentSchedule,
 } from '@kontourai/station-contracts/agent-schedule';
-import { getJson, mutateJson } from '@kontourai/station-sdk';
+import {
+  getJson,
+  mutateJson,
+  orchestrationQueries,
+} from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 
 /**
- * What an agent scheduled in one conversation: its check-backs, the job
- * proposals waiting for the person, the jobs the person approved from it, and
- * a usage-limit stop waiting for its reset. One cache entry, read by the
+ * What an agent scheduled in one conversation: its check-backs, the job and
+ * Automation proposals waiting for the person, the jobs the person approved
+ * from it, and a usage-limit stop waiting for its reset. One cache entry, read by the
  * in-chat notes and by the "This chat" card's Scheduled section.
  *
  * No polling: the chat re-reads it when its schedule may have changed
@@ -97,11 +101,25 @@ export function useAgentSchedule(
     if (!enabled || due === undefined) return;
     const wait = due - Date.now() + SETTLE_MS;
     if (wait > MAX_TIMER_MS) return;
-    const timer = setTimeout(() => void query.refetch(), Math.max(0, wait));
+    const timer = setTimeout(
+      () => {
+        void query.refetch();
+        void client.invalidateQueries({
+          queryKey: orchestrationQueries.sessions(scope).queryKey,
+        });
+      },
+      Math.max(0, wait),
+    );
     return () => clearTimeout(timer);
-  }, [enabled, due, query.refetch]);
+  }, [enabled, due, query.refetch, client, scope]);
 
-  const settle = () => client.invalidateQueries({ queryKey: key });
+  const settle = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: key }),
+      client.invalidateQueries({
+        queryKey: orchestrationQueries.sessions(scope).queryKey,
+      }),
+    ]);
   const cancelWakeUp = useMutation({
     mutationFn: async (wakeUpId: string) =>
       readData(
@@ -163,6 +181,33 @@ export function useAgentSchedule(
       void client.invalidateQueries({ queryKey: ['scheduler'] });
     },
   });
+  /**
+   * #4830: a person answers an agent's Automation proposal. Confirm creates
+   * it disabled (a source) or observing (a rule) unless `enable` is set.
+   */
+  const confirmAutomationProposal = useMutation({
+    mutationFn: async (input: { id: string; enable: boolean }) =>
+      readData(
+        await mutateJson(
+          `${base}/automation-proposals/${encodeURIComponent(input.id)}/confirm`,
+          'POST',
+          options(),
+          { enable: input.enable },
+        ),
+      ),
+    onSettled: settle,
+  });
+  const declineAutomationProposal = useMutation({
+    mutationFn: async (proposalId: string) =>
+      readData(
+        await mutateJson(
+          `${base}/automation-proposals/${encodeURIComponent(proposalId)}/decline`,
+          'POST',
+          options(),
+        ),
+      ),
+    onSettled: settle,
+  });
   /** "Don't resume" on a usage-limit stop from the Scheduled list. */
   const holdResume = useMutation({
     mutationFn: async (threadId: string) =>
@@ -187,6 +232,8 @@ export function useAgentSchedule(
     declineWakeUp,
     declineProposal,
     approveProposal,
+    confirmAutomationProposal,
+    declineAutomationProposal,
     holdResume,
   };
 }

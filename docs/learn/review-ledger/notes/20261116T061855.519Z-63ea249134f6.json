@@ -1,0 +1,7 @@
+{
+  "revision": "d09d29deb030b1f86786a3541d7f23ed77036134",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"chat.css follow-up (#4971) only puts the move caption on its own line in the Run setup sheet; long trigger labels still truncate and the sheet owns full choices, so the paragraph stays accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

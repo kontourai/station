@@ -11,12 +11,15 @@ import type { DockMode } from '../../types';
 import { isSessionWorkActive } from '../../utils/execution';
 import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
 import { requestTurnBrowser } from '../chat/transcript-turn-browser-events';
+import { SettingsGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
 import {
   ChatDockHeaderMoreMenu,
   type DockMoreAction,
+  groupDockMoreActions,
 } from './ChatDockHeaderMoreMenu';
+import { useIsChildChatCovered } from './ChildChatNavigationContext';
 import { inboxToggleLabel, workingChatsLabel } from './inbox-toggle-label';
 import {
   toggleSessionInventoryOccurrence,
@@ -152,8 +155,8 @@ interface ChatDockHeaderProps {
   /**
    * Extra rows for the More menu, supplied by the caller because their subject
    * is the active conversation rather than the dock's chrome — Copy thread ID,
-   * Copy project path, Open in Coding (#1536 F). Appended after the header's
-   * own rows.
+   * Copy project path, the panel toggles (#1536 F). Each names its group
+   * (`DockMoreGroup`); the menu orders and separates them.
    */
   moreActions?: readonly DockMoreAction[];
   /**
@@ -162,8 +165,9 @@ interface ChatDockHeaderProps {
    */
   sessionContextChip?: React.ReactNode;
   /**
-   * The session context card carries the background-task count while it is
-   * beside the transcript, so the More trigger does not repeat it.
+   * The session context card is beside the transcript and carries the
+   * background-task count and Background tasks, so the More menu repeats
+   * neither (the count on its trigger nor the row).
    */
   backgroundTasksBadgeHidden?: boolean;
 }
@@ -180,6 +184,7 @@ export function ChatDockHeader({
   backgroundTasksBadgeHidden = false,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
+  const childCovered = useIsChildChatCovered();
   const slots = useRegionChromeSlots();
   // One hook for a variable number of per-session rows: `useShortcutDisplay`
   // is a hook and cannot be called inside the activity map.
@@ -193,7 +198,10 @@ export function ChatDockHeader({
   const absorbRegionActions = regionMenu?.absorb;
   // While this toolbar is in the bar, the region's commands are rows of its
   // More menu and the bar drops its own buttons for them.
-  useEffect(() => absorbRegionActions?.(), [absorbRegionActions]);
+  useEffect(
+    () => (childCovered ? undefined : absorbRegionActions?.()),
+    [absorbRegionActions, childCovered],
+  );
   const showInboxToggle = Boolean(workspaceControls?.showInboxToggle);
   const inventory = workspaceControls?.sessionInventory;
   const inventoryOccurrence = useSessionInventoryOccurrence(
@@ -211,7 +219,7 @@ export function ChatDockHeader({
    * that are not the dock's primary verbs — every one still reachable, none of
    * them holding width the title needs.
    */
-  const dockMoreActions: DockMoreAction[] = [
+  const dockMoreActions: DockMoreAction[] = groupDockMoreActions([
     // The working chats, first: the quick jump the bar's "N chats working"
     // dropdown used to be. Their count rides the inbox toggle (or, without
     // one, this menu's trigger); the per-chat chords still work everywhere.
@@ -225,6 +233,7 @@ export function ChatDockHeader({
           : '';
       return {
         key: `working-${session.id}`,
+        group: 'switch' as const,
         label: session.title,
         glyph: <span className="chat-dock__working-glyph" aria-hidden="true" />,
         ...(shortcut ? { shortcut } : {}),
@@ -241,6 +250,7 @@ export function ChatDockHeader({
       ? [
           {
             key: 'open-chat',
+            group: 'switch' as const,
             label: withShortcutHint(
               'Open chat…',
               'dock.openConversation',
@@ -250,17 +260,9 @@ export function ChatDockHeader({
           },
         ]
       : []),
-    ...(chatControls
-      ? [
-          {
-            key: 'chat-settings',
-            label: 'Chat settings',
-            onSelect: () =>
-              chatControls.setShowChatSettings((previous) => !previous),
-          },
-        ]
-      : []),
-    ...(workspaceControls
+    // The active chat's own rows lead its group; the dock's follow.
+    ...(moreActions ?? []),
+    ...(workspaceControls && !backgroundTasksBadgeHidden
       ? [
           {
             key: 'background-tasks',
@@ -278,6 +280,8 @@ export function ChatDockHeader({
           },
         ]
       : []),
+    // The full inventory reader: the card's footer link opens the compact
+    // view beside the transcript, so this row stays even while the card shows.
     ...(inventory
       ? [
           {
@@ -323,16 +327,11 @@ export function ChatDockHeader({
           },
         ]
       : []),
-    ...(moreActions ?? []),
-    ...(regionMenu?.actions ?? []),
-  ].map((action, index, rows) =>
-    // The commands after the working chats start their own group.
-    index > 0 &&
-    rows[index - 1]?.key.startsWith('working-') &&
-    !action.key.startsWith('working-')
-      ? { ...action, separatorBefore: true }
-      : action,
-  );
+    ...(regionMenu?.actions ?? []).map((action) => ({
+      ...action,
+      group: 'region' as const,
+    })),
+  ]);
   // The same fact the inbox rows show when the dock has it; the open chat
   // tabs only without one (a dock with no inbox behind it).
   const workingCount =
@@ -413,7 +412,8 @@ export function ChatDockHeader({
   const leading = (
     <>
       {slots?.start === undefined ? inboxToggle : null}
-      {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
+      {chatIdentity &&
+      (!slots?.namesPane || retainIdentityInNamedPane || childCovered) ? (
         <div
           className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}
         >
@@ -458,6 +458,21 @@ export function ChatDockHeader({
             }}
           />
         )}
+      {/* Chat settings is a verb about the chat on screen and used often
+          enough to keep its own icon beside the menu (it was a row of it). */}
+      {chatControls ? (
+        <button
+          type="button"
+          className="chat-dock__icon-btn chat-dock__settings-btn"
+          aria-label="Chat settings"
+          title="Chat settings"
+          onClick={() =>
+            chatControls.setShowChatSettings((previous) => !previous)
+          }
+        >
+          <SettingsGlyph />
+        </button>
+      ) : null}
       {/* The working chats are rows of this menu, so choosing one may hand
           focus on to that chat's composer (`useWorkingChatFocus`). */}
       <span className="chat-dock__more" data-working-chat-origin="">
@@ -500,6 +515,7 @@ export function ChatDockHeader({
   // A full-screen placement has no region bar and ignores a region's slots —
   // except a bar that names the pane itself (the Coding layout's
   // breadcrumb, #3046), which it joins: its own bar would repeat the title.
+
   if (slots && (!fullscreen || slots.namesPane)) {
     return (
       <>
@@ -511,7 +527,7 @@ export function ChatDockHeader({
   }
 
   return (
-    <div className="chat-dock__header">
+    <div className="chat-dock__header" data-surface="chat-header">
       <div className="chat-dock__title">
         {slots?.start !== undefined ? inboxToggle : null}
         {leading}

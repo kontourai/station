@@ -266,14 +266,30 @@ resolves once none of it remains, and fails otherwise. On POSIX the command
 leads its own process group, signaled SIGTERM then SIGKILL; after the leader
 exits, the group is checked continuously while termination runs and signaled
 only right after a check shows members, and once seen empty it is never
-signaled again, so a reused group id is not. On Windows the command itself is
-ended at once (Node still holds its handle, so its pid names no other process),
-without waiting on a process-table read; then each process proven to
-descend from the command (parent pid plus birth order, the owned-process
-sweep's rule) is ended by pid until the process table shows none; a
-descendant whose parent had already exited before the stop cannot be proven
-and is not reached. A command that exits by itself leaves background children
-it started running, as before.
+signaled again, so a reused group id is not. On Windows the command runs in a
+kill-on-close Job Object with no breakaway limit (#4624), created by the
+Station Job guard
+([`windows-command-guard.ts`](../../src-server/services/terminal/windows-command-guard.ts),
+the guard's `--session` mode) while the command is still suspended, so every
+process it starts is in the Job, including one whose parent has already
+exited. The guard hands the command its own stdin, stdout and stderr pipes,
+so a command tab still takes typing. Stop and the output cap end the whole
+Job, and the guard reports success only once the Job holds no live process;
+otherwise Stop fails. The command is found and quoted as Node would start it
+directly. The guard retains custody after a natural leader exit until the
+parent's bounded output accounting finishes. It releases the Job only when
+output is uncapped and complete and no termination was requested; background
+children then keep running, as on POSIX. Incomplete output ends the Job even
+after a natural leader exit. If the server process dies, the guard ends the
+Job. The guard is the archive's staged, digest-checked
+`station-windows-owned-guard.exe`, or one compiled with the .NET Framework
+compiler from the source tree the server runs from. Without either (an
+install that has neither), the command runs outside a Job as before: it is
+ended at once, then each process proven to descend from it (parent pid plus
+birth order, the owned-process sweep's rule) by pid until the process table
+shows none, and a descendant whose parent had already exited is not reached.
+A process the command asks another, already running program to start (a
+document opened through the shell, a scheduled task) is not in the Job.
 
 When a slot is needed, the oldest ended or failed record in the same pool,
 eligible for the caller's operate authority, expires: its journal and cache entry are discarded
@@ -309,6 +325,8 @@ before the ConPTY closes, as the supervisor's workload host does: closing a
 ConPTY ends only processes attached to its console, so before this a
 descendant started detached from every console outlived close and a core
 stop (#3994). After a successful `taskkill` both hosts wait for the exit.
+A session whose cleanup misses its six second deadline reports the tree kill
+and its result, the exit event, the last output and whether output was paused.
 After an admitted shell exits, the adapter releases it at most once and closes
 its owned pipes, including for a silent or paused process. Its console process
 listing is answered empty: after exit the listing helper cannot attach, and its
@@ -588,8 +606,10 @@ is replayed, not lost. `ShellHost.attach` and `HostedShellProcess` are the
 only additions to the host interface. Write, resize, signal and terminate
 stay on the process handle, and reads on its journal. The
 [supervisor design](process-supervisor.md) covers the protocol, kill-tree
-escalation and the evidence. Windows job objects per workload, Settings
-controls for the host, and the UI for ACP command sessions are not implemented.
+escalation and the evidence. A command session runs in a Windows Job Object
+of its own ([custody](#whole-store-retention-and-process-custody)); an
+interactive shell does not. Settings controls for the host and the UI for
+ACP command sessions are not implemented.
 
 The supervisor survives a core server restart or upgrade, not a machine
 reboot. After a reboot, Station restores instead.
@@ -733,6 +753,28 @@ and bytes) and appends segments to disk; compaction trims segments past the
 retention limit. Attach asks for `fromSeq`: served from the tail when
 covered, from disk when not, and a fresh snapshot otherwise.
 
+A shell's journal also records its size (#4625): a resize record (empty
+`data`, `resize: {cols, rows}`) when it starts and whenever its PTY is
+resized, appended in the same turn as the resize so the output the PTY
+writes for the new size follows it, and again at the start of each segment,
+since compaction drops whole segments. A size equal to the last one adds
+nothing; a command session records none. ConPTY repaints its whole screen
+for a new size, and replayed at another size that repaint lands on lines that
+had scrolled; the view therefore parses replayed output at its recorded size
+and then returns to its own. Journals written before resize records replay as
+before, at the view's size. An older Station cannot read a journal with
+resize records. Resize metadata counts against the pending-write, memory and
+read budgets. With history off, the tail evicts whole older replay windows
+and restates the effective size before retained output, so replay keeps its
+recorded grid even after the original resize has been evicted. An incremental
+reconnect resumes after the last applied sequence, which may omit the size
+record effective there. The view retains that size across the disconnect and
+applies it before replay output, including when the program exited or failed
+while offline; replay completion restores the viewer's size. A reset, session
+replacement or full rebuild from retained history discards the cached size
+and reconstructs it in history order. An unsized prefix uses the viewer's
+size until a recorded size arrives.
+
 Retention is configurable in Settings › Host options (implemented, #3994):
 
 | Setting (`AppConfig` key) | Default | Range | Notes |
@@ -782,6 +824,10 @@ the first-frame gate is gone), with `terminal:operate` joined by a new
   close, list, error).
 - Output and input are binary frames: a fixed header (kind, channel, sequence)
   followed by raw bytes. No JSON-escaping of terminal data.
+- A journal's resize record reaches a client offering `station.terminal.v2`
+  as a resize frame with its own sequence (#4625), acknowledged like output
+  and free of output credit; a version 1 client gets that sequence as empty
+  output.
 - Input is coalesced per animation frame on the client.
 - Flow control is a per-channel credit window acknowledged by the client, so
   a flooding shell cannot starve other channels or grow server memory.
@@ -1080,7 +1126,8 @@ verification.
   [shared shell fixture](../../src-server/services/terminal/__tests__/fixtures/real-shell.ts),
   beside the supervisor-host, command-session and
   [real-supervisor handoff](../../src-server/services/terminal/__tests__/supervisor-terminal.real.test.ts)
-  suites that already did; the required Windows PR check runs all six
+  suites that already did, and the command-process suite; the required
+  Windows PR check runs all seven
   (`npm run test:windows:portable`), with the script-runner and agent-run
   suite (below). Cases built on POSIX job control (fork, `setsid`, HUP, `ps`)
   stay POSIX-only. ConPTY is a renderer, not a byte pipe, and the suites assert the
@@ -1171,6 +1218,28 @@ verification.
   runs on Windows (and in `test:windows:portable`): package managers' batch
   shims run through cmd.exe, an approved command reaches cmd with its quotes
   as shown, and both fail when their fix is reverted.
+- Windows command custody and resize replay (#4624, #4625; Windows 11 26200,
+  Node 24.18, revision `cd72116f20`): the
+  [command-process suite](../../src-server/services/terminal/__tests__/command-process.process.test.ts),
+  now in `test:windows:portable`, starts real commands through the Job guard.
+  Stop and the output cap end a detached grandchild whose parent had already
+  exited; typed input reaches a command in its Job; arguments arrive as Node
+  passes them; a command that exits by itself leaves its detached child
+  running; and a guard that does not confirm the Job ended makes Stop fail.
+  (Node ends a non-detached child together with its parent through libuv's own
+  kill-on-close job, so only a detached descendant can be orphaned this way.)
+  The [retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
+  resizes a real ConPTY cmd.exe from 80x24 to 80x10 after 40 rows, checks the
+  journal's resize records and their order, and replays the records through
+  the SDK's Ghostty fixture in a 100x30 view: every row survives. The
+  [controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+  replays a ConPTY-style repaint through the real engine; without the recorded
+  sizes the lines that had scrolled are overwritten. Fault injection, each
+  restored to its original bytes: starting commands without the guard failed
+  both orphan cases, a guard that keeps its Job after a natural exit failed the
+  background-child case, a journal without resize records failed the resize
+  case, and the view or store ignoring sizes failed their cases; the restored
+  suites passed.
 
 - Fault injection for each isolation check and for the query stripping.
 - Listener isolation (#3994): each store session notifies only its own
@@ -1188,22 +1257,35 @@ refusing to recreate it", also after its data was cleared. An agent's
 `terminal_run` was not approved from a phone: a Station-native agent's call
 was refused as unattended in a chat started from the composer, and a Claude
 Code chat in a Project was not offered the tool. Desktop copy to the system
-clipboard was not read back. On Windows, Stop does not reach a command's
-descendant whose parent already exited, and the journal does not record
-resizes, so ConPTY output replayed at another size can repaint over lines
-already scrolled. Earlier Windows floors lost a forked worker without an
-assertion or diagnostic. Issue #4626 now records the captured access violation
-(`0xc0000005`) and a controlled reproduction in node-pty 1.1's unsynchronized
-native handle-table removal. The exact 1.2.0-beta.18 dependency includes the
-upstream locking and cancellation fixes; the Windows adapter suite checks
-positive-PID admission, an isolated concurrent exit/resize child, paused silent
-exit cleanup, and late vendor readiness after cancellation. Qualification of a
-specific run remains tied to its recorded source and installed binary.
+clipboard was not read back. On Windows, a Station with no Job guard (the
+Desktop app's bundled server stages none yet) still runs commands without a
+Job, so there Stop does not reach a descendant whose parent already exited.
+Replay at recorded sizes was checked with cmd.exe on ConPTY and a synthetic
+repaint, not with full-screen programs or other shells. Earlier Windows floors
+lost a forked worker without an assertion or diagnostic. Issue #4626 now records
+the captured access violation (`0xc0000005`) and a controlled reproduction in
+node-pty 1.1's unsynchronized native handle-table removal. The exact
+1.2.0-beta.18 dependency includes the upstream locking and cancellation fixes;
+the Windows adapter suite checks positive-PID admission, an isolated concurrent
+exit/resize child, paused silent exit cleanup, and late vendor readiness after
+cancellation. Qualification of a specific run remains tied to its recorded
+source and installed binary.
 
 The floor ([`scripts/windows-portable-floor.mjs`](../../scripts/windows-portable-floor.mjs))
 continues to run every isolated terminal suite, fails any crash, and never
 retries it. Coordinator PID/code/signal records remain in the Windows artifact.
-The screen reader mode has not been used with real
+A failed invocation also retains how each worker ended and whether Vitest had
+asked it to stop (its normal SIGTERM teardown), any Node fatal-error report,
+and the Application log's crash entries. Vitest itself reports only "Worker
+exited unexpectedly".
+
+Separately, "Terminal process-group cleanup did not settle" (a shell's cleanup
+missing its six second deadline) failed the retention suite on two other
+branches and the socket suite's credit-backpressure case on this one. The
+error now names the step still pending: the tree kill and its result,
+node-pty's exit event, the last output and whether output was paused. The cause
+of those cleanup-deadline failures remains unestablished; the native race
+evidence does not attribute them. The screen reader mode has not been used with real
 assistive technology (VoiceOver, NVDA, TalkBack; the Windows machine above
 has no NVDA), and the manual screen reader pass listed above has not
 happened. The browser broker (DataChannel) route is unsupported by design,

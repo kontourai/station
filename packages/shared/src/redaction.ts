@@ -68,7 +68,7 @@ function assetLocation(location: string): string {
 
 function redactPluginAssetUrls(text: string): string {
   return text.replace(
-    /\b(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)\/[^\s<>"'`()\],，。；：！？、）》】」』〉〕］｝＞＇＂]+/gi,
+    /\b(?:station-plugin:\/\/localhost|https?:\/\/station-plugin\.localhost)\/[^\s<>"'`()\],\uff0c\u3002\uff1b\uff1a\uff01\uff1f\u3001\uff09\u300b\u3011\u300d\u300f\u3009\u3015\uff3d\uff5d\uff1e\uff07\uff02]+/gi,
     (location) => {
       const punctuation = /\.+$/.exec(location)?.[0] ?? '';
       const url = punctuation

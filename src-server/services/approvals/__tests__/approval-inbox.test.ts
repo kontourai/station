@@ -24,6 +24,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   attentionProjectionLoads: { add: vi.fn() },
   attentionProjectionResults: { record: vi.fn() },
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
 }));
 
 const logger = {
@@ -359,6 +360,54 @@ describe('approval inbox notifications', () => {
     expect(card!.actions?.map((action) => action.label)).toEqual(['Deny']);
   });
 
+  test('a Claude Bash ask with a suggested prefix offers the prefix action, which sends the rule scope', async () => {
+    emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        payload: {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+          decisionReason: 'This command requires approval',
+          claudeAsk: { decisionReasonType: 'other' },
+          suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+              behavior: 'allow',
+              destination: 'localSettings',
+            },
+          ],
+        },
+        provider: 'claude',
+        requestId: 'req-npm',
+        eventId: 'event-npm',
+        requestType: 'approval',
+        threadId: 'thread-npm',
+        title: 'Allow Bash',
+      },
+    });
+    await vi.waitFor(async () =>
+      expect(await notificationService.list()).toHaveLength(1),
+    );
+    const [card] = await notificationService.list();
+    expect(card!.actions?.map((action) => action.label)).toEqual([
+      'Allow Once',
+      'Allow "npm ls *" for this session',
+      'Allow all Bash commands for this session',
+      'Deny',
+    ]);
+    await notificationService.action(card!.id, 'acceptForSessionRule');
+    expect(orchestrationService.dispatch).toHaveBeenCalledWith({
+      type: 'respondToRequest',
+      threadId: 'thread-npm',
+      requestId: 'req-npm',
+      expectedRequestEventId: 'event-npm',
+      decision: 'acceptForSession',
+      sessionGrantScope: 'rule',
+    });
+  });
+
   describe('the Station browser server grant', () => {
     const open = (payload: Record<string, unknown>) =>
       emit('orchestration:event', {
@@ -384,7 +433,7 @@ describe('approval inbox notifications', () => {
       const [card] = await notificationService.list();
       expect(card.actions?.map((action) => action.label)).toEqual([
         'Allow Once',
-        'Allow station-browser.browser_click for this session',
+        'Allow all station-browser.browser_click calls for this session',
         'Allow the Station browser for this session',
         'Deny',
       ]);
@@ -493,6 +542,39 @@ describe('approval inbox notifications', () => {
     expect(notifications[0].body).toBe('Lab Engine asked a question.');
   });
 
+  test('an engine link offers no Allow, which would say a link nobody showed was opened', async () => {
+    // The ACP adapter's shape for Kiro's `_kiro/openExternalUrl`.
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        eventId: 'evt-link',
+        method: 'request.opened',
+        payload: {
+          inputRequest: {
+            schema: 'station.input-request/v1',
+            source: 'harness:kiro',
+            requester: 'Kiro',
+            message: 'Sign in to the docs MCP server',
+            body: {
+              kind: 'url',
+              url: 'https://auth.example.com/authorize?x=1',
+              purpose: 'mcp-sign-in',
+            },
+          },
+        },
+        provider: 'acp',
+        requestId: 'req-link',
+        requestType: 'approval',
+        threadId: 'thread-link',
+        title: 'Kiro wants you to sign in',
+      },
+    });
+
+    const [notification] = await notificationService.list();
+    expect(notification.actions ?? []).toEqual([]);
+    expect(notification.body).toBe('Kiro wants you to sign in.');
+  });
+
   test('a plan review is worded as a plan review, for the engine that sent it', async () => {
     await emit('orchestration:event', {
       event: {
@@ -567,7 +649,33 @@ describe('approval inbox notifications', () => {
     ]);
   });
 
-  test('#2915: a Claude read with nothing to forward is persisted without a session-grant action', async () => {
+  // Owner decision (2026-11-16): a session answer is offered on every tool
+  // approval; a built-in tool that changes authority is the exception.
+  test('a built-in tool that changes authority is persisted without a session-grant action', async () => {
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        payload: {
+          toolName: 'mcp__station-control__update_config',
+          toolInput: {},
+        },
+        provider: 'claude',
+        requestId: 'req-authority',
+        requestType: 'approval',
+        threadId: 'thread-authority',
+        title: 'Allow update_config',
+      },
+    });
+
+    const notifications = await notificationService.list();
+    expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
+      'accept',
+      'decline',
+    ]);
+  });
+
+  test('#2915: a Claude read with nothing to forward still offers the session grant', async () => {
     await emit('orchestration:event', {
       event: {
         createdAt: new Date().toISOString(),
@@ -584,6 +692,7 @@ describe('approval inbox notifications', () => {
     const notifications = await notificationService.list();
     expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
       'accept',
+      'acceptForSession',
       'decline',
     ]);
   });
@@ -598,17 +707,17 @@ describe('approval inbox notifications', () => {
       [
         'a reported tool name',
         { toolName: 'bash.exec' },
-        'Allow bash.exec for this session',
+        'Allow all bash.exec calls for this session',
       ],
       [
         'an MCP wire name, read the way a person would',
         { toolName: 'mcp__station-control__list_agents' },
-        'Allow station-control.list_agents for this session',
+        'Allow all station-control.list_agents calls for this session',
       ],
       [
         'a station-agent payload naming the tool under `tool`',
         { tool: 'Bash', toolArgs: { command: 'ls' } },
-        'Allow Bash for this session',
+        'Allow all Bash commands for this session',
       ],
       [
         // #2915: a Claude read-only tool's session grant is its folder rule.

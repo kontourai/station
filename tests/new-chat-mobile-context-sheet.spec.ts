@@ -241,7 +241,7 @@ test.describe('New Chat mobile project picker (390x844)', () => {
 
     // Design decision: no autofocus on the filter on mobile, to avoid a
     // keyboard-driven viewport jump the instant the sheet opens.
-    const filter = sheet.getByPlaceholder('Filter...');
+    const filter = sheet.getByPlaceholder('Filter…');
     await expect(filter).not.toBeFocused();
   });
 
@@ -282,7 +282,7 @@ test.describe('New Chat mobile project picker (390x844)', () => {
     expect(lastBox!.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
 
     // Filter narrows the list to a single match.
-    const filter = sheet.getByPlaceholder('Filter...');
+    const filter = sheet.getByPlaceholder('Filter…');
     await filter.fill('Project 3');
     const matches = sheet.locator('.new-chat-modal__dropdown-item');
     await expect(matches).toHaveCount(1);

@@ -187,11 +187,18 @@ export function composeContextEfficiencyRuntime(
     id: 'project-supervision',
     label: 'Project supervision',
     description:
-      'Wake a designated coordinator for actionable Task checkpoints under explicit wake and stop limits. Wakes can spend model credits.',
+      'Wake a designated coordinator for actionable Task checkpoints under explicit wake and stop limits. Wakes can spend model credits. Needs Coordinator chat.',
   });
   const compactionEnabled = () =>
     compactionPreview.select({ enabled: () => true, disabled: () => false });
+  // Supervision wakes the person's coordinator, so it also needs that preview.
+  const coordinatorEnabled = () =>
+    context.coordinatorSessionPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   const supervisionEnabled = () =>
+    coordinatorEnabled() &&
     supervisionPreview.select({ enabled: () => true, disabled: () => false });
   let closed = false,
     driving = false;
@@ -977,6 +984,8 @@ export function composeContextEfficiencyRuntime(
     })
     .strict();
   const supervisionRoute = async (c: Context, write: boolean) => {
+    if (!coordinatorEnabled())
+      return c.json(disabled('coordinator-session'), 404);
     if (!supervisionEnabled())
       return c.json(disabled('project-supervision'), 404);
     const person = options.person(c),

@@ -890,6 +890,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'knowledge',
     keywords: ['personal project obsidian adapter root vault'],
   },
+  {
+    id: 'knowledge-conversation-history',
+    title: 'Past conversations in Knowledge',
+    section: 'knowledge',
+    keywords: ['chat history', 'search', 'root:conversations'],
+    configKeys: ['knowledgeStores'],
+  },
   // ── About ── appended last so earlier rows keep their order.
   {
     id: 'app-version',

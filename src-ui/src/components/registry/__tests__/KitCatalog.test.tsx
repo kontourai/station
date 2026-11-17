@@ -170,7 +170,7 @@ describe('KitCatalog', () => {
       target: { value: 'demo' },
     });
     expect(
-      screen.getByRole('button', { name: 'Checking project layouts...' }),
+      screen.getByRole('button', { name: 'Checking project layouts…' }),
     ).toHaveProperty('disabled', true);
 
     projectLayoutsLoading = false;

@@ -207,6 +207,7 @@ export function HeaderActions({
     status: connStatus,
     reason: connReason,
     failureStreak: connFailureStreak,
+    checkedAt: connCheckedAt,
     recheck: connRecheck,
   } = useConnectionStatus({
     checkHealth: checkServerHealth,
@@ -501,6 +502,8 @@ export function HeaderActions({
             activeConnectionId: activeConnection?.id,
             activeStatus: connState,
             activeStatusLabel: connStateLabel,
+            activeReason: connReason,
+            activeCheckedAt: connCheckedAt,
             activeDisplayName: connIdentity,
             onSelect: async (connection) => {
               await setActiveConnection(connection.id);

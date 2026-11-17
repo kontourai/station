@@ -23,6 +23,7 @@ import {
 } from './lib/account-requirement.mjs';
 import { projectLatestE2EEvidence } from './lib/e2e-latest-evidence.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import {
   executeOwnedProcess,
   registerProcessSignal,
@@ -357,19 +358,16 @@ export function startBucket(
   const treeSettlement = { proven: false };
   let execution;
   try {
-    execution = execute(
-      platform === 'win32' ? 'npm.cmd' : 'npm',
-      ['run', bucket.script],
-      spawn,
-      processLabel,
-      {
-        shell: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-        env,
-        treeSettled: () => treeSettlement.proven,
-      },
-    );
+    // Resolved inside the try: an npm that cannot be located is a spawn
+    // failure of this bucket, exactly like a spawn that throws.
+    const npm = npmInvocation(['run', bucket.script], { env, platform });
+    execution = execute(npm.command, npm.args, spawn, processLabel, {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      env,
+      treeSettled: () => treeSettlement.proven,
+    });
   } catch (error) {
     return {
       promise: Promise.resolve(

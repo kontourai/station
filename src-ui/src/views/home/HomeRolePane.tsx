@@ -4,7 +4,10 @@ import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { Component, type ReactNode, useSyncExternalStore } from 'react';
 import { Button } from '../../components/Button';
 import { StationExtensionsAccess } from '../../components/registry/StationExtensionsAccess';
-import { pluginRegistry } from '../../core/PluginRegistry';
+import {
+  PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE,
+  pluginRegistry,
+} from '../../core/PluginRegistry';
 import {
   resolveClientTrustedPluginLayout,
   selectClientWorkspacePaneRenderer,
@@ -131,7 +134,7 @@ function HomeRoleFallback({
         </p>
         <div className="home-role-fallback__actions">
           {extensionBlocked && <StationExtensionsAccess onlyWhenOff compact />}
-          {onRetry && <Button onClick={onRetry}>Try again</Button>}
+          {onRetry && <Button onClick={onRetry}>Retry</Button>}
           <Button onClick={onRevoke}>Keep the built-in Home</Button>
         </div>
       </div>
@@ -307,7 +310,7 @@ function unavailableReason(
     return 'Extensions from this Station are off on this device.';
   }
   if (loadStatus.failure === 'registry-unavailable') {
-    return 'Station could not read the installed plugin inventory.';
+    return PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE;
   }
   if (
     loadStatus.failure === 'bundle-load-failure' &&

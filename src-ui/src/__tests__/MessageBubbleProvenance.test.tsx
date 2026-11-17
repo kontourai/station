@@ -163,6 +163,10 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
       'Station failed to capture a checkpoint for this turn.',
     ],
     ['checkpoint_pruned', 'This turn’s checkpoint expired and was pruned.'],
+    [
+      'checkpoint_refused',
+      "No checkpoint: this repository's git config runs a custom filter or diff program, which Station won't execute.",
+    ],
   ] as const)('renders the %s changed-file reason', (reason, message) => {
     renderRow({
       role: 'assistant',

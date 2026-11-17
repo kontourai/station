@@ -1043,7 +1043,7 @@ function FilePreviewChanges({
           wrong with it; try again in a moment.
         </p>
         <Button size="sm" onClick={() => void query.refetch()}>
-          Try again
+          Retry
         </Button>
       </div>
     );

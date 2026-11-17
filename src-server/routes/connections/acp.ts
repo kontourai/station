@@ -45,11 +45,13 @@ import {
   mapPublicRegistryListings,
   type PublicRegistryCatalog,
 } from '../../services/acp/public-agent-registry-catalog.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
 import {
   type IntegrationSecretResolution,
   SecretBindingResolutionError,
 } from '../../services/secrets/secret-binding-administration.js';
 import { acpOps } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 import {
   acpConnectionSchema,
@@ -582,7 +584,7 @@ export function createACPRoutes(
     void registerFirstHandshakeACPConnection(ctx, config).catch((error) => {
       ctx.logger?.warn?.('ACP first-handshake registration failed', {
         id: config.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     });
   });
@@ -1064,6 +1066,15 @@ export function createACPRoutes(
               ctx.logger?.warn?.('Stored engine keys could not be removed', {
                 id,
               }),
+            );
+          // Nor may a Kiro sign-in or an engine-held secret Station kept for it.
+          await engineHostAuth()
+            ?.removeConnection(id)
+            .catch(() =>
+              ctx.logger?.warn?.(
+                'Engine sign-in and secrets could not be removed',
+                { id },
+              ),
             );
           acpOps.add(1, { op: 'delete' });
           return c.json({ success: true });

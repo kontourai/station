@@ -14,6 +14,18 @@ import { notificationCategoryLabel } from './notificationLabels';
 import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
 
 /**
+ * Kinds whose `openHref` is the Flow run console. Do not link there while the
+ * Flow preview is off (`useDeveloperFeatures().flow`).
+ */
+export function isFlowGateKind(kind: AttentionItem['kind']): boolean {
+  return (
+    kind === 'gate-route-back' ||
+    kind === 'gate-blocked' ||
+    kind === 'gate-exception'
+  );
+}
+
+/**
  * Single source of truth for attention-item badge copy. Gate kinds use
  * verdict vocabulary — route-back / gate blocked / exception pending — and
  * must never say "approval": an approval request allows an action, a review
@@ -123,7 +135,11 @@ export function suppressMirroredNotifications<T extends { id: string }>(
   for (const item of items) {
     if (item.kind === 'approval') {
       mirrored.add(item.source.notificationId);
-    } else if (item.kind === 'device-pairing' && item.source.notificationId) {
+    } else if (
+      (item.kind === 'device-pairing' ||
+        item.kind === 'pull-request-feedback') &&
+      item.source.notificationId
+    ) {
       mirrored.add(item.source.notificationId);
     }
   }

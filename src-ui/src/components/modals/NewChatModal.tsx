@@ -78,7 +78,10 @@ import {
 } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
-import { AgentPickerGroups } from '../chat-start/AgentPickerRow';
+import {
+  AgentPickerGroups,
+  NO_AGENT_SETUP_HINT,
+} from '../chat-start/AgentPickerRow';
 import {
   ContextLabelSeparator,
   ContextPickerOptions,
@@ -612,7 +615,9 @@ export function NewChatModal({
     },
   });
   const beginSetup = (path: string, agentSlug?: string) => {
-    if (showStart && agentSlug) start.chooseAgent(agentSlug);
+    // Shown once setup makes it ready; backing out leaves the working choice.
+    if (showStart && agentSlug)
+      start.chooseAgent(agentSlug, { untilReady: true });
     if (!setupReturn.begin(path)) {
       setSelectFeedback('Reconnect to this Station before opening setup.');
       return;
@@ -1267,8 +1272,12 @@ export function NewChatModal({
     if (seededSelection.current || !startSelection?.agentSlug || automaticMode)
       return;
     seededSelection.current = true;
-    start.chooseAgent(startSelection.agentSlug);
-  }, [start, startSelection, automaticMode]);
+    // A hand-off for setup carries an Agent that is not ready yet; the draft
+    // shows it once it is, and the working default until then.
+    start.chooseAgent(startSelection.agentSlug, {
+      untilReady: handoff?.kind === 'repair',
+    });
+  }, [start, startSelection, automaticMode, handoff?.kind]);
   const seededModel = useRef(false);
   useEffect(() => {
     if (
@@ -1418,6 +1427,11 @@ export function NewChatModal({
           status: 'ready',
           agent: draftAgent,
           modelLabel: draftModelLabel,
+          effortLabel: draftModel?.effortLabel,
+          executionAgent:
+            agents.find(
+              (entry) => entry.slug === draftModel?.executionAgentId,
+            ) ?? draftAgent,
           executionAgentId: draftAgent
             ? start.modelChoiceFor(draftAgent)?.executionAgentId
             : undefined,
@@ -1471,6 +1485,17 @@ export function NewChatModal({
           accent: isGlobal ? undefined : accents.get(selectedContext),
           icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
           folder: workspaceHintText(workspaceHint),
+          folderTitle:
+            'path' in workspaceHint
+              ? [
+                  workspaceHint.kind === 'project'
+                    ? workspaceHint.repositoryRemote
+                    : undefined,
+                  workspaceHint.path,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : undefined,
         };
   const contextSelected = Boolean(
     draftContext?.items.some((item) =>
@@ -1570,7 +1595,7 @@ export function NewChatModal({
                     }
                   }}
                 >
-                  Try again
+                  Retry
                 </Button>
               }
             />
@@ -1608,13 +1633,13 @@ export function NewChatModal({
             <SkeletonList
               count={1}
               label={
-                enableInFlight ? 'Preparing your AI app' : 'Opening your chat'
+                enableInFlight ? 'Preparing the engine' : 'Opening your chat'
               }
             />
           ) : preparedStillStarting ? (
             <Empty
               variant="compact"
-              label="Your AI app is still starting"
+              label="The engine is still starting"
               description={startingNotice}
               action={
                 <Button onClick={() => beginSetup('/connections/engines')}>
@@ -1637,11 +1662,11 @@ export function NewChatModal({
           ) : (
             <Empty
               variant="compact"
-              label="Connect an AI account"
-              description="Station needs access to an AI account before it can help."
+              label="Connect an engine"
+              description="Station needs an engine or model connection before it can help."
               action={
                 <Button onClick={() => beginSetup('/connections/engines')}>
-                  Connect an AI app
+                  Connect an engine
                 </Button>
               }
             />
@@ -1866,7 +1891,7 @@ export function NewChatModal({
             <input
               ref={agentInputRef}
               type="text"
-              placeholder="Search agents..."
+              placeholder="Search agents…"
               value={agentSearch}
               onChange={(e) => {
                 preservedAgentSlug.current = undefined;
@@ -2021,7 +2046,7 @@ export function NewChatModal({
                       void refreshSetup().catch(() => undefined);
                     }}
                   >
-                    Try again
+                    Retry
                   </Button>
                 )}
               </p>
@@ -2280,7 +2305,7 @@ export function NewChatModal({
               <Empty
                 variant="compact"
                 label="Nothing to chat with yet"
-                description="Connect an engine (Claude Code, Codex, OpenCode…) or add a Model connection."
+                description={NO_AGENT_SETUP_HINT}
                 action={
                   <button
                     type="button"

@@ -894,3 +894,123 @@ describe('codex-adapter-notifications — images a tool returned', () => {
     }
   });
 });
+
+describe('codex-adapter-notifications: model reroutes and MCP startup', () => {
+  // Shapes from `codex app-server generate-json-schema` (codex-cli 0.167.0):
+  // v2/ModelReroutedNotification.json, v2/McpServerStatusUpdatedNotification.json.
+  const notify = (method: string, params: unknown) => {
+    const record = buildRecord();
+    const events: any[] = [];
+    handleCodexNotification({
+      record,
+      notification: { method, params },
+      nowIso: () => '2026-01-02T00:00:00.000Z',
+      publish: (event) => events.push(event),
+    });
+    return { events, record };
+  };
+
+  test('model/rerouted on the session thread is a turn-scope reroute', () => {
+    const { events, record } = notify('model/rerouted', {
+      threadId: 'codex-thread-1',
+      turnId: 'turn-7',
+      fromModel: 'gpt-5.3-codex',
+      toModel: 'gpt-5.2',
+      reason: 'highRiskCyberActivity',
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        provider: 'codex',
+        threadId: 'thread-1',
+        method: 'model.rerouted',
+        turnId: 'turn-7',
+        fromModel: 'gpt-5.3-codex',
+        toModel: 'gpt-5.2',
+        trigger: 'other',
+        scope: 'turn',
+      }),
+    ]);
+    expect(events[0]).not.toHaveProperty('childWorkId');
+    expect(record.session.model).toBeUndefined();
+  });
+
+  test("a subagent thread's reroute is attributed to that child", () => {
+    const { events } = notify('model/rerouted', {
+      threadId: 'child-thread-9',
+      turnId: 'child-turn',
+      fromModel: 'gpt-5.3-codex',
+      toModel: 'gpt-5.2',
+      reason: 'highRiskCyberActivity',
+    });
+    expect(events).toEqual([
+      expect.objectContaining({ childWorkId: 'child-thread-9' }),
+    ]);
+    expect(events[0]).not.toHaveProperty('turnId', 'child-turn');
+  });
+
+  test.each([
+    [{ fromModel: 'gpt-5', threadId: 'codex-thread-1', turnId: 't' }],
+    [
+      {
+        fromModel: 'gpt 5 <b>',
+        toModel: 'gpt-5.2',
+        threadId: 'codex-thread-1',
+      },
+    ],
+    [null],
+  ])('an unreadable reroute %j publishes nothing', (params) => {
+    expect(notify('model/rerouted', params).events).toEqual([]);
+  });
+
+  test.each([
+    ['starting', undefined, undefined, { state: 'starting' }],
+    ['ready', undefined, undefined, { state: 'ready' }],
+    [
+      'failed',
+      'connect refused',
+      null,
+      { state: 'failed', error: 'connect refused' },
+    ],
+    [
+      'failed',
+      'token expired',
+      'reauthenticationRequired',
+      { state: 'needs-auth', error: 'token expired' },
+    ],
+    ['cancelled', null, null, { state: 'failed', error: 'Startup cancelled' }],
+  ])(
+    'mcpServer/startupStatus/updated %s maps to one server, incomplete',
+    (status, error, failureReason, expected) => {
+      const { events } = notify('mcpServer/startupStatus/updated', {
+        name: 'github',
+        status,
+        error,
+        failureReason,
+        threadId: 'codex-thread-1',
+      });
+      expect(events).toEqual([
+        expect.objectContaining({
+          method: 'engine-mcp.status',
+          complete: false,
+          servers: [{ name: 'github', scope: 'engine-config', ...expected }],
+        }),
+      ]);
+    },
+  );
+
+  test("another thread's MCP status, or an unknown state, publishes nothing", () => {
+    expect(
+      notify('mcpServer/startupStatus/updated', {
+        name: 'github',
+        status: 'ready',
+        threadId: 'child-thread-9',
+      }).events,
+    ).toEqual([]);
+    expect(
+      notify('mcpServer/startupStatus/updated', {
+        name: 'github',
+        status: 'exploded',
+      }).events,
+    ).toEqual([]);
+  });
+});

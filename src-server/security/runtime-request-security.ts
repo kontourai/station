@@ -219,7 +219,6 @@ function validNativePrincipalSurface(
     /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(surface.appIdentifier) &&
     (surface.channel === 'dev' ||
       surface.channel === 'stable' ||
-      surface.channel === 'beta' ||
       surface.channel === 'nightly') &&
     typeof surface.clientInstanceId === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
@@ -1295,9 +1294,14 @@ export class RuntimeMutationBudget {
     mutationClass: RuntimeMutationClass,
     route?: { method: string; path: string },
   ): number {
+    // Room file uploads (Task rooms, and Project rooms and channels, #4812)
+    // carry base64 data URLs up to the chat attachment allowance.
     if (
       route?.method === 'POST' &&
-      /^\/api\/tasks\/[^/]+\/room\/attachments$/.test(route.path)
+      (/^\/api\/tasks\/[^/]+\/room\/attachments$/.test(route.path) ||
+        /^\/api\/projects\/[^/]+\/(?:room|channels\/[^/]+)\/attachments$/.test(
+          route.path,
+        ))
     )
       return CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES;
     const upload =

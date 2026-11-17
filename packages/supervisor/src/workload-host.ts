@@ -10,6 +10,7 @@
  * ends its workloads and exits when its IPC channel closes.
  */
 import { type ChildProcess, fork } from 'node:child_process';
+import { isRecord } from './ndjson.ts';
 import {
   isWorkloadEventMessage,
   type WorkloadErrorCode,
@@ -47,10 +48,6 @@ const HOST_READY_TIMEOUT_MS = 30_000;
 const HOST_STOP_TIMEOUT_MS = 15_000;
 /** Exited workloads kept in the registry for `status`. */
 const EXITED_KEPT = 64;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function failure(code: WorkloadErrorCode, message: string): WorkloadReply {
   return { ok: false, code, message };

@@ -1,0 +1,7 @@
+{
+  "revision": "7ea07e98c65c24cac77cbf54404162254b32d696",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Checked the capability-flags row: flags stay static except where a deployment mode cannot serve the route; making servesConversationStationHandoff module-private changes no served behaviour.","inputs":["docs/design/remote-execution-preparation.md","src-server/capabilities/station-capability-flags.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "da3f9ba9df04737bc6151d7943da623e60540231",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"NODE_DISABLE_COMPILE_CACHE entry no longer lists the desktop sidecar's server as a cache user; only the built-in station-control and station-knowledge children use the home cache (station-compile-cache.ts, build_sidecar_command).","inputs":["docs/reference/env-vars.md"]}
+  ]
+}

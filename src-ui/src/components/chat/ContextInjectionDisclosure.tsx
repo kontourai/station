@@ -18,6 +18,20 @@ export interface ContextInjectionDisclosureProps {
  */
 function contextBlocks(record: TurnProvenanceContextInjection): ContextBlock[] {
   const blocks: ContextBlock[] = [];
+  if (record.projectBrief) {
+    blocks.push({
+      kind: 'Project brief',
+      approxTokens: record.projectBrief.approxTokens,
+    });
+  }
+  if (record.projectMemory) {
+    const { entries, approxTokens } = record.projectMemory;
+    blocks.push({
+      kind: 'Project memory',
+      detail: `${entries} ${entries === 1 ? 'note' : 'notes'}, as background`,
+      approxTokens,
+    });
+  }
   if (record.knowledge) {
     const { chunkCount, sources, omittedSources, approxTokens } =
       record.knowledge;
@@ -98,10 +112,10 @@ export function ContextInjectionDisclosure({
     return (
       <section
         className="context-injection context-injection--empty"
-        aria-label="Injected context for this turn"
+        aria-label="Added context for this turn"
       >
         <p className="context-injection__qualification">
-          Station composed no additional context for this turn.
+          Station added no context this turn.
         </p>
       </section>
     );
@@ -110,7 +124,7 @@ export function ContextInjectionDisclosure({
   return (
     <section
       className="context-injection"
-      aria-label="Injected context for this turn"
+      aria-label="Added context for this turn"
     >
       <button
         type="button"
@@ -120,8 +134,8 @@ export function ContextInjectionDisclosure({
         onClick={() => setOpen((previous) => !previous)}
       >
         <span>
-          Injected context · {blocks.length}{' '}
-          {blocks.length === 1 ? 'block' : 'blocks'}
+          Added context · {blocks.length}{' '}
+          {blocks.length === 1 ? 'item' : 'items'}
         </span>
         <span aria-hidden="true" className="context-injection__chevron">
           {open ? '⌄' : '›'}
@@ -151,9 +165,8 @@ export function ContextInjectionDisclosure({
               agent's own system prompt, its tool schemas and the prior
               conversation are assembled elsewhere and are not counted here. */}
           <p className="context-injection__qualification">
-            Token figures are approximate, derived from the injected text size.
-            This covers the context Station composed for this turn — not the
-            agent's system prompt, its tools, or the conversation history.
+            Excludes the agent's system prompt, tools and chat history. Token
+            counts are estimates.
           </p>
         </div>
       )}

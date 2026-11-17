@@ -67,6 +67,81 @@ for the current supported model services and engines and their setup details.
 - A **direct chat** is an immediate conversation and does not silently create a
   Task.
 
+A Project's **Tasks board** files each Task by what is true of it now, never
+by a stored status: **Needs you** (its run asks for an approval or answer, the
+Task has an open question, the run failed, its pull requests merged and the
+Task can be marked done, a watched pull request used every fix attempt, or
+someone marked it blocked or for review),
+**Running**, **In review** (an open pull request with changes requested,
+conflicts, checks not passing, a draft, a pending review, or an unknown
+state),
+**Ready to merge** (every open pull request clean at its provider) and
+**Idle**. Backlog, Done and Canceled are shelves below. A fact Station could
+not read claims nothing: a run it cannot see reads *Run status unavailable*
+and keeps the Task out of Ready to merge, and so does a pull request it could
+not read. A Task someone marked blocked stays in Needs you whatever its pull
+requests say.
+Each card shows one status line and one next action. The Project page's
+Tasks section switches between this board and a list.
+
+A Task can **watch the pull requests** kept on it, when its Project's
+**Pull requests** setting is on or the Task's own **Watch pull requests** is
+(behind the Pull request agent feedback Feature Preview). Station then wakes
+the Task's agent when CI fails or a reviewer writes, never on a timer of the
+agent's own, and each failure or comment wakes it once. The Task's **Pull
+request watch** panel shows each pull request as Watching, Fixing, or **Ready
+for you** once checks pass and reviews are answered. After the Project's
+number of fix attempts (3 unless changed) the Task moves to Needs you as **Fix
+attempts used**, with the failing checks named, and Station notifies you once. Merging stays with you: the
+agent's attempts to merge, arm auto-merge or force-push are refused, a change
+to CI configuration asks you first, and each is listed under **Refused
+actions**. **Stop watching** turns it off for that Task. See
+[Task-owned pull requests](https://github.com/kontourai/station/blob/main/docs/decisions/task-owned-pull-requests.md) for what
+this does and does not cover.
+
+### Library
+
+Turn on **Project Library** in Settings → Advanced → Feature previews.
+
+A Project's **Library**, on its **Files & connections** tab, lists the files
+people add and the files its Tasks keep, newest first. Filter it by **Added by
+people**, **Kept by Tasks**, or one Task; **Preview** opens text and PNG files
+inline and offers **Download** for the rest.
+
+- **Add files** or **Add folder** uploads into the Project. A folder keeps its
+  layout; hidden files (such as `.git` or `.env`) and installed-package folders are
+  skipped, and each file can be up to 25 MB.
+- Every chat in the Project can read the Library, whatever its engine: agents
+  list it with `list_project_library` and read a file with
+  `read_project_library_file`. A chat started before its Project was recorded
+  is refused; start a new chat in the Project.
+- A kept Task output stays where its Task keeps it. The Library shows it with a
+  link to its Task, and as **Orphaned** once that Task is deleted. It is still
+  listed and readable.
+- The Library is on personal Stations. A hosted Station does not offer it.
+
+A Project schedule runs each run as a Task in the Project, so a file that run
+keeps appears in the Library with a link to its Task.
+
+### Continue in Project and Setup recommendations
+
+Turn on **Continue in Project** in Settings → Advanced → Feature previews.
+
+**Continue in Project…** in a chat's More menu moves its work into a Project.
+The chat itself is unchanged; nothing is sent into it.
+
+- **A new Project** opens New project with a name, folder and brief drafted
+  from the chat. The brief names the chat it came from. Edit anything, then
+  create it.
+- **An existing Project** creates a Task there, with a title and brief drafted
+  from the chat, that cites the chat's latest completed answer.
+
+A new Project with no Tasks shows **Setup recommendations**: a brief draft
+when it has none, a read-only **Explore and propose next steps** Task when a
+repository is attached, and a Task that cites the chat it was continued from.
+Each is on until you turn it off. Nothing is created until **Apply**; **Not
+now** hides the card for that Project.
+
 Example: “Explain this function” can be a direct chat. “Refactor this module,
 run its gates, and preserve the evidence” should be a Task. A Task can retain
 one Session across several turns and use another for a later attempt.
@@ -87,7 +162,8 @@ the conversation is absent from the loaded inventory and no row or reader
 references it, or its authority query cache is cleared. A released reader cannot
 recreate an observation when its pending read settles. Other conversations and
 Stations retain their own observations. Use **Resync** on the
-conversation or **Refresh inbox** to request fresh observations.
+conversation, or **Retry** when the inbox says it could not refresh, to request
+fresh observations.
 
 The pending-message list above the composer also shows follow-ups Station
 holds in the open conversation's server inbox, marked **Held by Station**,
@@ -108,9 +184,9 @@ the browser checks its original message key before retrying. A queued answer
 keeps those checks running; a started answer confirms delivery and removes the
 retry notice. After three consecutive failed delivery reads, automatic checks
 pause. The message stays saved and is labeled **Delivery unconfirmed** instead
-of **Queued to send**. **Refresh delivery** asks once and shows the result; it
+of **Queued to send**. **Check** asks once and shows the result; it
 does not resend. If Station confirms it never received the message, **Retry**
-sends it using the same key. **More message actions → Copy message** preserves its text for recovery.
+sends it using the same key. **More delivery actions → Copy message** preserves its text for recovery.
 Uncertain delivery remains fenced to prevent duplicate work.
 
 Native steering has engine-defined placement. Station-owned steering waits for

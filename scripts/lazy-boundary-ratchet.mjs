@@ -32,8 +32,8 @@
 // fails if any of them falls out of the scanned list.
 
 import { readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 const SCAN_PATHSPECS = ['src-ui/src'];
 
@@ -54,15 +54,7 @@ const BASELINE_PATH = 'scripts/lazy-boundary-baseline.json';
 const BARE_SUSPENSE = /<Suspense\b[^>]*\bfallback\s*=\s*\{\s*null\s*\}[^>]*>/g;
 
 export function listScannedFiles() {
-  const output = execFileSyncBounded(
-    'git',
-    ['ls-files', '--', ...SCAN_PATHSPECS],
-    {
-      encoding: 'utf8',
-    },
-  );
-  return output
-    .split('\n')
+  return gitLsFiles(['--', ...SCAN_PATHSPECS])
     .filter((line) => line.endsWith('.tsx'))
     .filter((line) => !line.includes('__tests__'));
 }

@@ -11,8 +11,9 @@
  *
  * `index` rewrites docs/decisions/index.md.
  *
- * Corpus is not published to npm. This uses the codeload tarball at the same
- * commit as docs-kit.yml's corpus-ref; the Corpus pin test keeps them equal.
+ * Corpus is not published to npm. This fetches the public GitHub repository
+ * (`github:kontourai/corpus#<sha>`), the same spec pages.yml runs, at the
+ * commit docs-kit.yml's corpus-ref names; the Corpus pin test keeps them equal.
  * It is a Node wrapper rather than an npm script so the base needs no shell
  * expansion, which cmd.exe does not do.
  */
@@ -22,7 +23,7 @@ import { npmInvocation } from './lib/npm-cli.mjs';
 import { fastBase } from './run-ci-fast.mjs';
 
 export const CORPUS_PIN = 'dfadba4e64883e6187fb42e32911ca9f091e0fa7';
-const CORPUS_PACKAGE = `https://codeload.github.com/kontourai/corpus/tar.gz/${CORPUS_PIN}`;
+const CORPUS_PACKAGE = `github:kontourai/corpus#${CORPUS_PIN}`;
 
 /** The npm arguments for one subcommand; refuses anything else. */
 export function corpusDecisionsNpmArgs(subcommand, env = process.env) {

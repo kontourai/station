@@ -6,7 +6,6 @@
  * (router.test.ts, notification-delivery-wiring.test.ts).
  */
 import type { Notification } from '@kontourai/station-contracts/notification';
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { describe, expect, test, vi } from 'vitest';
 import { deliveryEnvelopeFor } from '../delivery/channel.js';
 import {
@@ -93,6 +92,10 @@ describe('WebPushChannel', () => {
     expect(channel.accepts(APPROVAL)).toBe(true);
     expect(channel.accepts(JOB_FAILURE)).toBe(true);
     expect(channel.accepts({ ...APPROVAL, category: 'general' })).toBe(false);
+    // A pull request feedback pause or stopped agent reaches the browser.
+    expect(
+      channel.accepts({ ...APPROVAL, category: 'pull-request-feedback' }),
+    ).toBe(true);
   });
 
   test('registrations are the subscribed devices, as device surfaces', () => {
@@ -148,15 +151,18 @@ describe('WebPushChannel', () => {
       {
         warn: vi.fn(),
       },
+      () => 'env-station-a',
     );
     await send(channel, JOB_FAILURE);
     await send(channel, {
       ...APPROVAL,
       metadata: { sessionId: 'thread-1', sessionKind: 'runtime' },
     });
+    // Each link names the Station that sent it, so a client connected to
+    // another Station opens it here.
     expect(webPush.mock.calls.map(([, payload]) => payload.url)).toEqual([
-      '/schedule?job=nightly-sync&openedNotification=notification-2',
-      `${activityDeepLink({ sessionId: 'thread-1' })}&openedNotification=notification-1`,
+      '/schedule?job=nightly-sync&openedNotification=notification-2&station=env-station-a',
+      '/?chat=thread-1&dock=open&openedNotification=notification-1&station=env-station-a',
     ]);
   });
 

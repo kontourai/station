@@ -67,6 +67,10 @@ export async function dispatchSlashCommand(
     context.autocomplete.closeAll();
   };
   const agent = agents.find((a) => a.slug === chatState.agentSlug);
+  // An Agent on a saved ACP connection takes every slash command as engine
+  // text, whichever provider runs its chat (`acp`, or `opencode` behind its
+  // Feature Preview): the connection's type stays `acp`. Without such an
+  // Agent, step 4 decides; it forwards only for Claude and Codex.
   if (agent?.engineConnectionType === 'acp') {
     cleanup();
     return command;

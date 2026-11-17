@@ -4,7 +4,11 @@ import type {
   AccountPreferencesPatch,
   AccountPreferencesView,
 } from '@kontourai/station-contracts/account-preferences';
-import { COLOR_THEME_ID_PATTERN } from '@kontourai/station-contracts/device-settings';
+import {
+  COLOR_THEME_ID_PATTERN,
+  DENSITY_PREFERENCES,
+  MOTION_PREFERENCES,
+} from '@kontourai/station-contracts/device-settings';
 import {
   mutateJsonFile,
   readJsonFile,
@@ -27,6 +31,8 @@ const fields = {
   colorTheme: colorThemeId,
   colorThemeFlavor: colorThemeId.nullable(),
   colorThemeAccent: colorThemeId.nullable(),
+  density: z.enum(DENSITY_PREFERENCES),
+  motion: z.enum(MOTION_PREFERENCES),
   diffStyle: z.enum(['unified', 'split']),
   diffWrap: z.boolean(),
   chatShowReasoning: z.boolean(),
@@ -55,22 +61,39 @@ const fields = {
     .strict(),
 };
 /**
- * The color-theme ids live in a sibling file a server from before them never
- * opens: that server parses its document strictly, so one unknown key there
- * would fail every account preference after a downgrade or with a shared
- * home (docs/guides/release-rings.md, release-channel-ports.md).
+ * The color-theme ids, density and motion live in a sibling file a server from
+ * before color themes never opens: that server parses its document strictly,
+ * so one unknown key there would fail every account preference after a
+ * downgrade or with a shared home (docs/guides/release-rings.md,
+ * release-channel-ports.md). A server that knows the sibling but not density
+ * or motion keeps them (its values pass through) and leaves them out of its
+ * view.
  */
 const APPEARANCE_KEYS = [
   'colorTheme',
   'colorThemeFlavor',
   'colorThemeAccent',
+  'density',
+  'motion',
 ] as const;
 type AppearanceKey = (typeof APPEARANCE_KEYS)[number];
 const isAppearanceKey = (key: string): key is AppearanceKey =>
   (APPEARANCE_KEYS as readonly string[]).includes(key);
-const { colorTheme, colorThemeFlavor, colorThemeAccent, ...mainFields } =
-  fields;
-const appearanceFields = { colorTheme, colorThemeFlavor, colorThemeAccent };
+const {
+  colorTheme,
+  colorThemeFlavor,
+  colorThemeAccent,
+  density,
+  motion,
+  ...mainFields
+} = fields;
+const appearanceFields = {
+  colorTheme,
+  colorThemeFlavor,
+  colorThemeAccent,
+  density,
+  motion,
+};
 /**
  * Known keys are validated; unknown ones (written by a newer server) pass
  * through so a write here keeps them, and `read` leaves them out of the view.
@@ -103,6 +126,8 @@ const patchSchema = z
     colorTheme: fields.colorTheme.nullable().optional(),
     colorThemeFlavor: fields.colorThemeFlavor.nullable().optional(),
     colorThemeAccent: fields.colorThemeAccent.nullable().optional(),
+    density: fields.density.nullable().optional(),
+    motion: fields.motion.nullable().optional(),
     diffStyle: fields.diffStyle.nullable().optional(),
     diffWrap: fields.diffWrap.nullable().optional(),
     chatShowReasoning: fields.chatShowReasoning.nullable().optional(),

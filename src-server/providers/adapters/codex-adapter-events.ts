@@ -71,12 +71,27 @@ export function extractTokenFigure(value: unknown): number | null {
 export function isResumeCursor(value: unknown): value is {
   codexThreadId: string;
   sourceAffinity?: ProviderSessionSourceAffinity;
+  /**
+   * #2376 slice 2: the thread started with the station-control catalog as
+   * `dynamicTools`. Codex persists those with the thread and accepts no
+   * others on resume, so only such a thread can continue on the bound
+   * channel without the header-token server.
+   */
+  boundCatalog?: true;
+  /**
+   * #2376 slice 3: the thread started with station-control as tool
+   * families. Its history may name family tools; a continuation keeps
+   * families (and a fresh credential that starts at the index) only then.
+   */
+  toolFamilies?: true;
 } {
   return (
     isRecord(value) &&
     typeof value.codexThreadId === 'string' &&
     value.codexThreadId.length > 0 &&
     Buffer.byteLength(value.codexThreadId) <= 512 &&
+    (value.boundCatalog === undefined || value.boundCatalog === true) &&
+    (value.toolFamilies === undefined || value.toolFamilies === true) &&
     (value.sourceAffinity === undefined ||
       isSessionSourceAffinity(value.sourceAffinity))
   );
@@ -90,11 +105,21 @@ export function codexResumeCursor(
   codexThreadId: string;
   turnId?: string;
   sourceAffinity?: ProviderSessionSourceAffinity;
+  boundCatalog?: true;
+  toolFamilies?: true;
 } {
   const prior = isResumeCursor(previous) ? previous : undefined;
   return {
     codexThreadId,
     ...(turnId ? { turnId } : {}),
+    // Only for the same native thread: the marker describes what Codex
+    // persisted for it.
+    ...(prior?.boundCatalog && prior.codexThreadId === codexThreadId
+      ? { boundCatalog: true as const }
+      : {}),
+    ...(prior?.toolFamilies && prior.codexThreadId === codexThreadId
+      ? { toolFamilies: true as const }
+      : {}),
     ...(prior?.sourceAffinity
       ? { sourceAffinity: { ...prior.sourceAffinity } }
       : {}),

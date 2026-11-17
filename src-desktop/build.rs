@@ -53,7 +53,7 @@ fn configure_ios_relay_association() {
         assert!(
             matches!(
                 pairing,
-                "station-stable" | "station-beta" | "station-nightly"
+                "station-stable" | "station-nightly"
             ) || pairing.starts_with("station-dev-"),
             "unsupported iOS Station pairing scheme"
         );

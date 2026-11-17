@@ -1,0 +1,23 @@
+{
+  "revision": "72dbc4c9d416f162b3a890ac35d146afd1b4fdfb",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Added the remote session list (2,097,152 bytes) and search answer (262,144 bytes) ceilings and how a refused oversized answer reads (unavailable or unreachable). Checked against remote-session-reader.ts defaultFetcher/defaultMessageSearchFetcher and their max+1 tests.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Documented SessionDetailWindowUnsupportedError, thrown by getOrchestrationSessionDetailWindow for a host without window-v1 (packages/sdk/src/client/orchestration.ts, exported through the client entry).","inputs":["docs/reference/sdk.md","packages/sdk/src/client/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Added byte ceilings to the list and search fetchers, typed classification of the legacy-window refusal, and forwarding of the caller's request signal to the history read. Citing pages (architecture, machine-relationships, threat model) make no claim these change beyond the threat model, which is updated.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Added byte ceilings to the list and search fetchers, typed classification of the legacy-window refusal, and forwarding of the caller's request signal to the history read. Citing pages (architecture, machine-relationships, threat model) make no claim these change beyond the threat model, which is updated.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Added byte ceilings to the list and search fetchers, typed classification of the legacy-window refusal, and forwarding of the caller's request signal to the history read. Citing pages (architecture, machine-relationships, threat model) make no claim these change beyond the threat model, which is updated.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The bounded-detail refusal is now SessionDetailWindowUnsupportedError with the same message; sdk.md documents it.","inputs":["packages/sdk/src/client/orchestration.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the remote-session-history paragraph gained the SessionDetailWindowUnsupportedError sentence; citing pages route to sdk.md generally.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Only the remote-session-history paragraph gained the SessionDetailWindowUnsupportedError sentence; citing pages route to sdk.md generally.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/design/automations.md","note":"Only the Cross-station reads section gained the list and search byte ceilings; citing pages' references remain accurate.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

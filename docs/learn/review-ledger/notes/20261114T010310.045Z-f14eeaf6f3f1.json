@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Updated the lifecycle sentence: the publisher now handles requested and completed source runs; traced scripts/source-verification-policy.mjs, which never reads the event action and re-derives the verdict from run/job evidence, so in_progress could only republish pending. Metadata request events still allocate no publisher; actionlint-gate.mjs only re-pins the digest.","inputs":["docs/guides/dependency-security.md",".github/workflows/source-verification-policy.yml","scripts/actionlint-gate.mjs"]}
+  ]
+}

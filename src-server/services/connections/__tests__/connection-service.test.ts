@@ -1709,7 +1709,7 @@ describe('ConnectionService', () => {
       config: {
         readinessState: 'missing_prerequisites',
         readinessReason: expect.stringContaining(
-          'rejected a real runtime request',
+          'Sign in again, then run Check connection on this engine to prove recovery.',
         ),
       },
       capabilityInventory: {
@@ -4449,6 +4449,79 @@ describe('ConnectionService', () => {
         )?.candidateProfileRef,
       ).toBe('canary-profile-ref');
       expect(quota).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Continue on <label>: a person-chosen profile for a usage-limit stop', () => {
+    const usageLimit = {
+      kind: 'rate-limit' as const,
+      scope: 'account' as const,
+      timing: {},
+      usageLimit: true as const,
+    };
+
+    test('with automatic recovery off, offers the enrolled accounts and stages exactly the chosen one', async () => {
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+      );
+
+      await expect(
+        service.listUsageLimitContinueOnProfiles('codex'),
+      ).resolves.toEqual([
+        { ref: 'canary-profile-ref', label: 'Canary Account Label' },
+        { ref: 'profile-c', label: 'Superseding account' },
+      ]);
+      // Without consent the automatic path still refuses.
+      await expect(
+        service.stageAutomaticCredentialProfileApplication('codex', usageLimit),
+      ).resolves.toBeUndefined();
+
+      const attempt = await service.stageAutomaticCredentialProfileApplication(
+        'codex',
+        usageLimit,
+        undefined,
+        'profile-c',
+      );
+
+      expect(attempt?.candidateProfileRef).toBe('profile-c');
+      await expect(
+        service.getCredentialRecovery('codex'),
+      ).resolves.toMatchObject({
+        application: {
+          activeProfileRef: 'profile-a',
+          pendingProfileRef: 'profile-c',
+          outcome: 'staged',
+        },
+      });
+    });
+
+    test('consent never stages the active, an unenrolled, or an unknown profile', async () => {
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+      );
+      for (const ref of ['profile-a', 'not-a-profile']) {
+        await expect(
+          service.stageAutomaticCredentialProfileApplication(
+            'codex',
+            usageLimit,
+            undefined,
+            ref,
+          ),
+        ).resolves.toBeUndefined();
+      }
+      await expect(
+        service.getCredentialRecovery('codex'),
+      ).resolves.not.toHaveProperty('application.pendingProfileRef');
+    });
+
+    test('an engine that cannot apply a profile offers none', async () => {
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'unsupported',
+      );
+      await expect(
+        service.listUsageLimitContinueOnProfiles('codex'),
+      ).resolves.toEqual([]);
     });
   });
 

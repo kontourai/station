@@ -15,6 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   KnowledgeStoreConflictError,
@@ -625,7 +626,12 @@ export class ProjectDocumentRoot {
       this.faults.beforeFileReplace?.(path);
       this.validateRootIdentity();
       renameSync(temporary, path);
-      this.syncDirectory(directory);
+      // The shared helper, not a hand-rolled open+fsync: it skips the fsync
+      // on win32, where fsync on a directory descriptor fails with EPERM and
+      // failed every transaction right after this rename. It also opens with
+      // O_NOFOLLOW; no directory synced here is legitimately a symlink
+      // (`assertNoSymlink`, and the root check in the constructor).
+      fsyncDirectorySync(directory);
     } finally {
       if (descriptor !== undefined) closeSync(descriptor);
       try {
@@ -644,18 +650,9 @@ export class ProjectDocumentRoot {
       this.faults.beforeFileReplace?.(path);
       this.validateRootIdentity();
       unlinkSync(path);
-      this.syncDirectory(dirname(path));
+      fsyncDirectorySync(dirname(path));
     } catch (error) {
       if (!isMissing(error)) throw error;
-    }
-  }
-
-  private syncDirectory(directory: string): void {
-    const descriptor = openSync(directory, constants.O_RDONLY);
-    try {
-      fsyncSync(descriptor);
-    } finally {
-      closeSync(descriptor);
     }
   }
 

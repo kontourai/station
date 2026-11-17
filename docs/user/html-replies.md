@@ -97,6 +97,12 @@ The Open button waits 500 ms; Cancel mutes further link requests from that reply
 until its viewer is remounted.
 
 Scripts run in an opaque sandbox with no Station session or tool bridge.
+On the phone or another computer the reply renders in that same opaque
+sandbox without the loopback proxy. In Station's app shells the page document
+is staged on the shell's own delivery scheme, so its scripts run there as
+well. An older app without that scheme renders the reply as a document child,
+where the shell's own policy refuses its scripts; HTML, CSS and SVG still
+render.
 CSP blocks ordinary network loads. Direct WebRTC constructors are disabled,
 but a nested srcdoc frame can obtain a fresh constructor and send ICE UDP
 packets in Chromium and WebKit. Published pages are **not network-isolated**:

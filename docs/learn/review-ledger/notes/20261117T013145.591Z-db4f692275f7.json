@@ -1,0 +1,387 @@
+{
+  "revision": "931446d8be302fce6d55e22a7b0689bb2db16350",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#5066: added Task-owned pull requests (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch); checked against tasks.ts, projects.ts and the PullRequestWatch view, the 400 on a done or canceled Task, owner-only Project guard and the 404 where feedback is not composed. Other cited sections unchanged by this diff.","inputs":["docs/reference/api.md","packages/contracts/src/task-graph.ts","src-server/domain/file-storage-schemas.ts","src-server/routes/projects/projects.ts","src-server/security/pairing-route-scopes.ts","src-server/services/projects/task-graph-service.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066: added the pull-request-watch module paragraph; checked names against packages/contracts/src/pull-request-watch.ts, ProjectConfig.pullRequestWatch, TaskRecord.pullRequestWatch and pullRequestWatchHold (validator refuses them in older builds), the fix-budget pause reason and the fixAttemptsUsed lane rung.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/project.ts","packages/contracts/src/task-graph.ts","src-server/security/pairing-route-scopes.ts","src-server/services/projects/task-graph-service.ts","packages/contracts/src/attention.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066: added the @kontourai/station-sdk/pull-request-watch paragraph after the upstream by-pull-request one; checked the three functions and gating against packages/sdk/src/client/pull-request-watch.ts and the package export.","inputs":["docs/reference/sdk.md","packages/sdk/package.json","packages/sdk/package.json#/exports","src-server/security/pairing-route-scopes.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/contexts/ProjectsContext.tsx","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"#5066: added the Pull request watch entry (fix attempt, Fix attempts used, Ready for you, refusals, Stop watching); checked labels against TaskPullRequestWatchPanel.tsx, PullRequestWatchSection.tsx and task-lane.ts.","inputs":["docs/glossary.md","src-ui/src/views/TaskWorkspaceView.tsx","docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/settings.md","note":"#5066: the Pull request agent feedback preview row now names the Task watch, its fix attempts and refusals, and Project settings says Pull requests saves as you change it; checked against PullRequestWatchSection.tsx (immediate save) and the watch decision.","inputs":["docs/user/settings.md","src-ui/src/views/ProjectSettingsView.tsx","src-ui/src/views/TaskWorkspaceView.tsx","src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"#5066: Needs you now lists a watched pull request out of fix attempts, and a paragraph describes watching; checked against deriveTaskLane's fixAttemptsUsed rung, the delivery budget and notice, the guard's refusals and the Stop watching control. Decision link is the absolute GitHub URL for Pages.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066: added the Task-owned pull requests paragraph beside pull request agent feedback; checked composition in runtime-pull-request-feedback.ts, the pre-tool stage and the StationRuntime slot binding in runtime-routes.ts and station-runtime.ts, the routes and the three test files named.","inputs":["docs/architecture/module-map.md","packages/contracts/src/task-graph.ts","src-server/routes/projects/projects.ts","src-server/security/pairing-route-scopes.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/views/TaskWorkspaceView.tsx","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/contracts/README.md","note":"#5066: added the /pull-request-watch subpath line; checked it against the new package export and packages/contracts/src/pull-request-watch.ts.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"#5066 adds only the Task pull request watch composition here: a bindPullRequestWatchPolicy context field, Task and Project ports for pull request feedback, the Task routes' pullRequestWatch port, and binding the watch policy. Checked: no route, guard, pairing scope, mount order or other composition a citing page describes changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"#5066 adds a pull request watch policy slot passed to every agent's hooks and the external pre-tool evaluator, and binds it from configureRuntimeRoutes. Checked: startup, shutdown, ports, homes, authentication and the other behaviour citing pages describe are unchanged.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"#5066 adds three rows (GET/PUT /api/tasks/:taskId/pull-request-watch, PUT /api/projects/:slug/pull-request-watch) in the existing Task and Project families. Checked: no existing scope, tier or family a citing page describes changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066 mounts TaskPullRequestWatchPanel after the Task's results in the Overview deliverables; it renders nothing unless the pull request agent feedback preview is on and the host serves it. Checked: tabs, layout and other Overview content citing pages describe are unchanged.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"#5066 mounts TaskPullRequestWatchPanel after the Task's results in the Overview deliverables; it renders nothing unless the pull request agent feedback preview is on and the host serves it. Checked: tabs, layout and other Overview content citing pages describe are unchanged.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/glossary.md","note":"#5066 mounts TaskPullRequestWatchPanel after the Task's results in the Overview deliverables; it renders nothing unless the pull request agent feedback preview is on and the host serves it. Checked: tabs, layout and other Overview content citing pages describe are unchanged.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#5066 mounts TaskPullRequestWatchPanel after the Task's results in the Overview deliverables; it renders nothing unless the pull request agent feedback preview is on and the host serves it. Checked: tabs, layout and other Overview content citing pages describe are unchanged.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"#5066 mounts TaskPullRequestWatchPanel after the Task's results in the Overview deliverables; it renders nothing unless the pull request agent feedback preview is on and the host serves it. Checked: tabs, layout and other Overview content citing pages describe are unchanged.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"#5066 mounts TaskPullRequestWatchPanel after the Task's results in the Overview deliverables; it renders nothing unless the pull request agent feedback preview is on and the host serves it. Checked: tabs, layout and other Overview content citing pages describe are unchanged.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"#5066 mounts TaskPullRequestWatchPanel after the Task's results in the Overview deliverables; it renders nothing unless the pull request agent feedback preview is on and the host serves it. Checked: tabs, layout and other Overview content citing pages describe are unchanged.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"#5066 mounts TaskPullRequestWatchPanel after the Task's results in the Overview deliverables; it renders nothing unless the pull request agent feedback preview is on and the host serves it. Checked: tabs, layout and other Overview content citing pages describe are unchanged.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066 adds pullRequestWatch and pullRequestWatchHold to the persisted Task keys and validator, setPullRequestWatch, holdTaskForPullRequestWatch, and clears the hold on a status change. Checked: dispatch, claims, close-on-merge, keeps and transitions citing pages describe are unchanged.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#5066 adds pullRequestWatch and pullRequestWatchHold to the persisted Task keys and validator, setPullRequestWatch, holdTaskForPullRequestWatch, and clears the hold on a status change. Checked: dispatch, claims, close-on-merge, keeps and transitions citing pages describe are unchanged.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 adds pullRequestWatch and pullRequestWatchHold to the persisted Task keys and validator, setPullRequestWatch, holdTaskForPullRequestWatch, and clears the hold on a status change. Checked: dispatch, claims, close-on-merge, keeps and transitions citing pages describe are unchanged.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds pullRequestWatch and pullRequestWatchHold to the persisted Task keys and validator, setPullRequestWatch, holdTaskForPullRequestWatch, and clears the hold on a status change. Checked: dispatch, claims, close-on-merge, keeps and transitions citing pages describe are unchanged.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"#5066 adds pullRequestWatch and pullRequestWatchHold to the persisted Task keys and validator, setPullRequestWatch, holdTaskForPullRequestWatch, and clears the hold on a status change. Checked: dispatch, claims, close-on-merge, keeps and transitions citing pages describe are unchanged.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 adds pullRequestWatch and pullRequestWatchHold to the persisted Task keys and validator, setPullRequestWatch, holdTaskForPullRequestWatch, and clears the hold on a status change. Checked: dispatch, claims, close-on-merge, keeps and transitions citing pages describe are unchanged.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#5066 adds pullRequestWatch and pullRequestWatchHold to the persisted Task keys and validator, setPullRequestWatch, holdTaskForPullRequestWatch, and clears the hold on a status change. Checked: dispatch, claims, close-on-merge, keeps and transitions citing pages describe are unchanged.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066 adds GET/PUT /:taskId/pull-request-watch (personal only, 404 where feedback is not composed). Checked: no existing Task route or its behaviour cited by these pages changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"#5066 adds GET/PUT /:taskId/pull-request-watch (personal only, 404 where feedback is not composed). Checked: no existing Task route or its behaviour cited by these pages changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 adds GET/PUT /:taskId/pull-request-watch (personal only, 404 where feedback is not composed). Checked: no existing Task route or its behaviour cited by these pages changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 adds GET/PUT /:taskId/pull-request-watch (personal only, 404 where feedback is not composed). Checked: no existing Task route or its behaviour cited by these pages changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"#5066 adds GET/PUT /:taskId/pull-request-watch (personal only, 404 where feedback is not composed). Checked: no existing Task route or its behaviour cited by these pages changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#5066 adds GET/PUT /:taskId/pull-request-watch (personal only, 404 where feedback is not composed). Checked: no existing Task route or its behaviour cited by these pages changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"#5066 adds GET/PUT /:taskId/pull-request-watch (personal only, 404 where feedback is not composed). Checked: no existing Task route or its behaviour cited by these pages changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/architecture.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/agent-development.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#5066 adds the pullRequestWatchPolicy stage after project tool policy and before the persistence check, ahead of every grant: deny for merge, auto-merge and force-push, a required ask for CI configuration, failing open with a warning if the port throws. Checked: the order and outcomes of the existing stages citing pages describe are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#5066 adds the pullRequestWatchPolicy stage after project tool policy and before the persistence check, ahead of every grant: deny for merge, auto-merge and force-push, a required ask for CI configuration, failing open with a warning if the port throws. Checked: the order and outcomes of the existing stages citing pages describe are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5066 adds the pullRequestWatchPolicy stage after project tool policy and before the persistence check, ahead of every grant: deny for merge, auto-merge and force-push, a required ask for CI configuration, failing open with a warning if the port throws. Checked: the order and outcomes of the existing stages citing pages describe are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#5066 adds the pullRequestWatchPolicy stage after project tool policy and before the persistence check, ahead of every grant: deny for merge, auto-merge and force-push, a required ask for CI configuration, failing open with a warning if the port throws. Checked: the order and outcomes of the existing stages citing pages describe are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#5066 adds the pullRequestWatchPolicy stage after project tool policy and before the persistence check, ahead of every grant: deny for merge, auto-merge and force-push, a required ask for CI configuration, failing open with a warning if the port throws. Checked: the order and outcomes of the existing stages citing pages describe are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#5066 adds the pullRequestWatchPolicy stage after project tool policy and before the persistence check, ahead of every grant: deny for merge, auto-merge and force-push, a required ask for CI configuration, failing open with a warning if the port throws. Checked: the order and outcomes of the existing stages citing pages describe are unchanged.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066 adds PUT /:slug/pull-request-watch, written like layout-policy through projectRevision. Checked: no other Project route a citing page describes changed.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"#5066 adds PUT /:slug/pull-request-watch, written like layout-policy through projectRevision. Checked: no other Project route a citing page describes changed.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"#5066 adds PUT /:slug/pull-request-watch, written like layout-policy through projectRevision. Checked: no other Project route a citing page describes changed.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 adds PUT /:slug/pull-request-watch, written like layout-policy through projectRevision. Checked: no other Project route a citing page describes changed.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/strategy/station-delivery-retirement.md","note":"#5066 adds PUT /:slug/pull-request-watch, written like layout-policy through projectRevision. Checked: no other Project route a citing page describes changed.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"#5066 adds PUT /:slug/pull-request-watch, written like layout-policy through projectRevision. Checked: no other Project route a citing page describes changed.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5066 adds optional TaskRecord.pullRequestWatch and pullRequestWatchHold and the TaskPullRequestWatchHold type. Checked: no existing field, status or transition citing pages describe changed.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"#5066 adds optional TaskRecord.pullRequestWatch and pullRequestWatchHold and the TaskPullRequestWatchHold type. Checked: no existing field, status or transition citing pages describe changed.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 adds optional TaskRecord.pullRequestWatch and pullRequestWatchHold and the TaskPullRequestWatchHold type. Checked: no existing field, status or transition citing pages describe changed.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds optional TaskRecord.pullRequestWatch and pullRequestWatchHold and the TaskPullRequestWatchHold type. Checked: no existing field, status or transition citing pages describe changed.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#5066 adds optional TaskRecord.pullRequestWatch and pullRequestWatchHold and the TaskPullRequestWatchHold type. Checked: no existing field, status or transition citing pages describe changed.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#5066 adds optional TaskRecord.pullRequestWatch and pullRequestWatchHold and the TaskPullRequestWatchHold type. Checked: no existing field, status or transition citing pages describe changed.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/architecture.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"#5066 adds the ./pull-request-watch subpath export. Checked: no existing export a citing page names changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/architecture.md","note":"#5066 passes the agent context's pullRequestWatchPolicy into createAgentHooks. Checked: nothing else about agent building cited here changed.","inputs":["src-server/runtime/agents/runtime-agent-builder.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#5066 passes the agent context's pullRequestWatchPolicy into createAgentHooks. Checked: nothing else about agent building cited here changed.","inputs":["src-server/runtime/agents/runtime-agent-builder.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#5066 passes the agent context's pullRequestWatchPolicy into createAgentHooks. Checked: nothing else about agent building cited here changed.","inputs":["src-server/runtime/agents/runtime-agent-builder.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#5066 passes the agent context's pullRequestWatchPolicy into createAgentHooks. Checked: nothing else about agent building cited here changed.","inputs":["src-server/runtime/agents/runtime-agent-builder.ts"]},
+
+    {"path":"docs/glossary.md","note":"#5066 adds one paragraph on pull-request-watch; checked that the citing pages' claims about other contract modules are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#5066 adds one paragraph on pull-request-watch; checked that the citing pages' claims about other contract modules are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"#5066 adds one paragraph on pull-request-watch; checked that the citing pages' claims about other contract modules are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/design/motion.md","note":"#5066 adds task-pr-watch and project-pull-requests gallery scenes (both themes, 390 and 1440). Checked: no existing scene, capture rule or helper a citing page describes changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"#5066 adds task-pr-watch and project-pull-requests gallery scenes (both themes, 390 and 1440). Checked: no existing scene, capture rule or helper a citing page describes changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#5066 adds task-pr-watch and project-pull-requests gallery scenes (both themes, 390 and 1440). Checked: no existing scene, capture rule or helper a citing page describes changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"#5066 adds a Pull requests section (self-saving PullRequestWatchSection) to the section list after Layouts. Checked: navigation, Save behaviour and the other sections citing pages describe are unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"#5066 adds a Pull requests section (self-saving PullRequestWatchSection) to the section list after Layouts. Checked: navigation, Save behaviour and the other sections citing pages describe are unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"#5066 adds a Pull requests section (self-saving PullRequestWatchSection) to the section list after Layouts. Checked: navigation, Save behaviour and the other sections citing pages describe are unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#5066 passes pullRequestWatchPolicy to the staged evaluator. Checked: no hook behaviour cited here changed.","inputs":["src-server/runtime/agents/agent-hooks.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#5066 passes pullRequestWatchPolicy to the staged evaluator. Checked: no hook behaviour cited here changed.","inputs":["src-server/runtime/agents/agent-hooks.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#5066 passes pullRequestWatchPolicy to the staged evaluator. Checked: no hook behaviour cited here changed.","inputs":["src-server/runtime/agents/agent-hooks.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds optional ProjectConfig.pullRequestWatch. Checked: no existing Project field citing pages describe changed.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#5066 adds optional ProjectConfig.pullRequestWatch. Checked: no existing Project field citing pages describe changed.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#5066 adds optional ProjectConfig.pullRequestWatch. Checked: no existing Project field citing pages describe changed.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"#5066 extends the pull request agent feedback preview row and one Project settings sentence; checked the citing pages' claims are unaffected.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"#5066 extends the pull request agent feedback preview row and one Project settings sentence; checked the citing pages' claims are unaffected.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#5066 adds one paragraph on the pull-request-watch client; checked the citing pages' claims are unaffected.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"#5066 adds one paragraph on the pull-request-watch client; checked the citing pages' claims are unaffected.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/design/terminal.md","note":"#5066 adds the Task-owned pull requests routes section; checked the citing pages' claims are unaffected.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#5066 adds the Task-owned pull requests routes section; checked the citing pages' claims are unaffected.","inputs":["docs/reference/api.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"#5066 adds one Pull request watch entry under Tasks; checked no existing term a citing page relies on changed.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"#5066 adds one Pull request watch entry under Tasks; checked no existing term a citing page relies on changed.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 adds optional pullRequestWatch to the UI ProjectConfig type only. Checked: no context behaviour cited here changed.","inputs":["src-ui/src/contexts/ProjectsContext.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"#5066 adds the optional strict pullRequestWatch object (enabled, maxFixAttempts 1-10) to the Project file schema. Checked: no other stored field cited here changed.","inputs":["src-server/domain/file-storage-schemas.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5066 adds the ./pull-request-watch export only. Checked: versions, scripts and other fields cited here are unchanged.","inputs":["packages/sdk/package.json"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds fix-budget to the pull request feedback attention item's reason. Checked: other attention kinds cited here are unchanged.","inputs":["packages/contracts/src/attention.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5066 adds the ./pull-request-watch export only. Checked: versions and other fields cited here are unchanged.","inputs":["packages/contracts/package.json"]}
+  ]
+}

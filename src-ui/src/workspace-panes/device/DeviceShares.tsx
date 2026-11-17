@@ -4,6 +4,7 @@ import { useMobileDeviceInventoryQuery } from '@kontourai/station-sdk/mobile-dev
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import {
   useDeviceShareAction,
   useDeviceShares,
@@ -25,6 +26,7 @@ export function DeviceShares({
   /** Which device host's devices (#1973); shares are per host. */
   hostId?: string;
 }) {
+  useDecisionSurface('device-shares');
   const inventory = useMobileDeviceInventoryQuery(
     requestScope,
     undefined,
@@ -51,7 +53,7 @@ export function DeviceShares({
   if (devices.length === 0)
     return (
       <p className="device-setup__muted">
-        Once the device hub lists simulators or emulators, you can share each
+        Once the device helper lists simulators or emulators, you can share each
         one with a Project here.
       </p>
     );

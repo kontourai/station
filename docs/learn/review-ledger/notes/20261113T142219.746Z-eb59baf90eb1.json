@@ -1,0 +1,7 @@
+{
+  "revision": "da2c4b1bdadc352797d287a82608f23ca949f604",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed phone Drafts/Clear grouping in ChatInputArea and PortableDraftsMenu alongside named composer container collapse; all actions retained. Real 320px render inspected; broader capture still in progress.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerRunControl.css","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/PortableDraftsMenu.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

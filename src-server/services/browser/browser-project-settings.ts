@@ -13,14 +13,9 @@
  * that is plainly an agent's (see `routes/browser.ts` for what that does and
  * does not exclude — a same-user shell has home possession).
  */
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 
 export interface BrowserProjectSettings {
   browserEvaluate: boolean;
@@ -108,8 +103,6 @@ export class BrowserProjectSettingsStore {
       recursive: true,
       mode: 0o700,
     });
-    const temp = `${this.path}.${process.pid}.tmp`;
-    writeFileSync(temp, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-    renameSync(temp, this.path);
+    writeJsonDurably(this.path, store);
   }
 }

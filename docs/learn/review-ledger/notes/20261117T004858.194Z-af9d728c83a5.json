@@ -1,0 +1,7 @@
+{
+  "revision": "e94e61016756929bf46b9fbf65d5a93254bc7144",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the remembered-Agent paragraph against useStartSelection, useNewChatSelectionModel firstStartableAgentSlug, NewChatModal untilReady seeding and the setup card gate on Home and the dock; underline of the no-project link is styling only.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-start/ChatStart.css","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts","src-ui/src/hooks/useStartSelection.ts"]}
+  ]
+}

@@ -96,7 +96,9 @@
 
     "src-ui/src/views/project-settings/ResourcesSection.tsx",
 
-    "src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx"
+    "src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx",
+
+    "src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx"
   ],
 
   "checks": [

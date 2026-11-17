@@ -45,6 +45,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
+import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 import { execFileSyncBounded } from './bounded-capture.mjs';
 import { sanitizedGitEnvironment } from './git-environment.mjs';
 
@@ -93,13 +95,42 @@ export function readPackagedReleaseManifest(projectRoot) {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return null;
     }
-    if (parsed.schemaVersion !== 2) return null;
+    if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) return null;
     if (typeof parsed.sha !== 'string' || !FULL_GIT_SHA.test(parsed.sha)) {
       return null;
     }
-    if (typeof parsed.ref !== 'string' || parsed.ref.trim().length === 0) {
-      return null;
+    if (parsed.schemaVersion === 3) {
+      const expectedKeys = [
+        'channel',
+        'createdAt',
+        'prerelease',
+        'releaseChannel',
+        'schemaVersion',
+        'sha',
+        'version',
+      ];
+      const keys = Object.keys(parsed).sort();
+      const ring = STATION_RELEASE_RINGS[parsed.releaseChannel];
+      if (
+        keys.length !== expectedKeys.length ||
+        keys.some((key, index) => key !== expectedKeys[index]) ||
+        !ring ||
+        (parsed.releaseChannel !== 'stable' &&
+          parsed.releaseChannel !== 'nightly') ||
+        parsed.channel !== ring.runtimeChannel ||
+        parsed.prerelease !== ring.prerelease ||
+        typeof parsed.version !== 'string' ||
+        parsed.version.length > 127 ||
+        !CHANNEL_VERSION[parsed.releaseChannel]?.test(parsed.version ?? '') ||
+        typeof parsed.createdAt !== 'string' ||
+        !Number.isFinite(Date.parse(parsed.createdAt)) ||
+        new Date(parsed.createdAt).toISOString() !== parsed.createdAt
+      )
+        return null;
+      return { sha: parsed.sha, ref: `v${parsed.version}` };
     }
+    if (typeof parsed.ref !== 'string' || parsed.ref.trim().length === 0)
+      return null;
     return { sha: parsed.sha, ref: parsed.ref.trim() };
   } catch {
     return null;

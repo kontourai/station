@@ -1,0 +1,7 @@
+{
+  "revision": "97e1eefda198a51bd315b249b226e75f4655f5a5",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"The gallery still defines the same telemetry choices, outbox and feedback scenes; only the one-screen extension-registry check on telemetry-feedback-mobile was replaced by the capture-wide error-surface check, which does not change the scenes this page describes.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

@@ -47,7 +47,7 @@ test('approval picker notes line up with its menu rows at phone and desktop widt
       for (const width of [390, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         const sheet = page.getByRole('dialog', { name: 'Approval mode' });
-        await sheet.getByText('Applies on start').waitFor();
+        await sheet.getByText('Applies when the chat starts').waitFor();
         await page.evaluate(() =>
           Promise.all(document.getAnimations().map((a) => a.finished)),
         );
@@ -64,7 +64,9 @@ test('approval picker notes line up with its menu rows at phone and desktop widt
           return {
             row: contentLeft(row),
             source: find('From adapter default').getBoundingClientRect().left,
-            applies: find('Applies on start').getBoundingClientRect().left,
+            applies: find(
+              'Applies when the chat starts',
+            ).getBoundingClientRect().left,
             save: find('Save as my Codex default').getBoundingClientRect().left,
           };
         });

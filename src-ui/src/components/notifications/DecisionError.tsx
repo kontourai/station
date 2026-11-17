@@ -62,7 +62,7 @@ export function DecisionError({
         action={
           retryable && onRetry ? (
             <Button size="sm" onClick={onRetry}>
-              Try again
+              Retry
             </Button>
           ) : openHref ? (
             <a

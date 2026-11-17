@@ -12,11 +12,12 @@ import type {
   ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import {
+  type ChildWorkloadNotice,
   type ChildWorkloadOomKill,
   type ChildWorkloadOutcome,
   childWorkloadMemoryExhausted,
   childWorkloadOutcome,
-  watchChildWorkloadOomKills,
+  watchChildWorkloadNotices,
 } from '@kontourai/station-shared/child-workload';
 import {
   WORKLOAD_COMMAND_OOM_KILLED_TYPE,
@@ -75,6 +76,10 @@ import {
 } from './codex-approval-delivery.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 import { CodexRpcError } from './codex-rpc-error.js';
+import {
+  EngineWorkloadNotices,
+  workloadNoticeWarning,
+} from './engine-workload-notices.js';
 
 type JsonRpcRequest = {
   id?: JsonRpcId;
@@ -294,12 +299,16 @@ export class CodexAdapterTransport {
     const workloadOutcome = childWorkloadOutcome(record.process);
     // OOMPolicy=continue: the kernel kills one process in Codex's scope,
     // normally a command, and Codex keeps running. The command's own failure
-    // is Codex's to report; Station adds that memory was the cause.
-    const stopWatchingOomKills = watchChildWorkloadOomKills(
+    // is Codex's to report; Station adds that memory was the cause. #5113:
+    // near-cap pressure is announced the same way, and Codex is told both.
+    const stopWatchingWorkload = watchChildWorkloadNotices(
       record.process,
-      (kill) => this.publishCommandOomKill(record, kill),
+      (notice) => this.receiveWorkloadNotice(record, notice),
     );
-    record.process.once('exit', () => stopWatchingOomKills?.());
+    record.process.once('exit', () => {
+      stopWatchingWorkload?.();
+      record.workloadNotices?.end();
+    });
     record.process.on('exit', (code, signal) => {
       this.closeBoundChannel(record);
       // An intentional stop (stopSession/stopAll) already settled pending
@@ -861,6 +870,7 @@ export class CodexAdapterTransport {
       return;
     }
     record.stopped = true;
+    record.workloadNotices?.end();
     this.closeBoundChannel(record);
     this.settleAcknowledgementWatches(record);
 
@@ -1014,7 +1024,10 @@ export class CodexAdapterTransport {
                   : error instanceof Error &&
                       error.message === 'bound-tool-session-restart-required'
                     ? 'Bound tool unavailable; restart the Session'
-                    : 'Bound tool refused';
+                    : error instanceof Error &&
+                        error.message === 'bound-catalog-withdrawn'
+                      ? 'This Station tool is not served on this channel in this Session; use the station-control MCP tool of the same name'
+                      : 'Bound tool refused';
               this.sendErrorResponse(record, request.id, message);
             }
           },
@@ -1504,6 +1517,59 @@ export class CodexAdapterTransport {
    * attempt for THIS turn is still outstanding, this guard suppresses the
    * one synthesis they were relying on.
    */
+  /**
+   * #5113: a transition in Codex's own workload scope. The transcript shows
+   * it at once (a `runtime.warning`); Codex itself is told by a `turn/steer`
+   * into the running turn, which it reads at its next model request (after
+   * the tool call in progress returns), or, with no turn running or a steer
+   * refused, as an extra text item of the next `turn/start`.
+   */
+  private receiveWorkloadNotice(
+    record: CodexSessionRecord,
+    notice: ChildWorkloadNotice,
+  ): void {
+    if (record.stopped) return;
+    if (notice.kind === 'oom-kill')
+      this.publishCommandOomKill(record, notice.kill);
+    else
+      this.publish(
+        {
+          eventId: crypto.randomUUID(),
+          provider: 'codex',
+          threadId: record.externalThreadId,
+          createdAt: this.now().toISOString(),
+          method: 'runtime.warning',
+          ...(record.activeTurnId ? { turnId: record.activeTurnId } : {}),
+          ...workloadNoticeWarning(notice),
+        },
+        record,
+      );
+    record.workloadNotices ??= new EngineWorkloadNotices('codex');
+    record.workloadNotices.receive(notice);
+    void this.steerWorkloadNotices(record);
+  }
+
+  private async steerWorkloadNotices(
+    record: CodexSessionRecord,
+  ): Promise<void> {
+    const turnId = record.activeTurnId;
+    const notices = record.workloadNotices;
+    if (!turnId || record.stopped || !notices) return;
+    const batch = notices.take();
+    if (!batch) return;
+    try {
+      await this.sendRequest(record, 'turn/steer', {
+        threadId: record.codexThreadId,
+        input: [{ type: 'text', text: batch.text, text_elements: [] }],
+        expectedTurnId: turnId,
+      });
+      notices.delivered(batch, 'mid-turn');
+    } catch {
+      // The turn ended or refuses steering: the next turn/start carries it.
+      notices.restore(batch);
+    }
+  }
+
   /**
    * A process in Codex's own scope was killed by the kernel OOM killer while
    * Codex kept running. Station does not know which command it was, so it

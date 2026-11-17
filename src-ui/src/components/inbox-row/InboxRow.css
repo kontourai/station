@@ -2,11 +2,13 @@
  * The shared inbox row (#3043): the dock inbox, the mobile sheet, Home's work
  * lanes and the sidebar's open chats all render this.
  *
- * Fixed line budget: meta, title, one status line, and a chip line that
- * exists only when a chip does. Every line is a single non-wrapping line, so
- * a row's height is decided by which lines it has and never by their text.
+ * Fixed line budget: the headline (title and time), then on a hover row one
+ * state line (the agent's mark, status, project) and on a touch row the status
+ * and meta lines, and a chip line that exists only when a chip does. Every line is a single non-wrapping line, so a row's height is decided
+ * by which lines it has and never by their text. What the row is about comes
+ * first; who and where, last.
  *
- * The time at the end of the meta line and the hover/focus actions share one
+ * The time at the end of the headline and the hover/focus actions share one
  * slot. The actions are absolutely positioned over that slot, so revealing
  * them moves nothing: no reflow, no height change, no text shift.
  */
@@ -19,6 +21,18 @@
   --inbox-row-line: 18px;
   --inbox-row-pad-block: var(--space-3);
   --inbox-row-pad-inline: var(--space-4);
+  --inbox-row-action-size: 26px;
+  --inbox-row-action-top: calc(
+    var(--inbox-row-pad-block) +
+    1px +
+    (var(--inbox-row-line) - var(--inbox-row-action-size)) /
+    2
+  );
+  /* #3075: a leading column every row keeps, read or not, for the unread
+     dot, so the text column sits in one place in both states. */
+  --inbox-row-unread-gutter: var(--k-space-3);
+  --inbox-row-unread-dot: 6px;
+  --inbox-row-unread-gap: var(--k-space-1);
   position: relative;
   min-width: 0;
   border-radius: var(--radius-md);
@@ -43,6 +57,10 @@
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
   padding: var(--inbox-row-pad-block) var(--inbox-row-pad-inline);
+  padding-inline-start: calc(
+    var(--inbox-row-pad-inline) +
+    var(--inbox-row-unread-gutter)
+  );
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
@@ -69,7 +87,53 @@
   outline-offset: -2px;
 }
 
-/* Meta line: agent mark, agent and project, then the time slot. */
+/* Headline: the title, then the time slot the hover actions cover. */
+.inbox-row__headline {
+  display: flex;
+  min-width: 0;
+  /* One line tall, like the meta line it replaced at the top: the hover
+     actions' offset (--inbox-row-action-top) centres them on this line. */
+  height: var(--inbox-row-line);
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.inbox-row__headline > .inbox-row__title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* A hover row's second line: the agent's mark, the status, then the project.
+   The status keeps its word whole; the project gives way first. */
+.inbox-row__state {
+  display: flex;
+  min-width: 0;
+  min-height: var(--inbox-row-line);
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.inbox-row__state > .identity-marks {
+  flex: 0 0 auto;
+}
+.inbox-row__state > .inbox-row__status {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.inbox-row__context {
+  /* Yields all of its width before the status detail loses any: the
+     project is also in the row's name and hover card; the state is not. */
+  flex: 0 10000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--inbox-row-text-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-row__context::before {
+  content: "· ";
+}
+
+/* Meta line: agent mark, agent and project. */
 .inbox-row__meta {
   display: flex;
   min-width: 0;
@@ -114,10 +178,65 @@
 .inbox-row__title {
   overflow: hidden;
   font-size: var(--inbox-row-title-size);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* #3075: the visible title and an invisible bold copy share one grid cell,
+   so the title is always as large as its bold rendering. Unread turns the
+   weight up without moving an ellipsis or re-wrapping a two-line title. */
+.inbox-row__title[data-title] {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  overflow: visible;
+}
+
+.inbox-row__title[data-title] > .inbox-row__title-text,
+.inbox-row__title[data-title]::after {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-row__title[data-title]::after {
+  content: attr(data-title);
+  visibility: hidden;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* Unread: weight on the title and a small accent dot hanging in the row's
+   leading gutter, outside the text, so neither state moves anything. */
+.inbox-row[data-unread] .inbox-row__title {
+  color: var(--k-text);
+  font-weight: 700;
+}
+
+.inbox-row[data-unread] .inbox-row__title[data-title]::before,
+.inbox-row[data-read-unknown] .inbox-row__title[data-title]::before {
+  content: "";
+  position: absolute;
+  /* Centred on the first title line (line-height 1.35). */
+  top: calc(0.675em - var(--inbox-row-unread-dot) / 2);
+  left: calc((var(--inbox-row-unread-dot) + var(--inbox-row-unread-gap)) * -1);
+  width: var(--inbox-row-unread-dot);
+  height: var(--inbox-row-unread-dot);
+  border-radius: 50%;
+  background: var(--k-action, var(--k-brand));
+}
+
+/* #3075 review: read status unknown (the server could not read it). A hollow
+   ring in the dot's place, the title at its read weight: it claims neither
+   read nor unread, and the panel's note says why once. */
+.inbox-row[data-read-unknown] .inbox-row__title[data-title]::before {
+  box-sizing: border-box;
+  border: 1px solid var(--k-text-faint);
+  background: transparent;
 }
 
 /* The ONE status line. Icon and word always; colour only reinforces them. */
@@ -288,8 +407,8 @@
 
 .inbox-row__actions {
   position: absolute;
-  top: var(--space-2);
-  right: var(--space-3);
+  top: var(--inbox-row-action-top);
+  right: var(--inbox-row-pad-inline);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -328,8 +447,8 @@
 .inbox-row__action {
   position: relative;
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: var(--inbox-row-action-size);
+  height: var(--inbox-row-action-size);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -343,13 +462,12 @@
 
 /* An always-on invisible hit area: the drawn control stays 26px while the
  * target is 44px tall on every pointer, with no media query deciding who
- * gets it. It starts at the ROW's top edge (the slot sits `--space-2` below
- * it) and extends downward, so it never reaches into the row above or
+ * gets it. It starts at the row's top edge and extends downward, so it never reaches into the row above or
  * below. Horizontally it reaches only to the midpoint of the gap, so
  * neighbouring targets never overlap. */
 .inbox-row__action::after {
   position: absolute;
-  top: calc(var(--space-2) * -1);
+  top: calc(var(--inbox-row-action-top) * -1);
   right: calc(var(--space-2) / -2);
   left: calc(var(--space-2) / -2);
   height: 44px;
@@ -380,6 +498,10 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-1) var(--inbox-row-pad-inline);
+  padding-inline-start: calc(
+    var(--inbox-row-pad-inline) +
+    var(--inbox-row-unread-gutter)
+  );
 }
 
 .inbox-row--slim .inbox-row__title {
@@ -387,6 +509,38 @@
   min-width: 0;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+/* A slim row leads with its status glyph, so its dot sits in the row's own
+   gutter, centred on the single line, where a card's dot sits. */
+.inbox-row--slim[data-unread] .inbox-row__title[data-title]::before,
+.inbox-row--slim[data-read-unknown] .inbox-row__title[data-title]::before {
+  content: none;
+}
+
+.inbox-row--slim[data-unread]::before,
+.inbox-row--slim[data-read-unknown]::before {
+  content: "";
+  position: absolute;
+  top: calc(50% - var(--inbox-row-unread-dot) / 2);
+  left: calc(
+    1px +
+    var(--inbox-row-pad-inline) +
+    var(--inbox-row-unread-gutter) -
+    var(--inbox-row-unread-dot) -
+    var(--inbox-row-unread-gap)
+  );
+  width: var(--inbox-row-unread-dot);
+  height: var(--inbox-row-unread-dot);
+  border-radius: 50%;
+  background: var(--k-action, var(--k-brand));
+  pointer-events: none;
+}
+
+.inbox-row--slim[data-read-unknown]::before {
+  box-sizing: border-box;
+  border: 1px solid var(--k-text-faint);
+  background: transparent;
 }
 
 .inbox-row__slim-status {
@@ -498,9 +652,22 @@
   height: 16px;
 }
 
+/* A touch list's larger title would make a 6px dot close to the text read
+   as a list bullet; a larger, freer dot reads as the row's state. */
+.inbox-row--touch {
+  --inbox-row-unread-dot: 8px;
+  --inbox-row-unread-gap: var(--k-space-2);
+}
+
 /* Touch lists give the work title room while metadata remains compact. */
 .inbox-row--card.inbox-row--touch .inbox-row__title {
   font-size: max(var(--inbox-row-title-size), var(--k-text-md));
+}
+
+.inbox-row--card.inbox-row--touch
+  .inbox-row__title[data-title]
+  > .inbox-row__title-text,
+.inbox-row--card.inbox-row--touch .inbox-row__title[data-title]::after {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -693,4 +860,13 @@
 .inbox-row__task-actions > button {
   min-height: 44px;
   font-size: var(--k-text-sm);
+}
+
+/* Station provenance has the same mark for peer and SSH work. */
+.inbox-row__chip--remote,
+.inbox-row__slim-remote {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: color-mix(in srgb, var(--k-action) 10%, transparent);
+  color: var(--k-text);
 }

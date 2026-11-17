@@ -337,7 +337,7 @@ describe('assistant row identity composition (station#1434)', () => {
     });
 
     expect(container.querySelector('.message__model-claims')).toBeNull();
-    expect(occurrences(container, '3 7 Sonnet Latest')).toBe(0);
+    expect(occurrences(container, '3.7 Sonnet Latest')).toBe(0);
     expect(occurrences(container, 'claude-3-7-sonnet-latest')).toBe(0);
   });
 
@@ -359,7 +359,7 @@ describe('assistant row identity composition (station#1434)', () => {
     // #1536 B5: through the shared identity rule. The private table this
     // replaced answered "Custom" for every model newer than Claude 3, so a row
     // running claude-opus-5 named it "Custom" while Home named it "Opus 5".
-    expect(screen.getByText('3 7 Sonnet Latest')).toBeTruthy();
+    expect(screen.getByText('3.7 Sonnet Latest')).toBeTruthy();
     // The unreadable record is still reachable — and still honest about
     // reading nothing (#2211: from the overflow menu's dialog).
     await openProvenanceDialog();
@@ -401,7 +401,7 @@ describe('assistant row identity composition (station#1434)', () => {
     expect(copy?.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
       'true',
     );
-    expect(screen.getByText('3 7 Sonnet Latest')).toBeTruthy();
+    expect(screen.getByText('3.7 Sonnet Latest')).toBeTruthy();
     expect(screen.getByText('Here is the answer.')).toBeTruthy();
   });
   /**

@@ -96,6 +96,7 @@ const continueSessionLaunchSchema = z
     operationId: z.string().min(1).max(160),
     sourceSessionId: z.string().min(1).max(4096),
     target: adoptSessionTargetSchema.optional(),
+    continueWhileSourceActive: z.literal(true).optional(),
   })
   .strict();
 const inspectApprovalLaunchSchema = z

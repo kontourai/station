@@ -1,0 +1,7 @@
+{
+  "revision": "041d04f42340cfb76040a27bbefde54ce90d6514",
+
+  "notes": [
+    {"path":"README.md","note":"README links to the Nightly guide for channel and install facts; the added source-gate receipt sentence changes no README claim.","inputs":["docs/guides/nightly.md"]}
+  ]
+}

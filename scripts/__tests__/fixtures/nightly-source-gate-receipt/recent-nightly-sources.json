@@ -1,0 +1,2143 @@
+{
+  "e54d5784edda09dc704955455b4fe000547231ca": {
+    "runs": {
+      "total_count": 1,
+      "workflow_runs": [
+        {
+          "id": 43595627644,
+          "name": "Source verification",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "path": ".github/workflows/ci.yml",
+          "display_title": "Source verification",
+          "run_number": 17282,
+          "event": "merge_group",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_id": 344177106,
+          "html_url": "https://github.com/kontourai/station/actions/runs/43595627644",
+          "created_at": "2026-11-14T12:36:02Z",
+          "updated_at": "2026-11-14T12:52:16Z",
+          "run_attempt": 1,
+          "run_started_at": "2026-11-14T12:36:02Z",
+          "repository": {
+            "full_name": "kontourai/station"
+          },
+          "head_repository": {
+            "full_name": "kontourai/station"
+          }
+        }
+      ]
+    },
+    "jobs": {
+      "total_count": 18,
+      "jobs": [
+        {
+          "id": 132449372640,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "diff",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449372835,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "Pinned actionlint artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449372969,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "fast-checks plan",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449372993,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "PR title status publisher",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449373687,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "Repository source scans",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449373730,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "UI entry bundle delta (report only)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449373796,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "Exact full-diff classification",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449374068,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "PR source admission",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449397073,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "fast-checks statics",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2
+            },
+            {
+              "name": "Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3
+            },
+            {
+              "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4
+            },
+            {
+              "name": "Download pinned actionlint artifact",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5
+            },
+            {
+              "name": "Install pinned actionlint",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6
+            },
+            {
+              "name": "Run npm run dependencies:ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7
+            },
+            {
+              "name": "Restore trusted Chromium cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8
+            },
+            {
+              "name": "Install Chromium for changed-set touch-target checks",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9
+            },
+            {
+              "name": "Run fast CI lane",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10
+            },
+            {
+              "name": "Report contract-test changes for review",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11
+            },
+            {
+              "name": "Run interactive workspace performance smoke",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12
+            },
+            {
+              "name": "Verify critical browser journeys before merge",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13
+            },
+            {
+              "name": "Upload bounded fast-feedback diagnostics",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14
+            },
+            {
+              "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 26
+            },
+            {
+              "name": "Post Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 27
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 28
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 29
+            }
+          ]
+        },
+        {
+          "id": 132449398182,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "Fork pull-request smoke",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132449884195,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "fast-checks shard 1",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132453101962,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "fast-checks",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132453179720,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "Merge-queue regression",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132453179910,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "Publish source admission / reconcile",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132453180580,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "full-regression",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132453181421,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "manual-completion-diagnostics",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132453276514,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "Plan affected delivery checks",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132453277297,
+          "run_id": 43595627644,
+          "run_attempt": 1,
+          "head_sha": "e54d5784edda09dc704955455b4fe000547231ca",
+          "head_branch": "gh-readonly-queue/main/pr-4957-c56bb322d4f0425cfedff840b889d63616a6b4c8",
+          "name": "delivery-validation",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        }
+      ]
+    }
+  },
+  "9c8fb047ef9587996a77a464ec4721f66a82912c": {
+    "runs": {
+      "total_count": 1,
+      "workflow_runs": [
+        {
+          "id": 43647253580,
+          "name": "Source verification",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "path": ".github/workflows/ci.yml",
+          "display_title": "Source verification",
+          "run_number": 17365,
+          "event": "merge_group",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_id": 344177106,
+          "html_url": "https://github.com/kontourai/station/actions/runs/43647253580",
+          "created_at": "2026-11-14T22:16:57Z",
+          "updated_at": "2026-11-14T22:33:11Z",
+          "run_attempt": 1,
+          "run_started_at": "2026-11-14T22:16:57Z",
+          "repository": {
+            "full_name": "kontourai/station"
+          },
+          "head_repository": {
+            "full_name": "kontourai/station"
+          }
+        }
+      ]
+    },
+    "jobs": {
+      "total_count": 18,
+      "jobs": [
+        {
+          "id": 132607698705,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "diff",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132607698973,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "fast-checks plan",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132607699060,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "PR title status publisher",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132607699099,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "Pinned actionlint artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132607699971,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "PR source admission",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132607700106,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "UI entry bundle delta (report only)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132607700137,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "Repository source scans",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132607700263,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "Exact full-diff classification",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132607726978,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "fast-checks statics",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2
+            },
+            {
+              "name": "Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3
+            },
+            {
+              "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4
+            },
+            {
+              "name": "Download pinned actionlint artifact",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5
+            },
+            {
+              "name": "Install pinned actionlint",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6
+            },
+            {
+              "name": "Run npm run dependencies:ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7
+            },
+            {
+              "name": "Restore trusted Chromium cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8
+            },
+            {
+              "name": "Install Chromium for changed-set touch-target checks",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9
+            },
+            {
+              "name": "Run fast CI lane",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10
+            },
+            {
+              "name": "Report contract-test changes for review",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11
+            },
+            {
+              "name": "Run interactive workspace performance smoke",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12
+            },
+            {
+              "name": "Verify critical browser journeys before merge",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13
+            },
+            {
+              "name": "Upload bounded fast-feedback diagnostics",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14
+            },
+            {
+              "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 26
+            },
+            {
+              "name": "Post Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 27
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 28
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 29
+            }
+          ]
+        },
+        {
+          "id": 132607727967,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "Fork pull-request smoke",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132608255522,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "fast-checks shard 1",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132611873691,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "fast-checks",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132611973782,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "Merge-queue regression",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132611973928,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "Publish source admission / reconcile",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132611975469,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "full-regression",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132611975584,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "manual-completion-diagnostics",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132612088626,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "Plan affected delivery checks",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132612088946,
+          "run_id": 43647253580,
+          "run_attempt": 1,
+          "head_sha": "9c8fb047ef9587996a77a464ec4721f66a82912c",
+          "head_branch": "gh-readonly-queue/main/pr-4974-56f4ddf4a74ca4e0c70b8c5b268bbc3759a41f26",
+          "name": "delivery-validation",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        }
+      ]
+    }
+  },
+  "89dc051aa7300c769d012c3aaae8bf84744a7eaa": {
+    "runs": {
+      "total_count": 1,
+      "workflow_runs": [
+        {
+          "id": 43685418212,
+          "name": "Source verification",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "path": ".github/workflows/ci.yml",
+          "display_title": "Source verification",
+          "run_number": 17424,
+          "event": "merge_group",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_id": 344177106,
+          "html_url": "https://github.com/kontourai/station/actions/runs/43685418212",
+          "created_at": "2026-11-15T06:26:06Z",
+          "updated_at": "2026-11-15T06:42:23Z",
+          "run_attempt": 1,
+          "run_started_at": "2026-11-15T06:26:06Z",
+          "repository": {
+            "full_name": "kontourai/station"
+          },
+          "head_repository": {
+            "full_name": "kontourai/station"
+          }
+        }
+      ]
+    },
+    "jobs": {
+      "total_count": 19,
+      "jobs": [
+        {
+          "id": 132724769108,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "diff",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132724769380,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "PR title status publisher",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132724769490,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "fast-checks plan",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132724769703,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "Pinned actionlint artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132724770039,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "Repository source scans",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132724770184,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "PR source admission",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132724770340,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "UI entry bundle delta (report only)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132724792697,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "fast-checks statics",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2
+            },
+            {
+              "name": "Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3
+            },
+            {
+              "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4
+            },
+            {
+              "name": "Download pinned actionlint artifact",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5
+            },
+            {
+              "name": "Install pinned actionlint",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6
+            },
+            {
+              "name": "Run npm run dependencies:ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7
+            },
+            {
+              "name": "Restore trusted Chromium cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8
+            },
+            {
+              "name": "Install Chromium for changed-set touch-target checks",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9
+            },
+            {
+              "name": "Run fast CI lane",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10
+            },
+            {
+              "name": "Report contract-test changes for review",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11
+            },
+            {
+              "name": "Run interactive workspace performance smoke",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12
+            },
+            {
+              "name": "Verify critical browser journeys before merge",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13
+            },
+            {
+              "name": "Upload bounded fast-feedback diagnostics",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14
+            },
+            {
+              "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 26
+            },
+            {
+              "name": "Post Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 27
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 28
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 29
+            }
+          ]
+        },
+        {
+          "id": 132724793358,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "Fork pull-request smoke",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132724796931,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "Exact full-diff classification",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132725402913,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "fast-checks shard 1",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132725402965,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "fast-checks shard 2",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132728292468,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "fast-checks",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132728360952,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "Merge-queue regression",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132728361099,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "Publish source admission / reconcile",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132728361639,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "full-regression",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132728362012,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "manual-completion-diagnostics",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132728444475,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "Plan affected delivery checks",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132728444744,
+          "run_id": 43685418212,
+          "run_attempt": 1,
+          "head_sha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+          "head_branch": "gh-readonly-queue/main/pr-4900-7a7ee4f729cda67442082b74ede3b609b9d07fcc",
+          "name": "delivery-validation",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        }
+      ]
+    }
+  },
+  "95a6c1253416050823e2a34089882e3261253cb8": {
+    "runs": {
+      "total_count": 1,
+      "workflow_runs": [
+        {
+          "id": 43768761820,
+          "name": "Source verification",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "path": ".github/workflows/ci.yml",
+          "display_title": "Source verification",
+          "run_number": 17644,
+          "event": "merge_group",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_id": 344177106,
+          "html_url": "https://github.com/kontourai/station/actions/runs/43768761820",
+          "created_at": "2026-11-15T22:20:39Z",
+          "updated_at": "2026-11-15T22:59:52Z",
+          "run_attempt": 1,
+          "run_started_at": "2026-11-15T22:20:39Z",
+          "repository": {
+            "full_name": "kontourai/station"
+          },
+          "head_repository": {
+            "full_name": "kontourai/station"
+          }
+        }
+      ]
+    },
+    "jobs": {
+      "total_count": 21,
+      "jobs": [
+        {
+          "id": 132979708389,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "diff",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132979708576,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "Pinned actionlint artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132979708659,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "PR title status publisher",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132979708818,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "fast-checks plan",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132979709547,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "Exact full-diff classification",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132979709588,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "PR source admission",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132979709624,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "UI entry bundle delta (report only)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132979709955,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "Repository source scans",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132984620893,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "fast-checks statics",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2
+            },
+            {
+              "name": "Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3
+            },
+            {
+              "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4
+            },
+            {
+              "name": "Download pinned actionlint artifact",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5
+            },
+            {
+              "name": "Install pinned actionlint",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6
+            },
+            {
+              "name": "Run npm run dependencies:ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7
+            },
+            {
+              "name": "Restore trusted Chromium cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8
+            },
+            {
+              "name": "Install Chromium for changed-set touch-target checks",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9
+            },
+            {
+              "name": "Run fast CI lane",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10
+            },
+            {
+              "name": "Report contract-test changes for review",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11
+            },
+            {
+              "name": "Run interactive workspace performance smoke",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12
+            },
+            {
+              "name": "Verify critical browser journeys before merge",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13
+            },
+            {
+              "name": "Upload bounded fast-feedback diagnostics",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14
+            },
+            {
+              "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 26
+            },
+            {
+              "name": "Post Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 27
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 28
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 29
+            }
+          ]
+        },
+        {
+          "id": 132984622543,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "Fork pull-request smoke",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132985806260,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "fast-checks shard 3",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132985806279,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "fast-checks shard 4",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132985806320,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "fast-checks shard 1",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132985806351,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "fast-checks shard 2",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132989723360,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "fast-checks",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132990253442,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "Merge-queue regression",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132990253680,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "Publish source admission / reconcile",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132990254956,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "full-regression",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132990255313,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "manual-completion-diagnostics",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132990828953,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "Plan affected delivery checks",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 132990830194,
+          "run_id": 43768761820,
+          "run_attempt": 1,
+          "head_sha": "95a6c1253416050823e2a34089882e3261253cb8",
+          "head_branch": "gh-readonly-queue/main/pr-4891-cbadfedf2ad900ed96f4715c61c5a50f2b0ddf96",
+          "name": "delivery-validation",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        }
+      ]
+    }
+  },
+  "0f46969f18aa5080844d57fba8af1a079533cac4": {
+    "runs": {
+      "total_count": 1,
+      "workflow_runs": [
+        {
+          "id": 43791948741,
+          "name": "Source verification",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "path": ".github/workflows/ci.yml",
+          "display_title": "Source verification",
+          "run_number": 17724,
+          "event": "merge_group",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_id": 344177106,
+          "html_url": "https://github.com/kontourai/station/actions/runs/43791948741",
+          "created_at": "2026-11-16T02:24:16Z",
+          "updated_at": "2026-11-16T02:56:16Z",
+          "run_attempt": 1,
+          "run_started_at": "2026-11-16T02:24:16Z",
+          "repository": {
+            "full_name": "kontourai/station"
+          },
+          "head_repository": {
+            "full_name": "kontourai/station"
+          }
+        }
+      ]
+    },
+    "jobs": {
+      "total_count": 18,
+      "jobs": [
+        {
+          "id": 133052155767,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "diff",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133052156094,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "PR title status publisher",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133052156095,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "fast-checks plan",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133052156126,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "Pinned actionlint artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133052157002,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "Repository source scans",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133052157383,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "Exact full-diff classification",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133052157783,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "UI entry bundle delta (report only)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133052195583,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "PR source admission",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133053449187,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "fast-checks statics",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2
+            },
+            {
+              "name": "Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3
+            },
+            {
+              "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4
+            },
+            {
+              "name": "Download pinned actionlint artifact",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5
+            },
+            {
+              "name": "Install pinned actionlint",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6
+            },
+            {
+              "name": "Run npm run dependencies:ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7
+            },
+            {
+              "name": "Restore trusted Chromium cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8
+            },
+            {
+              "name": "Install Chromium for changed-set touch-target checks",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9
+            },
+            {
+              "name": "Run fast CI lane",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10
+            },
+            {
+              "name": "Report contract-test changes for review",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11
+            },
+            {
+              "name": "Run interactive workspace performance smoke",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12
+            },
+            {
+              "name": "Verify critical browser journeys before merge",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13
+            },
+            {
+              "name": "Upload bounded fast-feedback diagnostics",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14
+            },
+            {
+              "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 26
+            },
+            {
+              "name": "Post Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 27
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 28
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 29
+            }
+          ]
+        },
+        {
+          "id": 133053450632,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "Fork pull-request smoke",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133054105294,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "fast-checks shard 1",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133061211850,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "fast-checks",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133061638296,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "Merge-queue regression",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133061638529,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "Publish source admission / reconcile",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133061639493,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "full-regression",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133061640071,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "manual-completion-diagnostics",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133062078420,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "Plan affected delivery checks",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133062079008,
+          "run_id": 43791948741,
+          "run_attempt": 1,
+          "head_sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+          "head_branch": "gh-readonly-queue/main/pr-5020-9927b63431e59eab66679e4c3b7115c9c0cac8b6",
+          "name": "delivery-validation",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        }
+      ]
+    }
+  },
+  "d25dc082385145dcdf133590bd49d12e02f4198f": {
+    "runs": {
+      "total_count": 1,
+      "workflow_runs": [
+        {
+          "id": 43855881824,
+          "name": "Source verification",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "path": ".github/workflows/ci.yml",
+          "display_title": "Source verification",
+          "run_number": 17922,
+          "event": "merge_group",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_id": 344177106,
+          "html_url": "https://github.com/kontourai/station/actions/runs/43855881824",
+          "created_at": "2026-11-16T11:13:45Z",
+          "updated_at": "2026-11-16T11:49:26Z",
+          "run_attempt": 1,
+          "run_started_at": "2026-11-16T11:13:45Z",
+          "repository": {
+            "full_name": "kontourai/station"
+          },
+          "head_repository": {
+            "full_name": "kontourai/station"
+          }
+        }
+      ]
+    },
+    "jobs": {
+      "total_count": 21,
+      "jobs": [
+        {
+          "id": 133259891710,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "diff",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133259892217,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "PR title status publisher",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133259892231,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "Pinned actionlint artifact",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133259892734,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "fast-checks plan",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133259893351,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "Repository source scans",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133259893580,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "PR source admission",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133259894036,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "UI entry bundle delta (report only)",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133259894260,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "Exact full-diff classification",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133261729405,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "fast-checks statics",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification",
+          "steps": [
+            {
+              "name": "Set up job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 1
+            },
+            {
+              "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 2
+            },
+            {
+              "name": "Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 3
+            },
+            {
+              "name": "Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 4
+            },
+            {
+              "name": "Download pinned actionlint artifact",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 5
+            },
+            {
+              "name": "Install pinned actionlint",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 6
+            },
+            {
+              "name": "Run npm run dependencies:ci",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 7
+            },
+            {
+              "name": "Restore trusted Chromium cache",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 8
+            },
+            {
+              "name": "Install Chromium for changed-set touch-target checks",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 9
+            },
+            {
+              "name": "Run fast CI lane",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 10
+            },
+            {
+              "name": "Report contract-test changes for review",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 11
+            },
+            {
+              "name": "Run interactive workspace performance smoke",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 12
+            },
+            {
+              "name": "Verify critical browser journeys before merge",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 13
+            },
+            {
+              "name": "Upload bounded fast-feedback diagnostics",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 14
+            },
+            {
+              "name": "Post Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 26
+            },
+            {
+              "name": "Post Setup pinned pnpm",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 27
+            },
+            {
+              "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 28
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 29
+            }
+          ]
+        },
+        {
+          "id": 133261731168,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "Fork pull-request smoke",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133263184650,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "fast-checks shard 3",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133263184698,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "fast-checks shard 2",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133263184820,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "fast-checks shard 1",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133263184841,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "fast-checks shard 4",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133272626325,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "fast-checks",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133275086334,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "Merge-queue regression",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133275086842,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "Publish source admission / reconcile",
+          "status": "completed",
+          "conclusion": "success",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133275089262,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "full-regression",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133275089282,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "manual-completion-diagnostics",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133276223468,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "delivery-validation",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        },
+        {
+          "id": 133276224540,
+          "run_id": 43855881824,
+          "run_attempt": 1,
+          "head_sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+          "head_branch": "gh-readonly-queue/main/pr-5032-08c590b6bcadc0782907426953064ae7ab5a85a6",
+          "name": "Plan affected delivery checks",
+          "status": "completed",
+          "conclusion": "skipped",
+          "workflow_name": "Source verification"
+        }
+      ]
+    }
+  }
+}

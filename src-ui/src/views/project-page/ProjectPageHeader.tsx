@@ -5,9 +5,12 @@ import { ProjectIcon } from '../../components/icons/ProjectIcon';
 
 export function ProjectPageHeader({
   project,
+  goal,
   gitStatus,
   navigateToSettings,
 }: {
+  /** #5062: the Project's one-line goal, shown above its Overview. */
+  goal?: string;
   project: {
     icon?: string;
     name: string;
@@ -28,6 +31,11 @@ export function ProjectPageHeader({
           <h2 className="project-page__name">{project.name}</h2>
           {gitStatus?.isRepo && (
             <GitBadge git={gitStatus} className="project-page__git-badge" />
+          )}
+          {goal && (
+            <p className="project-page__goal">
+              <span className="project-page__goal-label">Goal</span> {goal}
+            </p>
           )}
           {project.description && (
             <p className="project-page__desc">{project.description}</p>

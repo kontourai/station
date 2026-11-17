@@ -6,6 +6,7 @@ import {
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import { useProjects } from '../../contexts/ProjectsContext';
 import {
   readSnoozes,
   snoozesVersion,
@@ -28,6 +29,7 @@ export function useInboxScope(
     snoozesVersion,
     snoozesVersion,
   );
+  const { projects } = useProjects();
   const { inboxScope } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   // #4405 (A36): the project page on screen, for the default scope.
@@ -38,8 +40,22 @@ export function useInboxScope(
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: snooze version invalidates the persisted map read
   return useMemo(() => {
-    const options = new Map([
-      [INBOX_SCOPE_CURRENT_PROJECT, 'Current project'],
+    const options = new Map<string, string>([
+      [
+        INBOX_SCOPE_CURRENT_PROJECT,
+        routeProject
+          ? `This project: ${
+              items.find(
+                (item) =>
+                  !item.environmentId &&
+                  !facts?.get(item.id)?.station &&
+                  item.projectSlug === routeProject,
+              )?.projectLabel ??
+              projects.find((project) => project.slug === routeProject)?.name ??
+              'Current project'
+            }`
+          : 'All work',
+      ],
       ['all', 'All work'],
       ['station:local', 'This Station'],
     ]);
@@ -69,12 +85,12 @@ export function useInboxScope(
       if (key)
         options.set(
           key,
-          `Project: ${item.projectLabel} · ${options.get(stationById.get(item.id)!)}`,
+          `Always ${item.projectLabel ?? projects.find((project) => project.slug === item.projectSlug)?.name ?? item.projectSlug} · ${options.get(stationById.get(item.id)!)}`,
         );
     }
     // A saved scope absent from this snapshot stays selected: an outage must
     // not silently change the user's filter or pretend another Station is it.
-    if (!options.has(inboxScope))
+    if (!options.has(inboxScope) && inboxScope !== INBOX_SCOPE_CURRENT_PROJECT)
       options.set(inboxScope, 'Saved scope (unavailable)');
     // The default follows the project page on screen; anywhere else it is
     // all work. Only this Station's projects have pages here.
@@ -101,11 +117,16 @@ export function useInboxScope(
       items: filtered,
       options,
       value: inboxScope,
+      // Keep the unchosen default as a display-only option on Home. The
+      // selectable All work option must save an explicit scope across routes.
+      followPageHidden: !routeProject,
+      effectiveValue: scope,
       hiddenAttention,
       onChange: (value: string) => setDeviceSetting('inboxScope', value),
     };
   }, [
     items,
+    projects,
     visible,
     now,
     facts,
@@ -119,13 +140,22 @@ export function useInboxScope(
 
 export function InboxScopeFilter({
   scope,
+  inline = false,
 }: {
   scope: ReturnType<typeof useInboxScope>;
+  /**
+   * A toolbar control beside search: its label is for assistive technology
+   * only, and work the scope hides that needs the person is a count badge on
+   * the picker (choosing it shows all work), so the toolbar keeps one line.
+   */
+  inline?: boolean;
 }) {
   return (
-    <div className="chat-dock-inbox__scope">
+    <div
+      className={`chat-dock-inbox__scope${inline ? ' chat-dock-inbox__scope--inline' : ''}`}
+    >
       <label>
-        Show work
+        <span className={inline ? 'sr-only' : undefined}>Show work</span>
         <select
           className="choice-trigger"
           aria-label="Inbox scope"
@@ -133,17 +163,54 @@ export function InboxScopeFilter({
           onChange={(event) => scope.onChange(event.target.value)}
         >
           {[...scope.options].map(([value, label]) => (
-            <option key={value} value={value}>
+            <option
+              key={value}
+              value={value}
+              hidden={
+                scope.followPageHidden && value === INBOX_SCOPE_CURRENT_PROJECT
+              }
+              disabled={
+                scope.followPageHidden && value === INBOX_SCOPE_CURRENT_PROJECT
+              }
+            >
               {label}
             </option>
           ))}
         </select>
       </label>
-      {scope.hiddenAttention > 0 && (
-        <button type="button" onClick={() => scope.onChange('all')}>
-          {scope.hiddenAttention} need you outside this filter · Show all
-        </button>
+      {inline ? (
+        scope.hiddenAttention > 0 ? (
+          <button
+            type="button"
+            className="chat-dock-inbox__scope-badge"
+            aria-label={`${scope.hiddenAttention} need you outside this filter. Show all work`}
+            title={`${scope.hiddenAttention} need you outside this filter. Show all work`}
+            onClick={() => scope.onChange('all')}
+          >
+            {scope.hiddenAttention}
+          </button>
+        ) : null
+      ) : (
+        <InboxScopeHiddenAttention scope={scope} />
       )}
     </div>
+  );
+}
+
+/** Work that needs the person but the chosen scope hides, with the way back. */
+function InboxScopeHiddenAttention({
+  scope,
+}: {
+  scope: ReturnType<typeof useInboxScope>;
+}) {
+  if (scope.hiddenAttention <= 0) return null;
+  return (
+    <button
+      type="button"
+      className="chat-dock-inbox__hidden-attention"
+      onClick={() => scope.onChange('all')}
+    >
+      {scope.hiddenAttention} need you outside this filter · Show all
+    </button>
   );
 }

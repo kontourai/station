@@ -8,9 +8,9 @@ export const INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL =
 export const INTERNAL_TESTFLIGHT_GPG_TAGGER_NAME =
   'Station TestFlight authority';
 
-const CHANNELS = new Set(['stable', 'beta', 'nightly']);
+const CHANNELS = new Set(['stable', 'nightly']);
 const INTERNAL_TAG = new RegExp(
-  `^${IOS_TESTFLIGHT_INTERNAL_TAG_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(stable|beta|nightly)/v((?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*))/(0|[1-9]\\d*)$`,
+  `^${IOS_TESTFLIGHT_INTERNAL_TAG_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(stable|nightly)/v((?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*))/(0|[1-9]\\d*)$`,
 );
 
 function fail(message) {
@@ -21,7 +21,7 @@ export function internalTestFlightBuild({ channel, version }) {
   if (!CHANNELS.has(channel))
     fail(`unknown channel ${JSON.stringify(channel)}`);
   assertProductVersion(version);
-  // Stable and Beta intentionally occupy a protected internal-only slot. The
+  // Stable intentionally occupies a protected internal-only slot. The
   // ordinary release authority retains the surrounding release build range.
   return channel === 'nightly'
     ? null
@@ -46,7 +46,7 @@ export function internalTestFlightAuthorityRef({
   const fixedBuild = internalTestFlightBuild({ channel, version });
   if (fixedBuild !== null && bundleVersion !== fixedBuild) {
     fail(
-      `${channel} must use reserved internal build ${fixedBuild}; release slots 11101 through 11199 remain external authority`,
+      `${channel} must use reserved internal build ${fixedBuild}; tagged release build allocation remains separate authority`,
     );
   }
   return `${IOS_TESTFLIGHT_INTERNAL_TAG_PREFIX}${channel}/v${version}/${bundleVersion}`;

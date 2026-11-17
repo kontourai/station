@@ -436,6 +436,7 @@ describe('handleExtensionNotificationEvent', () => {
         toolCallId: 'toolu-1',
         description: 'Deep research',
         subagentType: 'researcher',
+        workKind: 'agent',
         backgrounded: true,
         // station#1877: the execution-session thread that reported the task,
         // which is what a task-scoped stop has to address.

@@ -1,7 +1,0 @@
-{
-  "revision": "a1004bb542f2e1f9eecec4812f2cb1536e9de6dd",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Change under review (#4480 round two on fix/start-owner-gate-followups-20261103): consumeAdapterEvents settles the interim start owner for every pulled session.started or session.exited (skipped, faulted, abandoned or appended), still behind the single publishObservedEvent continue-gate; any appended session.exited ends it; settledStartEvents is kept only for known threads and forgotten on exit; a fork's stamp is compared with its admitted requester (the owner that becomes durable). Searched this document for owner-establishment, command-gate, start-hook, fork-owner and session.started ownership claims: none describe them, so the prose citing the changed orchestration sources remains accurate.","inputs":["docs/reference/api.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

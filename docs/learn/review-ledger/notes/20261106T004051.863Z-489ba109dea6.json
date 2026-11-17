@@ -1,7 +1,0 @@
-{
-  "revision": "43bfec5e6a90d71c6e19efb6f665d55ac234b64b",
-
-  "notes": [
-    {"path":"docs/user/getting-started.md","note":"Only the phone .app-toolbar__conn-notice rule changed: it drops its 11px font size and inherits the chip's. Its overlay position and the claims in this document are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
-  ]
-}

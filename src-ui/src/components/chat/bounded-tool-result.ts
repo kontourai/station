@@ -227,9 +227,3 @@ export function fullToolResultText(result: unknown): string {
     return bounded.tail ? `${bounded.head}…${bounded.tail}` : bounded.head;
   }
 }
-
-export function formatWithheldBytes(bytes: number): string {
-  if (bytes < 1_024) return `${bytes} B`;
-  if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KB`;
-  return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
-}

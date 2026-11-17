@@ -146,6 +146,50 @@ describe('KnowledgeStoreSection', () => {
     expect(screen.getByText('Personal knowledge is off')).toBeTruthy();
     expect(screen.queryByText('/private-memory')).toBeNull();
   });
+  // Past conversations in Knowledge registers this root at startup. It is
+  // personal-scoped, read-only and cannot be removed, so it must never stand
+  // in for the store a person creates.
+  const conversationRoot = {
+    id: 'root:conversations',
+    scope: { kind: 'personal' as const },
+    adapterId: 'conversation-store',
+    storeRoot: '/home/data/orchestration.sqlite',
+    displayName: 'Conversation history',
+    createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  test('does not present the conversation history root as the personal store', () => {
+    rootsQueryResult.data = [conversationRoot];
+    render(<KnowledgeStoreSection />);
+    expect(screen.getByText('Personal knowledge is off')).toBeTruthy();
+    expect(screen.queryByText('/home/data/orchestration.sqlite')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Create recommended store' }),
+    );
+    expect(createRootMutate).toHaveBeenCalledWith({
+      scope: { kind: 'personal' },
+      adapterId: 'kit-default-store',
+    });
+  });
+
+  test('shows the personal store, not the conversation root listed before it', () => {
+    rootsQueryResult.data = [
+      conversationRoot,
+      {
+        id: 'root:personal',
+        scope: { kind: 'personal' },
+        adapterId: 'kit-default-store',
+        storeRoot: '/home/knowledge/personal',
+        displayName: 'Personal knowledge',
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+    ];
+    render(<KnowledgeStoreSection />);
+    expect(screen.getByText(/Personal knowledge is on/)).toBeTruthy();
+    expect(screen.getByText('/home/knowledge/personal')).toBeTruthy();
+    expect(screen.queryByText('/home/data/orchestration.sqlite')).toBeNull();
+  });
+
   beforeEach(() => {
     createRootMutate.mockReset();
     validateRootMutateAsync.mockReset();

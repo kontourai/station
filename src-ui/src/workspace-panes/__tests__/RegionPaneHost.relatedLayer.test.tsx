@@ -296,7 +296,7 @@ test('on a desktop, closing a related preview’s tab asks its guard, then remov
     }),
   });
   await mount();
-  act(() => model?.placeSurface('activity', 'right'));
+  act(() => model?.placeSurface('workspace-agents', 'right'));
   const opened = await openFile('a.ts');
   expect(opened).toMatchObject({ ok: true, region: 'right' });
   const preview = model?.regions.right.panes.find((id) =>
@@ -329,7 +329,9 @@ test('on a desktop, closing a related preview’s tab asks its guard, then remov
   }
 
   act(() => close.click());
-  await waitFor(() => expect(model?.regions.right.panes).toEqual(['activity']));
+  await waitFor(() =>
+    expect(model?.regions.right.panes).toEqual(['workspace-agents']),
+  );
   expect(readFilePreviewPaneState(localStorage, preview)).toBe(null);
   expect(readPaneFence(localStorage, preview)).toEqual({ status: 'none' });
   await waitFor(() => expect(relations?.relationOf(preview)).toBeUndefined());
@@ -367,7 +369,7 @@ test('on a desktop, a close answered after its pane moved closes nothing and for
     }),
   });
   await mount();
-  act(() => model?.placeSurface('activity', 'right'));
+  act(() => model?.placeSurface('workspace-agents', 'right'));
   await openFile('a.ts');
   const preview = model?.regions.right.panes.find((id) =>
     id.startsWith('file-preview:'),

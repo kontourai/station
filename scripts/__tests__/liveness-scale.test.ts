@@ -324,7 +324,7 @@ describe('consumers multiply their liveness bound', () => {
   });
 
   test('the fallow watchdog timer', async () => {
-    expect(FALLOW_WATCHDOG_BASE_MS).toBe(120_000);
+    expect(FALLOW_WATCHDOG_BASE_MS).toBe(240_000);
     const delays: number[] = [];
     const real = globalThis.setTimeout as unknown as (
       ...args: unknown[]
@@ -348,10 +348,10 @@ describe('consumers multiply their liveness bound', () => {
           { env: { STATION_LIVENESS_SCALE: scale } },
         ),
       ).rejects.toThrow(
-        `interruption=none, watchdogMs=${120_000 * Number(scale)}`,
+        `interruption=none, watchdogMs=${240_000 * Number(scale)}`,
       );
     }
-    expect(delays).toEqual([120_000, 360_000]);
+    expect(delays).toEqual([240_000, 720_000]);
   });
 
   test.each(['watchdog', 'SIGINT', 'SIGTERM'] as const)(
@@ -360,7 +360,7 @@ describe('consumers multiply their liveness bound', () => {
       const scratch = makeTempDir('liveness-fallow-interrupted-');
       const stationRoot = join(scratch, 'station-root');
       const report = join(scratch, 'health.json');
-      vi.stubEnv('STATION_TEMP_ROOT', stationRoot);
+      vi.stubEnv('STATION_FALLOW_CACHE_DIR', join(stationRoot, 'fallow'));
       const signalsBefore = ['SIGINT', 'SIGTERM'].map((signal) =>
         process.listenerCount(signal),
       );
@@ -392,14 +392,14 @@ describe('consumers multiply their liveness bound', () => {
       );
       expect(failure).toBeInstanceOf(Error);
       expect(failure?.message).toContain(
-        `interruption=${cause}, watchdogMs=360000`,
+        `interruption=${cause}, watchdogMs=720000`,
       );
       const times = failure?.message.match(
         /interruptionMs=(\d+), elapsedMs=(\d+)/,
       );
       expect(times).not.toBeNull();
       expect(Number(times?.[2])).toBeGreaterThanOrEqual(Number(times?.[1]));
-      expect(delays).toEqual([360_000]);
+      expect(delays).toEqual([720_000]);
       expect(existsSync(report)).toBe(false);
       expect(readdirSync(join(stationRoot, 'fallow'))).toEqual([]);
       expect(

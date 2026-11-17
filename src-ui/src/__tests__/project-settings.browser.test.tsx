@@ -20,7 +20,9 @@ const fixtures: Plugin = {
           useKnowledgeBulkDeleteMutation=mutation,useKnowledgeDeleteMutation=mutation,
           useKnowledgeSaveMutation=mutation,useKnowledgeScanMutation=mutation,
           useMigratePreIndexKnowledgeMutation=mutation,useApplyProjectLayoutMutation=mutation,
-          useDeleteProjectLayoutMutation=mutation;
+          useDeleteProjectLayoutMutation=mutation,useProjectLifecycleMutation=mutation,
+          useSetProjectPullRequestWatchMutation=mutation;
+        export const useProjectDeletionPreviewQuery=()=>query(undefined);
         export const useProjectIconCandidatesQuery=()=>query([]),useModelConnectionsQuery=()=>query([]),
           useEngineConnectionsQuery=()=>query([]),useAgentsQuery=()=>query(agents),
           useProjectLayoutsQuery=()=>query([{id:'code',slug:'code',name:'Coding',type:'coding'}]),
@@ -47,6 +49,7 @@ const fixtures: Plugin = {
       EnvironmentPicker: `import React from 'react';export const EnvironmentPicker=()=> <p>Current Station</p>;`,
       ProjectSourcesSection: `import React from 'react';export const ProjectSourcesSection=()=> <section id="section-resources" className="page-section"><h2>Sources</h2><p>Source administration is covered by its own tests.</p></section>;`,
       AccessSection: `import React from 'react';export const AccessSection=()=> <section id="section-access" className="page-section"><h2>People and access</h2></section>;`,
+      ProjectSchedulesSection: `import React from 'react';export const ProjectSchedulesSection=()=> <section id="section-schedules" className="page-section"><h2>Schedules</h2><p>Project schedules are covered by their own tests.</p></section>;`,
     };
     builder.onResolve({ filter: /./ }, (args) => {
       const key =
@@ -260,7 +263,9 @@ test('project settings remain usable above the dock at phone and desktop widths 
         expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900 - 72);
         await page.screenshot({ path: `${out}/danger-${width}-${theme}.png` });
         await remove.click();
-        await page.getByRole('dialog', { name: 'Delete Project' }).waitFor();
+        await page
+          .getByRole('alertdialog', { name: 'Delete Project' })
+          .waitFor();
         await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       }
     }

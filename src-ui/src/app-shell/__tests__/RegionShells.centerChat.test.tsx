@@ -19,8 +19,8 @@ import {
 import type { LayoutChatPlacement } from '../project-layout-kind';
 import { RegionShells } from '../RegionShells';
 
-vi.mock('../../views/SessionsView', () => ({
-  SessionsView: () => <div data-testid="activity-pane" />,
+vi.mock('../../workspace-panes/AgentsWorkspacePane', () => ({
+  AgentsWorkspacePane: () => <div data-testid="activity-pane" />,
 }));
 // Chat reaches a region through the region host's renderer; a marker is
 // enough to see whether the host rendered it.
@@ -161,12 +161,12 @@ describe('RegionShells while the Coding centre owns Chat', () => {
     await settle();
     await waitFor(() => expect(model).not.toBeNull());
 
-    act(() => model?.placeSurface('activity', 'bottom'));
+    act(() => model?.placeSurface('workspace-agents', 'bottom'));
     act(() => model?.selectPane('bottom', 'chat'));
     await settle();
     await waitFor(() =>
       expect(model?.regions.bottom).toMatchObject({
-        panes: ['chat', 'activity'],
+        panes: ['chat', 'workspace-agents'],
         occupant: 'chat',
       }),
     );
@@ -183,7 +183,7 @@ describe('RegionShells while the Coding centre owns Chat', () => {
     const bottom = deviceSettingsStore.get('regionArrangement')?.regions
       .bottom as { occupant: unknown } | undefined;
     expect(JSON.stringify(bottom?.occupant)).toContain('"chat"');
-    expect(JSON.stringify(bottom?.occupant)).toContain('"activity"');
+    expect(JSON.stringify(bottom?.occupant)).toContain('"workspace-agents"');
   });
 
   test('leaving the Coding layout brings Chat back where it was', async () => {
@@ -206,31 +206,31 @@ describe('RegionShells while the Coding centre owns Chat', () => {
       </Shell>,
     );
     await openBottom();
-    act(() => model?.placeSurface('activity', 'bottom'));
     act(() => model?.placeSurface('workspace-agents', 'bottom'));
+    act(() => model?.placeSurface('device', 'bottom'));
     await waitFor(() =>
       expect(model?.regions.bottom.panes).toEqual([
         'chat',
-        'activity',
         'workspace-agents',
+        'device',
       ]),
     );
     expect(suspendedModel?.regions.bottom.panes).toEqual([
-      'activity',
       'workspace-agents',
+      'device',
     ]);
 
     // The shape `RegionPaneHost`'s reorder writes: the visible order, moved.
     act(() =>
       suspendedModel?.setRegion('bottom', {
-        panes: ['workspace-agents', 'activity'],
+        panes: ['device', 'workspace-agents'],
       }),
     );
     await waitFor(() =>
       expect(model?.regions.bottom.panes).toEqual([
         'chat',
+        'device',
         'workspace-agents',
-        'activity',
       ]),
     );
   });

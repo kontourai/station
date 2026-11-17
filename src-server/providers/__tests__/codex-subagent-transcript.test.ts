@@ -58,7 +58,9 @@ describe('Codex subagent transcript (rollout file)', () => {
       'result (none)',
       'assistant: Findings: the fixture is clean.',
     ]);
+    expect(page.entries[3]).toMatchObject({ toolCallId: 'call_0015' });
     expect(page.entries[2]).toMatchObject({
+      toolCallId: 'call_0015',
       input: 'text(await tools.exec_command({cmd:"git status -sb"}))',
     });
     const all = JSON.stringify(page);
@@ -95,6 +97,48 @@ describe('Codex subagent transcript (rollout file)', () => {
     expect([...first.page.entries, ...rest.page.entries]).toEqual(
       (await readAll(home)).entries,
     );
+  });
+
+  test('a tail read returns the last messages with where they start and end; a cursor read returns only what follows', async () => {
+    const { home, file } = installCodexSubagentRollout(makeTempDir);
+    const tail = await readCodexSubagentTranscriptPage(ref(home), {
+      offset: 0,
+      limit: 2,
+      tail: true,
+    });
+    if (tail.status !== 'found') throw new Error(tail.status);
+    expect(tail.page.entries.map((entry) => entry.message)).toEqual([5, 6]);
+    expect(tail.page).toMatchObject({ offset: 5, endOffset: 7 });
+    expect(tail.page.nextOffset).toBeUndefined();
+    const { appendFileSync } = await import('node:fs');
+    appendFileSync(
+      file,
+      `${JSON.stringify({
+        timestamp: '2026-10-21T03:42:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'One more thing.' }],
+        },
+      })}\n`,
+    );
+    const since = await readCodexSubagentTranscriptPage(ref(home), {
+      offset: 7,
+      limit: 50,
+    });
+    if (since.status !== 'found') throw new Error(since.status);
+    expect(since.page.entries).toEqual([
+      expect.objectContaining({ message: 7, text: 'One more thing.' }),
+    ]);
+    expect(since.page).toMatchObject({ offset: 7, endOffset: 8 });
+    // A cursor past the end reads the end, so a reader can tell it shrank.
+    const past = await readCodexSubagentTranscriptPage(ref(home), {
+      offset: 12,
+      limit: 50,
+    });
+    if (past.status !== 'found') throw new Error(past.status);
+    expect(past.page).toEqual({ entries: [], offset: 8, endOffset: 8 });
   });
 
   test('a running child reads what Codex has appended since the last read', async () => {

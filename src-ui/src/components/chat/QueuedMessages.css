@@ -262,6 +262,17 @@
 .queued-messages--outbox .queued-message__text {
   white-space: normal;
 }
+/* Files held with a queued message: name only, muted, never a link. */
+.queued-message__files {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .queued-messages--pending .queued-message__body,
 .queued-messages--outbox .queued-message__body {
   display: -webkit-box;
@@ -432,7 +443,7 @@
 }
 .queued-messages-presence[data-phase="exiting"],
 .queued-message-presence[data-phase="exiting"] {
-  animation: queued-presence-exit var(--motion-base) var(--ease-in) both;
+  animation: queued-presence-exit var(--motion-fast) var(--ease-out) both;
   pointer-events: none;
 }
 :root[data-page-hidden] .queued-messages-presence,

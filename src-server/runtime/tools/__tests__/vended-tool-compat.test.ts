@@ -461,6 +461,37 @@ describe('vended tool compatibility', () => {
     );
   });
 
+  test('bash runs overlapping commands on one session one at a time, each with its own output', async () => {
+    const toolDef = createBuiltinVendedToolDef('bash');
+    const tool = createBuiltinTool('agent-shell-overlap', toolDef!, {} as any);
+
+    // Started together: the second is issued while the first is still
+    // running in the same shell.
+    const [first, second] = await Promise.all([
+      tool?.execute?.({ mode: 'execute', command: 'sleep 0.2; echo first' }),
+      tool?.execute?.({ mode: 'execute', command: 'echo second' }),
+    ]);
+
+    expect(first).toEqual(expect.objectContaining({ output: 'first' }));
+    expect(second).toEqual(expect.objectContaining({ output: 'second' }));
+  });
+
+  test('bash keeps the end of an oversized output and says the start was dropped', async () => {
+    const toolDef = createBuiltinVendedToolDef('bash');
+    const tool = createBuiltinTool('agent-shell-flood', toolDef!, {} as any);
+
+    const result = (await tool?.execute?.({
+      mode: 'execute',
+      command: "head -c 3145728 /dev/zero | tr '\\0' 'x'; echo; echo flood-end",
+    })) as { output: string };
+
+    expect(result.output.startsWith('[earlier output truncated')).toBe(true);
+    expect(result.output.endsWith('flood-end')).toBe(true);
+    // 3 MiB was written; one mebibyte plus the marker line is kept.
+    expect(result.output.length).toBeLessThan(1_048_576 + 200);
+    expect(result.output.length).toBeGreaterThan(1_048_576);
+  });
+
   test('file editor creates and updates files through the shared implementation', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'station-vended-file-editor-'));
     cleanupDirs.push(dir);

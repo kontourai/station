@@ -5,6 +5,9 @@ import type {
 import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { StationRequestAuthorityError } from '@kontourai/station-sdk/client';
+// Static: this module is itself a lazy chunk, so the open client loads with
+// it instead of as a third chunk after it.
+import { resolveConversationOpen } from '@kontourai/station-sdk/conversation-open';
 import type { StationConnection } from '../../connections/station-connection';
 import { chatBelongsToStation } from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
@@ -53,9 +56,6 @@ export async function resolveConversationOpenAuthoritatively(
   const current = () =>
     isCurrent?.() !== false && (!connection || connection.isCurrent());
   const read = observation?.read(conversationId, 'open', current);
-  const { resolveConversationOpen } = await import(
-    '@kontourai/station-sdk/conversation-open'
-  );
   try {
     if (!current()) throw new StationRequestAuthorityError();
     const resolution = await resolveConversationOpen(
@@ -236,6 +236,9 @@ export function conversationOpenPatch(
               activityHint: undefined,
               backgroundTasks: [],
               liveUsage: undefined,
+              engineMcpServers: undefined,
+              engineMcpReconnect: undefined,
+              engineMcpComplete: undefined,
               toolCalls: [],
               ephemeralMessages: [],
               // A boundary read may arrive after the new child's live turn.
@@ -266,7 +269,7 @@ export function conversationOpenPatch(
         ...(!changedChild && previous?.requestedModel && !keepRequested
           ? {
               error:
-                'The saved model choice is unavailable for this Session. The current engine model is selected.',
+                "The saved model isn't available for this chat. Using the engine's current model.",
             }
           : {}),
       }
@@ -289,7 +292,7 @@ export function conversationOpenPatch(
           approvalPosture: undefined,
           approvalPostureSequence: undefined,
           error:
-            'The current Session execution binding is unavailable. Retry opening this conversation before sending.',
+            "This chat's agent isn't available. Reopen the chat before sending.",
         }
       : {};
   // #2309: the resolution's own activity read is fresher than the row's copy;

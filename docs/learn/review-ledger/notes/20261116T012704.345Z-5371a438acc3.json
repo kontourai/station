@@ -1,0 +1,7 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the lineage sentence against listedForModels (tools/list omits _delegation) and the route tests that ignore a forged context, and the new delivery bullet against session-agent-resolution.ts toolSearch.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

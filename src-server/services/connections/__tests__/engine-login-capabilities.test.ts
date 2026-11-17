@@ -10,6 +10,7 @@ import {
 import {
   CLAUDE_LOGIN_HELP_STDOUT,
   CODEX_LOGIN_HELP_STDOUT,
+  MUSE_LOGIN_HELP_STDOUT,
 } from './device-code-cli-output.js';
 
 /**
@@ -96,6 +97,39 @@ describe('a login mechanism is observed, never declared', () => {
     expect(mechanismEvidence(capabilities, 'device-code')?.argument).toBe(
       '--device-code',
     );
+  });
+
+  test('muse declares device-code from its own sentence, with no flag to pass', async () => {
+    const deps = stubDeps({
+      'muse login --help': MUSE_LOGIN_HELP_STDOUT,
+    });
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('muse');
+
+    expect(loginMechanisms(capabilities)).toEqual(['device-code']);
+    const evidence = mechanismEvidence(capabilities, 'device-code');
+    expect(evidence?.observedMatch).toBe('approve a code in your browser');
+    // `muse login` IS the device flow: Station must run it bare.
+    expect(evidence).not.toHaveProperty('argument');
+    // #1942: asked without letting the `muse` launcher download or prompt.
+    expect(deps.runCommand).toHaveBeenCalledWith('muse', ['login', '--help'], {
+      MUSE_NO_AUTO_UPDATE: '1',
+      MUSE_LOGIN: '0',
+    });
+  });
+
+  test('a muse login help that no longer says so offers no device login', async () => {
+    const deps = stubDeps({
+      'muse login --help': MUSE_LOGIN_HELP_STDOUT.replace(
+        'approve a code in your browser',
+        'sign in',
+      ),
+    });
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('muse');
+
+    expect(loginMechanisms(capabilities)).toEqual([]);
+    expect(capabilities.unavailableReason).toBeUndefined();
   });
 
   test('a flag Station has never seen is not read as a device-code login', async () => {
