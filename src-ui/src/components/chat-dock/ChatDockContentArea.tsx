@@ -78,6 +78,7 @@ interface ChatDockContentAreaProps {
   >['onExecutionModelSelect'];
   modelsLoading?: ComponentProps<typeof ChatDockBody>['modelsLoading'];
   onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
+  sendQueuedForUploads?: boolean;
   chatInput: ComponentProps<typeof ChatDockBody>['chatInput'];
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: ComponentProps<
@@ -145,6 +146,7 @@ function ChatDockContentAreaImpl({
   modelsLoading,
   chatInput,
   onComposerEnabledChange,
+  sendQueuedForUploads,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -281,6 +283,7 @@ function ChatDockContentAreaImpl({
               modelsLoading={modelsLoading}
               chatInput={chatInput}
               onComposerEnabledChange={onComposerEnabledChange}
+              sendQueuedForUploads={sendQueuedForUploads}
               secondaryActions={secondaryActions}
               onOpenAgentHandoff={onOpenAgentHandoff}
               agentHandoffTriggerRef={agentHandoffTriggerRef}

@@ -61,6 +61,7 @@ export const STATION_TOOL_FAMILY_MEMBERS = {
     'search_sessions',
     'send_message',
     'send_to_session',
+    'settle_conversation',
     'wait_session',
   ],
   Devices: [

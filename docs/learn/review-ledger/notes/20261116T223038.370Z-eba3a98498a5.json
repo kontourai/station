@@ -1,0 +1,7 @@
+{
+  "revision": "98fdc8d5773501eee7ede3273b9741fd02932169",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed against this change: the action-surface inventory swaps the removed AttachmentPreviewMenu row for ComposerAttachmentStrip and notes the wait line action; index.css only drops the dead .attachment-menu popover rules (base and mobile). No claim in this document describes those surfaces; prose unchanged.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/index.css"]}
+  ]
+}
