@@ -6,6 +6,7 @@ import {
   MAX_TRACKED_FAILURES,
   parseMainHealthState,
   renderMainHealthComment,
+  renderMainHealthState,
   summarizeRunFailure,
 } from '../main-health-comment-policy.mjs';
 
@@ -521,4 +522,29 @@ describe('recorded state is read back only when it is trustworthy', () => {
     expect(decision.action).toBe('create-comment');
     expect(decision.reason).toBe('heartbeat');
   });
+});
+
+describe('the state marker cannot be closed by a stored name', () => {
+  it.each(['--!>', '-->', '--->', '<!-- nested -->'])(
+    'keeps %s inside the comment and restores it',
+    (hostile) => {
+      const label = `job ${hostile} step (failure)`;
+      const state = {
+        lead: `lead ${hostile}`,
+        failures: [label],
+        failureCount: 1,
+        digest: failureDigest([label]),
+        redRunsSinceComment: 0,
+        commentedAt: new Date(START).toISOString(),
+      };
+      const marker = renderMainHealthState(state);
+      // The only comment terminator is the marker's own, at the end.
+      expect(marker.endsWith(' -->')).toBe(true);
+      expect(marker.slice(0, -4)).not.toMatch(/--!?>/);
+      expect(marker.slice(4)).not.toContain('<!--');
+      expect(parseMainHealthState(marker)?.failures).toEqual([
+        label.replace(/--+>/g, '->'),
+      ]);
+    },
+  );
 });

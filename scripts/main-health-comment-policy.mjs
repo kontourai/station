@@ -224,7 +224,15 @@ const MARKER_PATTERN = new RegExp(
  * @returns {string}
  */
 export function renderMainHealthState(state) {
-  return `<!-- ${MAIN_HEALTH_STATE_MARKER}: ${JSON.stringify(state)} -->`;
+  // Job and step names are remote text inside an HTML comment. Escaping
+  // every <, > and - as a JSON unicode escape means no stored string can
+  // spell -->, --!> or any other comment terminator; JSON.parse restores it.
+  const payload = JSON.stringify(state).replace(
+    /[<>-]/g,
+    (character) =>
+      `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+  return `<!-- ${MAIN_HEALTH_STATE_MARKER}: ${payload} -->`;
 }
 
 /**
@@ -934,7 +942,8 @@ export function renderTrackerBody({
   if (detailsError) {
     sections.push(
       '',
-      `Run details unavailable: ${quotedLine(detailsError)}. Open the run above.`,
+      'Run details unavailable (open the run above):',
+      ...fenced([quotedLine(detailsError)]),
     );
   }
   if (notes.length > 0) sections.push('', ...notes);

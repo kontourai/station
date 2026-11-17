@@ -1222,7 +1222,9 @@ describe('scheduled workflow failure reporting', () => {
       }),
     ).rejects.toThrow(/Tracker written without run details: HTTP 502/);
     expect(fake.issues).toHaveLength(1);
-    expect(fake.issues[0].body).toContain('Run details unavailable: HTTP 502');
+    expect(fake.issues[0].body).toContain(
+      'Run details unavailable (open the run above):\n```text\nHTTP 502 from listJobsForWorkflowRun\n```',
+    );
   });
 
   it('reports an unreadable cancel rather than guessing it was a person', async () => {
