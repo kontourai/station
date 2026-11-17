@@ -11,7 +11,7 @@
 
 .task-pr-watch__meta {
   margin: 0;
-  color: var(--k-text-secondary);
+  color: var(--k-text-muted);
 }
 
 .task-pr-watch__list {
@@ -37,6 +37,6 @@
 
 .task-pr-watch__line {
   flex-basis: 100%;
-  color: var(--k-text-secondary);
+  color: var(--k-text-muted);
   overflow-wrap: anywhere;
 }
