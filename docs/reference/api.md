@@ -1578,6 +1578,17 @@ hosted Station withdraws:
   observed (`last`, absent when the newest send was about an earlier push)
   and `sentChecks`, the failing checks sent about that head. 400 for a
   malformed identity.
+- A `PUT` whose `settings` leave out `reviewEachHead` keeps the value the
+  chat stored. Behind the `pull-request-head-review` preview as well, both
+  reads add `headReview` (`PullRequestHeadReview`): Station's newest review
+  of one of the pull request's heads, its state, required findings first,
+  and the message that carried them. `POST …/head-review/again`, body
+  `{ identity }`, runs it again on the current head (409
+  `pull_request_head_review_not_started` when it cannot start);
+  `POST …/head-review/send` sends its required findings to the agent with
+  "Address review comments" off (409
+  `pull_request_head_review_nothing_to_send` when there are none). Both
+  answer 404 while that preview is off, and follow the writer rule below.
 
 Reads need the chat's read access (`orchestration:read`). Writes need the
 operator in person (`access:manage`); Station's internal principal (an agent's

@@ -2008,9 +2008,11 @@ be presented as current by inference.
 switches, the forge observation (checks with their required flag, review
 threads with resolved and outdated state, latest reviews), the status and
 delivery history a chat reads, and pure helpers (the canonical lowercase
-identity key, the settings parser, the failing-conclusion set). Its
-`review-findings` category and `reviewEachHead` setting are reserved for a
-later per-head review. `IPullRequestProvider.getFeedbackObservation` is
+identity key, the settings parser, the failing-conclusion set).
+`pullRequestFeedbackActive` is true for a sending switch or `reviewEachHead`,
+Station's review of each new head (preview `pull-request-head-review`), whose
+newest review reads as `PullRequestHeadReview` (`headReview` on both
+views) and whose required findings go as a `review-findings` delivery. `IPullRequestProvider.getFeedbackObservation` is
 optional; a provider without it reads as `unsupported`. A `paused` status
 carries `cap` (`head` or `day`, for a round limit) and `at` when it paused.
 The attention subpath's `PullRequestFeedbackAttentionItem`

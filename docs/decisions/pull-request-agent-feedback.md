@@ -9,6 +9,8 @@ evidence:
     ref: src-server/services/pull-requests/pull-request-feedback-delivery.ts
   - kind: pr
     ref: https://github.com/kontourai/station/pull/5044
+  - kind: doc
+    ref: src-server/services/pull-requests/pull-request-head-review.ts
 ---
 
 # Forge feedback goes to the agent that owns the pull request
@@ -194,6 +196,62 @@ Choices the decisions left open, and departures from the plan:
   same notice. A pause recorded before pauses kept their start time is
   stamped once when first read.
 - Not yet built: Project defaults (and so automatic claims of a Task
-  branch's pull request, `branch-derived`). The `review-findings` category
-  and `reviewEachHead` setting exist for the later per-head review and drive
-  nothing.
+  branch's pull request, `branch-derived`), including a Project default for
+  "Review each new head".
+
+## Station's review of each new head
+
+Behind a second preview, `pull-request-head-review` (it needs
+`pull-request-agent-feedback` too), "Review each new head" runs Station's
+existing independent review (`ReviewEvidenceModule`) once per head.
+
+9. **When.** The pull request is open and not a draft, its head has held
+   still (read twice, or a turn ended after it was first seen), and the
+   owning agent is idle, not waiting on a person, with no feedback message
+   open or waiting. A claim with only this switch on is active
+   (`pullRequestFeedbackActive`): it is read, owned (a second chat is
+   refused) and its messages are placed. A write that leaves
+   `reviewEachHead` out keeps the chat's stored value.
+10. **What is reviewed.** The Project's own checkout, which a Task's
+    worktree shares objects with; Station never fetches. A head that is not
+    there reads "Head a1b2c3d isn't on this Station yet" and is tried again
+    on the next read. The base is the merge base of the head with the
+    observed base commit (when local), else `origin/<base branch>`, else the
+    Task's recorded base commit. When the previous reviewed head is an
+    ancestor and its receipt had 1 to 100 findings, it is a delta review
+    from that head; a force-push reviews from the merge base again.
+11. **Once.** The request id is `prh-` and 40 hex of a hash of the pull
+    request and head; Review again adds `:rerun:<n>`. The row is written
+    before the review starts; a review a restart left running reads "Result
+    unknown" and never runs again by itself.
+12. **Reviewers and bounds.** Repo Map selection when it is available,
+    otherwise one `correctness` reviewer by the Task code review's rule
+    (an Agent of the Project, not the implementer, that reviews read-only).
+    None: "No reviewer". One review per Project at a time, at most 10 per
+    Project in 24 hours, the module's 10-minute reviewer window and 2
+    concurrent reviewers.
+13. **What reaches the agent.** Required findings only: critical or high
+    severity with high or medium confidence, plus earlier findings the
+    reviewer found still present or regressed that pass the same filter.
+    They go as a `review-findings` block under "Address review comments",
+    or when a person chooses Send to agent; either way under the same caps
+    as the rest. The rest stay in Station. Reviewer text is made inert like
+    forge text. The head reviewer has no forge provider: it never approves,
+    merges, comments or posts a review.
+
+Departures from the plan:
+
+- The panel reads "2 required findings · Sent 1m", not "sent to agent 1m
+  ago": Station's relative time has no "ago".
+- A finding's location is an inline code span (`` `src/foo.ts:88` ``) so a
+  path cannot open markdown, and the opening line adds that review findings
+  come from Station's reviewer agents.
+- The fallback reviewer is chosen before the review starts (Station asks
+  the Repo Map selection first), so a request has one id whichever route it
+  takes. Repo Map selection may route more than 2 lenses; 2 run at a time.
+- A chat with no Agent (an engine-only chat) cannot be reviewed: the review
+  module resolves the implementer as an Agent. It reads "Not reviewed".
+- The daily limit counts reviews by when they started; Review again on the
+  same head replaces that head's row, so it counts once.
+- With the preview off, turning both sending switches off still turns the
+  claim off (one turn-off path), review included.

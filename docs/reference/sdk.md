@@ -6340,6 +6340,12 @@ refuses an answer about another pull request. An owner the reader may not
 read is `{ readable: false }`, and a 409 about such a chat reads through
 `pullRequestFeedbackOwnerOf` as `{}` (no id, no title).
 
+With the `pull-request-head-review` preview on, `reviewPullRequestHeadAgain`
+runs Station's review of the pull request's current head again and
+`sendPullRequestHeadReviewFindings` sends that review's required findings to
+the agent. `writePullRequestFeedback` takes an optional `reviewEachHead`;
+leaving it out keeps what the chat stored.
+
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from
