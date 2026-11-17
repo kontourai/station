@@ -1,0 +1,7 @@
+{
+  "revision": "896e4e2d1fe92d449f9cc14f92ad43de91f65c85",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Adds one SCAN_EXCLUSIONS entry for GET /api/projects/:slug/deletion-preview (counts only); the scan and its existing dispositions are unchanged, and api.md documents the route.","inputs":["scripts/plugin-identity-enumeration-scan.mjs"]}
+  ]
+}
