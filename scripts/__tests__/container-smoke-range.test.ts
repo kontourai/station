@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readWorkflowDocuments } from '../actionlint-gate.mjs';
 import {
@@ -114,5 +118,57 @@ describe('container smoke range', () => {
       contents: 'read',
       actions: 'read',
     });
+  });
+
+  it('writes every phase duration against the 45-minute bound, green or red', () => {
+    const document = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/container-smoke.yml',
+    )?.document as {
+      jobs: Record<
+        string,
+        {
+          'timeout-minutes'?: number;
+          steps: {
+            name?: string;
+            if?: string;
+            run?: string;
+            env?: Record<string, string>;
+          }[];
+        }
+      >;
+    };
+    const smoke = document.jobs.smoke;
+    const step = smoke.steps.find(
+      (entry) => entry.name === 'Record phase timings',
+    );
+    expect(step?.if).toBe('always()');
+    expect(Number(step?.env?.SMOKE_BOUND_MINUTES)).toBe(
+      smoke['timeout-minutes'],
+    );
+    const summary = join(
+      mkdtempSync(join(tmpdir(), 'smoke-timings-')),
+      'summary.md',
+    );
+    const now = Math.floor(Date.now() / 1000);
+    // A run that died inside the container smoke: the ingress phase never started.
+    execFileSync('bash', ['-c', String(step?.run)], {
+      env: {
+        PATH: process.env.PATH,
+        GITHUB_STEP_SUMMARY: summary,
+        SMOKE_BOUND_MINUTES: '45',
+        SMOKE_T_START: String(now - 1500),
+        SMOKE_T_DEPENDENCIES: String(now - 1440),
+        SMOKE_T_CHROMIUM: String(now - 1200),
+        SMOKE_T_SMOKE: String(now - 1140),
+      },
+      timeout: 10_000,
+    });
+    const text = readFileSync(summary, 'utf8');
+    expect(text).toContain('| Checkout and setup | 1m 00s |');
+    expect(text).toContain('| Install dependencies | 4m 00s |');
+    expect(text).toContain('| Install Chromium | 1m 00s |');
+    expect(text).toMatch(/\| Build, pair, persist, clean up \| 19m 0\ds \|/);
+    expect(text).toContain('| Public-ingress smoke | not reached |');
+    expect(text).toMatch(/Total 25m 0\ds of the 45-minute bound \(55%\)\./);
   });
 });

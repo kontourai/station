@@ -1257,8 +1257,11 @@ describe('CI verification workflow contracts', () => {
       (smoke?.steps ?? []).map((step) => step.run ?? '').join('\n'),
     ).not.toContain('DOCKER_CONFIG');
     expect(
-      (smoke?.steps ?? []).some(
-        (step) => step.run === 'scripts/container-smoke.sh',
+      (smoke?.steps ?? []).some((step) =>
+        (step.run ?? '')
+          .split('\n')
+          .map((line) => line.trim())
+          .includes('scripts/container-smoke.sh'),
       ),
     ).toBe(true);
     // 20-25 minutes on the fleet host; the bound leaves the hosted image

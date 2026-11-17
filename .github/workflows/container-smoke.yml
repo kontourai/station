@@ -88,6 +88,7 @@ jobs:
         # Disk is the hosted runner's tightest resource for an image build;
         # print it so a disk-full failure is diagnosable from the log alone.
         run: |
+          echo "SMOKE_T_START=$(date +%s)" >> "$GITHUB_ENV"
           df -h / "$RUNNER_TEMP"
           docker version --format 'docker {{.Server.Version}}'
           docker compose version
@@ -98,18 +99,56 @@ jobs:
         uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with: { install: false }
 
-      - run: npm run dependencies:ci
+      - name: Install dependencies
+        run: |
+          echo "SMOKE_T_DEPENDENCIES=$(date +%s)" >> "$GITHUB_ENV"
+          npm run dependencies:ci
       - name: Install repo-pinned Chromium
         run: |
+          echo "SMOKE_T_CHROMIUM=$(date +%s)" >> "$GITHUB_ENV"
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
           PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
       - name: Build, pair, persist, and clean up
         env:
           STATION_RELEASE_SHA: ${{ github.sha }}
           STATION_RELEASE_REF: v0.0.0-rc.1
-        run: scripts/container-smoke.sh
+        run: |
+          echo "SMOKE_T_SMOKE=$(date +%s)" >> "$GITHUB_ENV"
+          scripts/container-smoke.sh
       - name: Verify public-ingress protocol and port isolation
-        run: node deploy/public-ingress/smoke.mjs
+        run: |
+          echo "SMOKE_T_INGRESS=$(date +%s)" >> "$GITHUB_ENV"
+          node deploy/public-ingress/smoke.mjs
+      # Hosted run time is not yet measured: every run, green or red, writes
+      # how long each phase took against the 45-minute job bound, so the
+      # first hosted runs say whether the bound is right.
+      - name: Record phase timings
+        if: always()
+        env:
+          SMOKE_BOUND_MINUTES: "45"
+        run: |
+          now=$(date +%s)
+          phase() {
+            if [ -z "$2" ]; then printf '| %s | not reached |\n' "$1"; return; fi
+            end=${3:-$now}
+            printf '| %s | %dm %02ds |\n' "$1" $(( (end - $2) / 60 )) $(( (end - $2) % 60 ))
+          }
+          {
+            echo '### Container smoke phase timings'
+            echo
+            echo '| Phase | Duration |'
+            echo '| --- | --- |'
+            phase 'Checkout and setup' "$SMOKE_T_START" "${SMOKE_T_DEPENDENCIES:-$now}"
+            phase 'Install dependencies' "$SMOKE_T_DEPENDENCIES" "${SMOKE_T_CHROMIUM:-$now}"
+            phase 'Install Chromium' "$SMOKE_T_CHROMIUM" "${SMOKE_T_SMOKE:-$now}"
+            phase 'Build, pair, persist, clean up' "$SMOKE_T_SMOKE" "${SMOKE_T_INGRESS:-$now}"
+            phase 'Public-ingress smoke' "$SMOKE_T_INGRESS" "$now"
+            echo
+            if [ -n "$SMOKE_T_START" ]; then
+              total=$(( now - SMOKE_T_START ))
+              printf 'Total %dm %02ds of the %s-minute bound (%d%%).\n' $(( total / 60 )) $(( total % 60 )) "$SMOKE_BOUND_MINUTES" $(( total * 100 / (SMOKE_BOUND_MINUTES * 60) ))
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
       # A red smoke with no trace or screenshot is undiagnosable from logs
       # alone (#917's investigation had zero artifacts to read).
       - name: Upload Playwright results on failure
