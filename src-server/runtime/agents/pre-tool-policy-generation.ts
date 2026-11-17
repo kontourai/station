@@ -25,15 +25,46 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
-/** JSON with object keys sorted at every depth, so key order is no difference. */
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
+/**
+ * Arrays whose order binds nothing: sets of names and ids. A probe that
+ * reports the same tools in another order, or an `autoApprove` list
+ * reordered, is not a change to what a launch binds. Ordered arrays (a
+ * command's `args`) keep their order.
+ */
+const SET_VALUED_KEYS = new Set([
+  'toolNames',
+  'disabledTools',
+  'allowedTools',
+  'autoApprove',
+  'askBeforeUse',
+  'unattendedAutoApprove',
+  'available',
+  'mcpServers',
+  'skills',
+  'provideToolServers',
+  'provideSkills',
+]);
+
+/**
+ * JSON with object keys sorted at every depth, so key order is no
+ * difference, and set-valued arrays sorted.
+ */
+function canonical(value: unknown, key?: string): unknown {
+  if (Array.isArray(value)) {
+    const items = value.map((item) => canonical(item));
+    return key !== undefined && SET_VALUED_KEYS.has(key)
+      ? items
+          .map((item) => [JSON.stringify(item) ?? '', item] as const)
+          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+          .map(([, item]) => item)
+      : items;
+  }
   if (value && typeof value === 'object') {
     const source = value as Record<string, unknown>;
     return Object.fromEntries(
       Object.keys(source)
         .sort()
-        .map((key) => [key, canonical(source[key])]),
+        .map((name) => [name, canonical(source[name], name)]),
     );
   }
   return value;

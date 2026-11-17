@@ -828,6 +828,67 @@ describe('external engine pre-tool policy generation', () => {
     },
   );
 
+  test('a credential-recovery cycle and a probe refresh replace no running session; a profile switch does', async () => {
+    const w = world('claude');
+    const profiles = [{ ref: 'profile-a' }, { ref: 'profile-b' }];
+    w.config.appConfig.agentConnections.claude.credentialRecovery = {
+      profiles,
+      activeProfileRef: 'profile-a',
+    };
+    w.config.agents.set('claude', {
+      name: 'Claude',
+      prompt: 'Help the person.',
+      tools: {
+        mcpServers: ['github'],
+        mcpMode: 'replace',
+        autoApprove: ['Bash', 'mcp__github__*'],
+      },
+    });
+    w.config.integrations.set('github', {
+      ...w.config.integrations.get('github'),
+      probe: {
+        status: 'ok',
+        toolNames: ['list', 'delete_repo'],
+        checkedAt: '2026-11-16T23:00:00.000Z',
+      },
+    });
+    await w.start('conversation');
+    const recovery = (fields: Record<string, unknown>) =>
+      w.mutate(() => {
+        w.config.appConfig.agentConnections.claude.credentialRecovery = {
+          profiles,
+          activeProfileRef: 'profile-a',
+          ...fields,
+        };
+      });
+    // A recovery cycle that stages and rolls back on the active profile.
+    for (const outcome of ['staged', 'failed', 'rolled_back']) {
+      await recovery({ outcome });
+      expect(await w.call('conversation'), outcome).toEqual(allowed);
+    }
+    // A probe refresh: same tools in another order, a new timestamp.
+    await w.mutate(() =>
+      w.config.integrations.set('github', {
+        ...w.config.integrations.get('github'),
+        probe: {
+          status: 'ok',
+          toolNames: ['delete_repo', 'list'],
+          checkedAt: '2026-11-16T23:30:00.000Z',
+        },
+      }),
+    );
+    expect(await w.call('conversation')).toEqual(allowed);
+    expect(w.stops).toEqual([]);
+    // A real switch to another credential profile is a different launch.
+    await w.mutate(() => {
+      w.config.appConfig.agentConnections.claude.credentialRecovery = {
+        profiles,
+        activeProfileRef: 'profile-b',
+      };
+    });
+    expect(await w.call('conversation')).toMatchObject(replaced);
+  });
+
   test('a deleted Agent is a replaced one', async () => {
     const w = world('acp');
     await w.start('conversation');

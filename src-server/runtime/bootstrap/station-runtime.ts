@@ -187,6 +187,7 @@ import {
   createCredentialProfileAppHomeEnvResolver,
   credentialProfileEnvForHome,
 } from '../../providers/app-home/credential-profile-env.js';
+import { normalizeCredentialProfileRegistry } from '../../providers/app-home/credential-profile-registry.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
@@ -1545,10 +1546,23 @@ export class StationRuntime {
       const connections = this.providerService.listProviderConnections();
       const settings = config.agentConnections?.[input.provider];
       try {
-        // The settings too: they also carry the connection's default
-        // Skills and environment the engine was spawned with.
+        // Only what a launch binds: the connection config (environment,
+        // config home, default Skills, proxy choice), the proxy launch it
+        // resolves, and the active credential profile. Recovery bookkeeping
+        // (`outcome`, receipts, profile status) changes during an ordinary
+        // recovery cycle and binds nothing, so it would only restart
+        // sessions for no reason.
+        const registry = normalizeCredentialProfileRegistry(
+          settings?.credentialRecovery,
+        );
         return {
-          settings,
+          config: settings?.config,
+          // The active profile and its record (its environment overlay),
+          // as the spawn resolves them.
+          activeProfile: registry.profiles.find(
+            (profile) => profile.ref === registry.activeProfileRef,
+          ),
+          activeProfileRef: registry.activeProfileRef,
           launch: engineProxyLaunch(
             input.provider,
             settings?.config,
