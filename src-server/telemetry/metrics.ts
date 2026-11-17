@@ -1676,6 +1676,27 @@ export const workloadScopeCleanupBacklog = meter.createObservableGauge(
   },
 );
 
+/**
+ * Kernel OOM kills inside workload scopes (#5081), counted once each by where
+ * Station first saw them. Attributes are closed: `source` and `scope_kind`;
+ * never a unit, session or process name.
+ */
+export const workloadScopeOomKills = meter.createCounter(
+  'station.workload.scope.oom_kills',
+  {
+    description:
+      "Kernel OOM kills inside workload scopes by source ('live': the 1 s poll saw the scope's count rise while it ran | 'close': first seen when the scope closed) and scope_kind ('engine' | 'command')",
+  },
+);
+/** Workload scope memory-pressure transitions (#5081). */
+export const workloadScopeMemoryPressure = meter.createCounter(
+  'station.workload.scope.memory_pressure',
+  {
+    description:
+      "Workload scope memory-pressure transitions by transition ('enter': working set reached the configured share of memory.max | 'exit') and scope_kind ('engine' | 'command')",
+  },
+);
+
 // ── MCP lifecycle ──
 export const mcpLifecycle = meter.createCounter('station.mcp.lifecycle', {
   description: 'MCP connection lifecycle events',

@@ -5112,7 +5112,10 @@ engine launch names, which the [workload routes](../../src-server/routes/system/
 and the [workload_status tool](../../src-server/tools/station-control-workload-tools.ts)
 read from cgroup v2 files, including each scope's kernel `oom_kill` count
 (scopes launch with `OOMPolicy=continue`, so a command, not the engine, is
-normally killed). Orchestration's first-turn composition adds the
+normally killed). The launcher's 1 s poll logs each kill as it sees it with
+the scope's largest processes, reports near-cap memory pressure on entering
+and leaving it, and raises an engine's commands' `oom_score_adj` above the
+engine's so the kernel takes a command first. Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
