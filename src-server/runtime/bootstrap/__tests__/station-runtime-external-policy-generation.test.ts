@@ -748,6 +748,21 @@ describe('external engine pre-tool policy generation', () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
+  test('a change to an Agent field the resolved definition does not carry still replaces the session', async () => {
+    const w = world('claude');
+    await w.start('conversation');
+    const spec = w.config.agents.get('claude')!;
+    // `execution` is read by the start (model and engine binding), not
+    // carried on the resolved definition.
+    await w.mutate(() =>
+      w.config.agents.set('claude', {
+        ...spec,
+        execution: { modelId: 'claude-other' },
+      } as AgentSpec),
+    );
+    expect(await w.call('conversation')).toMatchObject(replaced);
+  });
+
   test('a deleted Agent is a replaced one', async () => {
     const w = world('acp');
     await w.start('conversation');
