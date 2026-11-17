@@ -977,17 +977,29 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     config: ACPConnectionConfig,
   ): Promise<ProviderSession> {
     this.pumpInner();
-    if (isOpenCodeResumeCursor(input.resumeCursor))
-      openCodeSteerCustody(
-        this.options.managedWorkspaceHomeDir ?? resolveHomeDir(),
-        input.resumeCursor.bindingKey,
-        input.resumeCursor.sessionId,
-      ).assertClear();
     const acpInput = this.acpStartInput(input, config);
     const bindingKey = this.bindingKey(
       await (this.options.launchEnv ?? (() => augmentedSpawnEnv()))(),
       input,
     );
+    if (
+      isOpenCodeResumeCursor(input.resumeCursor) &&
+      input.resumeCursor.bindingKey !== bindingKey
+    )
+      throw new Error(
+        'This OpenCode session belongs to another OpenCode data home or profile, so it cannot resume here.',
+      );
+    const resumedId = isOpenCodeResumeCursor(input.resumeCursor)
+      ? input.resumeCursor.sessionId
+      : isAcpResumeCursor(input.resumeCursor)
+        ? input.resumeCursor.acpSessionId
+        : undefined;
+    if (resumedId)
+      openCodeSteerCustody(
+        this.options.managedWorkspaceHomeDir ?? resolveHomeDir(),
+        bindingKey,
+        resumedId,
+      ).assertClear();
     this.overAcp.add(input.threadId);
     let session: ProviderSession;
     try {

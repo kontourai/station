@@ -2547,14 +2547,16 @@ values before exposing a profile.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
 Current Session summaries and conversation-open execution carry the registered
-adapter's `durability` declaration at read time, except that a Session its
+adapter's `durability` declaration at read time, including a live
+`sessionDurability` override when its transport differs. A Session its
 adapter says cannot steer (`canSteerTurn` false) reports `steerPlacement`
 `none`. The live composer consumes that
 observation rather than resolving a provider-name table; absence stays unknown.
 Claude, Codex and Muse declare their live steering channels as native (Muse's
 is `muse serve`'s; an exec-fallback Session refuses a steer). ACP discloses a
-connection-dependent orchestration-command fallback that may interrupt and
-reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
+connection-dependent native channel or interrupting fallback. Explicit Steer
+on the fallback cancels, waits for the prompt to finish, and re-prompts with
+a continuation instruction; Queue remains its default. Live steering does
 not imply restart continuation: the inbox persists text and its expected head
 before claiming a handoff, but an unacknowledged claim remains unknown and is
 never automatically replayed. Station-owned steering is emulated at an observed

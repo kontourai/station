@@ -16,6 +16,8 @@ evidence:
   - kind: doc
     ref: src-server/providers/adapters/opencode-native-mcp.ts
   - kind: doc
+    ref: src-server/services/acp/opencode-steer-custody.ts
+  - kind: doc
     ref: src-server/services/acp/opencode-approval-native.ts
   - kind: doc
     ref: src-server/security/managed-engine-limits.ts
@@ -158,9 +160,10 @@ After a native feed gap, only the exact steer message in history establishes
 delivery. Absence from the inbox alone is not an acknowledgement. If withdrawing
 a late steer fails, the session accepts no successor work and reports that the
 input may remain queued. Before each steer POST, Station records its id in a
-crash-safe journal under its runtime home (`engine-state/opencode-steers/`),
+[crash-safe journal](../../src-server/services/acp/opencode-steer-custody.ts) under its runtime home (`engine-state/opencode-steers/`),
 scoped by the native data-home binding and session id. It clears the id only
-after a confirmed POST and delivery or withdrawal. An uncertain POST keeps
+after an exact delivery receipt, or a confirmed POST followed by confirmed
+withdrawal. An uncertain POST keeps
 the record even if a subsequent DELETE says 404: the POST may still finish
 later. A session with such a record cannot resume on either transport; start
 a new chat. The journal stores ids, never message text. A resume also refuses

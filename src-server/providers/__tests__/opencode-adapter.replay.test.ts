@@ -531,6 +531,20 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(resumed.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(
       0,
     );
+    const fallback = await setup(
+      { scenario: 'basic' },
+      { managedWorkspaceHomeDir: home, nativeEnabled: () => false },
+    );
+    const cursor = session.resumeCursor as Record<string, unknown>;
+    await expect(
+      fallback.start(undefined, {
+        resumeCursor: { ...cursor, bindingKey: 'forged-home' },
+      }),
+    ).rejects.toThrow('another OpenCode data home');
+    await expect(
+      fallback.start(undefined, { resumeCursor: cursor }),
+    ).rejects.toThrow('unconfirmed steering input');
+    expect(fallback.inner()?.starts ?? []).toEqual([]);
   });
 
   test.each([204, 500])(
