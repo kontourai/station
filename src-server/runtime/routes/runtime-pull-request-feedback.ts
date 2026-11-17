@@ -595,6 +595,7 @@ export function composePullRequestFeedbackRuntime(
       session,
       mayContinue: (conversationId, userId) =>
         inbox.mayContinue(conversationId, userId),
+      headReviewEnabled,
       logger: deps.logger,
     });
   let headReviewDeps: HeadReviewDeps | undefined;

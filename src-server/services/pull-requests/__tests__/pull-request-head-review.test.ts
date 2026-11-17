@@ -868,8 +868,14 @@ describe('the head review routes', () => {
       logger: { warn: vi.fn() },
     })!;
     closers.push(() => void runtime.close());
-    const [ownership, delivery, refresh, routeAccess, taskBranches, headReview] =
-      runtime.routeArgs;
+    const [
+      ownership,
+      delivery,
+      refresh,
+      routeAccess,
+      taskBranches,
+      headReview,
+    ] = runtime.routeArgs;
     const app = new Hono().route(
       '/api/pull-request-feedback',
       createPullRequestFeedbackRoutes(

@@ -30,6 +30,7 @@ import {
   type PullRequestFeedbackSettings,
   type PullRequestFeedbackUnavailableCause,
   parsePullRequestFeedbackSettings,
+  pullRequestFeedbackActive,
 } from '@kontourai/station-contracts/pull-request-feedback';
 
 /** Deliveries kept per pull request; the oldest settled go past it. */
@@ -707,8 +708,12 @@ export class PullRequestFeedbackStore {
     return { settings, setBy: str(row, 'set_by'), setAt: str(row, 'set_at') };
   }
 
-  /** Whether any Project's defaults send anything: discovery's cheap gate. */
-  anyProjectDefaultsOn(): boolean {
+  /**
+   * Whether any Project's defaults do anything: discovery's cheap gate.
+   * `headReview`: the head review preview, so review alone counts only
+   * while it is on.
+   */
+  anyProjectDefaultsOn(headReview: boolean): boolean {
     return this.db
       .prepare('SELECT settings FROM project_defaults')
       .all()
@@ -716,10 +721,7 @@ export class PullRequestFeedbackStore {
         const settings = parsePullRequestFeedbackSettings(
           JSON.parse(str(row, 'settings')),
         );
-        return (
-          !!settings &&
-          (settings.fixFailingChecks || settings.addressReviewComments)
-        );
+        return !!settings && pullRequestFeedbackActive(settings, headReview);
       });
   }
 
@@ -753,6 +755,8 @@ export class PullRequestFeedbackStore {
   projectDefaultClaimsOn(
     projectId: string,
     canRead: (conversationId: string) => boolean,
+    /** The head review preview: a review-only claim counts only while on. */
+    headReview: boolean,
   ): number {
     return this.db
       .prepare(
@@ -764,8 +768,7 @@ export class PullRequestFeedbackStore {
       .map(readClaim)
       .filter(
         (claim) =>
-          (claim.settings.fixFailingChecks ||
-            claim.settings.addressReviewComments) &&
+          pullRequestFeedbackActive(claim.settings, headReview) &&
           claim.condition?.state !== 'closed' &&
           canRead(claim.conversationId),
       ).length;

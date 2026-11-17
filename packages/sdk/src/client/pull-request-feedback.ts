@@ -206,7 +206,8 @@ export async function getProjectPullRequestFeedbackDefaults(
 
 /**
  * Set a Project's defaults (this Station's owner only). They apply to pull
- * requests set up from now on, never to one already set up.
+ * requests set up from now on, never to one already set up. Leaving
+ * `reviewEachHead` out keeps the stored value.
  */
 export async function writeProjectPullRequestFeedbackDefaults(
   apiBase: string,
@@ -214,7 +215,8 @@ export async function writeProjectPullRequestFeedbackDefaults(
   settings: Pick<
     PullRequestFeedbackSettings,
     'fixFailingChecks' | 'addressReviewComments'
-  >,
+  > &
+    Partial<Pick<PullRequestFeedbackSettings, 'reviewEachHead'>>,
   options?: ClientRequestOptions,
 ): Promise<ProjectPullRequestFeedbackDefaults> {
   return projectDefaultsOf(
@@ -223,6 +225,9 @@ export async function writeProjectPullRequestFeedbackDefaults(
         settings: {
           fixFailingChecks: settings.fixFailingChecks,
           addressReviewComments: settings.addressReviewComments,
+          ...(settings.reviewEachHead === undefined
+            ? {}
+            : { reviewEachHead: settings.reviewEachHead }),
         },
       }),
     ),
