@@ -892,8 +892,10 @@ jobs:
       # The source policy reads these two step names and conclusions from the
       # jobs API: a head whose newest run deferred the heavy checks is
       # reported pending, never verified (scripts/source-verification-policy.mjs).
+      # The deferral marker also runs after a failure, so a failed cheap-only
+      # run cannot take a verified head's success away.
       - name: Record heavy checks deferred until armed
-        if: ${{ needs.pr-admission.outputs.heavy == 'false' }}
+        if: ${{ always() && needs.pr-admission.outputs.heavy == 'false' }}
         run: echo "heavy checks deferred (STATION_PR_HEAVY_CHECKS=when-armed); they run once the pull request is armed"
 
       - name: Record heavy checks ran

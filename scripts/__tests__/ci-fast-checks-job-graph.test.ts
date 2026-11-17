@@ -2178,7 +2178,7 @@ describe('heavy pull-request checks switch under GitHub job-status semantics', (
                 throw new Error(`unmodelled ${path.join('.')}`);
               return state.outputs.get(need)?.[name] ?? '';
             },
-            {},
+            { always: () => true },
           ),
         ),
       )

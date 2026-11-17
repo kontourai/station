@@ -545,7 +545,7 @@ export const HEAVY_CHECKS_RUN_IF =
   "${{ needs.pr-admission.outputs.heavy != 'false' }}";
 export const HEAVY_CHECKS_DEFERRED_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ needs.pr-admission.outputs.heavy == 'false' }}";
+  "${{ always() && needs.pr-admission.outputs.heavy == 'false' }}";
 export const HEAVY_CHECKS_DEFERRED_RUN =
   'echo "heavy checks deferred (STATION_PR_HEAVY_CHECKS=when-armed); they run once the pull request is armed"';
 export const HEAVY_CHECKS_RAN_RUN = 'echo "heavy checks ran on this head"';

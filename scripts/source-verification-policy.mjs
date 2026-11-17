@@ -189,6 +189,73 @@ function heavyVerdict(aggregate) {
   return pending('Heavy-check evidence is incomplete for the newest run');
 }
 
+/**
+ * A `PR armed` run whose `PR source admission` job has not completed (it is
+ * queued, being evaluated, or skipped because the switch is off or the
+ * candidate is a fork) has made no source decision, so it neither proves nor
+ * refutes the head and the older runs decide. Ignoring it can never verify a
+ * head that the older runs did not already verify.
+ */
+function uninformativeArmRun(run, jobs) {
+  if (run.display_title !== ARMED_RUN_NAME) return false;
+  return !jobs.some(
+    (job) =>
+      job?.name === 'PR source admission' &&
+      job.status === 'completed' &&
+      job.conclusion !== 'skipped',
+  );
+}
+
+/** The aggregate recorded that this run deferred the heavy checks. */
+function cheapOnlyRun(jobs) {
+  const steps = proofJob(jobs, ['fast-checks', 'Fast checks execution'])?.steps;
+  return (
+    Array.isArray(steps) &&
+    steps.some(
+      (step) =>
+        step?.name === HEAVY_DEFERRED_STEP && step.conclusion === 'success',
+    )
+  );
+}
+
+/**
+ * Newest-first proofs of one owner. The newest run decides, and a failure
+ * among runs tied at that start time wins, as before the switch. The one
+ * exception: once the head has a successful proof on a compatible base, a
+ * newer run that provably deferred the heavy checks (its aggregate ran the
+ * deferral marker, which also runs after a failure) is ignored, so a re-run
+ * of an older cheap run or a cheap re-arm run can neither pull a verified head
+ * back to pending nor fail it. Any other newer run, in progress, unknown,
+ * failed or cancelled, still decides: a run that may be heavy is never
+ * assumed to pass.
+ */
+function selectVerdict(proofs) {
+  const verified = proofs.find(
+    (entry) => entry.compatibleBase && entry.proof.state === 'success',
+  );
+  const considered = verified
+    ? proofs.filter(
+        (entry) =>
+          entry === verified ||
+          !entry.cheapOnly ||
+          entry.started < verified.started,
+      )
+    : proofs;
+  const newest = considered[0].started;
+  const tied = considered
+    .filter((entry) => entry.started === newest)
+    .map((entry) =>
+      entry.compatibleBase
+        ? entry.proof
+        : pending('Source base diverged from the live main target'),
+    );
+  return (
+    tied.find((proof) => proof.state === 'failure') ??
+    tied.find((proof) => proof.state === 'pending') ??
+    tied[0]
+  );
+}
+
 function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   const plan = jobState(proofJob(jobs, 'fast-checks plan'));
   const statics = jobState(proofJob(jobs, 'fast-checks statics'));
@@ -493,14 +560,12 @@ export async function reconcileSourceVerification({
       const verdicts = [];
       for (const owner of owners) {
         let verdict = pending('No source proof for an open exact-head owner');
-        let selectedTime;
-        const tiedProofs = [];
+        const proofs = [];
         for (const run of attempts.filter(
           (run) =>
             run.event === 'pull_request_target' && associatedOwner(run, owner),
         )) {
           const started = Date.parse(run.run_started_at);
-          if (selectedTime !== undefined && started < selectedTime) break;
           const sourceBase = associatedOwner(run, owner).base.sha;
           const liveBase = owner.base.sha;
           let compatibleBase = sourceBase === liveBase;
@@ -536,20 +601,15 @@ export async function reconcileSourceVerification({
             proofRows(jobs),
             verifiedMetadata || null,
           ]);
-          if (proof) {
-            selectedTime = started;
-            tiedProofs.push(
-              compatibleBase
-                ? proof
-                : pending('Source base diverged from the live main target'),
-            );
-          }
+          if (proof && !uninformativeArmRun(run, jobs))
+            proofs.push({
+              started,
+              proof,
+              compatibleBase,
+              cheapOnly: cheapOnlyRun(jobs),
+            });
         }
-        if (tiedProofs.length)
-          verdict =
-            tiedProofs.find((proof) => proof.state === 'failure') ??
-            tiedProofs.find((proof) => proof.state === 'pending') ??
-            tiedProofs[0];
+        if (proofs.length) verdict = selectVerdict(proofs);
         verdicts.push(verdict);
       }
       // Merge-group heads do not own live PR heads. Only a genuine synthesized

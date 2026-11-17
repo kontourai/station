@@ -1190,3 +1190,188 @@ describe('publisher admission for PR: CI lifecycle events', () => {
     ).toBe(false);
   });
 });
+
+/**
+ * STATION_PR_HEAVY_CHECKS proof selection. Run 10 of the fixture is a
+ * completed, successful source run of the head (its aggregate has no heavy
+ * markers, so it ran everything, as every run did before the switch).
+ */
+describe('a verified head stays verified against cheap-only and arming runs', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const later = (
+    state: ReturnType<typeof fixture>['state'],
+    id: number,
+    shape: {
+      title?: string;
+      status?: string;
+      conclusion?: string | null;
+      jobs: Job[];
+      attempt?: number;
+    },
+  ) => {
+    state.runs.unshift({
+      ...structuredClone(run),
+      id,
+      run_attempt: shape.attempt ?? 1,
+      run_started_at: `2026-10-16T12:0${id - 10}:00Z`,
+      display_title: shape.title ?? 'Source verification',
+      name: shape.title ?? 'Source verification',
+      status: shape.status ?? 'completed',
+      conclusion: shape.conclusion === undefined ? 'success' : shape.conclusion,
+    });
+    state.jobs.set(id, shape.jobs);
+  };
+  const job = (
+    id: number,
+    name: string,
+    status: string,
+    conclusion: string | null,
+    steps?: Array<{ name: string; conclusion: string }>,
+  ): Job => ({ id, name, status, conclusion, ...(steps ? { steps } : {}) });
+  const source = (
+    aggregate: string,
+    markers: Array<[string, string]>,
+    admission = true,
+  ): Job[] => [
+    ...(admission
+      ? [job(90, 'PR source admission', 'completed', 'success')]
+      : []),
+    job(91, 'fast-checks plan', 'completed', 'success'),
+    job(
+      92,
+      'fast-checks statics',
+      'completed',
+      aggregate === 'success' ? 'success' : 'failure',
+    ),
+    job(93, 'Fork pull-request smoke', 'completed', 'skipped'),
+    job(
+      94,
+      'Fast checks execution',
+      'completed',
+      aggregate,
+      markers.map(([name, conclusion]) => ({ name, conclusion })),
+    ),
+  ];
+  const armedSkipped = [
+    'PR source admission',
+    'fast-checks plan',
+    'fast-checks statics',
+    'Fast checks execution',
+    'Fork pull-request smoke',
+  ].map((name, index) => job(80 + index, name, 'completed', 'skipped', []));
+
+  // Verifier case F1: the switch is off, the push run verified the head, and
+  // an arming run is created. Whenever a reconcile runs, the head reads
+  // success: while that run is queued with no jobs, while it is evaluated,
+  // and once every job skipped (no further event republishes it).
+  test.each([
+    ['queued with no jobs', 'queued', null, [] as Job[]],
+    [
+      'being evaluated',
+      'in_progress',
+      null,
+      [
+        job(80, 'PR source admission', 'completed', 'skipped'),
+        job(81, 'fast-checks plan', 'queued', null),
+        job(82, 'Fast checks execution', 'queued', null),
+      ],
+    ],
+    ['completed with every job skipped', 'completed', 'skipped', armedSkipped],
+  ] as const)(
+    'switch off: an arming run %s never displaces the verified push run',
+    async (_name, status, conclusion, jobs) => {
+      const { state, execute } = fixture();
+      later(state, 11, {
+        title: 'PR armed',
+        status,
+        conclusion,
+        jobs: [...jobs],
+      });
+      expect((await execute()).state).toBe('success');
+    },
+  );
+
+  test.each([
+    [
+      'a newer cheap re-run ("Re-run failed jobs" keeps heavy=false)',
+      {
+        jobs: source('success', [[HEAVY_DEFERRED_STEP, 'success']]),
+        attempt: 2,
+      },
+      'success',
+    ],
+    [
+      'a newer cheap run that failed (its deferral marker still ran)',
+      {
+        conclusion: 'failure',
+        jobs: source('failure', [[HEAVY_DEFERRED_STEP, 'success']]),
+      },
+      'success',
+    ],
+    [
+      "a newer run still in progress (it may be heavy: today's rule)",
+      {
+        status: 'in_progress',
+        conclusion: null,
+        jobs: [job(91, 'fast-checks plan', 'in_progress', null)],
+      },
+      'pending',
+    ],
+    [
+      "a newer non-arming run with every source job skipped (today's rule)",
+      { conclusion: 'skipped', jobs: armedSkipped.slice(1) },
+      'pending',
+    ],
+    [
+      'a newer heavy run that failed',
+      {
+        conclusion: 'failure',
+        jobs: source('failure', [
+          [HEAVY_DEFERRED_STEP, 'skipped'],
+          [HEAVY_RAN_STEP, 'skipped'],
+        ]),
+      },
+      'failure',
+    ],
+    [
+      'a newer cancelled run that never recorded a deferral',
+      { conclusion: 'cancelled', jobs: source('cancelled', []) },
+      'failure',
+    ],
+  ] as const)(
+    '%s leaves a verified head %s',
+    async (_name, shape, expected) => {
+      const { state, execute } = fixture();
+      later(state, 11, { ...shape, jobs: [...shape.jobs] });
+      expect((await execute()).state).toBe(expected);
+    },
+  );
+
+  test('without an earlier verified run, the newest cheap run still reads pending', async () => {
+    const { state, execute } = fixture();
+    state.jobs.set(10, source('success', [[HEAVY_DEFERRED_STEP, 'success']]));
+    later(state, 11, {
+      title: 'PR armed',
+      status: 'in_progress',
+      conclusion: null,
+      jobs: [
+        job(90, 'PR source admission', 'completed', 'success'),
+        job(91, 'fast-checks plan', 'in_progress', null),
+      ],
+    });
+    expect((await execute()).state).toBe('pending');
+  });
+
+  test('a verified proof on a base the live target no longer contains is not kept', async () => {
+    const { state, execute } = fixture();
+    state.comparison = {
+      status: 'diverged',
+      merge_base_commit: { sha: advanced },
+    };
+    state.owners[0].base.sha = advanced;
+    later(state, 11, {
+      jobs: source('success', [[HEAVY_DEFERRED_STEP, 'success']]),
+    });
+    expect((await execute()).state).toBe('pending');
+  });
+});
