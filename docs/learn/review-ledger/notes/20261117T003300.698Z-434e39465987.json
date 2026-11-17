@@ -1,0 +1,7 @@
+{
+  "revision": "6959ff2d3dc94434d27f416f8e550cd58382324a",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Added the runtime-generation paragraph: Station-engine hooks are replaced per Agent rebuild; external engine sessions keep their bound policy, re-read their own Agent on any configuration change, continue when unchanged, refuse when changed or deleted, and the next message starts a successor. Checked against pre-tool-policy-generation.ts, station-runtime.ts and conversation-lineage.ts.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}
