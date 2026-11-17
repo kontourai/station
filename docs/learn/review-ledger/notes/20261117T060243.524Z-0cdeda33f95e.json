@@ -1,0 +1,7 @@
+{
+  "revision": "beb7d165937c061af8f31f3916c8e39341652fc2",
+
+  "notes": [
+    {"path":"docs/privacy-policy.md","note":"Re-checked after the patch was regenerated with one context line: the lock diff still only moves the @voltagent/core 2.11.0 patch hash (now 4abc3212) in patchedDependencies and the snapshot keys embedding it; no package version changes. The statements on this page are unchanged.","inputs":["docs/privacy-policy.md","pnpm-lock.yaml#/snapshots"]}
+  ]
+}
