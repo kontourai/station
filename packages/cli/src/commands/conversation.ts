@@ -1,5 +1,8 @@
 import { writeFileSync } from 'node:fs';
-import { forkConversation } from '@kontourai/station-sdk/client';
+import {
+  forkConversation,
+  setConversationWorkState,
+} from '@kontourai/station-sdk/client';
 import {
   getResolvedApiBase,
   optionalValueFlag,
@@ -22,6 +25,11 @@ import { terminalSafeText } from './terminal-safe.js';
  * route and fetcher the web app's fork uses (`forkConversation`), as the
  * person: the same request Station Control's `fork_conversation` makes for
  * an agent, without that tool's scope rule, which holds only agents.
+ *
+ * `station conversation settle|reopen <conversationId>` moves it between
+ * Open and Settled in your own inbox (the Open and Settled inbox preview),
+ * through the route the inbox row and Station Control's
+ * `settle_conversation` use.
  */
 export async function runConversationCommand(
   apiBase: string,
@@ -29,9 +37,11 @@ export async function runConversationCommand(
 ): Promise<void> {
   const verb = parsed.positionals[0];
   if (verb === 'fork') return runConversationFork(apiBase, parsed);
+  if (verb === 'settle' || verb === 'reopen')
+    return runConversationResolution(apiBase, parsed, verb === 'settle');
   if (verb !== 'export') {
     throw new Error(
-      `Unknown conversation subcommand "${verb ?? ''}" (expected: export, fork)`,
+      `Unknown conversation subcommand "${verb ?? ''}" (expected: export, fork, settle, reopen)`,
     );
   }
   const agentSlug = requirePositional(parsed, 1, 'agent slug');
@@ -102,5 +112,42 @@ async function runConversationFork(
     ]
       .map(terminalSafeText)
       .join('\n'),
+  );
+}
+
+async function runConversationResolution(
+  apiBase: string,
+  parsed: ParsedCoreArgs,
+  settled: boolean,
+): Promise<void> {
+  const conversationId = requirePositional(parsed, 1, 'conversation id');
+  try {
+    await setConversationWorkState(apiBase, conversationId, settled);
+  } catch (error) {
+    // As `fork`: Station unreachable exits 2, a refusal 3.
+    const transport = explainRequestFailure(error, getResolvedApiBase());
+    console.error(
+      'Error:',
+      terminalSafeText(
+        transport ?? (error instanceof Error ? error.message : String(error)),
+      ),
+    );
+    process.exit(transport ? 2 : 3);
+    return;
+  }
+  if (parsed.flags.json === true) {
+    console.log(
+      JSON.stringify({
+        ok: true,
+        kind: 'conversation.work-state',
+        data: { conversationId, settled },
+      }),
+    );
+    return;
+  }
+  console.log(
+    terminalSafeText(
+      `${settled ? 'Settled' : 'Reopened'} conversation ${conversationId}`,
+    ),
   );
 }

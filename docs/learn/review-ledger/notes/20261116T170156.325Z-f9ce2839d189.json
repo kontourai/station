@@ -1,0 +1,357 @@
+{
+  "revision": "5b7dbfe8e719c69247b5b6cb1cb78cf0df4e0c7a",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Corrected the internal-request list (a copied token, not a caller-less child) against the guard's caller-less refusal.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/orchestration-request-principal.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked against withStationControlRuntimeEnv (strips the token from every child) and the guard (caller-less refused except CLI readiness probes).","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/mcp/station-control-caller.ts","src-server/runtime/mcp/station-control-mcp-token.ts","src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts","src-server/security/station-control-authority-guard.ts","src-server/security/station-control-request-authority.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the delegation-context and usage-tree provenance passages against request-delegation.ts (caller-derived for Station's engine) and the guard's caller-less refusal.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/attached-session-adoption.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked which-requests-name-a-context against request-delegation.ts and the native in-process delivery.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts","src-server/runtime/agents/request-delegation.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/security/station-control-authority-guard.ts","src-server/security/station-control-request-authority.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the usage-tree delegation passage against request-delegation.ts and the guard.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Checked the compile-cache passage against withStationControlRuntimeEnv (cache only, no credential).","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the hidden-argument list against mcp-manager.ts's wrapper (strips _delegation and _delegationAttestation).","inputs":["docs/guides/agent-efficiency.md","src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Checked the Station-engine MCP cell against station-control-native-tools.ts (bound, session-bound in-process).","inputs":["docs/design/agent-engine-unification.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"#2377 slice D: only adds the stationControlCallerRecords dependency for the station-agent adapter and drops the native station-control pool release at shutdown (pools removed). Searched citing docs for station-control pool, shutdown and caller claims; none describe either.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"#2377 slice D hardening: engine session start and turn send now run outside any inherited server scope (runEngineOutsideStationServerScope). Searched citing docs for server scope, runAsStationServer and server-self claims; none describe scope inheritance, so no prose changes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D: passes the station-control caller-record resolver to the StationAgentAdapter. No cited claim describes the adapter's options or station-control delivery for Station's engine.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D: the stdio fallback no longer passes a tenant or STATION_INTERNAL_TENANT to the built-in child (no child holds a credential). Checked citing docs: none claim the Claude fallback carries the internal token or tenant.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D: Station's engine serves station-control in-process per session; the pooled stdio child and its per-tenant pools are gone, and the delegation wrapper no longer stamps or attests a context. Checked citing docs for pooled-child, attestation and child-env claims; edited the ones that described them.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D: a caller-less request is refused every table entry (station_control_caller_required), and the caller_required message changed. Checked citing docs for caller-less read claims; edited the ones that said caller-less reads pass.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"#2377 slice D hardening: the fallback engine start runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/development.md","note":"#2377 slice D hardening: the fallback engine start runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#2377 slice D hardening: the fallback engine start runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D hardening: the fallback engine start runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2377 slice D hardening: the fallback engine start runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D hardening: the fallback engine start runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2377 slice D hardening: the fallback engine start runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#2377 slice D hardening: the fallback engine start runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: header comment updated; caller-less requests are refused through the policy. Checked citing docs for caller-less read claims and carve-outs; the carve-outs (server-self attestation, CLI readiness probes) are unchanged.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: header comment updated; caller-less requests are refused through the policy. Checked citing docs for caller-less read claims and carve-outs; the carve-outs (server-self attestation, CLI readiness probes) are unchanged.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D: header comment updated; caller-less requests are refused through the policy. Checked citing docs for caller-less read claims and carve-outs; the carve-outs (server-self attestation, CLI readiness probes) are unchanged.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D: header comment updated; caller-less requests are refused through the policy. Checked citing docs for caller-less read claims and carve-outs; the carve-outs (server-self attestation, CLI readiness probes) are unchanged.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D: header comment updated; caller-less requests are refused through the policy. Checked citing docs for caller-less read claims and carve-outs; the carve-outs (server-self attestation, CLI readiness probes) are unchanged.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D: header comment updated; caller-less requests are refused through the policy. Checked citing docs for caller-less read claims and carve-outs; the carve-outs (server-self attestation, CLI readiness probes) are unchanged.","inputs":["src-server/security/station-control-authority-guard.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D hardening: adoptSession runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#2377 slice D hardening: adoptSession runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D hardening: adoptSession runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D hardening: adoptSession runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2377 slice D hardening: adoptSession runs outside any inherited server scope. No citing doc describes server-scope inheritance.","inputs":["src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: comment only (caller-less is refused before any route). No cited claim changes.","inputs":["src-server/security/station-control-request-authority.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: comment only (caller-less is refused before any route). No cited claim changes.","inputs":["src-server/security/station-control-request-authority.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D: comment only (caller-less is refused before any route). No cited claim changes.","inputs":["src-server/security/station-control-request-authority.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D: comment only (caller-less is refused before any route). No cited claim changes.","inputs":["src-server/security/station-control-request-authority.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D: comment only (caller-less is refused before any route). No cited claim changes.","inputs":["src-server/security/station-control-request-authority.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: the raw-token cases now expect station_control_caller_required, with a verified-caller control. Citing docs describe owner-scoped reads, which are unchanged.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#2377 slice D: the raw-token cases now expect station_control_caller_required, with a verified-caller control. Citing docs describe owner-scoped reads, which are unchanged.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"#2377 slice D: the raw-token cases now expect station_control_caller_required, with a verified-caller control. Citing docs describe owner-scoped reads, which are unchanged.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D: the raw-token cases now expect station_control_caller_required, with a verified-caller control. Citing docs describe owner-scoped reads, which are unchanged.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D: the raw-token cases now expect station_control_caller_required, with a verified-caller control. Citing docs describe owner-scoped reads, which are unchanged.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/design/identity.md","note":"#2377 slice D: comment only (caller-less is refused by the guard first). No cited claim changes.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/design/principals.md","note":"#2377 slice D: comment only (caller-less is refused by the guard first). No cited claim changes.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"#2377 slice D: comment only (caller-less is refused by the guard first). No cited claim changes.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#2377 slice D: comment only (caller-less is refused by the guard first). No cited claim changes.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D: comment only (caller-less is refused by the guard first). No cited claim changes.","inputs":["src-server/runtime/bootstrap/orchestration-request-principal.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"#2377 slice D: custody doc comment corrected (bound also covers Station's engine; Codex is delegated-custody via header since #4372). No behaviour change; citing docs already describe the header channel.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: custody doc comment corrected (bound also covers Station's engine; Codex is delegated-custody via header since #4372). No behaviour change; citing docs already describe the header channel.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"#2377 slice D: custody doc comment corrected (bound also covers Station's engine; Codex is delegated-custody via header since #4372). No behaviour change; citing docs already describe the header channel.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D: custody doc comment corrected (bound also covers Station's engine; Codex is delegated-custody via header since #4372). No behaviour change; citing docs already describe the header channel.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"#2377 slice D: no child receives the internal API token or a tenant any more; the built-ins still get the compile cache. Edited the threat-model and desktop-build passages that said the built-in child holds the token; env-vars and deployment claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2377 slice D: no child receives the internal API token or a tenant any more; the built-ins still get the compile cache. Edited the threat-model and desktop-build passages that said the built-in child holds the token; env-vars and deployment claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2377 slice D: no child receives the internal API token or a tenant any more; the built-ins still get the compile cache. Edited the threat-model and desktop-build passages that said the built-in child holds the token; env-vars and deployment claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#2377 slice D: no child receives the internal API token or a tenant any more; the built-ins still get the compile cache. Edited the threat-model and desktop-build passages that said the built-in child holds the token; env-vars and deployment claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-control-runtime-env.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: comment only (no runtime path mints an attestation now). Edited the delegation-context passages that described the pooled child's attested context.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D: comment only (no runtime path mints an attestation now). Edited the delegation-context passages that described the pooled child's attested context.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D: comment only (no runtime path mints an attestation now). Edited the delegation-context passages that described the pooled child's attested context.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D: comment only (no runtime path mints an attestation now). Edited the delegation-context passages that described the pooled child's attested context.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"#2377 slice D: the stdio tenant fallback from STATION_INTERNAL_TENANT is removed (no child receives it). Checked env-vars, sdk and feature-preview citations; none document that fallback.","inputs":["src-server/tools/station-control-shared.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#2377 slice D: the stdio tenant fallback from STATION_INTERNAL_TENANT is removed (no child receives it). Checked env-vars, sdk and feature-preview citations; none document that fallback.","inputs":["src-server/tools/station-control-shared.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D: the stdio tenant fallback from STATION_INTERNAL_TENANT is removed (no child receives it). Checked env-vars, sdk and feature-preview citations; none document that fallback.","inputs":["src-server/tools/station-control-shared.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: the adapter registers and retires a per-session in-process station-control server. Checked knowledge, sdk and kontour-integration citations; none describe the engine's station-control delivery.","inputs":["src-server/providers/adapters/station-agent-adapter.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"#2377 slice D: the adapter registers and retires a per-session in-process station-control server. Checked knowledge, sdk and kontour-integration citations; none describe the engine's station-control delivery.","inputs":["src-server/providers/adapters/station-agent-adapter.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#2377 slice D: the adapter registers and retires a per-session in-process station-control server. Checked knowledge, sdk and kontour-integration citations; none describe the engine's station-control delivery.","inputs":["src-server/providers/adapters/station-agent-adapter.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"#2377 slice D: the tool-side check now refuses caller-less reads too. Citing docs (mcp-ui-host, station-docs) describe tool registration and apps, not caller-less reads.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D: the tool-side check now refuses caller-less reads too. Citing docs (mcp-ui-host, station-docs) describe tool registration and apps, not caller-less reads.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D: the caller-less read case now expects refusal with a verified-caller control. No cited claim changes.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-authority.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#2377 slice D: the caller-less read case now expects refusal with a verified-caller control. No cited claim changes.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-authority.test.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2377 slice D: the stdio fallback test now expects no internal token. No cited claim changes.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#2377 slice D: the stdio fallback test now expects no internal token. No cited claim changes.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"#2377 slice D: comment for the pooled-child process test updated (refused every route). Manifest membership unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"#2377 slice D: comment for the pooled-child process test updated (refused every route). Manifest membership unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"#2377 slice D hardening: the recovery replay's sendTurn runs outside any inherited server scope. No citing doc describes server scope.","inputs":["src-server/services/orchestration/credential-profile-recovery.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"#2377 slice D: additive export of the per-session in-process server for Station's engine. Knowledge guide citation describes Claude's in-process delivery, still accurate.","inputs":["src-server/runtime/mcp/station-control-in-process.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D: comment only. No cited claim changes.","inputs":["src-server/runtime/mcp/station-control-caller.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D: the Strands runtime serves station-control in-process per session; its pooled native client is gone. config.md citation is about tool loading, still accurate.","inputs":["src-server/runtime/frameworks/strands-tool-loader.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"#2377 slice D: pool tests replaced by in-process and tenant tests. Knowledge guide citation unaffected.","inputs":["src-server/runtime/frameworks/__tests__/strands-tool-loader.test.ts"]}
+  ]
+}

@@ -30118,6 +30118,8 @@ describe('OrchestrationService', () => {
       ],
       hasMore: true,
       nextSequence: 2,
+      // #5077: the thread's MAX(sequence), not the page's last sequence.
+      highWaterSequence: 3,
     });
     await expect(
       service.readSessionEventPage(

@@ -638,6 +638,35 @@ describe('StarterRegistry', () => {
     );
   });
 
+  it('carries continuing anyway to the owner, and only when asked', async () => {
+    const { registry, continueSession } = await fixture();
+    await registry.launchContinueSession(
+      {
+        starterId: 'continue-session',
+        operationId: 'continue-op-override',
+        sourceSessionId: 'external-session',
+        continueWhileSourceActive: true,
+      },
+      null,
+      { ownerUserId: 'owner-1' },
+    );
+    expect(continueSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ continueWhileSourceActive: true }),
+    );
+    await registry.launchContinueSession(
+      {
+        starterId: 'continue-session',
+        operationId: 'continue-op-plain',
+        sourceSessionId: 'external-session',
+      },
+      null,
+      { ownerUserId: 'owner-1' },
+    );
+    expect(
+      (continueSession.mock.lastCall as unknown[] | undefined)?.[0],
+    ).not.toHaveProperty('continueWhileSourceActive');
+  });
+
   it('does not continue a missing or Station-owned source Session', async () => {
     const { registry, continueSession } = await fixture();
     await expect(

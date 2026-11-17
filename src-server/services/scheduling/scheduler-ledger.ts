@@ -90,7 +90,10 @@ export interface StoredSchedulerJob {
   target?: SchedulerAutomationTarget;
   /** #5070: the Project each run is a Task in. Never changed by an edit. */
   projectId?: string;
-  /** The admitted creator a targeted run acts as. Never changed by an edit. */
+  /**
+   * The admitted creator every run acts as (targeted and, since #2377 slice
+   * D, untargeted). Never changed by an edit.
+   */
   createdBy?: SchedulerAutomationCreator;
   /**
    * Set when a person turns a disabled job back on: runs that ended at or
@@ -466,6 +469,22 @@ export const ANNOUNCEMENT_LEASE_MS = 60_000;
 /** Records that the pre-outbox backfill has run to completion, exactly once. */
 export const ANNOUNCEMENT_OUTBOX_MIGRATION_KEY = 'announcement-outbox-migrated';
 
+/** #2377 slice D: records that older ownerless jobs were given an owner, once. */
+export const JOB_OWNER_MIGRATION_KEY = 'job-owner-backfill-v1';
+
+/**
+ * #2377 slice D: the job ids that had no recorded owner when this ledger was
+ * first opened by owner-aware code. Captured during ledger construction, so
+ * no job can be stored before it; the backfill reads only these ids, and a
+ * job stored ownerless afterwards is never treated as pre-owner, however
+ * late the backfill itself manages to run.
+ */
+export const JOB_OWNER_CANDIDATES_KEY = 'job-owner-candidates-v1';
+
+/** #2377 slice D: why a job with no recorded owner has no Station tools. */
+export const JOB_OWNER_NEEDED_REASON =
+  'This job has no recorded owner, so its runs have no Station tools. Re-create it to make you its owner.';
+
 /**
  * What a caller may do about one run's announcement.
  *
@@ -564,6 +583,18 @@ export interface SchedulerOwedAnnouncements {
 
 export interface SchedulerLedger {
   create(job: StoredSchedulerJob): SchedulerCreateOutcome;
+  /**
+   * #2377 slice D: a one-time migration, recorded in the ledger on EVERY
+   * Station's first start with owner recording, personal or not. That first
+   * call is the boundary between jobs stored before owners were recorded and
+   * jobs stored after: given an `owner` (a personal Station's operator only)
+   * it records them on every job that has none; given none (a shared or
+   * hosted Station) it only marks the migration done. Every later call
+   * changes nothing, so a job created ownerless afterwards stays ownerless
+   * (`ownerNeeded`), even if the Station later becomes personal. Returns how
+   * many jobs it changed.
+   */
+  backfillJobOwners(owner: SchedulerAutomationCreator | undefined): number;
   update(name: string, update: Record<string, unknown>): SchedulerUpdateOutcome;
   remove(name: string): SchedulerRemoveOutcome;
   list(): SchedulerReadOutcome<StoredSchedulerJob[]>;
@@ -940,6 +971,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       this.ensureSchedulerLedgerColumns();
       this.transaction(() => this.ensureExternalMonitorColumns());
       this.importLegacyJsonOnce();
+      this.recordPreOwnerJobsOnce();
     } catch (error) {
       LIVE_OWNER_IDS.delete(this.owner.id);
       try {
@@ -993,6 +1025,100 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     return this.corruptionObserved
       ? { kind: 'unavailable', reason: 'corrupt' }
       : undefined;
+  }
+
+  backfillJobOwners(owner: SchedulerAutomationCreator | undefined): number {
+    // A damaged ledger reports itself on its next read (naming the damage);
+    // the migration waits for the repaired one rather than adding a second,
+    // vaguer warning. Anything else still surfaces to the caller.
+    if (this.refuseIfCorrupt()) return 0;
+    try {
+      return this.backfillJobOwnersUnsafe(owner);
+    } catch (error) {
+      if (unavailableFrom(error).reason === 'corrupt') return 0;
+      throw error;
+    }
+  }
+
+  private backfillJobOwnersUnsafe(
+    owner: SchedulerAutomationCreator | undefined,
+  ): number {
+    return this.transaction(() => {
+      // Decided under the write lock: two instances over one home migrate
+      // once between them. Personal-ness is whatever this start says when the
+      // marker is written; a start that could not write it decides nothing.
+      const migrated = this.db
+        .prepare('SELECT value FROM scheduler_ledger_meta WHERE key = ?')
+        .get(JOB_OWNER_MIGRATION_KEY);
+      if (migrated !== undefined) return 0;
+      let changed = 0;
+      for (const jobId of owner ? this.preOwnerJobIds() : []) {
+        const row = this.db
+          .prepare('SELECT name, data FROM scheduler_jobs WHERE job_id = ?')
+          .get(jobId) as { name: string; data: string } | undefined;
+        if (!row) continue;
+        let job: StoredSchedulerJob;
+        try {
+          job = parseStoredJob(row.data);
+        } catch {
+          // An unreadable record is set aside, as `claimDue` sets it aside
+          // (#3563): it must not hold the marker back, or a later start would
+          // run the migration over whatever the ledger holds by then.
+          continue;
+        }
+        if (job.createdBy) continue;
+        this.db
+          .prepare(
+            'UPDATE scheduler_jobs SET data = ?, revision = revision + 1 WHERE name = ?',
+          )
+          .run(JSON.stringify({ ...job, createdBy: owner }), row.name);
+        changed += 1;
+      }
+      this.db
+        .prepare('INSERT INTO scheduler_ledger_meta(key, value) VALUES (?, ?)')
+        .run(JOB_OWNER_MIGRATION_KEY, new Date().toISOString());
+      return changed;
+    });
+  }
+
+  private preOwnerJobIds(): string[] {
+    const row = this.db
+      .prepare('SELECT value FROM scheduler_ledger_meta WHERE key = ?')
+      .get(JOB_OWNER_CANDIDATES_KEY) as { value: string } | undefined;
+    if (!row) return [];
+    const ids: unknown = JSON.parse(row.value);
+    return Array.isArray(ids)
+      ? ids.filter((id): id is string => typeof id === 'string')
+      : [];
+  }
+
+  /**
+   * Runs inside construction, with the legacy import, so the ledger serves no
+   * write before the pre-owner set is fixed. An unreadable record is counted
+   * as pre-owner: it was stored before this code, whatever its bytes say.
+   */
+  private recordPreOwnerJobsOnce(): void {
+    this.transaction(() => {
+      const recorded = this.db
+        .prepare('SELECT value FROM scheduler_ledger_meta WHERE key = ?')
+        .get(JOB_OWNER_CANDIDATES_KEY);
+      if (recorded !== undefined) return;
+      const rows = this.db
+        .prepare('SELECT job_id, data FROM scheduler_jobs')
+        .all() as Array<{ job_id: string; data: string }>;
+      const ids = rows
+        .filter((row) => {
+          try {
+            return !parseStoredJob(row.data).createdBy;
+          } catch {
+            return true;
+          }
+        })
+        .map((row) => row.job_id);
+      this.db
+        .prepare('INSERT INTO scheduler_ledger_meta(key, value) VALUES (?, ?)')
+        .run(JOB_OWNER_CANDIDATES_KEY, JSON.stringify(ids));
+    });
   }
 
   create(job: StoredSchedulerJob): SchedulerCreateOutcome {
@@ -1212,7 +1338,13 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         return {
           ...rest,
           // Only who created it is public; the replayed actor stays private.
-          ...(createdBy ? { createdBy: { userId: createdBy.userId } } : {}),
+          // A Project job's run is an operator Task whoever created it
+          // (until #5126), so a missing owner costs it no Station tools.
+          ...(createdBy
+            ? { createdBy: { userId: createdBy.userId } }
+            : job.projectId
+              ? {}
+              : { ownerNeeded: JOB_OWNER_NEEDED_REASON }),
           consecutiveFailures: countConsecutiveFailures(
             this.finalizedLogsUnsafe(job.name),
             failureCountResetAt,

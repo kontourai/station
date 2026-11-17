@@ -307,6 +307,7 @@ export {
   useAcknowledgeConversationMutation,
   useChildWorkInstructionsQuery,
   useChildWorkTranscriptQuery,
+  useChildWorkTranscriptTailQuery,
   useCodingDiffQuery,
   useCodingFileContentQuery,
   useCodingFilesQuery,

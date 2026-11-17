@@ -668,3 +668,45 @@ describe('Scheduler Routes', () => {
     }
   });
 });
+
+// #2377 slice D (owner decision 2026-11-16): an untargeted job records the
+// owner the creating request resolves to, so its runs act as that person.
+describe('untargeted job owner', () => {
+  test('POST /jobs records the requester as the untargeted job owner', async () => {
+    const svc = createMockService();
+    const jobOwner = vi.fn().mockReturnValue({ userId: 'human:local:someone' });
+    const app = createSchedulerRoutes(svc as any, logger as any, {
+      jobOwner,
+    });
+    const response = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'nightly',
+        cron: '0 9 * * *',
+        prompt: 'tidy',
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(jobOwner).toHaveBeenCalledOnce();
+    expect(svc.addJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'nightly',
+        createdBy: { userId: 'human:local:someone' },
+      }),
+    );
+  });
+
+  test('an unresolved requester records no owner', async () => {
+    const svc = createMockService();
+    const app = createSchedulerRoutes(svc as any, logger as any, {
+      jobOwner: () => undefined,
+    });
+    await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'n', cron: '0 9 * * *', prompt: 'p' }),
+    });
+    expect(svc.addJob.mock.calls[0]?.[0]).not.toHaveProperty('createdBy');
+  });
+});

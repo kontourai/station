@@ -71,7 +71,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   coordinator's account, not authoritative live status. See [Houston's
   working picture](../user/houston.md#working-picture).
 - `search_sessions` and `rename_session` for finding and naming conversations
-  (see [Searching and renaming conversations](#searching-and-renaming-conversations))
+  (see [Searching and renaming conversations](#searching-and-renaming-conversations)),
+  and `settle_conversation` for settling or reopening one in the person's
+  **Open and Settled inbox** when the person asks
 - `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
   declare a pull request it opened, by `provider`, `host`, `repository`
   (`owner` and `name`) and `ref`: the identity shape the conversation link
@@ -217,6 +219,13 @@ bound operator caller is not limited to one owner's conversations, as with
 `delete_conversation`, and the `person_title` guard still applies to it. A
 caller that is not bound also stays in its own Session's Project or the global
 space, as dispatch does.
+
+`settle_conversation` takes a `conversationId` and `settled` (`true` settles,
+`false` reopens) and writes the Session owner's own inbox record through the
+person's route, so it needs the **Open and Settled inbox** preview (refused with
+`feature_preview_disabled` otherwise) and a conversation the owner can read
+(another person's reads as not found). An agent settles only when the person
+asks. The person's next message, a question, a failure or a stop reopens it.
 
 ### Dispatch authority
 
@@ -1270,11 +1279,11 @@ Give such work to a top-level conversation instead of a delegated child.
 ### Which requests can name a context
 
 - A station-control tool call with a verified per-session credential gets
-  the derived context.
-- Station's own engine's pooled tool child has no per-session credential. Its
-  context is kept only when Station's runtime attested it.
+  the derived context. That includes Station's own engine, which calls
+  station-control in-process as its session, as in-process Claude does.
 - Any other internal request that is neither verified nor attested starts a
-  root.
+  root. A station-control request with no verified caller is refused before
+  it reaches the route (`station_control_caller_required`).
 - A request from outside this Station's process, such as a peer Station, an
   operator credential, or a paired device, may send a `delegation` body on
   `POST /api/orchestration/delegations`, as on `/chat/delegated`. Its context

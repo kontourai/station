@@ -1,9 +1,14 @@
 /* #2459: the Agents pane's child-work row. Lazy: reachable only from the
    AgentsWorkspacePane chunk. */
 
+/* The row wraps like `TaskRow` (BackgroundTasksSheet.css): the text keeps at
+   least --work-row-text-min, and actions that do not fit beside it move to
+   their own line, so a narrow pane never shrinks the title to a letter or
+   draws a button over the meta lines. */
 .child-work-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  --work-row-text-min: 22rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   padding-inline-start: calc(var(--child-work-level, 0) * var(--space-4));
 }
@@ -14,8 +19,7 @@
 
 .child-work-row__main {
   display: flex;
-  grid-column: 1;
-  grid-row: 1;
+  flex: 1 1 var(--work-row-text-min);
   min-width: 0;
   min-height: 44px;
   width: 100%;
@@ -68,8 +72,11 @@
   white-space: nowrap;
 }
 
+/* Each fact is its own line; an inline span with nowrap would run past
+   the text column instead of truncating. */
 .child-work-row__meta,
 .child-work-row__provenance {
+  display: block;
   overflow: hidden;
   color: var(--text-tertiary);
   font-size: var(--k-text-sm);
@@ -86,48 +93,6 @@
   white-space: nowrap;
 }
 
-.child-work-row__chip {
-  flex-shrink: 0;
-  max-width: 45%;
-  padding: 1px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  font-size: var(--k-text-sm);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-align: center;
-}
-
-.child-work-row__chip--running {
-  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
-  color: var(--accent-primary);
-}
-
-.child-work-row__chip--completed {
-  background: color-mix(in srgb, var(--success-text, #2e7d32) 16%, transparent);
-  color: var(--success-text, #2e7d32);
-}
-
-.child-work-row__chip--failed {
-  background: color-mix(in srgb, var(--error-text, #c62828) 16%, transparent);
-  color: var(--error-text, #c62828);
-}
-
-/* Interrupted is an observed end (its engine died), so a solid chip. */
-.child-work-row__chip--interrupted {
-  background: color-mix(in srgb, var(--k-caution) 16%, transparent);
-  color: var(--k-caution);
-}
-
-/* Unresolved and unconfirmed-stop are observations of an ABSENCE: dashed,
-   so neither reads as the solid outcome chips above. */
-.child-work-row__chip--unresolved,
-.child-work-row__chip--stopped-unconfirmed {
-  border: 1px dashed var(--border-secondary);
-  background: transparent;
-}
-
 .child-work-row__chevron {
   flex-shrink: 0;
   color: var(--text-tertiary);
@@ -135,7 +100,12 @@
 }
 
 .child-work-row__detail {
-  grid-column: 1 / -1;
+  /* Its own line, after the actions. */
+  flex: 1 0 100%;
+  order: 1;
+  box-sizing: border-box;
+  /* Less its inline margins (--space-3 each, half of --k-space-3). */
+  max-width: calc(100% - var(--k-space-3));
   margin: 0 var(--space-3) var(--space-2);
   padding: var(--space-2);
   overflow-wrap: anywhere;
@@ -160,13 +130,12 @@
 
 .child-work-row__actions {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  grid-column: 2;
-  grid-row: 1;
   justify-content: flex-end;
-  margin-inline-end: var(--k-space-2);
+  margin-inline: auto var(--k-space-2);
 }
 
 .child-work-row__error {
@@ -185,6 +154,7 @@
 
 /* #3163: the subagent's own model, or that none was reported. */
 .child-work-row__model {
+  display: block;
   overflow: hidden;
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -197,12 +167,4 @@
   color: var(--text-tertiary);
   font-family: inherit;
   font-style: italic;
-}
-
-.child-work-row__model::before {
-  content: " · ";
-}
-
-.child-work-row__provenance {
-  display: block;
 }

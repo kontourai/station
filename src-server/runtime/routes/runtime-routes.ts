@@ -834,9 +834,14 @@ import type { ActionOperationService } from '../../services/operations/action-op
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import {
+  conversationAcknowledgementKey,
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  createSenderReopen,
+  wireConversationResolutionReopen,
+} from '../../services/orchestration/conversation-resolution-reopen.js';
 import { ConversationWorkStateStore } from '../../services/orchestration/conversation-work-state-store.js';
 import {
   type CoordinatorWakeDelivery,
@@ -1163,11 +1168,18 @@ import {
   composeScheduledProjectRuns,
 } from './project-lifecycle-composition.js';
 import {
+  createRequestStationControlMiddleware,
+  REQUEST_STATION_CONTROL_PATHS,
+} from './request-station-control.js';
+import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
 import { composeProjectLibraryDeps } from './runtime-project-library.js';
-import { composePullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
+import {
+  composePullRequestFeedbackRuntime,
+  pullRequestFeedbackTaskBranchPorts,
+} from './runtime-pull-request-feedback.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -7660,10 +7672,42 @@ export function configureRuntimeRoutes(
     cols: record.cols,
     rows: record.rows,
   });
+  // Open and Settled inbox: one personal resolution record per person. A
+  // person's own message reopens their record (the send routes below); a
+  // question, failure or stop reopens everyone's (the bus observer).
+  const conversationWorkStateStore = new ConversationWorkStateStore(
+    context.configLoader.getProjectHomeDir(),
+  );
+  const conversationIdForResolution = (id: string) =>
+    context.orchestrationEventStore?.conversationForSession(id)?.conversationId;
+  wireConversationResolutionReopen(context.eventBus, {
+    store: conversationWorkStateStore,
+    conversationIdOf: conversationIdForResolution,
+    logger: context.logger,
+  });
+  const reopenSettledConversation = createSenderReopen<
+    Parameters<typeof resolveOrchestrationRequestPrincipal>[0]
+  >({
+    store: conversationWorkStateStore,
+    personFor: (c) =>
+      conversationAcknowledgementKey(
+        conversationReadAuthorityForContext(c),
+        ownerDevicePredicate(() =>
+          context.environmentSecurityService.devicePairing.listDevices(),
+        ),
+      ),
+    conversationIdOf: conversationIdForResolution,
+    logger: context.logger,
+  });
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
+      reopenSettledConversation: (c, id) =>
+        reopenSettledConversation(
+          c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+          id,
+        ),
       readMarkerPersonKey: (c) =>
         readMarkerPersonKeyFor(
           c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
@@ -8287,6 +8331,17 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     }),
   );
+  // #2377 slice D: an invoke run or raw tool call acts for the request's own
+  // principal through a per-run in-process station-control caller.
+  const requestStationControl = createRequestStationControlMiddleware({
+    resolvePrincipalId: (c) =>
+      resolveOrchestrationRequestPrincipal(
+        c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      ).id,
+    tenantFor: (request) => tenantExecutionContextForRequest(request),
+  });
+  for (const path of REQUEST_STATION_CONTROL_PATHS)
+    context.app.use(path, requestStationControl);
   context.app.route(
     '/',
     createInvokeRoutes(runtimeContext, {
@@ -10822,6 +10877,7 @@ export function configureRuntimeRoutes(
             conversationId,
           );
         },
+        derived: (id) => pullRequestFeedback?.derivedLinks(id) ?? [],
       },
     ),
   );
@@ -10846,6 +10902,16 @@ export function configureRuntimeRoutes(
       listProviders('pullRequest').map((entry) => entry.provider),
     keptForSessions: (ids) =>
       context.taskGraphService.listKeptDeclaredPullRequestsForSessions(ids),
+    taskBranches: pullRequestFeedbackTaskBranchPorts({
+      taskGraph: context.taskGraphService,
+      projects: context.projectService,
+      eventStore: context.orchestrationEventStore,
+      canReadProject: (request, slug) =>
+        requireAuthenticatedProjectRead(request, slug).then(
+          () => true,
+          () => false,
+        ),
+    }),
     access: {
       current: isRequestPrincipalCurrent,
       // The operator in person (never an agent), as the principal
@@ -12516,9 +12582,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/conversations',
     createConversationWorkStateRoutes({
-      store: new ConversationWorkStateStore(
-        context.configLoader.getProjectHomeDir(),
-      ),
+      store: conversationWorkStateStore,
       preview: conversationResolutionPreview,
       authorityFor: conversationReadAuthorityForRequest,
       isOwnerDevice: ownerDevicePredicate(() =>
@@ -13062,6 +13126,7 @@ export function configureRuntimeRoutes(
       admitAutomationJob: agentSchedule.admitAutomationJob,
       mayReadAutomationJob: agentSchedule.mayReadAutomationJob,
       mayReadAutomationRun: agentSchedule.mayReadAutomationRun,
+      jobOwner: agentSchedule.jobOwner,
       ...(scheduledConversationRuns
         ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
         : {}),

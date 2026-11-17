@@ -236,6 +236,12 @@
     "conversation fork": {
       "tools": ["fork_conversation"]
     },
+    "conversation reopen": {
+      "tools": ["settle_conversation"]
+    },
+    "conversation settle": {
+      "tools": ["settle_conversation"]
+    },
     "delegate attempt": {
       "exempt": "client-local",
       "reason": "Looks up a CLI invocation's lost handle by client attempt id (GET /api/orchestration/delegations/attempts/:id); MCP returns the handle synchronously."
@@ -1625,6 +1631,10 @@
     "send_to_session": {
       "cli": ["chat"],
       "note": "Different route and authority: MCP POST /api/orchestration/session-control/send (agent-to-agent, caller required, sender named); `chat --session <id>` is the person's own send via POST /api/orchestration/chat. Issue #3427 says the person send is the intended CLI equivalent. Modes (steer/auto/requestKey) not exposed by CLI."
+    },
+    "settle_conversation": {
+      "cli": ["conversation settle", "conversation reopen"],
+      "note": "Both reach PUT /api/conversations/:id/work-state, the person's own Open and Settled inbox record."
     },
     "system_status": {
       "missing": 4284,

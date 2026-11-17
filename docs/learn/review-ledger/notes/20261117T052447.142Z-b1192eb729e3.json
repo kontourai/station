@@ -1,0 +1,7 @@
+{
+  "revision": "f999d60cc925fee3d72f36e9ec0c62b4af05ca1c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked that only the dock's new chat shows the no-Agent setup card (HomeStartComposer, StartComposerParity Home test); reworded the sentence.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

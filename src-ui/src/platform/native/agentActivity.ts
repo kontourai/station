@@ -1,3 +1,8 @@
+import {
+  isNotificationStationId,
+  notificationSessionHref,
+  OPENED_NOTIFICATION_QUERY_PARAM,
+} from '@kontourai/station-contracts/notification';
 import { describeStationFailure } from '../../utils/stationFailure';
 /**
  * Agent activity on this phone: registering the Android or iOS app with the
@@ -587,54 +592,73 @@ export function localAgentActivityRegistrationStore(
 export interface AgentActivitySessionTarget {
   pathname: string;
   params: Record<string, string>;
+  /** The registration's verified Station id: which Station opens it. */
+  stationId: string;
 }
 
 /**
  * The navigation a card tap's route asks for (#2515), or null when it must
- * be ignored: a route for another Station than the connected one (the phone
- * may be paired with several), or an id or slug outside the contract
- * grammar. The plugin validated it already; this is the web layer's own
- * check, since the launcher activity is reachable by other apps. The target
- * mirrors the Station's exact-session deep link
- * (`resolveNotificationOpenHref`): the project route when the session has
- * one, else the home route, with the chat dock open on the session.
+ * be ignored: no Station id, or an id or slug outside the contract grammar.
+ * The plugin validated it already; this is the web layer's own check, since
+ * the launcher activity is reachable by other apps. The target is the
+ * notification href every channel opens (`notificationSessionHref`): the
+ * project route when the session has one, else the home route, with the
+ * chat dock open on the session. Which Station it opens on is the route's
+ * Station id: the notification opener switches to that saved Station first
+ * when another one is connected (`notificationStationOpen.ts`). An alert
+ * tap's route also names its record (`notificationId`): it rides as
+ * `openedNotification`, so opening the alert reads it, as a Web Push or
+ * desktop link does. An id outside the record grammar drops only the read.
  */
 export function agentActivitySessionTarget(
   route: unknown,
-  environmentId: string,
 ): AgentActivitySessionTarget | null {
   if (typeof route !== 'object' || route === null) return null;
-  const { stationId, sessionId, projectSlug } = route as Record<
+  const { stationId, sessionId, projectSlug, notificationId } = route as Record<
     string,
     unknown
   >;
-  if (stationId !== environmentId || !environmentId) return null;
+  if (!isNotificationStationId(stationId)) return null;
   if (!isNativePushSessionReference(sessionId)) return null;
   if (projectSlug !== undefined && !isNativePushSessionReference(projectSlug))
     return null;
+  const href = new URL(
+    notificationSessionHref({
+      sessionId,
+      ...(projectSlug ? { projectSlug } : {}),
+    }),
+    'https://station.invalid',
+  );
   return {
-    pathname: projectSlug
-      ? `/projects/${encodeURIComponent(projectSlug)}`
-      : '/',
-    params: { chat: sessionId, dock: 'open' },
+    pathname: href.pathname,
+    params: {
+      ...Object.fromEntries(href.searchParams),
+      ...(typeof notificationId === 'string' &&
+      NOTIFICATION_RECORD_ID_PATTERN.test(notificationId)
+        ? { [OPENED_NOTIFICATION_QUERY_PARAM]: notificationId }
+        : {}),
+    },
+    stationId,
   };
 }
 
+/** A notification record id as the phone accepts it (`NOTIFICATION_ID_PATTERN`). */
+const NOTIFICATION_RECORD_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
 /**
- * Takes the pending card-tap route from the plugin and navigates to it when
- * it passes {@link agentActivitySessionTarget}. Resolves whether it
- * navigated. Taking clears the route either way, so a refused route is
- * not retried.
+ * Takes the pending card-tap route from the plugin and hands it to `open`
+ * when it passes {@link agentActivitySessionTarget}. Resolves whether it
+ * did. Taking clears the route either way, so a refused route is not
+ * retried.
  */
 export async function openAgentActivityLaunchRoute(
   adapter: Pick<NativePlatformAdapter, 'takeAgentActivityLaunchRoute'>,
-  environmentId: string,
-  navigate: (pathname: string, params?: Record<string, string | null>) => void,
+  open: (target: AgentActivitySessionTarget) => void,
 ): Promise<boolean> {
   const result = await adapter.takeAgentActivityLaunchRoute();
   if (result.status !== 'ok') return false;
-  const target = agentActivitySessionTarget(result.value.route, environmentId);
+  const target = agentActivitySessionTarget(result.value.route);
   if (!target) return false;
-  navigate(target.pathname, target.params);
+  open(target);
   return true;
 }

@@ -1,0 +1,19 @@
+{
+  "revision": "0b924faf370a40c1c5065593b893ffa3c791a6b1",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Added two workload counters (station.workload.scope.oom_kills, station.workload.scope.memory_pressure) after the cleanup instruments; existing metric names, meanings and attributes cited by this page are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Added two workload counters (station.workload.scope.oom_kills, station.workload.scope.memory_pressure) after the cleanup instruments; existing metric names, meanings and attributes cited by this page are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Added two workload counters (station.workload.scope.oom_kills, station.workload.scope.memory_pressure) after the cleanup instruments; existing metric names, meanings and attributes cited by this page are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Added two workload counters (station.workload.scope.oom_kills, station.workload.scope.memory_pressure) after the cleanup instruments; existing metric names, meanings and attributes cited by this page are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Added two workload counters (station.workload.scope.oom_kills, station.workload.scope.memory_pressure) after the cleanup instruments; existing metric names, meanings and attributes cited by this page are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Added two workload counters (station.workload.scope.oom_kills, station.workload.scope.memory_pressure) after the cleanup instruments; existing metric names, meanings and attributes cited by this page are unchanged.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"Added two workload counters (station.workload.scope.oom_kills, station.workload.scope.memory_pressure) after the cleanup instruments; existing metric names, meanings and attributes cited by this page are unchanged.","inputs":["src-server/telemetry/metrics.ts"]}
+  ]
+}

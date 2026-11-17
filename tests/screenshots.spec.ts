@@ -4278,8 +4278,12 @@ function roomConversationScreens(): Screen[] {
                   ),
                 ),
               });
+              // The staged image's thumbnail is its Preview button (the image
+              // inside is decorative).
               await expect(
-                roomRegion.getByRole('img', { name: 'checkout-flow.png' }),
+                roomRegion.getByRole('button', {
+                  name: 'Preview checkout-flow.png',
+                }),
               ).toBeVisible();
               await expect(
                 roomRegion.getByRole('button', { name: 'Send message' }),
@@ -4996,12 +5000,13 @@ function childChatScreens(): Screen[] {
           await expect(
             dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
           ).toBeVisible({ timeout: 20000 });
-          // Real pointer actions prove both controls survive header clipping,
-          // including a long ancestor title at desktop and phone widths.
-          for (const name of [
-            'Back to parent chat',
-            'Plan the change across the workspace and review every navigation boundary',
-          ]) {
+          // Real pointer actions prove the way back survives header
+          // clipping: ‹ on a phone, the long ancestor crumb on a wider bar.
+          for (const name of viewport.width < 600
+            ? ['Back to parent chat']
+            : [
+                'Plan the change across the workspace and review every navigation boundary',
+              ]) {
             const control = dock
               .getByRole('navigation', { name: 'Chat breadcrumb' })
               .getByRole('button', { name, exact: true });

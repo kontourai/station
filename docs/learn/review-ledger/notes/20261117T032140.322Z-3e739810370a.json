@@ -1,0 +1,7 @@
+{
+  "revision": "83e95a400e219db6d569aab52ca91f6800689998",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Scheduler owner paragraph adds the Project job exception (operator Task runs until #5126, no ownerNeeded, creator-gated management); checked against scheduler-ledger.ts and project-lifecycle-composition.ts.","inputs":["docs/reference/api.md"]}
+  ]
+}

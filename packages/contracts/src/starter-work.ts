@@ -167,6 +167,8 @@ export interface ContinueSessionStarterLaunchInput {
   readonly sourceSessionId: string;
   /** #3386: where a conversation no project claims continues (`adoptSession`'s `target`). */
   readonly target?: AdoptSessionTarget;
+  /** `adoptSession`'s `continueWhileSourceActive`, passed through unchanged. */
+  readonly continueWhileSourceActive?: true;
 }
 
 export type ContinueSessionStarterLaunchResult =
@@ -187,6 +189,11 @@ export type ContinueSessionStarterLaunchResult =
       readonly reason: string;
       readonly retrySafe: boolean;
       readonly receipt?: StarterReceiptReference;
+      /**
+       * `continuation_source_active`: refused because the source is still
+       * running; the same launch with `continueWhileSourceActive` proceeds.
+       */
+      readonly code?: 'continuation_source_active';
     };
 
 /** Server-owned first vertical intent. Browser clients do not compose task,

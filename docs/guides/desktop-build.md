@@ -312,9 +312,10 @@ child-process environments still scrub it. User and third-party Node
 programs, terminal PTYs and engine children never write into this cache.
 [`station-compile-cache.ts`](../../src-server/runtime/bootstrap/station-compile-cache.ts)
 gives the home's cache directory only to the built-in `station-control` and
-`station-knowledge` bundles, through the same exact-binary check that gates
-their API credential. That covers the pooled MCP children and the copies an
-engine starts from its MCP configuration. Measured, a warm cache starts those
+`station-knowledge` bundles, through the same exact-binary check
+(`withStationControlRuntimeEnv`), which no longer hands them any API
+credential. That covers the copies an engine or the tool catalogue starts
+from its MCP configuration. Measured, a warm cache starts those
 bundles faster and leaves them smaller. Each removes the setting from its own
 environment at startup and writes its cache straight away, because an engine
 may end it with a signal, after which Node writes nothing. A cold cache, the
@@ -358,8 +359,10 @@ use instead, because an idle server needs none of them and each costs memory
 once loaded. The server build fails if the bundle statically imports any of
 those packages, or any subpath of one, again
 ([deny list](../../scripts/lib/server-static-imports.mjs)).
-The `@kontourai/flow-agents` root is still imported at boot because some
-synchronous callers need values only it exports.
+The build also fails on a static import of the `@kontourai/flow-agents` root,
+which re-exports the whole package. Its narrow subpaths may still be imported
+statically; the ones only async callers need are loaded on first use
+([loaders](../../src-server/services/evidence/load-flow-agents.ts)).
 
 Server bundles are minified with function/class names retained. The esbuild
 `linked` source-map setting is equivalent to the previous `true`: both emit an

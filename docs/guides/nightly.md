@@ -69,8 +69,8 @@ After an immutable RC/final cut, the
 [release-cut command](native-releases.md#product-version-and-release-cut)
 advances main to the next minor through normal review. Nightly admission reads
 public release history and refuses a base at or below the highest public
-RC/final base. Unavailable or malformed history does not count as first-run
-bootstrap. This check runs at top-level decision, portable publication and
+RC/final base. Unavailable, empty or malformed history does not count as
+first-run bootstrap. This check runs at top-level decision, portable publication and
 native cohort admission; it does not change CLI/library package versioning.
 
 Update summaries display recognized Nightly allocations as
@@ -82,6 +82,10 @@ non-allocation version shapes remain visible unchanged.
 A manual `source_sha` may only echo the current workflow event SHA. It cannot
 select an older Stable/TestFlight candidate. Native staging needs the successful exact-SHA source usability gate; promotion
 requires that gate and completed staging. Full regression runs independently.
+The gate accepts the merge queue's passing `fast-checks statics` run on the
+same exact SHA instead of repeating it, and runs its own checks otherwise; the
+run's notice and job summary name the accepted run (see
+[testing](testing.md#default-implementation-loop)).
 
 **Signing and upload.** `nightly-native-stage.yml` authenticates through Google
 OIDC, fetches the upload key from Secret Manager, and checks the APK/AAB package,

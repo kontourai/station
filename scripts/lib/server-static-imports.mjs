@@ -10,18 +10,25 @@ import * as esbuild from 'esbuild';
 // Each entry denies a whole package: the package itself and every subpath
 // (`@kontourai/veritas` costs as much as `@kontourai/veritas/engine`, and
 // `@anthropic-ai/claude-agent-sdk/core` nearly as much as the SDK's root).
-// `@kontourai/flow-agents` is not listed yet: synchronous Station callers
-// still need values that only its root exports, and its light subpaths are
-// meant to stay static.
 export const BOOT_DENIED_STATIC_IMPORTS = Object.freeze([
   '@anthropic-ai/claude-agent-sdk',
   '@kontourai/console-server',
   '@kontourai/veritas',
 ]);
 
-function deniedBy(specifier, denied) {
-  return denied.find(
-    (name) => specifier === name || specifier.startsWith(`${name}/`),
+// Each entry denies one exact specifier. The `@kontourai/flow-agents` root
+// re-exports the whole package, while the narrow subpaths synchronous Station
+// callers need cost a small fraction of it and stay static.
+export const BOOT_DENIED_EXACT_STATIC_IMPORTS = Object.freeze([
+  '@kontourai/flow-agents',
+]);
+
+function isDenied(specifier, denied, deniedExact) {
+  return (
+    deniedExact.includes(specifier) ||
+    denied.some(
+      (name) => specifier === name || specifier.startsWith(`${name}/`),
+    )
   );
 }
 
@@ -57,15 +64,19 @@ export async function staticImportSpecifiers(file) {
 
 /**
  * Throws when the bundle at `file` statically imports any package in
- * `denied`, or a subpath of one, naming each imported specifier.
+ * `denied` or a subpath of one, or any specifier in `deniedExact`, naming
+ * each imported specifier.
  */
 export async function assertNoBootDeniedStaticImports(
   file,
-  { denied = BOOT_DENIED_STATIC_IMPORTS } = {},
+  {
+    denied = BOOT_DENIED_STATIC_IMPORTS,
+    deniedExact = BOOT_DENIED_EXACT_STATIC_IMPORTS,
+  } = {},
 ) {
   const imported = await staticImportSpecifiers(file);
   const found = [...imported]
-    .filter((specifier) => deniedBy(specifier, denied))
+    .filter((specifier) => isDenied(specifier, denied, deniedExact))
     .sort();
   if (found.length === 0) return;
   throw new Error(

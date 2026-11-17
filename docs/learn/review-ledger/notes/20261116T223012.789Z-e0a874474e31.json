@@ -1,0 +1,7 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Pull request agent feedback paragraph gained PullRequestFeedbackTaskBranches (Project defaults, Task-branch discovery first on each poller tick, at most 3 gh pr list --head reads, branch-derived links in the chat's linked set) and its evidence files; checked against the service, poller and runtime composition.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

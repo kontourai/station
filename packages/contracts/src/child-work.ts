@@ -383,6 +383,17 @@ export interface ChildWorkTranscriptPage {
   entries: ChildWorkTranscriptEntry[];
   /** Message offset of the next page; absent on the last page. */
   nextOffset?: number;
+  /**
+   * Message offset of this page's first message. A tail read (the latest
+   * messages) starts wherever the transcript's last page begins.
+   */
+  offset?: number;
+  /**
+   * Message offset just past this page's last message: where a later read
+   * continues. A message can map to no entries, so this is not derivable
+   * from `entries`.
+   */
+  endOffset?: number;
 }
 
 /** Station-owned child instructions, independently paged from provider history. */

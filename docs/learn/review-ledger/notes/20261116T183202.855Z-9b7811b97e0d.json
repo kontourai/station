@@ -1,0 +1,7 @@
+{
+  "revision": "2f0b137b9a38e873460de553cd55f1b955391de8",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked after the Agents pane journey added light-theme renders and new group heading names; the spec's owner row, bucket and tier are unchanged and no cited claim changes.","inputs":["tests/agents-pane.spec.ts"]}
+  ]
+}

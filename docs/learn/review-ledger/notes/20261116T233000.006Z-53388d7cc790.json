@@ -1,0 +1,7 @@
+{
+  "revision": "f084d02891d336e26bc962557b185243c0064d2e",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the survey-flow-review-service diff: only how the Flow Agents adapter modules are loaded changed; the Inbox gate-review item behavior described here is unchanged.","inputs":["docs/guides/agent-configuration.md","src-server/services/flow/survey-flow-review-service.ts"]}
+  ]
+}

@@ -99,6 +99,31 @@ export type AdoptSessionTarget =
   | { kind: 'project'; projectSlug: string }
   | { kind: 'own-folder' };
 
+/**
+ * Whether the external harness that wrote an attached session is still
+ * working on it, read from the followed transcript alone. Station does not
+ * own that process and cannot see it: neither Claude Code (no open handle on
+ * its transcript) nor Codex (its app-server holds every loaded rollout open,
+ * working or not) gives a process signal that means "running".
+ *
+ * - `active`: the transcript's latest turn has no completion and the
+ *   transcript was written within {@link ATTACHED_SOURCE_ACTIVE_WINDOW_MS}.
+ *   Continuing now forks a conversation that is still moving; adoption is
+ *   refused unless the request says `continueWhileSourceActive`.
+ * - `quiet`: the latest turn has no completion, but nothing was written for
+ *   longer than the window. It was interrupted, crashed, its engine records
+ *   no completions, or a silent tool is still running: Station cannot tell.
+ * - `idle`: the latest turn ended (or none started).
+ */
+export interface AttachedSourceActivity {
+  state: 'active' | 'quiet' | 'idle';
+  /** Source time of the newest event Station imported from the transcript. */
+  lastWriteAt?: string;
+}
+
+/** How recent a transcript write keeps an open turn `active`. */
+export const ATTACHED_SOURCE_ACTIVE_WINDOW_MS = 5 * 60_000;
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
@@ -107,6 +132,12 @@ export type OrchestrationCommand =
       idempotencyKey?: string;
       /** #3386: where a conversation no project claims continues. */
       target?: AdoptSessionTarget;
+      /**
+       * Continue even though the source reads `active`
+       * ({@link AttachedSourceActivity}); without it Station refuses with
+       * `continuation_source_active`. The original keeps running either way.
+       */
+      continueWhileSourceActive?: true;
     }
   | { type: 'sendTurn'; input: OrchestrationSendTurnInput }
   | {
@@ -1371,6 +1402,13 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    */
   hasActiveTurn?: boolean;
   /**
+   * Read-only attached sessions only: whether the harness that wrote the
+   * transcript is still working on it, derived at read time
+   * ({@link AttachedSourceActivity}). Absent on older hosts and on every
+   * other session.
+   */
+  attachedSourceActivity?: AttachedSourceActivity;
+  /**
    * #2310: true when this session is a **Draft** — it exists, but no turn has
    * started and no send was attempted anywhere in its CONVERSATION's lineage
    * (the root Session and every continuation/handoff child), and nothing in
@@ -1471,6 +1509,14 @@ export interface OrchestrationSessionEventPage {
   hasMore: boolean;
   /** Per-thread sequence to resume from. */
   nextSequence: number;
+  /**
+   * #5077: the thread's highest per-thread `sequence` (0 for none), read in
+   * the same snapshot as `events`. Per-thread sequences may have gaps once
+   * rows are compacted, so `session.eventCount` is a count and not a bound
+   * on any sequence or cursor; this is. Optional because older hosts omit
+   * it. Their logs are gap-free, so their `session.eventCount` equals it.
+   */
+  highWaterSequence?: number;
 }
 
 /** Derived SSE envelope routing, resolved from Station's lineage at delivery time. */

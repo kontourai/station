@@ -16,6 +16,7 @@ import {
   useState,
 } from 'react';
 import { showChatPageOrDock } from '../../app-shell/chat-placement';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
 import {
@@ -1083,7 +1084,9 @@ function BrowserSessionPane({
       ),
   });
   const openNew = useMutation({
-    mutationFn: () => api.create({ projectSlug, url: 'about:blank' }),
+    // A blank page, or the closed session's last address ("Reopen …").
+    mutationFn: (url?: string) =>
+      api.create({ projectSlug, url: url ?? 'about:blank' }),
     onSuccess: (next) => {
       sizeToOpeningPane.add(next.browserSessionId);
       onAttach(next.browserSessionId);
@@ -1535,7 +1538,7 @@ function BrowserSessionPane({
               variant="primary"
               className="browser-pane__control"
               pending={openNew.isPending}
-              onClick={() => openNew.mutate()}
+              onClick={() => openNew.mutate(undefined)}
             >
               Open a new session
             </Button>
@@ -1579,20 +1582,45 @@ function BrowserSessionPane({
       />
     );
   } else if (record?.state === 'closed') {
+    // The last address is known, so the obvious next step is to go back to
+    // it; a blank session stays one click away.
+    const lastUrl =
+      record.url && record.url !== 'about:blank' ? record.url : null;
+    const openBlank = (
+      <Button
+        variant={lastUrl ? 'secondary' : 'primary'}
+        className="browser-pane__control"
+        pending={openNew.isPending && openNew.variables === undefined}
+        disabled={openNew.isPending}
+        onClick={() => openNew.mutate(undefined)}
+      >
+        Open a new session
+      </Button>
+    );
     body = (
       <Empty
         label="This session was closed"
         action={
-          canDrive ? (
-            <Button
-              variant="primary"
-              className="browser-pane__control"
-              pending={openNew.isPending}
-              onClick={() => openNew.mutate()}
-            >
-              Open a new session
-            </Button>
-          ) : undefined
+          !canDrive ? undefined : lastUrl ? (
+            <ActionRow
+              primary={
+                <Button
+                  variant="primary"
+                  className="browser-pane__control"
+                  title={lastUrl}
+                  pending={openNew.isPending && openNew.variables === lastUrl}
+                  disabled={openNew.isPending}
+                  onClick={() => openNew.mutate(lastUrl)}
+                >
+                  Reopen {hostOf(lastUrl)}
+                </Button>
+              }
+              secondary={openBlank}
+              overflowLabel="More browser session actions"
+            />
+          ) : (
+            openBlank
+          )
         }
       />
     );
@@ -1872,6 +1900,9 @@ function BrowserSessionPane({
   return (
     <div
       className="browser-pane"
+      // A closed session: its toolbar is dimmed and its message centred, so
+      // the last page's address no longer reads as a live one.
+      data-closed={record?.state === 'closed' || undefined}
       data-coarse={coarsePointer || undefined}
       data-narrow={narrow || undefined}
       ref={paneRef}

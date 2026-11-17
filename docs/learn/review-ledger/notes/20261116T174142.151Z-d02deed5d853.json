@@ -1,0 +1,9 @@
+{
+  "revision": "bbd4ca4407ac2930c2f6863973e06ee8987780bf",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"New onChildCoveredChange: a child opened over its parent record returns to the working chat on close when the bound parent matches; existing child-intent admission unchanged. Placement and module-map ownership claims still hold.","inputs":["src-ui/src/components/chat-dock/useChatDockOverlays.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"New onChildCoveredChange: a child opened over its parent record returns to the working chat on close when the bound parent matches; existing child-intent admission unchanged. Placement and module-map ownership claims still hold.","inputs":["src-ui/src/components/chat-dock/useChatDockOverlays.ts"]}
+  ]
+}

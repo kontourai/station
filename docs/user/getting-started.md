@@ -577,8 +577,8 @@ holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
 
-Choosing on a chip starts nothing, and Station remembers it. The Agent is
-remembered for each project and for **No project** on this browser and
+Choosing on a chip starts nothing, and Station remembers it. An Agent is
+remembered only once it can start, and for each project and for **No project** on this browser and
 Station access, and the Model for each Agent. The project is remembered as the
 chat dock's project for new chats, the same setting the dock's project
 switcher changes, so Home and the dock always open on the same choices.
@@ -704,9 +704,10 @@ next navigation; answers that already saved remain saved.
 Opening the composer or changing a chip starts no conversation or engine;
 **Start** opens the conversation and submits the message once. With no
 remembered Agent, the composer uses the project’s **Default agent**, then the
-current layout default or Station’s runnable suggestion. A remembered Agent
-needing repair stays visible with its setup action; a removed choice asks you
-to choose another.
+current layout default or Station’s runnable suggestion. Any of these that
+is not set up is skipped for the next one that is, so a new chat never opens on
+an Agent that cannot start. An Agent you pick from the menu in this tab stays
+visible with its setup action.
 
 Escape, Back, or opening another chat closes the draft; collapsing the dock
 keeps it. On a phone the draft opens full screen; closing it, or starting the
@@ -784,7 +785,9 @@ With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
 when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
-not settle a conversation automatically. Settlement syncs across your devices
+not settle a conversation automatically. Sending a message reopens a settled
+conversation, as does a question, a failure or a stop; the end of a settled
+conversation shows when you settled it and a **Reopen**. Settlement syncs across your devices
 and is separate from dismissal or deletion. **Working** holds running and
 monitoring chats and armed check-backs, which show **Waiting**; **Needs attention** takes priority whenever input is owed.
 Drafts appear as a pencil on the chat row in its current status. Collapse a
@@ -894,9 +897,10 @@ durable request flow.
 
 ### Finish setup and return
 
-When no selected Agent can respond, the composer shows a setup helper alongside
-your message and recent chats. It offers engine setup, a model connection,
-and **Check again**. Available engine prerequisites include installation steps,
+When no Agent can respond, the chat dock's new chat shows a setup card above your message.
+It lists each Agent with its status and repair, and offers engine setup, a
+model connection and **Check again**. Each Agent's **Details** holds its
+reason and any installation steps,
 commands, and links supplied by that engine’s integration. Commands are shown
 for you to run; opening a guide does not install software. Install engines on
 the computer running Station, including when using Station from a phone.
@@ -1132,7 +1136,9 @@ In new chats and New Task conversations, drop an image onto the composer or past
 a screenshot into the text field (Ctrl/Cmd+V on desktop). On a phone, use **Attach** to choose an image. In the Android app
 you can also share images from another app to Station, then pick a
 conversation or **New chat** in a project. Review its thumbnail and remove it
-before sending if needed.
+before sending if needed; tap a thumbnail to see the image full size. **Attach**
+always adds more files. If you send while a file is still uploading, the
+message waits and goes once the upload finishes; a failed upload offers Retry.
 The existing Task room, Project channels and agent-thread replies accept
 images the same way, including messages with only an image; their room composer also retains **Paste image** on supported touch devices. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
@@ -1195,10 +1201,13 @@ how Station preserves the same work identity through retries and response loss.
 ## Read Child Conversations
 
 Choose **Open chat** on a subagent card or a background task to read its
-transcript in the chat pane. The title becomes **Parent chat › Subagent**;
-choose an ancestor to return without losing its draft or reading position.
-Escape returns one level. On a phone, use the back button or swipe from the
-left edge. Engine transcripts are read only and refresh while running.
+transcript in the chat pane, laid out like any chat: the subagent's prompt,
+then its tool calls and answers. The title becomes **Parent chat / Subagent**;
+choose an ancestor to return to that chat without losing its draft or reading
+position. Escape returns one level. On a phone, the title names the subagent;
+use the back button or swipe from the left edge. The reader opens on the
+latest messages; earlier ones load as you scroll up. Engine transcripts are
+read only and refresh while running.
 
 If a tool result has no recorded text, the reader says **Text output unavailable.**
 This does not mean the tool produced no output.
@@ -1329,7 +1338,18 @@ Open an attached terminal Session from the **inbox**. It reads like any chat. To
 continue it in Station, press **Continue in Station** next to where it says it started;
 no message is needed. If you typed one, it is sent there once the
 continuation opens, and pressing Send continues the same way. Claude and Codex create independent child
-Sessions; the original terminal Session can keep running. OpenCode and Grok
+Sessions; the original terminal Session can keep running.
+
+If the conversation is still mid-turn in its terminal, Station says **Still
+running in Claude Code. Continuing now forks it** instead of continuing.
+Mid-turn means its latest turn has not finished and Station saw it written in
+the last five minutes: for Claude Code, its transcript or a subagent's (while
+the conversation's own transcript changed in the last two hours); for Codex, the
+latest record Station imported. A single command that runs silently for longer
+than five minutes is not seen as running. Choose **Not now** and continue once
+it finishes, or **Continue anyway** to fork it now. A fork does not see anything the terminal Session writes afterwards.
+Station cannot stop the terminal Session for you. To hand the conversation over
+completely, finish or quit it in the terminal first. OpenCode and Grok
 conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait
 for one if the message box is unavailable.

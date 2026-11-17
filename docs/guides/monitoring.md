@@ -1162,12 +1162,10 @@ legacy `parentConversationId`, or a `parentTaskId` the request names. The
 backfills existing events and maintains mentions in the event write transaction.
 The read preserves context precedence and matching-start provenance; these
 mentions describe naming, not authority to stop a child. They do not record an
-exact initiating Session or a detached lifetime. For a Claude Code or Codex
-session's `delegate_task` call Station derives the context from the calling
-session's own record; for Station's own agent the runtime attests it from the
-conversation the tool call ran in. A task launched through a caller-less
-station-control process (as a Strands-runtime agent uses) names neither, so it
-is not found and not shown as missing. A task you can't read is never named
+exact initiating Session or a detached lifetime. For a `delegate_task` call
+from Claude Code, Codex or Station's own agent, Station derives the context
+from the calling session's own record. A station-control request with no
+verified caller is refused, so it launches no task. A task you can't read is never named
 or figured. When Station derived or attested its link to your conversation
 (in hosted mode, a delegate Station couldn't attribute to a bound caller is
 the Station operator's), the total is partial and says how many such tasks
@@ -1444,6 +1442,7 @@ domain operations, so their totals are not counts of one business action.
 | <a id="providers--infrastructure"></a>`station.provider.operations` | Provider management and adapter outcomes | `op` or `operation`, plus `type`, `provider`, `reason`, `model_options`, `outcome`, `status` where supplied |
 | `station.notification.operations` | Notification service/route operations | `op` |
 | `station.notification.agent_operations` | Agent notification admission outcomes; no content or Session identity | `result`, `urgency` |
+| `station.notification.retention_pruned` | Settled records [retention](../reference/config.md#notification-retention) removed from `notifications.json`; `station.notification.operations` counts `op=tombstone-hit` when a removed record's dedupe tag is scheduled again and nothing is delivered | `status`: `expired`, `actioned`, `dismissed` |
 | `station.setup_requirement.probe_outcomes` | Setup-requirement probe reads behind the attention item (memoized reuses are not counted). A failure is logged once per distinct error and once on recovery; this counter keeps every read | `outcome`: `ready`, `blocked`, `failed` |
 | `station.file_mutation_lock.orphan_temporaries` | Orphaned `*.mutation.<uuid>.tmp` lock temporaries the startup sweep found | `outcome`: `removed`, `retained_live`, `failed` |
 | `station.scheduler.job.runs` | Actual job outcomes **and** management requests; currently not an execution-only count | `status` or `op`; no per-job label |
@@ -1496,7 +1495,7 @@ a confirmed deferral.
 | `station.skill.activation.duration` | `activate_skill` call duration, including failed reads | `skill` | ms |
 | `station.mcp.negotiation.duration` | Negotiation plus discovery duration | Negotiation attributes above | ms |
 | `station.runtime.event_loop_lag` | How late a 10-second runtime timer woke | None | ms |
-| `station.json_store.write_bytes` | Bytes one durable JSON store write puts on disk. Only stores that name themselves record (currently the notification feeds); `previous` is the retained prior copy each durable write also rewrites | `store`: `notifications`, `principal-notifications`; `artifact`: `primary`, `previous` | By |
+| `station.json_store.write_bytes` | Bytes one durable JSON store write puts on disk. Only stores that name themselves record (currently the notification feeds and the notification dedupe tombstones); `previous` is the retained prior copy each durable write also rewrites | `store`: `notifications`, `notification-tombstones`, `principal-notifications`; `artifact`: `primary`, `previous` | By |
 
 The lag histogram only sees a stall that overlaps a timer wake, and it is
 exported only with an OTel endpoint. Independently of OTel, a window whose
