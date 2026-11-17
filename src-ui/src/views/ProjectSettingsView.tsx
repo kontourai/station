@@ -224,8 +224,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   // Station that cannot serve agent feedback never registers.
   const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
   const { activeSection, hrefForSection, navigateToSection } =
+    // Every section stays navigable, so a link to a preview's section
+    // survives a reload before the preview flags load; the list and the
+    // panels show it only with its preview (like agent feedback).
     useSectionNavigation(
-      settingsSections.map(([id]) => id),
+      PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
       'workspace',
       { scrollOnNavigate: false },
     );
