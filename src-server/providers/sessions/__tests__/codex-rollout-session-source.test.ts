@@ -229,6 +229,30 @@ describe('CodexRolloutSessionSource', () => {
     expect(closeSync).toHaveBeenCalledTimes(2);
   });
 
+  test('bounds retained prefix storage across one-byte short reads', () => {
+    const path = rolloutPath(fixtureRoot());
+    const limit = 8192;
+    const head = 'a'.repeat(limit);
+    writeFileSync(path, `${head}\nignored`);
+    const storage = new Set<ArrayBufferLike>();
+    readChunk.withImplementation(
+      (descriptor, buffer, offset, length, position) => {
+        storage.add(buffer.buffer);
+        return realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 1),
+          position,
+        );
+      },
+      () => expect(readLeadingLine(path, limit)).toBe(head),
+    );
+    expect(
+      [...storage].reduce((bytes, buffer) => bytes + buffer.byteLength, 0),
+    ).toBeLessThanOrEqual(limit + 1);
+  });
+
   test('does not combine replacement bytes across chunks and handles truncation at EOF', () => {
     const path = rolloutPath(fixtureRoot());
     const replacement = `${path}.replacement`;
