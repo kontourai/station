@@ -246,7 +246,7 @@ button.chat-status-pill {
 }
 
 .chat-status-pill[data-leaving="true"] {
-  animation: chat-status-pill-out var(--motion-fast) var(--ease-in) both;
+  animation: chat-status-pill-out var(--motion-fast) var(--ease-out) both;
   pointer-events: none;
 }
 

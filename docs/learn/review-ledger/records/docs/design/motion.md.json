@@ -26,7 +26,11 @@
 
     "src-ui/src/hooks/useInboxSwipe.ts",
 
-    "src-ui/src/components/inbox-row/InboxRow.css"
+    "src-ui/src/components/inbox-row/InboxRow.css",
+
+    "src-ui/src/components/chat/QueuedMessages.css",
+
+    "src-ui/src/index.css"
   ],
 
   "checks": [

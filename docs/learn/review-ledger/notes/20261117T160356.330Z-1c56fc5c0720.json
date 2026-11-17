@@ -1,0 +1,7 @@
+{
+  "revision": "20739603da1deb4d4a5f80b9eae0366b95036fa1",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked the frequency, easing, and hover sections against tokens.css (--ease-out is var(--k-ease); no --ease-in declaration), the ephemeral, status-pill, and queued-presence exits, CommandPalette.css having no animation, and the scroll-to-bottom hover media query. Injected a redeclared --ease-in token plus a live-status use: the ratchet failed with 1 ease-in declaration and 0 unresolved tokens, then restored green. No fresh screenshot, computed-timing, or device proof.","inputs":["docs/design/motion.md","scripts/motion-contract-ratchet.mjs","src-ui/src/components/status/live-status.css","src-ui/src/tokens.css","src-ui/src/components/chat/QueuedMessages.css","src-ui/src/index.css"]}
+  ]
+}
