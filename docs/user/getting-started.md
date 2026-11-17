@@ -794,6 +794,14 @@ Drafts appear as a pencil on the chat row in its current status. Collapse a
 shelf to move it below expanded work. Shelf menus let you move sections up or
 down, with that order saved on this device. **Settled** is last by default.
 
+With the preview on, **Settle** is how you put away your own conversations,
+so their rows have no **Dismiss**. A **Third-party** session offers **Hide**
+instead; it stays hidden on all your devices, through its updates, until you
+bring it into Station or search for it and choose **Restore to inbox**.
+Sessions you dismissed on this browser before move to your hidden list once.
+**Settled** and **Third-party** show the last seven days; choose **Show older**
+for the rest. Search always finds everything.
+
 The workspace map lists Projects and their named Layouts, followed by your
 **Apps**. Its **+** creates a Board and lets you name it, even
 when the list is empty. Select a project to see its configured views as child rows.
