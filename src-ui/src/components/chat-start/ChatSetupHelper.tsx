@@ -142,7 +142,11 @@ export function ChatSetupHelper({
       )}
       <ActionRow
         className="chat-start__setup-actions"
-        primary={<Button onClick={() => onSetup()}>Set up an engine</Button>}
+        primary={
+          <Button variant="primary" onClick={() => onSetup()}>
+            Set up an engine
+          </Button>
+        }
         secondary={
           <Button variant="secondary" onClick={onModels}>
             Add a model connection
