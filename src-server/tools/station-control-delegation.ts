@@ -4114,7 +4114,7 @@ function parseTaskEventCursor(cursor: string | undefined): number {
  * high water: an append landing between the two reads would fail a sound page.
  */
 function taskEventHighWater(
-  page: RawTaskEventPage,
+  page: Pick<RawTaskEventPage, 'highWaterSequence'>,
   eventCount: number,
 ): number {
   if (page.highWaterSequence === undefined) return eventCount;
