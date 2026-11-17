@@ -268,7 +268,7 @@ describe('SurveyFlowReviewService', () => {
     );
   });
 
-  it('continues through the real Flow Agents adapter and reuses it', async () => {
+  it('continues through the real Flow Agents adapter on every call', async () => {
     const root = await fixture();
     const service = new SurveyFlowReviewService(
       new FileStationSurveyReviewSessionStore({
@@ -284,7 +284,7 @@ describe('SurveyFlowReviewService', () => {
       reviewSessionRef: 'review:example:1',
     };
     // The adapter's own input check proves the real adapter ran, both on the
-    // call that loads it and on the call that reuses it.
+    // call that loads it and on a later call.
     for (let call = 0; call < 2; call += 1) {
       await expect(service.continuePausedGate(input)).rejects.toMatchObject({
         code: 'SURVEY_FLOW_GATE_INVALID_INPUT',
