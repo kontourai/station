@@ -129,6 +129,7 @@ import type { VoiceSessionService } from '../../voice/voice-session.js';
 import type { AgentHooksDeps } from '../agents/agent-hooks.js';
 import { stationAgentRuntimeOwner } from '../agents/durable-agent-owner.js';
 import { configureDurableAgentRecovery } from '../agents/durable-agent-recovery.js';
+import { createFeedbackAnalyzer } from '../agents/feedback-analysis-agent.js';
 import type { StagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
 import { initializeRuntimeAgents } from '../agents/runtime-agent-registry.js';
 import {
@@ -164,6 +165,7 @@ import {
 } from '../work-item-capture.js';
 import { acpResumeCursorSupport } from './acp-resume-cursor-support.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
+import { credentialPrincipal } from './orchestration-request-principal.js';
 import {
   scheduleRuntimeDailyReload,
   scheduleRuntimeEngineSpawnTmpReaping,
@@ -199,6 +201,13 @@ export interface InitializeRuntimeDeps {
   stationInstructionsEnabled?: () => boolean;
   /** `codex-bound-browser-device-tools` Feature Preview, read per Session start. */
   codexBoundToolsEnabled?: () => boolean;
+  /**
+   * #2377 slice D: the station-control caller records for Station's own
+   * engine, read lazily per call (`StationAgentAdapter`).
+   */
+  stationControlCallerRecords?: () =>
+    | import('../mcp/station-control-caller.js').StationControlCallerRecordResolver
+    | undefined;
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -218,6 +227,10 @@ export interface InitializeRuntimeDeps {
     // #3429: this Station's Environment, which a continued attached
     // conversation records as its execution binding.
     | 'readExistingRecord'
+    // #2377 slice D: the voice socket's credential resolves to its person.
+    | 'verifyOperatorCredential'
+    | 'credentialLocality'
+    | 'credentialHasOwnerStanding'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -614,6 +627,9 @@ export async function initializeRuntime(
     isAgentRegistryReady: () => stationAgentsReady,
     approvalRegistry,
     eventBus,
+    ...(deps.stationControlCallerRecords
+      ? { stationControlCallerRecords: deps.stationControlCallerRecords }
+      : {}),
   });
   registerProviderAdapters(
     [
@@ -1335,13 +1351,24 @@ export async function initializeRuntime(
   await eventLog.loadRecentEvents();
   await startHealthChecks();
 
-  feedbackService.setAnalyzeCallback(async (prompt: string) => {
-    const agent =
-      activeAgents.get('default') || activeAgents.values().next().value;
-    if (!agent) throw new Error('No agents available for feedback analysis');
-    const result = await agent.generateText(prompt);
-    return result.text;
-  });
+  // #2377 slice D: Station's own utility work, on the default agent's model
+  // with no tools (it acts for no person, so it has no station-control caller).
+  feedbackService.setAnalyzeCallback(
+    createFeedbackAnalyzer({
+      framework,
+      resolveSpec: () =>
+        deps.agentSpecs.get('default') ?? deps.agentSpecs.values().next().value,
+      createModel: (spec) =>
+        createRuntimeFrameworkModel(spec, {
+          framework,
+          appConfig,
+          projectHomeDir: configLoader.getProjectHomeDir(),
+          modelCatalog,
+          listProviderConnections: () =>
+            storageAdapter.listProviderConnections(),
+        }),
+    }),
+  );
   feedbackService.start();
 
   // Plugin-contributed ACP entries are durable identities before any probe;
@@ -1382,6 +1409,19 @@ export async function initializeRuntime(
         PAIRING_WS_SCOPES.voice,
         credential,
       ),
+    // #2377 slice D: the person the credential is becomes the caller of the
+    // session's Station tools. Personal Stations only: a hosted credential's
+    // tenant has no request here to read, so its sessions get no tools.
+    ...(isHostedTenantExecutionRequired()
+      ? {}
+      : {
+          resolvePrincipal: (credential: string) =>
+            credentialPrincipal(credential, deps.environmentSecurityService)
+              ?.id,
+          // The local UI's HttpOnly device cookie, read on a loopback upgrade.
+          recognizesDeviceCredential: (credential: string) =>
+            deps.environmentSecurityService.identifyDevice(credential) !== null,
+        }),
     limiter: new RuntimeAuthFailureLimiter(),
     browserOrigins: stationOriginPolicy({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),

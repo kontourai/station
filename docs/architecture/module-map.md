@@ -5112,7 +5112,10 @@ engine launch names, which the [workload routes](../../src-server/routes/system/
 and the [workload_status tool](../../src-server/tools/station-control-workload-tools.ts)
 read from cgroup v2 files, including each scope's kernel `oom_kill` count
 (scopes launch with `OOMPolicy=continue`, so a command, not the engine, is
-normally killed). Orchestration's first-turn composition adds the
+normally killed). The launcher's 1 s poll logs each kill as it sees it with
+the scope's largest processes, reports near-cap memory pressure on entering
+and leaving it, and raises an engine's commands' `oom_score_adj` above the
+engine's so the kernel takes a command first. Orchestration's first-turn composition adds the
 Project brief and memory index a Session's start recorded
 ([`project-session-context-source.ts`](../../src-server/services/projects/project-session-context-source.ts),
 read once at start, behind the `project-coordination` preview; its receipt
@@ -5423,7 +5426,10 @@ but creation/update does not accept caller-declared execution authority.
 [ScheduledProjectRuns](../../src-server/services/scheduling/scheduled-project-runs.ts):
 each run creates a Task in that Project (keyed by run id), dispatches it
 through the Task dispatcher, queues the prompt on the Task's chat through
-ScheduledConversationRuns, and writes a run summary as the Task summary. The
+ScheduledConversationRuns, and writes a run summary as the Task summary.
+That Task and turn act as the local operator whoever created the job; its
+`createdBy` decides only who may manage it, and an ownerless one carries no
+`ownerNeeded` (acting as the creator is #5126). The
 [ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
 composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
 is an orchestration turn admission (a paused or archived Project's chats admit

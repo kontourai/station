@@ -407,24 +407,6 @@ For the one-candidate throughput trial and its before/after measurements, use
 ruleset is the configuration authority; fewer speculative builds do not prove
 higher delivery throughput.
 
-`Repo: CI throughput health` records one metadata-only snapshot on issue #3101
-every six hours while that outcome issue remains open. It installs no project
-dependencies and starts no tests, retries, cancellations or merges. Its six-hour
-observation windows end two hours behind the cadence boundary; unfinished or
-unattributed work remains explicitly incomplete. A window that is incomplete
-only because work was still running (unfinished jobs, which also lack runner
-attribution) is recorded with a warning annotation and does not fail the
-report job. Work unfinished more than six hours after it was created, or a
-run with no jobs that old, is reported as stuck in its own warning rather
-than as running; it does not fail the job either, because it is not a
-throughput measurement. A read GitHub answers with a 5xx is retried up to
-three attempts with a short backoff (the `--record` write is not); any
-collection failure that remains (an API error, a pagination cap, an
-unresolved PR or merge base, finished work without runner attribution, or an
-unavailable ledger) still fails it.
-Snapshots are retained for 30 days. This reporting does not establish a speedup,
-close the issue automatically or replace manual-intervention outcome review.
-
 Missing PR attribution leaves ordinary PR runs alone; API failures stop the sweep. GitHub has no atomic head-conditional
 cancellation API, so the final head read bounds rather than eliminates the race
 with a concurrent force-push. Existing per-SHA concurrency groups remain in
@@ -480,7 +462,6 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events (build skipped for drafts and the release PR); merge queue; main pushes (classifier-filtered: UI-only landings); manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
-| [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
@@ -500,7 +481,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: CI throughput health`, filtered to runs on `main`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -579,8 +560,8 @@ that ref without checking out or advancing local `main`.
 ```bash
 npm run ci:health -- --hours=6
 npm run ci:health -- --since=2026-10-01T00:00:00Z --until=2026-10-02T00:00:00Z --json
-npm run ci:health -- --hours=6 --record --issue=3101
-npm run ci:health -- --history --issue=3101
+npm run ci:health -- --hours=6 --record --issue=<n>
+npm run ci:health -- --history --issue=<n>
 ```
 
 The default window is the last 24 hours; `--since` and `--hours` are alternatives.
@@ -588,9 +569,8 @@ The default window is the last 24 hours; `--since` and `--hours` are alternative
 requires the exact same local origin owner/name on GitHub. Default output is
 Markdown; `--json` emits one snapshot object. Recording is explicit: `--record --issue=<n>` appends a
 human summary and fenced JSON snapshot to that issue through REST. There is no
-default issue. The [throughput health workflow](../../.github/workflows/ci-throughput-health.yml)
-records six-hour windows on issue #3101 while it remains open; it starts no
-verification builds. `--history --issue=<n>` reads these
+default issue. No workflow records snapshots; the command is run by hand.
+`--history --issue=<n>` reads recorded snapshot
 comments into a trend table; `--json` also works for history. The trend table
 adds runner-hours per landing, last-entry-to-merge median/p90 and the
 cancelled-run share; snapshots recorded before those fields show
@@ -948,7 +928,9 @@ last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
 PR's shards never share a bucket and every plan's first shard spreads across all
 five; larger plans retain every shard. The release-bot PR (head
 `changeset-release/main` from this repository, opened by
-`station-automation[bot]`) is re-pushed on every main push, so its shard and
+`station-automation[bot]`) is re-pushed whenever a main push changes what it
+releases, and also on a conflict, unreadable state, a dirty checkout or a probe
+timeout, where it fails open ([releasing](releasing.md#release-procedure)), so its shard and
 statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
 shared buckets; supersession cancels its older heads as for any PR. A job holds
 its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these

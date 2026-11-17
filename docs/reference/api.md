@@ -4344,6 +4344,14 @@ are rounded milliseconds. MCP text content may be JSON-decoded by the result
 unwrapper. Tool errors, including station-control failure envelopes, are checked
 before success is returned. Unknown Agent/tool identities return 404.
 
+Station's own station-control tools run here, and in the invoke endpoints and a
+client's direct `POST /api/agents/:slug/chat`, as the principal Station resolved
+for the request: each request gets its own in-process `bound` caller, retired
+when the response ends
+([request runs](../../src-server/runtime/routes/request-station-control.ts)).
+A request with no resolvable principal gets no caller, and its station-control
+calls are refused with `station_control_caller_required`.
+
 ### Streaming Invocation
 
 ```http
@@ -5912,6 +5920,35 @@ as create), and returns `{success: true, data: {output}}`. An edit never
 changes `createdBy`. Re-enabling a disabled job resets its
 `consecutiveFailures`.
 
+Every job records `createdBy`, the owner its runs act as, resolved from the
+creating request (an untargeted job too, since #2377 slice D): an untargeted
+run's Station tools act for that owner through a per-run `bound` caller, with
+that person's full authority (not a device's pairing scope). Editing, running,
+enabling, disabling or deleting a job with an owner is admitted against that
+owner, for a person and for an agent's `update_job`/`run_job`, as for a
+targeted automation. The operator in person (the operator credential or
+home-possession, never an agent, never an owner device) may also manage any
+owned untargeted job; a run they trigger still acts as the job's owner, and
+its run record stays the owner's, so the operator cannot read it. Admitted
+that way, an edit whose body sets a `target` is refused with 403
+`automation_target_owner_only`: only the owner points their job at a
+conversation. The jobs the one-time owner migration covers are fixed when
+owner-aware code first opens the ledger (the jobs then stored with no owner).
+The migration settles at that Station's first start: a personal Station gives
+the operator those jobs; a shared or hosted one gives them to no one, so a
+Station that later becomes personal hands nothing over. An unreadable job
+record is set aside and does not hold the migration back, and a start that
+cannot write the migration (a locked ledger) leaves it for the next start
+over the same fixed set. A job stored without an owner afterwards stays
+ownerless. Such a job's view
+carries `ownerNeeded` (the reason). Its runs get no Station caller and the model
+is told so; the Station tools are still listed to it, and every call is
+refused. A Project job (`projectId`) is the exception: each run is a Task
+that currently acts as the local operator whoever created it (acting as the
+creator is #5126), so an ownerless one carries no `ownerNeeded`; who may
+change or run it is still decided by its creator. The scheduler routes answer
+404 on a hosted Station, so hosted jobs are out of reach here.
+
 For a job that already has a `target`, every edit (any field), `run`,
 `enable`, `disable` and `DELETE` is admitted against the **stored** target
 first, whatever the body names: a person must be able to send to its
@@ -6042,8 +6079,12 @@ code when unplaced (`not-in-scope` after two polls in a row miss it,
 `holder-gone` once a found holder has left the scope, `holder-unavailable`
 when the host has no `setsid`(1) or `sleep`(1))
 (an unplaced holder means that scope's OOM count will be unknown after the
-engine dies). The session read's measured scope carries
-`lastOomKillAt` too. A save refuses a total below the slice's current usage
+engine dies). A scope also carries `lastOomKillProcesses`, its three
+largest processes when Station saw the latest kill, and, while its working
+set is at or above `STATION_WORKLOAD_PRESSURE_PERCENT` of its limit,
+`pressure` (`since`, `thresholdPercent`, `workingSetBytes`, `memoryMaxBytes`,
+`limitEvents` and `largestProcesses`). The session read's measured scope carries
+`lastOomKillAt`, `lastOomKillProcesses` and `pressure` too. A save refuses a total below the slice's current usage
 (400 `workload_settings_invalid`), because the total binds running engines at
 once.
 
@@ -6430,7 +6471,7 @@ These are the person-facing leaves of the same reads and of `wait_session`
 - `GET /api/orchestration/session-reads/:sessionId/wait?until=&timeoutMs=&afterEventCursor=`
 
 They answer a person's own credential. Every internal request (a
-station-control caller, a caller-less child, Station's own server code) gets
+station-control caller, a copied internal token, Station's own server code) gets
 `403`: the station-control guard refuses the unmapped route, and the leaf
 itself answers `person_credential_required`. The agent-only leaves above keep
 refusing a person with `station_control_caller_required`. The leaves inherit

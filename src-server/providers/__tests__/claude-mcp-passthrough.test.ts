@@ -5,7 +5,6 @@ import {
   builtinStationControlServerPath,
   builtinStationKnowledgeServerPath,
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
-import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { resolveClaudeMcpServers } from '../adapters/claude-mcp-passthrough.js';
 
@@ -124,8 +123,8 @@ describe('resolveClaudeMcpServers', () => {
   // from ACP's equivalent (acp-mcp-passthrough.ts), and it is safe ONLY
   // because the Claude Agent SDK spawns this server in Station's own
   // subprocess — see claude-mcp-passthrough.ts's header comment.
-  describe('station-control runtime token injection', () => {
-    test('injects the Station internal API token into the built-in station-control server', () => {
+  describe('station-control runtime env (no token since #2377 slice D)', () => {
+    test('gives the built-in station-control stdio fallback its compile cache and no internal API token', () => {
       const result = resolveClaudeMcpServers([
         toolServer({
           id: 'station-control',
@@ -138,8 +137,7 @@ describe('resolveClaudeMcpServers', () => {
         command: 'node',
         args: [builtinStationControlServerPath()],
         env: {
-          [INTERNAL_API_TOKEN_ENV]: expect.any(String),
-          // The home's compile cache rides the same exact-binary gate.
+          // The home's compile cache rides the exact-binary gate.
           NODE_COMPILE_CACHE: resolve(
             resolveHomeDir(),
             'cache',
