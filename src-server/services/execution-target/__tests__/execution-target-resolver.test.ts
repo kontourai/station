@@ -12,6 +12,7 @@ import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { BedrockAdapter } from '../../../providers/adapters/bedrock-adapter.js';
 import { MuseAdapter } from '../../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../../providers/adapters/ollama-adapter.js';
+import { OpenCodeAdapter } from '../../../providers/adapters/opencode-adapter.js';
 import {
   type EnvironmentAccess,
   type ExecutionTargetResolverDependencies,
@@ -1155,6 +1156,42 @@ describe('the model a turn launches with', () => {
     // the model is applied at start, which this engine supports. The dispatch
     // layer is what keeps it off resume/per-turn.
     expect(resolved.modelId).toBe('zai-coding-plan/glm-5.3');
+    expect(resolved.modelLaunchPlan.kind).not.toBe('unavailable');
+  });
+
+  // The composer names the selected model on every new chat, so an engine
+  // with no `modelLaunch` refuses every one (`override-unsupported`). The
+  // OpenCode engine is bound by the real adapter here, not a stand-in.
+  test('an OpenCode-engine chat that names its model resolves', async () => {
+    const opencode = new OpenCodeAdapter({
+      getConnections: async () => [],
+      acp: {} as never,
+      createAcpAdapter: () => ({}) as ProviderAdapterShape,
+      pool: {} as never,
+    });
+    const resolved = await resolveExecutionTarget(
+      {
+        agent: agentId('station'),
+        environment: { kind: 'current' },
+        model: { override: 'zai-coding-plan/glm-5.3-flash' },
+      },
+      dependencies({
+        getAgent: vi.fn(async () => ({
+          slug: agentId('station'),
+          available: true,
+          execution: { agentConnectionId: engineConnectionId('opencode') },
+        })),
+        getConnection: vi.fn(async (_access, id) =>
+          connection(id, 'opencode'),
+        ),
+        getProviderAdapter: vi.fn((provider) =>
+          provider === 'opencode' ? opencode : undefined,
+        ),
+      }),
+    );
+
+    expect(resolved.provider).toBe('opencode');
+    expect(resolved.modelId).toBe('zai-coding-plan/glm-5.3-flash');
     expect(resolved.modelLaunchPlan.kind).not.toBe('unavailable');
   });
 

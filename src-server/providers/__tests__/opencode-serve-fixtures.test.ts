@@ -65,6 +65,8 @@ describe('OpenCode serve captures', () => {
         'permission-saved',
         'plan-deny',
         'question',
+        'reasoning',
+        'reasoning-reconnect',
         'reconnect',
         'revert',
         'steer',

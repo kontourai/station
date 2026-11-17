@@ -1025,6 +1025,86 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(completed).toMatchObject({ finishReason: 'stop' });
   });
 
+  test('a reply after reasoning streams as text, beside its reasoning', async () => {
+    const h = await setup({ scenario: 'reasoning' });
+    await h.start();
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_THINK now',
+    });
+    const completed = await h.waitFor(completedFor(turnId));
+    // OpenCode numbers reasoning and text parts apart: both are ordinal 0.
+    expect(finalAssistantText('reasoning')).toBe('thought reply');
+    expect(turnText(h.events, turnId)).toBe('thought reply');
+    expect(completed).toMatchObject({ outputText: 'thought reply' });
+    const reasoning = h.events.filter(
+      (event) =>
+        event.method === 'content.reasoning-delta' && event.turnId === turnId,
+    );
+    expect(reasoning.map((event) => event.delta).join('')).toBe(
+      'Thinking it over.',
+    );
+    const textItems = new Set(
+      h.events
+        .filter(
+          (event) =>
+            event.method === 'content.text-delta' && event.turnId === turnId,
+        )
+        .map((event) => event.itemId),
+    );
+    expect(textItems.size).toBe(1);
+    expect(textItems.has(reasoning[0]?.itemId)).toBe(false);
+    expect(h.replay.misses).toEqual([]);
+  });
+
+  test('after a feed drop, a reply that followed reasoning equals what OpenCode kept', async () => {
+    const h = await setup({ scenario: 'reasoning-reconnect' });
+    await h.start();
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_THINK_SLOW stream',
+    });
+    await h.waitFor(completedFor(turnId), 10_000);
+    const kept = finalAssistantText('reasoning-reconnect');
+    expect(kept).toMatch(/^t0 t1 .*t19 $/);
+    expect(turnText(h.events, turnId)).toBe(kept);
+  });
+
+  test('a reply after reasoning that ended while the feed was down is caught up once', async () => {
+    // The reads Station makes on reconnect were recorded before the turn
+    // ended; the history read after it holds the finished reply.
+    const ended =
+      loadOpenCodeFixture('reasoning-reconnect').find(
+        (record) => record.event?.type === 'session.execution.succeeded',
+      )?.t ?? 0;
+    expect(ended).toBeGreaterThan(0);
+    const h = await setup({
+      scenario: 'reasoning-reconnect',
+      fallbacks: ['basic', 'catalog', 'mcp'],
+      // As in `reconnect`: tap B shows nothing, and the reads on reconnect
+      // find the turn finished, so its text comes from history alone.
+      omit: (record) =>
+        (record.tap === 'B' &&
+          record.kind === 'sse' &&
+          record.event?.type !== 'server.connected') ||
+        (record.kind === 'http' &&
+          record.method === 'GET' &&
+          record.t < ended &&
+          (record.path === '/api/session/active' ||
+            record.path?.includes('/message?order=asc') === true)),
+    });
+    await h.start();
+    const { turnId } = await h.adapter.sendTurn({
+      threadId: 'thread-1',
+      input: 'DO_THINK_SLOW stream',
+    });
+    const completed = await h.waitFor(completedFor(turnId), 10_000);
+    expect(turnText(h.events, turnId)).toBe(
+      finalAssistantText('reasoning-reconnect'),
+    );
+    expect(completed).toMatchObject({ finishReason: 'stop' });
+  });
+
   test('/compact runs OpenCode compaction as the command turn', async () => {
     const h = await setup({ scenario: 'compact' });
     await h.start();
