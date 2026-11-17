@@ -134,7 +134,7 @@ export function ProjectUsageSection({ slug }: { slug: string }) {
         />
       ) : taskRows.length === 0 ? (
         <Empty
-          label="No usage yet"
+          label="Nothing reported yet"
           description="Usage appears after a Session in this Project reports it."
         />
       ) : (

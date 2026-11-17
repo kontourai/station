@@ -189,7 +189,7 @@ export function MemorySection({ slug }: { slug: string }) {
         />
       ) : notes.length === 0 ? (
         <Empty
-          label="No notes yet"
+          label="Nothing saved yet"
           description="Ask an agent in this Project to remember a decision, requirement or pitfall."
         />
       ) : (
