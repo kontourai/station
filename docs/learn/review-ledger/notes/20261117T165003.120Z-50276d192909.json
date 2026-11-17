@@ -1,0 +1,7 @@
+{
+  "revision": "9f97070d385f4a67882dc72b62f22417a859e847",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Re-checked the easing section against the ratchet. An ease-in ident jammed against a duration, including EASE-IN, now fails at ceiling 0. Hex escapes that spell ease-in, var(--ease-in), or the custom property name fail the same way. ease-iné and ease-in\\2d out, which decodes to ease-in-out, do not. Injected the previous boundary: the new test failed because the jammed form was not classified as ease-in, then restored, and all 18 tests passed. Duration steps and the hover query are unchanged. The ratchet test has no separate prose owner. No screenshot or computed timing.","inputs":["docs/design/motion.md","scripts/motion-contract-ratchet.mjs"]}
+  ]
+}
