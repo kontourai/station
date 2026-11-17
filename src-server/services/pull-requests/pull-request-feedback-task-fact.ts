@@ -39,6 +39,11 @@ export function pullRequestFeedbackTaskFact(input: {
       ? { ...fact, reviewEachHead: true }
       : fact;
   const prKey = pullRequestFeedbackKey(view.identity);
+  if (input.reviewHold)
+    return factWithReview({
+      state: input.reviewHold.state,
+      headSha: input.reviewHold.headSha,
+    });
   // Fixing: feedback goes to this Task's own run, and its running turn is
   // the one Station started to send this pull request's failing checks. A
   // turn about review threads alone, another Task's run, or another chat is
@@ -60,16 +65,14 @@ export function pullRequestFeedbackTaskFact(input: {
     )
   )
     return factWithReview({ state: 'fixing', headSha: carried.headSha });
-  if (input.reviewHold)
-    return factWithReview({
-      state: input.reviewHold.state,
-      headSha: input.reviewHold.headSha,
-    });
   const status = view.status;
   if (status.state === 'paused')
     return factWithReview({ state: 'paused', headSha: status.headSha });
   const head = store.observation(prKey)?.observation.headSha;
-  if (!head) return undefined;
+  if (!head)
+    return input.headReviewEnabled && view.settings?.reviewEachHead
+      ? { state: 'reviewing', reviewEachHead: true }
+      : undefined;
   if (status.state === 'held' && status.reason === 'checks-running')
     return factWithReview({ state: 'waiting-on-checks', headSha: head });
   // `last` is already the newest send about the observed head.
@@ -81,7 +84,7 @@ export function pullRequestFeedbackTaskFact(input: {
   // overstate it).
   if (view.settings && !pullRequestFeedbackSends(view.settings))
     return input.headReviewEnabled && view.settings.reviewEachHead
-      ? factWithReview({ state: 'watching', headSha: head })
+      ? factWithReview({ state: 'reviewed', headSha: head })
       : undefined;
   if (
     status.state === 'watching' ||

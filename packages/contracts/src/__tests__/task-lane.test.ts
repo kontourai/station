@@ -26,6 +26,11 @@ test.each(['reviewing', 'review-needed'] as const)(
       kind: 'lane',
       lane: 'in_review',
     });
+    delete fact.feedback.headSha;
+    expect(derive({ pullRequests: [fact] }).placement).toEqual({
+      kind: 'lane',
+      lane: 'in_review',
+    });
     delete fact.feedback.reviewEachHead;
     expect(derive({ pullRequests: [fact] }).placement).toEqual({
       kind: 'lane',

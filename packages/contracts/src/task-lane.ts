@@ -124,9 +124,10 @@ export interface TaskPullRequestFeedbackFact {
     | 'fixing'
     | 'paused'
     | 'reviewing'
+    | 'reviewed'
     | 'review-needed';
   /** The head this is about. */
-  headSha: string;
+  headSha?: string;
   reviewEachHead?: true;
   /** `sent`: when it went. */
   at?: string;

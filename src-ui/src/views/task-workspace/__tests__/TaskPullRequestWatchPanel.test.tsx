@@ -11,10 +11,10 @@ const state = vi.hoisted(() => ({
   view: undefined as TaskPullRequestWatchView | undefined,
   queryEnabled: [] as boolean[],
   mutate: vi.fn(),
-  openReview: vi.fn(() => ({ ok: true })),
+  showSurface: vi.fn(),
 }));
-vi.mock('../../../contexts/useOpenInRegion', () => ({
-  useOpenPullRequestInRegion: () => state.openReview,
+vi.mock('../../../contexts/useShowSurface', () => ({
+  useShowSurface: () => state.showSurface,
 }));
 vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () =>
@@ -49,6 +49,7 @@ const task: TaskRecord = {
   description: '',
   priority: 'normal',
   status: 'in_progress',
+  sessionId: 'task-run',
   createdBy: 'user',
   createdAt: '2026-11-17T00:00:00.000Z',
   updatedAt: '2026-11-17T00:00:00.000Z',
@@ -181,11 +182,10 @@ test('a head waiting for review or needing recovery never says Ready for you', (
   };
   rerender(<TaskPullRequestWatchPanel task={task} />);
   expect(screen.getByText('Review needs you')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Open review' }));
-  expect(state.openReview).toHaveBeenCalledWith(
-    { host: 'github.com', owner: 'acme', repository: 'widgets', ref: '42' },
-    'widgets',
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+  expect(state.showSurface).toHaveBeenCalledWith('chat', {
+    session: 'task-run',
+  });
   expect(screen.getByText(/Required findings were dismissed/)).toBeTruthy();
   expect(screen.queryByText('Ready for you')).toBeNull();
 });
