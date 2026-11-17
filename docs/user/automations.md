@@ -97,7 +97,8 @@ Templates only ask for work an agent can do with its workspace and tools.
   turn on or off, or delete it. You, signed in as the Station's operator on
   this computer or with the operator credential, can also manage any
   automation that doesn't run in a chat; when you run it, it still runs as its
-  owner.
+  owner, and that run's record is the owner's, so you can't read it. You can't
+  point someone else's automation at a chat; only its owner can.
 - On a personal Station, older automations created before Station recorded an
   owner became yours once, when you updated. An automation without an owner
   shows that it needs one, and its runs have no Station tools until someone
