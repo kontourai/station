@@ -1,0 +1,9 @@
+{
+  "revision": "2478dab651652a2f26675fd505e378d2327032ff",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Pressing Continue in Station while the still-running caution shows now moves focus back into it, and a stale comment was corrected; starter-work and pane-relationships claims about the reader are unchanged.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Pressing Continue in Station while the still-running caution shows now moves focus back into it, and a stale comment was corrected; starter-work and pane-relationships claims about the reader are unchanged.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

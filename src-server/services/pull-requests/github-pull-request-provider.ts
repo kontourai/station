@@ -16,6 +16,7 @@ import type {
 } from '@kontourai/station-contracts/pull-request-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
 import { readGitHubFeedbackObservation } from './github-feedback-observation.js';
+import { readGitHubPullRequestsByHead } from './github-pull-requests-by-head.js';
 import {
   readPullRequestReview,
   writePullRequestReview,
@@ -683,6 +684,13 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       repository: c.repository,
       ref,
     });
+  }
+  /** Agent feedback's Task-branch discovery (github-pull-requests-by-head.ts). */
+  findOpenPullRequestsByHead(
+    c: PullRequestRepositoryIdentityContext,
+    branch: string,
+  ) {
+    return readGitHubPullRequestsByHead((args) => this.gh(args, c), c, branch);
   }
 
   async getPullRequestStatusByIdentity(

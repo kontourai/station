@@ -381,6 +381,21 @@ settle the flush attempt while its exporter remains active, so stream completion
 is not proof that every exporter or other run resource has settled. This change
 does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
 
+The 2.11.0 patch also loads VoltAgent's OTLP log and trace exporters and its
+JSON serializers when they are first needed: the exporters once VoltAgent's default
+observability finds a VoltOps client, the serializers on the first export of VoltAgent's
+serverless observability, which Station does not use. Before, importing the
+module loaded them. VoltAgent's tree holds several copies of the OTLP
+transformer, each costing megabytes of heap, and Station's default
+local-only observability never exports to VoltOps. The CJS and ESM regression in
+`src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts`
+records that importing VoltAgent loads none of them. The VoltOps control cases in
+`src-server/runtime/bootstrap/__tests__/voltagent-managed-telemetry.test.ts`
+still send traces and logs to a local recorder through the deferred exporters;
+no test runs the deferred serializers. An exporter package that cannot load now
+fails inside VoltAgent's existing processor setup, which drops VoltOps export
+quietly, as it already did for an exporter that could not be constructed.
+
 The process keeper audits Core 2.11.0 with the locked AI 6.0.330. Requalification
 on Node 24 and macOS verified the installed CJS/ESM entries against the official
 archive and reviewed the stream-source changes since AI 6.0.322. The newer

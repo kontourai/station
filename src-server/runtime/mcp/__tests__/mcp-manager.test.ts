@@ -37,18 +37,14 @@ vi.mock('../../../services/evidence/platform-mutation-gate.js', () => ({
   wrapPlatformMutationGatedTools: (tools: unknown[]) => tools,
 }));
 
-const {
-  loadAgentTools: loadAgentToolsImplementation,
-  releaseAllNativeStationControlConnections,
-} = await import('../mcp-manager.js');
+const { loadAgentTools: loadAgentToolsImplementation } = await import(
+  '../mcp-manager.js'
+);
 const { MCPLocalConnectionCustody } = await import(
   '@kontourai/station-shared/mcp'
 );
 const { createMCPToolProvenanceGeneration } = await import(
   '../../../services/orchestration/mcp-tool-provenance.js'
-);
-const { withTenantExecutionContext } = await import(
-  '../../bootstrap/runtime-tenant-context.js'
 );
 const { builtinStationControlServerPath } = await import(
   '../../bootstrap/station-control-runtime-env.js'
@@ -194,7 +190,6 @@ function loadAgentTools(...args: LoadAgentToolsFixtureArgs) {
 describe('Station-owned MCP manager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    return releaseAllNativeStationControlConnections();
   });
 
   test('the session tool-loading path excludes a disabled server before connecting', async () => {
@@ -462,49 +457,8 @@ describe('Station-owned MCP manager', () => {
     expect(tools[0]).not.toHaveProperty('replay');
   });
 
-  test('routes concurrent built-in station-control calls through isolated tenant clients', async () => {
-    const catalog = {
-      client: { callTool: vi.fn() },
-      serverId: 'station-control',
-      tools: [
-        {
-          name: 'station-control_list_agents',
-          originalName: 'list_agents',
-          serverId: 'station-control',
-          description: 'List agents.',
-          inputSchema: { type: 'object', properties: {} },
-        },
-        {
-          name: 'station-control_device_input',
-          originalName: 'device_input',
-          serverId: 'station-control',
-          inputSchema: { type: 'object', properties: {} },
-          _meta: { 'ai.kontour/durable-replay': 'unsafe' },
-        },
-      ],
-      negotiation: {
-        era: 'modern',
-        protocolVersion: '2026-07-28',
-        serverInfo: { name: 'station-control', version: '1.0.0' },
-        serverCapabilities: { tools: {}, extensions: {} },
-        extensionIds: [],
-        fellBackToLegacy: false,
-      },
-      disconnect: vi.fn(),
-    };
-    const alpha = {
-      client: { callTool: vi.fn().mockResolvedValue('alpha') },
-      disconnect: vi.fn(),
-    };
-    const bravo = {
-      client: { callTool: vi.fn().mockResolvedValue('bravo') },
-      disconnect: vi.fn(),
-    };
-    connectMCP
-      .mockResolvedValueOnce(catalog)
-      .mockResolvedValueOnce(alpha)
-      .mockResolvedValueOnce(bravo);
-
+  test('#2377 slice D: the built-in station-control loads in-process, with no child, and a call outside a session turn is refused', async () => {
+    const integrationMetadata = new Map<string, { toolCount?: number }>();
     const tools = await loadAgentTools(
       'agent-one',
       { tools: { mcpServers: ['station-control'], available: ['*'] } } as any,
@@ -519,50 +473,37 @@ describe('Station-owned MCP manager', () => {
       } as any,
       new Map(),
       new Map(),
-      new Map(),
+      integrationMetadata as never,
       new Map(),
       new Map(),
       { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
     );
 
-    expect(isTrustedNativeStationControlTool(tools[0])).toBe(true);
-    expect(
-      tools.find((tool) => tool.name === 'stationControl_deviceInput'),
-    ).toMatchObject({ replay: 'unsafe' });
-
-    await Promise.all([
-      withTenantExecutionContext(
-        { tenantId: 'alpha' as any, source: 'request' },
-        () => tools[0]!.execute!({}),
-      ),
-      withTenantExecutionContext(
-        { tenantId: 'bravo' as any, source: 'request' },
-        () => tools[0]!.execute!({}),
-      ),
-    ]);
-
-    expect(alpha.client.callTool).toHaveBeenCalledWith({
-      name: 'list_agents',
-      arguments: {},
-    });
-    expect(bravo.client.callTool).toHaveBeenCalledWith({
-      name: 'list_agents',
-      arguments: {},
-    });
-    expect(connectMCP.mock.calls.slice(1)).toEqual(
-      expect.arrayContaining([
-        [
-          expect.objectContaining({
-            env: expect.objectContaining({ STATION_INTERNAL_TENANT: 'alpha' }),
-          }),
-        ],
-        [
-          expect.objectContaining({
-            env: expect.objectContaining({ STATION_INTERNAL_TENANT: 'bravo' }),
-          }),
-        ],
-      ]),
+    // Nothing connected: no child process, so no credential in any env.
+    expect(connectMCP).not.toHaveBeenCalled();
+    // Health still reports the integration and its tool count.
+    expect(integrationMetadata.get('station-control')?.toolCount).toBe(
+      tools.length,
     );
+    const listAgents = tools.find(
+      (tool) => tool.name === 'stationControl_listAgents',
+    );
+    expect(listAgents).toBeDefined();
+    expect(isTrustedNativeStationControlTool(listAgents)).toBe(true);
+    // The registrations' own replay declarations survive the catalog.
+    expect(
+      tools.find((tool) => tool.name === 'stationControl_deviceScreenshot'),
+    ).toMatchObject({ replay: 'unsafe' });
+    // No authorized turn names a session: it acts for no one.
+    const result = (await listAgents!.execute!({})) as {
+      content: { text: string }[];
+      isError?: boolean;
+    };
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({
+      success: false,
+      code: 'station_control_caller_required',
+    });
   });
 
   test('#2584: the loader stamps builtinStationControl from isBuiltinStationControl, and only that stamp grants notify_user', async () => {
@@ -588,8 +529,9 @@ describe('Station-owned MCP manager', () => {
       },
       disconnect: vi.fn(),
     });
-    const load = async (args: string[]) => {
-      connectMCP.mockResolvedValueOnce(catalog(args[0]!));
+    const load = async (args: string[], connects: boolean) => {
+      // The genuine built-in is served in-process and connects nothing.
+      if (connects) connectMCP.mockResolvedValueOnce(catalog(args[0]!));
       const toolNameMapping = new Map<string, MCPToolNameMappingEntry>();
       await loadAgentTools(
         'agent-one',
@@ -613,7 +555,8 @@ describe('Station-owned MCP manager', () => {
       return toolNameMapping;
     };
 
-    const genuine = await load([builtinStationControlServerPath()]);
+    const genuine = await load([builtinStationControlServerPath()], false);
+    expect(connectMCP).not.toHaveBeenCalled();
     expect(genuine.get('stationControl_notifyUser')).toMatchObject({
       builtinStationControl: true,
     });
@@ -621,9 +564,9 @@ describe('Station-owned MCP manager', () => {
       isIntrinsicStationEngineGrant('stationControl_notifyUser', genuine),
     ).toBe(true);
 
-    await releaseAllNativeStationControlConnections();
     // An authored integration reusing the id with another command target.
-    const impostor = await load(['/tmp/impostor-station-control.js']);
+    const impostor = await load(['/tmp/impostor-station-control.js'], true);
+    expect(connectMCP).toHaveBeenCalledTimes(1);
     expect(impostor.get('stationControl_notifyUser')).toBeDefined();
     expect(impostor.get('stationControl_notifyUser')).not.toHaveProperty(
       'builtinStationControl',
@@ -631,182 +574,6 @@ describe('Station-owned MCP manager', () => {
     expect(
       isIntrinsicStationEngineGrant('stationControl_notifyUser', impostor),
     ).toBe(false);
-  });
-
-  test('single-flights concurrent first calls for the same tenant', async () => {
-    let resolveConnection: ((value: any) => void) | undefined;
-    const catalog = {
-      client: { callTool: vi.fn() },
-      serverId: 'station-control',
-      tools: [
-        {
-          name: 'station-control_list_agents',
-          originalName: 'list_agents',
-          serverId: 'station-control',
-          inputSchema: { type: 'object' },
-        },
-      ],
-      negotiation: {
-        era: 'modern',
-        protocolVersion: '2026-07-28',
-        serverInfo: { name: 'station-control', version: '1' },
-        serverCapabilities: { tools: {}, extensions: {} },
-        extensionIds: [],
-        fellBackToLegacy: false,
-      },
-      disconnect: vi.fn(),
-    };
-    const tenantConnection = {
-      client: { callTool: vi.fn().mockResolvedValue('ok') },
-      disconnect: vi.fn(),
-    };
-    connectMCP.mockResolvedValueOnce(catalog).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveConnection = resolve;
-        }),
-    );
-    const tools = await loadAgentTools(
-      'agent-one',
-      { tools: { mcpServers: ['station-control'], available: ['*'] } } as any,
-      {
-        loadIntegration: vi.fn().mockResolvedValue({
-          id: 'station-control',
-          kind: 'mcp',
-          transport: 'stdio',
-          command: 'node',
-          args: [builtinStationControlServerPath()],
-        }),
-      } as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
-    );
-    const context = { tenantId: 'alpha' as any, source: 'request' as const };
-    const first = withTenantExecutionContext(context, () =>
-      tools[0]!.execute!({}),
-    );
-    const second = withTenantExecutionContext(context, () =>
-      tools[0]!.execute!({}),
-    );
-    await vi.waitFor(() => expect(connectMCP).toHaveBeenCalledTimes(2));
-    resolveConnection!(tenantConnection);
-    await Promise.all([first, second]);
-    expect(tenantConnection.client.callTool).toHaveBeenCalledTimes(2);
-  });
-
-  test('disposes an in-flight tenant connection during release-all instead of caching it afterward', async () => {
-    let resolveConnection: ((value: any) => void) | undefined;
-    const catalog = {
-      client: { callTool: vi.fn() },
-      serverId: 'station-control',
-      tools: [
-        {
-          name: 'station-control_list_agents',
-          originalName: 'list_agents',
-          serverId: 'station-control',
-          inputSchema: { type: 'object' },
-        },
-      ],
-      negotiation: {
-        era: 'modern',
-        protocolVersion: '2026-07-28',
-        serverInfo: { name: 'station-control', version: '1' },
-        serverCapabilities: { tools: {}, extensions: {} },
-        extensionIds: [],
-        fellBackToLegacy: false,
-      },
-      disconnect: vi.fn(),
-    };
-    const pendingConnection = {
-      client: { callTool: vi.fn().mockResolvedValue('stale') },
-      disconnect: vi.fn().mockResolvedValue(undefined),
-    };
-    const freshConnection = {
-      client: { callTool: vi.fn().mockResolvedValue('fresh') },
-      disconnect: vi.fn(),
-    };
-    connectMCP
-      .mockResolvedValueOnce(catalog)
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveConnection = resolve;
-          }),
-      )
-      .mockResolvedValueOnce(freshConnection);
-    const tools = await loadAgentTools(
-      'agent-one',
-      { tools: { mcpServers: ['station-control'], available: ['*'] } } as any,
-      {
-        loadIntegration: vi.fn().mockResolvedValue({
-          id: 'station-control',
-          kind: 'mcp',
-          transport: 'stdio',
-          command: 'node',
-          args: [builtinStationControlServerPath()],
-        }),
-      } as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
-    );
-    const context = { tenantId: 'alpha' as any, source: 'request' as const };
-    const pending = withTenantExecutionContext(context, () =>
-      tools[0]!.execute!({}),
-    );
-    await vi.waitFor(() => expect(connectMCP).toHaveBeenCalledTimes(2));
-
-    const cleanup = releaseAllNativeStationControlConnections();
-    resolveConnection!(pendingConnection);
-    await cleanup;
-    await expect(pending).rejects.toThrow(
-      'released while creation was pending',
-    );
-    expect(pendingConnection.disconnect).toHaveBeenCalledOnce();
-
-    await expect(
-      withTenantExecutionContext(context, () => tools[0]!.execute!({})),
-    ).resolves.toBe('fresh');
-    expect(freshConnection.client.callTool).toHaveBeenCalledOnce();
-    expect(connectMCP).toHaveBeenCalledTimes(3);
-
-    await releaseAllNativeStationControlConnections();
-    let resolveFailedConnection: ((value: any) => void) | undefined;
-    const failedConnection = {
-      client: { callTool: vi.fn().mockResolvedValue('failed-stale') },
-      disconnect: vi.fn().mockRejectedValueOnce(new Error('stale disconnect')),
-    };
-    connectMCP.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveFailedConnection = resolve;
-        }),
-    );
-    const failedPending = withTenantExecutionContext(context, () =>
-      tools[0]!.execute!({}),
-    );
-    await vi.waitFor(() => expect(connectMCP).toHaveBeenCalledTimes(4));
-    const failedPendingExpectation = expect(failedPending).rejects.toThrow(
-      'released while creation was pending',
-    );
-    const failedCleanup = releaseAllNativeStationControlConnections();
-    resolveFailedConnection!(failedConnection);
-    await expect(failedCleanup).rejects.toThrow(
-      'Native station-control cleanup failed.',
-    );
-    await failedPendingExpectation;
-    expect(failedConnection.disconnect).toHaveBeenCalledOnce();
-    await expect(
-      releaseAllNativeStationControlConnections(),
-    ).resolves.toBeUndefined();
-    expect(failedConnection.disconnect).toHaveBeenCalledTimes(2);
   });
 
   test('shares one negotiated connection and adapts tools into the engine boundary', async () => {

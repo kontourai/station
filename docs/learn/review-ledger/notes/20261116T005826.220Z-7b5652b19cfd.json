@@ -1,0 +1,7 @@
+{
+  "revision": "ef76f5c07b255bbf885de6c10b48a7f95b514255",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"starter-work.md now says continuation asks first only for a source still running; getting-started.md's Continue an Attached Session section states the same behavior.","inputs":["docs/guides/starter-work.md"]}
+  ]
+}

@@ -206,6 +206,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
+  // Fresh Node children import VoltAgent and record which modules load.
+  'src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts',
   // Fake startup/cleanup owners and real Windows ConPTY releases;
   // an owned child exercises 30 concurrent native shell exits and resizes.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
@@ -575,9 +577,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/tools/__tests__/station-control-caller-binding.process.test.ts',
   // A same-user Node child replays copied Codex tool headers over loopback.
   'src-server/runtime/mcp/__tests__/codex-bound-tools.test.ts',
-  // #2377: one bounded Node child runs the stdio entry's credential install
-  // and the stdio tools' own REST helper against an in-process guard, proving
-  // a real pooled child reaches reads only; no real services.
+  // #2377: one bounded Node child runs the stdio entry's install and the
+  // stdio tools' own REST helper with a copied internal token against an
+  // in-process guard, proving a real caller-less child is refused every
+  // route (slice D); no real services.
   'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
   // #3160: one bounded Node child registers the real station-control server
   // as a caller-less stdio child and calls the three Session tools over an

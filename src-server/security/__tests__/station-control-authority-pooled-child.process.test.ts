@@ -1,14 +1,20 @@
 /**
- * #2377 slice A, decision 4, with a REAL separate process: a pooled stdio
- * station-control child (the internal token in its env, no per-session
- * caller credential) against this process's production boundary and guard.
+ * #2377 decision 4, with a REAL separate process: a stdio station-control
+ * child holding a copy of the internal token and no per-session caller
+ * credential, against this process's production boundary and guard.
+ *
+ * Slice A let such a child read what belongs to no one. Slice D gives
+ * Station's own engine a per-session in-process caller, so nothing
+ * legitimate is caller-less any more and the guard refuses it everything,
+ * reads included. No child is handed the token now
+ * (`withStationControlRuntimeEnv`); this one is given a copy explicitly, as
+ * a stolen token would be.
  *
  * The child runs the stdio entry's own install
  * (`installStationControlStdioEntry`) and then the same `api()`
  * every stdio tool uses. It never minted the server attestation — that lives
- * only in this (server) process's memory — so it can reach reads and nothing
- * else, and it cannot send the attestation even when it tries to enter a
- * server scope of its own.
+ * only in this (server) process's memory — so it cannot send the attestation
+ * even when it tries to enter a server scope of its own.
  */
 import { execFile } from 'node:child_process';
 import type { AddressInfo } from 'node:net';
@@ -104,7 +110,7 @@ afterAll(async () => {
   __resetStationControlMcpTokensForTests();
 });
 
-test('a real pooled stdio child reaches reads only, and never carries the server attestation', async () => {
+test('a real caller-less stdio child is refused every route, reads included, and never carries the server attestation', async () => {
   const result = await run(
     process.execPath,
     ['--import', 'tsx', '--input-type=module', '-e', probe],
@@ -112,7 +118,7 @@ test('a real pooled stdio child reaches reads only, and never carries the server
       cwd: root,
       env: {
         ...process.env,
-        // The internal token Station hands its built-in child; no caller.
+        // A copied internal token; no caller.
         STATION_INTERNAL_API_TOKEN: getInternalApiToken(),
         STATION_API_BASE: baseUrl,
         // A LIVE credential under the retired stdio caller-token key: the
@@ -128,11 +134,14 @@ test('a real pooled stdio child reaches reads only, and never carries the server
     },
   );
   const output = JSON.parse(result.stdout) as {
-    read: unknown;
+    read: { success: boolean; code?: string };
     write: { success: boolean; code?: string };
     scopedWrite: { success: boolean; code?: string };
   };
-  expect(output.read).toEqual([]);
+  expect(output.read).toMatchObject({
+    success: false,
+    code: 'station_control_caller_required',
+  });
   expect(output.write).toMatchObject({
     success: false,
     code: 'station_control_caller_required',
@@ -143,5 +152,6 @@ test('a real pooled stdio child reaches reads only, and never carries the server
     success: false,
     code: 'station_control_caller_required',
   });
-  expect(seen).toEqual([{ path: '/agents', self: false }]);
+  // Nothing reached a route.
+  expect(seen).toEqual([]);
 }, 45_000);

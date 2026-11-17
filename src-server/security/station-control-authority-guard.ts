@@ -4,17 +4,18 @@
  * Every request the runtime auth boundary (`runtime-http.ts`) stamped
  * `kind:'internal'` — the per-boot internal token, presented from a direct
  * loopback socket with the `local` proxy marker — resolved to the Station
- * operator, whoever sent it. That is every station-control tool call (stdio
- * child, pooled child, in-process HTTP MCP, in-process Claude), so every
- * agent reached Station as the operator. This guard runs right after that
+ * operator, whoever sent it. That is every station-control tool call
+ * (in-process HTTP MCP, in-process Claude, Station's own engine in-process),
+ * so every agent reached Station as the operator. This guard runs right after that
  * boundary and before any route, and decides internal requests from the
  * station-control authority table (`tools/station-control-policy.ts`) and the
  * VERIFIED caller the request forwards (`resolveStationControlCallerForRequest`):
  *
  * - a route no tool reaches is refused (`station_control_route_unmapped`),
  *   so a new route cannot become agent-reachable by default;
- * - a caller-less request may reach only read-only routes whose answers
- *   belong to no person (decision 4, read with decision 2);
+ * - a caller-less request is refused (decision 4, slice D: Station's own
+ *   engine now calls as its session, so only a copied internal token or a
+ *   stray child is caller-less);
  * - assurance, the operator role, a recorded owner for principal-scoped
  *   actions, and person-only actions follow the table.
  *

@@ -138,7 +138,11 @@ inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
 
 Session links open the Chat reader on the verified Station. Attached continuation
-still asks for confirmation before creating and sending into its continuation.
+asks first only when the original is still mid-turn in its own app: Station
+refuses a launch for a source that reads as still running
+(`code: "continuation_source_active"`, `retrySafe: true`) until it is
+repeated with `continueWhileSourceActive`, which the reader's **Continue
+anyway** sends with the same operation identity.
 
 An attached terminal Session stays read only. The first eligible continuation
 launches the bounded `continue-session` Starter: Station

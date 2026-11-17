@@ -1232,7 +1232,6 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       ...B_CALLERS,
       'delegated-custody operator': DELEGATED_OPERATOR,
       'bound operator agent': BOUND_OPERATOR,
-      'raw token': 'raw-token' as const,
     })) {
       expect([label, await asTool(caller, '/api/diagnostics/logs')]).toEqual([
         label,
@@ -1241,6 +1240,11 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         }),
       ]);
     }
+    // Slice D: the raw token never reaches the route at all.
+    expect(await asTool('raw-token', '/api/diagnostics/logs')).toMatchObject({
+      success: false,
+      code: 'station_control_caller_required',
+    });
     // The operator credential carries no home-possession: redacted, as before.
     expect(apiKeys(await asOperatorUi(base, '/api/diagnostics/logs'))).toEqual([
       '[REDACTED]',
@@ -1765,9 +1769,18 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     expect(answer).toMatchObject({ success: false });
   });
 
-  test('a caller-less request still reads what belongs to no person', async () => {
+  test('slice D: a caller-less request reads nothing, not even what belongs to no person', async () => {
     await setup();
-    expect((await asTool('raw-token', '/agents')).code).toBeUndefined();
-    expect((await asTool('raw-token', '/config/app')).code).toBeUndefined();
+    for (const path of ['/agents', '/config/app'])
+      expect([path, (await asTool('raw-token', path)).code]).toEqual([
+        path,
+        'station_control_caller_required',
+      ]);
+    // The control: a verified caller still reads them.
+    for (const path of ['/agents', '/config/app'])
+      expect([path, (await asTool(C_BEARER, path)).code]).toEqual([
+        path,
+        undefined,
+      ]);
   });
 });

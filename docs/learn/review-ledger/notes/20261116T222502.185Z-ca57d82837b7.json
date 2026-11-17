@@ -1,0 +1,9 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"The projection appends an optional derived (branch-derived) list after declared links; explicit link storage, refresh and close-out observation unchanged.","inputs":["src-server/routes/pull-requests/conversation-pull-request-links.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The projection appends an optional derived (branch-derived) list after declared links; explicit link storage, refresh and close-out observation unchanged.","inputs":["src-server/routes/pull-requests/conversation-pull-request-links.ts"]}
+  ]
+}

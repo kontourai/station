@@ -1,0 +1,7 @@
+{
+  "revision": "7c25611c349d0272fa13c22c7086f1d6a558bb46",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Continue an Attached Session now explains the Still running warning, Wait and Continue anyway, that a fork misses later terminal writes, and that Station cannot stop the terminal session; checked against AttachedSessionDetail and the adoption guard.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

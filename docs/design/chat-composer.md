@@ -63,7 +63,16 @@ with **Send**: Send (or the configured Return shortcut, except during IME
 composition) continues with the draft; Shift+Return adds a line. Either way the continuation opens
 through the normal dock controller, and a draft, when there is one, goes to the
 normal sender once. The original conversation
-remains available in its original app. A failed opening retains the reader and offers a
+remains available in its original app. When the server reads the original as
+still mid-turn (`attachedSourceActivity` is `active`), or refuses the
+continuation for that reason, a caution row appears under the origin, at
+the top of the content area rather than in the title bar's action slot:
+"Still running in Claude Code. Continuing now forks it", with **Continue
+anyway** and **Not now**; it is not a dialog. Focus moves to **Continue anyway**,
+which the caution describes, and returns to **Continue in Station** on **Not
+now** or when Continue anyway fails; the caution is a status announcement, so a
+refusal of a stale read is heard too. Station offers no take-over: it cannot
+stop the original app. A failed opening retains the reader and offers a
 retry that does not create another continuation. Metadata is available through
 an explicit Details action.
 
@@ -462,7 +471,10 @@ swipe and snap to reveal labelled actions. Only one row's tray stays open.
 Swiping only reveals; Snooze still opens its duration picker. Eligible
 conversations also offer Settle or Reopen when Open and Settled inbox is
 enabled. Dismiss from inbox hides work on this device; settling records the
-person's resolution across devices, and neither stops a running engine.
+person's resolution across devices, and neither stops a running engine. With
+that preview on, owned conversations offer Settle and no Dismiss, and
+third-party Sessions offer Hide, kept per person on the host (see
+[Inbox shelves](#inbox-shelves-and-conversation-resolution)).
 The Details sheet retains the complete available action set, including actions
 also offered as shortcuts. Destructive draft discard stays outside the swipe
 tray. A server Draft remains present for an eight-second Undo window before
@@ -1506,6 +1518,27 @@ agent, and a row with no mark keeps the agent in words. A touch row keeps
 the agent named in words beside its mark (#4266). Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
+
+With the preview on, Settle is the one way to put an owned conversation away:
+its row offers no Dismiss. A third-party Session of this host offers **Hide**
+instead, kept on the host per person by Session thread id
+(`PUT /api/conversations/:id/inbox-hidden`, in `conversation-inbox-hidden.json`
+beside the settled records), so it is hidden on every device of that person.
+It stays hidden through its status updates and returns when the row is no
+longer third-party (adopted into Station), which also clears the record, or
+when the person restores it from search, where hidden rows are listed as
+Hidden. Hide and Restore share the dismissal Undo toast and shortcut. A host
+whose work-state read carries no `hidden` map, and a row from another Station,
+keep local Dismiss. Existing local third-party dismissals of this host move to
+the host when it first offers hiding and are then removed from the browser; a
+Session the host refuses as unreadable is dropped. Deleting a conversation
+removes every person's settled and hidden record for it, and each person keeps
+at most 1,000 hidden Sessions, newest first. The Settled shelf shows work
+settled in the last seven days (the settled record, else when the work ended,
+as for a closed Task) and the Third-party shelf Sessions active in the last
+seven days; older rows sit behind **Show older**, and search shows every row.
+The window is a default, not a setting. With the preview off, Dismiss and both
+shelves behave as before.
 
 Customize → Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;

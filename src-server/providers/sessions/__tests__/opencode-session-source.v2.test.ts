@@ -254,6 +254,96 @@ describe('OpenCodeSessionSource on an OpenCode 2.x store', () => {
     expect(semantic(noPartTable)).toEqual(semantic(inline));
   });
 
+  // Review: each write input stands alone. In a 2.0-2.2 store (no
+  // session_part) a step streams by rewriting its own message row, which is
+  // then the only signal; a session row moving alone is another.
+  test("reports a streaming message row's own write in a store without part rows", async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir, OPENCODE_V2_SCHEMA_WITHOUT_PARTS);
+    store.session('ses_main', '/workspace/project');
+    store.user('ses_main', 'Long task');
+    const step = store.assistant('ses_main', {
+      completed: false,
+      content: [v2Content.text('Partial')],
+    });
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await source.read(session);
+    expect(before.outcome).toBe('incomplete_tail');
+    const sessionTime = (
+      store.db
+        .prepare('SELECT time_updated AS t FROM session_v2 WHERE id = ?')
+        .get('ses_main') as { t: number }
+    ).t;
+
+    const streamed = store.tick();
+    expect(streamed).toBeGreaterThan(sessionTime);
+    store.db
+      .prepare(
+        "UPDATE session_message SET data = json_set(data, '$.content', json(?)), time_updated = ? WHERE id = ?",
+      )
+      .run(
+        JSON.stringify([v2Content.text('Partial, still streaming')]),
+        streamed,
+        step,
+      );
+    const after = await source.read(session, before.cursor);
+    expect(after.events).toEqual([]);
+    expect(after.sourceWriteAt).toBe(new Date(streamed).toISOString());
+  });
+
+  test("reports the session row's own write when nothing else moved", async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir, OPENCODE_V2_SCHEMA_WITHOUT_PARTS);
+    store.session('ses_main', '/workspace/project');
+    store.user('ses_main', 'Long task');
+    store.assistant('ses_main', {
+      completed: false,
+      content: [v2Content.text('Partial')],
+    });
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await source.read(session);
+    const touched = store.tick();
+    store.db
+      .prepare('UPDATE session_v2 SET time_updated = ? WHERE id = ?')
+      .run(touched, 'ses_main');
+    const after = await source.read(session, before.cursor);
+    expect(after.sourceWriteAt).toBe(new Date(touched).toISOString());
+  });
+
+  // A step still streaming into its part rows moves only those rows; the
+  // source reports that write so an open turn reads as still running.
+  test('reports the newest write of a step still streaming into its part rows', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    store.user('ses_main', 'Long task');
+    const step = store.assistant('ses_main', {
+      completed: false,
+      partRows: true,
+      content: [v2Content.text('Partial')],
+    });
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await source.read(session);
+    expect(before.outcome).toBe('incomplete_tail');
+
+    const streamed = store.tick();
+    store.db
+      .prepare(
+        'UPDATE session_part SET data = ?, time_updated = ? WHERE message_id = ? AND ordinal = 0',
+      )
+      .run(
+        JSON.stringify(v2Content.text('Partial, still streaming')),
+        streamed,
+        step,
+      );
+    const after = await source.read(session, before.cursor);
+    expect(after.events).toEqual([]);
+    expect(after.sourceWriteAt).toBe(new Date(streamed).toISOString());
+  });
+
   test('waits on an in-flight step, imports it once completed, and resumes without duplicates', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);

@@ -1,0 +1,11 @@
+.agent-feedback-defaults__note {
+  margin: var(--k-space-3) 0 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: 1.5;
+}
+.agent-feedback-defaults__error {
+  margin: var(--k-space-3) 0 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}

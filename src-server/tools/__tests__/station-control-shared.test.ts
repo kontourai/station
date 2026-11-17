@@ -65,7 +65,9 @@ describe('station-control shared helpers', () => {
     });
   });
 
-  test('isolates concurrent request tenants while preserving the immutable stdio child binding', async () => {
+  test('isolates concurrent request tenants, and reads no tenant from the process environment', async () => {
+    // #2377 slice D: no stdio child is given a tenant binding any more, so a
+    // tenant left in the environment must not reach a request.
     process.env.STATION_INTERNAL_TENANT = 'stdio-child-tenant';
     try {
       const [alpha, bravo] = await Promise.all([
@@ -94,7 +96,7 @@ describe('station-control shared helpers', () => {
         (controlRequestOptions().headers as Record<string, string>)[
           'x-station-internal-tenant'
         ],
-      ).toBe('stdio-child-tenant');
+      ).toBeUndefined();
     } finally {
       delete process.env.STATION_INTERNAL_TENANT;
     }

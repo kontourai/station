@@ -4407,6 +4407,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/conversations/search' },
     { method: 'GET', path: '/api/conversations/work-state' },
     { method: 'PUT', path: '/api/conversations/:id/work-state' },
+    // Hides or unhides a third-party Session in the caller's own inbox only,
+    // after the same Session read check; the family's mutating scope applies.
+    { method: 'PUT', path: '/api/conversations/:id/inbox-hidden' },
     // Agent-only work discovery; same read scope and transcript admission.
     { method: 'GET', path: '/api/conversations/work/search' },
     { method: 'GET', path: '/api/conversations/:id' },
