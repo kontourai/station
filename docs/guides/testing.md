@@ -810,6 +810,39 @@ A workspace `package.json` must not reach related discovery: Vitest's default
 the whole corpus and overruns the shard budget, while a checkout under a
 dot-directory selects nothing. Give a changed manifest explicit readers in the
 impact manifest instead, as the contracts, SDK and Basis pane manifests do.
+An escalated path (`ESCALATION_PATHS`: `packages/shared/`, `packages/contracts/`,
+root configuration, workflows, the selector's own files) records `ci-fast` and
+gets no related discovery, because most of the corpus imports it. The hosted
+shard plan (#5010) also runs the suites near each escalated file that exists
+and Vitest can import (a JS, TS or JSON file): every suite that reaches it
+through at most one intermediate module when there are at most 100 of them,
+otherwise every suite that imports it directly when there are at most 100.
+The distances come from the Vite module graph related discovery walks, in the
+same child process, matched by real path; a diff whose only importable changes
+are escalated files now starts that child. Only a path whose chosen set is
+non-empty counts as covered. A path over both limits, a path whose chosen set
+is empty, and a path missing from Vitest's graph each add a `ci-fast` reason
+that names it; an escalated workflow, lockfile or deleted file has no importer
+graph and is named as such. A file re-exported through a widely imported
+barrel (`packages/contracts/src/index.ts` has 70 direct importers) is usually
+over the limit at two steps, so it gets only its direct importers, and often
+none. The union of suites the rule adds beyond what the plan runs anyway is
+capped at 250; above that the rule adds none for the diff and one `ci-fast`
+reason gives the count. The plan never runs an arbitrary part of a set. The
+plan's `escalatedImporters` field records each path's outcome, depth and
+counts, and the plan step prints the union and every path not covered. The
+`escalation:` reason and the `ci-fast` obligation stay either way, so the plan
+remains provisional and main qualification still runs the full corpus. Local
+unsharded feedback is unchanged. A failing discovery child (a timeout, a
+non-zero exit, malformed output or an unmatched seed) fails the plan for every
+diff alike, including an escalated-only diff that started no child before;
+the error names the escalated-importer query, so a broken rule cannot degrade
+into silently running less. Over the 150 merges before 2026-11-16 the rule
+added a median of 0 files and at most 95 to a plan, and deferred no path.
+It misses a suite further away, or one intermediate module away from a file
+with more than 100 such suites (`runtime-port.test.ts`, through
+`runtime-port.ts`, from `runtime-path-resolver.ts`, which has 134), and a
+suite that reads a changed file by path rather than importing it.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
@@ -915,7 +948,9 @@ last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
 PR's shards never share a bucket and every plan's first shard spreads across all
 five; larger plans retain every shard. The release-bot PR (head
 `changeset-release/main` from this repository, opened by
-`station-automation[bot]`) is re-pushed on every main push, so its shard and
+`station-automation[bot]`) is re-pushed whenever a main push changes what it
+releases, and also on a conflict, unreadable state, a dirty checkout or a probe
+timeout, where it fails open ([releasing](releasing.md#release-procedure)), so its shard and
 statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
 shared buckets; supersession cancels its older heads as for any PR. A job holds
 its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these

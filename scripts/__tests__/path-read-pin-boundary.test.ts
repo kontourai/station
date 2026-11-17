@@ -748,6 +748,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/utils/__tests__/git-exec.hardening.test.ts':
     'git ls-files inside the temporary repository its helper creates',
+  'scripts/__tests__/version-pr-current.test.ts':
+    'git ls-files inside the temporary repository its helper creates',
   'tests/learning-source.spec.ts':
     'a Playwright spec; Vitest cannot schedule it (#1817)',
   'tests/message-delivery-recovery.spec.ts':

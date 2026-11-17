@@ -12,6 +12,7 @@ import type {
 } from './ChildChatNavigationContext';
 import { ChildChatOutlet } from './ChildChatNavigationContext';
 import '../chat/TaskShaping.css';
+import './ChatDockDeepLinkOpening.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
@@ -128,6 +129,7 @@ import {
   newChatIntentCarriesPayload,
   readNewChatIntent,
 } from '../../lib/newChatIntent';
+import { openingConversationLabel } from '../../lib/notificationStationOpen';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -2914,7 +2916,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
   }, [beginReaderOpen]);
   // Sync activeChat (conversationId) from URL to local state
-  useChatDockActiveChatSync({
+  const { pendingChat: openingChat } = useChatDockActiveChatSync({
     activeChat,
     agentCatalogKey: agents
       .map((agent) => agent.slug)
@@ -2929,6 +2931,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     updateParams,
     showSurface,
   });
+  // The dock still holds the conversation it showed before; until the one
+  // the URL names opens, cover it with the opening state.
+  const coveringStaleChat =
+    openingChat !== null &&
+    activeSession?.conversationId !== openingChat &&
+    activeSession?.id !== openingChat;
+  // The opening state replaces the previous conversation everywhere it is
+  // named: the header, the inbox selection and the This Chat card. A draft
+  // or an imported session in front of it keeps its own identity.
+  const showOpeningIdentity =
+    coveringStaleChat && !showNewChatModal && !importedSessionId;
+  const openingLabel = openingConversationLabel(openingChat);
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
@@ -3774,14 +3788,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   // covered chat's route and the dock's destination controls would
                   // disagree with the draft's own project chip (the one destination).
                   stationName={
-                    showNewChatModal
+                    showNewChatModal || showOpeningIdentity
                       ? undefined
                       : activeSession?.stationBinding?.affinity.kind !== 'host'
                         ? activeSession?.stationBinding?.stationName
                         : undefined
                   }
                   routeLabel={
-                    showNewChatModal
+                    showNewChatModal || showOpeningIdentity
                       ? undefined
                       : activeOrchestrationSession?.modelRoute?.label
                   }
@@ -3798,16 +3812,21 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       ? newChatDraftTitle
                       : importedSessionId
                         ? importedTitle
-                        : activeSession?.title === 'New chat' &&
-                            activeOrchestrationSession?.displayTitle
-                          ? activeOrchestrationSession.displayTitle
-                          : activeSession?.title || 'Chat'
+                        : showOpeningIdentity
+                          ? openingLabel
+                          : activeSession?.title === 'New chat' &&
+                              activeOrchestrationSession?.displayTitle
+                            ? activeOrchestrationSession.displayTitle
+                            : activeSession?.title || 'Chat'
                   }
                   // station#3309: same identity the desktop header leads with,
                   // from the same session-committed slug — artwork only when the
                   // catalog resolved this agent, identicon from the slug otherwise.
                   agentIdentity={
-                    !showNewChatModal && !importedSessionId && activeSession
+                    !showNewChatModal &&
+                    !importedSessionId &&
+                    !showOpeningIdentity &&
+                    activeSession
                       ? {
                           name:
                             activeChatAgent?.name ?? activeSession.agentName,
@@ -3817,7 +3836,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       : null
                   }
                   sessionProjectMismatchLabel={
-                    showNewChatModal
+                    showNewChatModal || showOpeningIdentity
                       ? undefined
                       : visibleSessionProjectMismatchLabel
                   }
@@ -4006,6 +4025,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           ref={setImportedActionSlot}
                         />
                       </>
+                    ) : showOpeningIdentity ? (
+                      <div className="chat-dock__active-identity">
+                        <div className="chat-dock__active-identity-text">
+                          <span className="chat-dock__active-identity-title">
+                            {openingLabel}
+                          </span>
+                        </div>
+                      </div>
                     ) : activeSession ? (
                       <ChatDockActiveIdentity
                         // D3: a reopened chat's tab is titled "New chat" until its
@@ -4146,8 +4173,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           projectAccentBySlug,
                           projectIconBySlug,
                           openChatSessionIds: openInboxChatSessionIds,
-                          activeChatSessionId:
-                            importedSessionId ?? activeSessionId,
+                          activeChatSessionId: showOpeningIdentity
+                            ? null
+                            : (importedSessionId ?? activeSessionId),
                           triggerRef: inboxTriggerRef,
                           onClose: closeMobileInbox,
                           onFocusChat: focusSessionInPane,
@@ -4193,8 +4221,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             projectAccentBySlug,
                             projectIconBySlug,
                             workFacts,
-                            activeChatSessionId:
-                              importedSessionId ?? activeSessionId,
+                            activeChatSessionId: showOpeningIdentity
+                              ? null
+                              : (importedSessionId ?? activeSessionId),
                             openChatSessionIds: openInboxChatSessionIds,
                             onFocusChat: focusSessionInPane,
                             onOpenConversation:
@@ -4600,6 +4629,19 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               />
                             </ConversationHeaderActionSlot.Provider>
                           ) : null}
+                          {/* A deep link (a notification tap) is opening another
+                      conversation: say so instead of showing the previous one
+                      until it opens. */}
+                          {workspaceShown &&
+                          coveringStaleChat &&
+                          !showNewChatModal &&
+                          !importedSessionId ? (
+                            <SkeletonBlock
+                              count={2}
+                              label={openingLabel}
+                              className="chat-dock__deep-link-opening"
+                            />
+                          ) : null}
                           {/* The chat the draft opened over stays mounted under it,
                       hidden and inert, so its form answers, reply text and
                       scroll survive a draft that is dismissed. */}
@@ -4608,8 +4650,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           !importedSessionId ? (
                             <div
                               className="chat-dock__covered-chat"
-                              hidden={showNewChatModal}
-                              inert={showNewChatModal}
+                              hidden={showNewChatModal || coveringStaleChat}
+                              inert={showNewChatModal || coveringStaleChat}
                             >
                               <ChatDockContentArea
                                 connection={conversationConnection}
@@ -4733,7 +4775,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       </div>
                     </div>
                     {sessionContextCardPresence.mounted &&
-                    sessionContextCardRenderedProps ? (
+                    sessionContextCardRenderedProps &&
+                    !showOpeningIdentity ? (
                       <LazyBoundary
                         load={loadSessionContextCard}
                         // A regrow mounts it in the commit that starts the chip's

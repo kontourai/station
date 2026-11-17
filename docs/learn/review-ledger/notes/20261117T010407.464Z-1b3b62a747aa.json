@@ -1,0 +1,7 @@
+{
+  "revision": "cd5f59d514e5225de8712bb41baa731640c7e124",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Code-health guidance unaffected; the gate passes with no introduced findings.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/fast-checks-shard.mjs"]}
+  ]
+}

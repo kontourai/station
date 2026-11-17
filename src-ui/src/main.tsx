@@ -64,7 +64,10 @@ import { AuthorityQueryProvider } from './contexts/AuthorityQueryContext';
 import { ConversationsProvider } from './contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
-import { NavigationProvider } from './contexts/NavigationContext';
+import {
+  NavigationProvider,
+  navigationStore,
+} from './contexts/NavigationContext';
 import { PaneRelationsProvider } from './contexts/PaneRelationsContext';
 import { PreviewProvider } from './contexts/PreviewContext';
 import { RecoveryQueryBoundary } from './contexts/RecoveryQueryBoundary';
@@ -94,6 +97,10 @@ import {
   resolveBootAccentColor,
   resolveBootTheme,
 } from './lib/device-settings-store';
+import {
+  holdColdNotificationLink,
+  installNavigationPosition,
+} from './lib/notificationStationOpen';
 import {
   stationMutationDefaults,
   stationQueryDefaults,
@@ -282,6 +289,15 @@ bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
 applyCachedCustomAppearance();
 
 function renderApp(): void {
+  // A notification link loaded cold names its Station: hold its conversation
+  // back from the URL until the opener knows which Station that is. A
+  // navigation before then supersedes it.
+  if (!isAccountPath && !isSharedAnswerPath) {
+    installNavigationPosition(() => navigationStore.getHistoryIndex());
+    holdColdNotificationLink(window.location, (params) =>
+      navigationStore.updateParams(params),
+    );
+  }
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>
