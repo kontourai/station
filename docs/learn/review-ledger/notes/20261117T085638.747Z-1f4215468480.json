@@ -1,0 +1,7 @@
+{
+  "revision": "62ed1140670029b135dead04768de9eb3b2c99ae",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#5078: new Event store retention section; checked schedule constants (10 min first pass, 30 min interval, 5,000 rows/pass, 200/transaction), env parsing and metric names against tool-progress-compaction-schedule.ts and event-store.ts.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

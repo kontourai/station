@@ -1,0 +1,7 @@
+{
+  "revision": "62ed1140670029b135dead04768de9eb3b2c99ae",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5078: added the ToolProgressCompaction index row and section (selection module, EventStore pass bounds, cache drop, schedule composition, tests); checked against tool-progress-compaction.ts, event-store.ts, tool-progress-compaction-schedule.ts and station-runtime.ts. Other sections unchanged.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}
