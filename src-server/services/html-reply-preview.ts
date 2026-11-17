@@ -240,7 +240,7 @@ function previewDiagnostics() {
 }
 
 /** The constant page that hosts the sandboxed frame; it carries no authored bytes. */
-const BOOTSTRAP_PAGE =
+export const BOOTSTRAP_PAGE =
   '<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>';
 
 // Keep authored values in CDP call arguments, never in JavaScript source.

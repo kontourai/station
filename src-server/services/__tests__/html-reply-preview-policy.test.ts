@@ -20,6 +20,8 @@ const probe = vi.hoisted(() => ({
   launchFailure: undefined as Error | undefined,
   launchArgs: undefined as readonly string[] | undefined,
   navigations: [] as string[],
+  servedDocuments: [] as (string | undefined)[],
+  tokens: [] as string[],
   observe: undefined as ChromiumServerHostOptions['onEvent'],
   late: undefined as (() => void) | undefined,
   cleanup: undefined as (() => Promise<void>) | undefined,
@@ -35,6 +37,8 @@ beforeEach(() => {
   probe.launchFailure = undefined;
   probe.launchArgs = undefined;
   probe.navigations = [];
+  probe.servedDocuments = [];
+  probe.tokens = [];
   probe.observe = undefined;
   probe.late = undefined;
 });
@@ -142,6 +146,9 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
                 } as R;
               }
               probe.authored = true;
+              const token = (params as { arguments?: { value?: unknown }[] })
+                ?.arguments?.[1]?.value;
+              if (typeof token === 'string') probe.tokens.push(token);
               if (probe.exitDuringRender) {
                 resolveExit('fixture exited during render');
                 await exited;
@@ -194,6 +201,14 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
           },
         });
         probe.cleanup = () => this.shutdown();
+      }
+      override async openTarget(
+        p: Parameters<
+          InstanceType<typeof actual.ChromiumServerHost>['openTarget']
+        >[0],
+      ) {
+        probe.servedDocuments.push(p.document);
+        return super.openTarget(p);
       }
     },
   };
@@ -271,7 +286,7 @@ test('render keeps primary rejection separate from cleanup failure, late exit an
   }
 });
 
-import { HtmlReplyPreview } from '../html-reply-preview.js';
+import { BOOTSTRAP_PAGE, HtmlReplyPreview } from '../html-reply-preview.js';
 
 const makeTempDir = trackTempDirs();
 test.each([true, false])(
@@ -526,6 +541,28 @@ test('preview hosts its sandboxed frame in a served page and keeps sandboxed fra
         ),
       ),
     ).toBe(false);
+  } finally {
+    await probe.cleanup?.();
+    await probe.removeProfile?.();
+  }
+});
+
+test('the served bootstrap page is the same constant for every render and never carries the token', async () => {
+  probe.restrictive = true;
+  const service = new HtmlReplyPreview(makeTempDir('html-preview-constant-'));
+  try {
+    for (let i = 0; i < 2; i++)
+      await expect(
+        service.render({ html: '<p>x</p>', height: 400 }, 800, 'dark'),
+      ).rejects.toThrow('Authored content reached an unverified browser');
+    expect(probe.servedDocuments).toEqual([BOOTSTRAP_PAGE, BOOTSTRAP_PAGE]);
+    // The token still travels only as a Runtime.callFunctionOn value argument.
+    expect(probe.tokens).toHaveLength(2);
+    expect(new Set(probe.tokens).size).toBe(2);
+    for (const token of probe.tokens) {
+      expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(BOOTSTRAP_PAGE).not.toContain(token);
+    }
   } finally {
     await probe.cleanup?.();
     await probe.removeProfile?.();

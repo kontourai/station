@@ -547,6 +547,14 @@ describe('ChromiumServerHost with a fake browser', () => {
         call.method === 'Page.navigate' &&
         (call.params as { url?: string }).url === SERVED_DOCUMENT_URL
       ) {
+        // While T1's document is still waiting, another frame asks for the
+        // same address first: it must not receive T1's document.
+        emitEvent('Fetch.requestPaused', {
+          requestId: 'other-while-pending',
+          request: { url: SERVED_DOCUMENT_URL },
+          resourceType: 'Document',
+          frameId: 'T9',
+        });
         emitEvent('Fetch.requestPaused', {
           requestId: 'served',
           request: { url: SERVED_DOCUMENT_URL },
@@ -594,8 +602,10 @@ describe('ChromiumServerHost with a fake browser', () => {
     });
     await flush();
     expect(
-      calls.filter((c) => c.method === 'Fetch.fulfillRequest'),
-    ).toHaveLength(1);
+      calls
+        .filter((c) => c.method === 'Fetch.fulfillRequest')
+        .map((c) => (c.params as { requestId: string }).requestId),
+    ).toEqual(['served']);
   });
 
   test('a popup from our target is closed and its URL loads in the opener', async () => {
