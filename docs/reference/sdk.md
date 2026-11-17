@@ -7165,6 +7165,17 @@ existing Session digest under `session-cli-reads`; it returns `null` when that
 host route is unavailable. It fetches no transcript bodies. The UI's history
 owner loads bounded body pages only after a turn is selected.
 
+## Project Library
+
+`@kontourai/station-sdk/project-library` exports `useProjectLibraryQuery`,
+`useUploadProjectLibraryFileMutation`, `useDeleteProjectLibraryFileMutation`,
+`downloadProjectLibraryContent` and `readProjectLibraryCapability`. Query keys
+carry the Station and authority; pass the host request scope, and an
+`isCurrent` check when the connection can change. A malformed entry is
+withheld and the page reads as `partial`. Gate on `readProjectLibraryCapability`
+(the `projectLibrary` flag); with the `project-library` preview off, routes
+answer `feature_preview_disabled`.
+
 ## Reviewed Project context and learning
 
 `@kontourai/station-sdk/client/project-working-configuration` exposes bounded

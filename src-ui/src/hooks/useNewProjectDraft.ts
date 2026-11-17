@@ -98,10 +98,19 @@ export function useNewProjectDraft(isOpen: boolean, partition?: string) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: read once per opening.
   useEffect(() => {
     if (!isOpen) return;
-    const requested = new URLSearchParams(window.location.search).get(
-      'directory',
-    );
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get('directory');
     if (requested) draft.setDirectory(requested);
+    // #5071: Continue in Project opens New project with a name and brief
+    // drafted from a chat. They are a draft: the person edits them here, and
+    // nothing is created until they choose Create.
+    const name = params.get('name');
+    if (name) {
+      draft.setName(name);
+      draft.setNameTouched(true);
+    }
+    const description = params.get('description');
+    if (description) draft.setDescription(description);
   }, [isOpen]);
   useDerivedProjectName(isOpen, draft.nameTouched, draft.setName, derivedName);
 

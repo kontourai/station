@@ -1460,6 +1460,10 @@
       "cli": ["projects layouts"],
       "note": "CLI layouts also creates/updates/deletes layouts; MCP is read-only."
     },
+    "list_project_library": {
+      "exempt": "agent-self",
+      "reason": "The caller's own Project Library (route uses authority.caller's recorded Project). People use the Project page's Files & connections."
+    },
     "list_project_notes": {
       "exempt": "agent-self",
       "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
@@ -1562,6 +1566,10 @@
     },
     "read_monitoring_events": {
       "cli": ["monitoring events", "insights events"]
+    },
+    "read_project_library_file": {
+      "exempt": "agent-self",
+      "reason": "One file from the caller's own Project Library (route uses authority.caller's recorded Project)."
     },
     "read_project_note": {
       "exempt": "agent-self",

@@ -1,0 +1,125 @@
+.project-library {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+}
+
+.project-library__status {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-library__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.project-library__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.project-library__filter select {
+  min-height: 44px;
+}
+
+.project-library__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+}
+
+.project-library__item + .project-library__item {
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+
+.project-library__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+}
+
+.project-library__identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  min-width: 0;
+  flex: 1 1 16rem;
+}
+
+.project-library__name {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.project-library__meta {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-library__origin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.project-library__task-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--k-action);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  text-align: start;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.project-library__task-link:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus-ring);
+  outline-offset: 2px;
+}
+
+.project-library__preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-3) var(--k-space-3);
+}
+
+.project-library__preview pre {
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 24rem;
+  margin: 0;
+  padding: var(--k-space-3);
+  overflow: auto;
+  border-radius: var(--k-radius-sm);
+  background: var(--k-bg);
+  font-family: var(--k-font-mono);
+  font-size: var(--k-text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.project-library__preview img {
+  max-width: 100%;
+  height: auto;
+}

@@ -4,6 +4,11 @@ import {
   useClientBootstrapReadiness,
 } from '../../contexts/AuthorityPersistenceContext';
 import { usePublishConversationOnScreen } from '../../contexts/conversation-on-screen-store';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
+import {
+  type ContinuedConversation,
+  continuedConversationFromChat,
+} from '../../lib/continue-in-project';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
 import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
@@ -14,6 +19,7 @@ import type {
   ChildChatTarget,
 } from './ChildChatNavigationContext';
 import { ChildChatOutlet } from './ChildChatNavigationContext';
+import { ContinueInProjectDialog } from './ContinueInProjectDialog';
 import '../chat/TaskShaping.css';
 import './ChatDockDeepLinkOpening.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
@@ -2007,6 +2013,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * never shown session-specific facts and navigating out of it is not this
    * row's business. Dropping either one silently changes what the row opens.
    */
+  // #5071: Continue in Project… drafts from this chat; it never sends into it.
+  const [continueInProject, setContinueInProject] =
+    useState<ContinuedConversation | null>(null);
+  const continueInProjectEnabled = useSurfaceVisibilityFlags().has(
+    'continue-in-project',
+  );
   const turnIntoTask =
     hostConversation &&
     activeSession &&
@@ -2061,6 +2073,24 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
               ? 'Stop shaping this Task'
               : 'New Task from this',
             onSelect: turnIntoTask,
+          },
+        ]
+      : []),
+    ...(turnIntoTask && continueInProjectEnabled
+      ? [
+          {
+            key: 'continue-in-project',
+            group: 'chat' as const,
+            label: 'Continue in Project…',
+            onSelect: () => {
+              if (activeSession)
+                setContinueInProject(
+                  continuedConversationFromChat(
+                    activeSession,
+                    sessionDisplayCwd ?? undefined,
+                  ),
+                );
+            },
           },
         ]
       : []),
@@ -5182,6 +5212,12 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             ) : null}
 
             <ShareIntakeController />
+            {continueInProject && (
+              <ContinueInProjectDialog
+                conversation={continueInProject}
+                onClose={() => setContinueInProject(null)}
+              />
+            )}
           </MarkdownLinkContext.Provider>
         </SessionReaderBindingProvider>
       </ChildChatNavigation>

@@ -39,6 +39,7 @@ import {
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerProjectActivityTools } from './station-control-project-activity-tools.js';
+import { registerProjectLibraryTools } from './station-control-project-library-tools.js';
 import { registerProjectMemoryTools } from './station-control-project-memory-tools.js';
 import { registerReviewGuideTools } from './station-control-review-guide-tools.js';
 import { registerScheduleTools } from './station-control-schedule-tools.js';
@@ -465,6 +466,8 @@ export function createSelectedStationControlMcpServer(
   registerDeclarePullRequestTools(registry);
   // Epic #4003: the caller's own Task brief.
   registerTaskBriefTools(registry);
+  // #5067: the caller's own Project Library.
+  registerProjectLibraryTools(registry);
   // #4003: the caller's own Task summary and records.
   registerTaskMemoryTools(registry);
   // #5065: the caller Session's own Project memory.

@@ -99,6 +99,49 @@ actions**. **Stop watching** turns it off for that Task. See
 [Task-owned pull requests](https://github.com/kontourai/station/blob/main/docs/decisions/task-owned-pull-requests.md) for what
 this does and does not cover.
 
+### Library
+
+Turn on **Project Library** in Settings → Advanced → Feature previews.
+
+A Project's **Library**, on its **Files & connections** tab, lists the files
+people add and the files its Tasks keep, newest first. Filter it by **Added by
+people**, **Kept by Tasks**, or one Task; **Preview** opens text and PNG files
+inline and offers **Download** for the rest.
+
+- **Add files** or **Add folder** uploads into the Project. A folder keeps its
+  layout; hidden files (such as `.git` or `.env`) and installed-package folders are
+  skipped, and each file can be up to 25 MB.
+- Every chat in the Project can read the Library, whatever its engine: agents
+  list it with `list_project_library` and read a file with
+  `read_project_library_file`. A chat started before its Project was recorded
+  is refused; start a new chat in the Project.
+- A kept Task output stays where its Task keeps it. The Library shows it with a
+  link to its Task, and as **Orphaned** once that Task is deleted. It is still
+  listed and readable.
+- The Library is on personal Stations. A hosted Station does not offer it.
+
+A Project schedule runs each run as a Task in the Project, so a file that run
+keeps appears in the Library with a link to its Task.
+
+### Continue in Project and Setup recommendations
+
+Turn on **Continue in Project** in Settings → Advanced → Feature previews.
+
+**Continue in Project…** in a chat's More menu moves its work into a Project.
+The chat itself is unchanged; nothing is sent into it.
+
+- **A new Project** opens New project with a name, folder and brief drafted
+  from the chat. The brief names the chat it came from. Edit anything, then
+  create it.
+- **An existing Project** creates a Task there, with a title and brief drafted
+  from the chat, that cites the chat's latest completed answer.
+
+A new Project with no Tasks shows **Setup recommendations**: a brief draft
+when it has none, a read-only **Explore and propose next steps** Task when a
+repository is attached, and a Task that cites the chat it was continued from.
+Each is on until you turn it off. Nothing is created until **Apply**; **Not
+now** hides the card for that Project.
+
 Example: “Explain this function” can be a direct chat. “Refactor this module,
 run its gates, and preserve the evidence” should be a Task. A Task can retain
 one Session across several turns and use another for a later attempt.

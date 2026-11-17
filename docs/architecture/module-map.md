@@ -4640,6 +4640,18 @@ tests own distinct persistence, authority, transport and presentation checks.
 They do not establish live owner publication, provider consumption, causal
 improvement or human usability. See [bounded agent work](../guides/agent-efficiency.md).
 
+## Project Library
+
+[Library routes](../../src-server/routes/projects/project-library-routes.ts)
+project uploads from the Project's folder
+([ProjectLibraryUploads](../../src-server/services/projects/project-library-uploads.ts))
+and kept outputs from [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
+(`listForProject`, `readContentForProject`). Nothing is copied. The
+[composer](../../src-server/runtime/routes/runtime-project-library.ts) mounts
+nothing on a hosted Station, and every route selects the `project-library`
+preview. The station-control side reads the Project recorded on the verified
+caller's Session.
+
 ## Project working configuration
 
 [ProjectWorkingConfigurationService](../../src-server/services/projects/project-working-configuration.ts)

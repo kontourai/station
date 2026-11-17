@@ -570,6 +570,10 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   list_projects: listed('Projects'),
   get_project: read(named('Project', 'slug', 'a Project')),
   list_project_layouts: listed('Project layouts'),
+  list_project_library: listed('the Project Library'),
+  read_project_library_file: read(
+    named('Library file', 'path', 'a Library file'),
+  ),
   list_project_notes: listed('Project memory notes'),
   read_project_note: read(fixed('a Project memory note')),
   remember_project_note: entry(

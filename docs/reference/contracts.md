@@ -2968,6 +2968,18 @@ with terminal observations; completed/aborted/failed partition those observation
 with unknown retained-only coverage. Independent source populations stay separate.
 
 
+## Project Library
+
+`@kontourai/station-contracts/project-library` owns the Library page
+(`ProjectLibraryPage`, version `project-library/v1`): uploads (`kind: upload`,
+named by `relativePath`) and kept Task outputs (`kind: task-output`, named by
+`outputId`, with `task.state` `present` or `orphaned`). `projectLibraryUploadPath`
+is the one path rule: it refuses absolute paths, `..`, control characters and
+Windows-reserved names, and skips hidden segments and `node_modules`.
+`filterProjectLibraryItems`, `projectLibraryTasks` and `sortProjectLibraryItems`
+are the page's pure filters. The `projectLibrary` handshake flag says the host
+serves the routes; hosted deployments withdraw it.
+
 ## Bounded context and reviewed learning
 
 `@kontourai/station-contracts/project-working-configuration` owns the reviewed
