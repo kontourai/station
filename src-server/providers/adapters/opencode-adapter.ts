@@ -220,7 +220,8 @@ export function isOpenCodeResumeCursor(
 /** OpenCode's data home (`$XDG_DATA_HOME/opencode`), where its sessions live. */
 function openCodeDataHome(env: NodeJS.ProcessEnv): string {
   return join(
-    env.XDG_DATA_HOME || join(homedir(), '.local', 'share'),
+    env.XDG_DATA_HOME ||
+      join(env.HOME || env.USERPROFILE || homedir(), '.local', 'share'),
     'opencode',
   );
 }
@@ -978,10 +979,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderSession> {
     this.pumpInner();
     const acpInput = this.acpStartInput(input, config);
-    const bindingKey = this.bindingKey(
-      await (this.options.launchEnv ?? (() => augmentedSpawnEnv()))(),
-      input,
+    const effective = managedEngineLaunch(
+      'acp',
+      {
+        command: config.command,
+        args: [],
+        env: await (this.options.launchEnv ?? (() => augmentedSpawnEnv()))(),
+      },
+      'user',
     );
+    const bindingKey = this.bindingKey(effective.env, input);
     if (
       isOpenCodeResumeCursor(input.resumeCursor) &&
       input.resumeCursor.bindingKey !== bindingKey

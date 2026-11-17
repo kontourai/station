@@ -7,12 +7,17 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
+import {
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import { ACP_APPROVAL_TAKEOVER_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { installManagedEngineLimits } from '../../security/managed-engine-limits.js';
 import {
   evaluateOpenCodeRules,
   type OpenCodeNativeRule,
@@ -495,57 +500,95 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     await h.waitFor(completedFor(turnId));
   });
 
-  test('a failed steer POST and early DELETE 404 retain custody across stop and resume', async () => {
-    const home = makeTempDir('opencode-custody-');
-    const h = await setup(
-      {
-        scenario: 'steer',
-        omit: withdrawnSteer,
-        respond: (r) => {
-          if (
-            r.method === 'POST' &&
-            (r.body as { delivery?: string })?.delivery === 'steer'
-          )
-            return { status: 500 };
-          if (r.method === 'DELETE' && r.path.includes('/inbox/'))
-            return { status: 404 };
-          return undefined;
-        },
-      },
-      { managedWorkspaceHomeDir: home },
-    );
-    const session = await h.start();
-    const { turnId } = await h.turn('DO_BASH steer');
-    await h.waitFor((e) => e.method === 'request.opened');
-    await expect(
-      h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId),
-    ).rejects.toThrow('may still be queued');
-    await h.adapter.stopSession('thread-1');
-    const resumed = await setup(
-      { scenario: 'basic' },
-      { managedWorkspaceHomeDir: home },
-    );
-    await expect(
-      resumed.start(undefined, { resumeCursor: session.resumeCursor }),
-    ).rejects.toThrow('unconfirmed steering input');
-    expect(resumed.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(
-      0,
-    );
-    const fallback = await setup(
-      { scenario: 'basic' },
-      { managedWorkspaceHomeDir: home, nativeEnabled: () => false },
-    );
-    const cursor = session.resumeCursor as Record<string, unknown>;
-    await expect(
-      fallback.start(undefined, {
-        resumeCursor: { ...cursor, bindingKey: 'forged-home' },
-      }),
-    ).rejects.toThrow('another OpenCode data home');
-    await expect(
-      fallback.start(undefined, { resumeCursor: cursor }),
-    ).rejects.toThrow('unconfirmed steering input');
-    expect(fallback.inner()?.starts ?? []).toEqual([]);
-  });
+  test.each([false, true])(
+    'a failed steer POST and early DELETE 404 retain custody across stop and resume (managed=%s)',
+    async (managed) => {
+      const home = makeTempDir('opencode-custody-');
+      if (managed) {
+        const policy = parseManagedPolicyDocument({
+          schemaVersion: 1,
+          organization: 'Acme',
+          limits: {
+            engines: {
+              allowed: ['acp'],
+              instances: {
+                acp: {
+                  locked: true,
+                  environment: { XDG_DATA_HOME: '/replay/pinned-xdg' },
+                },
+              },
+            },
+          },
+        });
+        if (!policy.ok) throw new Error(JSON.stringify(policy.problems));
+        installManagedEngineLimits({
+          document: policy.document,
+          summary: summarizeManagedPolicy(policy.document),
+        });
+      }
+      try {
+        const h = await setup(
+          {
+            scenario: 'steer',
+            omit: withdrawnSteer,
+            respond: (r) => {
+              if (
+                r.method === 'POST' &&
+                (r.body as { delivery?: string })?.delivery === 'steer'
+              )
+                return { status: 500 };
+              if (r.method === 'DELETE' && r.path.includes('/inbox/'))
+                return { status: 404 };
+              return undefined;
+            },
+          },
+          { managedWorkspaceHomeDir: home },
+        );
+        const session = await h.start();
+        const { turnId } = await h.turn('DO_BASH steer');
+        await h.waitFor((e) => e.method === 'request.opened');
+        await expect(
+          h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId),
+        ).rejects.toThrow('may still be queued');
+        await h.adapter.stopSession('thread-1');
+        const resumed = await setup(
+          { scenario: 'basic' },
+          { managedWorkspaceHomeDir: home },
+        );
+        await expect(
+          resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+        ).rejects.toThrow('unconfirmed steering input');
+        expect(
+          resumed.replay.made('POST', '/api/session/:id/prompt'),
+        ).toHaveLength(0);
+        const fallback = await setup(
+          { scenario: 'basic' },
+          { managedWorkspaceHomeDir: home, nativeEnabled: () => false },
+        );
+        const cursor = session.resumeCursor as Record<string, unknown>;
+        await expect(
+          fallback.start(undefined, {
+            resumeCursor: {
+              ...cursor,
+              bindingKey: managed
+                ? nativeResumeBindingKey(
+                    'opencode',
+                    '/replay/xdg/opencode',
+                    null,
+                  )
+                : 'forged-home',
+            },
+          }),
+        ).rejects.toThrow('another OpenCode data home');
+        await expect(
+          fallback.start(undefined, { resumeCursor: cursor }),
+        ).rejects.toThrow('unconfirmed steering input');
+        expect(fallback.inner()?.starts ?? []).toEqual([]);
+      } finally {
+        installManagedEngineLimits(null);
+      }
+    },
+  );
 
   test.each([204, 500])(
     'a late steer is withdrawn or blocks successor work when withdrawal fails (%s)',
@@ -1269,6 +1312,31 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
     },
   );
+
+  test('native and ACP resume bind to the effective custom home when XDG data home is absent', async () => {
+    const h = await setup(
+      { scenario: 'basic' },
+      { launchEnv: async () => ({ HOME: '/replay/custom-home' }) },
+    );
+    const session = await h.start();
+    expect(session.resumeCursor).toMatchObject({
+      bindingKey: nativeResumeBindingKey(
+        'opencode',
+        '/replay/custom-home/.local/share/opencode',
+        null,
+      ),
+    });
+    const fallback = await setup(
+      { scenario: 'basic' },
+      {
+        nativeEnabled: () => false,
+        launchEnv: async () => ({ HOME: '/replay/custom-home' }),
+      },
+    );
+    await expect(
+      fallback.start(undefined, { resumeCursor: session.resumeCursor }),
+    ).resolves.toBeDefined();
+  });
 
   test('a catalog model is applied to a newly created session', async () => {
     const h = await setup({ scenario: 'basic' });
