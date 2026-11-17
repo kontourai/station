@@ -49,6 +49,10 @@ The chip beside the address bar shows who is driving: **Agent** or **You**.
 - Agents cannot run JavaScript in your pages until someone allows it with
   **Let agents run JavaScript in this Project's pages** in **Settings →
   Advanced → Browser & devices**. Only allow it for pages you trust.
+  Even then, Station refuses an agent's JavaScript on a blank tab (a new
+  tab, or one you or an agent sent to `about:blank`), so the agent opens a
+  page first. On Chrome 158, a script there that adds a sandboxed frame makes
+  the browser quit, closing every tab in the pane.
 
 Codex Agents get the same tools when the **Codex browser and device tools**
 Feature Preview is on. See

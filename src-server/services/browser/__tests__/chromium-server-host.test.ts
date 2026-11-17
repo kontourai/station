@@ -357,6 +357,12 @@ describe('launch arguments and environment', () => {
     expect(args.some((arg) => arg.startsWith('--remote-debugging-port'))).toBe(
       false,
     );
+    // Sandboxed frames keep their own process. Turning that off would avoid
+    // Chrome 158's blank-page abort, but it removes a process boundary around
+    // untrusted content; the agent evaluate guard handles the abort instead.
+    expect(
+      args.filter((arg) => /IsolateSandboxedIframes|site-isolation/i.test(arg)),
+    ).toEqual([]);
   });
 
   test('refuses to build a launch without a loopback egress proxy', () => {

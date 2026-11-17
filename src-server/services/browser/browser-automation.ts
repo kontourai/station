@@ -2780,6 +2780,15 @@ export class BrowserAutomation {
           return refuse('not-permitted', EVALUATE_NOT_PERMITTED, {
             setting: 'browserEvaluate',
           });
+        // Read from Station's isolated world, so the page cannot answer it.
+        // Anything but a definite "not a site-less blank page" is refused.
+        const blank = await this.isolatedEval<boolean>(
+          selected,
+          control.send,
+          SITELESS_BLANK_PAGE,
+        );
+        if (blank?.result?.value !== false)
+          return refuse('browser-refused', EVALUATE_ON_BLANK_PAGE);
         let outcome:
           | {
               result?: {
@@ -2863,6 +2872,23 @@ export class BrowserAutomation {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * True on an `about:blank` page with an opaque origin: a new tab, or one the
+ * browser (not a page) navigated to about:blank. Chrome 158 aborts the whole
+ * browser, and every tab in it, when script on such a page adds a
+ * `sandbox="allow-scripts"` srcdoc frame while sandboxed frames get their own
+ * process (`site_instance_impl.cc` CHECK `has_site_`). An about:blank a page
+ * opened or navigated to itself inherits that page's origin and site, so
+ * evaluation there stays allowed. Some opaque-origin blank pages that would
+ * not abort are refused too; that costs only an agent's script on an empty
+ * page.
+ */
+const SITELESS_BLANK_PAGE =
+  "location.href === 'about:blank' && self.origin === 'null'";
+
+const EVALUATE_ON_BLANK_PAGE =
+  'This tab has no page loaded (about:blank), so Station does not run scripts in it: there, a script that adds a sandboxed frame can make the browser quit and close every tab. Open a page with browser_navigate first.';
 
 const EVALUATE_NOT_PERMITTED =
   'Running JavaScript in this Project’s browser is turned off. Ask the Station operator or a Project admin to allow JavaScript evaluation for this Project in the Browser pane. Until then, use browser_snapshot, browser_click, browser_type and browser_wait_for.';

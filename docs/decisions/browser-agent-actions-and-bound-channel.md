@@ -74,6 +74,29 @@ is target-local and survives navigation. The live-surface binder sends a reset
 to system on every human control claim and logs reset failures. A human does
 not intentionally inherit an Agent's override.
 
+### Agent evaluation on a blank tab
+
+Chrome for Testing 158 aborts the whole browser, and so every tab in the
+pane, when script on an `about:blank` page with no site adds a
+`sandbox="allow-scripts"` `srcdoc` frame while sandboxed frames get their own
+process (`site_instance_impl.cc` CHECK `has_site_`). Chrome 157 does not. A
+new tab and a tab sent to `about:blank` through the address bar or
+`browser_navigate` are such pages. They run no page script, so only an Agent's
+`browser_evaluate` can trigger the abort there. An `about:blank` that a page
+opened (`window.open('')`) or navigated to itself inherits that page's site;
+on 158 the same frame loads there without an abort.
+
+`browser_evaluate` first reads, in Station's isolated world, whether the main
+frame is `about:blank` with an opaque origin, and refuses with
+`browser-refused` unless the answer is a definite no. The check also refuses
+opaque-origin blank pages that did not abort on 158, such as the blank page
+Station leaves after refusing a page's own `blob:` navigation; the cost is an
+Agent opening a page first. The check and the Agent's script are two CDP calls, so a
+browser-initiated navigation to `about:blank` landing between them is not
+excluded. Station does not turn off `IsolateSandboxedIframes`, which would
+remove the process boundary around sandboxed content, and does not change
+the blank start page a person sees.
+
 ## Why passthrough tokens cannot simply become bound
 
 The current owners are
