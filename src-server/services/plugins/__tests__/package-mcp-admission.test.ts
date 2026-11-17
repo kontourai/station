@@ -678,3 +678,61 @@ test('parent dependency custody and child selection commit together or both roll
     generation: parent.installation.incarnation,
   });
 });
+
+/**
+ * Two installs of one plugin during a slow activation: the second records a
+ * new generation, and the first activation's permit stops owning anything,
+ * so its completion is refused and activates nothing. (A permit that still
+ * owns its generation completes by a compare-and-set on the exact current
+ * generation.) Only the newer generation's own activation opens admission.
+ */
+test('completing an activation for a superseded generation is refused and activates nothing', async () => {
+  const { journal } = open();
+  const plan = (): PluginActivationPlan => ({
+    version: 1,
+    artifactDigest: digest,
+    descriptorDigest: digest,
+    sourceDigest: digest,
+    origin: 'b'.repeat(64),
+    consent: { kind: 'no-operator-decision', caller: 'journal-fixture' },
+    previous: null,
+    agents: [],
+    ownedDependencies: [],
+  });
+  const first = journal.recordInstallation({
+    pluginId: 'slow',
+    contentDigest: digest,
+    origin: 'b'.repeat(64),
+    activationPlan: plan(),
+    previous: null,
+  });
+  if (first.state !== 'recorded') throw new Error('first record refused');
+  const firstPermit = journal.claimActivation(first.installation);
+  await verifyPluginActivation(firstPermit, journal, async () => {});
+
+  const second = journal.recordInstallation({
+    pluginId: 'slow',
+    contentDigest: digest,
+    origin: 'b'.repeat(64),
+    activationPlan: plan(),
+    previous: first.installation,
+  });
+  expect(second.state).toBe('recorded');
+  if (second.state !== 'recorded') throw new Error('second record refused');
+
+  // The permit is bound to the generation that was current when it was
+  // claimed; once superseded it no longer holds ownership, so completing it
+  // is refused before any write.
+  expect(() => journal.completeActivation(firstPermit)).toThrow(
+    'Plugin activation ownership changed',
+  );
+  expect(journal.admissionOpen(first.installation)).toBe(false);
+  expect(journal.admissionOpen(second.installation)).toBe(false);
+
+  const secondPermit = journal.claimActivation(second.installation);
+  await verifyPluginActivation(secondPermit, journal, async () => {});
+  expect(journal.completeActivation(secondPermit)).toEqual({
+    state: 'applied',
+  });
+  expect(journal.admissionOpen(second.installation)).toBe(true);
+});

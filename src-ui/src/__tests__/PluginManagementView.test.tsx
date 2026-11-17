@@ -651,3 +651,28 @@ describe('registry verification on the plugin detail (#1521)', () => {
     ).toContain('No verified registry claim.');
   });
 });
+
+describe('a plugin installed but not active', () => {
+  test('its row says Needs recovery in the plugin list', async () => {
+    const { buildPluginListItems } = await import(
+      '../views/plugin-management/view-utils'
+    );
+    const inactive = {
+      name: 'slow-activation',
+      displayName: 'Slow Activation',
+      version: '1.0.0',
+      installationReadiness: { state: 'pending', recovery: 'review' },
+    };
+    viewModel = baseViewModel({
+      plugins: [inactive],
+      filtered: [inactive],
+      // The real projection the view model uses, so the label is guarded.
+      items: buildPluginListItems([inactive as never]),
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(
+      screen.getByText((text) => text.startsWith('Needs recovery · v1.0.0')),
+    ).toBeTruthy();
+  });
+});

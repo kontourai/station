@@ -169,6 +169,46 @@ export async function apiOk(
 }
 
 /**
+ * Station does not resume an activation that did not complete: the plugin
+ * reads Needs recovery until a person recovers it. A live suite takes that
+ * documented step once, approving exactly what the recovery review shows, and
+ * fails with the plugin's readiness named if it is still not active.
+ */
+export async function recoverPluginOnce(page, name) {
+  const path = `/api/plugins/${encodeURIComponent(name)}`;
+  const review = await apiOk(page, 'GET', `${path}/recovery-preview`);
+  await apiOk(
+    page,
+    'POST',
+    `${path}/recover`,
+    {
+      recoveryRevision: review.recoveryRevision,
+      consent: {
+        contentDigest: review.contentDigest,
+        grantRevision: review.grantRevision,
+        ...(review.registryTrustRevision
+          ? { registryTrustRevision: review.registryTrustRevision }
+          : {}),
+        permissions: review.permissions?.required ?? [],
+        dependencies: (review.dependencies ?? []).map((entry) => entry.id),
+        dependencyApprovals: (review.dependencies ?? []).map(
+          ({ id, consent }) => ({ id, ...consent }),
+        ),
+      },
+    },
+    { acceptSaved: true },
+  );
+  const listed = await apiOk(page, 'GET', '/api/plugins');
+  const row = listed?.plugins?.find((entry) => entry?.name === name);
+  const readiness =
+    row?.installationReadiness?.state ?? (row ? 'ready' : 'absent');
+  if (readiness !== 'ready')
+    throw new Error(
+      `${name} was installed but is not active (readiness ${readiness}) after one recovery`,
+    );
+}
+
+/**
  * The throwaway home the launcher created for an instance, read from the
  * instance registry — the same record scripts/run-e2e-suite.mjs trusts.
  */

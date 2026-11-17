@@ -58,6 +58,7 @@ import {
   countVisibleLoadingMarkers,
   pairBrowser as pairBrowserForInstance,
   poll,
+  recoverPluginOnce,
   runStation as runStationAt,
   SUITE_REQUEST_HEADER,
   settlePageReason,
@@ -413,49 +414,9 @@ async function installBundledPlugin(page, plugin) {
   );
   const unapplied = pluginLifecycleUnapplied(installed);
   if (unapplied?.kind === 'activation' && unapplied.recovery !== 'none')
-    await recoverOnce(
+    await recoverPluginOnce(
       page,
       installed.plugin?.name ?? previewed.manifest?.name ?? plugin.id,
-    );
-}
-
-/**
- * Station does not resume an activation that did not complete: the plugin
- * reads Needs recovery until a person recovers it. The walkthrough takes that
- * documented step once, approving exactly what the recovery review shows, and
- * fails with the plugin's readiness named if it is still not active.
- */
-async function recoverOnce(page, name) {
-  const path = `/api/plugins/${encodeURIComponent(name)}`;
-  const review = await apiOk(page, 'GET', `${path}/recovery-preview`);
-  await apiOk(
-    page,
-    'POST',
-    `${path}/recover`,
-    {
-      recoveryRevision: review.recoveryRevision,
-      consent: {
-        contentDigest: review.contentDigest,
-        grantRevision: review.grantRevision,
-        ...(review.registryTrustRevision
-          ? { registryTrustRevision: review.registryTrustRevision }
-          : {}),
-        permissions: review.permissions?.required ?? [],
-        dependencies: (review.dependencies ?? []).map((entry) => entry.id),
-        dependencyApprovals: (review.dependencies ?? []).map(
-          ({ id, consent }) => ({ id, ...consent }),
-        ),
-      },
-    },
-    { acceptSaved: true },
-  );
-  const listed = await apiOk(page, 'GET', '/api/plugins');
-  const row = listed?.plugins?.find((entry) => entry?.name === name);
-  const readiness =
-    row?.installationReadiness?.state ?? (row ? 'ready' : 'absent');
-  if (readiness !== 'ready')
-    throw new Error(
-      `${name} was installed but is not active (readiness ${readiness}) after one recovery`,
     );
 }
 
