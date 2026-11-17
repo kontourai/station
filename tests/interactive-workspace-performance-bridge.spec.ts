@@ -24,6 +24,10 @@ import {
   referenceEvaluatorExitFailure,
   referenceHostGate,
 } from '../scripts/interactive-workspace-performance.mjs';
+import {
+  prepareRemoteApplyBrief,
+  typeRemoteApplyBrief,
+} from '../scripts/interactive-workspace-playwright-adapter.mjs';
 import { executeOwnedProcess } from '../scripts/lib/owned-process.mjs';
 import { INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS } from '../scripts/verification-lanes.mjs';
 import { WORK_BOARD_200_PIN_MIX } from '../src-ui/src/performance/work-board-performance-bridge';
@@ -657,6 +661,122 @@ async function runFixtureTarget(input: {
     }
   }
 }
+
+test.describe('Brief driver functional controls', () => {
+  test.skip(
+    process.env.STATION_PERFORMANCE_BRIEF_FUNCTIONAL !== '1',
+    'explicit functional browser window required',
+  );
+  test('Brief driver follows the mounted Plan autosave journey without a reference verdict', async ({
+    browser,
+    referenceOwnership,
+  }) => {
+    test.setTimeout(10 * 60 * 1000);
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-brief-driver-')),
+    );
+    const live = await allocateLiveStation(
+      'station-brief-home-',
+      'brief-driver',
+    );
+    referenceOwnership.stations.add(live);
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const removeTelemetry = await installTelemetryDialogDismissal(page);
+    try {
+      const token = await startStation(live, true, {
+        performanceReference: true,
+      });
+      await settleFirstRunBeforeBrowsing(live, context);
+      const exchange = page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/pairing/ui-bootstrap') &&
+          response.request().method() === 'POST',
+      );
+      await page.goto(`${live.ui}/#station-ui-bootstrap=${token}`);
+      expect((await exchange).status()).toBe(200);
+      const repository = join(root, 'workspace');
+      await createRepository(repository, 'brief-driver');
+      await createProject(page, 'brief-driver', repository);
+      const taskId = await createTaskFromProject(
+        page,
+        live,
+        'brief-driver',
+        'Brief driver Task',
+        repository,
+        'brief-driver',
+      );
+      await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
+      await prepareRemoteApplyBrief(page, taskId);
+      const editor = page.getByRole('textbox', {
+        name: 'Task brief',
+        exact: true,
+      });
+      const before = await editor.getAttribute('data-station-working-revision');
+      expect(before).toMatch(/^swsr-v1:[0-9a-f]{64}$/);
+      const desired = `${await editor.inputValue()}0`;
+      // The functional check observes autosave, never a synthetic Save button.
+      const batch = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname ===
+            `/api/tasks/${encodeURIComponent(taskId)}/room/batches` &&
+          response.request().method() === 'POST',
+      );
+      const [response] = await Promise.all([
+        batch,
+        typeRemoteApplyBrief(page, taskId, {
+          iteration: 0,
+          workingRevision: before,
+          text: desired,
+        }),
+      ]);
+      expect(response.status()).toBe(200);
+      const accepted = (await response.json()).data;
+      expect(accepted).toMatchObject({ kind: 'committed', text: desired });
+      expect(accepted.revision).not.toBe(before);
+      await expect(editor).toHaveAttribute(
+        'data-station-working-revision',
+        accepted.revision,
+      );
+      await expect(editor).toHaveValue(desired);
+      await expect(
+        page
+          .getByRole('region', { name: 'Task room editor' })
+          .getByRole('status'),
+      ).toHaveText('Saved');
+      await expect(
+        typeRemoteApplyBrief(page, taskId, {
+          iteration: 1,
+          workingRevision: before,
+          text: `${desired}1`,
+        }),
+      ).rejects.toThrow('identity or writability');
+      await expect(
+        typeRemoteApplyBrief(page, 'other-task', {
+          iteration: 1,
+          workingRevision: accepted.revision,
+          text: `${desired}1`,
+        }),
+      ).rejects.toThrow('identity changed');
+      await page
+        .getByRole('button', { name: 'View brief', exact: true })
+        .click();
+      await expect(
+        typeRemoteApplyBrief(page, taskId, {
+          iteration: 1,
+          workingRevision: accepted.revision,
+          text: `${desired}1`,
+        }),
+      ).rejects.toThrow('identity or writability');
+    } finally {
+      removeTelemetry();
+      await context.close();
+      await releaseStation(referenceOwnership, live);
+      rmSync(live.home, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 test.describe('Interactive workspace reference host gate (#577)', () => {
   test.skip(HOST_GATE.runs, 'this host can produce reference evidence');
