@@ -1,0 +1,7 @@
+{
+  "revision": "d17832a46fbf95b54f877983825494f72cc752aa",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"#5078 follow-up: decision link now uses the absolute GitHub URL (public Pages hygiene); row content unchanged.","inputs":["docs/user/settings.md"]}
+  ]
+}
