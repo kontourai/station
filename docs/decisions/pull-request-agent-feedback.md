@@ -291,7 +291,12 @@ existing independent review (`ReviewEvidenceModule`) once per head.
     push that merged the base branch in, reviews from the merge base again.
     A head already in the base branch is not reviewed.
 12. **Once.** The request id is `prh-` and 40 hex of a hash of the pull
-    request and head; Review again adds `:rerun:<n>`. The row is written
+    request and head; Review again adds `:rerun:<n>`. A pull request's
+    epoch (`:e<n>`, absent while 0) goes up whenever its review rows are
+    dropped: the claim moves, is turned off, or is pruned or deleted. It is
+    kept forever, so a new owner or a re-enable never reuses an earlier
+    request id, and a review whose claim changed epoch under it writes
+    nothing. The row is written
     before the review starts; a review a restart left running reads "Result
     unknown" ("Station doesn't know how this review ended") and never runs
     again by itself. Review again keeps the finished review until a new
