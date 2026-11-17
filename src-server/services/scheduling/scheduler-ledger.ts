@@ -486,6 +486,14 @@ export const JOB_OWNER_NEEDED_REASON =
   'This job has no recorded owner, so its runs have no Station tools. Re-create it to make you its owner.';
 
 /**
+ * #5126: a Project job's run is a Task acting as its creator, and a Task
+ * needs someone to belong to, so a Project job with no recorded owner does
+ * not start a run at all (and so reaches no Station tools).
+ */
+export const PROJECT_JOB_OWNER_NEEDED_REASON =
+  'This Project job has no recorded owner, so its runs cannot start a Task. Re-create it to make you its owner.';
+
+/**
  * What a caller may do about one run's announcement.
  *
  * A claim carries a TOKEN, and release/mark are conditional on it. Without
@@ -1338,13 +1346,15 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         return {
           ...rest,
           // Only who created it is public; the replayed actor stays private.
-          // A Project job's run is an operator Task whoever created it
-          // (until #5126), so a missing owner costs it no Station tools.
+          // Every run acts as its creator (#5126: a Project job's too), so a
+          // job with none says so.
           ...(createdBy
             ? { createdBy: { userId: createdBy.userId } }
-            : job.projectId
-              ? {}
-              : { ownerNeeded: JOB_OWNER_NEEDED_REASON }),
+            : {
+                ownerNeeded: job.projectId
+                  ? PROJECT_JOB_OWNER_NEEDED_REASON
+                  : JOB_OWNER_NEEDED_REASON,
+              }),
           consecutiveFailures: countConsecutiveFailures(
             this.finalizedLogsUnsafe(job.name),
             failureCountResetAt,

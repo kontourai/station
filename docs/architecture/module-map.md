@@ -5434,9 +5434,13 @@ but creation/update does not accept caller-declared execution authority.
 each run creates a Task in that Project (keyed by run id), dispatches it
 through the Task dispatcher, queues the prompt on the Task's chat through
 ScheduledConversationRuns, and writes a run summary as the Task summary.
-That Task and turn act as the local operator whoever created the job; its
-`createdBy` decides only who may manage it, and an ownerless one carries no
-`ownerNeeded` (acting as the creator is #5126). The
+That Task and turn act as the job's `createdBy` exactly as recorded (#5126):
+the dispatch's `ownerUserId` and owner attribution and the queued turn's actor
+are the creator's, so the Session's station-control caller, Project role and
+scope follow from them. The run first checks that the creator holds `execute`
+in the Project (`createProjectPrincipalPermission`, the dispatch scope's
+membership rule) and refuses before creating a Task otherwise; an ownerless
+Project job starts nothing and its view carries `ownerNeeded`. The
 [ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
 composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
 is an orchestration turn admission (a paused or archived Project's chats admit

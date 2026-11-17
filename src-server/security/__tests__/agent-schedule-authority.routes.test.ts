@@ -3309,8 +3309,13 @@ describe('acting on an untargeted job is admitted against its owner', () => {
         ...(extra.projectId
           ? {
               projectRuns: {
-                invoke: async (input: { prompt: string }) => {
+                invoke: async (input: {
+                  prompt: string;
+                  createdBy?: { userId: string };
+                }) => {
                   projectRuns.push(input.prompt);
+                  // #5126: who the Project run's Task acts as.
+                  runOwners.push(input.createdBy?.userId);
                   return { kind: 'completed' as const, output: '' };
                 },
               },
@@ -3544,7 +3549,7 @@ describe('acting on an untargeted job is admitted against its owner', () => {
   });
 
   // Owner decision 2026-11-16 (#5126): a Project job is gated on its
-  // creator like any untargeted job (its run acting as the creator follows).
+  // creator like any untargeted job, and its run acts as that creator.
   test('a Project job is gated on its creator, and the operator in person may still manage it', async () => {
     const other = await ownedWorld(
       'human:local:person-a',
@@ -3604,6 +3609,8 @@ describe('acting on an untargeted job is admitted against its owner', () => {
       await vi.waitFor(() =>
         expect(projectRuns).toEqual(['Revised by the operator']),
       );
+      // The operator in person ran it, but the run acts as its owner.
+      expect(runOwners).toEqual(['human:local:person-a']);
     } finally {
       await operator.close();
     }

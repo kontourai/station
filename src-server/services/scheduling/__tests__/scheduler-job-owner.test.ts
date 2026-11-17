@@ -16,6 +16,7 @@ import {
   JOB_OWNER_CANDIDATES_KEY,
   JOB_OWNER_MIGRATION_KEY,
   JOB_OWNER_NEEDED_REASON,
+  PROJECT_JOB_OWNER_NEEDED_REASON,
   type SchedulerLedger,
 } from '../scheduler-ledger.js';
 
@@ -278,7 +279,7 @@ test('a database locked during the first-start migration does not widen it to jo
   expect(storedOwner(directory, 'newer')).toBeUndefined();
 });
 
-test('an ownerless Project job is not labelled as needing an owner: its runs are operator Tasks (until #5126)', () => {
+test('an ownerless Project job is labelled as needing an owner, like any other job (#5126)', () => {
   const ledger = createSchedulerLedger({
     directory: join(makeTempDir('station-job-owner-project-'), 'scheduler'),
   });
@@ -288,9 +289,39 @@ test('an ownerless Project job is not labelled as needing an owner: its runs are
   ])
     expect(ledger.create(job as never).kind).toBe('created');
   const byName = new Map(views(ledger).map((job) => [job.name, job]));
-  // The control: the same ownerless job without a Project is labelled.
   expect(byName.get('plain')?.ownerNeeded).toBe(JOB_OWNER_NEEDED_REASON);
-  expect(byName.get('project')).not.toHaveProperty('ownerNeeded');
+  // A Project run starts nothing without an owner, and the label says so.
+  expect(byName.get('project')?.ownerNeeded).toBe(
+    PROJECT_JOB_OWNER_NEEDED_REASON,
+  );
   expect(byName.get('project')).not.toHaveProperty('createdBy');
   ledger.close();
+});
+
+test('the personal backfill makes the operator the owner of an older Project job too', () => {
+  const directory = join(makeTempDir('station-job-owner-'), 'scheduler');
+  const seed = createSchedulerLedger({ directory });
+  expect(
+    seed.create({
+      ...(olderJob('project') as object),
+      projectId: 'p-1',
+    } as never).kind,
+  ).toBe('created');
+  seed.close();
+  sqlite(directory, (db) =>
+    db
+      .prepare('DELETE FROM scheduler_ledger_meta WHERE key IN (?, ?)')
+      .run(JOB_OWNER_CANDIDATES_KEY, JOB_OWNER_MIGRATION_KEY),
+  );
+  const ledger = createSchedulerLedger({ directory });
+  // The control: before the scheduler starts, it is an ownerless Project job.
+  expect(views(ledger)[0]).toMatchObject({
+    projectId: 'p-1',
+    ownerNeeded: PROJECT_JOB_OWNER_NEEDED_REASON,
+  });
+  schedulerOver(ledger, { userId: LOCAL_OPERATOR_PRINCIPAL_ID });
+  expect(storedOwner(directory, 'project')).toEqual({
+    userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+  });
+  expect(views(ledger)[0]).not.toHaveProperty('ownerNeeded');
 });

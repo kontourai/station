@@ -212,6 +212,10 @@ import type {
   ProjectMembershipService,
 } from '../../services/projects/project-membership-service.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
+import {
+  createProjectPrincipalPermission,
+  projectJobCreatorMayRun,
+} from '../../services/projects/project-principal-permission.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
@@ -2728,32 +2732,14 @@ export function configureRuntimeRoutes(
     const id = context.storageAdapter.getProject(slug).id;
     return typeof id === 'string' && id ? id : undefined;
   };
-  // The same membership rule as the Project routes: an account principal
-  // holds exactly its membership's actions; any other owner is
-  // unrestricted in its own requests, so it may view and execute.
-  // Approving a worker's request is the operator's there: no membership
-  // row names anyone else an admin. A session's recorded owner is checked
-  // by the dispatch scope; a person reading their own Sessions (#3427) by
-  // the person-facing Session reads.
-  const principalMayInProject = (
-    principalId: string,
-    localProjectId: string,
-    action: 'view' | 'execute' | 'approve',
-  ): boolean => {
-    if (!isDeploymentAccountPrincipalId(principalId))
-      return (
-        action !== 'approve' || principalId === LOCAL_OPERATOR_PRINCIPAL_ID
-      );
-    if (!context.projectMembership) return false;
-    return context.projectMembership
-      .admissionsForResolvedPrincipal(principalId)
-      .some(
-        ({ scope, member }) =>
-          scope.localProjectId === localProjectId &&
-          member.status === 'active' &&
-          member.actions.includes(action),
-      );
-  };
+  // The same membership rule as the Project routes (see
+  // `createProjectPrincipalPermission`). A session's recorded owner is
+  // checked by the dispatch scope, a Project job's creator before each run
+  // (#5126), and a person reading their own Sessions (#3427) by the
+  // person-facing Session reads.
+  const principalMayInProject = createProjectPrincipalPermission(
+    context.projectMembership,
+  );
   // #2377 slices C1 and C2a: the server's records for whatever a
   // station-control call aims at (a steer, an adoption, a dispatch, a
   // follow-up, an answer), read from the same records as the caller's own
@@ -7301,6 +7287,11 @@ export function configureRuntimeRoutes(
           taskDispatcher: context.taskDispatcher,
           eventStore: context.orchestrationEventStore,
           conversationRuns: scheduledConversationRuns,
+          // #5126: a run acts as the job's creator, so it starts only while
+          // the creator may still start work in the Project.
+          creatorMayRunInProject: projectJobCreatorMayRun(
+            principalMayInProject,
+          ),
           logger: context.logger,
         })
       : undefined;
