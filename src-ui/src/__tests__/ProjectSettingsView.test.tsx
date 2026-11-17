@@ -134,14 +134,6 @@ vi.mock('../components/ModelSelector', () => ({
   ),
 }));
 
-// Agent feedback is offered only with its preview and the host's capability.
-const agentFeedback = vi.hoisted(() => ({ available: false }));
-vi.mock('../components/pull-requests/usePullRequestFeedbackAvailable', () => ({
-  usePullRequestFeedbackAvailable: () => ({
-    available: agentFeedback.available,
-    pending: false,
-  }),
-}));
 vi.mock('../views/project-settings/AgentFeedbackDefaultsSection', () => ({
   AgentFeedbackDefaultsSection: () => <p>Agent feedback defaults</p>,
 }));
@@ -335,6 +327,35 @@ vi.mock('@kontourai/station-sdk', () => ({
       if (sdkMocks.deleteFailure) throw sdkMocks.deleteFailure;
     },
   })),
+  // #5069/#5070: the Pause, archive, delete and Schedules sections.
+  useProjectLifecycleMutation: () => ({
+    isPending: false,
+    error: null,
+    mutateAsync: async () => ({ interrupted: 0, stillRunning: 0, failed: 0 }),
+  }),
+  useProjectDeletionPreviewQuery: (
+    _slug: string,
+    config?: { enabled?: boolean },
+  ) =>
+    config?.enabled
+      ? {
+          data: {
+            removes: { layouts: 1, knowledgeDocuments: 0, schedules: 0 },
+            stops: { runningSessions: 0 },
+            keeps: { tasks: 0, sessions: 0 },
+          },
+          error: null,
+          isError: false,
+          refetch: vi.fn(),
+        }
+      : { data: undefined, error: null, isError: false, refetch: vi.fn() },
+  useProjectSchedulesCapability: () => ({ data: true }),
+  useSchedulerJobs: () => ({
+    data: [],
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
 }));
 
 import { ProjectSettingsView } from '../views/ProjectSettingsView';
@@ -425,7 +446,6 @@ function expectPageFullRoot(container: HTMLElement) {
 // Every suite here renders the Workspace section, so the stale checkout
 // warning's state starts empty for each test.
 beforeEach(() => {
-  agentFeedback.available = false;
   sdkMocks.previews = [];
   sdkMocks.checkoutFreshness = undefined;
   sdkMocks.checkoutFreshnessError = null;
@@ -926,12 +946,12 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     });
   });
 
-  test('offers Agent feedback only where the host serves it', () => {
+  test('offers Agent feedback only with its preview', () => {
     const { unmount } = renderProjectSettings('agent-feedback');
     expect(screen.queryByRole('link', { name: 'Agent feedback' })).toBeNull();
     expect(screen.queryByText('Agent feedback defaults')).toBeNull();
     unmount();
-    agentFeedback.available = true;
+    sdkMocks.previews = [{ id: 'pull-request-agent-feedback', enabled: true }];
     renderProjectSettings('agent-feedback');
     expect(
       screen
@@ -1444,16 +1464,17 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
   });
 
-  test('explains that deleting a Project retains Tasks and chats without a live workspace', () => {
+  test('explains that deleting a Project keeps its Tasks, chats and checkout', () => {
     renderProjectSettings('danger');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
 
-    expect(screen.getByRole('alertdialog').textContent).toContain(
-      'Tasks and chats stay in history',
-    );
-    expect(screen.getByRole('alertdialog').textContent).toContain(
-      'no longer have a live Project workspace',
+    // #5069: the confirmation counts what Delete removes and keeps.
+    const dialog = screen.getByRole('alertdialog').textContent;
+    expect(dialog).toContain('Removes');
+    expect(dialog).toContain('Project settings, 1 Layout');
+    expect(dialog).toContain(
+      'Keeps0 Tasks, 0 chats, the repository checkout, pushed branches and pull requests',
     );
   });
 

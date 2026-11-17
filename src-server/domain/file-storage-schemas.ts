@@ -106,6 +106,14 @@ const projectSchema = z
       .optional(),
     personalLayoutAllowedPlugins: z.array(nonEmptyString).optional(),
     position: z.number().int().nonnegative().optional(),
+    // #5069: server-written by the lifecycle route only.
+    lifecycle: z
+      .object({
+        state: z.enum(['paused', 'archived']),
+        changedAt: timestamp,
+      })
+      .strict()
+      .optional(),
     createdAt: timestamp,
     updatedAt: timestamp,
   })

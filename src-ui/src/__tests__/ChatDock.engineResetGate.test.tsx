@@ -159,7 +159,8 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 vi.mock('../hooks/useActiveProject', () => ({
   useActiveProject: () => ({ projectSlug: undefined }),
 }));
-vi.mock('../hooks/useBackgroundTasks', () => ({
+vi.mock('../hooks/useBackgroundTasks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useBackgroundTasks')>()),
   useChatBackgroundTasksLimited: () => false,
   useChatBackgroundTasksRunningCount: () => 0,
 }));

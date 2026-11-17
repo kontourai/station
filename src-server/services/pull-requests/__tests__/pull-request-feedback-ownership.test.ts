@@ -95,13 +95,38 @@ describe('pull request feedback ownership', () => {
         settings: ON,
         viewer: viewer(() => false),
       }),
-    ).toEqual({ kind: 'conflict', owner: { conversationId: 'chat-a' } });
+      // A reader of chat-b who may not read chat-a learns only that
+      // another chat owns it: not which one.
+    ).toEqual({ kind: 'conflict', owner: {} });
     // The other chat sees who owns it, read-only.
     const seen = await ownership.view('chat-b', viewer());
     expect(seen.pullRequests[0]).toMatchObject({
       ownedHere: false,
       owner: { conversationId: 'chat-a', title: 'Fix the parser' },
       history: [],
+    });
+    const unseen = await ownership.view(
+      'chat-b',
+      viewer(() => false),
+    );
+    expect(unseen.pullRequests[0]?.owner).toEqual({});
+    // Nor its switches or status (here `watching` with checks on): one rule
+    // with the by-pull-request read.
+    expect(unseen.pullRequests[0]).toMatchObject({
+      ownedHere: false,
+      settings: {
+        fixFailingChecks: false,
+        addressReviewComments: false,
+        reviewEachHead: false,
+      },
+      status: { state: 'off' },
+      history: [],
+    });
+    expect(unseen.pullRequests[0]).not.toHaveProperty('last');
+    // A reader of the owner still sees them.
+    expect(seen.pullRequests[0]).toMatchObject({
+      settings: { fixFailingChecks: true },
+      status: { state: 'watching' },
     });
   });
 

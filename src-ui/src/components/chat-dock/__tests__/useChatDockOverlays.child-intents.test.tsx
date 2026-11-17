@@ -18,10 +18,18 @@ vi.mock('../../../contexts/RegionModelContext', () => ({
 vi.mock('../../../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({ inboxOpen: false }),
 }));
+// The working chat, answering membership as `threadInChat` would: its own
+// ids and an earlier session of its conversation.
 const host = {
   id: 'working-tab',
-  conversationId: 'parent-conversation',
-  currentSessionId: 'parent-session',
+  owns: (threadId: string | undefined) =>
+    threadId !== undefined &&
+    [
+      'working-tab',
+      'parent-conversation',
+      'parent-session',
+      'earlier-session',
+    ].includes(threadId),
 };
 function mount(hostSession: typeof host | null = host) {
   const hostSessionRef = { current: hostSession };
@@ -103,4 +111,16 @@ test('consuming an older child request cannot clear a later request', () => {
   expect(result.current.readerSurfaceIntent?.childSessionId).toBe('later');
   act(() => result.current.onOpenInboxSession('parent-session'));
   expect(result.current.readerSurfaceIntent).toBeUndefined();
+});
+test('a child reported by an earlier session of the working conversation opens over the working chat, not a record of that session', () => {
+  offered.intent = {
+    session: 'earlier-session',
+    childId: 'engine-child',
+    token: 6,
+  };
+  const { result } = mount();
+  expect(result.current.importedSessionId).toBeNull();
+  expect(result.current.readerSurfaceIntent?.workingSessionId).toBe(
+    'working-tab',
+  );
 });

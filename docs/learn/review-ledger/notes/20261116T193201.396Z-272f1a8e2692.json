@@ -1,0 +1,7 @@
+{
+  "revision": "e3d034f745c772653e012a6f76a9803400096124",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"session-api.md only gained the child transcript tail read and page range fields; this decision's routing claims are unaffected.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

@@ -121,6 +121,30 @@ export function createPullRequestFeedbackRoutes(
     return userId ? viewerOf(c, userId) : undefined;
   };
 
+  // Whichever chat is open: a reader who may not read the owning chat
+  // learns only that another chat owns it (see `byPullRequest`).
+  app.get('/by-pull-request', async (c) => {
+    if (!access.current(c.req.raw)) return unavailable(c);
+    const { provider, host, owner, name, ref } = c.req.query();
+    const identity = pullRequestLinkIdentitySchema.safeParse({
+      provider,
+      host,
+      repository: { owner, name },
+      ref,
+    });
+    if (!identity.success)
+      return c.json(
+        { success: false, error: 'A pull request identity is required' },
+        400,
+      );
+    return c.json({
+      success: true,
+      data: ownership.byPullRequest(lower(identity.data), {
+        canRead: access.readerOf(c.req.raw),
+      }),
+    });
+  });
+
   app.get('/conversations/:conversationId', async (c) => {
     const conversationId = param(c, 'conversationId');
     if (!readable(c, conversationId)) return unavailable(c);

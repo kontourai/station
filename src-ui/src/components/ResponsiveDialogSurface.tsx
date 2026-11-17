@@ -124,6 +124,13 @@ export interface ResponsiveDialogSurfaceProps {
    * sheet never carries two.
    */
   sheetGesture?: boolean;
+  /**
+   * Desktop only: while a `popover` opened from inside this surface is open,
+   * this panel hides and the child takes its place at this surface's anchor,
+   * so the two never show stacked (Run setup and its pickers). A click
+   * outside the child closes both; Escape returns to this surface.
+   */
+  yieldToChildPopover?: boolean;
 }
 
 interface ResponsiveSurfaceActionsProps {
@@ -249,25 +256,50 @@ export function ResponsiveDialogSurface({
   historyMode = 'entry',
   anchorRef,
   sheetGesture = true,
+  yieldToChildPopover = false,
 }: ResponsiveDialogSurfaceProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  const isMobile = useIsMobile();
   // What this surface is to anything floating inside it — see overlay-layer.
   // Linked to the overlay this one was opened from, which a body portal hides
   // from the DOM but not from React.
   const parentOverlay = useContext(OverlayLayerContext);
+  // How many child popovers this surface is currently giving way to.
+  const [yieldedTo, setYieldedTo] = useState(0);
   const overlayLayer = useMemo<OverlayLayer>(
-    () => ({ element: () => panelRef.current, parent: parentOverlay }),
-    [parentOverlay],
+    () => ({
+      element: () => panelRef.current,
+      parent: parentOverlay,
+      ...(yieldToChildPopover && !isMobile
+        ? {
+            yieldTo: {
+              hide: () => {
+                setYieldedTo((count) => count + 1);
+                return () => setYieldedTo((count) => count - 1);
+              },
+              anchor: () => anchorRef?.current ?? null,
+              dismiss: () => onCloseRef.current(),
+            },
+          }
+        : {}),
+    }),
+    [parentOverlay, yieldToChildPopover, isMobile, anchorRef],
   );
+  // The surface this one stands in for while it is open, if any.
+  const yieldingParent =
+    layer === 'popover' && !isMobile ? parentOverlay?.yieldTo : undefined;
+  useLayoutEffect(() => {
+    if (!open || !yieldingParent) return;
+    return yieldingParent.hide();
+  }, [open, yieldingParent]);
   const returnFocusRef = useRef<HTMLElement[]>([]);
   const capturedReturnFocus = useRef(false);
   const restoreFrame = useRef<number | null>(null);
-  const onCloseRef = useRef(onClose);
   const dialogHistoryId = useId();
   const dialogHistoryHost = useDialogHistoryHost();
   const visualViewport = useMobileVisualViewport();
-  const isMobile = useIsMobile();
 
   onCloseRef.current = onClose;
 
@@ -315,17 +347,27 @@ export function ResponsiveDialogSurface({
   const [anchorSide, setAnchorSide] = useState<'above' | 'below'>('above');
   const [anchorVars, setAnchorVars] = useState<CSSProperties | null>(null);
   useLayoutEffect(() => {
-    if (!open || isMobile || !anchorRef?.current) {
+    // A child standing in for its parent opens where the parent did.
+    const resolveAnchor = () =>
+      yieldingParent ? yieldingParent.anchor() : (anchorRef?.current ?? null);
+    const initial = resolveAnchor();
+    if (!open || isMobile || !initial) {
       setAnchorVars(null);
       return;
     }
     const update = () => {
-      const anchor = anchorRef.current;
+      const anchor = resolveAnchor();
       if (!anchor?.isConnected) {
         setAnchorVars(null);
         return;
       }
       const rect = anchor.getBoundingClientRect();
+      // The column the trigger sits in (a composer marks itself), so a
+      // feature's CSS can keep the panel inside it rather than over the
+      // panes beside it.
+      const boundary = anchor
+        .closest('[data-popover-boundary]')
+        ?.getBoundingClientRect();
       setAnchorSide(
         rect.top < window.innerHeight - rect.bottom ? 'below' : 'above',
       );
@@ -340,18 +382,24 @@ export function ResponsiveDialogSurface({
         // height offset going stale the moment that trigger's own size
         // changes.
         '--responsive-anchor-bottom': `${Math.round(rect.bottom)}px`,
+        ...(boundary
+          ? {
+              '--responsive-boundary-left': `${Math.round(boundary.left)}px`,
+              '--responsive-boundary-right': `${Math.round(boundary.right)}px`,
+            }
+          : {}),
       } as CSSProperties);
     };
     update();
     window.addEventListener('resize', update);
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
-    observer?.observe(anchorRef.current);
+    observer?.observe(initial);
     return () => {
       window.removeEventListener('resize', update);
       observer?.disconnect();
     };
-  }, [anchorRef, isMobile, open]);
+  }, [anchorRef, isMobile, open, yieldingParent]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -529,8 +577,13 @@ export function ResponsiveDialogSurface({
       data-anchored={anchorVars ? '' : undefined}
       data-anchor-side={anchorVars ? anchorSide : undefined}
       role="presentation"
+      data-yielded={yieldedTo > 0 && open ? '' : undefined}
       onPointerDown={(event) => {
-        if (dismissible && event.target === event.currentTarget) onClose();
+        if (dismissible && event.target === event.currentTarget) {
+          onClose();
+          // Outside both: the hidden parent closes too.
+          yieldingParent?.dismiss();
+        }
       }}
     >
       <OverlayLayerContext.Provider value={overlayLayer}>

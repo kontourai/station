@@ -71,12 +71,20 @@ export function extractTokenFigure(value: unknown): number | null {
 export function isResumeCursor(value: unknown): value is {
   codexThreadId: string;
   sourceAffinity?: ProviderSessionSourceAffinity;
+  /**
+   * #2376 slice 2: the thread started with the station-control catalog as
+   * `dynamicTools`. Codex persists those with the thread and accepts no
+   * others on resume, so only such a thread can continue on the bound
+   * channel without the header-token server.
+   */
+  boundCatalog?: true;
 } {
   return (
     isRecord(value) &&
     typeof value.codexThreadId === 'string' &&
     value.codexThreadId.length > 0 &&
     Buffer.byteLength(value.codexThreadId) <= 512 &&
+    (value.boundCatalog === undefined || value.boundCatalog === true) &&
     (value.sourceAffinity === undefined ||
       isSessionSourceAffinity(value.sourceAffinity))
   );
@@ -90,11 +98,17 @@ export function codexResumeCursor(
   codexThreadId: string;
   turnId?: string;
   sourceAffinity?: ProviderSessionSourceAffinity;
+  boundCatalog?: true;
 } {
   const prior = isResumeCursor(previous) ? previous : undefined;
   return {
     codexThreadId,
     ...(turnId ? { turnId } : {}),
+    // Only for the same native thread: the marker describes what Codex
+    // persisted for it.
+    ...(prior?.boundCatalog && prior.codexThreadId === codexThreadId
+      ? { boundCatalog: true as const }
+      : {}),
     ...(prior?.sourceAffinity
       ? { sourceAffinity: { ...prior.sourceAffinity } }
       : {}),

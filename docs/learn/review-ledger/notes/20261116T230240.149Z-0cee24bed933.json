@@ -1,0 +1,13 @@
+{
+  "revision": "9e1fef728b5d1718099fdc17708227c5ab4b9039",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Delta-review fix: when a refetched first page starts before the offset its param asked for (the server clamped a past-end read because the transcript was rewritten shorter), the tail query resets to the latest messages. Matches the SDK reference's 'a transcript rewritten shorter starts again from its latest messages'; no wording change.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Delta-review fix: when a refetched first page starts before the offset its param asked for (the server clamped a past-end read because the transcript was rewritten shorter), the tail query resets to the latest messages. Matches the SDK reference's 'a transcript rewritten shorter starts again from its latest messages'; no wording change.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta-review fix: when a refetched first page starts before the offset its param asked for (the server clamped a past-end read because the transcript was rewritten shorter), the tail query resets to the latest messages. Matches the SDK reference's 'a transcript rewritten shorter starts again from its latest messages'; no wording change.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Delta-review fix: when a refetched first page starts before the offset its param asked for (the server clamped a past-end read because the transcript was rewritten shorter), the tail query resets to the latest messages. Matches the SDK reference's 'a transcript rewritten shorter starts again from its latest messages'; no wording change.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]}
+  ]
+}
