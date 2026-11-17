@@ -1803,6 +1803,23 @@ describe('BrowserAutomation: D4 evaluation', () => {
     expect(h.history().some((e) => e.kind === 'script-evaluated')).toBe(false);
   });
 
+  test('an about:blank that kept its opener page origin, and a page whose origin reads "null", stay evaluable', async () => {
+    const h = await evaluating();
+    // A page that navigated itself to about:blank inherits its origin.
+    h.fake.navigatePage({
+      url: 'about:blank',
+      origin: 'http://127.0.0.1:4000',
+    });
+    expect(await h.evaluate()).toMatchObject({ ok: true, value: '"ran"' });
+    // A real page that redefines self.origin as "null" is still a page.
+    h.fake.navigatePage({ url: 'http://127.0.0.1:4000/x', origin: 'null' });
+    expect(await h.evaluate()).toMatchObject({ ok: true, value: '"ran"' });
+    expect(h.fake.ran.map((r) => r.url)).toEqual([
+      'about:blank',
+      'http://127.0.0.1:4000/x',
+    ]);
+  });
+
   test('a navigation to a blank page between the check and the script: the script never runs in the new document', async () => {
     const h = await evaluating();
     // A person's address bar (or Back, or the page) lands on about:blank

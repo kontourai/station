@@ -9,14 +9,19 @@
  * context, so a navigation landing between them fails the script instead of
  * running it in the new blank document.
  *
- * Runs against an INSTALLED Chrome/Edge only (never a download). Hosted full
- * regression binds Playwright's pinned Chrome for Testing as `google-chrome`
- * for the process-exclusive group, which is why this file belongs to it.
- * Without a browser every case reports an explicit skip; the survival case
+ * These cases are the behavioural witness for the check's logic: the unit
+ * fake evaluates the check against a modelled URL and origin, but only a real
+ * browser decides which pages have a site.
+ *
+ * Runs against Playwright's Chromium under `PLAYWRIGHT_BROWSERS_PATH` when
+ * one is there (the pinned Chrome for Testing), else an INSTALLED
+ * Chrome/Edge; never a download. Hosted full regression binds the pinned
+ * browser as `google-chrome` for the process-exclusive group, which is why
+ * this file belongs to it. Without a browser every case reports an explicit skip; the survival case
  * also skips, naming the version, below Chrome 158.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -52,11 +57,42 @@ const acquisitionStatus = new ChromiumAcquisition(
   acquisitionHome,
   defaultChromiumAcquisitionDeps(),
 ).status();
+/**
+ * Playwright's installed Chromium (Chrome for Testing) under
+ * `PLAYWRIGHT_BROWSERS_PATH`, newest revision first: the pinned browser,
+ * which an older system Chrome would otherwise shadow on a workstation.
+ */
+function playwrightChromium(): string | undefined {
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
+  if (!root || !existsSync(root)) return undefined;
+  const builds: Record<string, string[]> = {
+    darwin: [
+      'chrome-mac-arm64',
+      'Google Chrome for Testing.app',
+      'Contents',
+      'MacOS',
+      'Google Chrome for Testing',
+    ],
+    linux: ['chrome-linux64', 'chrome'],
+  };
+  const tail = builds[process.platform];
+  if (!tail) return undefined;
+  const revisions = readdirSync(root)
+    .filter((name) => /^chromium-\d+$/.test(name))
+    .sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
+  for (const revision of revisions) {
+    const candidate = join(root, revision, ...tail);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 const executablePath =
-  acquisitionStatus.state === 'found-system'
+  playwrightChromium() ??
+  (acquisitionStatus.state === 'found-system'
     ? acquisitionStatus.executablePath
-    : undefined;
-const SKIP_REASON = `no installed Google Chrome / Microsoft Edge / Chromium was found (acquisition state: ${acquisitionStatus.state}); this real-browser test never downloads one`;
+    : undefined);
+const SKIP_REASON = `no Playwright Chromium under PLAYWRIGHT_BROWSERS_PATH and no installed Google Chrome / Microsoft Edge / Chromium was found (acquisition state: ${acquisitionStatus.state}); this real-browser test never downloads one`;
 
 function majorVersion(executable: string): number | undefined {
   const probe = spawnSync(executable, ['--version'], {
