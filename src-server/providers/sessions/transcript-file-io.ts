@@ -90,7 +90,7 @@ export function readLeadingLine(
           .subarray(filled, filled + bytesRead)
           .indexOf(0x0a);
         if (bytesRead === 0 || newline >= 0) {
-          chunks.push(chunk.subarray(0, filled + (newline < 0 ? 0 : newline)));
+          chunks.push(chunk.subarray(0, filled + Math.max(newline, 0)));
           // Decode only after joining: a UTF-8 code point can cross reads.
           return Buffer.concat(chunks).toString('utf8').trim() || undefined;
         }
