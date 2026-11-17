@@ -1194,16 +1194,17 @@ export function createACPRoutes(
               const current = ctx.acpBridge
                 .getStatus()
                 .connections.find((entry) => entry.id === id);
+              const failureDetail = current?.lastError
+                ? {
+                    phase: current.lastError.phase,
+                    detail: sanitizeFreeText(current.lastError.message),
+                  }
+                : {};
               return c.json(
                 {
                   success: false,
                   error: `Could not check ${saved.name}.`,
-                  ...(current?.lastError
-                    ? {
-                        phase: current.lastError.phase,
-                        detail: sanitizeFreeText(current.lastError.message),
-                      }
-                    : {}),
+                  ...failureDetail,
                 },
                 502,
               );

@@ -1,6 +1,7 @@
 import { useEngineStationTools } from '@kontourai/station-sdk/engine-setup';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { ErrorState, SkeletonBlock } from '../state';
@@ -88,7 +89,7 @@ function ScopedTools({
       {repair.error ? (
         <ErrorState
           title="Couldn't update engine setup"
-          description={repair.error.message}
+          description={describeStationFailure(repair.error).body}
           action={
             <Button onClick={() => void query.refetch()}>Check status</Button>
           }
@@ -97,7 +98,7 @@ function ScopedTools({
       {enable.error ? (
         <ErrorState
           title="Couldn't add Station tools"
-          description={enable.error.message}
+          description={describeStationFailure(enable.error).body}
           action={
             <Button onClick={() => void query.refetch()}>Check status</Button>
           }

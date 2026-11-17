@@ -163,7 +163,7 @@ describe('terminals as supervisor workloads (real PTYs)', () => {
         expect(
           await host.handle({ op: 'attach', workloadId: opened.terminalId }),
         ).toMatchObject({ state: 'exited' }),
-      WAIT,
+      { timeout: 5_000, interval: 50 },
     );
     expect(pidAlive(pid!)).toBe(false);
     const next = connect(host, routes);
