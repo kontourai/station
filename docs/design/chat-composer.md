@@ -464,7 +464,8 @@ captures establish layout only; two-machine provider execution, reconnect,
 Windows lifecycle, and approval journeys require separate qualification before
 promoting this preview.
 
-The Project header leads with its name, description and observed Git branch.
+The Project header leads with its name, description and observed Git branch,
+and with the `project-coordination` preview on, the Project's one-line goal.
 Files & connections holds source controls and the **Where Agent work starts**
 workspace selector; specialist management remains in Project Settings. A branch badge does not claim a GitHub integration or whole
 Project synchronization: portable Project identity and per-Station resource

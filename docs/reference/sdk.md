@@ -1582,6 +1582,17 @@ first: `unsupported` means the host predates the routes or never serves them
 there is no memory, or you may not read it), `invalid` or `unavailable`. A decision
 request carries no reviewer: the host decides who is reviewing from the request.
 
+### Project memory client
+
+`listProjectMemory`, `getProjectMemoryNote`, `createProjectMemoryNote`,
+`updateProjectMemoryNote` and `deleteProjectMemoryNote` (from
+`@kontourai/station-sdk/client`) read and edit a Project's memory notes at
+`/api/projects/:slug/memory`, with an explicit `apiBase` and captured request
+options. The host serves them only while the `project-coordination` Feature
+Preview is on (a typed 404 otherwise) and only to the Station operator, the
+Project's owner. Note shapes and limits are in
+`@kontourai/station-contracts/project-session-context`.
+
 ### Notification Hooks
 
 #### `useToast(): SDKToast`
@@ -6646,7 +6657,13 @@ filter; all accounts, the default profile, and a named profile remain distinct.
 `UsageRollupQuery` also takes any declared usage `provider`, and local
 `connectionId`/`modelConnectionId` filters (with `localOnly`), keyed separately.
 Gate the connection filters on the `usageConnectionFilters` capability: an
-older host ignores them and returns unfiltered totals.
+older host ignores them and returns unfiltered totals. `projectSlug` (with
+`localOnly`) keeps one Project's Sessions, and `groupBy: 'project'` groups by
+Project; send them only while the host offers the `project-coordination`
+Feature Preview, since an older host ignores the filter. Pass a Project's
+`groupBy: 'task'` rows to `projectUsageTotals` from
+`@kontourai/station-contracts/usage-rollup` for its total and coordinator
+share.
 The Profile receipt panel requires a scope and clears its page position when
 authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
 on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured

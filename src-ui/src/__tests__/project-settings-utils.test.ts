@@ -41,6 +41,61 @@ describe('project-settings utils', () => {
       defaultEnvironment: { kind: 'current' },
       workingDirectory: '',
       agents: undefined,
+      toolDefaults: undefined,
+      goal: '',
+      instructions: '',
+      coordinatorEffort: 'inherit',
+      taskEffort: 'inherit',
+      taskModel: '',
+      taskProviderId: '',
+    });
+  });
+
+  test('#5062/#5068: brief and model fields reach only a host offering the preview', () => {
+    const saved = buildProjectForm({ name: 'Demo' } as any);
+    const edited = {
+      ...saved,
+      goal: '  Ship it  ',
+      instructions: 'Run tests.',
+      coordinatorEffort: 'low' as const,
+      taskModel: 'claude-sonnet-5-5',
+      taskProviderId: 'claude',
+    };
+    const off = buildProjectSavePayload(edited, undefined, saved);
+    for (const field of [
+      'goal',
+      'instructions',
+      'coordinatorEffort',
+      'taskEffort',
+      'taskModel',
+      'taskProviderId',
+    ])
+      expect(off).not.toHaveProperty(field);
+    expect(
+      buildProjectSavePayload(edited, undefined, saved, {
+        projectCoordination: true,
+      }),
+    ).toMatchObject({
+      goal: 'Ship it',
+      instructions: 'Run tests.',
+      coordinatorEffort: 'low',
+      taskEffort: null,
+      taskModel: 'claude-sonnet-5-5',
+      taskProviderId: 'claude',
+    });
+    // Cleared text drops the stored value.
+    expect(
+      buildProjectSavePayload(
+        { ...edited, goal: ' ', instructions: '', taskModel: '' },
+        undefined,
+        saved,
+        { projectCoordination: true },
+      ),
+    ).toMatchObject({
+      goal: null,
+      instructions: null,
+      taskModel: null,
+      taskProviderId: null,
     });
   });
 

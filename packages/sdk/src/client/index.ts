@@ -109,6 +109,7 @@ export {
   mountPluginTelemetryPane,
 } from './plugin-telemetry';
 export * from './plugins';
+export * from './project-memory';
 export * from './project-task-rooms';
 export * from './projects';
 export * from './relay-enrollment';

@@ -50,6 +50,7 @@ export function useUsageRollupQuery(
       ),
       query.connectionId ?? '',
       query.modelConnectionId ?? '',
+      query.projectSlug ?? '',
       query.localOnly ? 1 : 0,
       query.groupBy ?? 'provider',
       query.cursor ?? '',

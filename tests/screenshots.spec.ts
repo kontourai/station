@@ -5244,7 +5244,237 @@ function personMentionScreens(): Screen[] {
   );
 }
 
+/**
+ * #5062/#5065/#5068: Project settings › Brief, Memory, Models and effort,
+ * and Usage, with the `project-coordination` preview on. The Project and its
+ * notes are real records on the e2e Station; usage is a fixed rollup, since
+ * no engine reports usage here.
+ */
+/**
+ * Project settings are shot as whole pages. Measured in the real page at
+ * 1440×900 and 390×844: the section rail and the form are inside the page's
+ * scrolling content view, and that scrollport ends at the collapsed dock, so
+ * scrolling brings the last rail tabs (Schedules, Danger zone), the Brief
+ * Instructions field and the Task model field fully clear of it. In a fixed
+ * frame some of them always sit at the dock edge, so the frame, not the page,
+ * is what the shot has to change.
+ */
+const PROJECT_SETTINGS_DESKTOP_PAGE = { width: 1440, height: 2500 } as const;
+const PROJECT_SETTINGS_PHONE_PAGE = { width: 390, height: 1200 } as const;
+
+function projectCoordinationScreens(): Screen[] {
+  const sections = ['brief', 'memory', 'models', 'usage'] as const;
+  return sections.flatMap((section) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      [
+        PROJECT_SETTINGS_DESKTOP_PAGE,
+        section === 'brief' || section === 'models'
+          ? PROJECT_SETTINGS_PHONE_PAGE
+          : MOBILE,
+      ].map((viewport): Screen => {
+        const size = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const slug = `gallery-brief-${section}-${theme}-${size}`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const cleanups: (() => Promise<void>)[] = [];
+        let created = false;
+        let previousPreview = false;
+        return {
+          name: `project-${section}-${theme}-${size}`,
+          title: `Project settings ${section} — ${theme}, ${viewport.width}px`,
+          path: `/projects/${slug}/edit?section=${section}`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const preview = (await previews.json()).data.find(
+              (item: { id: string }) => item.id === 'project-coordination',
+            );
+            expect(preview).toBeDefined();
+            previousPreview = preview.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/project-coordination`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+            cleanups.push(async () => {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/project-coordination`,
+                { data: { enabled: previousPreview } },
+              );
+              expect(restored.ok()).toBe(true);
+            });
+            const response = await request.post(
+              `${resolveE2EApiBase()}/api/projects`,
+              {
+                data: {
+                  name: 'Export redesign',
+                  slug,
+                  goal: 'Ship the new export flow by Friday',
+                  instructions: [
+                    'This Project rebuilds CSV and PDF export.',
+                    'Work in example/export on main; name pull requests "export: …".',
+                    'Run npm test and the export smoke test before saying done.',
+                    'If a fixture or credential is missing, say what is missing and stop.',
+                    'Ask before changing billing or deleting data.',
+                  ].join('\n\n'),
+                  taskProviderId: 'claude',
+                  taskModel: 'claude-sonnet-5-5',
+                  taskEffort: 'medium',
+                },
+              },
+            );
+            expect(response.ok()).toBe(true);
+            created = true;
+            if (section === 'memory') {
+              for (const note of [
+                {
+                  title: 'The release moved to Friday',
+                  body: 'Product asked on Tuesday; QA needs Thursday.',
+                },
+                {
+                  title: 'PDF export was dropped from v1',
+                  body: 'Rendering cost; revisit after the CSV launch.',
+                },
+                {
+                  title: 'Check with Dana before touching billing',
+                  body: 'Billing exports feed the finance close.',
+                },
+              ]) {
+                const saved = await request.post(
+                  `${resolveE2EApiBase()}/api/projects/${slug}/memory`,
+                  { data: note },
+                );
+                expect(saved.ok()).toBe(true);
+              }
+            }
+            if (section === 'usage') {
+              const row = (
+                key: string,
+                fields: Record<string, unknown>,
+                tokens: [number, number],
+              ) => ({
+                key,
+                stationId: 'local',
+                provider: 'claude',
+                inputTokens: tokens[0],
+                outputTokens: tokens[1],
+                pricingStatus: 'unpriced',
+                receiptCount: 3,
+                ...fields,
+              });
+              cleanups.push(
+                await withRoute(
+                  page,
+                  '**/api/analytics/usage-rollup?*',
+                  (route) => {
+                    const url = new URL(route.request().url());
+                    if (
+                      route.request().method() !== 'GET' ||
+                      url.searchParams.get('projectSlug') !== slug
+                    )
+                      return rejectUnexpectedFixtureRequest(route);
+                    const byTask = url.searchParams.get('groupBy') === 'task';
+                    return route.fulfill({
+                      json: {
+                        success: true,
+                        data: {
+                          window: { from: '2026-10-19', to: '2026-11-17' },
+                          coverage: [
+                            {
+                              stationId: 'local',
+                              state: 'complete',
+                              window: { from: '2026-10-19', to: '2026-11-17' },
+                            },
+                          ],
+                          receipts: [],
+                          rows: byTask
+                            ? [
+                                row('task:unattributed', {}, [182_000, 9_400]),
+                                row(
+                                  'task:3f2c9a1e',
+                                  { taskId: '3f2c9a1e-csv' },
+                                  [412_500, 31_200],
+                                ),
+                                row(
+                                  'task:8b17d044',
+                                  { taskId: '8b17d044-pdf' },
+                                  [96_300, 7_800],
+                                ),
+                              ]
+                            : [
+                                row(
+                                  'model:claude-opus-5-5',
+                                  { model: 'claude-opus-5-5' },
+                                  [182_000, 9_400],
+                                ),
+                                row(
+                                  'model:claude-sonnet-5-5',
+                                  { model: 'claude-sonnet-5-5' },
+                                  [508_800, 39_000],
+                                ),
+                              ],
+                        },
+                      },
+                    });
+                  },
+                ),
+              );
+            }
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            const body = page.locator('.project-settings__body');
+            if (section === 'brief') {
+              await expect(
+                body.getByRole('textbox', { name: 'Goal', exact: true }),
+              ).toHaveValue('Ship the new export flow by Friday');
+            } else if (section === 'memory') {
+              await expect(
+                body.getByText('The release moved to Friday', { exact: true }),
+              ).toBeVisible();
+            } else if (section === 'models') {
+              await expect(
+                body.getByRole('combobox', {
+                  name: 'Project chat effort',
+                  exact: true,
+                }),
+              ).toHaveValue('medium');
+            } else {
+              await expect(
+                body.getByRole('table', { name: 'By Task' }),
+              ).toBeVisible();
+            }
+            expect(
+              await page.evaluate(
+                () => document.documentElement.scrollWidth <= innerWidth,
+              ),
+            ).toBe(true);
+          },
+          async cleanup() {
+            for (const cleanup of cleanups.splice(0)) await cleanup();
+            if (created) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(removed.ok()).toBe(true);
+              created = false;
+            }
+          },
+        };
+      }),
+    ),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...projectCoordinationScreens(),
   ...roomConversationScreens(),
   ...personMentionScreens(),
   ...channelNavigationScreens(),

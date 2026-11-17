@@ -154,7 +154,10 @@ For Station-engine turns, the `station-agent` adapter relays internally to
 elicitation, transcript-related work and Station-engine behavior. It is not a
 second public chat entry point. On a new session's first turn it may add a short
 brief of the person's confirmed private memory when that preview is on
-([Knowledge guide](guides/knowledge.md#review-recall-and-brief)). External engines
+([Knowledge guide](guides/knowledge.md#review-recall-and-brief)). A Session in
+a Project also starts with the Project brief and memory index on every engine,
+external ones included, while the `project-coordination` preview is on
+([Project settings](user/settings.md#project-brief-memory-and-models)). External engines
 retain their own execution loops behind adapters. See [ADR 0014](adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md)
 and the [Session API](reference/session-api.md).
 

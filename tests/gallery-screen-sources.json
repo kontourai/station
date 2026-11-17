@@ -8,6 +8,86 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "project-brief-dark-desktop": [
+      "src-ui/src/views/project-settings/BriefSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-brief-dark-mobile": [
+      "src-ui/src/views/project-settings/BriefSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-brief-light-desktop": [
+      "src-ui/src/views/project-settings/BriefSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-brief-light-mobile": [
+      "src-ui/src/views/project-settings/BriefSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-memory-dark-desktop": [
+      "src-ui/src/views/project-settings/MemorySection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-memory-dark-mobile": [
+      "src-ui/src/views/project-settings/MemorySection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-memory-light-desktop": [
+      "src-ui/src/views/project-settings/MemorySection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-memory-light-mobile": [
+      "src-ui/src/views/project-settings/MemorySection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-models-dark-desktop": [
+      "src-ui/src/views/project-settings/ProjectModelsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-models-dark-mobile": [
+      "src-ui/src/views/project-settings/ProjectModelsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-models-light-desktop": [
+      "src-ui/src/views/project-settings/ProjectModelsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-models-light-mobile": [
+      "src-ui/src/views/project-settings/ProjectModelsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-usage-dark-desktop": [
+      "src-ui/src/views/project-settings/ProjectUsageSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-usage-dark-mobile": [
+      "src-ui/src/views/project-settings/ProjectUsageSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-usage-light-desktop": [
+      "src-ui/src/views/project-settings/ProjectUsageSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
+    "project-usage-light-mobile": [
+      "src-ui/src/views/project-settings/ProjectUsageSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx",
+      "src-ui/src/views/ProjectSettingsView.css"
+    ],
     "apps-details-dark-mobile": [
       "src-ui/src/views/apps/AppDetailsDialog.tsx",
       "src-ui/src/views/apps/AppsLibrary.css",
