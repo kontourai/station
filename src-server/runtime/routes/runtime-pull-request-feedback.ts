@@ -481,7 +481,7 @@ export function composePullRequestFeedbackRuntime(
     id: 'pull-request-head-review',
     label: 'Pull request head review',
     description:
-      "Run Station's independent review on each new head of a pull request a chat owns, and send its required findings to the agent. Needs Pull request agent feedback.",
+      "Run Station's independent review on each new head of a pull request a chat owns, and send its required findings to the agent. Needs Pull request agent feedback. Pull requests already set to review resume when you turn this on.",
   });
   const headReviewEnabled = () =>
     enabled() &&

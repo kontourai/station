@@ -168,12 +168,24 @@ const keyOf = (prKey: string, headSha: string) => `${prKey}\u0000${headSha}`;
 /** Submitted to the review module (or tried to be): final for its head. */
 const submitted = (review: StoredHeadReview) => review.requestId !== undefined;
 
-function requestIdFor(prKey: string, headSha: string, rerun: number): string {
+/**
+ * The review module's request id: the pull request and head, the claim's
+ * epoch (bumped when it moves or is turned off, so a new owner never reuses
+ * an earlier owner's id, whose record the module would answer with), and the
+ * rerun within that epoch.
+ */
+function requestIdFor(
+  prKey: string,
+  headSha: string,
+  epoch: number,
+  rerun: number,
+): string {
   const base = `${REQUEST_PREFIX}${createHash('sha256')
     .update(`${prKey}\u0000${headSha}`)
     .digest('hex')
     .slice(0, 40)}`;
-  return rerun > 0 ? `${base}:rerun:${rerun}` : base;
+  const owned = epoch > 0 ? `${base}:e${epoch}` : base;
+  return rerun > 0 ? `${owned}:rerun:${rerun}` : owned;
 }
 
 /** git in the Project's own repository: reads only, never a fetch. */
@@ -359,9 +371,13 @@ export class PullRequestHeadReviewer {
   view(prKey: string): PullRequestHeadReview | undefined {
     if (!this.ports.enabled()) return undefined;
     const store = this.ports.store();
-    const review = store?.headReviews(prKey)[0];
+    const observedHead = store?.observation(prKey)?.observation.headSha;
+    // The observed head's own review first (a force-push back to a head
+    // already reviewed), else the newest.
+    const review =
+      (observedHead ? store?.headReview(prKey, observedHead) : undefined) ??
+      store?.headReviews(prKey)[0];
     if (!store || !review) return undefined;
-    const observedHead = store.observation(prKey)?.observation.headSha;
     const state: PullRequestHeadReview['state'] =
       review.state === 'running'
         ? this.running.has(keyOf(prKey, review.headSha))
@@ -640,7 +656,12 @@ export class PullRequestHeadReviewer {
             ? `Head ${short(headSha)} is already in the base branch: there is nothing to review.`
             : "Station can't find this pull request's base branch here.",
         );
-      const requestId = requestIdFor(claim.prKey, headSha, rerun);
+      const requestId = requestIdFor(
+        claim.prKey,
+        headSha,
+        store.headReviewEpoch(claim.prKey),
+        rerun,
+      );
       const request: IndependentReviewRequest = {
         requestId,
         mode: range.delta ? 'delta' : 'initial',
@@ -672,6 +693,8 @@ export class PullRequestHeadReviewer {
         ...(range.delta ? { priorReceiptId: range.delta.priorReceiptId } : {}),
       };
       // Counted when submitted, reruns included: the daily limit reads it.
+      // Logged before the module admits it, so one whose currency check
+      // then fails is counted with no module record: that errs safe.
       store.recordHeadReviewRequest({
         requestId,
         projectSlug,

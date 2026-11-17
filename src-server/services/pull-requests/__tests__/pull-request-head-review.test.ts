@@ -36,6 +36,7 @@ import {
   createInboxHarness,
   eventually,
   OWNER,
+  STRANGER,
 } from '../../../routes/orchestration/__tests__/helpers/thread-inbox-harness.js';
 import { createPullRequestFeedbackRoutes } from '../../../routes/pull-requests/pull-request-feedback.js';
 import {
@@ -168,7 +169,11 @@ function reviewModule() {
     ): Promise<IndependentReviewRequestStatus> => {
       const request = value as IndependentReviewRequest;
       context.assertCurrent?.();
-      if (held.gate) await held.gate;
+      if (held.gate) {
+        await held.gate;
+        // As the real module does before it writes the receipt.
+        context.assertCurrent?.();
+      }
       const at = new Date().toISOString();
       const receipt: IndependentReviewReceipt = {
         schemaVersion: 1,
@@ -1254,6 +1259,220 @@ describe('with the head review preview off', () => {
       fixFailingChecks: true,
       addressReviewComments: true,
       reviewEachHead: false,
+    });
+  });
+});
+
+describe('fix round 2', () => {
+  it('a re-enabled or moved claim reviews under a request id of its own', async () => {
+    const t = await setup();
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    expect(t.reviews.requests().map((r) => r.requestId)).toEqual([
+      expectedRequestId(t.repo.first),
+    ]);
+    // Turned off, then on again.
+    t.store.releaseClaim(PR_KEY, new Date().toISOString());
+    expect(t.store.headReviews(PR_KEY)).toEqual([]);
+    t.store.writeClaim({
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      conversationId: CONVERSATION,
+      settings: REVIEW_ONLY,
+      enabledBy: OWNER,
+      now: new Date().toISOString(),
+    });
+    expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(t.reviews.requests()[1]!.requestId).toBe(
+      `${expectedRequestId(t.repo.first)}:e1`,
+    );
+    expect(t.reviewer().view(PR_KEY)?.state).toBe('reviewed');
+    // Moved away and back: two more epochs, a fresh id again.
+    for (const conversationId of ['another-chat', CONVERSATION])
+      t.store.writeClaim({
+        prKey: PR_KEY,
+        identity: IDENTITY,
+        conversationId,
+        settings: REVIEW_ONLY,
+        enabledBy: OWNER,
+        now: new Date().toISOString(),
+      });
+    expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(t.reviews.requests()[2]!.requestId).toBe(
+      `${expectedRequestId(t.repo.first)}:e3`,
+    );
+    expect(new Set(t.reviews.requests().map((r) => r.requestId)).size).toBe(3);
+  });
+
+  it("a force-push back to a reviewed head shows that head's own review", async () => {
+    const t = await setup();
+    t.reviews.answer.findings = [finding('f-1', 'high', 'high')];
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    t.reviews.answer.findings = [finding('f-2', 'critical', 'high')];
+    t.observe(t.repo.forced);
+    await t.tick();
+    await t.tick();
+    expect(t.reviews.run).toHaveBeenCalledTimes(2);
+    t.observe(t.repo.first);
+    await t.tick();
+    expect(t.reviewer().view(PR_KEY)).toMatchObject({
+      headSha: t.repo.first,
+      current: true,
+      state: 'reviewed',
+    });
+    expect(t.reviewer().waiting(PR_KEY)).toBeUndefined();
+  });
+
+  it('a head already in the base branch is not reviewed', async () => {
+    const t = await setup();
+    t.observe(t.repo.mergeBase);
+    await t.tick();
+    expect(await t.reviewer().reviewAgain(PR_KEY)).toEqual({
+      outcome: 'not-verified',
+      reason: `Head ${t.repo.mergeBase.slice(0, 7)} is already in the base branch: there is nothing to review.`,
+    });
+    expect(t.reviews.run).not.toHaveBeenCalled();
+  });
+
+  it("a repository Station refuses says why, with the refusal's own fix", async () => {
+    const t = await setup();
+    writeFileSync(
+      join(t.repo.root, '.git', 'objects', 'info', 'alternates'),
+      `${tempDir('pr-head-review-borrowed-')}\n`,
+    );
+    t.observe(t.repo.first);
+    await t.tick();
+    const refused = await t.reviewer().reviewAgain(PR_KEY);
+    expect(refused.outcome).toBe('not-verified');
+    expect(refused.reason).toContain('git repack -a -d');
+    expect(t.reviews.run).not.toHaveBeenCalled();
+  });
+
+  it('Send to agent on a paused pull request says paused', async () => {
+    const t = await setup();
+    t.reviews.answer.findings = [finding('f-1', 'high', 'high')];
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    t.store.setCondition(PR_KEY, {
+      state: 'paused',
+      reason: 'round-limit',
+      cap: 'head',
+      headSha: t.repo.first,
+      at: new Date().toISOString(),
+    });
+    expect(await t.reviewer().sendFindings(PR_KEY)).toBe('paused');
+  });
+
+  it('a review whose claim moved meanwhile leaves nothing for the new owner', async () => {
+    const t = await setup();
+    const release = t.reviews.hold();
+    t.observe(t.repo.first);
+    await t.tickOnly();
+    await t.tickOnly();
+    await vi.waitFor(() => expect(t.reviews.run).toHaveBeenCalledTimes(1));
+    t.store.writeClaim({
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      conversationId: 'another-chat',
+      settings: REVIEW_ONLY,
+      enabledBy: OWNER,
+      now: new Date().toISOString(),
+    });
+    release();
+    await t.reviewer().settled();
+    expect(t.store.headReviews(PR_KEY)).toEqual([]);
+  });
+
+  it('a review stops when whoever turned it on can no longer send to the chat', async () => {
+    const t = await setup();
+    const release = t.reviews.hold();
+    t.observe(t.repo.first);
+    await t.tickOnly();
+    await t.tickOnly();
+    await vi.waitFor(() => expect(t.reviews.run).toHaveBeenCalledTimes(1));
+    // Same chat, same generation: only who turned it on changes.
+    t.store.writeClaim({
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      conversationId: CONVERSATION,
+      settings: REVIEW_ONLY,
+      enabledBy: STRANGER,
+      now: new Date().toISOString(),
+    });
+    expect(t.h.inbox.mayContinue(CONVERSATION, STRANGER)).toBe(false);
+    release();
+    await t.reviewer().settled();
+    expect(t.store.headReview(PR_KEY, t.repo.first)).toMatchObject({
+      state: 'not-verified',
+      failureReason: 'The pull request moved on before the review finished.',
+    });
+  });
+
+  it("the route answers a refused Review again with the reviewer's own reason", async () => {
+    const store = new PullRequestFeedbackStore(
+      join(tempDir('pr-head-review-reason-'), 'pull-request-feedback.sqlite'),
+    );
+    closers.push(() => store.close());
+    const ownership = new PullRequestFeedbackOwnership({
+      store: () => store,
+      readStore: () => store,
+      linkedIdentities: async () => [IDENTITY],
+      session: () => ({ state: 'idle', ownerUserId: 'owner' }),
+      mayContinue: () => true,
+      title: () => 'Chat',
+      headReviewEnabled: () => true,
+    });
+    await ownership.write({
+      conversationId: 'chat-a',
+      identity: IDENTITY,
+      settings: REVIEW_ONLY,
+      viewer: { userId: 'owner', canRead: () => true },
+    });
+    const app = new Hono().route(
+      '/api/pull-request-feedback',
+      createPullRequestFeedbackRoutes(
+        ownership,
+        () => undefined,
+        () => {},
+        {
+          enabled: () => true,
+          current: () => true,
+          canRead: () => true,
+          operator: () => 'owner',
+          readerOf: () => () => true,
+          isPerson: () => true,
+          mayContinue: () => true,
+        },
+        undefined,
+        () => ({
+          reviewAgain: async () => ({
+            outcome: 'daily-limit' as const,
+            reason: 'Station already ran 10 reviews in this Project today.',
+          }),
+          sendFindings: async () => 'nothing' as const,
+        }),
+      ),
+    );
+    const response = await app.request(
+      '/api/pull-request-feedback/conversations/chat-a/head-review/again',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ identity: IDENTITY }),
+      },
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      success: false,
+      code: 'pull_request_head_review_not_started',
+      error: 'Station already ran 10 reviews in this Project today.',
+      details: { outcome: 'daily-limit' },
     });
   });
 });

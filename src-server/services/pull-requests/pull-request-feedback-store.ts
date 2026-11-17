@@ -316,6 +316,14 @@ const SCHEMA = [
     submitted_at TEXT NOT NULL
   ) STRICT`,
   `CREATE INDEX IF NOT EXISTS head_review_requests_by_project ON head_review_requests (project_slug, submitted_at)`,
+  // Per pull request, how many times its claim moved or was turned off:
+  // part of every head review request id, so a new owner or a re-enable
+  // never reuses an earlier owner's id. Never deleted, not even with the
+  // claim, so a claim made again later cannot count from zero.
+  `CREATE TABLE IF NOT EXISTS head_review_epochs (
+    pr_key TEXT PRIMARY KEY,
+    epoch INTEGER NOT NULL
+  ) STRICT`,
   `CREATE TABLE IF NOT EXISTS project_defaults (
     project_id TEXT NOT NULL,
     project_created_at TEXT NOT NULL,
@@ -584,10 +592,12 @@ export class PullRequestFeedbackStore {
             "UPDATE deliveries SET state = 'superseded', settled_at = ? WHERE pr_key = ? AND state = 'pending'",
           )
           .run(input.now, input.prKey);
-        // Nor are its head reviews: the new owner's chat reviews afresh.
+        // Nor are its head reviews: the new owner's chat reviews afresh,
+        // under request ids of its own.
         this.db
           .prepare('DELETE FROM head_reviews WHERE pr_key = ?')
           .run(input.prKey);
+        this.bumpHeadReviewEpoch(input.prKey);
       }
       return this.claim(input.prKey)!;
     });
@@ -672,8 +682,10 @@ export class PullRequestFeedbackStore {
           "UPDATE deliveries SET state = 'superseded', settled_at = ? WHERE pr_key = ? AND state = 'pending'",
         )
         .run(now, prKey);
-      // A released claim's head reviews were for the chat that let it go.
+      // A released claim's head reviews were for the chat that let it go;
+      // turned on again, it reviews under request ids of its own.
       this.db.prepare('DELETE FROM head_reviews WHERE pr_key = ?').run(prKey);
+      this.bumpHeadReviewEpoch(prKey);
     });
   }
 
@@ -1217,6 +1229,23 @@ export class PullRequestFeedbackStore {
         review.rerun,
         review.sendRequestedAt ?? null,
       );
+  }
+
+  /** How many times this pull request's claim moved or was turned off. */
+  headReviewEpoch(prKey: string): number {
+    const row = this.db
+      .prepare('SELECT epoch FROM head_review_epochs WHERE pr_key = ?')
+      .get(prKey);
+    return row ? int(row, 'epoch') : 0;
+  }
+
+  private bumpHeadReviewEpoch(prKey: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO head_review_epochs (pr_key, epoch) VALUES (?, 1)
+         ON CONFLICT (pr_key) DO UPDATE SET epoch = epoch + 1`,
+      )
+      .run(prKey);
   }
 
   /** Record one submitted review request, a rerun included. */
