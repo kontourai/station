@@ -8,21 +8,26 @@
  *
  * These cases drive the real runtime pieces: `applyAgentConfigurationMutation`
  * in the deferred mode `POST /api/agents` (`station agents create`) uses,
- * configuration reconciliation, `resolveExternalPreToolPolicy` (what the
- * Claude, ACP, OpenCode and Codex adapters hold for a session's life), the
- * staged evaluator, and the orchestration conversation lineage. The engine
- * is a fake adapter that holds the evaluator exactly as a real one does.
+ * `mutateAgentConfiguration` (the watcher's `reloadAgents`), configuration
+ * reconciliation, `resolveExternalPreToolPolicy` (what the Claude, ACP,
+ * OpenCode and Codex adapters hold for a session's life), the staged
+ * evaluator, the session agent resolver every start uses, and the
+ * orchestration service's continuation and turn dispatch. The engine is a
+ * fake adapter that holds the evaluator for its process's life, as a real
+ * one does, and reports a resume cursor unless told not to.
  */
 import { join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { AgentConfigNotFoundError } from '../../../domain/config-loader-agents.js';
 import type {
   ProviderAdapterShape,
   ProviderSessionStartInput,
 } from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import { ApprovalGuardianService } from '../../../services/approvals/approval-guardian.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -34,6 +39,7 @@ import { StationRuntime } from '../station-runtime.js';
 const makeTempDir = trackTempDirs();
 const worlds: Array<{ service: OrchestrationService; store: EventStore }> = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const world of worlds.splice(0)) {
     await world.service.shutdown();
     world.store.close();
@@ -41,9 +47,19 @@ afterEach(async () => {
 });
 
 const REPLACED_TEXT = 'Retrying in this turn will be refused again';
+const RETRY_TEXT = 'Retry it in a moment';
+
+interface Config {
+  agents: Map<string, AgentSpec>;
+  integrations: Map<string, any>;
+  projectServers: string[];
+  appConfig: Record<string, any>;
+  providerConnections: any[];
+  acpConnections: any[];
+}
 
 /** A runtime with only the configuration and policy seams this file drives. */
-function policyRuntime(home: string, agents: Map<string, AgentSpec>) {
+function policyRuntime(home: string, config: Config) {
   const runtime = Object.create(StationRuntime.prototype) as any;
   runtime.orchestrationEventStore = {
     createPackageMcpAdmissionJournal: () => ({
@@ -60,21 +76,27 @@ function policyRuntime(home: string, agents: Map<string, AgentSpec>) {
   runtime.loadedAppConfigLaunchabilityRevision = 0;
   runtime.providerService = {
     getLaunchabilityRevision: () => 0,
-    listProviderConnections: () => [],
+    listProviderConnections: () => structuredClone(config.providerConnections),
   };
   runtime.configLoader = {
     getLaunchabilityRevision: () => 0,
     getProjectHomeDir: () => home,
-    loadAgent: async (slug: string) => {
-      const spec = agents.get(slug);
-      if (!spec) throw new Error(`Agent '${slug}' not found`);
+    loadAgent: vi.fn(async (slug: string) => {
+      const spec = config.agents.get(slug);
+      if (!spec) throw new AgentConfigNotFoundError(slug, `${home}/${slug}`);
       return structuredClone(spec);
-    },
+    }),
     loadIntegration: async (id: string) => {
-      throw new Error(`Integration '${id}' not found`);
+      const integration = config.integrations.get(id);
+      if (!integration) throw new Error(`Integration '${id}' not found`);
+      return structuredClone(integration);
     },
+    loadAppConfig: async () => structuredClone(config.appConfig),
+    loadACPConfig: async () => ({
+      connections: structuredClone(config.acpConnections),
+    }),
   };
-  runtime.appConfig = {};
+  runtime.appConfig = structuredClone(config.appConfig);
   runtime.logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn() };
   runtime.toolNameMapping = new Map();
   runtime.preToolPolicyGenerations = new PreToolPolicyGenerations();
@@ -88,53 +110,77 @@ function policyRuntime(home: string, agents: Map<string, AgentSpec>) {
   return runtime;
 }
 
-/** `station agents create` / `PUT /api/agents/:slug`, then reconciliation. */
-async function saveAgent(
-  runtime: any,
-  agents: Map<string, AgentSpec>,
-  slug: string,
-  spec: AgentSpec,
-) {
-  await runtime.applyAgentConfigurationMutation(
-    async (beginMutation: () => void) => {
-      beginMutation();
-      agents.set(slug, spec);
-      return { slug };
-    },
-    {
-      resolveAgentSlug: (saved: { slug: string }) => saved.slug,
-      activationMode: 'defer',
-    },
-  );
-  await expect(runtime.reconcileAgentConfigurationSources()).resolves.toBe(
-    true,
-  );
-}
-
 const ENGINES = ['claude', 'codex', 'acp'] as const;
+type Engine = (typeof ENGINES)[number];
 
-function world(engine: (typeof ENGINES)[number]) {
+function world(engine: Engine, options: { resumable?: boolean } = {}) {
   const home = makeTempDir('external-policy-generation-');
-  const agents = new Map<string, AgentSpec>([
-    [
-      'claude',
+  const config: Config = {
+    agents: new Map<string, AgentSpec>([
+      [
+        'claude',
+        {
+          name: 'Claude',
+          prompt: 'Help the person.',
+          tools: {
+            mcpServers: ['github'],
+            autoApprove: ['Bash', 'mcp__github__*'],
+          },
+        },
+      ],
+    ]),
+    integrations: new Map<string, any>([
+      [
+        'github',
+        {
+          id: 'github',
+          displayName: 'GitHub',
+          transport: 'stdio',
+          command: 'gh-mcp',
+          args: [],
+        },
+      ],
+      [
+        'linear',
+        {
+          id: 'linear',
+          displayName: 'Linear',
+          transport: 'stdio',
+          command: 'linear-mcp',
+          args: [],
+        },
+      ],
+    ]),
+    projectServers: [],
+    appConfig: {
+      agentConnections: {
+        claude: { config: { proxyConnectionId: 'proxy' } },
+        codex: { config: { proxyConnectionId: 'proxy' } },
+      },
+    },
+    providerConnections: [
       {
-        name: 'Claude',
-        prompt: 'Help the person.',
-        tools: { mcpServers: [], autoApprove: ['Bash'] },
+        id: 'proxy',
+        type: 'openai-compat',
+        name: 'Proxy',
+        enabled: true,
+        capabilities: ['llm'],
+        config: { baseUrl: 'https://proxy.example/v1', apiKey: 'key' },
       },
     ],
-  ]);
-  const runtime = policyRuntime(home, agents);
+    acpConnections: [{ id: 'opencode', command: 'opencode', args: ['acp'] }],
+  };
+  const runtime = policyRuntime(home, config);
   const policies = new Map<string, StagedPreToolPolicyEvaluator>();
   const starts: ProviderSessionStartInput[] = [];
+  const stops: string[] = [];
   const events = new AsyncEventQueue<any>();
   let turns = 0;
   const adapter: ProviderAdapterShape = {
     provider: engine,
     metadata: {
       displayName: 'fake engine',
-      description: 'holds its pre-tool policy for the session, like a real one',
+      description: 'holds its pre-tool policy for the process, like a real one',
       capabilities: ['agent-runtime'],
     },
     async startSession(input) {
@@ -147,7 +193,7 @@ function world(engine: (typeof ENGINES)[number]) {
       if (policy) policies.set(input.threadId, policy);
       const now = new Date().toISOString();
       events.push({
-        eventId: `start-${input.threadId}`,
+        eventId: `start-${input.threadId}-${starts.length}`,
         provider: engine,
         threadId: input.threadId,
         sessionId: input.threadId,
@@ -161,6 +207,9 @@ function world(engine: (typeof ENGINES)[number]) {
         status: 'ready',
         createdAt: now,
         updatedAt: now,
+        ...(options.resumable === false
+          ? {}
+          : { resumeCursor: { native: `native-${input.threadId}` } }),
       };
     },
     async sendTurn(input) {
@@ -190,7 +239,20 @@ function world(engine: (typeof ENGINES)[number]) {
       return { outcome: 'no-active-turn' };
     },
     async respondToRequest() {},
-    async stopSession() {},
+    // The engine process ends: its policy goes with it.
+    async stopSession(threadId: string) {
+      stops.push(threadId);
+      policies.delete(threadId);
+      events.push({
+        eventId: `exit-${threadId}-${stops.length}`,
+        provider: engine,
+        threadId,
+        sessionId: threadId,
+        method: 'session.exited',
+        createdAt: new Date().toISOString(),
+        reason: 'stopped',
+      });
+    },
     async listSessions() {
       return [];
     },
@@ -199,13 +261,14 @@ function world(engine: (typeof ENGINES)[number]) {
       return policies.has(threadId);
     },
     async stopAll() {},
-    streamEvents: (options) => events.iterable(options),
+    streamEvents: (streamOptions) => events.iterable(streamOptions),
   };
   const store = new EventStore(join(home, 'events.sqlite'));
   const service = new OrchestrationService({
     eventStore: store,
     eventBus: new EventBus(),
-    logger: { debug: vi.fn(), warn: vi.fn() },
+    logger: { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+    idleSessionParkExitWaitMs: 2_000,
     adapterRegistry: {
       register() {},
       get: (provider: string) => (provider === engine ? adapter : undefined),
@@ -214,11 +277,15 @@ function world(engine: (typeof ENGINES)[number]) {
     preToolPolicyReplaced: (threadId: string) =>
       runtime.preToolPolicyGenerations.replaced(threadId),
     resolveSessionAgent: createSessionAgentResolver({
-      loadAgentSpec: async (slug) => structuredClone(agents.get(slug) ?? null),
-      resolveToolServer: async () => null,
+      loadAgentSpec: async (slug) =>
+        structuredClone(config.agents.get(slug) ?? null),
+      resolveToolServer: async (id) =>
+        structuredClone(config.integrations.get(id) ?? null),
+      resolveProjectToolServers: async () => [...config.projectServers],
       resolveSkillDir: async () => null,
     }),
   } as never);
+  runtime.orchestrationService = service;
   worlds.push({ service, store });
   const waitFor = async (threadId: string, method: string) => {
     for (
@@ -243,6 +310,7 @@ function world(engine: (typeof ENGINES)[number]) {
             userId: 'owner',
             agentSlug: 'claude',
             conversationId: 'conversation',
+            ...(engine === 'acp' ? { connectionId: 'opencode' } : {}),
             ...extra,
           },
         },
@@ -263,10 +331,10 @@ function world(engine: (typeof ENGINES)[number]) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     expect(completed()).toBe(before + 1);
   };
-  /** The engine's PreToolUse (or permission request) for one Bash call. */
-  const bash = (threadId: string) =>
+  /** The engine's PreToolUse (or permission request) for one call. */
+  const call = (threadId: string, toolName = 'Bash') =>
     policies.get(threadId)!(
-      { toolName: 'Bash', toolArgs: { command: 'ls' } } as never,
+      { toolName, toolArgs: { command: 'ls' } } as never,
       { agentSlug: 'claude', conversationId: 'conversation' } as never,
       { interaction: 'external' },
     );
@@ -276,8 +344,51 @@ function world(engine: (typeof ENGINES)[number]) {
       INTERNAL_SESSION_READ_SCOPE,
       { provider: engine },
     );
-  return { runtime, agents, service, start, turn, bash, next, starts };
+  /** The watcher's `reloadAgents` path: one serialized mutation. */
+  const mutate = (change: () => void) =>
+    runtime.mutateAgentConfiguration(async () => change());
+  /** `station agents create` / `PUT /api/agents/:slug`, then reconciliation. */
+  const saveAgent = async (slug: string, spec: AgentSpec) => {
+    await runtime.applyAgentConfigurationMutation(
+      async (beginMutation: () => void) => {
+        beginMutation();
+        config.agents.set(slug, spec);
+        return { slug };
+      },
+      {
+        resolveAgentSlug: (saved: { slug: string }) => saved.slug,
+        activationMode: 'defer',
+      },
+    );
+    await expect(runtime.reconcileAgentConfigurationSources()).resolves.toBe(
+      true,
+    );
+  };
+  return {
+    runtime,
+    config,
+    service,
+    store,
+    start,
+    turn,
+    call,
+    next,
+    mutate,
+    saveAgent,
+    starts,
+    stops,
+    policies,
+  };
 }
+
+const allowed = { behavior: 'allow', toolGrant: true };
+const replaced = {
+  behavior: 'deny',
+  denial: {
+    policyDenied: true,
+    reason: expect.stringContaining(REPLACED_TEXT),
+  },
+};
 
 describe('external engine pre-tool policy generation', () => {
   test.each(ENGINES)(
@@ -286,12 +397,9 @@ describe('external engine pre-tool policy generation', () => {
       const w = world(engine);
       await w.start('conversation');
       await w.turn('conversation', 'Run the tests.');
-      expect(await w.bash('conversation')).toEqual({
-        behavior: 'allow',
-        toolGrant: true,
-      });
+      expect(await w.call('conversation')).toEqual(allowed);
 
-      await saveAgent(w.runtime, w.agents, 'main-repair', {
+      await w.saveAgent('main-repair', {
         name: 'Main repair',
         prompt: 'Repair main.',
       });
@@ -300,84 +408,270 @@ describe('external engine pre-tool policy generation', () => {
       // a later turn in the same session reaches the same evaluator.
       await w.turn('conversation', 'Now commit.');
       expect(w.starts.map((input) => input.threadId)).toEqual(['conversation']);
-      expect(await w.bash('conversation')).toEqual({
-        behavior: 'allow',
-        toolGrant: true,
-      });
+      expect(await w.call('conversation')).toEqual(allowed);
 
-      await saveAgent(w.runtime, w.agents, 'main-repair', {
+      await w.saveAgent('main-repair', {
         name: 'Main repair',
         prompt: 'Repair main, carefully.',
         tools: { mcpServers: [], autoApprove: ['*'] },
       });
-      expect(await w.bash('conversation')).toEqual({
-        behavior: 'allow',
-        toolGrant: true,
-      });
-      // Nothing to recover from: the next turn stays in this session.
+      expect(await w.call('conversation')).toEqual(allowed);
+      // Nothing to recover from: the next turn stays in this engine.
       expect((await w.next()).startRequired).toBe(false);
+      await w.turn('conversation', 'Push it.');
+      expect(w.stops).toEqual([]);
+      expect(w.starts).toHaveLength(1);
     },
   );
 
   test.each(ENGINES)(
-    "%s: a change to the session's own Agent refuses its tools until the next turn starts a session under the new definition",
+    "%s: a change to the session's own Agent refuses its tools, and the next turn restarts the engine in place under the new definition",
     async (engine) => {
       const w = world(engine);
       await w.start('conversation');
       await w.turn('conversation', 'Run the tests.');
-      expect(await w.bash('conversation')).toMatchObject({ behavior: 'allow' });
+      expect(await w.call('conversation')).toEqual(allowed);
 
       // The person withdraws the Bash grant.
-      await saveAgent(w.runtime, w.agents, 'claude', {
+      await w.saveAgent('claude', {
         name: 'Claude',
         prompt: 'Help the person.',
-        tools: { mcpServers: [] },
+        tools: { mcpServers: ['github'], autoApprove: ['mcp__github__*'] },
       });
 
-      // The running session cannot re-bind what its engine was started with
-      // (its grants and tool servers), so it never decides under the old
-      // grant: refused, the same on retry, and the text says what works.
-      for (const attempt of [1, 2, 3]) {
-        const refused = await w.bash('conversation');
-        expect(refused, `attempt ${attempt}`).toMatchObject({
-          behavior: 'deny',
-          denial: {
-            policyDenied: true,
-            reason: expect.stringContaining(REPLACED_TEXT),
-          },
-        });
-      }
+      // The running engine cannot re-bind what it was launched with, so it
+      // never decides under the old grant: refused, the same on retry, and
+      // the text says what works.
+      for (const attempt of [1, 2, 3])
+        expect(
+          await w.call('conversation'),
+          `attempt ${attempt}`,
+        ).toMatchObject(replaced);
 
-      // The next turn starts a successor that binds the current definition.
-      const successor = await w.next();
-      expect(successor.startRequired).toBe(true);
-      expect(successor.sessionId).not.toBe('conversation');
-      await w.start(successor.sessionId, {
-        ...(successor.contextSeed
-          ? {
-              conversationStartSeedCarrier: {
-                pinDigest: successor.contextSeed.pinDigest,
-                seedDigest: successor.contextSeed.seedDigest,
-                clientTurnId: 'next-turn',
-              },
-            }
-          : {}),
+      // The next turn stays in this conversation's Session; its dispatch
+      // parks the stale engine (exit absorbed) and restarts it in place from
+      // its resume cursor, which binds the current definition.
+      expect(await w.next()).toMatchObject({
+        sessionId: 'conversation',
+        startRequired: false,
       });
-      expect(w.starts.at(-1)?.agent?.autoApprove).toBeUndefined();
+      await w.turn('conversation', 'Run the tests again.');
+      expect(w.stops).toEqual(['conversation']);
+      expect(w.starts.map((input) => input.threadId)).toEqual([
+        'conversation',
+        'conversation',
+      ]);
+      expect(w.starts.at(-1)?.agent?.autoApprove).toEqual(['mcp__github__*']);
       // No grant now: Station leaves the call to the engine's own approval
       // flow, which asks the person.
-      expect(await w.bash(successor.sessionId)).toEqual({ behavior: 'defer' });
-      // And it stays there: the successor is current, so no further one.
-      await w.turn(successor.sessionId, 'Run the tests.', {
-        clientTurnId: 'next-turn',
-        ...(successor.transcriptSeed
-          ? { ambientContext: successor.transcriptSeed }
-          : {}),
-      });
-      expect((await w.next()).sessionId).toBe(successor.sessionId);
+      expect(await w.call('conversation')).toEqual({ behavior: 'defer' });
+      expect(await w.call('conversation', 'mcp__github__list')).toEqual(
+        allowed,
+      );
+      // The park is not an ending: nothing in the conversation says the
+      // engine failed or exited.
+      expect(
+        w.store.listEventsByMethods('conversation', [
+          'runtime.error',
+          'session.exited',
+        ]),
+      ).toEqual([]);
       expect((await w.next()).startRequired).toBe(false);
     },
   );
+
+  test('an engine that cannot resume gets a successor, and its stale engine is retired', async () => {
+    const w = world('acp', { resumable: false });
+    await w.start('conversation');
+    await w.turn('conversation', 'Run the tests.');
+    await w.saveAgent('claude', {
+      name: 'Claude',
+      prompt: 'Help the person.',
+      tools: { mcpServers: ['github'], autoApprove: [] },
+    });
+    expect(await w.call('conversation')).toMatchObject(replaced);
+
+    const successor = await w.next();
+    expect(successor.startRequired).toBe(true);
+    expect(successor.sessionId).not.toBe('conversation');
+    // Retired before anything can run a turn in it again.
+    expect(w.stops).toEqual(['conversation']);
+    expect(w.policies.has('conversation')).toBe(false);
+    await w.start(successor.sessionId, {
+      ...(successor.contextSeed
+        ? {
+            conversationStartSeedCarrier: {
+              pinDigest: successor.contextSeed.pinDigest,
+              seedDigest: successor.contextSeed.seedDigest,
+              clientTurnId: 'next-turn',
+            },
+          }
+        : {}),
+    });
+    expect(w.starts.at(-1)?.agent?.autoApprove).toEqual([]);
+    expect(await w.call(successor.sessionId)).toEqual({ behavior: 'defer' });
+  });
+
+  // Each input the session was launched with, changed under it by the
+  // watcher's reload path: the running engine must refuse, and the next
+  // turn must restart it under the current configuration.
+  const LAUNCH_INPUTS: Array<{
+    name: string;
+    engines?: readonly Engine[];
+    change(config: Config): void;
+    afterRestart(input: ProviderSessionStartInput): void;
+  }> = [
+    {
+      name: 'its integration is deleted',
+      change: (config) => config.integrations.delete('github'),
+      afterRestart: (input) =>
+        expect(input.agent?.toolServers?.map((server) => server.id)).toEqual(
+          [],
+        ),
+    },
+    {
+      name: 'its integration is disabled',
+      change: (config) =>
+        config.integrations.set('github', {
+          ...config.integrations.get('github'),
+          enabled: false,
+        }),
+      afterRestart: (input) =>
+        expect(input.agent?.toolServers?.map((server) => server.id)).toEqual(
+          [],
+        ),
+    },
+    {
+      name: 'a tool is disabled in its integration',
+      engines: ['claude', 'codex'],
+      change: (config) =>
+        config.integrations.set('github', {
+          ...config.integrations.get('github'),
+          disabledTools: ['delete_repo'],
+        }),
+      afterRestart: (input) =>
+        expect(input.agent?.toolServers?.[0]?.disabledTools).toEqual([
+          'delete_repo',
+        ]),
+    },
+    {
+      name: "its integration's command changes",
+      change: (config) =>
+        config.integrations.set('github', {
+          ...config.integrations.get('github'),
+          command: 'other-mcp',
+        }),
+      afterRestart: (input) =>
+        expect(input.agent?.toolServers?.[0]?.command).toBe('other-mcp'),
+    },
+    {
+      // Project (connection-default) tool servers resolve at start beside
+      // the Agent's own.
+      name: 'a Project default tool server is added',
+      change: (config) => config.projectServers.push('linear'),
+      afterRestart: (input) =>
+        expect(input.agent?.toolServers?.map((server) => server.id)).toEqual(
+          expect.arrayContaining(['github', 'linear']),
+        ),
+    },
+    {
+      // A plugin's integrations reach a start through the same integration
+      // read (the ConfigLoader's plugin overlay) as a hand-written one.
+      name: "a plugin's integration is removed",
+      change: (config) => config.integrations.delete('github'),
+      afterRestart: (input) =>
+        expect(input.agent?.toolServers ?? []).toEqual([]),
+    },
+    {
+      name: 'its model proxy connection is revoked',
+      engines: ['claude', 'codex'],
+      change: (config) => {
+        config.providerConnections = [];
+      },
+      afterRestart: () => {},
+    },
+    {
+      name: 'its engine connection settings change',
+      engines: ['claude', 'codex'],
+      change: (config) => {
+        config.appConfig.agentConnections.claude.provideSkills = ['review'];
+        config.appConfig.agentConnections.codex.provideSkills = ['review'];
+      },
+      afterRestart: () => {},
+    },
+    {
+      name: 'its ACP connection is removed',
+      engines: ['acp'],
+      change: (config) => {
+        config.acpConnections = [];
+      },
+      afterRestart: () => {},
+    },
+  ];
+  for (const row of LAUNCH_INPUTS) {
+    for (const engine of row.engines ?? ENGINES) {
+      test(`${engine}: a running session is replaced when ${row.name}`, async () => {
+        const w = world(engine);
+        await w.start('conversation');
+        await w.turn('conversation', 'Look at the repository.');
+        expect(
+          await w.call('conversation', 'mcp__github__delete_repo'),
+        ).toEqual(allowed);
+
+        await w.mutate(() => row.change(w.config));
+        expect(
+          await w.call('conversation', 'mcp__github__delete_repo'),
+        ).toMatchObject(replaced);
+        expect(await w.call('conversation')).toMatchObject(replaced);
+
+        if (row.name === 'its model proxy connection is revoked') {
+          // A launch now refuses too; the conversation's next turn surfaces
+          // that refusal rather than running on the revoked credentials.
+          expect(
+            await w.runtime.preToolPolicyGenerations.replaced('conversation'),
+          ).toBe(true);
+          return;
+        }
+        if (row.name === 'its ACP connection is removed') {
+          expect(
+            await w.runtime.preToolPolicyGenerations.replaced('conversation'),
+          ).toBe(true);
+          return;
+        }
+        await w.turn('conversation', 'Look again.');
+        expect(w.stops).toEqual(['conversation']);
+        row.afterRestart(w.starts.at(-1)!);
+      });
+    }
+  }
+
+  test('an unrelated change to the approval guardian reaches a running session on its next call', async () => {
+    const w = world('claude');
+    await w.start('conversation');
+    // No grant for Write: Station leaves it to the engine.
+    expect(await w.call('conversation', 'Write')).toEqual({
+      behavior: 'defer',
+    });
+    const review = vi
+      .spyOn(ApprovalGuardianService.prototype, 'reviewToolCall')
+      .mockResolvedValue({
+        decision: 'deny',
+        reason: 'Not this one.',
+      } as never);
+    await w.mutate(() => {
+      w.runtime.appConfig = {
+        ...w.runtime.appConfig,
+        approvalGuardian: { enabled: true, mode: 'enforce' },
+      };
+    });
+    expect(await w.call('conversation', 'Write')).toMatchObject({
+      behavior: 'deny',
+      denial: { reason: expect.stringContaining('approval guardian') },
+    });
+    expect(review).toHaveBeenCalled();
+    // The Agent itself did not change: the session keeps running.
+    expect(await w.call('conversation')).toEqual(allowed);
+  });
 
   test('a call made while a change is still being applied is refused with a retry, then decided', async () => {
     const w = world('claude');
@@ -385,7 +679,10 @@ describe('external engine pre-tool policy generation', () => {
     await w.runtime.applyAgentConfigurationMutation(
       async (beginMutation: () => void) => {
         beginMutation();
-        w.agents.set('main-repair', { name: 'Main repair', prompt: 'x' });
+        w.config.agents.set('main-repair', {
+          name: 'Main repair',
+          prompt: 'x',
+        });
         return { slug: 'main-repair' };
       },
       {
@@ -393,37 +690,101 @@ describe('external engine pre-tool policy generation', () => {
         activationMode: 'defer',
       },
     );
-    const settling = await w.bash('conversation');
-    expect(settling).toMatchObject({
+    expect(await w.call('conversation')).toMatchObject({
       behavior: 'deny',
-      denial: { reason: expect.stringContaining('Retry it in a moment') },
+      denial: { reason: expect.stringContaining(RETRY_TEXT) },
     });
     expect((await w.next()).startRequired).toBe(false);
     await w.runtime.reconcileAgentConfigurationSources();
-    expect(await w.bash('conversation')).toEqual({
-      behavior: 'allow',
-      toolGrant: true,
+    expect(await w.call('conversation')).toEqual(allowed);
+  });
+
+  test('a replaced session hit during the next in-flight change still says retrying will not help', async () => {
+    const w = world('claude');
+    await w.start('conversation');
+    await w.mutate(() =>
+      w.config.agents.set('claude', { name: 'Claude', prompt: 'changed' }),
+    );
+    expect(await w.call('conversation')).toMatchObject(replaced);
+    w.runtime.agentConfigurationRevision += 1;
+    expect(await w.call('conversation')).toMatchObject(replaced);
+    w.runtime.agentConfigurationRevision += 1;
+  });
+
+  test('a transient read failure refuses the call and re-checks; it does not replace the session', async () => {
+    const w = world('claude');
+    await w.start('conversation');
+    const load = w.runtime.configLoader.loadAgent;
+    const original = load.getMockImplementation();
+    let failing = true;
+    load.mockImplementation(async (slug: string) => {
+      if (failing)
+        throw new Error(`Agent '${slug}' plugin installation is not ready`);
+      return original(slug);
     });
+    await w.mutate(() => {});
+    expect(await w.call('conversation')).toMatchObject({
+      behavior: 'deny',
+      denial: { reason: expect.stringContaining(RETRY_TEXT) },
+    });
+    expect(
+      await w.runtime.preToolPolicyGenerations.replaced('conversation'),
+    ).toBe(false);
+    // Read again on the very next call: no further change is needed.
+    failing = false;
+    expect(await w.call('conversation')).toEqual(allowed);
+  });
+
+  test('a replaced verdict is kept until the configuration moves again', async () => {
+    const w = world('claude');
+    await w.start('conversation');
+    await w.mutate(() =>
+      w.config.agents.set('claude', { name: 'Claude', prompt: 'changed' }),
+    );
+    const load = w.runtime.configLoader.loadAgent;
+    load.mockClear();
+    for (let i = 0; i < 5; i++)
+      expect(await w.call('conversation')).toMatchObject(replaced);
+    expect(load).toHaveBeenCalledTimes(1);
   });
 
   test('a deleted Agent is a replaced one', async () => {
     const w = world('acp');
     await w.start('conversation');
-    await w.runtime.applyAgentConfigurationMutation(
-      async (beginMutation: () => void) => {
-        beginMutation();
-        w.agents.delete('claude');
-        return { slug: 'claude' };
-      },
-      {
-        resolveAgentSlug: (saved: { slug: string }) => saved.slug,
-        activationMode: 'defer',
-      },
-    );
-    await w.runtime.reconcileAgentConfigurationSources();
-    expect(await w.bash('conversation')).toMatchObject({
-      behavior: 'deny',
-      denial: { reason: expect.stringContaining(REPLACED_TEXT) },
-    });
+    await w.mutate(() => w.config.agents.delete('claude'));
+    expect(await w.call('conversation')).toMatchObject(replaced);
+  });
+
+  test('a conversation from before session lineage gets its lineage at boot, so the recovery reaches it', async () => {
+    const home = makeTempDir('pre-lineage-');
+    const path = join(home, 'events.sqlite');
+    const first = new EventStore(path);
+    const now = new Date().toISOString();
+    first.upsertSession({
+      provider: 'claude',
+      threadId: 'claude:1794757786272',
+      status: 'ready',
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+    // A store written before lineage existed: the provider session row with
+    // no lineage mapping.
+    (first as any).db
+      .prepare(
+        'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
+      )
+      .run('claude:1794757786272');
+    expect(first.conversationSessions('claude:1794757786272')).toEqual([]);
+    first.close();
+    const booted = new EventStore(path);
+    try {
+      expect(
+        booted
+          .conversationSessions('claude:1794757786272')
+          .map((entry) => entry.sessionId),
+      ).toEqual(['claude:1794757786272']);
+    } finally {
+      booted.close();
+    }
   });
 });

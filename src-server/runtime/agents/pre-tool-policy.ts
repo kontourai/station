@@ -112,9 +112,10 @@ interface StagedPreToolPolicyDeps {
   guardianDenialLedger?: GuardianDenialLedger;
   /**
    * Whether the hooks deciding this call belong to the Agent generation in
-   * force now. `'settling'`: a configuration change is still being applied,
-   * so the same call may pass once it lands. `false`: this session's Agent
-   * was replaced, and only a new session runs under the new definition.
+   * force now. `'settling'`: a configuration change is being applied or
+   * re-read, so the same call may pass shortly. `false`: what this session
+   * was launched with was replaced, and only a restarted engine session runs
+   * under the new configuration.
    */
   isCurrentRuntimeGeneration?: () => boolean | 'settling';
   resolveUnattendedGrant?: (
@@ -500,13 +501,14 @@ export function createStagedPreToolPolicyEvaluator(
       });
       // The text tells the model what will work. A replaced Agent is never
       // re-bound inside the running turn, so retrying there only repeats the
-      // refusal; the next message runs under the current definition (a new
-      // engine session for an external engine, the rebuilt Agent here).
+      // refusal; the next message runs under the current configuration (a
+      // restarted or successor engine session for an external engine, the
+      // rebuilt Agent here).
       return deny(
         'stale_generation',
         tool.toolName,
         generation === 'settling'
-          ? 'was blocked while Station finishes applying a configuration change. Retry it in a moment.'
+          ? "was blocked while Station re-reads this agent's configuration after a change. Retry it in a moment."
           : "was blocked because this agent's configuration changed after this session started. Retrying in this turn will be refused again: stop, and tell the person that the agent's configuration changed. Their next message continues the conversation under the current configuration.",
       );
     }

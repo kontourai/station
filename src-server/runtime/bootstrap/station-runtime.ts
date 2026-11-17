@@ -130,6 +130,7 @@ import {
   managedPolicyAllowsRemoteClients,
   managedRemoteClientsDenial,
 } from '@kontourai/station-contracts/managed-policy';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -160,6 +161,7 @@ import {
   DEFAULT_SYSTEM_PROMPT,
   isAgentOrIntegrationConfigPath,
 } from '../../domain/config-loader.js';
+import { AgentConfigNotFoundError } from '../../domain/config-loader-agents.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
 import { installManagedAppSettings } from '../../domain/managed-settings.js';
@@ -169,6 +171,7 @@ import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
+import { isAcpResumeCursor } from '../../providers/adapters/acp-adapter.js';
 import { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
@@ -301,6 +304,7 @@ import {
   bindPreToolPolicyGeneration,
   type PreToolPolicyGeneration,
   PreToolPolicyGenerations,
+  type PreToolPolicyLaunchRead,
 } from '../agents/pre-tool-policy-generation.js';
 import {
   activatePreparedRuntimeAgentInstance,
@@ -351,6 +355,9 @@ function credentialRecoveryRuntimeConnectionId(
 }
 
 export { loadStablePreToolPolicySpec } from '../agents/pre-tool-policy-generation.js';
+
+/** An external session's connection a launch would now refuse. */
+const EXTERNAL_CONNECTION_REVOKED = Symbol('external-connection-revoked');
 
 import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
@@ -1458,7 +1465,7 @@ export class StationRuntime {
     if (!input.agent) return undefined;
     const generation = await bindPreToolPolicyGeneration({
       getStableRevision: () => this.getStableAgentConfigurationRevision(),
-      loadAgent: () => this.configLoader.loadAgent(input.agent!.slug),
+      readLaunch: () => this.readExternalSessionLaunch(input),
     });
     this.preToolPolicyGenerations.register(input.threadId, generation);
     // Rebuilt whenever the binding advances, so the approval guardian is
@@ -1475,6 +1482,96 @@ export class StationRuntime {
       }
       return evaluate(tool, invocation, options);
     };
+  }
+
+  /**
+   * What this external session was launched with, read again from the
+   * current configuration: the Agent record, the resolved Agent definition
+   * from the same resolver its start used (tool servers, skills, grants),
+   * and the engine connection it runs on, from the same launch resolution
+   * the adapter used. Never logged or stored: only hashed.
+   */
+  private async readExternalSessionLaunch(
+    input: ProviderSessionStartInput,
+  ): Promise<PreToolPolicyLaunchRead> {
+    const slug = input.agent!.slug;
+    let spec: AgentSpec;
+    try {
+      spec = await this.configLoader.loadAgent(slug);
+    } catch (error) {
+      return error instanceof AgentConfigNotFoundError
+        ? { state: 'missing' }
+        : { state: 'unreadable' };
+    }
+    // The launch resolver lives on the orchestration service, which starts
+    // every session; without it nothing can be compared, so nothing passes.
+    if (!this.orchestrationService) return { state: 'unreadable' };
+    let agent: ProviderSessionStartInput['agent'];
+    try {
+      agent = await this.orchestrationService.resolveLaunchAgent(input);
+    } catch {
+      // The start gate refuses this launch now (a Project policy refusal,
+      // an Ask rule the engine cannot enforce): a fresh start would not run.
+      return { state: 'missing' };
+    }
+    // The resolver degrades to no definition when a read fails; a start
+    // would be refused, but nothing says the configuration changed.
+    if (!agent) return { state: 'unreadable' };
+    let connection: unknown;
+    try {
+      connection = await this.readExternalSessionConnection(input);
+    } catch {
+      return { state: 'unreadable' };
+    }
+    if (connection === EXTERNAL_CONNECTION_REVOKED) return { state: 'missing' };
+    return { state: 'read', spec, launch: { agent, connection } };
+  }
+
+  /**
+   * The engine connection an external session runs on, as its launch
+   * resolved it: Claude and Codex through the engine's connection settings
+   * and the model proxy connection they name (a revoked or disabled proxy
+   * refuses a launch); an ACP engine through its connection record. It is
+   * fingerprinted because the engine process keeps the credentials and
+   * routing it was launched with: a revoked connection must not keep running.
+   */
+  private async readExternalSessionConnection(
+    input: ProviderSessionStartInput,
+  ): Promise<unknown> {
+    if (input.provider === 'claude' || input.provider === 'codex') {
+      const config = await this.configLoader.loadAppConfig();
+      const connections = this.providerService.listProviderConnections();
+      const settings = config.agentConnections?.[input.provider];
+      try {
+        // The settings too: they also carry the connection's default
+        // Skills and environment the engine was spawned with.
+        return {
+          settings,
+          launch: engineProxyLaunch(
+            input.provider,
+            settings?.config,
+            connections,
+          ),
+        };
+      } catch {
+        return EXTERNAL_CONNECTION_REVOKED;
+      }
+    }
+    if (isAcpFamilyEngine(input.provider)) {
+      const id =
+        typeof input.metadata?.connectionId === 'string'
+          ? input.metadata.connectionId
+          : isAcpResumeCursor(input.resumeCursor)
+            ? input.resumeCursor.connectionId
+            : undefined;
+      if (id === undefined) return null;
+      const config = await this.configLoader.loadACPConfig();
+      return (
+        config.connections.find((candidate) => candidate.id === id) ??
+        EXTERNAL_CONNECTION_REVOKED
+      );
+    }
+    return null;
   }
 
   private buildExternalPreToolPolicy(

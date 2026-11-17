@@ -254,11 +254,18 @@ interface ConversationLineageDeps {
     detail: OrchestrationSessionDetail,
   ) => boolean;
   /**
-   * Whether this Session's pre-tool policy was bound to an Agent definition
-   * that has since changed. Its engine cannot re-bind, so the next ordinary
-   * turn starts a successor, which binds the current definition.
+   * Whether this Session's launch configuration was replaced and its engine
+   * cannot restart in place (no resume cursor). Its engine cannot re-bind,
+   * so the next ordinary turn starts a successor under the current
+   * configuration. A resumable one is restarted in place by the turn's
+   * dispatch instead.
    */
   needsPolicySuccessor?: (threadId: string) => Promise<boolean>;
+  /**
+   * Stops the engine of the Session a policy successor replaced, so it does
+   * not stay resident under the configuration it was launched with.
+   */
+  retireReplacedSession?: (threadId: string) => Promise<void>;
   nativeReturnSupported?: (provider: EngineId) => boolean;
   nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
   nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
@@ -538,6 +545,8 @@ export class ConversationLineage {
       ...(needsToolsSuccessor ? { coordinatorToolsRestart: true } : {}),
     });
     observeConversationContinuation(child.outcome);
+    if (needsPolicySuccessor)
+      await this.deps.retireReplacedSession?.(current.sessionId);
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,

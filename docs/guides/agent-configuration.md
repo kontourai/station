@@ -293,12 +293,20 @@ Agent is rebuilt, and its next turn uses the rebuilt Agent. An external engine
 started with for the whole session, together with the grants and tool servers
 its engine process was launched with. A
 [policy generation](../../src-server/runtime/agents/pre-tool-policy-generation.ts)
-therefore re-reads the session's own Agent when any configuration change
-lands. An unchanged definition keeps the session running. A changed or
-deleted one refuses every later call in that session, and the conversation's
-next message starts a successor session under the current definition. While
-a change is still being applied, a call is refused with a request to retry
-it. The following is the interactive branch, not every possible tool outcome:
+therefore re-reads what the session was launched with when any configuration
+change lands: its Agent record, the Agent definition resolved the way a start
+resolves it (each tool server's definition, whether it exists and is enabled,
+its disabled tools, Project default tool servers, skills and grants), and the
+engine connection it runs on (Claude and Codex connection settings with their
+model proxy connection, or the ACP connection record). If all of that is
+unchanged, the session keeps running, whatever else changed. If any of it
+changed, or the Agent was deleted, every later call in that session is
+refused. The conversation's next message then restarts the engine in place
+from its resume cursor under the current configuration, or, for an engine
+that cannot resume, starts a successor session and stops the old engine. While
+a change is still being applied, or the configuration cannot be read, a call
+is refused with a request to retry it. The following is the interactive
+branch, not every possible tool outcome:
 
 1. `beforeToolCall` invokes the staged policy with the current invocation.
 2. If the result requires interaction and a requester exists, the hook calls

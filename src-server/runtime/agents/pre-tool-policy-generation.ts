@@ -39,24 +39,35 @@ function canonical(value: unknown): unknown {
   return value;
 }
 
-/**
- * The whole Agent definition, hashed. Deliberately not
- * `agentDefinitionFingerprint`, which leaves out `execution`: a running
- * session counts any change to its own Agent as a replaced policy, so nothing
- * that definition holds can change under it unnoticed.
- */
-function agentPolicyFingerprint(spec: AgentSpec): string {
+function fingerprintOf(value: unknown): string {
   return createHash('sha256')
-    .update(JSON.stringify(canonical(spec)))
+    .update(JSON.stringify(canonical(value)) ?? 'undefined')
     .digest('hex');
 }
 
 /**
- * - `current`: the session's policy is the one in force now.
- * - `settling`: a configuration change is still being applied; ask again.
- * - `replaced`: the session's own Agent definition changed after its policy
- *   was bound. A session cannot re-bind what its engine was started with, so
- *   only a new session runs under the new definition.
+ * What a session was launched with, read again from the current
+ * configuration by the same resolution its launch used.
+ * - `read`: `spec` is the Agent record the evaluator decides from, and
+ *   `launch` everything else the engine was started with (the resolved
+ *   Agent definition with its tool servers, and the engine connection).
+ * - `missing`: a fresh launch would not have it any more (Agent deleted,
+ *   connection revoked).
+ * - `unreadable`: it could not be read now (a plugin not ready, a file
+ *   mid-write); nothing is concluded from it.
+ */
+export type PreToolPolicyLaunchRead =
+  | { state: 'read'; spec: AgentSpec; launch: unknown }
+  | { state: 'missing' }
+  | { state: 'unreadable' };
+
+/**
+ * - `current`: the session runs under the configuration in force now.
+ * - `settling`: a configuration change is being applied, or what the session
+ *   was launched with could not be read; the same call may pass shortly.
+ * - `replaced`: what the session was launched with changed. Its engine cannot
+ *   re-bind that, so only a restarted (or successor) engine session runs
+ *   under the new configuration.
  */
 export type PreToolPolicyGenerationState = 'current' | 'settling' | 'replaced';
 
@@ -69,40 +80,67 @@ export type PreToolPolicyGenerationState = 'current' | 'settling' | 'replaced';
  * Comparing it alone made every running session of every Agent stale on any of
  * those (2026-11-16: creating an unrelated Agent stopped every running Claude
  * Code conversation, and no retry or new turn recovered). A moved revision is
- * therefore only a prompt to look again: the session's own definition is
- * reloaded under the new stable revision, and the binding advances to it only
- * when that definition is unchanged. The other inputs the evaluator reads
- * (Project tool policy, grants, integration trust, the approval guardian's
- * configuration) are read per call or rebuilt when the binding advances, so
- * they are never decided from a replaced copy.
+ * therefore only a prompt to look again: what this session was launched with
+ * is read again under the new stable revision, and the binding advances only
+ * when that is unchanged.
+ *
+ * Inputs, and how each stays current:
+ * - Fingerprinted (a change replaces the session): the Agent record; the
+ *   resolved Agent definition the adapter was started from (each tool
+ *   server's resolved command, args, endpoint and transport, its existence,
+ *   `enabled` and disabled tools, Project and connection-default tool
+ *   servers, plugin-provided integrations, skills, grants, prompt); the engine
+ *   connection the session runs on.
+ * - Read per call: Project tool policy (Tool Library), unattended grants,
+ *   integration trust and the untrusted-content ledger, config protection,
+ *   tool-name provenance.
+ * - Rebuilt when the binding advances: the approval guardian (its app
+ *   configuration and model).
  */
 export interface PreToolPolicyGeneration {
-  /** The definition the session's policy was bound to. */
+  /** The Agent record the session's policy was bound to. */
   readonly spec: AgentSpec;
   /** The stable revision the binding was last confirmed under. */
   revision(): number;
   /** Synchronous read for the evaluator's first stage; never reloads. */
   state(): PreToolPolicyGenerationState;
   /**
-   * Reloads the Agent when the revision moved and advances the binding when
-   * its definition is unchanged. Never advances it past a changed definition.
+   * Reads the launch inputs again when the revision moved and advances the
+   * binding when they are unchanged. Never advances past a change. A
+   * replaced verdict is kept until the revision moves again; an unreadable
+   * one is read again on the next call.
    */
   refresh(): Promise<PreToolPolicyGenerationState>;
 }
 
 export async function bindPreToolPolicyGeneration(options: {
   getStableRevision(): number | null;
-  loadAgent(): Promise<AgentSpec>;
+  readLaunch(): Promise<PreToolPolicyLaunchRead>;
 }): Promise<PreToolPolicyGeneration> {
-  const bound = await loadStablePreToolPolicySpec(options);
-  const fingerprint = agentPolicyFingerprint(bound.spec);
-  let revision = bound.revision;
-  let replaced = false;
+  const revisionAtBind = options.getStableRevision();
+  if (revisionAtBind === null)
+    throw new Error(
+      'Station agent configuration is not stable; pre-tool policy preparation was denied.',
+    );
+  const bound = await options.readLaunch();
+  if (options.getStableRevision() !== revisionAtBind)
+    throw new Error(
+      'Station agent configuration changed during pre-tool policy preparation; execution was denied.',
+    );
+  if (bound.state !== 'read')
+    throw new Error(
+      'The Agent this session runs could not be read; pre-tool policy preparation was denied.',
+    );
+  const fingerprint = fingerprintOf({ spec: bound.spec, launch: bound.launch });
+  let revision = revisionAtBind;
+  // The last verdict short of current, and the revision it was reached at.
+  let verdict: { state: 'replaced' | 'unreadable'; at: number } | undefined;
   const state = (): PreToolPolicyGenerationState => {
+    // A replaced session stays replaced while a later change is applied: a
+    // retry then is refused again, so it is never told to retry.
+    if (verdict?.state === 'replaced') return 'replaced';
     const current = options.getStableRevision();
-    if (current === null) return 'settling';
-    if (current === revision) return 'current';
-    return replaced ? 'replaced' : 'settling';
+    return current !== null && current === revision ? 'current' : 'settling';
   };
   return {
     spec: bound.spec,
@@ -111,19 +149,24 @@ export async function bindPreToolPolicyGeneration(options: {
     async refresh() {
       const current = options.getStableRevision();
       if (current === null || current === revision) return state();
-      let spec: AgentSpec | undefined;
-      try {
-        spec = await options.loadAgent();
-      } catch {
-        // A deleted or unreadable Agent is not the definition this session
-        // was bound to.
-        spec = undefined;
-      }
-      // Changed again during the load: decide nothing from this read.
+      // Replaced is kept until the configuration moves again; a read that
+      // failed is tried again on the next call.
+      if (verdict?.state === 'replaced' && verdict.at === current)
+        return state();
+      const read = await options.readLaunch();
+      // Changed again during the read: decide nothing from it.
       if (options.getStableRevision() !== current) return state();
-      replaced =
-        spec === undefined || agentPolicyFingerprint(spec) !== fingerprint;
-      if (!replaced) revision = current;
+      if (read.state === 'unreadable') {
+        verdict = { state: 'unreadable', at: current };
+      } else if (
+        read.state === 'missing' ||
+        fingerprintOf({ spec: read.spec, launch: read.launch }) !== fingerprint
+      ) {
+        verdict = { state: 'replaced', at: current };
+      } else {
+        verdict = undefined;
+        revision = current;
+      }
       return state();
     },
   };
