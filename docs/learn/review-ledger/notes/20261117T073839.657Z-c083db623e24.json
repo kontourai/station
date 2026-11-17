@@ -1,0 +1,7 @@
+{
+  "revision": "5d54bf3f4cc360cc47b83ce0f5c974c92582b3fb",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"#5111: checked the new Memory budget section against scripts/lib/fallow-memory-bound.mjs, fallow-memory-scope.mjs and run-fallow-audit.mjs: default 5120 MiB, floor 1024, STATION_FALLOW_MEMORY_MAX_MIB, systemd-run --user --scope with MemoryMax/MemorySwapMax=0/OOMPolicy=continue, one thread off CI and two on GITHUB_ACTIONS, the exact OOM refusal text, the stderr peak log, the 240 s watchdog, and the uncapped-with-warning fallback. Measured peaks in the table are from capped runs on 2026-11-17 with fallow 3.42.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

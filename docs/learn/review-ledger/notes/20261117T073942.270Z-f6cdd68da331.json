@@ -1,0 +1,7 @@
+{
+  "revision": "5d54bf3f4cc360cc47b83ce0f5c974c92582b3fb",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#5111: the fallow watchdog row now reads 240 s (FALLOW_WATCHDOG_BASE_MS in scripts/run-fallow-audit.mjs, asserted in liveness-scale.test.ts); the repository-wide code-health paragraph links the memory budget and one-thread rule, which run-fallow-audit applies to every runner child; the new fallow-memory-bound.test.ts manifest entry is a process-heavy classification with no change to lane policy text.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
