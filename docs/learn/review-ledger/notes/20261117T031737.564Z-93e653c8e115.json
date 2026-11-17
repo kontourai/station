@@ -1,0 +1,9 @@
+{
+  "revision": "dc5fde4384a636956c3bc84bbd2b8f34dd4a85fe",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Ledger view no longer labels an ownerless Project job ownerNeeded (#5126); api.md and module-map record it, other citing pages make no ownerNeeded claim.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Ledger view no longer labels an ownerless Project job ownerNeeded (#5126); api.md and module-map record it, other citing pages make no ownerNeeded claim.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

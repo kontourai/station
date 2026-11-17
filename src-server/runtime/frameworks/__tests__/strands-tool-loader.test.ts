@@ -7,13 +7,18 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { withTenantExecutionContext } from '../../bootstrap/runtime-tenant-context.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
+import { runWithAuthorizedTurnCorrelation } from '../../conversation/authorized-turn-correlation.js';
+import {
+  __resetNativeStationControlForTests,
+  startNativeStationControlSession,
+} from '../../mcp/station-control-native-tools.js';
 import {
   createNativeOutputGrantAuthority,
   currentNativeOutputCallScope,
   runWithNativeOutputTurnContext,
 } from '../../native-output-turn-grant.js';
+import { isTrustedNativeStationControlTool } from '../../tools/tool-provenance.js';
 import { createBuiltinVendedToolDef } from '../../tools/vended-tool-compat.js';
-import { releaseAllNativeStationControlClients } from '../strands-native-client-pool.js';
 import {
   applyStrandsAvailableToolFilter,
   createStrandsFunctionTools,
@@ -86,7 +91,7 @@ vi.mock('@strands-agents/sdk', () => ({
 }));
 
 afterEach(async () => {
-  await releaseAllNativeStationControlClients();
+  await __resetNativeStationControlForTests();
   strandsMcpClients.splice(0);
   strandsMcpTestState.deferNextClient = false;
   strandsMcpTestState.resolveDeferredClient = undefined;
@@ -358,35 +363,20 @@ describe('destroyStrandsAgentTools', () => {
 });
 
 describe('loadStrandsTools', () => {
-  test('tenant-native publication is owner-qualified and old catalog facades cannot reconnect after reset', async () => {
-    const firstOwner = new MCPLocalConnectionCustody();
-    const secondOwner = new MCPLocalConnectionCustody();
-    try {
-      const [first] = await loadBuiltinStationControlTools(firstOwner);
-      const [second] = await loadBuiltinStationControlTools(secondOwner);
-      const context = {
-        tenantId: 'same-tenant' as any,
-        source: 'request' as const,
-      };
-      expect(
-        await withTenantExecutionContext(context, () => first!.execute!({})),
-      ).toBe(2);
-      expect(
-        await withTenantExecutionContext(context, () => second!.execute!({})),
-      ).toBe(3);
-      expect(strandsMcpClients).toHaveLength(4);
-      expect((await firstOwner.reset()).state).toBe('settled');
-      await expect(
-        withTenantExecutionContext(context, () => first!.execute!({})),
-      ).rejects.toMatchObject({ state: 'stale' });
-      expect(
-        await withTenantExecutionContext(context, () => second!.execute!({})),
-      ).toBe(3);
-      expect(strandsMcpClients).toHaveLength(4);
-    } finally {
-      await firstOwner.shutdown();
-      await secondOwner.shutdown();
-    }
+  test('#2377 slice D: the built-in station-control loads in-process with no client, and a call outside a session turn is refused', async () => {
+    const tools = await loadBuiltinStationControlTools();
+    // Nothing spawned or connected.
+    expect(strandsMcpClients).toHaveLength(0);
+    const listAgents = tools.find((tool) => tool.name.endsWith('listAgents'));
+    expect(isTrustedNativeStationControlTool(listAgents)).toBe(true);
+    const result = (await listAgents!.execute!({})) as {
+      content: { text: string }[];
+      isError?: boolean;
+    };
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({
+      code: 'station_control_caller_required',
+    });
   });
   test('settles a first listTools failure once and does not cache the failed child', async () => {
     const settlement = { settle: vi.fn() };
@@ -501,99 +491,50 @@ describe('loadStrandsTools', () => {
     ).not.toContain(canary);
   });
 
-  test('routes direct built-in calls through isolated tenant clients and single-flights each tenant', async () => {
-    const [tool] = await loadBuiltinStationControlTools();
-    const alpha = { tenantId: 'alpha' as any, source: 'request' as const };
-    const bravo = { tenantId: 'bravo' as any, source: 'request' as const };
-
+  test("a session acts only inside its own tenant: hosted needs one, and another tenant's context is refused", async () => {
+    const tools = await loadBuiltinStationControlTools();
+    const listAgents = tools.find((tool) => tool.name.endsWith('listAgents'))!;
+    const asTurnOf = <T>(sessionId: string, work: () => T) =>
+      runWithAuthorizedTurnCorrelation(
+        {
+          accountId: 'account',
+          sessionId,
+          turnId: `${sessionId}:turn`,
+          correlationId: `${sessionId}:correlation`,
+        },
+        work,
+      );
+    // Never reaches a server: every case below is refused before one opens.
+    const opened = vi.fn(() => {
+      throw new Error('a server was opened');
+    });
+    startNativeStationControlSession('tenantless', {
+      createServer: opened as never,
+    });
+    startNativeStationControlSession('alpha-session', {
+      tenantExecutionContext: { tenantId: 'alpha' as any, source: 'request' },
+      createServer: opened as never,
+    });
     await expect(
-      Promise.all([
-        withTenantExecutionContext(alpha, () => tool!.execute!({})),
-        withTenantExecutionContext(alpha, () => tool!.execute!({})),
-        withTenantExecutionContext(bravo, () => tool!.execute!({})),
-      ]),
-    ).resolves.toEqual([1, 1, 2]);
-    expect(strandsMcpClients).toHaveLength(3); // catalog, alpha, bravo
-    expect(strandsMcpClients[1]!.callTool).toHaveBeenCalledTimes(2);
-    expect(strandsMcpClients[2]!.callTool).toHaveBeenCalledOnce();
-  });
-
-  test('rejects a hosted direct built-in call with no execution context', async () => {
+      withTenantExecutionContext(
+        { tenantId: 'bravo' as any, source: 'request' },
+        () => asTurnOf('alpha-session', () => listAgents.execute!({})),
+      ),
+    ).rejects.toThrow('belongs to another tenant execution context');
     process.env.STATION_HOSTED_TENANT_REGISTRY_FILE = '/hosted-tenants.json';
-    const [tool] = await loadBuiltinStationControlTools();
-
-    await expect(tool!.execute!({})).rejects.toThrow(
+    await expect(
+      asTurnOf('tenantless', () => listAgents.execute!({})),
+    ).rejects.toThrow(
       'Tenant execution context is required for station-control',
     );
-    expect(strandsMcpClients).toHaveLength(1); // context-free catalog only
-  });
-
-  test('retains a failed native cleanup for retry and disposes an in-flight client', async () => {
-    const [tool] = await loadBuiltinStationControlTools();
-    const alpha = { tenantId: 'alpha' as any, source: 'request' as const };
-    await withTenantExecutionContext(alpha, () => tool!.execute!({}));
-    const activeClient = strandsMcpClients[1]!;
-    activeClient.disconnect.mockRejectedValueOnce(new Error('temporary close'));
-
-    await expect(releaseAllNativeStationControlClients()).rejects.toThrow(
-      'Native station-control cleanup failed',
-    );
+    expect(opened).not.toHaveBeenCalled();
+    // The control: the tenant's own context reaches the session's server.
     await expect(
-      releaseAllNativeStationControlClients(),
-    ).resolves.toBeUndefined();
-    expect(activeClient.disconnect).toHaveBeenCalledTimes(2);
-
-    const [raceTool] = await loadBuiltinStationControlTools();
-    strandsMcpTestState.deferNextClient = true;
-    const pending = withTenantExecutionContext(alpha, () =>
-      raceTool!.execute!({}),
-    );
-    await vi.waitFor(() =>
-      expect(strandsMcpTestState.resolveDeferredClient).toBeTypeOf('function'),
-    );
-    const cleanup = releaseAllNativeStationControlClients();
-    strandsMcpTestState.resolveDeferredClient!();
-    await expect(cleanup).resolves.toBeUndefined();
-    await expect(pending).rejects.toThrow(
-      'released while creation was pending',
-    );
-    const staleClient = strandsMcpClients[3]!;
-    // A close while connect is outstanding is followed by a final close after
-    // actual late settlement; the second call does not overlap the first.
-    expect(staleClient.disconnect).toHaveBeenCalledTimes(2);
-
-    await expect(
-      withTenantExecutionContext(alpha, () => raceTool!.execute!({})),
-    ).resolves.toBe(4);
-
-    await releaseAllNativeStationControlClients();
-    const [failedRaceTool] = await loadBuiltinStationControlTools();
-    strandsMcpTestState.resolveDeferredClient = undefined;
-    strandsMcpTestState.deferNextClient = true;
-    const failedPending = withTenantExecutionContext(alpha, () =>
-      failedRaceTool!.execute!({}),
-    );
-    await vi.waitFor(() =>
-      expect(strandsMcpTestState.resolveDeferredClient).toBeTypeOf('function'),
-    );
-    const failedStaleClient = strandsMcpClients[6]!;
-    failedStaleClient.disconnect.mockRejectedValueOnce(
-      new Error('stale disconnect'),
-    );
-    const failedPendingExpectation = expect(failedPending).rejects.toThrow(
-      'released while creation was pending',
-    );
-    const failedCleanup = releaseAllNativeStationControlClients();
-    strandsMcpTestState.resolveDeferredClient!();
-    await expect(failedCleanup).rejects.toThrow(
-      'Native station-control cleanup failed.',
-    );
-    await failedPendingExpectation;
-    expect(failedStaleClient.disconnect).toHaveBeenCalledOnce();
-    await expect(
-      releaseAllNativeStationControlClients(),
-    ).resolves.toBeUndefined();
-    expect(failedStaleClient.disconnect).toHaveBeenCalledTimes(2);
+      withTenantExecutionContext(
+        { tenantId: 'alpha' as any, source: 'request' },
+        () => asTurnOf('alpha-session', () => listAgents.execute!({})),
+      ),
+    ).rejects.toThrow('a server was opened');
   });
 
   test('preserves MCP UI metadata from Strands toolSpec records', async () => {

@@ -5422,7 +5422,10 @@ but creation/update does not accept caller-declared execution authority.
 [ScheduledProjectRuns](../../src-server/services/scheduling/scheduled-project-runs.ts):
 each run creates a Task in that Project (keyed by run id), dispatches it
 through the Task dispatcher, queues the prompt on the Task's chat through
-ScheduledConversationRuns, and writes a run summary as the Task summary. The
+ScheduledConversationRuns, and writes a run summary as the Task summary.
+That Task and turn act as the local operator whoever created the job; its
+`createdBy` decides only who may manage it, and an ownerless one carries no
+`ownerNeeded` (acting as the creator is #5126). The
 [ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
 composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
 is an orchestration turn admission (a paused or archived Project's chats admit

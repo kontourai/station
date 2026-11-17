@@ -1,7 +1,6 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   type MCPLocalClaim,
-  type MCPLocalConnectionCustody,
   MCPLocalCustodyError,
 } from '@kontourai/station-shared/mcp';
 import {
@@ -19,15 +18,15 @@ import {
 import { establishMcpSecretChild } from '../../services/secrets/mcp-secret-child-env.js';
 import { executeDurableTool } from '../agents/durable-agent-tools.js';
 import {
-  currentTenantExecutionContext,
-  isHostedTenantExecutionRequired,
-} from '../bootstrap/runtime-tenant-context.js';
-import {
   builtinStationApiServerId,
   isBuiltinStationControl,
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
 import { sameMCPConnectionDefinition } from '../mcp/mcp-definition-currentness.js';
+import {
+  callNativeStationControlTool,
+  nativeStationControlToolCatalog,
+} from '../mcp/station-control-native-tools.js';
 import { createNativeStationKnowledgeTools } from '../mcp/station-knowledge-native-tools.js';
 import {
   describeLoaderFailure,
@@ -49,76 +48,12 @@ import {
   createCustodiedStrandsClient,
   isStrandsClientCurrent,
 } from './strands-mcp-custody.js';
-import {
-  type NativeClientEntry,
-  nativeStationControlPools,
-} from './strands-native-client-pool.js';
 import { extractToolPurpose, toolSchemaWithPurpose } from './tool-purpose.js';
 import type { CreateAgentOptions } from './voltagent-adapter.js';
 
 interface StrandsToolLoaderState {
   mcpClients: Map<string, McpClient>;
   agentMcpClients: Map<string, string[]>;
-}
-
-async function nativeStationControlClient(
-  toolId: string,
-  toolDef: any,
-  custody: MCPLocalConnectionCustody,
-): Promise<McpClient> {
-  const context = currentTenantExecutionContext();
-  if (!context) {
-    if (!isHostedTenantExecutionRequired())
-      throw new Error('No tenant-bound station-control client is active.');
-    throw new Error(
-      'Tenant execution context is required for station-control.',
-    );
-  }
-  let pool = nativeStationControlPools.get(custody);
-  if (!pool) {
-    pool = new Map();
-    nativeStationControlPools.set(custody, pool);
-  }
-  const existing = pool.get(context.tenantId);
-  if (existing?.current && existing.claim.isCurrent()) {
-    if (existing.client) return existing.client;
-    if (existing.creation) return existing.creation;
-  }
-  const claim = custody.acquire(toolId, 'native-control');
-  const entry: NativeClientEntry = { current: true, claim };
-  pool.set(context.tenantId, entry);
-  entry.creation = Promise.resolve().then(async () => {
-    try {
-      const client = createCustodiedStrandsClient(claim, {
-        command: toolDef.command!,
-        args: (toolDef.args || []).map((arg: string) =>
-          arg === './' ? process.cwd() : arg,
-        ),
-        env: withStationControlRuntimeEnv(
-          toolId,
-          toolDef,
-          { ...(process.env as Record<string, string>), ...toolDef.env },
-          context,
-        ) as Record<string, string>,
-      });
-      await client.connect();
-      if (!entry.current || !claim.isCurrent())
-        throw new Error(
-          'Tenant station-control client was released while creation was pending.',
-        );
-      entry.client = client;
-      return client;
-    } catch (error) {
-      if (!entry.current)
-        throw new Error(
-          'Tenant station-control client was released while creation was pending.',
-        );
-      entry.current = false;
-      await custody.release(claim);
-      throw error;
-    }
-  });
-  return entry.creation;
 }
 
 /**
@@ -336,6 +271,57 @@ export async function loadStrandsTools(options: {
         continue;
       }
 
+      if (builtinStationApiServerId(toolId, toolDef) === 'station-control') {
+        // #2377 slice D (decision 4): served in-process as the calling
+        // session's verified, `bound` caller; nothing connects at load.
+        const catalog = await nativeStationControlToolCatalog();
+        const serverTools: ITool[] = catalog.map((tool) => {
+          const [loadedIdentity] = normalizeLoadedMCPTools(
+            slug,
+            [{ name: `${toolId}_${tool.originalName}` }],
+            opts.toolNameMapping,
+            opts.toolNameReverseMapping,
+            provenanceGeneration,
+            toolId,
+            () => ({ serverId: toolId, originalToolName: tool.originalName }),
+            opts.logger,
+          );
+          return markTrustedNativeStationControlTool(
+            copyLoadedMCPToolProvenance(loadedIdentity!, {
+              name: loadedIdentity!.name,
+              description: tool.description,
+              parameters: tool.inputSchema,
+              ...extractStrandsToolUIMetadata(tool),
+              execute: (input: any) =>
+                callNativeStationControlTool(tool.originalName, input ?? {}),
+            } as ITool),
+          );
+        });
+        allTools.push(
+          ...wrapPlatformMutationGatedTools(
+            serverTools.filter(
+              (tool) =>
+                !mcpToolDisabled(
+                  toolId,
+                  originalMcpToolName(
+                    toolId,
+                    opts.toolNameMapping.get(tool.name)?.original ?? tool.name,
+                  ),
+                  toolDef.disabledTools,
+                ),
+            ),
+            { agentSlug: slug, toolId },
+          ),
+        );
+        opts.mcpConnectionStatus.set(toolId, { connected: true });
+        opts.integrationMetadata.set(toolId, {
+          type: 'mcp',
+          transport: toolDef.transport,
+          toolCount: catalog.length,
+        });
+        continue;
+      }
+
       if (toolDef.kind === 'builtin') {
         const builtinTool = createBuiltinVendedTool(slug, toolDef);
         if (builtinTool) {
@@ -416,7 +402,6 @@ export async function loadStrandsTools(options: {
       } else {
         mcpTools = await client.listTools();
       }
-      const isNativeStationControl = isBuiltinStationControl(toolId, toolDef);
 
       const serverTools: ITool[] = [];
       for (const tool of mcpTools) {
@@ -446,32 +431,16 @@ export async function loadStrandsTools(options: {
           execute: async (input: any) => {
             if (!isStrandsClientCurrent(client!))
               throw new MCPLocalCustodyError('stale');
-            const activeClient = isNativeStationControl
-              ? currentTenantExecutionContext() ||
-                isHostedTenantExecutionRequired()
-                ? await nativeStationControlClient(
-                    toolId,
-                    toolDef,
-                    opts.mcpCustody,
-                  )
-                : client!
-              : client!;
-            const result = await activeClient.callTool(tool, input);
-            return isNativeStationControl
-              ? result
-              : requireToolServerResult(
-                  result,
-                  'tool-call',
-                  toolId,
-                  opts.logger,
-                );
+            const result = await client!.callTool(tool, input);
+            return requireToolServerResult(
+              result,
+              'tool-call',
+              toolId,
+              opts.logger,
+            );
           },
         } as ITool);
-        serverTools.push(
-          isNativeStationControl
-            ? markTrustedNativeStationControlTool(stationTool)
-            : stationTool,
-        );
+        serverTools.push(stationTool);
       }
       // Mutating station-control tools execute through the
       // platform-mutation gate regardless of dispatch path (S3 item 4).
