@@ -482,6 +482,19 @@ describe('an Agent that is not set up is never selected for you', () => {
     expect(remembered()).toBeUndefined();
   });
 
+  test('Home shows no setup card when nothing can start: its Start prepares one', async () => {
+    state.agents = [MUSE];
+    const { home, dock } = renderBoth();
+    await within(dock()).findByRole(
+      'region',
+      { name: 'Set up an engine' },
+      { timeout: 15_000 },
+    );
+    expect(
+      home().queryByRole('region', { name: 'Set up an engine' }),
+    ).toBeNull();
+  }, 30_000);
+
   test('when nothing can start, setup is one compact card with the reason folded away', async () => {
     state.agents = [MUSE];
     const { dock } = renderBoth();
@@ -1206,10 +1219,6 @@ describe('Home and the dock start the same way', () => {
       starts.push(event as CustomEvent);
     };
     window.addEventListener('station:open-new-chat', listener);
-    localStorage.setItem(
-      'station.newChat.lastAgentByContext',
-      JSON.stringify({ [JSON.stringify(['ns-1', '__global__'])]: 'claude' }),
-    );
     render(
       <AuthorityPersistenceContext.Provider
         value={{ status: 'verified', namespace: 'ns-1', observation: null }}
@@ -1221,6 +1230,14 @@ describe('Home and the dock start the same way', () => {
     fireEvent.change(
       within(form).getByRole('textbox', { name: 'What would you like done?' }),
       { target: { value: 'Keep this' } },
+    );
+    // Home offers setup only for an Agent picked from the menu.
+    fireEvent.click(agentChip(document.body));
+    await screen.findAllByRole('button', { name: /Claude/ });
+    fireEvent.click(
+      document.querySelector<HTMLButtonElement>(
+        'button[data-agent-slug="claude"]',
+      )!,
     );
     // The setup guidance is a lazy chunk; a cold transform can be slow.
     const connect = await screen.findByRole(

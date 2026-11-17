@@ -897,7 +897,7 @@ durable request flow.
 
 ### Finish setup and return
 
-When no Agent can respond, the composer shows a setup card with your message.
+When no Agent can respond, the chat dock's new chat shows a setup card above your message.
 It lists each Agent with its status and repair, and offers engine setup, a
 model connection and **Check again**. Each Agent's **Details** holds its
 reason and any installation steps,
