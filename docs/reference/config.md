@@ -9,6 +9,19 @@ For usage context, see [docs/guides/agent-configuration.md](../guides/agent-conf
 
 ---
 
+## Project brief and models
+
+With the `project-coordination` Feature Preview on,
+[ProjectConfig](../../packages/contracts/src/project.ts) also carries the
+Project brief and models (#5062, #5068): `goal` (one line, at most 200
+characters), `instructions` (at most 16,000 characters), `coordinatorEffort`
+(`low`, `medium` or `high`, for the Project's own chats; a new Project starts at
+`medium`), and `taskProviderId`, `taskModel` and `taskEffort` for Tasks it
+dispatches. `PUT /api/projects/:slug` drops each on `null` or blank text.
+`instructionsMigratedAt` records the one-time copy of legacy `project-rules.md`
+into `instructions`. See
+[Project settings](../user/settings.md#project-brief-memory-and-models).
+
 ## Project tool defaults
 
 [ProjectConfig](../../packages/contracts/src/project.ts) accepts optional

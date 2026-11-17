@@ -417,6 +417,21 @@ working directory checkout is behind its upstream branch, behind the
 reads nothing. A shared member, like an unknown Project, gets 404
 `Project not found`: the answer names a host path.
 
+`GET /api/projects/:slug/memory` lists a Project's memory notes without their
+bodies, newest change first; `GET /api/projects/:slug/memory/:id` reads one;
+`POST /api/projects/:slug/memory` saves `{title, body}` (201);
+`PUT /api/projects/:slug/memory/:id` changes one; and
+`DELETE /api/projects/:slug/memory/:id` forgets one (#5065). They sit behind the
+`project-coordination` Feature Preview (404 `feature_preview_disabled` while
+off) and answer only the Station operator, the Project's owner (403
+`restricted` otherwise). A title is one line of at most 120 characters, a body
+at most 4,000 characters, and a Project holds at most 200 notes (409
+`project_memory_full`). Shapes are in `@kontourai/station-contracts/project-session-context`.
+Agents use the Station Control tools `list_project_notes`, `read_project_note`,
+`remember_project_note` and `forget_project_note`, whose internal-only
+`/api/orchestration/station-control/project-memory` routes read the Project from
+the calling Session's start record.
+
 The [reader](../../src-server/services/projects/project-checkout-freshness.ts)
 uses local refs only and never fetches, so `behind` counts what the last fetch
 brought in. Every git call goes through `readProjectRepository`, the same
@@ -2710,8 +2725,9 @@ by this read, export, fork, summary and stats, rather than read partially. Messa
 every message having the old `content: string`/`timestamp` pair.
 
 A stored user turn is the typed text (and its attachments) alone. Ambient
-context such as `[Timezone: …]`, skill instructions, project rules and
-retrieved knowledge reach only the model's input for that turn.
+context such as `[Timezone: …]`, skill instructions, the Project brief and
+memory index, project rules and retrieved knowledge reach only the model's
+input for that turn.
 
 A `/chat` turn that failed before producing output is recorded as its prompt
 followed by a user-role `[SYSTEM_EVENT] [CHAT_ERROR] <text>` message, with no
@@ -3551,7 +3567,7 @@ statement or complete provider-wide usage. See [measurement coverage](../guides/
 `GET /api/analytics/usage-rollup` reads authorized canonical observations, with
 an exact 7-, 14-, or 30-day Station-observation window. `days` defaults to 14;
 `from` and `to` can supply the exact window. `groupBy` accepts `provider`,
-`model`, `station`, `conversation`, `task`, `day`, `connection`, or
+`model`, `station`, `conversation`, `task`, `project`, `day`, `connection`, or
 `modelConnection`. `pageSize` accepts 1–100;
 `cursor` advances the receipt drilldown without changing the aggregate.
 `localOnly=1` excludes configured peer Stations. The normal response is
@@ -7103,6 +7119,12 @@ starts return a safe reason, with Codex outcomes when available.
 attributed account receipts before aggregation. An empty `credentialProfileRef`
 selects the default profile; omitting it includes all accounts. An engine filter
 is required. Older/source-home usage without `accountKey` remains unattributed.
+
+`projectSlug` keeps receipts whose Session's start recorded that Project of
+this Station, and `groupBy=project` groups by it (#5068). Projects belong to
+this Station, so both require `localOnly=1` (400 otherwise), and a slug of any
+other shape is a 400. With `groupBy=task`, the row without a `taskId` is the
+Project's own chats. The usage export omits the Project attribution.
 
 `GET /api/analytics/usage-rollup` accepts `provider` and `localOnly=1` for
 engine activity. `provider` must be a provider kind with declared usage

@@ -5113,6 +5113,10 @@ and the [workload_status tool](../../src-server/tools/station-control-workload-t
 read from cgroup v2 files, including each scope's kernel `oom_kill` count
 (scopes launch with `OOMPolicy=continue`, so a command, not the engine, is
 normally killed). Orchestration's first-turn composition adds the
+Project brief and memory index a Session's start recorded
+([`project-session-context-source.ts`](../../src-server/services/projects/project-session-context-source.ts),
+read once at start, behind the `project-coordination` preview; its receipt
+rides `turn.started` for every engine), the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
