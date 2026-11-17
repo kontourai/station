@@ -1,0 +1,15 @@
+{
+  "revision": "04b76aef1729a06755961330197142e50f95447d",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"#373 follow-up: listSessionUsage was split into catchUpUsageProjection, threadUsage, UsageRefoldBatch and sessionUsageFrom with no behaviour change (same tests pass, same fault-injection results). The citing pages' usage, connection-attribution and contract claims are unchanged.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#373 follow-up: listSessionUsage was split into catchUpUsageProjection, threadUsage, UsageRefoldBatch and sessionUsageFrom with no behaviour change (same tests pass, same fault-injection results). The citing pages' usage, connection-attribution and contract claims are unchanged.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#373 follow-up: listSessionUsage was split into catchUpUsageProjection, threadUsage, UsageRefoldBatch and sessionUsageFrom with no behaviour change (same tests pass, same fault-injection results). The citing pages' usage, connection-attribution and contract claims are unchanged.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#373 follow-up: listSessionUsage was split into catchUpUsageProjection, threadUsage, UsageRefoldBatch and sessionUsageFrom with no behaviour change (same tests pass, same fault-injection results). The citing pages' usage, connection-attribution and contract claims are unchanged.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#373 follow-up: listSessionUsage was split into catchUpUsageProjection, threadUsage, UsageRefoldBatch and sessionUsageFrom with no behaviour change (same tests pass, same fault-injection results). The citing pages' usage, connection-attribution and contract claims are unchanged.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

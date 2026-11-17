@@ -15494,7 +15494,7 @@ describe('OrchestrationService', () => {
     });
   });
 
-  test('listSessionUsage is a loop over readSessionUsage, attributed and joinable (station#3245)', () => {
+  test('listSessionUsage is a loop over readSessionUsage, attributed and joinable (station#3245)', async () => {
     // The lifetime-analytics seam. It must add NOTHING to the fold — same
     // numbers as `readSessionUsage` — and must carry the conversation id and
     // agent slug, because those are what let the Profile attribute the usage
@@ -15541,9 +15541,9 @@ describe('OrchestrationService', () => {
       mk({ method: 'turn.completed', turnId: 'r1', finishReason: 'stop' }),
     );
 
-    const listed = service
-      .listSessionUsage()
-      .filter((entry) => entry.threadId === thread);
+    const listed = (await service.listSessionUsage()).filter(
+      (entry) => entry.threadId === thread,
+    );
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({
       threadId: thread,
@@ -15561,7 +15561,7 @@ describe('OrchestrationService', () => {
     });
   });
 
-  test('listSessionUsage gives a hosted deployment nothing, not a cross-tenant total', () => {
+  test('listSessionUsage gives a hosted deployment nothing, not a cross-tenant total', async () => {
     // Its one consumer is `analytics/stats.json` — home-global, with no
     // per-user partition, served by a route that applies no tenant scope. In
     // hosted mode a "home-global lifetime total" would be one tenant's spend
@@ -15596,7 +15596,9 @@ describe('OrchestrationService', () => {
     // Same store, same events: personal mode DOES see it, so the empty
     // hosted answer below is the guard and not an empty fixture.
     expect(
-      service.listSessionUsage().some((entry) => entry.threadId === thread),
+      (await service.listSessionUsage()).some(
+        (entry) => entry.threadId === thread,
+      ),
     ).toBe(true);
 
     const hosted = new RawOrchestrationService({
@@ -15606,10 +15608,12 @@ describe('OrchestrationService', () => {
       requireTenantExecutionContext: () => true,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
-    expect(hosted.listSessionUsage(INTERNAL_SESSION_READ_SCOPE)).toEqual([]);
+    expect(await hosted.listSessionUsage(INTERNAL_SESSION_READ_SCOPE)).toEqual(
+      [],
+    );
   });
 
-  test('listSessionUsage retains measured facts without inventing unconfigured attribution', () => {
+  test('listSessionUsage retains measured facts without inventing unconfigured attribution', async () => {
     const thread = 'thread-list-usage-unconfigured';
     eventStore.upsertSession({
       provider: 'codex',
@@ -15627,9 +15631,9 @@ describe('OrchestrationService', () => {
       promptTokens: 5,
     });
 
-    const entry = service
-      .listSessionUsage()
-      .find((row) => row.threadId === thread);
+    const entry = (await service.listSessionUsage()).find(
+      (row) => row.threadId === thread,
+    );
     expect(entry).toMatchObject({
       threadId: thread,
       conversationId: thread,

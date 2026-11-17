@@ -46,7 +46,6 @@ function reads(
     sessionAttributionFor: () => null,
     listEventPayloads: () => [],
     listResolvedEventPayloads: () => [],
-    readUsageRevision: () => 'fixture',
     listUsageEventPayloads: () => [],
     listUsageReceiptEvents: () => receiptRows,
     listUsageCoverageEvents: () => coverageEvents,
@@ -172,7 +171,6 @@ describe('SessionTranscriptReads: the fold drop reaches the composition (#464)',
       canReadSession: () => true,
       isEphemeralSession: () => false,
       sessionAttributionFor: () => null,
-      readUsageRevision: () => 'fixture',
       listUsageEventPayloads: () =>
         [
           {
@@ -216,7 +214,6 @@ describe('SessionTranscriptReads usage owner set (#2568)', () => {
       sessionAttributionFor: () => null,
       listEventPayloads: () => [],
       listResolvedEventPayloads: () => [],
-      readUsageRevision: () => 'fixture',
       listUsageEventPayloads: () => [],
       listUsageReceiptEvents: (options) => {
         receiptQueries.push(options);

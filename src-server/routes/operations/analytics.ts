@@ -440,7 +440,9 @@ export function createAnalyticsRoutes(
           500,
         );
       }
-      const stats = publicUsageStats(await usageAggregator.fullRescan());
+      const stats = publicUsageStats(
+        await usageAggregator.fullRescan({ rebuild: true }),
+      );
       analyticsOps.add(1, { op: 'rescan' });
       return c.json({
         success: true,
