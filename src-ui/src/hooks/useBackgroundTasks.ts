@@ -23,7 +23,14 @@ import { childWorkGlobalStore } from '../contexts/child-work-global-store';
 
 const EMPTY_VIEW: ChatBackgroundTasksView = { running: [], finished: [] };
 
-function subscribeBoth(listener: () => void, apiBase?: string) {
+/**
+ * Subscribes to the stores a background-tasks read depends on, holding
+ * `apiBase`'s partitions while subscribed.
+ */
+export function subscribeBackgroundTasks(
+  listener: () => void,
+  apiBase?: string,
+) {
   const unsubscribeTasks = backgroundTasksStore.subscribe(listener);
   const unsubscribeChats = activeChatsStore.subscribe(listener);
   const unsubscribeChildren = childWorkGlobalStore.subscribe(listener);
@@ -45,6 +52,23 @@ function subscribeBoth(listener: () => void, apiBase?: string) {
 }
 
 /**
+ * The `backgroundTasksStore` partition a reader of `source` sees: the
+ * conversation's Station when `source` is absent or names that Station's
+ * API base, else `source` itself. Events are ingested under the same key
+ * (`station ?? apiBase`), so every reader resolves through here.
+ */
+export function useBackgroundTasksPartition(
+  source?: StationStateSource,
+): string | undefined {
+  const apiBase =
+    typeof source === 'object' ? stationPartitionKey(source) : source;
+  const target = useOptionalConversationConnection();
+  if (target?.station && (apiBase === undefined || apiBase === target.apiBase))
+    return stationPartitionKey(target.station);
+  return apiBase;
+}
+
+/**
  * This chat's background-tasks view (Running + Finished), or the empty view
  * for a null `chatThreadId` (no chat open) so callers never need a null
  * guard around the trigger badge / sheet content.
@@ -53,11 +77,7 @@ export function useChatBackgroundTasks(
   chatThreadId: string | null,
   source?: StationStateSource,
 ): ChatBackgroundTasksView {
-  let apiBase =
-    typeof source === 'object' ? stationPartitionKey(source) : source;
-  const target = useOptionalConversationConnection();
-  if (target?.station && (apiBase === undefined || apiBase === target.apiBase))
-    apiBase = stationPartitionKey(target.station);
+  const apiBase = useBackgroundTasksPartition(source);
 
   const cacheRef = useRef<{
     chatThreadId: string;
@@ -158,7 +178,7 @@ export function useChatBackgroundTasks(
   }, [chatThreadId, apiBase]);
 
   const subscribe = useCallback(
-    (listener: () => void) => subscribeBoth(listener, apiBase),
+    (listener: () => void) => subscribeBackgroundTasks(listener, apiBase),
     [apiBase],
   );
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -227,7 +247,7 @@ export function useChatBackgroundTasksRunningCount(
     ).running.length;
   }, [chatThreadId, apiBase]);
   const subscribe = useCallback(
-    (listener: () => void) => subscribeBoth(listener, apiBase),
+    (listener: () => void) => subscribeBackgroundTasks(listener, apiBase),
     [apiBase],
   );
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -252,7 +272,7 @@ export function useChatBackgroundTasksLimited(
     [chatThreadId, apiBase],
   );
   const subscribe = useCallback(
-    (listener: () => void) => subscribeBoth(listener, apiBase),
+    (listener: () => void) => subscribeBackgroundTasks(listener, apiBase),
     [apiBase],
   );
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

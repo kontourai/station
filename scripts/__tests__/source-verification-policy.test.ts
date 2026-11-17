@@ -335,12 +335,12 @@ describe('source verification reconciler API boundary', () => {
     Object.assign(aggregate, { steps: 'unavailable' });
     expect((await execute()).state).toBe('pending');
   });
-  test('a successful diagnostic signer run cannot qualify a PR source', async () => {
+  test('a successful run of a non-CI workflow cannot qualify a PR source', async () => {
     const { state, execute } = fixture();
     state.runs = [
       {
         ...run,
-        path: '.github/workflows/pr-conflict-signer-diagnostic.yml',
+        path: '.github/workflows/unrelated-manual-job.yml',
         event: 'workflow_dispatch',
       },
     ];

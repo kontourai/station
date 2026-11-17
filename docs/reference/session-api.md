@@ -1852,7 +1852,12 @@ that file is the source of truth for shapes, not this doc.
 
 For paging through a live-growing event log without re-fetching everything, use
 `GET /api/orchestration/sessions/:threadId/event-page?afterSequence=<n>&limit=<1-100>`,
-which returns `{ session, events: {sequence, event}[], hasMore, nextSequence }`.
+which returns `{ session, events: {sequence, event}[], hasMore, nextSequence, highWaterSequence }`.
+`sequence` is the thread's own ordinal. Sequences are increasing but need not be
+contiguous, so `session.eventCount` counts events and does not bound a cursor.
+`highWaterSequence` is the thread's highest sequence, read with the page; a
+cursor above it is ahead of the history. Hosts before #5077 omit it; their
+sequences have no gaps, so `session.eventCount` is their high water.
 
 **A polling gotcha:** if you call `/events` immediately after the foreground execution
 endpoint returns, you may see only lifecycle events — the accepted turn may not have
@@ -2152,9 +2157,14 @@ authorized like the session's other reads and are never cached
 (`Cache-Control: private, no-store`).
 
 Query: `offset` (message index, default `0`) and `limit` (messages per page,
-`1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
-`entries` (prompt and reply text, tool calls, tool results; inline image data
-replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+`1`–`50`, default `30`), or `tail=1` for the last `limit` messages (a tail
+read names no offset; `400` otherwise). The response's `data` is a
+`ChildWorkTranscriptPage`: `entries` (prompt and reply text, tool calls, tool
+results; inline image data replaced by a placeholder, then each text cut at
+4,000 characters and flagged), `offset` and `endOffset` (the message indexes
+where the page starts and just past where it ends, so a reader continues from
+`endOffset`; a read from past the end names the end as both), and
+`nextOffset` when another page follows an offset read.
 Tool calls and results carry an optional engine-issued `toolCallId`. Readers join
 only matching IDs; legacy entries without IDs remain readable without assuming
 that adjacent records belong to the same call.

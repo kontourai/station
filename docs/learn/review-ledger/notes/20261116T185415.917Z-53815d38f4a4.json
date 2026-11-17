@@ -1,0 +1,7 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"Added the notification retention index entry pointing at config.md#notification-retention.","inputs":["docs/reference/env-vars.md"]}
+  ]
+}

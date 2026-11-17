@@ -187,6 +187,9 @@ function monitorBusyMessage(target: string): string {
   return `Job '${target}' has a monitor task whose outcome is still authoritative; observe or resolve it before changing, restarting, or removing the monitor`;
 }
 
+const PROJECT_JOB_EXCLUSIVE_MESSAGE =
+  'A Project job runs as a Task in its Project; it cannot also run in a chat or a monitor';
+
 /** Health window: a tick older than this marks the scheduler unhealthy. */
 const HEALTH_WINDOW_MS = 120_000;
 
@@ -224,6 +227,31 @@ export interface ScheduledTurnAdapter {
     }>;
     signal: AbortSignal;
   }): Promise<ScheduledTurnOutcome>;
+}
+
+/** #5070: a Project job's run: a Task in that Project, not a bare turn. */
+export interface ScheduledProjectRunner {
+  invoke(
+    input: Parameters<ScheduledTurnAdapter['invoke']>[0] & {
+      projectId: string;
+      jobName: string;
+    },
+  ): Promise<ScheduledTurnOutcome>;
+}
+
+/** #5069: one read per claim of which Projects hold their schedules. */
+export interface ScheduledProjectHold {
+  /** Ids of Projects whose jobs must not be claimed now. */
+  heldProjectIds(): ReadonlySet<string>;
+  /** Slugs of the same Projects, for automations that start a chat in one. */
+  heldProjectSlugs(): ReadonlySet<string>;
+  /** Whether a Project with this id exists on this Station. */
+  projectExists(projectId: string): boolean;
+  /**
+   * Whether Project runs may start now (the `project-schedules` preview).
+   * Absent: they may. Off holds every Project job.
+   */
+  projectRunsEnabled?(): boolean;
 }
 
 export interface BuiltinSchedulerOptions {
@@ -289,6 +317,17 @@ export interface BuiltinSchedulerOptions {
   onMonitorTerminal?: (triggerId: string) => void;
   /** Releases server-only monitor observers when the scheduler is disposed. */
   disposeMonitorTasks?: () => void;
+  /**
+   * #5070: runs a Project job (`SchedulerJob.projectId`) as a new Task in
+   * its Project. Absent (hosted, tests): such a job cannot be created.
+   */
+  projectRuns?: ScheduledProjectRunner;
+  /**
+   * #5069: whether a Project's work is held (paused, archived or gone). A
+   * held Project's jobs are left unclaimed and refuse a manual run. Absent:
+   * nothing is held.
+   */
+  projectHold?: ScheduledProjectHold;
   /**
    * Automation polling (`github-poll`) rides this scheduler's minute tick and
    * has no timer of its own. At most one poll is in flight; `stop()` aborts
@@ -778,7 +817,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
     this.pollAutomations();
     let receipts: SchedulerDispatchReceipt[];
     try {
-      receipts = this.requireRead(this.ledger.claimDue(Date.now()));
+      receipts = this.requireRead(
+        this.ledger.claimDue(Date.now(), this.heldJobPredicate()),
+      );
     } catch (error) {
       // Damage and contention used to produce the identical line, once a
       // minute, forever. The first is an incident — nothing this scheduler is
@@ -925,6 +966,62 @@ export class BuiltinScheduler implements ISchedulerProvider {
     } finally {
       this.reconcilingMonitorTerminals = false;
     }
+  }
+
+  /**
+   * #5069: one read of the held Projects for this claim. A Project job is
+   * held while its Project is paused, archived or missing; an automation
+   * that starts its chat in a held Project is held too. A chat-targeted
+   * automation is not resolved here: the held Project refuses its turn.
+   */
+  private heldJobPredicate():
+    | ((job: StoredSchedulerJob) => boolean)
+    | undefined {
+    const hold = this.options.projectHold;
+    if (!hold) return undefined;
+    let ids: ReadonlySet<string>;
+    let slugs: ReadonlySet<string>;
+    let runsEnabled: boolean;
+    try {
+      ids = hold.heldProjectIds();
+      slugs = hold.heldProjectSlugs();
+      runsEnabled = hold.projectRunsEnabled?.() ?? true;
+    } catch {
+      // Unknown Project state holds Project work rather than running it.
+      return (job) =>
+        Boolean(job.projectId) ||
+        (job.target?.kind === 'dedicated' && Boolean(job.target.workspace));
+    }
+    return (job) => {
+      if (job.projectId)
+        return (
+          !runsEnabled ||
+          ids.has(job.projectId) ||
+          !hold.projectExists(job.projectId)
+        );
+      return (
+        job.target?.kind === 'dedicated' &&
+        job.target.workspace?.kind === 'project' &&
+        slugs.has(job.target.workspace.projectSlug)
+      );
+    };
+  }
+
+  /** The adapter a Project job's run invokes in place of a bare turn. */
+  private projectTurnAdapter(
+    projectId: string,
+    jobName: string,
+  ): ScheduledTurnAdapter {
+    const runner = this.options.projectRuns;
+    return {
+      invoke: (input) =>
+        runner
+          ? runner.invoke({ ...input, projectId, jobName })
+          : Promise.resolve({
+              kind: 'definitely-not-invoked',
+              error: 'Project schedules are unavailable on this Station',
+            }),
+    };
   }
 
   private async executeJob(initialReceipt: SchedulerDispatchReceipt) {
@@ -1164,7 +1261,13 @@ export class BuiltinScheduler implements ISchedulerProvider {
             maxAttempts,
             startedAt: receipt.startedAt,
             receipt,
-            turnAdapter: this.options.turnAdapter,
+            turnAdapter: job.projectId
+              ? this.projectTurnAdapter(job.projectId, job.name)
+              : this.options.turnAdapter,
+            // A Project run waits for its Task's turn, like a targeted run.
+            ...(job.projectId
+              ? { timeoutMs: AUTOMATION_RUN_POLICY.turnDeadlineMs + 60_000 }
+              : {}),
             ...(job.target
               ? {
                   conversationRuns: this.options.conversationRuns,
@@ -1793,6 +1896,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
     }
     const target = acceptedTarget(opts.target);
     assertTargetAuthority({ ...opts, target });
+    const projectId = this.acceptedProjectId(opts, target);
     const schedule = opts.schedule as Schedule | undefined;
     if (schedule !== undefined) {
       const err = validateSchedule(schedule);
@@ -1811,6 +1915,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       retryCount: opts.retryCount,
       retryDelaySecs: opts.retryDelaySecs,
       ...(target ? { target, createdBy: opts.createdBy } : {}),
+      ...(projectId ? { projectId } : {}),
       monitor: opts.monitor
         ? {
             ...opts.monitor,
@@ -1843,6 +1948,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       if (error !== null) throw new Error(`Invalid schedule: ${error}`);
     }
     this.assertEditKeepsTargetAuthority(target, normalized);
+    this.assertEditKeepsProject(target, normalized);
     let durableUpdate = normalized;
     if (normalized.monitor && typeof normalized.monitor === 'object') {
       // Monitor authority has no top-level Agent. Strip compatibility input
@@ -2019,6 +2125,65 @@ export class BuiltinScheduler implements ISchedulerProvider {
     });
   }
 
+  /**
+   * #5070: a Project job is a Task-starting job in one Project. It names a
+   * Project this Station has and carries no target or monitor, which would
+   * be a second place for its runs to land.
+   */
+  private acceptedProjectId(
+    opts: Pick<AddJobOpts, 'projectId' | 'monitor'>,
+    target: SchedulerAutomationTarget | undefined,
+  ): string | undefined {
+    if (opts.projectId === undefined) return undefined;
+    const projectId =
+      typeof opts.projectId === 'string' ? opts.projectId.trim() : '';
+    if (!projectId) throw new Error('A Project job needs a Project');
+    if (target || opts.monitor) throw new Error(PROJECT_JOB_EXCLUSIVE_MESSAGE);
+    if (!this.options.projectRuns || !this.options.projectHold)
+      throw new Error('Project schedules are unavailable on this Station');
+    if (!this.options.projectHold.projectExists(projectId))
+      throw new Error('That Project does not exist on this Station');
+    return projectId;
+  }
+
+  /** A Project job stays in its Project, and only it may be one. */
+  private assertEditKeepsProject(
+    target: string,
+    update: Record<string, unknown>,
+  ): void {
+    const touches = ['projectId', 'target', 'monitor'].some(
+      (key) => Object.hasOwn(update, key) && update[key] != null,
+    );
+    if (!touches) return;
+    const existing = this.ledger.list();
+    if (existing.kind === 'unavailable') throw storageError(existing);
+    const job = existing.value.find((candidate) => candidate.name === target);
+    if (!job) throw new Error(`Job '${target}' not found`);
+    if (
+      Object.hasOwn(update, 'projectId') &&
+      update.projectId !== job.projectId
+    )
+      throw new Error(
+        'A job belongs to the Project it was created in and cannot move',
+      );
+    if (job.projectId && (update.target != null || update.monitor != null))
+      throw new Error(PROJECT_JOB_EXCLUSIVE_MESSAGE);
+  }
+
+  /** #5069: why a manual run of this job is refused now, if it is. */
+  private heldRunRefusal(target: string): string | undefined {
+    const predicate = this.heldJobPredicate();
+    if (!predicate) return undefined;
+    const existing = this.ledger.list();
+    if (existing.kind === 'unavailable') return undefined;
+    const job = existing.value.find((candidate) => candidate.name === target);
+    if (!job || !predicate(job)) return undefined;
+    return job.projectId &&
+      this.options.projectHold?.projectRunsEnabled?.() === false
+      ? `Job '${target}' is a Project schedule. Enable Project schedules in Settings → Advanced → Feature previews to run it.`
+      : `Job '${target}' belongs to a paused or archived Project. Resume the Project to run it.`;
+  }
+
   private lastSuccessAt(jobId: string): string | undefined {
     const read = this.ledger.lastSuccessAt(jobId);
     return read.kind === 'available' ? read.value : undefined;
@@ -2132,6 +2297,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
   }
 
   async runJob(target: string): Promise<SchedulerManualRunReceipt> {
+    const held = this.heldRunRefusal(target);
+    if (held) throw new Error(held);
     const claimed = this.ledger.claimManual(target, Date.now());
     if (claimed.kind === 'unavailable') throw storageError(claimed);
     if (claimed.kind === 'not-found')

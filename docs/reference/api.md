@@ -168,6 +168,14 @@ preview returns 404 with `code:feature_preview_disabled` and a Settings link.
 
 State is personal and durable across devices. Settlement changes neither
 provider execution nor history, and is separate from dismissal and deletion.
+The host clears it whether or not the preview is on: a person's own message
+through `/api/orchestration/chat`, a steer or a queued inbox message clears that
+person's record, and a `request.opened`, a failed turn or a `session.stop-settled`
+clears everyone's for that conversation. An engine-opened turn that finishes
+normally keeps it. Station Control's `settle_conversation` and
+`station conversation settle|reopen` call the same PUT. See the
+[reopen owner](../../src-server/services/orchestration/conversation-resolution-reopen.ts)
+and its [tests](../../src-server/services/orchestration/__tests__/conversation-resolution-reopen.test.ts).
 See the [route owner](../../src-server/routes/chat/conversation-work-state.ts),
 [route tests](../../src-server/routes/chat/__tests__/conversation-work-state.test.ts)
 and [SDK helpers](sdk.md#personal-conversation-resolution-and-turn-directory).
@@ -376,6 +384,29 @@ the person chose; detecting it would need a capability flag the client does
 not read today.
 
 See [project chat defaults](contracts.md).
+
+## Project lifecycle
+
+`POST /api/projects/:slug/lifecycle` with `{action}` (`pause`, `resume`,
+`archive` or `unarchive`) sets `ProjectConfig.lifecycle`
+([`project-lifecycle`](contracts.md)). Pause and Archive write the state
+first, so the Project's chats admit no new turn (a refused turn says
+"This Project is paused. Resume it to continue."), then interrupt every
+running turn in the Project through the orchestration's own interrupt,
+looking again until none runs or `PROJECT_LIFECYCLE_STOP_WAIT_MS` (10 s)
+passes. The answer counts `interrupted`, `stillRunning` and `failed`. The
+scheduler claims none of a held Project's jobs. Resume lifts a pause but not
+an archive; Unarchive lifts either. Pause and Archive are behind the
+`project-pause-archive` Feature Preview (404 `feature_preview_disabled` while
+it is off); Resume and Unarchive always answer, so a hold can be lifted. A
+shared member gets 404. `PUT /api/projects/:slug` and `POST /api/projects`
+refuse a body naming `lifecycle` (400).
+
+`GET /api/projects/:slug/deletion-preview` counts what
+`DELETE /api/projects/:slug` removes (Layouts, knowledge documents, the
+Project's schedules), the running chats it stops, and what it keeps (Tasks,
+chats). `DELETE` holds the Project and stops its running turns as Pause does,
+deletes its schedules, then removes the Project.
 
 ## Project checkout freshness
 
@@ -895,8 +926,13 @@ for the Project's live Tasks (not done or canceled). Each entry lists the
 pull requests kept on that Task whose declaring session the requester may
 read, each read from its provider at its exact identity:
 `status: {state: "current", pullRequestState, title, draft?, reviewDecision?,
-readiness?, mergeability, sourceBranch}` or `{state: "unavailable" |
-"unsupported", reason}`. `readiness` is `clean`, `blocked`, `checks-not-passing`,
+readiness?, mergeability, sourceBranch, headSha?}` or `{state: "unavailable" |
+"unsupported", reason}`. A current fact carries `feedback: {state, headSha,
+at?}` (`watching`, `waiting-on-checks`, `sent`, `fixing` or `paused`) only
+while the `pull-request-agent-feedback` preview is on and the requester may
+read the chat that gets that pull request's feedback. It is per Task:
+`fixing` only when that chat is the Task's own run and its open turn is a
+failing-checks feedback message. `readiness` is `clean`, `blocked`, `checks-not-passing`,
 `conflicting`, `behind`, `draft` or `unknown`; absent means the provider did
 not report it. On GitHub `checks-not-passing` is `UNSTABLE`: some checks are
 failing or still pending, none of them required. A failing required check is
@@ -1524,12 +1560,24 @@ hosted Station withdraws:
   and newest 20 deliveries (`ConversationPullRequestFeedback`).
 - `PUT` on the same path, body `{ identity, settings, move? }`, sets a pull
   request's switches. A pull request another chat owns answers 409
-  `pull_request_feedback_owned_elsewhere` with `details.owner`; `move: true`
-  takes it. A pull request not linked or kept on this chat answers 409
+  `pull_request_feedback_owned_elsewhere` with `details.owner`, whose
+  `conversationId` and `title` are present only when the requester may read
+  that chat (the GET's `owner` follows the same rule, and to such a
+  requester the GET also reports that pull request's switches off and status
+  `off`); `move: true` takes it. A pull request not linked or kept on this chat answers 409
   `pull_request_not_linked`.
 - `DELETE` on the same path, body `{ identity }`, turns every switch off.
 - `POST …/send-again`, body `{ identity }`, lifts a pause for one round; 409
   `pull_request_feedback_not_paused` otherwise.
+- `GET /api/pull-request-feedback/by-pull-request?provider&host&owner&name&ref`
+  answers one pull request's feedback whichever chat is open
+  (`PullRequestFeedbackByPullRequest`): `owner` is `null` when no chat gets
+  it, `{ readable: false }` (and nothing else) when the requester may not
+  read the owning chat, else `{ readable: true, conversationId, title }` with
+  `status`, `settings`, the newest message sent about the head Station last
+  observed (`last`, absent when the newest send was about an earlier push)
+  and `sentChecks`, the failing checks sent about that head. 400 for a
+  malformed identity.
 
 Reads need the chat's read access (`orchestration:read`). Writes need the
 operator in person (`access:manage`); Station's internal principal (an agent's
@@ -5675,6 +5723,14 @@ Station that cannot run a turn in a conversation answers 503
 scheduler route. Clients gate offering it on the `scheduledConversationTarget`
 capability flag. `notifyStart` is accepted and ignored.
 
+A body may instead name a `projectId` (#5070): each run starts a new Task in
+that Project, and the job may carry no `target` or `monitor` (400). It is set
+at create only. A Station without a Project runner answers 503
+`project_schedule_unavailable`; while the `project-schedules` Feature Preview
+is off, the route answers 404 `feature_preview_disabled`. Clients gate offering
+it on the `projectSchedules` capability flag, which, like `pullRequestFeedback`,
+says the route exists whatever the preview's state.
+
 A person approves an agent's job proposal (`propose_job`) by sending this
 route the proposed job with its `proposalId`. The route then creates the job
 only when the request is a person's own (a request that may be an agent's
@@ -5970,8 +6026,12 @@ code when unplaced (`not-in-scope` after two polls in a row miss it,
 `holder-gone` once a found holder has left the scope, `holder-unavailable`
 when the host has no `setsid`(1) or `sleep`(1))
 (an unplaced holder means that scope's OOM count will be unknown after the
-engine dies). The session read's measured scope carries
-`lastOomKillAt` too. A save refuses a total below the slice's current usage
+engine dies). A scope also carries `lastOomKillProcesses`, its three
+largest processes when Station saw the latest kill, and, while its working
+set is at or above `STATION_WORKLOAD_PRESSURE_PERCENT` of its limit,
+`pressure` (`since`, `thresholdPercent`, `workingSetBytes`, `memoryMaxBytes`,
+`limitEvents` and `largestProcesses`). The session read's measured scope carries
+`lastOomKillAt`, `lastOomKillProcesses` and `pressure` too. A save refuses a total below the slice's current usage
 (400 `workload_settings_invalid`), because the total binds running engines at
 once.
 

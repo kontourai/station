@@ -1,0 +1,7 @@
+{
+  "revision": "1b5c7e2a3f463ca54cd4ec2da5a517188ab9ee0f",
+
+  "notes": [
+    {"path":"docs/guides/release-rings.md","note":"publish-packages.yml only gained the probe's settled gate and timeout comment; dispatch publishing and promotion claims are unaffected.","inputs":["docs/guides/release-rings.md",".github/workflows/publish-packages.yml"]}
+  ]
+}

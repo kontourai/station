@@ -176,36 +176,38 @@ const CASES: Case[] = [
     refused: true,
     relation: 'incomparable',
   },
+  // #4929 retired the Preview ring; Nightly is the one prerelease ring.
   {
-    ring: 'preview',
-    existing: mark('preview', '1.2.4-preview.1'),
+    ring: 'nightly',
+    existing: mark('nightly', '1.2.4-nightly.1'),
     offered: '1.2.3',
-    recorded: '1.2.4-preview.1',
+    recorded: '1.2.4-nightly.1',
     refused: true,
     relation: 'incomparable',
   },
   {
-    // Another prerelease ring at the same X.Y.Z: unordered, never written.
-    ring: 'preview',
-    existing: mark('preview', '1.2.4-preview.3'),
-    offered: '1.2.4-nightly.5',
-    recorded: '1.2.4-preview.3',
+    // Another prerelease label at the same X.Y.Z (the retired Preview
+    // ring's shape): unordered, never written.
+    ring: 'nightly',
+    existing: mark('nightly', '1.2.4-nightly.3'),
+    offered: '1.2.4-preview.5',
+    recorded: '1.2.4-nightly.3',
     refused: true,
     relation: 'incomparable',
   },
   {
-    ring: 'preview',
-    existing: mark('preview', '1.2.4-preview.3'),
-    offered: '1.2.4-preview.2',
-    recorded: '1.2.4-preview.3',
+    ring: 'nightly',
+    existing: mark('nightly', '1.2.4-nightly.3'),
+    offered: '1.2.4-nightly.2',
+    recorded: '1.2.4-nightly.3',
     relation: 'older',
   },
   {
     // Numeric, not string, order: 10 > 9.
-    ring: 'preview',
-    existing: mark('preview', '1.2.4-preview.9'),
-    offered: '1.2.4-preview.10',
-    recorded: '1.2.4-preview.10',
+    ring: 'nightly',
+    existing: mark('nightly', '1.2.4-nightly.9'),
+    offered: '1.2.4-nightly.10',
+    recorded: '1.2.4-nightly.10',
     relation: 'not-older',
   },
   {
@@ -241,10 +243,46 @@ const CASES: Case[] = [
   },
   // Invalid records: refused by the check, replaced by the record.
   {
+    // Another ring's record.
+    ring: 'nightly',
+    existing: mark('stable', '1.3.0'),
+    offered: '1.0.0-nightly.1',
+    recorded: '1.0.0-nightly.1',
+    relation: 'invalid',
+  },
+  // Another ring's record whose version is valid for this ring: only the
+  // record's ring name tells them apart, so these reach that comparison.
+  {
+    ring: 'stable',
+    existing: mark('nightly', '1.3.0'),
+    offered: '1.3.1',
+    recorded: '1.3.1',
+    relation: 'invalid',
+  },
+  {
+    ring: 'nightly',
+    existing: mark('stable', '1.3.0-nightly.1'),
+    offered: '1.3.0-nightly.2',
+    recorded: '1.3.0-nightly.2',
+    relation: 'invalid',
+  },
+  // #4929 retired the Preview ring. With no record the check has nothing to
+  // compare, but neither side records a Preview release; a record a Preview
+  // install left is unreadable and is kept, not raised.
+  {
     ring: 'preview',
-    existing: mark('nightly', '1.2.4-nightly.5'),
-    offered: '1.0.0-preview.1',
-    recorded: '1.0.0-preview.1',
+    existing: null,
+    offered: '1.2.4-preview.1',
+    recorded: null,
+    refused: true,
+    relation: 'absent',
+  },
+  {
+    ring: 'preview',
+    existing: mark('preview', '1.2.4-preview.1'),
+    offered: '1.2.4-preview.2',
+    recorded: '1.2.4-preview.1',
+    refused: true,
     relation: 'invalid',
   },
   {

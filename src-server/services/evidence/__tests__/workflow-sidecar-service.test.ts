@@ -15,22 +15,27 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { flowAgentsArtifactRoot } from '@kontourai/flow-agents/local-artifact-root';
 import {
   createRunCorrelationEnvelope,
-  flowAgentsArtifactRoot,
   validateRunCorrelationPresence,
-} from '@kontourai/flow-agents';
+} from '@kontourai/flow-agents/run-correlation';
 import type { WorkflowState } from '@kontourai/station-contracts/workflow';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-vi.mock('@kontourai/flow-agents', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('@kontourai/flow-agents')>();
-  return {
-    ...actual,
-    flowAgentsArtifactRoot: vi.fn(actual.flowAgentsArtifactRoot),
-  };
-});
+vi.mock(
+  '@kontourai/flow-agents/local-artifact-root',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/flow-agents/local-artifact-root')
+      >();
+    return {
+      ...actual,
+      flowAgentsArtifactRoot: vi.fn(actual.flowAgentsArtifactRoot),
+    };
+  },
+);
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   workflowSidecarTransitions: { add: vi.fn() },

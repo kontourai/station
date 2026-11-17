@@ -1,0 +1,7 @@
+{
+  "revision": "041d04f42340cfb76040a27bbefde54ce90d6514",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Added the receipt rule: exactly one successful merge_group ci.yml run from gh-readonly-queue/main/ at the Nightly SHA with statics ci:fast and journey steps executed; ledger-only commits never use a parent's pass (ledgerEquivalentSources); errors run the gate; Chromium cache still warmed. Checked against nightly-source-gate-receipt.mjs, nightly.yml and its tests.","inputs":["docs/guides/testing.md"]}
+  ]
+}

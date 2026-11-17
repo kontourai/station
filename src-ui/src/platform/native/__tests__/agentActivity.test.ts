@@ -576,32 +576,43 @@ describe('registration store', () => {
 describe('agent-activity card tap routes (#2515)', () => {
   it('opens the session in its project, or on the home route without one', () => {
     expect(
-      agentActivitySessionTarget(
-        { stationId: STATION, sessionId: 'thread-1', projectSlug: 'login-app' },
-        STATION,
-      ),
+      agentActivitySessionTarget({
+        stationId: STATION,
+        sessionId: 'thread-1',
+        projectSlug: 'login-app',
+      }),
     ).toEqual({
       pathname: '/projects/login-app',
       params: { chat: 'thread-1', dock: 'open' },
+      stationId: STATION,
     });
     expect(
-      agentActivitySessionTarget(
-        { stationId: STATION, sessionId: 'ns:thread.1' },
-        STATION,
-      ),
-    ).toEqual({ pathname: '/', params: { chat: 'ns:thread.1', dock: 'open' } });
+      agentActivitySessionTarget({
+        stationId: STATION,
+        sessionId: 'ns:thread.1',
+      }),
+    ).toEqual({
+      pathname: '/',
+      params: { chat: 'ns:thread.1', dock: 'open' },
+      stationId: STATION,
+    });
   });
 
-  it('ignores a route for another Station than the connected one', () => {
+  it("keeps another Station's route, naming that Station, so the opener can switch to it", () => {
     expect(
-      agentActivitySessionTarget(
-        { stationId: 'env-station-b', sessionId: 'thread-1' },
-        STATION,
-      ),
-    ).toBeNull();
+      agentActivitySessionTarget({
+        stationId: 'env-station-b',
+        sessionId: 'thread-1',
+      }),
+    ).toEqual({
+      pathname: '/',
+      params: { chat: 'thread-1', dock: 'open' },
+      stationId: 'env-station-b',
+    });
     expect(
-      agentActivitySessionTarget({ stationId: '', sessionId: 'thread-1' }, ''),
+      agentActivitySessionTarget({ stationId: '', sessionId: 'thread-1' }),
     ).toBeNull();
+    expect(agentActivitySessionTarget({ sessionId: 'thread-1' })).toBeNull();
   });
 
   it('ignores anything outside the contract grammar, whole', () => {
@@ -619,24 +630,25 @@ describe('agent-activity card tap routes (#2515)', () => {
       'é',
     ]) {
       expect(
-        agentActivitySessionTarget(
-          { stationId: STATION, sessionId: bad },
-          STATION,
-        ),
+        agentActivitySessionTarget({ stationId: STATION, sessionId: bad }),
       ).toBeNull();
       expect(
-        agentActivitySessionTarget(
-          { stationId: STATION, sessionId: 'thread-1', projectSlug: bad },
-          STATION,
-        ),
+        agentActivitySessionTarget({
+          stationId: STATION,
+          sessionId: 'thread-1',
+          projectSlug: bad,
+        }),
+      ).toBeNull();
+      expect(
+        agentActivitySessionTarget({ stationId: bad, sessionId: 'thread-1' }),
       ).toBeNull();
     }
     for (const notARoute of [null, undefined, 'thread-1', 7, []])
-      expect(agentActivitySessionTarget(notARoute, STATION)).toBeNull();
+      expect(agentActivitySessionTarget(notARoute)).toBeNull();
   });
 
-  it('takes the route from the plugin and navigates only to a valid one', async () => {
-    const navigate = vi.fn();
+  it('takes the route from the plugin and opens only a valid one', async () => {
+    const open = vi.fn();
     let route: unknown = {
       stationId: STATION,
       sessionId: 'thread-1',
@@ -648,23 +660,24 @@ describe('agent-activity card tap routes (#2515)', () => {
         value: { route: route as never },
       })),
     };
-    await expect(
-      openAgentActivityLaunchRoute(plugin, STATION, navigate),
-    ).resolves.toBe(true);
-    expect(navigate).toHaveBeenCalledWith('/projects/login-app', {
-      chat: 'thread-1',
-      dock: 'open',
+    await expect(openAgentActivityLaunchRoute(plugin, open)).resolves.toBe(
+      true,
+    );
+    expect(open).toHaveBeenCalledWith({
+      pathname: '/projects/login-app',
+      params: { chat: 'thread-1', dock: 'open' },
+      stationId: STATION,
     });
 
-    navigate.mockClear();
-    route = { stationId: 'env-station-b', sessionId: 'thread-1' };
-    await expect(
-      openAgentActivityLaunchRoute(plugin, STATION, navigate),
-    ).resolves.toBe(false);
+    open.mockClear();
+    route = { stationId: STATION, sessionId: '../x' };
+    await expect(openAgentActivityLaunchRoute(plugin, open)).resolves.toBe(
+      false,
+    );
     route = null;
-    await expect(
-      openAgentActivityLaunchRoute(plugin, STATION, navigate),
-    ).resolves.toBe(false);
-    expect(navigate).not.toHaveBeenCalled();
+    await expect(openAgentActivityLaunchRoute(plugin, open)).resolves.toBe(
+      false,
+    );
+    expect(open).not.toHaveBeenCalled();
   });
 });

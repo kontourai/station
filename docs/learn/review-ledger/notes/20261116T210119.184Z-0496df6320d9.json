@@ -1,0 +1,7 @@
+{
+  "revision": "8a7dee80b0b050d312da8caa6176d86776d85fa5",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Child-process classification rule followed: test-impact-incidents.test.ts added to the process-heavy group for its real discovery child.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -36,6 +36,20 @@ paths = [
 ]
 
 [[allowlists]]
+# Review notes are immutable prose; `generic-api-key` read the words after
+# "Accessible names," as a token value. Pinned to that exact phrase, so a
+# squash or merge commit that replays the note stays allowed and nothing
+# else in the notes is.
+description = "Prose phrase 'move/add/visibility' in documentation review notes (not a secret)"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^move/add/visibility$''']
+paths = [
+  '''(^|/)docs/learn/review-ledger/notes/[^/]+\.json$''',
+  '''(^|/)docs/learn/review-ledger/notes/archive/[0-9a-f]{40}\.json$''',
+]
+
+[[allowlists]]
 description = "Self-signed logical.test TLS private key used only by the plugin dev transport test fixture"
 paths = ['''(^|/)packages/cli/src/__tests__/fixtures/logical\.test-key\.pem$''']
 
@@ -137,6 +151,7 @@ paths = [
   '''(^|/)packages/contracts/src/native-push\.ts$''',
   '''(^|/)src-desktop/plugins/agent-activity/android/src/test/java/io/kontourai/station/agentactivity/AgentSealTest\.kt$''',
   '''(^|/)src-desktop/plugins/agent-activity/android/src/test/java/io/kontourai/station/agentactivity/StationNotificationsTest\.kt$''',
+  '''(^|/)src-desktop/plugins/agent-activity/ios/Tests/StationAgentActivityAlertsTests/AlertTapRouteTests\.swift$''',
   '''(^|/)src-desktop/plugins/agent-activity/ios/Tests/StationAgentActivitySharedTests/CardOpenerTests\.swift$''',
   '''(^|/)src-desktop/plugins/agent-activity/ios/Tests/StationNotificationServiceCoreTests/SealedAlertTests\.swift$''',
   '''(^|/)src-desktop/plugins/agent-activity/ios/Sources/StationAgentActivityPlugin/AgentActivityPlugin\.swift$''',

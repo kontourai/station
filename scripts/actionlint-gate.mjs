@@ -3882,7 +3882,6 @@ const PR_SOURCE_FIFO_GROUPS = {
 export function legacyActionlintSources(workflows) {
   const expected = {
     '.github/workflows/delivery-validation.yml': 'station-background-compute',
-    '.github/workflows/hosted-capacity-probe.yml': 'station-background-compute',
     '.github/workflows/full-regression.yml': BACKGROUND_QUALIFICATION_GROUP,
   };
   return workflows.map(({ file, document }) => {
