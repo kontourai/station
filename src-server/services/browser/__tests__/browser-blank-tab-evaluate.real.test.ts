@@ -311,12 +311,16 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
     const target = sessions.liveTarget(site)!.target;
     // The address bar's navigation lands after the check answered and
     // before the agent's script reaches the page: the race, made certain.
+    // The script is recognised whether or not it names a context, so an
+    // unbound script would run in the blank page (and abort Chrome 158).
+    const checked = host?.mainWorld(target.targetId);
+    expect(checked).toBeDefined();
     interpose = async (method, params, sessionId, transport) => {
-      const p = params as { uniqueContextId?: string; silent?: boolean };
+      const p = params as { contextId?: number; silent?: boolean };
       if (
         method !== 'Runtime.evaluate' ||
         sessionId !== target.cdpSessionId ||
-        p.uniqueContextId === undefined ||
+        p.contextId !== undefined ||
         p.silent === true
       )
         return;
@@ -324,13 +328,11 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
       await transport.send('Page.navigate', { url: 'about:blank' }, sessionId);
       const deadline = Date.now() + 10_000;
       while (
-        [undefined, p.uniqueContextId].includes(
-          host?.mainWorld(target.targetId),
-        ) &&
+        [undefined, checked].includes(host?.mainWorld(target.targetId)) &&
         Date.now() < deadline
       )
         await new Promise((r) => setTimeout(r, 20));
-      expect(host?.mainWorld(target.targetId)).not.toBe(p.uniqueContextId);
+      expect(host?.mainWorld(target.targetId)).not.toBe(checked);
     };
     const result = await evaluate(site, SANDBOXED_SRCDOC);
     expect(interpose).toBeUndefined();
