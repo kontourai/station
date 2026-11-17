@@ -409,8 +409,11 @@ jobs:
                 }
                 continue;
               }
-              // Running again: clear only a tracker this check opened.
-              if (tracker?.state === 'open' && isOverdueBody(tracker.body)) {
+              // Running again: clear only a tracker this check opened, and
+              // only once a scheduled run has succeeded. A run still going or
+              // a red one belongs to the failure reporter, which runs in
+              // another concurrency group and may be rewriting this tracker.
+              if (tracker?.state === 'open' && isOverdueBody(tracker.body) && last?.status === 'completed' && last?.conclusion === 'success') {
                 await github.rest.issues.createComment({ ...context.repo, issue_number: tracker.number, body: `Ran on its schedule again at ${last?.created_at}: ${last?.html_url}` });
                 await github.rest.issues.update({ ...context.repo, issue_number: tracker.number, state: 'closed' });
               }

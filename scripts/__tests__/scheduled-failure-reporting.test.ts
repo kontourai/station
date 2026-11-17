@@ -218,6 +218,8 @@ function fakeGithub({ labelExists = true } = {}) {
     { created_at: string; html_url: string } | null
   > = {};
   const workflowCreated: Record<string, string> = {};
+  // Lets a test run another job between this job's read and its first write.
+  const interleave: { beforeUpdate?: () => Promise<unknown> } = {};
   const otherRuns: {
     id: number;
     workflow_id: number;
@@ -352,6 +354,9 @@ function fakeGithub({ labelExists = true } = {}) {
           state?: 'open' | 'closed';
           body?: string;
         }) => {
+          const hook = interleave.beforeUpdate;
+          interleave.beforeUpdate = undefined;
+          if (hook) await hook();
           writes.push(`update:${state ?? 'body'}`);
           const issue = find(issue_number);
           if (state) issue.state = state;
@@ -414,6 +419,7 @@ function fakeGithub({ labelExists = true } = {}) {
     scheduledRuns,
     workflowCreated,
     otherRuns,
+    interleave,
     setRun(next: typeof run) {
       run = next;
     },
@@ -1015,6 +1021,8 @@ describe('scheduled workflows that stop running', () => {
     const recent = {
       created_at: new Date(now - 2 * HOUR).toISOString(),
       html_url: 'https://github.com/kontourai/station/actions/runs/1',
+      status: 'completed',
+      conclusion: 'success',
     };
     for (const { file } of readWatchedSchedules(root.href))
       fake.scheduledRuns[file] = recent;
@@ -1061,6 +1069,75 @@ describe('scheduled workflows that stop running', () => {
       'Ran on its schedule again',
     );
     expect(dated?.state).toBe('open');
+  });
+
+  it("leaves a resumed schedule's red run to the failure reporter instead of closing its tracker", async () => {
+    // The stopped schedule resumes with a failing run. The overdue job and
+    // the reporter run in different concurrency groups; whichever order they
+    // interleave in, the tracker must end open with the failure.
+    const now = Date.parse('2026-11-16T12:00:00Z');
+    for (const order of [
+      'overdue-first',
+      'reporter-first',
+      'interleaved',
+    ] as const) {
+      const fake = fakeGithub();
+      const ok = {
+        created_at: new Date(now - HOUR).toISOString(),
+        html_url: 'https://github.com/kontourai/station/actions/runs/3',
+        status: 'completed',
+        conclusion: 'success',
+      };
+      for (const { file } of readWatchedSchedules(root.href))
+        fake.scheduledRuns[file] = ok;
+      fake.scheduledRuns['dated-todo-sweep.yml'] = null;
+      fake.workflowCreated['dated-todo-sweep.yml'] = '2026-09-01T00:00:00Z';
+      await runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
+        only: ['overdue-schedules'],
+        now,
+      });
+      const tracker = fake.issues.find((issue) =>
+        issue.title.endsWith('Dated TODO sweep'),
+      );
+      expect(isOverdueBody(tracker?.body)).toBe(true);
+      // It resumes, red.
+      fake.scheduledRuns['dated-todo-sweep.yml'] = {
+        created_at: new Date(now - 0.5 * HOUR).toISOString(),
+        html_url: 'https://github.com/kontourai/station/actions/runs/4',
+        status: 'completed',
+        conclusion: 'failure',
+      };
+      fake.setRun(RED_SWEEP);
+      const overdue = () =>
+        runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
+          only: ['overdue-schedules'],
+          now,
+        });
+      const reporter = () =>
+        runMainHealth(
+          fake,
+          workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+          {
+            only: REPORT,
+          },
+        );
+      if (order === 'overdue-first') {
+        await overdue();
+        await reporter();
+      } else if (order === 'interleaved') {
+        // The reporter has read the tracker as open; the overdue job then
+        // runs to completion before the reporter's first write.
+        fake.interleave.beforeUpdate = overdue;
+        await reporter();
+      } else {
+        await reporter();
+        await overdue();
+      }
+      expect(tracker?.state, order).toBe('open');
+      expect(tracker?.body, order).toContain(
+        '- sweep > Scan dated TODOs (failure)',
+      );
+    }
   });
 
   it('never clears a tracker it did not open', async () => {
