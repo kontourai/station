@@ -653,8 +653,21 @@ export function composePullRequestFeedbackRuntime(
         : undefined,
     ],
     placementRefusal: (input) => delivery.placementRefusal(input),
-    derivedLinks: (conversationId) =>
-      enabled() ? (taskBranches?.derivedLinks(conversationId) ?? []) : [],
+    // Fail-soft: the chat's pull request list never depends on agent
+    // feedback. A preview or store read that throws contributes nothing.
+    derivedLinks: (conversationId) => {
+      try {
+        return enabled()
+          ? (taskBranches?.derivedLinks(conversationId) ?? [])
+          : [];
+      } catch (error) {
+        deps.logger.warn('Task-branch pull requests not read', {
+          conversationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return [];
+      }
+    },
     factFor: (identity, request, taskSessionId) => {
       const store = enabled() ? holder.forRead() : undefined;
       if (!store || !deps.access.current(request)) return undefined;

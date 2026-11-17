@@ -14,6 +14,7 @@ import {
   pullRequestFeedbackKey,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -21,6 +22,7 @@ import {
   createInboxHarness,
   OWNER,
 } from '../../../routes/orchestration/__tests__/helpers/thread-inbox-harness.js';
+import { createConversationPullRequestLinkRoutes } from '../../../routes/pull-requests/conversation-pull-request-links.js';
 import {
   PullRequestFeedbackStore,
   pullRequestFeedbackStorePath,
@@ -236,5 +238,75 @@ describe('the composed Task-branch auto-claim', () => {
     await t.tickUntil(Date.now(), () => expect(t.reads.feedback).toBe(1));
     t.preview.on = false;
     expect(t.runtime.derivedLinks(CONVERSATION)).toEqual([]);
+  });
+
+  it("a preview read that throws never fails the chat's pull request list", async () => {
+    const world = station();
+    const warn = vi.fn();
+    const runtime = composePullRequestFeedbackRuntime({
+      homeDir: tempDir('pr-feedback-branches-soft-'),
+      hosted: false,
+      featurePreviews: {
+        bind: () => ({
+          select: () => {
+            throw new Error('preview registry unavailable');
+          },
+        }),
+      } as never,
+      eventStore: world.store,
+      inbox: world.inbox,
+      orchestration: world.service,
+      eventBus: { subscribe: () => () => {} },
+      providers: () => [],
+      links: { list: () => [] } as never,
+      keptForSessions: () => [],
+      taskBranches: {
+        tasks: () => [],
+        project: () => undefined,
+        taskWorktree: () => undefined,
+        repositoryIdentity: async () => '',
+        canReadProject: async () => true,
+      },
+      access: {
+        current: () => true,
+        canRead: () => true,
+        operator: () => OWNER,
+        readerOf: () => () => true,
+      },
+      logger: { warn },
+    })!;
+    closers.push(() => runtime.close());
+    expect(runtime.derivedLinks(CONVERSATION)).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      'Task-branch pull requests not read',
+      expect.objectContaining({ error: 'preview registry unavailable' }),
+    );
+    const explicit = { ...PR, source: 'explicit' as const };
+    const declared = { ...PR, ref: '43', source: 'task-declared' as const };
+    const app = new Hono().route(
+      '/api/conversation-pull-requests',
+      createConversationPullRequestLinkRoutes(
+        { list: () => [explicit] } as never,
+        () => [],
+        {
+          current: () => true,
+          canRead: () => true,
+          operator: () => OWNER,
+          declared: async () => [declared],
+          derived: (id) => runtime.derivedLinks(id),
+        },
+      ),
+    );
+    const response = await app.request(
+      `/api/conversation-pull-requests/${encodeURIComponent(CONVERSATION)}`,
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = (await response.json()) as {
+      data: { links: Array<{ ref: string; source: string }> };
+    };
+    expect(body.data.links.map((link) => [link.ref, link.source])).toEqual([
+      ['42', 'explicit'],
+      ['43', 'task-declared'],
+    ]);
   });
 });
