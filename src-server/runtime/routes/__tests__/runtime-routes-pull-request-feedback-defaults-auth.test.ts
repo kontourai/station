@@ -13,19 +13,17 @@
  * pairing scope, and a delegation credential that holds access:manage by
  * the route's own person rule; nothing is written.
  */
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
-import { readCheckoutRemotes } from '../../../services/projects/checkout-remote-reader.js';
-import { ProjectBindingsStore } from '../../../services/projects/project-binding-store.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -82,34 +80,12 @@ const LOOPBACK_ENV = {
   incoming: { socket: { remoteAddress: '127.0.0.1' } },
 } as never;
 
-const REPO_REMOTE = 'https://git.example/acme/repo.git';
-
-function makeGitCheckout(directory: string) {
-  mkdirSync(directory, { recursive: true });
-  const git = (args: string[]) =>
-    execFileSync('git', args, {
-      cwd: directory,
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-  git(['init', '-q']);
-  git(['config', 'user.email', 'fixture@example.test']);
-  git(['config', 'user.name', 'Fixture']);
-  writeFileSync(join(directory, 'README.md'), 'fixture\n');
-  git(['add', 'README.md']);
-  git(['commit', '-q', '-m', 'fixture']);
-  git(['remote', 'add', 'origin', REPO_REMOTE]);
-}
-
 /**
- * An explicitly OWNED temp root for this suite's Station home. `os.tmpdir()`
- * is honored (portable), EXCEPT when the ambient TMPDIR nests inside the
- * ambient shared Station root — the home-admission gate then refuses such a
- * home BY DESIGN (a home the shared root contains is never admissible), so
- * the owned temp is created as a SIBLING of the shared root instead. Either
- * way the caller owns the directory and removes it.
+ * Where this suite's temp trees live: `os.tmpdir()`, unless the ambient
+ * TMPDIR nests inside the shared Station root (the home-admission gate
+ * refuses a home the shared root contains), then beside that root.
  */
-function ownedTempRoot(prefix: string): string {
+const OWNED_BASE = (() => {
   const ambientRoot = resolveStationRoot();
   const base = resolve(tmpdir());
   const insideSharedRoot =
@@ -117,13 +93,12 @@ function ownedTempRoot(prefix: string): string {
     base.startsWith(
       ambientRoot.endsWith(sep) ? ambientRoot : ambientRoot + sep,
     );
-  return mkdtempSync(
-    join(insideSharedRoot ? dirname(ambientRoot) : base, prefix),
-  );
-}
+  return insideSharedRoot ? dirname(ambientRoot) : base;
+})();
 
 describe('Project feedback defaults over the REAL auth path', () => {
-  const directories: string[] = [];
+  // First, so its removal runs after the environment is restored.
+  const makeTempDir = trackTempDirs({ base: OWNED_BASE });
   const ambientHome = process.env.STATION_HOME;
   const ambientRoot = process.env.STATION_ROOT;
   // Per-test lifecycle: every test owns ONE temp tree with `home/` and
@@ -132,8 +107,7 @@ describe('Project feedback defaults over the REAL auth path', () => {
   // restores the ambient environment BEFORE removing the tree — nothing is
   // shared across tests and nothing leaks.
   beforeEach(() => {
-    const owned = ownedTempRoot('station-pr-defaults-auth-');
-    directories.push(owned);
+    const owned = makeTempDir('station-pr-defaults-auth-');
     mkdirSync(join(owned, 'home'));
     mkdirSync(join(owned, 'root'));
     process.env.STATION_HOME = join(owned, 'home');
@@ -145,8 +119,6 @@ describe('Project feedback defaults over the REAL auth path', () => {
     if (ambientRoot === undefined) delete process.env.STATION_ROOT;
     else process.env.STATION_ROOT = ambientRoot;
     vi.restoreAllMocks();
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
   });
 
   function pairDelegationDevice(
@@ -208,8 +180,7 @@ describe('Project feedback defaults over the REAL auth path', () => {
   }
 
   async function setup() {
-    const homeDir = mkdtempSync(join(tmpdir(), 'station-pr-defaults-auth-'));
-    directories.push(homeDir);
+    const homeDir = makeTempDir('station-pr-defaults-home-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
     const pairing = new DevicePairingService({
       homeDir,
@@ -221,19 +192,12 @@ describe('Project feedback defaults over the REAL auth path', () => {
       new ProjectManifestStore(homeDir, storage),
     );
     const repoDir = join(homeDir, 'checkout');
-    makeGitCheckout(repoDir);
+    mkdirSync(repoDir);
     const project = await projectService.createProject({
       name: 'Shared Offer',
       slug: 'shared-offer',
       workingDirectory: repoDir,
     });
-    const manifests = new ProjectManifestStore(homeDir, storage, {
-      bindings: new ProjectBindingsStore(homeDir),
-      readRemotes: readCheckoutRemotes,
-    });
-    const ensured = await manifests.ensureProjectManifest(project);
-    expect(['existing', 'created']).toContain(ensured.outcome);
-    const manifest = manifests.readProjectManifest(project.slug)!;
 
     let appConfig: Record<string, unknown> = {};
     const configLoader = {
@@ -320,7 +284,6 @@ describe('Project feedback defaults over the REAL auth path', () => {
       pairing,
       homeDir,
       project,
-      manifest,
       config: () => appConfig,
       delegation: pairDelegationDevice(pairing, 'delegation'),
       plainDevice: pairDelegationDevice(pairing, 'device'),
