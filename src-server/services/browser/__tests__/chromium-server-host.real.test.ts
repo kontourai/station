@@ -465,6 +465,46 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     expect(events.some((e) => e.kind === 'popup-folded')).toBe(true);
   });
 
+  test('an admitted popup loads in its own tab, and its opener stays put', async (ctx) => {
+    if (!executablePath || !raw) return ctx.skip(SKIP_REASON);
+    await gotoDev('/opener');
+    const admitted: Array<{ targetId: string; cdpSessionId: string }> = [];
+    const off = host.onPopup((_opener, target) => {
+      admitted.push(target);
+      return true;
+    });
+    try {
+      await evaluate(`window.open('/adopted'); true`);
+      // Adoption used to wait on Page.enable while the popup's document
+      // request was held paused, which Chromium never answers: no popup.
+      const popup = await poll(
+        async () => admitted[0],
+        (value) => value !== undefined,
+      );
+      expect(popup).toBeDefined();
+      const loaded = await poll(
+        async () =>
+          (
+            await host.cdp().send<{ result: { value?: unknown } }>(
+              'Runtime.evaluate',
+              {
+                expression: 'location.href + "|" + document.readyState',
+                returnByValue: true,
+              },
+              popup.cdpSessionId,
+            )
+          ).result.value,
+        (value) => value === `http://127.0.0.1:${devPort}/adopted|complete`,
+      );
+      expect(loaded).toBe(`http://127.0.0.1:${devPort}/adopted|complete`);
+      expect(await href()).toBe(`http://127.0.0.1:${devPort}/opener`);
+    } finally {
+      off();
+      for (const target of admitted)
+        await host.closeTarget(target.targetId).catch(() => {});
+    }
+  });
+
   test('round 2: a target=_blank rel=noopener link loads in the same tab, not dropped', async (ctx) => {
     if (!executablePath || !raw) return ctx.skip(SKIP_REASON);
     await gotoDev('/noopener');

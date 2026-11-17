@@ -293,6 +293,7 @@ function harness(
   previewOptions: {
     requireRestrictedWebRtc?: boolean;
     faviconEnabled?: () => boolean;
+    popupAdoptionTimeoutMs?: number;
   } = {},
 ) {
   const fake = fakeTransport(respond, hooks);
@@ -627,6 +628,172 @@ describe('ChromiumServerHost with a fake browser', () => {
       host.cdp().send('Page.reload', {}, 'S-POST'),
     ).rejects.toThrow();
   });
+
+  test("an adopted popup's held document request continues before the setup that needs its document", async () => {
+    // Chromium does not answer Page.enable on a popup while the popup's own
+    // document request is held paused; it answers once that request is let
+    // through. Waiting on Page.enable before continuing it deadlocked.
+    let continued!: () => void;
+    const requestContinued = new Promise<void>((r) => {
+      continued = r;
+    });
+    const { host, profileDir, emit, calls } = harness((call) => {
+      if (
+        call.method === 'Fetch.continueRequest' &&
+        (call.params as { requestId?: string }).requestId === 'pop-request'
+      )
+        continued();
+      if (call.method === 'Page.enable' && call.sessionId === 'S-POP')
+        return requestContinued.then(() => ({}));
+      return {};
+    });
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const adopted = vi.fn(() => true);
+    host.onPopup(adopted);
+    const closed = vi.fn();
+    host.onTargetClosed(closed);
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'POP', type: 'page', url: '', openerId: 'T1' },
+    });
+    emit('Fetch.requestPaused', {
+      requestId: 'pop-request',
+      request: { url: 'https://example.com/pop' },
+      resourceType: 'Document',
+      frameId: 'POP',
+    });
+    await vi.waitFor(
+      () =>
+        expect(calls).toContainEqual({
+          method: 'Emulation.setDeviceMetricsOverride',
+          params: { ...VIEWPORT, mobile: false },
+          sessionId: 'S-POP',
+        }),
+      { timeout: 2_000 },
+    );
+    expect(adopted).toHaveBeenCalledExactlyOnceWith(
+      'T1',
+      { targetId: 'POP', cdpSessionId: 'S-POP' },
+      'https://example.com/pop',
+    );
+    // Setup finished (above) only because the request was let go first.
+    expect(calls).toContainEqual({
+      method: 'Fetch.continueRequest',
+      params: { requestId: 'pop-request' },
+      sessionId: undefined,
+    });
+    expect(calls).not.toContainEqual({
+      method: 'Target.closeTarget',
+      params: { targetId: 'POP' },
+      sessionId: undefined,
+    });
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  test('an adopted popup that is closed is not folded or adopted again by its late events', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const adopted = vi.fn(() => true);
+    host.onPopup(adopted);
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'GONE', type: 'page', url: '', openerId: 'T1' },
+    });
+    emit('Fetch.requestPaused', {
+      requestId: 'gone-request',
+      request: { url: 'https://example.com/gone' },
+      resourceType: 'Document',
+      frameId: 'GONE',
+    });
+    await vi.waitFor(() => expect(adopted).toHaveBeenCalledTimes(1));
+    await flush();
+    await host.closeTarget('GONE');
+    // Chromium still reports the closing target, with its opener and URL.
+    emit('Target.targetInfoChanged', {
+      targetInfo: {
+        targetId: 'GONE',
+        type: 'page',
+        url: 'https://example.com/gone',
+        openerId: 'T1',
+      },
+    });
+    await flush();
+    expect(adopted).toHaveBeenCalledTimes(1);
+    expect(calls.filter((c) => c.method === 'Page.navigate')).toEqual([]);
+    expect(
+      calls.filter((c) => c.method === 'Target.attachToTarget').length,
+    ).toBe(2);
+  });
+
+  for (const stall of ['attach', 'setup'] as const)
+    test(`a popup whose ${stall} never answers is closed, its request failed or let go, and its tab slot released`, async () => {
+      const never = new Promise<void>(() => {});
+      const { host, profileDir, emit, calls } = harness(
+        (call) =>
+          stall === 'setup' &&
+          call.method === 'Page.enable' &&
+          call.sessionId === 'S-STUCK'
+            ? never
+            : {},
+        stall === 'attach'
+          ? {
+              beforeAttach: () => {
+                attaching += 1;
+                return attaching > 1 ? never : Promise.resolve();
+              },
+            }
+          : {},
+        { popupAdoptionTimeoutMs: 100 },
+      );
+      let attaching = 0;
+      await host.openTarget({ profileDir, viewport: VIEWPORT });
+      host.onPopup(() => true);
+      emit('Target.targetCreated', {
+        targetInfo: {
+          targetId: 'STUCK',
+          type: 'page',
+          url: '',
+          openerId: 'T1',
+        },
+      });
+      emit('Fetch.requestPaused', {
+        requestId: 'stuck-request',
+        request: { url: 'https://example.com/stuck' },
+        resourceType: 'Document',
+        frameId: 'STUCK',
+      });
+      await vi.waitFor(
+        () =>
+          expect(calls).toContainEqual({
+            method: 'Target.closeTarget',
+            params: { targetId: 'STUCK' },
+            sessionId: undefined,
+          }),
+        { timeout: 2_000 },
+      );
+      // Refused before admission: the held request is failed, never loaded.
+      if (stall === 'attach')
+        expect(calls).toContainEqual({
+          method: 'Fetch.failRequest',
+          params: {
+            requestId: 'stuck-request',
+            errorReason: 'BlockedByClient',
+          },
+          sessionId: undefined,
+        });
+      // The slot is released: an untracked page is no longer kept waiting
+      // behind an adoption that will never finish.
+      emit('Target.targetCreated', {
+        targetInfo: { targetId: 'STRAY', type: 'page', url: 'about:blank' },
+      });
+      await vi.waitFor(
+        () =>
+          expect(calls).toContainEqual({
+            method: 'Target.closeTarget',
+            params: { targetId: 'STRAY' },
+            sessionId: undefined,
+          }),
+        { timeout: 3_000 },
+      );
+    });
 
   test('a popup finishing attachment after its opener closes is refused and its request fails', async () => {
     let unblock = () => {};

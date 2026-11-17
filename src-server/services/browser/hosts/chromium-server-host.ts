@@ -242,6 +242,22 @@ export const BEST_EFFORT_DENIED_PERMISSIONS = [
 
 const POPUP_URL_GRACE_MS = 3_000;
 
+/**
+ * How long a popup may take to be adopted (attached, admitted, set up)
+ * before it is closed and its tab slot released.
+ */
+const POPUP_ADOPTION_TIMEOUT_MS = 15_000;
+
+/** One popup adoption: how it reports admission, and how it is abandoned. */
+interface PopupAttempt {
+  /** Settles the popup's held document request: continue or fail. */
+  admit(accepted: boolean): void;
+  /** Set once the adoption timed out: it must not admit after that. */
+  abandoned: boolean;
+  /** Releases its in-flight tab slot (`creating`); idempotent. */
+  release(): void;
+}
+
 /** A launch failure recognised from the browser's own stderr. */
 export type ChromiumLaunchFailure = 'sandbox-unavailable';
 
@@ -407,6 +423,8 @@ export interface ChromiumServerHostOptions {
   egress?: { lookup?: EgressLookup };
   launcher?: ChromiumLauncher;
   launchTimeoutMs?: number;
+  /** Test seam: how long a popup adoption may take. */
+  popupAdoptionTimeoutMs?: number;
   /** Diagnostics sink for non-fatal enforcement events. */
   onEvent?: (event: ChromiumHostEvent) => void;
 }
@@ -783,6 +801,11 @@ interface Running {
   created: Set<string>;
   /** Page targets awaiting the untracked-target check. */
   pendingUntracked: Map<string, NodeJS.Timeout>;
+  /**
+   * Targets this host closed, until the browser reports them destroyed:
+   * their late events are neither a new popup nor an untracked page.
+   */
+  closing: Set<string>;
   /** Each target's current main-frame page-world script context. */
   mainWorlds: Map<string, { id: number; uniqueId: string }>;
 }
@@ -1044,6 +1067,7 @@ export class ChromiumServerHost implements BrowserHost {
     target?.unsubscribe();
     running.targets.delete(targetId);
     running.created.delete(targetId);
+    running.closing.add(targetId);
     this.closeDiagnostic(targetId, origin, 'sent');
     try {
       await running.launch.transport.send('Target.closeTarget', { targetId });
@@ -1236,6 +1260,7 @@ export class ChromiumServerHost implements BrowserHost {
       creating: 0,
       created: new Set(),
       pendingUntracked: new Map(),
+      closing: new Set(),
       mainWorlds: new Map(),
     };
     void launch.exited.then((reason) => {
@@ -1598,6 +1623,7 @@ export class ChromiumServerHost implements BrowserHost {
         const targetId = (params as { targetId?: unknown })?.targetId;
         if (typeof targetId !== 'string') return;
         this.closeDiagnostic(targetId, 'unknown', 'destroyed');
+        running.closing.delete(targetId);
         const target = running.targets.get(targetId);
         target?.unsubscribe();
         running.targets.delete(targetId);
@@ -1710,7 +1736,12 @@ export class ChromiumServerHost implements BrowserHost {
       .targetInfo;
     if (info?.type !== 'page' || typeof info.targetId !== 'string') return;
     const targetId = info.targetId;
-    if (running.targets.has(targetId) || running.created.has(targetId)) return;
+    if (
+      running.targets.has(targetId) ||
+      running.created.has(targetId) ||
+      running.closing.has(targetId)
+    )
+      return;
     const url = typeof info.url === 'string' ? info.url : '';
     let popup = running.popups.get(targetId);
     if (!popup) {
@@ -1793,16 +1824,32 @@ export class ChromiumServerHost implements BrowserHost {
     popup.folded = true;
     if (popup.timer) clearTimeout(popup.timer);
     if (this.popupListener) {
-      const adoption = this.adoptPopup(
-        running,
-        popupId,
-        popup.openerTargetId,
-        url,
+      // The popup's own document request stays paused until the popup is
+      // admitted or refused (`admitted`), never until its whole setup is
+      // done: Page.enable on the popup is not answered while that request
+      // is held, so waiting on it deadlocked every adoption.
+      let admit!: (accepted: boolean) => void;
+      const admitted = new Promise<boolean>((resolve) => {
+        admit = resolve;
+      });
+      const attempt: PopupAttempt = {
+        admit: (accepted) => admit(accepted),
+        abandoned: false,
+        release: () => {},
+      };
+      const adoption = withTimeout(
+        this.adoptPopup(running, popupId, popup.openerTargetId, url, attempt),
+        this.options.popupAdoptionTimeoutMs ?? POPUP_ADOPTION_TIMEOUT_MS,
+        'popup adoption',
       ).catch(async () => {
+        attempt.abandoned = true;
+        attempt.release();
         await this.closeTarget(popupId, 'popup-fold').catch(() => {});
         return false;
       });
-      running.popupAdoptions.set(popupId, adoption);
+      // A refusal or failure before admission fails the held request.
+      void adoption.then((accepted) => admit(accepted));
+      running.popupAdoptions.set(popupId, admitted);
       void adoption.finally(() => {
         running.popups.delete(popupId);
         running.popupAdoptions.delete(popupId);
@@ -1841,6 +1888,7 @@ export class ChromiumServerHost implements BrowserHost {
     targetId: string,
     openerTargetId: string,
     url: string | undefined,
+    attempt: PopupAttempt,
   ): Promise<boolean> {
     const opener = running.targets.get(openerTargetId);
     if (
@@ -1854,11 +1902,18 @@ export class ChromiumServerHost implements BrowserHost {
     }
     const transport = running.launch.transport;
     running.creating += 1;
+    let holding = true;
+    attempt.release = () => {
+      if (!holding) return;
+      holding = false;
+      running.creating -= 1;
+    };
     try {
       const { sessionId } = await transport.send<{ sessionId: string }>(
         'Target.attachToTarget',
         { targetId, flatten: true },
       );
+      if (attempt.abandoned) return false;
       this.linkDiagnosticTarget(targetId, sessionId);
       const unsubscribe = this.watchTarget(running, targetId, sessionId);
       running.targets.set(targetId, {
@@ -1866,6 +1921,23 @@ export class ChromiumServerHost implements BrowserHost {
         unsubscribe,
         viewport: { ...opener.viewport },
       });
+      if (
+        attempt.abandoned ||
+        this.running !== running ||
+        running.targets.get(openerTargetId) !== opener ||
+        !running.targets.has(targetId) ||
+        !this.popupListener?.(
+          openerTargetId,
+          { targetId, cdpSessionId: sessionId },
+          url,
+        )
+      ) {
+        await this.closeTarget(targetId);
+        return false;
+      }
+      // Admitted: its document request may load now, and the setup below
+      // (which needs that document) is answered.
+      attempt.admit(true);
       await transport.send('Page.enable', {}, sessionId);
       if (this.options.faviconEnabled?.() === true)
         await transport.send(
@@ -1884,22 +1956,9 @@ export class ChromiumServerHost implements BrowserHost {
           { enabled: true },
           sessionId,
         );
-      if (
-        this.running !== running ||
-        running.targets.get(openerTargetId) !== opener ||
-        !running.targets.has(targetId) ||
-        !this.popupListener?.(
-          openerTargetId,
-          { targetId, cdpSessionId: sessionId },
-          url,
-        )
-      ) {
-        await this.closeTarget(targetId);
-        return false;
-      }
-      return true;
+      return !attempt.abandoned;
     } finally {
-      running.creating -= 1;
+      attempt.release();
     }
   }
 

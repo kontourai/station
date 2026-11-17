@@ -38,7 +38,8 @@ adoption creates a separate session in the opener's profile and continues the
 original request; selecting a tab does not retarget an Agent's tools. Title and
 navigation observations confer no authority. The twelve-session profile bound
 includes live and opening sessions. Tab/popup fixture coverage does not establish
-a real-browser or external-provider journey.
+a real-browser or external-provider journey; the real-host suite's
+popup-admission case covers only the host's adoption of a popup.
 
 ## Threat model and decision
 
