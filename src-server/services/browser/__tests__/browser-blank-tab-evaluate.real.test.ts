@@ -17,8 +17,9 @@
  * one is there (the pinned Chrome for Testing), else an INSTALLED
  * Chrome/Edge; never a download. Hosted full regression binds the pinned
  * browser as `google-chrome` for the process-exclusive group, which is why
- * this file belongs to it. Without a browser every case reports an explicit skip; the survival case
- * also skips, naming the version, below Chrome 158.
+ * this file belongs to it. Without a browser every case reports an explicit
+ * skip; the survival case also skips below Chrome 158, and a line on stderr
+ * and the case titles name the browser it found.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
@@ -104,6 +105,18 @@ function majorVersion(executable: string): number | undefined {
 }
 const major = executablePath ? majorVersion(executablePath) : undefined;
 const ABORTING_MAJOR = 158;
+const BROWSER = executablePath
+  ? `major version ${major ?? 'unknown'} at ${executablePath}`
+  : 'none';
+const SURVIVAL_SKIP =
+  executablePath && (major === undefined || major < ABORTING_MAJOR)
+    ? `browser ${BROWSER}: the abort this guards against needs Chrome ${ABORTING_MAJOR} or later, so the survival case does not apply`
+    : undefined;
+// The default reporter shows only a count of skipped cases and none of what
+// a test logs through console; say why on the process's own stderr.
+for (const reason of executablePath ? [SURVIVAL_SKIP] : [SKIP_REASON])
+  if (reason)
+    process.stderr.write(`[browser-blank-tab-evaluate] skipped: ${reason}\n`);
 
 /** The action that aborts Chrome 158 on a site-less about:blank page. */
 const SANDBOXED_SRCDOC = `new Promise((resolve) => {
@@ -290,7 +303,7 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
     });
   }, 120_000);
 
-  test(`a navigation to about:blank between the check and the script: the script does not run there, and the browser keeps answering`, async (ctx) => {
+  test(`a navigation to about:blank between the check and the script: the script does not run there, and the browser keeps answering (browser: ${BROWSER})`, async (ctx) => {
     if (!executablePath) return ctx.skip(SKIP_REASON);
     const other = await open(fixtureUrl);
     const site = await open(`${fixtureUrl}race`);
@@ -335,12 +348,9 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
     expect(sessions.getSession(other)?.state).toBe('live');
   }, 120_000);
 
-  test('under Chrome 158 the refused trigger leaves the browser and its other tab answering', async (ctx) => {
+  test(`under Chrome ${ABORTING_MAJOR} the refused trigger leaves the browser and its other tab answering (browser: ${BROWSER})`, async (ctx) => {
     if (!executablePath) return ctx.skip(SKIP_REASON);
-    if (major === undefined || major < ABORTING_MAJOR)
-      return ctx.skip(
-        `the installed browser at ${executablePath} reports major version ${major ?? 'unknown'}; the abort this guards against needs Chrome ${ABORTING_MAJOR} or later`,
-      );
+    if (SURVIVAL_SKIP) return ctx.skip(SURVIVAL_SKIP);
     const other = await open(fixtureUrl);
     await answers(other);
     const blank = await open();
