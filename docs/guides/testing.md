@@ -37,7 +37,19 @@ of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 `npm run fallow:dead-code` prints Fallow's dead-code summary grouped by package
-for a quick local look; it reads no baseline and gates nothing.
+for a quick local look; it reads no baseline and gates nothing. Every fallow
+entry point waits for a [host heavy-check slot](#host-heavy-check-slots).
+
+`fallow audit` builds a full checkout of its base commit (about 380 MB here) in
+its temp directory. The audit runners give each run a private directory under
+a disk-backed cache, removed when the run ends, and remove any run directory
+older than an hour that a killed run left behind. The cache is
+`$XDG_CACHE_HOME/station/fallow` (when `XDG_CACHE_HOME` is absolute), else
+`~/.cache/station/fallow`, created owner-only; `STATION_FALLOW_CACHE_DIR`
+overrides it. It is never the system temp directory by default: where `/tmp` is
+tmpfs, a checkout there is RAM charged to the caller's memory limit (#5080).
+The raw `npm run fallow` and `npm run fallow:audit` commands run the analyzer
+directly, without that private directory.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -2274,6 +2286,21 @@ slot and then runs the script as the slot holder. These entry points use it:
 | Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
 | A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
 | Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
+| `node scripts/code-health-gate.mjs` (also a `ci:fast` step), started any way | `code-health-gate` |
+| `npm run veritas:fallow:advisory` (a Veritas readiness evidence check), `npm run audit:code-health` | `fallow audit`, `fallow audit --whole-tree` |
+| `npm run fallow:baseline`, `npm run fallow:ceiling` (not with `--report`) | `fallow:baseline`, `fallow:ceiling` |
+| `npm run fallow`, `npm run fallow:dead-code`, `npm run fallow:audit` | the script name |
+
+The code-health gate and the fallow runners take the slot themselves, so a
+direct `node scripts/<script>.mjs` queues like a package script. One `fallow
+audit` reached 5.1 GiB, and two worktrees running the gate at once got a
+Station engine OOM-killed ([#5080](https://github.com/kontourai/station/issues/5080)).
+`npm run docs:review:record` takes no slot. It is single-threaded bookkeeping:
+it snapshots the repository's review inputs, checks them, and writes the review
+ledger (measured on 2026-11-16: 41 s, 1.1 cores, 1.1 GiB peak for
+`--show-delta`). The slot is sized for checks that saturate about four cores
+and hold several GiB, and with one slot, a ledger write would wait behind a
+whole test run.
 
 - N is the smaller of one slot per four logical CPUs (floored) and one per
   8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.

@@ -310,3 +310,13 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
   background: currentColor;
   flex-shrink: 0;
 }
+/* When agent feedback sent a failing check to the agent: muted, beside
+   the row's own tools, always shown (not dimmed with them). */
+.pull-request-review__sent-time {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  white-space: nowrap;
+}
+.pull-request-review__sent-time time {
+  font-variant-numeric: tabular-nums;
+}
