@@ -7,7 +7,6 @@ import {
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { hostActionCopy } from '../host-action/host-action-copy';
 import { EngineInstallHint } from './EngineInstallHint';
-import { EngineInstallTerminal } from './EngineInstallTerminal';
 import { registryEntryDiscovery } from './registryEntryDiscovery';
 
 /**
@@ -72,21 +71,6 @@ function LiveRegistryEntryInstallHint({
             : undefined
         }
       />
-      {current.source === 'core' ? (
-        <EngineInstallTerminal
-          id={current.id}
-          onFinished={() => {
-            setRechecking(true);
-            void recheckACPConnectionRegistry()
-              .then((result) =>
-                setRecheckRefused(result.status === 'not-permitted'),
-              )
-              .catch(() => setRecheckRefused(true))
-              .then(() => refetch())
-              .finally(() => setRechecking(false));
-          }}
-        />
-      ) : null}
     </>
   );
 }

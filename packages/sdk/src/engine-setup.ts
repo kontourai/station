@@ -75,12 +75,9 @@ export function useEngineInstallTerminal(id: string, scope: ApiRequestScope) {
     previews.data?.some(
       (preview) => preview.id === 'guided-engine-setup' && preview.enabled,
     ) === true;
-  const retained =
-    queryClient.getQueryData<EngineInstallTerminalSetup>(queryKey)?.terminal;
   const query = useQuery({
     queryKey,
     queryFn: () => read(base(scope, id), scope, installSchema),
-    enabled: offered || !!retained,
     retry: false,
     gcTime: 0,
     refetchInterval: (value) =>

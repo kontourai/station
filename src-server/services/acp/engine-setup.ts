@@ -4,8 +4,12 @@ import {
   type ACPConnectionRegistryEntry,
   type ACPEngineSetupEntry,
   ACPStatus,
+  installRecipeForPlatform,
 } from '@kontourai/station-contracts/acp';
-import { namesSameExecutable } from './acp-engine-descriptors.js';
+import {
+  listValidatedACPRegistryEntries,
+  namesSameExecutable,
+} from './acp-engine-descriptors.js';
 import type { getACPManagerStatus } from './acp-manager-view.js';
 
 /** Project only setup facts; executable configuration stays with the human pane. */
@@ -87,4 +91,22 @@ export function engineSetupEntries(
               : 'connect',
     };
   });
+}
+
+/** Installer identity is projected by the server, including custom saved aliases. */
+export function engineInstallerFor(
+  connection: Pick<ACPConnectionConfig, 'command'>,
+) {
+  const match = listValidatedACPRegistryEntries().find(
+    (item) =>
+      item.builtin &&
+      namesSameExecutable(connection.command, item.entry.command) &&
+      installRecipeForPlatform(item.entry.install, process.platform),
+  );
+  return match
+    ? {
+        installerId: match.entry.id,
+        installerDetected: match.entry.detected === true,
+      }
+    : {};
 }

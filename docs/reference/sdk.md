@@ -6586,9 +6586,11 @@ caller supplies a captured `ApiRequestScope`.
 `@kontourai/station-sdk/engine-setup` exposes `useEngineInstallTerminal` and
 `useEngineStationTools` for the **Guided engine setup** preview. Both take an
 engine id and captured `ApiRequestScope`; cache keys partition host and
-credential authority. They reuse the canonical feature-preview query and do
-not read setup actions while the preview is off, except to follow a retained
-installation. An older host's 404 reads as unsupported.
+credential authority. They reuse the canonical feature-preview query. The
+installer hook reads status even when the preview is off, so a reloaded client
+can find and stop a retained installation; the server refuses a new installation
+while it is off. The tool-selection query runs only while the preview is on.
+An older host's 404 reads as unsupported.
 
 The installer hook reads the reviewed command and existing terminal, starts
 with `{ command, operationId }` only after the person confirms, and stops with

@@ -10,9 +10,13 @@ import { ErrorState, SkeletonBlock } from '../state';
 export function EngineInstallTerminal({
   id,
   onFinished,
+  installNeeded = true,
+  onRunningChange,
 }: {
   id: string;
   onFinished: () => void;
+  installNeeded?: boolean;
+  onRunningChange?: (running: boolean) => void;
 }) {
   const scope = useHostRequestAuthorityScope();
   return scope ? (
@@ -21,6 +25,8 @@ export function EngineInstallTerminal({
       id={id}
       scope={scope}
       onFinished={onFinished}
+      installNeeded={installNeeded}
+      onRunningChange={onRunningChange}
     />
   ) : null;
 }
@@ -28,8 +34,12 @@ function ScopedInstaller({
   id,
   scope,
   onFinished,
+  installNeeded,
+  onRunningChange,
 }: {
   id: string;
+  installNeeded: boolean;
+  onRunningChange?: (running: boolean) => void;
   scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
   onFinished: () => void;
 }) {
@@ -40,9 +50,15 @@ function ScopedInstaller({
     command: string;
     operationId: string;
   } | null>(null);
-  const observed = useRef<string | null>(null);
+  const activeTerminal = useRef<string | null>(null);
   const view = query.data;
   const terminal = view?.terminal;
+  const running =
+    terminal?.status === 'running' || terminal?.status === 'starting';
+  useEffect(() => {
+    onRunningChange?.(query.isPending || running);
+    return () => onRunningChange?.(false);
+  }, [query.isPending, running, onRunningChange]);
   useEffect(() => {
     if (
       start.error &&
@@ -53,17 +69,19 @@ function ScopedInstaller({
       start.reset();
   }, [terminal, start.error, start.reset]);
   useEffect(() => {
+    if (running && terminal) activeTerminal.current = terminal.terminalId;
     if (
       terminal?.status === 'exited' &&
       terminal.exitCode === 0 &&
-      observed.current !== terminal.terminalId
+      (activeTerminal.current === terminal.terminalId ||
+        request.current === terminal.operationId)
     ) {
-      observed.current = terminal.terminalId;
+      activeTerminal.current = null;
       request.current = null;
       onFinished();
     }
-  }, [terminal, onFinished]);
-  if (!offered && !terminal) return null;
+  }, [terminal, running, onFinished]);
+  if ((!offered && !terminal) || (!installNeeded && !running)) return null;
   if (query.isPending) return <SkeletonBlock />;
   if (query.isError)
     return (
@@ -73,8 +91,7 @@ function ScopedInstaller({
       />
     );
   if (!view) return null;
-  const running =
-    terminal?.status === 'running' || terminal?.status === 'starting';
+
   return (
     <div className="editor-field">
       <ConfirmModal
@@ -102,8 +119,7 @@ function ScopedInstaller({
       ) : (
         <>
           <p className="editor-help">
-            Run the reviewed command above on the Station computer and watch it
-            here.
+            Review and run this installer on the Station computer.
           </p>
           {running && view.canStop ? (
             <Button

@@ -41,7 +41,10 @@ import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-d
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
 import { forgetEngineAuthStatus } from '../../services/acp/engine-auth-status.js';
 import { engineCredentials } from '../../services/acp/engine-credentials.js';
-import { engineSetupEntries } from '../../services/acp/engine-setup.js';
+import {
+  engineInstallerFor,
+  engineSetupEntries,
+} from '../../services/acp/engine-setup.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import type { PublicAgentRegistrySource } from '../../services/acp/public-agent-registry.js';
 import {
@@ -511,6 +514,7 @@ function connectionStatusView(
 ) {
   return {
     ...cfg,
+    ...engineInstallerFor(cfg),
     ...(status.connections.find((s) => s.id === cfg.id) || {
       status: ACPStatus.UNAVAILABLE,
       modes: [],

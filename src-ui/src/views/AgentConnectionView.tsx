@@ -39,6 +39,7 @@ import { EngineStationTools } from '../components/acp-connections/EngineStationT
 import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
+import { EngineInstallTerminal } from '../components/engine-install/EngineInstallTerminal';
 import { PublicRegistryUpdateNotice } from '../components/engine-install/PublicRegistry';
 import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPanel';
 import { BrandIcon } from '../components/icons/BrandIcon';
@@ -481,6 +482,34 @@ export function AgentConnectionView({
   const visibleModels = runtimeCatalogVisibleModels(form);
   const reportedModelCount = visibleModels.length;
 
+  if (isAddRoute)
+    return (
+      <div className="engine-setup-flow">
+        <EngineAddFlow
+          initialChoiceId={addChoiceId}
+          catalogPending={catalogPending || registryPending}
+          catalogError={catalogError ?? registryError}
+          onRetryCatalog={() => {
+            void refetchCatalog();
+            void refetchRegistry();
+          }}
+          notConnected={notConnected}
+          connections={availableEngines}
+          commandEntries={availableCommandEntries}
+          onDone={(id) =>
+            onNavigate(
+              id
+                ? { type: 'connections-engine-edit', id }
+                : { type: 'connections-engines' },
+            )
+          }
+          onOpenEngine={(id) =>
+            onNavigate({ type: 'connections-engine-edit', id })
+          }
+        />
+      </div>
+    );
+
   return (
     <SplitPaneLayout
       paneId={CONNECTIONS_ENGINES_PANE_ID}
@@ -528,29 +557,6 @@ export function AgentConnectionView({
       listEmptyTitle="Add an engine to get started"
       listEmptyDescription="Detected and supported engines appear here once one is connected."
       emptyDescription="Select an engine to review its status and setup."
-      emptyContent={
-        isAddRoute ? (
-          <EngineAddFlow
-            initialChoiceId={addChoiceId}
-            catalogPending={catalogPending || registryPending}
-            catalogError={catalogError ?? registryError}
-            onRetryCatalog={() => {
-              void refetchCatalog();
-              void refetchRegistry();
-            }}
-            notConnected={notConnected}
-            connections={availableEngines}
-            commandEntries={availableCommandEntries}
-            onDone={() =>
-              onNavigate({ type: 'connections-engines' } as NavigationView)
-            }
-            onOpenEngine={(id) =>
-              onNavigate({ type: 'connections-engine-edit', id })
-            }
-          />
-        ) : undefined
-      }
-      unselectedDetailOpen={isAddRoute}
       searchPlaceholder="Search engines…"
     >
       {form && repair?.engine.connection.id !== selectedRuntimeId ? (
@@ -678,6 +684,18 @@ export function AgentConnectionView({
                 }
               />
             )}
+            {selectedAcpConnection?.installerId ? (
+              <EngineInstallTerminal
+                id={selectedAcpConnection.installerId}
+                installNeeded={
+                  selectedAcpConnection.installerDetected !== true &&
+                  selectedAcpConnection.status !== 'available'
+                }
+                onFinished={() => {
+                  void refetchRuntimes();
+                }}
+              />
+            ) : null}
             {selectedAcpConnectionId ? (
               <EngineStationTools connectionId={selectedAcpConnectionId} />
             ) : null}

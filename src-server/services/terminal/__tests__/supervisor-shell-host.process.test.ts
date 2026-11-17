@@ -199,6 +199,58 @@ describe('terminals as supervisor workloads (real PTYs)', () => {
     expect(calls).toEqual([{ op: 'capabilities' }]);
   });
 
+  it('rechecks authorization after a suspended lifetime negotiation before spawning', async () => {
+    const calls: WorkloadRequest[] = [];
+    let negotiating!: () => void;
+    const negotiationStarted = new Promise<void>((resolve) => {
+      negotiating = resolve;
+    });
+    let resume!: () => void;
+    const negotiated = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let authorized = true;
+    const host = new SupervisorShellHost({
+      requestWorkload: async (request) => {
+        calls.push(request);
+        if (request.op === 'capabilities') {
+          negotiating();
+          await negotiated;
+          return { maxRuntimeMs: true };
+        }
+        throw new Error(`Unexpected workload request: ${request.op}`);
+      },
+      onWorkloadEvent: () => () => {},
+    });
+    const result = host
+      .spawn({
+        terminalId: 'revoked',
+        cwd: makeTempDir('bounded-revoked-'),
+        cols: 80,
+        rows: 24,
+        journal: {
+          directory: makeTempDir('bounded-revoked-journal-'),
+          options: {},
+        },
+        maxRuntimeMs: 1000,
+        launch: { file: process.execPath, args: [] },
+        authorize: async () => {
+          if (!authorized) throw new Error('Owner authorization withdrawn');
+        },
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    await negotiationStarted;
+    authorized = false;
+    resume();
+    const error = await result;
+    expect(calls).toEqual([{ op: 'capabilities' }]);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toHaveProperty('message', 'Owner authorization withdrawn');
+  });
+
   it('keeps a shell running across a core restart: same pid, every record once, in order', async () => {
     const home = makeTempDir('workload-sessions-');
     const root = await realpath(makeTempDir('workload-root-'));

@@ -47,6 +47,8 @@ export interface FileSystemBrowseResult {
 
 export interface ACPConnectionInfo {
   id: string;
+  installerId?: string;
+  installerDetected?: boolean;
   name: string;
   icon?: string;
   command?: string;
@@ -702,6 +704,9 @@ export function useCheckACPConnectionMutation(
     mutationFn: async (id) => checkACPConnection(id),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
       queryClient.invalidateQueries({
         queryKey: ['acp-unregistered-connections'],
       });
@@ -772,6 +777,9 @@ export function useCreateACPConnectionMutation(
     mutationFn: async (data) => createACPConnection(data),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
       queryClient.invalidateQueries({
         queryKey: ['acp-unregistered-connections'],
       });
@@ -809,6 +817,9 @@ export function useInstallACPConnectionRegistryEntryMutation(
         : installACPConnectionRegistryEntry(request.id, request.confirmCommand),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
       queryClient.invalidateQueries({
         queryKey: ['acp-unregistered-connections'],
       });
@@ -838,6 +849,9 @@ export function useUpdateACPConnectionMutation(
     mutationFn: async ({ id, updates }) => updateACPConnection(id, updates),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
       queryClient.invalidateQueries({
         queryKey: ['acp-unregistered-connections'],
       });
@@ -857,6 +871,9 @@ export function useDeleteACPConnectionMutation(
     mutationFn: async (id: string) => deleteACPConnection(id),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
+      queryClient.invalidateQueries({ queryKey: ['connections'] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
       queryClient.invalidateQueries({
         queryKey: ['acp-unregistered-connections'],
       });
@@ -884,6 +901,8 @@ export function useReconnectACPConnectionMutation(
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['acp-connections'] });
+      queryClient.invalidateQueries({ queryKey: ['engine-setup'] });
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
       queryClient.invalidateQueries({
         queryKey: ['acp-unregistered-connections'],
       });

@@ -427,7 +427,7 @@ export function ACPConnectionSetupStatus({
   if (stage === 'result' && label) {
     const detail =
       label === 'Ready'
-        ? 'This engine is ready to use.'
+        ? null
         : label === 'Setup required'
           ? "Station saved this engine but couldn't connect. Its agent appears once it connects."
           : label === 'Off'
@@ -436,7 +436,7 @@ export function ACPConnectionSetupStatus({
     return (
       <div className="acp-add-dialog__result" role="status" aria-live="polite">
         <strong>{label}</strong>
-        <span>{detail}</span>
+        {detail ? <span>{detail}</span> : null}
         {label !== 'Ready' && reason && (
           <>
             <span className="acp-add-dialog__result-reason">

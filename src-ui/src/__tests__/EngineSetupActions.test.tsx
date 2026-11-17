@@ -47,9 +47,32 @@ function mount(component: React.ReactElement) {
     <QueryClientProvider client={client}>{component}</QueryClientProvider>,
   );
 }
-function serve(repairNeeded = false, loseInstallResponse = false) {
+function serve({
+  repairNeeded = false,
+  loseInstallResponse = false,
+  previewEnabled = true,
+  existingTerminal = false,
+  completedTerminal = false,
+}: {
+  repairNeeded?: boolean;
+  loseInstallResponse?: boolean;
+  previewEnabled?: boolean;
+  existingTerminal?: boolean;
+  completedTerminal?: boolean;
+} = {}) {
   const calls: Array<{ path: string; method: string; body?: string }> = [];
-  let terminal: Record<string, unknown> | null = null;
+  let terminal: Record<string, unknown> | null =
+    existingTerminal || completedTerminal
+      ? {
+          projectSlug: '.engine-install',
+          projectId: '.engine-install',
+          bindingKey: 'install:antigravity',
+          terminalId: '51d5b28e-d89a-4aba-99f9-063f854a2958',
+          operationId: '00000000-0000-4000-8000-000000000001',
+          status: completedTerminal ? 'exited' : 'running',
+          exitCode: completedTerminal ? 0 : null,
+        }
+      : null;
   let selected = false;
   setClientCredentialResolver(() => ({
     origin: owner.apiBase,
@@ -64,7 +87,7 @@ function serve(repairNeeded = false, loseInstallResponse = false) {
       });
       let data: unknown;
       if (path === '/api/feature-previews')
-        data = [{ id: 'guided-engine-setup', enabled: true }];
+        data = [{ id: 'guided-engine-setup', enabled: previewEnabled }];
       else if (path.endsWith('/install-terminal')) {
         if (method === 'POST')
           terminal = {
@@ -85,7 +108,7 @@ function serve(repairNeeded = false, loseInstallResponse = false) {
             ? {
                 name: 'Google Antigravity',
                 command: 'reviewed-installer',
-                allowed: true,
+                allowed: previewEnabled,
                 canStop: true,
                 terminal,
               }
@@ -181,7 +204,7 @@ test('Station tools are an explicit choice and remain separate from engine readi
 });
 
 test('recommended setup is reviewed and fixes the existing connection before Station tools are offered', async () => {
-  const calls = serve(true);
+  const calls = serve({ repairNeeded: true });
   mount(<EngineStationTools connectionId="legacy-agy" />);
   fireEvent.click(
     await screen.findByRole('button', { name: 'Use recommended setup' }),
@@ -203,7 +226,7 @@ test('recommended setup is reviewed and fixes the existing connection before Sta
 });
 
 test('a lost installer response is reconciled by reading status without sending another install', async () => {
-  const calls = serve(false, true);
+  const calls = serve({ loseInstallResponse: true });
   mount(<EngineInstallTerminal id="antigravity" onFinished={vi.fn()} />);
   fireEvent.click(
     await screen.findByRole('button', {
@@ -220,4 +243,37 @@ test('a lost installer response is reconciled by reading status without sending 
   expect(
     await screen.findByRole('button', { name: 'Stop installation' }),
   ).toBeTruthy();
+});
+
+test('a fresh pane with the preview off still discovers an existing installer and offers Stop', async () => {
+  const calls = serve({ previewEnabled: false, existingTerminal: true });
+  mount(<EngineInstallTerminal id="antigravity" onFinished={vi.fn()} />);
+  expect(
+    await screen.findByRole('button', { name: 'Stop installation' }),
+  ).toBeTruthy();
+  expect(
+    calls.some(
+      (call) =>
+        call.path.endsWith('/install-terminal') && call.method === 'GET',
+    ),
+  ).toBe(true);
+  expect(
+    screen.queryByRole('button', {
+      name: 'Install Google Antigravity on Station',
+    }),
+  ).toBeNull();
+});
+
+test('returning to a completed installer does not restart engine checks', async () => {
+  serve({ completedTerminal: true });
+  const finished = vi.fn();
+  mount(
+    <EngineInstallTerminal
+      id="antigravity"
+      installNeeded={false}
+      onFinished={finished}
+    />,
+  );
+  await waitFor(() => expect(clients[0].isFetching()).toBe(0));
+  expect(finished).not.toHaveBeenCalled();
 });

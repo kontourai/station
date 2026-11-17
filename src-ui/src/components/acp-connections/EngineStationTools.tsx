@@ -64,13 +64,18 @@ function ScopedTools({
           Use recommended setup
         </Button>
       ) : null}
-      <span className="editor-label">Station tools</span>
-      <p className="editor-help">
-        Let this Agent use Station Control, Knowledge and Docs. Its approval
-        rules stay in place.
-      </p>
+      {!view.selected ? (
+        <>
+          <span className="editor-label">Station tools</span>
+          <p className="editor-help">
+            Let this Agent work with your Station chats, knowledge and docs.
+          </p>
+        </>
+      ) : null}
       {view.selected ? (
-        <p role="status">Station tools selected for new chats.</p>
+        <p className="editor-help" role="status">
+          Station tools selected for new chats.
+        </p>
       ) : view.supported ? (
         <Button pending={enable.isPending} onClick={() => enable.mutate()}>
           Add Station tools

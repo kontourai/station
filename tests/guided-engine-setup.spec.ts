@@ -1,6 +1,12 @@
 import { copyFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { AgentMetadata } from '@kontourai/station-contracts/agent';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { expect } from '@playwright/test';
+import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { test } from './helpers/fixture-audit';
 
 // Fixture-backed UI flow. Real installer process ownership and profile writes
@@ -33,11 +39,35 @@ for (const width of [390, 1440]) {
         currentModel: null,
         capabilities: { mcpCapabilities: { http: true } },
       };
+      const engine = agentConnectionFixture({
+        id: 'antigravity',
+        name: 'Google Antigravity',
+        type: 'acp',
+        config: { executionClass: 'connected' },
+      });
       const json = (data: unknown) => ({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ success: true, data }),
       });
+      await page.route('**/api/connections/agents', (route) =>
+        route.fulfill(json(connected ? [engine] : [])),
+      );
+      await page.route('**/api/connections/agents/catalog', (route) =>
+        route.fulfill(json([])),
+      );
+      await page.route('**/api/connections/antigravity', (route) =>
+        route.fulfill(json(engine)),
+      );
+      const agent: AgentMetadata = {
+        slug: agentId('antigravity'),
+        name: 'Google Antigravity',
+        updatedAt: '2026-11-17T00:00:00.000Z',
+        execution: { agentConnectionId: engineConnectionId('antigravity') },
+      };
+      await page.route('**/api/agents', (route) =>
+        route.fulfill(json(connected ? [agent] : [])),
+      );
       await page.route('**/api/feature-previews', (route) =>
         route.fulfill(json([{ id: 'guided-engine-setup', enabled: true }])),
       );
@@ -98,7 +128,61 @@ for (const width of [390, 1440]) {
           );
         },
       );
-      await page.goto('/connections/engines/new/antigravity');
+      await page.route('**/acp/connections/antigravity/sign-in', (route) =>
+        route.fulfill(
+          json({
+            connectionId: 'antigravity',
+            engineName: 'Google Antigravity',
+            status: { state: 'unknown', source: 'none', checkable: false },
+            methods: [],
+            credentials: [],
+            allowed: { signIn: true, terminal: true },
+          }),
+        ),
+      );
+      const capture = async (stage: string) => {
+        const name = `${stage}-${width}-${theme}.png`;
+        const path = testInfo.outputPath(name);
+        await page.screenshot({
+          path: testInfo.outputPath(name),
+          fullPage: true,
+          animations: 'disabled',
+        });
+        if (process.env.STATION_GUIDED_SETUP_CAPTURE_DIR) {
+          await mkdir(process.env.STATION_GUIDED_SETUP_CAPTURE_DIR, {
+            recursive: true,
+          });
+          await copyFile(
+            path,
+            join(process.env.STATION_GUIDED_SETUP_CAPTURE_DIR, name),
+          );
+        }
+      };
+      await page.goto('/connections/engines');
+      await page
+        .getByRole('button', { name: 'Add engine', exact: true })
+        .click();
+      await expect(page).toHaveURL(/\/connections\/engines\/new$/);
+      await expect(
+        page.getByRole('heading', { name: 'Choose an engine' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('button', {
+          name: 'Set up Google Antigravity',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.getByRole('searchbox', { name: 'Find an engine' }).fill('agy');
+      await expect(
+        page.getByRole('button', {
+          name: 'Set up Google Antigravity',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await capture('chooser');
+      await page
+        .getByRole('button', { name: 'Set up Google Antigravity', exact: true })
+        .click();
       await expect(
         page.getByRole('heading', { name: 'Connect Google Antigravity' }),
       ).toBeVisible();
@@ -110,20 +194,13 @@ for (const width of [390, 1440]) {
       });
       await expect(review.getByText(/reviewed-installer/)).toBeVisible();
       await expect.poll(() => installerStarts).toBe(0);
-      await page.screenshot({
-        path: testInfo.outputPath(`installer-review-${width}-${theme}.png`),
-        fullPage: true,
-      });
-      if (process.env.STATION_GUIDED_SETUP_CAPTURE_DIR) {
-        await mkdir(process.env.STATION_GUIDED_SETUP_CAPTURE_DIR, {
-          recursive: true,
-        });
-        const name = `installer-review-${width}-${theme}.png`;
-        await copyFile(
-          testInfo.outputPath(name),
-          join(process.env.STATION_GUIDED_SETUP_CAPTURE_DIR, name),
-        );
-      }
+      const box = await review.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(900);
+      await capture('installer-review');
       await review.getByRole('button', { name: 'Cancel', exact: true }).click();
       await page
         .getByRole('button', { name: 'Check again for Google Antigravity' })
@@ -135,7 +212,7 @@ for (const width of [390, 1440]) {
         })
         .click();
       await expect(
-        page.getByText('This engine is ready to use.'),
+        page.getByRole('status').filter({ hasText: /^Ready$/ }),
       ).toBeVisible();
       await page
         .getByRole('button', { name: 'Add Station tools', exact: true })
@@ -155,20 +232,20 @@ for (const width of [390, 1440]) {
           ),
         )
         .toBe(true);
-      await page.screenshot({
-        path: testInfo.outputPath(`station-tools-${width}-${theme}.png`),
-        fullPage: true,
-      });
-      if (process.env.STATION_GUIDED_SETUP_CAPTURE_DIR) {
-        await mkdir(process.env.STATION_GUIDED_SETUP_CAPTURE_DIR, {
-          recursive: true,
-        });
-        const name = `station-tools-${width}-${theme}.png`;
-        await copyFile(
-          testInfo.outputPath(name),
-          join(process.env.STATION_GUIDED_SETUP_CAPTURE_DIR, name),
-        );
-      }
+      await capture('station-tools');
+      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await expect(page).toHaveURL(/\/connections\/engines\/antigravity$/);
+      await expect(
+        page.getByRole('heading', { name: 'Google Antigravity', exact: true }),
+      ).toBeVisible();
+      if (width === 390)
+        await page.getByRole('button', { name: 'Back to list' }).click();
+      await expect(
+        page
+          .locator('.split-pane__list')
+          .getByText('Google Antigravity', { exact: true }),
+      ).toBeVisible();
+      await capture('connected-engine');
     });
   }
 }

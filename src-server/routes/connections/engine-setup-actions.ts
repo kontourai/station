@@ -163,7 +163,7 @@ export function createEngineSetupActionsRoutes(deps: {
     });
     const allowed = watching && offered;
     const records = watching
-      ? await terminals!.list(c.req.raw, installScope(found.entry.id))
+      ? await terminals!.list(c.req.raw, installScope(found.entry.command))
       : [];
     if (!offered && records.length === 0) return guard(c);
     return c.json({
@@ -199,7 +199,16 @@ export function createEngineSetupActionsRoutes(deps: {
         },
         400,
       );
-    return queue.run(c.req.param('id'), async () => {
+    const initial = recipe(c.req.param('id'));
+    if (!initial)
+      return c.json(
+        {
+          success: false,
+          error: 'No supported installer is available for this engine.',
+        },
+        404,
+      );
+    return queue.run(initial.entry.command, async () => {
       const refused = guard(c);
       if (refused) return refused;
       const found = recipe(c.req.param('id'));
@@ -234,7 +243,7 @@ export function createEngineSetupActionsRoutes(deps: {
           },
           503,
         );
-      const scope = installScope(found.entry.id);
+      const scope = installScope(found.entry.command);
       const records = await terminals.list(c.req.raw, scope);
       const previous = records.find(
         (record) => record.operationId === parsed.data.operationId,
@@ -349,10 +358,13 @@ export function createEngineSetupActionsRoutes(deps: {
     const terminals = deps.terminals();
     if (!terminals || !recipe(id))
       return c.json({ success: false, error: 'Installer not found.' }, 404);
-    return queue.run(id, async () => {
+    const installer = recipe(id)!;
+    return queue.run(installer.entry.command, async () => {
       const refused = guard(c, true);
       if (refused) return refused;
-      const selected = (await terminals.list(c.req.raw, installScope(id))).find(
+      const selected = (
+        await terminals.list(c.req.raw, installScope(installer.entry.command))
+      ).find(
         (record) =>
           record.terminalId === target.data.terminalId &&
           record.operationId === target.data.operationId,
@@ -361,7 +373,11 @@ export function createEngineSetupActionsRoutes(deps: {
         selected &&
         (selected.status === 'running' || selected.status === 'starting')
       )
-        await terminals.close(c.req.raw, installScope(id), selected.terminalId);
+        await terminals.close(
+          c.req.raw,
+          installScope(installer.entry.command),
+          selected.terminalId,
+        );
       return c.json({ success: true, data: null });
     });
   });
