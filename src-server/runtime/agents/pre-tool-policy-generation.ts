@@ -120,8 +120,16 @@ export type PreToolPolicyGenerationState = 'current' | 'settling' | 'replaced';
  *   resolved Agent definition the adapter was started from (each tool
  *   server's resolved command, args, endpoint and transport, its existence,
  *   `enabled` and disabled tools, Project and connection-default tool
- *   servers, plugin-provided integrations, skills, grants, prompt); the engine
- *   connection the session runs on.
+ *   servers, plugin-provided integrations, skills, grants, prompt); the tool
+ *   servers an ACP-family launch resolves itself from its connection
+ *   (`provideToolServers`, `mcpMode: 'add'`, OpenCode native MCP); the engine
+ *   connection (Claude/Codex connection config, proxy launch, active
+ *   credential profile; the ACP connection record without presentation).
+ *   Excluded as binding nothing: recovery bookkeeping, probe timestamps, the
+ *   order of set-valued arrays.
+ * - Neither (decided): OAuth tokens for remote tool servers, minted per
+ *   session; the engine executable path; Station's own per-session server
+ *   credentials, checked by those servers per call.
  * - Read per call: Project tool policy (Tool Library), unattended grants,
  *   integration trust and the untrusted-content ledger, config protection,
  *   tool-name provenance.
