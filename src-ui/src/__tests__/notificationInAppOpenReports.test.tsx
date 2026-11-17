@@ -93,6 +93,41 @@ describe('in-app opens of a notification target', () => {
     );
   });
 
+  test("an agent's linked notification reports a conversation that is gone", async () => {
+    // The envelope AgentNotificationGate writes when notify_user names a link.
+    const notification: Pick<Notification, 'id' | 'metadata'> = {
+      id: 'n-2',
+      metadata: {
+        envelope: {
+          v: 1,
+          source: {
+            kind: 'agent',
+            sessionId: 'agent-session',
+            agent: 'builder',
+            assurance: 'bound',
+          },
+          audience: { kind: 'session-readers', sessionId: 'agent-session' },
+          urgency: 'attention',
+          target: {
+            kind: 'path',
+            path: '/?chat=gone-from-agent-link&dock=open',
+          },
+          interrupt: 'default',
+        },
+      },
+    };
+    await act(async () => {
+      await activateNotification(notification);
+    });
+    expect(navigationStore.getSnapshot().activeChat).toBe(
+      'gone-from-agent-link',
+    );
+    dockOpensUrlChat();
+    await waitFor(() =>
+      expect(getNotificationOpenNotice()).toEqual({ kind: 'not-found' }),
+    );
+  });
+
   test('an ordinary chat link that is gone still clears quietly (#1582)', async () => {
     navigationStore.navigate('/', { chat: 'draft-never-saved', dock: 'open' });
     dockOpensUrlChat();
