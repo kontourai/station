@@ -4574,13 +4574,34 @@ function channelNavigationScreens(): Screen[] {
  * continuation pending in this tab.
  */
 const PROJECT_LIBRARY_SCENES = ['library', 'setup'] as const;
+const PROJECT_LIBRARY_DESKTOP_PAGE = {
+  width: DESKTOP.width,
+  height: 2500,
+} as const;
+const PROJECT_SETUP_DESKTOP_PAGE = {
+  width: DESKTOP.width,
+  height: 1000,
+} as const;
 
 function projectLibraryScreens(): Screen[] {
   return PROJECT_LIBRARY_SCENES.flatMap((scene) =>
     (['dark', 'light'] as const).flatMap((theme) =>
-      [DESKTOP, MOBILE].map((viewport): Screen => {
-        const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
-        const slug = `gallery-${scene}-${theme}-${viewport.width}`;
+      [DESKTOP, MOBILE].map((device): Screen => {
+        const width = device.width === DESKTOP.width ? 'desktop' : 'mobile';
+        // Like the channel list's PHONE_PAGE: the collapsed dock overlays the
+        // bottom band of the page's scrollport, so in a 900px or 844px frame
+        // some control of these pages always sits behind it. Each frame is
+        // tall enough for the whole page, whose end carries the shell's dock
+        // clearance. The Library on a phone already ends clear of the dock.
+        const viewport =
+          scene === 'library'
+            ? device === DESKTOP
+              ? PROJECT_LIBRARY_DESKTOP_PAGE
+              : device
+            : device === DESKTOP
+              ? PROJECT_SETUP_DESKTOP_PAGE
+              : PHONE_PAGE;
+        const slug = `gallery-${scene}-${theme}-${device.width}`;
         const previewId =
           scene === 'library' ? 'project-library' : 'continue-in-project';
         let request: ReturnType<typeof createAuthenticatedE2ERequest>;

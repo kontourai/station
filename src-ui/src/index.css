@@ -4082,8 +4082,8 @@ button.background-tasks-banner:focus-visible {
 }
 
 /* archive#1301: visually-hidden live-region sibling
-   for the button variant above — same clip technique as Checkbox.css's
-   `.cb__input` / `.composer-mode-sheet__option-input`. Carries the
+   for the button variant above — same clip technique as
+   `.composer-mode-sheet__option-input`. Carries the
    `role="status"` this text's screen-reader auto-announcement depends on,
    which a `<button>` cannot also carry. */
 
@@ -9451,8 +9451,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     calc(var(--k-space-1) + var(--k-space-3) / 2) 0;
 }
 
-/* Visually-hidden native radio input (same clip technique as Checkbox.css's
-   `.cb__input`) — the label carries the visible row styling; the input
+/* Visually-hidden native radio input (1px clip) — the label carries the
+   visible row styling; the input
    supplies real radio semantics/keyboard behavior. */
 .composer-mode-sheet__option-input {
   position: absolute;
