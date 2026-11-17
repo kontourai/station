@@ -1717,9 +1717,27 @@ That home therefore also supplies the continued process's account/configuration.
 Claude continuation requires the source home to match the SDK's globally
 configured home; an independently overridden observation root is not enough.
 Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
-the engine's default home directory. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+the engine's default home directory. Codex observation also reads the homes
+Station runs Codex in ([`configuredEngineHomes`](../../src-server/providers/app-home/credential-profile-env.ts):
+the connection's config home, the legacy app home and every credential-profile
+home), unless `STATION_EXTERNAL_CODEX_SOURCE_ROOT` is set. Each home has its
+own source affinity and thread ids, so continuation resumes in the home the
+rollout was found in, with a credential profile's env overlay applied
+(`credentialProfileEnvForHome`; an invalid overlay refuses the continuation, and so does an app home that is no current profile's, the legacy app home or the connection's config home, such as a deleted profile's).
+A native session id present in two homes is two threads, one per home. Each
+home reads its own newest 128 rollouts, up to 512 in all, default home first.
+An affinity resolves only for a currently configured home; on a miss the home
+list is re-read once, so a continuation right after a restart does not wait
+for discovery. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 selects the folder holding OpenCode's session database for observation only;
-OpenCode sessions have no continuation. See the
+OpenCode sessions have no continuation. With
+`STATION_EXTERNAL_ACP_SESSIONS=1`, the
+[ACP session list source](../../src-server/providers/sessions/acp-session-list-source.ts)
+lists the sessions an ACP connection reports through `session/list`, read by
+the capability probe Station already runs per connection
+([`acp-session-listing.ts`](../../src-server/services/acp/acp-session-listing.ts)).
+It imports no transcript, because `session/load` resumes the session in the
+agent, and ACP declares `externalSessionContinuation: unsupported`. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
 [Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 
@@ -1875,7 +1893,12 @@ that file is the source of truth for shapes, not this doc.
 
 For paging through a live-growing event log without re-fetching everything, use
 `GET /api/orchestration/sessions/:threadId/event-page?afterSequence=<n>&limit=<1-100>`,
-which returns `{ session, events: {sequence, event}[], hasMore, nextSequence }`.
+which returns `{ session, events: {sequence, event}[], hasMore, nextSequence, highWaterSequence }`.
+`sequence` is the thread's own ordinal. Sequences are increasing but need not be
+contiguous, so `session.eventCount` counts events and does not bound a cursor.
+`highWaterSequence` is the thread's highest sequence, read with the page; a
+cursor above it is ahead of the history. Hosts before #5077 omit it; their
+sequences have no gaps, so `session.eventCount` is their high water.
 
 **A polling gotcha:** if you call `/events` immediately after the foreground execution
 endpoint returns, you may see only lifecycle events — the accepted turn may not have
@@ -1903,7 +1926,8 @@ the conversation's lineage as its parent:
 - by its delegation context (`metadata.delegation.parentConversationId`).
   When a Claude Code or Codex session calls `delegate_task` through its
   session-bound station-control (Claude Code's in-process server, Codex's
-  per-session HTTP server), Station derives it from the calling session's own
+  per-session HTTP server or, with its bound-channel preview on, its bound
+  `dynamicTools` channel), Station derives it from the calling session's own
   record. For Station's own agent, the runtime attests it from the
   conversation it ran the tool call in. Neither comes from the request. On a
   direct request it is the requester's own claim. A paired-Station dispatch
@@ -2113,11 +2137,38 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   A held stop keeps Resume now. Either answers `not-waiting` for a stop with
   no known reset or one no longer waiting.
 
+- `GET /sessions/:threadId/usage-limit/continue-on` answers `{ profiles }`
+  (`UsageLimitContinueOnOptions`): the enrolled credential profiles
+  (`ref`, optional `label`) a waiting stop may continue on, in enrollment
+  order. It is empty for an engine that cannot apply a profile (Claude Code),
+  a stop that is not waiting, a hosted Station, or while credential-recovery
+  admission is blocked.
+  The answer also carries `stopId`, the waiting stop the accounts are offered
+  for. `POST /sessions/:threadId/usage-limit/continue-on` with
+  `{ "profileRef", "stopId" }`
+  ("Continue on <label>") stages that profile and replays the stopped turn
+  under it, through the same protocol as automatic credential recovery, with
+  this request as the consent the `automatic` policy otherwise gives. The
+  pre-dispatch checks apply first. A `stopId` that is not the waiting stop
+  answers `not-waiting` (a click from an older banner never acts on a newer
+  stop). A profile not currently offered, one that no longer qualifies when
+  staged, or a failure before the replay reaches the engine's send (the
+  account is rolled back and the session restarted on the connection's
+  account) answers `not-switched` and leaves the stop waiting for its reset.
+  If the session cannot be restarted on the connection's account either, it is
+  quarantined and the answer is `retired` with `session-ended` (or
+  `not-waiting` if that retirement could not be written; the stop then retires
+  at its reset, when the pre-dispatch check finds the closed session).
+  A failure after the send was called answers `failed`, and the stop does not
+  resume on its own. Both list or switch this Station's accounts, so they need the
+  `access:manage` pairing scope as well as the Session's own person.
+
 Every POST answers `{ result, recovery }`: `result.kind` is `resumed` (the
 dispatch started; whether the provider accepts it shows later in `recovery`,
 which can still read `failed` if the dispatch is rejected), `failed` (it could
 not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
-(with `reason`), `chosen` (with `choice`) or `not-waiting` (nothing was left
+(with `reason`), `chosen` (with `choice`), `not-switched` (Continue on did
+not switch accounts) or `not-waiting` (nothing was left
 to act on), and `recovery`
 is the projection afterward.
 
@@ -2147,9 +2198,14 @@ authorized like the session's other reads and are never cached
 (`Cache-Control: private, no-store`).
 
 Query: `offset` (message index, default `0`) and `limit` (messages per page,
-`1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
-`entries` (prompt and reply text, tool calls, tool results; inline image data
-replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+`1`–`50`, default `30`), or `tail=1` for the last `limit` messages (a tail
+read names no offset; `400` otherwise). The response's `data` is a
+`ChildWorkTranscriptPage`: `entries` (prompt and reply text, tool calls, tool
+results; inline image data replaced by a placeholder, then each text cut at
+4,000 characters and flagged), `offset` and `endOffset` (the message indexes
+where the page starts and just past where it ends, so a reader continues from
+`endOffset`; a read from past the end names the end as both), and
+`nextOffset` when another page follows an offset read.
 Tool calls and results carry an optional engine-issued `toolCallId`. Readers join
 only matching IDs; legacy entries without IDs remain readable without assuming
 that adjacent records belong to the same call.

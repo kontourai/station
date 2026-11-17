@@ -1,0 +1,7 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Tool loading compatibility: checked against station-control-tool-families.ts, station-control-listed-schema.ts (listed omissions, validation unchanged) and claude-tool-search.ts plus session-agent-resolution.ts (ToolSearch line only for on-demand). Progressive disclosure statements unchanged.","inputs":["docs/guides/agent-efficiency.md"]}
+  ]
+}

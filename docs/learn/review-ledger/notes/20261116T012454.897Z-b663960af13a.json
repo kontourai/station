@@ -1,0 +1,9 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked listedForModels (no dialect, runtime-only _ arguments or no-information keywords in tools/list; validation by the tool's own schema) and stationToolFamily (explicit families, Devices and Browser added). Checked this document's station-control listing and tool-group claims; none here is changed by it.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked listedForModels (no dialect, runtime-only _ arguments or no-information keywords in tools/list; validation by the tool's own schema) and stationToolFamily (explicit families, Devices and Browser added). Checked this document's station-control listing and tool-group claims; none here is changed by it.","inputs":["src-server/tools/station-control-mcp-server.ts"]}
+  ]
+}

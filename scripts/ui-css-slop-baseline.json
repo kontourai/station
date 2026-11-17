@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "files": {
+    "src-ui/src/components/ActivityTimeline.css": {
+      "numeric-z-index": 2
+    },
+    "src-ui/src/components/Checkbox.css": {
+      "hex-color": 1
+    },
+    "src-ui/src/components/ComposerRunControl.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/DetailHeader.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/GuidedConnect.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/PdfCanvasViewer.css": {
+      "hex-color": 2
+    },
+    "src-ui/src/components/SplitPaneLayout.css": {
+      "numeric-z-index": 3
+    },
+    "src-ui/src/components/chat-start/ChatStart.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/chat/ChildWorkActivity.css": {
+      "gradient": 1,
+      "infinite-animation": 1
+    },
+    "src-ui/src/components/chat/ConversationTimeline.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/chat/SubagentTranscriptCard.css": {
+      "infinite-animation": 1
+    },
+    "src-ui/src/components/chat/TranscriptTurnRail.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/chat/chat.css": {
+      "infinite-animation": 2,
+      "hex-color": 2,
+      "gradient": 1
+    },
+    "src-ui/src/components/coding-layout/BranchToolbar.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/coding-layout/CodingLayout.css": {
+      "infinite-animation": 2
+    },
+    "src-ui/src/components/coding-layout/CodingWorkbench.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/first-run/UnpairedSampleWorkspace.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/icons/BrandIcon.css": {
+      "hex-color": 7
+    },
+    "src-ui/src/components/inbox-row/InboxRow.css": {
+      "infinite-animation": 1
+    },
+    "src-ui/src/components/monitoring/InsightsDashboard.css": {
+      "infinite-animation": 1
+    },
+    "src-ui/src/components/notifications/NotificationContainer.css": {
+      "gradient": 1
+    },
+    "src-ui/src/components/project-sidebar/ProjectSidebar.css": {
+      "infinite-animation": 1
+    },
+    "src-ui/src/components/room/RoomConversation.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/status/live-status.css": {
+      "infinite-animation": 2,
+      "numeric-z-index": 1
+    },
+    "src-ui/src/components/updates/Updates.css": {
+      "infinite-animation": 1
+    },
+    "src-ui/src/components/voice/VoiceOrb.css": {
+      "numeric-z-index": 1,
+      "infinite-animation": 1
+    },
+    "src-ui/src/components/voice/VoicePill.css": {
+      "infinite-animation": 3,
+      "hex-color": 1
+    },
+    "src-ui/src/float-over-chat/FloatOverChat.css": {
+      "numeric-z-index": 3
+    },
+    "src-ui/src/index.css": {
+      "numeric-z-index": 14,
+      "infinite-animation": 6,
+      "gradient": 3
+    },
+    "src-ui/src/live-surface/LiveSurfaceCanvas.css": {
+      "hex-color": 6,
+      "numeric-z-index": 4
+    },
+    "src-ui/src/views/MonitoringWidgets.css": {
+      "infinite-animation": 4,
+      "numeric-z-index": 1
+    },
+    "src-ui/src/views/PluginManagementView.css": {
+      "infinite-animation": 1
+    },
+    "src-ui/src/views/ScheduleView.css": {
+      "infinite-animation": 2
+    },
+    "src-ui/src/views/SessionsView.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/views/TaskWorkspaceView.css": {
+      "infinite-animation": 1
+    },
+    "src-ui/src/views/page-layout.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneHost.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserAnnotation.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserPageDialog.css": {
+      "numeric-z-index": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserPane.css": {
+      "infinite-animation": 1,
+      "backdrop-blur": 1,
+      "hex-color": 1,
+      "numeric-z-index": 1
+    },
+    "src-ui/src/workspace-panes/device/DeviceFold.css": {
+      "gradient": 2
+    },
+    "src-ui/src/workspace-panes/device/DeviceToolsDrawer.css": {
+      "numeric-z-index": 1,
+      "hex-color": 1
+    }
+  }
+}

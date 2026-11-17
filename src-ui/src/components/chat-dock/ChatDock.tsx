@@ -163,6 +163,10 @@ import { useOptionalObservedWorkStatus } from '../../views/home/useObservedWorkS
 import { useWorkFacts } from '../../views/home/useWorkFacts';
 import type { ConversationOpenResult } from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
+import {
+  threadInChat,
+  uniqueChatKey,
+} from '../../workspace-panes/agents/childWorkSelectors';
 import { agentRunnability } from '../agent-runnability';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
@@ -173,6 +177,7 @@ import type {
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
+import { requestProjectShell } from '../coding-layout/terminalShellRequest';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
@@ -231,7 +236,7 @@ import {
 } from './sessionInventoryOccurrence';
 import { useAcknowledgeVisibleConversation } from './useAcknowledgeVisibleConversation';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
-import { useChatDockOverlays } from './useChatDockOverlays';
+import { useChatDockOverlays, type WorkingParent } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
 import {
   type ForkFollowUp,
@@ -956,10 +961,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
   const childChatController = useRef<ChildChatController | null>(null);
-  const hostSessionRef = useRef<Pick<
-    ChatSession,
-    'id' | 'conversationId' | 'currentSessionId'
-  > | null>(null);
+  const hostSessionRef = useRef<WorkingParent | null>(null);
   const readerIntent = useRef(0);
   const pendingReaderOpen = useRef<{ accepted: boolean } | null>(null);
   const cancelReaderOpen = useCallback(() => {
@@ -1015,6 +1017,23 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [cancelReaderOpenAndChildren, requestAuthority, workObservation],
   );
   const { setDeviceSetting } = useDeviceSettingsActions();
+  // A cold load names a chat the store already holds before the dock makes
+  // it the working chat. A child request waits for that, so its parent is
+  // matched against the chat it was opened from.
+  const requestedChatKey = useMemo(
+    () =>
+      activeChat
+        ? uniqueChatKey(
+            Object.fromEntries(
+              allSessions.map((session) => [session.id, session]),
+            ),
+            activeChat,
+          )
+        : undefined,
+    [activeChat, allSessions],
+  );
+  const workingParentPending =
+    requestedChatKey !== undefined && activeSessionId === null;
   const {
     importedSessionId,
     readerSurfaceIntent,
@@ -1057,6 +1076,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     hasConversationIntent: Boolean(activeChat),
     onReaderIntent: cancelReaderOpenAndChildren,
     hostSessionRef,
+    workingParentPending,
     composerMenuTriggerRef,
     setDeviceSetting,
     setShowNewChatModalState,
@@ -1669,8 +1689,31 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionModel: activeSession?.model,
     agentDefaultModel: agentDefaultModelId,
   });
+  // The working chat runs on this Station: a host route, or a chat of this
+  // Station that needs no route (a local chat resolves none).
+  const hostBound = Boolean(
+    activeSession &&
+      (conversationConnection
+        ? conversationConnection.routeKind === 'host'
+        : chatBelongsToStation(activeSession)),
+  );
+  // A child request names its reporting session. It is this chat's when
+  // that session is, by the Agents pane's own rule (`threadInChat`): this
+  // chat's ids, or an earlier session of its conversation.
   hostSessionRef.current =
-    conversationConnection?.routeKind === 'host' ? activeSession : null;
+    hostBound && activeSession
+      ? {
+          id: activeSession.id,
+          owns: threadInChat(
+            {
+              sessions: orchestrationSessions,
+              chatKeyFor: (threadId) =>
+                uniqueChatKey(activeChatsStore.getSnapshot(), threadId),
+            },
+            activeSession.id,
+          ),
+        }
+      : null;
   const initialChildChat = useMemo<ChildChatTarget | undefined>(() => {
     if (
       !readerSurfaceIntent?.session ||
@@ -1680,7 +1723,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     const workingParent =
       importedSessionId === null &&
       readerSurfaceIntent.workingSessionId === activeSessionId &&
-      conversationConnection?.routeKind === 'host';
+      hostBound;
     if (!workingParent && readerSurfaceIntent.session !== importedSessionId)
       return;
     return {
@@ -1708,6 +1751,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     readerSurfaceIntent,
     importedSessionId,
     activeSessionId,
+    hostBound,
     conversationConnection,
     apiBase,
     requestAuthority,
@@ -1930,11 +1974,38 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 },
               })
       : undefined;
+  const handleToggleActiveWorkPanel = useCallback(
+    (panel: ActiveWorkPanel) =>
+      setActiveWorkPanel((current) => (current === panel ? null : panel)),
+    [setActiveWorkPanel],
+  );
+  // Files and Task context show a panel beside the chat, so they are rows of
+  // the More menu's "This chat" group rather than composer actions.
+  const panelActions: DockMoreAction[] =
+    activeSession?.projectSlug && conversationCanMutate
+      ? [
+          {
+            key: 'panel-files',
+            group: 'chat',
+            label: `Changed files${gitStatus?.isRepo && gitStatus.changes.length > 0 ? ` (${gitStatus.changes.length})` : ''}`,
+            checked: activeWorkPanel === 'files',
+            onSelect: () => handleToggleActiveWorkPanel('files'),
+          },
+          {
+            key: 'panel-context',
+            group: 'chat',
+            label: 'Task context',
+            checked: activeWorkPanel === 'context',
+            onSelect: () => handleToggleActiveWorkPanel('context'),
+          },
+        ]
+      : [];
   const dockMoreActions: DockMoreAction[] = [
     ...(turnIntoTask
       ? [
           {
             key: 'turn-into-task',
+            group: 'chat' as const,
             label: activeSession?.taskShaping
               ? 'Stop shaping this Task'
               : 'New Task from this',
@@ -1942,56 +2013,36 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           },
         ]
       : []),
-    ...coordinatorActions,
-    ...copyActions,
+    ...panelActions,
     ...(hostConversation &&
     activeSession?.conversationId &&
     !activeSession.replay
       ? [
           {
             key: 'conversation-history',
+            group: 'chat' as const,
             label: 'History',
             onSelect: openConversationHistory,
           },
         ]
       : []),
+    ...coordinatorActions.map((action) => ({
+      ...action,
+      group: 'chat' as const,
+    })),
+    ...copyActions.map((action) => ({ ...action, group: 'copy' as const })),
     ...(activeOrchestrationSession?.inputOrigin
       ? [
           {
             key: 'input-origin',
+            group: 'about' as const,
             label: delegatedTaskLabel(activeOrchestrationSession.inputOrigin),
             disabled: true,
             onSelect: () => {},
           },
         ]
       : []),
-    ...(hostConversation &&
-    !scopedProjectSlug &&
-    sessionCodingLayout &&
-    activeSession?.projectSlug
-      ? [
-          {
-            key: 'open-code-layout',
-            // The built-in Coding row keeps its name; a contributed layout
-            // that owns Chat is named by its own layout name.
-            label: sessionCodingLayout.plugin
-              ? `Open in ${sessionCodingLayout.name}`
-              : 'Open in Coding',
-            onSelect: () => {
-              handleOpenLayout(
-                activeSession.projectSlug as string,
-                sessionCodingLayout.slug,
-              );
-            },
-          },
-        ]
-      : []),
   ];
-  const handleToggleActiveWorkPanel = useCallback(
-    (panel: ActiveWorkPanel) =>
-      setActiveWorkPanel((current) => (current === panel ? null : panel)),
-    [setActiveWorkPanel],
-  );
 
   const commandLauncherEnabled = Boolean(
     !importedSessionId &&
@@ -2012,6 +2063,47 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // Project actions remain project-scoped. Agent handoff is a conversation
   // action, so the same menu is also present for global conversations.
+  // The Terminal pane binds to the dock's Project (`useDockProject`: the
+  // dock's remembered binding, else the route's Project), not to the chat's,
+  // so the row opens only when the two are the same Project; otherwise it
+  // would show another Project's shells under this chat.
+  const terminalPaneProjectSlug =
+    dockChromeProjectSlug ?? routeActiveProjectSlug ?? null;
+  const terminalProjectMismatch = Boolean(
+    activeSession?.projectSlug &&
+      terminalPaneProjectSlug !== activeSession.projectSlug,
+  );
+  const openDockTerminal = () => {
+    // Asked for by name, so the pane opens a shell rather than its chooser
+    // (or adopts the Project's existing one). Opened through
+    // `useShowSurface` (a Chat renderer does not read region state), in the
+    // bottom dock beside Chat.
+    if (terminalPaneProjectSlug) requestProjectShell(terminalPaneProjectSlug);
+    showSurface('coding:terminal', undefined, { region: 'bottom' });
+  };
+
+  const codingLayoutAction =
+    hostConversation &&
+    !scopedProjectSlug &&
+    sessionCodingLayout &&
+    activeSession?.projectSlug
+      ? {
+          // The built-in Coding row keeps its name; a contributed layout
+          // that owns Chat is named by its own layout name.
+          label: sessionCodingLayout.plugin
+            ? `Open in ${sessionCodingLayout.name}`
+            : 'Open in Coding',
+          // The layout shows the active chat, so switching moves this chat.
+          onSelect: () =>
+            handleOpenLayout(
+              activeSession.projectSlug as string,
+              sessionCodingLayout.slug,
+            ),
+        }
+      : undefined;
+
+  // Project actions remain project-scoped. Agent handoff is a conversation
+  // action, so the same menu is also present for global conversations.
   const secondaryActions: ComposerActionsMenuProps | undefined =
     activeSession && conversationCanMutate
       ? {
@@ -2019,13 +2111,24 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           projectActionsAvailable: Boolean(activeSession.projectSlug),
           commandLauncherDisabled: !commandLauncherEnabled,
           commandLauncherShortcut,
-          filesActive: activeWorkPanel === 'files',
-          taskContextActive: activeWorkPanel === 'context',
-          filesCount: gitStatus?.isRepo ? gitStatus.changes.length : undefined,
           onOpenDelegation: openDelegationLauncher,
           onOpenCommandLauncher: openCommandLauncher,
-          onToggleFiles: () => handleToggleActiveWorkPanel('files'),
-          onToggleTaskContext: () => handleToggleActiveWorkPanel('context'),
+          ...(!isMobile
+            ? {
+                onOpenTerminal: openDockTerminal,
+                terminalDisabledReason: !sessionDisplayCwd
+                  ? 'Set a working directory first'
+                  : terminalProjectMismatch
+                    ? `Dock is on ${terminalPaneProjectSlug ?? 'no project'}`
+                    : undefined,
+              }
+            : {}),
+          ...(codingLayoutAction
+            ? {
+                onOpenCodingLayout: codingLayoutAction.onSelect,
+                codingLayoutLabel: codingLayoutAction.label,
+              }
+            : {}),
           onOpenHandoff: () =>
             openConversationHandoff(composerMenuTriggerRef.current),
           handoffDisabled: Boolean(handoffDisabledReason),
@@ -2141,6 +2244,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       (isPaneOpen || isCollapsedDragPreview),
     SESSION_CONTEXT_EXIT_MS,
   );
+  // The This chat card (or, too narrow for it, its chip) is where Background
+  // tasks, Chat inventory, the Copy commands and where the chat came from
+  // live; the More menu drops them only while one of the two is actually on
+  // screen. A card whose chunk has not loaded (or failed to) leaves them in
+  // the menu, so no command is ever reachable from nowhere.
+  const sessionContextOwnsRows =
+    !isMobile &&
+    (sessionContextCardShown ||
+      (sessionContextChipPresence.mounted && !sessionContextCardVisible));
   // The composer's context meter: for a chat the inbox lists as open (the
   // same gate the header meter had), never for an imported session.
   const contextMeterShown = Boolean(
@@ -3110,6 +3222,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * opening a surface that already exists. Rows a fact cannot fill are
    * omitted by the card rather than worded as a state nothing computes.
    */
+  // A string, so the memoised card compares it by value: the origin record is
+  // rebuilt on every session-list read.
+  const sessionOriginLabel = activeOrchestrationSession?.inputOrigin
+    ? delegatedTaskLabel(activeOrchestrationSession.inputOrigin)
+    : undefined;
   const sessionContextCardProps = useMemo(() => {
     if (!sessionContextAvailable) return null;
     const actions = () => sessionContextActionsRef.current;
@@ -3119,7 +3236,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
         projectName: projectSlug ? (sessionProjectName ?? projectSlug) : null,
         directory: sessionDisplayCwd ?? null,
         managed: sessionCwdManaged,
-        // The More menu's own gate for Open in Coding (#1536 F), else the
+        // The composer menu's own gate for Open in Coding (#1536 F), else the
         // session's project page.
         action:
           projectSlug && sessionContextLayoutSlug
@@ -3172,9 +3289,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             },
           }
         : undefined,
+      origin: sessionOriginLabel,
+      copyActions,
       onPresentChange: setSessionContextCardPresent,
     };
   }, [
+    sessionOriginLabel,
+    copyActions,
     sessionContextAvailable,
     sessionContextProjectSlug,
     sessionProjectName,
@@ -3777,6 +3898,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // the sheet is a coarse device's only home for these IDs.
                     // The coordinator rows ride the same list: one-shot commands.
                     copyActions: [...coordinatorActions, ...copyActions],
+                    panelActions,
                     onOpenInventory:
                       sessionInventoryControls && sessionInventoryReady
                         ? (trigger) => {
@@ -3943,7 +4065,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       />
                     ) : null
                   }
-                  moreActions={importedSessionId ? [] : dockMoreActions}
+                  moreActions={
+                    importedSessionId
+                      ? []
+                      : sessionContextOwnsRows
+                        ? dockMoreActions.filter(
+                            (action) =>
+                              action.group !== 'copy' &&
+                              action.group !== 'about',
+                          )
+                        : dockMoreActions
+                  }
                   // #3309: the tab strip's controls fold into the header — one
                   // chrome bar, every reclaimed pixel is transcript space. Only
                   // while the pane is open; the collapsed bar stays minimal.

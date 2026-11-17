@@ -75,6 +75,7 @@
     "scripts/lib/portable-smoke-ports.mjs",
     "scripts/lib/server-build-config.mjs",
     "scripts/lib/server-bundle-ascii.mjs",
+    "scripts/lib/server-static-imports.mjs",
     "scripts/lib/station-stop-hint.mjs",
     "scripts/lib/desktop-node-runtime.mjs",
     "scripts/lib/windows-owned-guard-build.mjs",
@@ -123,6 +124,7 @@
     "scripts/lib/nightly-build-identity.mjs",
     "scripts/lib/native-release-config.mjs",
     "esbuild.config.mjs",
+    "scripts/lib/server-bundle-ascii.mjs",
     "scripts/lib/desktop-node-runtime.mjs",
     "scripts/prepare-desktop-rust-resources.mjs"
   ],

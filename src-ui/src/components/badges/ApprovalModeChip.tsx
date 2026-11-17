@@ -142,8 +142,9 @@ function ApprovalModeChipContent({
     return null;
   }
   const policyLabel = toolPolicyDeliveryLabel(toolPolicyDelivery);
+  // The sheet states the explanation alone: the label above it only
+  // restated the same fact in Station's internal terms.
   const policyExplanation = toolPolicyDeliveryExplanation(toolPolicyDelivery);
-  const policyDisclosure = `${policyLabel}. ${policyExplanation}`;
   // Where Station's approvals do not fully govern this engine, that boundary
   // is safety copy: it stays on the chip itself, not only in the sheet.
   const policyBoundary =
@@ -278,20 +279,29 @@ function ApprovalModeChipContent({
     isOverride
       ? selectedLabel
       : agentDefaultShown
-        ? `${chipText} — ${approvalModeLabel(displayedMode)}`
+        ? // Full access has one name, so it is not announced twice.
+          approvalModeLabel(displayedMode) ===
+          approvalModeChipLabel(displayedMode)
+          ? chipText
+          : `${chipText} — ${approvalModeLabel(displayedMode)}`
         : (notApplied && appliedMode) || chipText === selectedLabel
           ? // #4390: the inherited mode's short and full names are both
             // "Default"; never announce "Default — Default".
             selectedLabel
           : `${chipText} — ${selectedLabel}`
   }${notAppliedNote}`;
+  // Shown when the engine has not reported a mode; a reported one is the
+  // sheet's "In effect" line instead. An existing chat says so plainly, so a
+  // pick or default is never read as the mode that is running.
   const sourceNote = isOverride
-    ? 'Only this chat'
-    : appliedMode
-      ? 'Confirmed by the engine'
-      : effective.mode === 'connection-default'
-        ? 'Engine settings; active mode not confirmed'
-        : approvalModeSourceNote(effective.source);
+    ? isNewSession
+      ? undefined
+      : 'In effect: not reported by the engine yet'
+    : effective.mode === 'connection-default'
+      ? 'In effect: the engine’s own settings; it hasn’t reported which mode'
+      : `${approvalModeSourceNote(effective.source)}${
+          isNewSession ? '' : ' · not confirmed by the engine yet'
+        }`;
 
   return (
     <>
@@ -340,8 +350,9 @@ function ApprovalModeChipContent({
             onClose: () => setIsSheetOpen(false),
             onSelect: onChange,
             sourceNote,
-            policyNote: policyDisclosure,
+            policyNote: policyExplanation,
             pendingNote,
+            chatOverride: isOverride,
             activeMode: appliedMode
               ? approvalModeLabel(appliedMode)
               : undefined,

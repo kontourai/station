@@ -1,0 +1,7 @@
+{
+  "revision": "8f2b38092fd187c8717e9c9bac729b345753ec0e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Gallery sections checked against #5028 change: attribution now answers infrastructure (still red, 'Gallery chunk load failure') when every failure main lacks is a chunk-load app-error identity; capture log/final assertion name 'lazy chunk unavailable: <screen> (<path> <error>)'; browser harness test described. Other gallery claims (identity, second capture, diagnostics) unchanged.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml","tests/helpers/gallery-app-error-state.ts","tests/helpers/gallery-screen-attempt.ts","tests/screenshots.spec.ts"]}
+  ]
+}

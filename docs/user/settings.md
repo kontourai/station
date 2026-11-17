@@ -32,6 +32,30 @@ device. **Sources** shows repository links and checkout locations. Use
 **Add a repository** to attach a checkout and **Advanced: checkout repair**
 for filesystem repair. **Workspace** edits the Project's local working folder.
 
+### Pause, archive, delete
+
+The last section of Project settings stops or removes a Project's work.
+Pause and Archive are Feature Previews (`project-pause-archive`); Delete is
+always offered:
+
+- **Pause** stops every chat running in the Project, through the same Stop a
+  chat offers, and holds it: no message, schedule or restart starts a turn
+  there until you **Resume**. Station waits up to 10 seconds for running
+  chats to stop and says how many it stopped. A stopped chat continues only
+  when you message it after Resume. The Project page shows a banner with
+  **Resume** while it is paused.
+- **Archive** does what Pause does and hides the Project from the sidebar.
+  **Archived (n)** at the end of the Project list shows archived Projects;
+  **Unarchive** returns one, active.
+- **Delete** first lists what it removes (Project settings, Layouts,
+  knowledge documents, schedules), the running chats it stops, and what it
+  keeps: Tasks, chats, the repository checkout, pushed branches and pull
+  requests. Tasks and chats stay readable in history.
+
+**Schedules** (the `project-schedules` Feature Preview) lists the Project's
+own automations. See
+[Project schedules](automations.md#project-schedules).
+
 ## Feature previews
 
 **Paired Station chats** lets New Chat use another paired Station. Choose its
@@ -50,9 +74,11 @@ only when this Station's build can run it; if none is, the section says
 | --- | --- | --- | --- |
 | `durable-station-agent` | Crash-durable Station Agent | Keeps Station-engine text turns running after a client disconnect and resumes journaled steps after restart. Stop still cancels. | Experimental; writes every model/tool step to private SQLite and can add substantial latency. An uncertain model request is surfaced without automatic resend; pending approvals still require an answer. |
 | `reviewed-usage-tariffs` | Reviewed usage tariffs | Lets the operator review exact Bearing source bytes and route/model tariff bindings for later usage capture. | No default price or live fetching. Retail values remain separate from billing, subscription fees and quota. Historical snapshots stay frozen. |
-| `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
+| `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. A new Codex Session whose Agent has Station Control also gets every Station Control tool on that channel instead of a header token, which adds about 110 KB of tool definitions to each thread. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
 | `station-orchestration-instructions` | Station orchestration instructions | Tells Agents that have Station control tools when and how to use them (delegating to another Agent, waiting on Sessions, browser and device tools). It rides the Agent's system prompt on Claude when the Agent has one, otherwise the first message of a new Session. | Adds a few thousand characters to each new Session's prompt. Applies to Sessions started after the change; resumed Sessions are not re-sent. Station control tool approval and access rules are unchanged. |
 | `learning-lifecycle-review` | Learning lifecycle review | Shows evidence, decisions, active guidance, effects and retirement in Project Sources. | Personal POSIX hosts only. Owner-reviewed activation can change future Task context; it does not install or deploy a Skill. |
+| `project-pause-archive` | Pause and archive Projects | Offers **Pause** and **Archive** in Project settings. Both stop the Project's running chats and hold its turns and schedules until **Resume** or **Unarchive**. | Turning it off hides Pause and Archive but keeps every hold: a paused or archived Project still offers Resume or Unarchive. |
+| `project-schedules` | Project schedules | Offers **Schedules** in Project settings and lets an agent propose a Project schedule. Each run starts a new Task in the Project. | Each run starts an agent and can spend model credits. Turning it off holds every Project schedule: none runs, and Run now is refused. |
 | `context-compaction` | Context compaction | Offers a bounded summary cold start and opt-in threshold compaction where supported. | Summary generation can spend model tokens. Old messages stay retained; native tool and approval state is omitted, not transferred. Unknown capacity prevents automatic compaction. |
 | `project-supervision` | Project supervision | Retains opted-in Task supervision and reconciles missed next actions through the conversation inbox. | Needs Coordinator chat. May queue model turns; current access, Task incarnation, waits, capacity and original delivery keys still govern placement. |
 | `github-automation-actions` | GitHub automation actions | Dispatches explicitly granted, matching rules into durable Tasks and their first inbox turn. | Can spend model tokens under retained budgets. Off by default; observation alone grants no execution authority. Repair publication requires credential separation. |
@@ -63,6 +89,7 @@ only when this Station's build can run it; if none is, the section says
 | `conversation-resolution` | Open and Settled inbox | Keeps conversations Open until explicitly settled. Task closure follows the existing Task close-on-merge setting. | Personal resolution state syncs across devices. Turning it off preserves saved choices and restores turn-based grouping; no provider cost. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
 | `private-memory` | Private memory | Private memory you can check and search. New chats start with what you confirmed. No erasure yet. | Memory can contain personal information. Off by default. Only chats on the Station engine get the brief. Create it through the API. Disabling hides access but retains the store. Hosted Stations do not offer it. |
+| `remote-task-engines` | Remote task engines | Lets you send coding tasks to cloud agents (Devin, GitHub Copilot cloud agent, Cursor Cloud Agents) that run on the vendor's machines, and catches up on their messages and pull requests. | Prompts and repository code leave this computer, and Station's sandbox and approval settings do not apply there. Each task spends your vendor account's credits. Every connection needs its own acknowledgement and token. A managed policy turns a vendor off unless `limits.engines.remoteTasks` names it. Station polls a task only while you have it open, and stops when it finishes. Turning the preview off stops sending and polling; removing a connection or its token still works. |
 | `opencode-native-engine` | OpenCode native engine | New chats on an OpenCode connection run on Station's `opencode` engine. It runs OpenCode 2 through its own local server (`opencode serve`) when Station verified that version's API, and over ACP otherwise (OpenCode 1, another 2.x version, or a chat with an effort setting). An Agent's tool policy applies on both. | Existing chats keep their engine; turning it off runs `opencode` chats over ACP. A local `opencode serve` runs per connection and folder, and a chat with Station tool servers gets its own; one unused for 5 minutes stops. The managed-policy `acp` entry still governs and pins OpenCode. |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `integration-content-trust` | Integration content trust | Shows trust classification and after-untrusted-content permissions for integrations in Connections. | Saved choices remain effective when the preview is off; enforcement depends on the engine and integration path. |
@@ -76,6 +103,7 @@ only when this Station's build can run it; if none is, the section says
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
 | `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
+| `pull-request-agent-feedback` | Pull request agent feedback | Sends a chat's agent one message when a pull request it owns has failing checks, unresolved review threads or a merge conflict. Turn it on per pull request from the pull request's ⋯ in a chat's Details. | Uses the host's `gh` login and one GitHub API request per pull request every few minutes. Off by default, personal Stations only. Waits while the agent works or waits on you; pauses after 3 rounds on one push. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
 | `task-review` | Task review | Adds Review, Timeline and committed-code review to eligible Tasks. | Sending comments starts or queues a lead-agent turn; code review may incur provider charges. Screen capture needs a committed workspace. |

@@ -1,0 +1,103 @@
+{
+  "revision": "32bc7ec16e5a8983618383b5335d3eeee09ffeba",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Fix round: checked the allowance and paused-admission sentences against connection-service consented staging and readUsageLimitContinueOn.","inputs":["docs/guides/connections.md","packages/contracts/src/connection-recovery.ts","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-recovery-coordinator.ts","src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Fix round: checked the blocked-admission empty-list case against readUsageLimitContinueOn.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Fix round: readUsageLimitContinueOn now also returns no profiles while credential-recovery admission is blocked. Re-searched citing pages for usage-limit/credential-recovery claims; none describes this list. Executed usage-limit-recovery.routes tests.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round: continueUsageLimitOnProfile returns not-switched without staging while admission is blocked, so the reset timer is never replaced. Reset/auto-resume claims on citing pages unchanged. Executed coordinator tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Fix round: continueUsageLimitOnProfile returns not-switched without staging while admission is blocked, so the reset timer is never replaced. Reset/auto-resume claims on citing pages unchanged. Executed coordinator tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix round: continueUsageLimitOnProfile returns not-switched without staging while admission is blocked, so the reset timer is never replaced. Reset/auto-resume claims on citing pages unchanged. Executed coordinator tests incl. a fault-injected removal.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round: comment-only: consentedProfileRef does not apply the automatic path's allowance ranking. Citing claims unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Fix round: comment-only: consentedProfileRef does not apply the automatic path's allowance ranking. Citing claims unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Fix round: comment-only: consentedProfileRef does not apply the automatic path's allowance ranking. Citing claims unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Fix round: comment-only: consentedProfileRef does not apply the automatic path's allowance ranking. Citing claims unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix round: comment-only: consentedProfileRef does not apply the automatic path's allowance ranking. Citing claims unchanged.","inputs":["src-server/services/orchestration/credential-recovery-module.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round: doc-comment only on UsageLimitContinueOnOptions (allowance not applied). Citing claims unchanged.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Fix round: doc-comment only on UsageLimitContinueOnOptions (allowance not applied). Citing claims unchanged.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Fix round: doc-comment only on UsageLimitContinueOnOptions (allowance not applied). Citing claims unchanged.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix round: doc-comment only on UsageLimitContinueOnOptions (allowance not applied). Citing claims unchanged.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round: doc-comment only on UsageLimitContinueOnOptions (allowance not applied). Citing claims unchanged.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Fix round: comment-only on the consented flag. Citing claims unchanged.","inputs":["src-server/services/connections/connection-recovery-policy.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round: the 'Couldn't switch accounts' line now clears on any other banner action and when the stop stops waiting; no other wording or condition changed.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Fix round: the 'Couldn't switch accounts' line now clears on any other banner action and when the stop stops waiting; no other wording or condition changed.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Fix round: the 'Couldn't switch accounts' line now clears on any other banner action and when the stop stops waiting; no other wording or condition changed.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Fix round: only the Continue on section gained allowance and paused-admission sentences; citing claims hold.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Fix round: only the continue-on list gained the blocked-admission case; citing claims hold.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

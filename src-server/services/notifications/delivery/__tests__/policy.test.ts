@@ -465,3 +465,56 @@ describe('plan() — rule 5, per-surface minUrgency', () => {
     expect(decision(steps, LAPTOP)).toBe('send:nothing-focused');
   });
 });
+
+describe('plan() — focus is per session for a finished session (viewingSessionIds)', () => {
+  const finished = agentEnvelope('done', {
+    target: { kind: 'session', sessionId: 'session-1' },
+  });
+  const watching = (viewingSessionIds: readonly string[]): FocusEntry => ({
+    ...focused(),
+    viewingSessionIds,
+  });
+
+  test('the laptop showing that session quiets the phone and itself', () => {
+    const steps = plan(
+      input({
+        env: finished,
+        focus: new Map([[LAPTOP, watching(['session-1'])]]),
+      }),
+    );
+    expect(decision(steps, LAPTOP)).toBe('skip:focused-surface');
+    expect(decision(steps, PHONE)).toBe('skip:another-surface-focused');
+  });
+
+  test.each([
+    ['another chat', ['session-2']],
+    ['no chat at all', []],
+  ])('the laptop showing %s quiets nothing', (_label, viewing) => {
+    const steps = plan(
+      input({ env: finished, focus: new Map([[LAPTOP, watching(viewing)]]) }),
+    );
+    expect(decision(steps, LAPTOP)).toBe('send:nothing-focused');
+    expect(decision(steps, PHONE)).toBe('send:nothing-focused');
+  });
+
+  test('a client that does not report what it shows keeps the device-wide rule', () => {
+    const steps = plan(
+      input({ env: finished, focus: new Map([[LAPTOP, focused()]]) }),
+    );
+    expect(decision(steps, PHONE)).toBe('skip:another-surface-focused');
+  });
+
+  test('attention and failed keep surface-wide focus: deferred, not sent now', () => {
+    for (const urgency of ['attention', 'failed'] as const) {
+      const steps = plan(
+        input({
+          env: agentEnvelope(urgency, {
+            target: { kind: 'session', sessionId: 'session-1' },
+          }),
+          focus: new Map([[LAPTOP, watching(['session-2'])]]),
+        }),
+      );
+      expect(decision(steps, PHONE), urgency).toBe('defer:escalate-if-unread');
+    }
+  });
+});

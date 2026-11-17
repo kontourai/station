@@ -144,7 +144,10 @@ export class ProjectRoomAgentModule {
         'INSERT INTO project_room_agent_failures VALUES (?, ?) ON CONFLICT(request_id) DO UPDATE SET code=excluded.code',
       )
       .run(id, code);
+    // A failure is lifecycle the room shows (#4800): wake its readers.
+    this.store.announceRequest(id);
   }
+
   private capture(
     authority: ProjectRoomAgentAuthority,
     id: string,
@@ -275,6 +278,26 @@ export class ProjectRoomAgentModule {
         ? { failure: failure.data }
         : {}),
     };
+  }
+  /**
+   * Recorded failure codes of these requests (#4800), for a reader the room
+   * already admitted. Codes only: never a Session or its output.
+   */
+  failures(requestIds: readonly string[]) {
+    const result = new Map<string, ProjectRoomAgentFailure>();
+    if (!requestIds.length) return result;
+    // One read for the whole batch: a live frame asks about a room's
+    // unsettled requests at once (at most LIMITS.requestsPerRoom).
+    const rows = this.db
+      .prepare(
+        'SELECT request_id, code FROM project_room_agent_failures WHERE request_id IN (SELECT value FROM json_each(?))',
+      )
+      .all(JSON.stringify(requestIds));
+    for (const row of rows) {
+      const parsed = failureSchema.safeParse(row.code);
+      if (parsed.success) result.set(String(row.request_id), parsed.data);
+    }
+    return result;
   }
   /** Validated private coordinate for the completion observer; never expose in handles. */
   publicationSession(

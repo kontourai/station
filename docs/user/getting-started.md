@@ -285,7 +285,7 @@ the signed portable release rings used by the installer below.
 | Nightly server install | macOS, Linux, Windows (x64) | You want the newest signed `main` build as a local server you open in a browser. Use the one-line [Nightly install](#install-nightly). |
 | Nightly desktop build | macOS (Apple silicon), Windows (x64) | You want a native app for testing. Download it from the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop); see [Nightly desktop downloads](#nightly-desktop-downloads). |
 
-When a signed stable or beta portable ring is available,
+When a signed Stable portable release is available,
 [Install Or Upgrade](#install-or-upgrade) is the macOS/Linux installer path.
 The remaining sections cover that install and the first-run UI.
 
@@ -343,7 +343,9 @@ immutable `v<version>` release, next to its archives.
 ### Nightly desktop downloads
 
 Each Nightly desktop publication also uploads its installers under fixed
-names, so these links always serve the newest published build:
+names, so these links normally serve the newest published build (each
+replacement deletes the old file first, so a download at that moment, or
+after a failed upload until the next build, can briefly find nothing):
 
 - macOS (Apple silicon):
   `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-macos-aarch64.dmg`
@@ -351,7 +353,8 @@ names, so these links always serve the newest published build:
   `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-windows-x86_64-setup.exe`
 
 The release also carries the same builds under versioned names
-(`station-<version>-…`), and older retained builds. Its `SHA256SUMS` lists
+(`station-<version>-…`), and versioned downloads of earlier builds; older
+ones may be removed once 30 newer builds have been published. Its `SHA256SUMS` lists
 the newest build's downloads under both names. Download it next to the
 installer and check it, for example
 `shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS,
@@ -407,13 +410,12 @@ receipt before it builds and starts Station. The stable channel installs under
 `station` launcher in `~/.local/bin`. Open `http://localhost:18000` after the
 command completes.
 
-When a signed beta ring is available, export `STATION_CHANNEL=beta` before running the same
-installer command. Preview is a release provenance name; the local runtime is
-the **beta** channel. It uses a separate `~/.station/installs/beta` install root,
-`~/.station/instances/beta` runtime,
-`station-beta` launcher, and `http://localhost:28000` UI. Do not use the
-retired `STATION_CHANNEL=preview`; the installer refuses it. The exact channel
-identity, launcher, and port mapping are verified by the release installer.
+Stable and Nightly are the supported distribution channels. The installer
+refuses the retired `STATION_CHANNEL=beta` and `STATION_CHANNEL=preview` values.
+An operator accepting a release candidate can pin `STATION_VERSION=vX.Y.Z-rc.N`;
+it installs with Stable identity and the base product version. Follow the
+[release-candidate procedure](https://github.com/kontourai/station/blob/main/docs/guides/release-rings.md#publish-a-release-candidate)
+for acceptance and manual candidate replacement.
 
 An operator can instead supply `STATION_INSTALL_PUBLIC_MANIFEST_URL` for a
 signed platform-v2 prebuilt archive. That macOS/Linux path uses bundled
@@ -498,7 +500,11 @@ show what **Start** will use:
   message.
   Full access, a pending or refused approval change, and a conversation override
   add a warning glyph to the combined button; open Run setup to see the same
-  glyph on the choice that raised it.
+  glyph on the choice that raised it. When the conversation's Agent now points
+  at another engine, the button adds **Agent moved**; Run setup's Engine &
+  model choice names where. If the conversation's engine session has already
+  ended, a **Next turn starts on …** line above the message box says where the
+  next turn goes instead.
   In the model picker, while a reply you sent is still running, the other
   engines and **Use Agent defaults** are shown but unavailable until it
   finishes. When Station reports that the conversation can't be changed right
@@ -533,7 +539,9 @@ project** clears it. Home and New Chat use the same composer and pickers;
 **Runs on <Station>** sits below the message box.
 
 When another Station is available, **Runs on <Station>** opens **Where this work
-runs**. Choose the Station, then its **Engine & model**. With **Paired Station
+runs**. Choose the Station, then its **Engine & model**. A Station that
+cannot take work right now is greyed out with its reason, such as
+**Recovering · server down or restarting** or **Unreachable**. With **Paired Station
 chats** enabled in Settings → Advanced → Feature previews, choose a Project
 from that Station’s own list, or **start without a project**. **Start** opens a
 chat tab that reads and replies to the conversation on the chosen Station.
@@ -564,7 +572,7 @@ back yours. You can edit or delete your own messages (press ↑ in an empty
 composer to edit your last one); a deleted message leaves "Message deleted" so
 replies still make sense. Use **Bring an Agent** for an explicit request whose answer returns
 to the channel. Direct Agent conversations stay in the chat
-dock. **Tasks** separates current work, backlog and history; **Files & connections**
+dock. **Tasks** shows a board of what each Task needs now, or a list of current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
@@ -736,7 +744,11 @@ a scope, it follows the project whose page you are on and shows all work anywher
 else. The control shows **This project: <name>** on its page and **All work**
 elsewhere. **Always <name> · <Station>** pins a project across navigation. An
 explicit choice such as **All work** stays selected as you navigate. If work needs
-you outside the filter, choose **Show all** from the notice.
+you outside the filter, choose **Show all** from the notice; on a computer, a
+count badge on the scope picker does the same. On a computer the scope picker
+sits beside search, **Browse all conversations** is at the end of the list,
+and each row is two lines: its title and time, then the agent's icon, its
+status and its project. Hover the icon to read the agent's name.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
 from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
@@ -1058,7 +1070,15 @@ workspace changes, or you reconnect or re-pair with different access, Station
 refuses to send the stale reference until you remove it or return to its
 original scope.
 
-Use the conversation-reference button beside the composer actions to choose an
+The composer's **+** menu groups what you can do from the message box: add to
+the message (**Reference chat…**, **Commands**), work in the chat's project
+(**Open terminal** opens a shell in the bottom dock; **Open in Coding** moves
+the chat into the project's coding layout; **Delegate…**), and change the
+conversation (**Continue with another agent…**, **Reset agent context…**). An
+unavailable row says why. **Changed files** and **Task context** are in the
+chat header's **⋯** menu.
+
+Choose **+** then **Reference chat…** to choose an
 earlier conversation. The picker searches the 25 most recent conversations
 returned for your access and shows up to eight matches; it does not search
 older history. You can also drag a result into the composer, or drag a
@@ -1175,10 +1195,13 @@ how Station preserves the same work identity through retries and response loss.
 ## Read Child Conversations
 
 Choose **Open chat** on a subagent card or a background task to read its
-transcript in the chat pane. The title becomes **Parent chat › Subagent**;
-choose an ancestor to return without losing its draft or reading position.
-Escape returns one level. On a phone, use the back button or swipe from the
-left edge. Engine transcripts are read only and refresh while running.
+transcript in the chat pane, laid out like any chat: the subagent's prompt,
+then its tool calls and answers. The title becomes **Parent chat / Subagent**;
+choose an ancestor to return to that chat without losing its draft or reading
+position. Escape returns one level. On a phone, the title names the subagent;
+use the back button or swipe from the left edge. The reader opens on the
+latest messages; earlier ones load as you scroll up. Engine transcripts are
+read only and refresh while running.
 
 If a tool result has no recorded text, the reader says **Text output unavailable.**
 This does not mean the tool produced no output.
@@ -1202,7 +1225,12 @@ Station looks in four places:
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
 - Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
-  not set.
+  not set, and in every other Codex home Station itself runs Codex in: the
+  Codex connection's config home, its Station app home, and each credential
+  profile's home. Continuing a conversation runs Codex in the home it was
+  found in, with that home's account and, for a profile, its settings. A
+  conversation copied by hand into two of them is listed once per copy,
+  since the copies can go on separately.
 - Grok Build sessions under `sessions` in `GROK_HOME`, or `~/.grok` when that
   is not set. A Grok session appears once it has a prompt. A subagent's own
   session is not listed separately, and neither is a Grok chat you started in
@@ -1232,12 +1260,26 @@ Station looks in four places:
   from an OpenCode 1.x database stops updating once OpenCode 2.x converts that
   database; its earlier messages stay in history.
 
+With `STATION_EXTERNAL_ACP_SESSIONS=1` set before Station starts, the inbox
+also lists the sessions an ACP engine you added under Connections reports
+itself, for an engine that offers a session list (Antigravity, Factory Droid,
+Hermes and Cursor do; Kiro does not). This is off by default. Station asks for
+the list when it checks the engine, about every five minutes, so it starts no
+extra engine process, and a new session can take that long to appear. Only
+the session's folder and Project are shown: ACP's one way to read a session's
+messages also resumes it inside the engine, so Station does not read them, and
+these sessions cannot be continued in Station. Grok and OpenCode sessions are
+read from their own stores as above, not from this list, and Station's own
+sessions and capability checks are left out.
+
 `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 point Station at a different folder (for OpenCode, the folder holding the
-database). Station checks every two seconds and reads the 128 most recently
-changed conversations from each place. Older ones stay in history once Station
-has read them, but new messages in them are not picked up until they are among
+database). With `STATION_EXTERNAL_CODEX_SOURCE_ROOT` set, that folder is the
+only Codex home Station reads. Station checks every two seconds and reads the
+128 most recently changed conversations from each place (each Codex home is
+its own place, up to 512 Codex conversations in all, the default home first). Older ones stay in history once Station has read
+them, but new messages in them are not picked up until they are among
 the 128 again. Conversations Station has not listed before appear only after it
 finishes restoring its own sessions at startup; if that restore fails, already
 listed conversations keep updating but new ones wait until Station restarts.
@@ -1489,11 +1531,13 @@ and Sessions:
 STATION_CHANNEL=stable "${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall
 ```
 
-Use
-`STATION_CHANNEL=beta "${STATION_ROOT:-$HOME/.station}/installs/beta/current/install.sh" uninstall`
-for beta. Add
-`--purge-data` only when you also intend to delete that channel's home
-(`~/.station/instances/stable` or `~/.station/instances/beta`). The installer accepts purge only
+For Nightly, use that install's retained installer:
+
+```bash
+STATION_CHANNEL=nightly "${STATION_ROOT:-$HOME/.station}/installs/nightly/current/install.sh" uninstall
+```
+Add `--purge-data` only when you also intend to delete the selected channel's
+home (`~/.station/instances/stable` or `~/.station/instances/nightly`). The installer accepts purge only
 for a data root it created and marked; it preserves an unmarked pre-existing
 directory for manual review.
 

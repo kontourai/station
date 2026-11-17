@@ -18,6 +18,11 @@ waking); there is no OS job. A machine's
 [managed policy](managed-policy.md#update-control), read when the app starts,
 can turn these checks off or send them to an approved mirror.
 
+Stable RCs use the final product version and Stable update endpoint. Moving
+between RCs at the same `X.Y.Z` requires a manual reinstall; the updater does
+not treat another candidate at that version as newer. See
+[RC acceptance](release-rings.md#publish-a-release-candidate).
+
 Updating has three separate steps:
 
 1. **Download.** Open **Updates** in the sidebar, including its collapsed
@@ -285,13 +290,22 @@ claims still use the registry's current atomic ownership check. The running
 sidecar supervisor checks child exit every two seconds; restart and shutdown
 messages wake it immediately, and startup retains its 150 ms exit check.
 
-The desktop sidecar enables Node 24's compile cache before loading the server,
-under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
-that launch, since Node creates the directory before the server's home check.
-The server does not enable a cache after loading its bundle: that is too late
-to cache compilation of the entry point. `station start` does not give its
-supervisor or server a cache. Measured on the supervised server, a warm cache
-left it larger at rest and did not make startup measurably faster.
+Neither the desktop sidecar nor `station start` gives the server a compile
+cache; the sidecar removes any `NODE_COMPILE_CACHE` it inherits. Measured on
+the supervised server, a warm cache left it larger at rest and did not make
+startup measurably faster. Measured on the sidecar launch on one 64 GB Mac
+(three alternating rounds, medians after a 45-second settle), the cache added
+about 120 MiB to the idle server. Without the flag below, it started the
+server sooner in every round (0.5 to 1.9 s); with the flag, it was faster in one
+round of three. Memory at rest wins that trade. The server does not enable a cache after
+loading its bundle either: that is too late to cache compilation of the entry
+point.
+
+The sidecar starts Node with `--max-semi-space-size=16`, the young-generation
+cap the process supervisor gives each core it forks
+([server memory at rest](../reference/station-weight.md#server-memory-at-rest)).
+On the same measurement, the sidecar's idle process tree dropped from 663 MiB
+to 425 MiB with both changes.
 
 The server removes any inherited `NODE_COMPILE_CACHE` at boot, and
 child-process environments still scrub it. User and third-party Node
@@ -312,7 +326,7 @@ environment by design, and the rest were not measured as worth it.
 
 Node never prunes the cache. One minute after boot, the server removes any
 Node-version subdirectory that nothing has written to for 30 days, except the
-one its own process uses. It then removes the whole cache if that is still over
+one its own process uses when an operator started it with `NODE_COMPILE_CACHE`. It then removes the whole cache if that is still over
 256 MiB. A subdirectory that is only read ages too, and costs one cold start
 once it is removed. The prune never follows a link inside the cache: it ages
 only real directories, counts only regular files, and removing a link removes
@@ -327,8 +341,7 @@ home itself may be a link. If either component is a symbolic link or anything
 other than a directory, the server neither hands the cache to the built-in
 children nor prunes it, and logs that once for the home. Otherwise Node and
 the prune would write into, or delete from, the link's target, such as an
-operator's shared directory. The desktop sidecar sets its own server's cache
-path natively, and this check does not cover that.
+operator's shared directory.
 
 No pre-generated cache ships with the desktop build. Node names each cache
 subdirectory after the Node version, architecture, V8 flags and user id, and
@@ -337,6 +350,18 @@ machine would miss for other users, and Node's portable mode removes only the
 path dependency. Node's `NODE_DISABLE_COMPILE_CACHE=1` opt-out remains
 supported, and the server then gives the built-in children no cache either.
 Cache failure must not prevent startup.
+
+Every static import in `dist-server/command-station.js` is loaded when the
+server boots, whether or not its code runs. The Claude Agent SDK,
+`@kontourai/console-server` and `@kontourai/veritas/engine` are loaded on first
+use instead, because an idle server needs none of them and each costs memory
+once loaded. The server build fails if the bundle statically imports any of
+those packages, or any subpath of one, again
+([deny list](../../scripts/lib/server-static-imports.mjs)).
+The build also fails on a static import of the `@kontourai/flow-agents` root,
+which re-exports the whole package. Its narrow subpaths may still be imported
+statically; the ones only async callers need are loaded on first use
+([loaders](../../src-server/services/evidence/load-flow-agents.ts)).
 
 Server bundles are minified with function/class names retained. The esbuild
 `linked` source-map setting is equivalent to the previous `true`: both emit an

@@ -1,0 +1,7 @@
+{
+  "revision": "97e1eefda198a51bd315b249b226e75f4655f5a5",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Cited testing.md#fixture-fidelity-and-test-effectiveness anchor and route unchanged by the Gallery section addition.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

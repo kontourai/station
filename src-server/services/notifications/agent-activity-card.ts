@@ -53,7 +53,7 @@ const ALERT_LIST_MAX = 5;
 /** Finished sessions stay on the card this long. */
 const FINISHED_WINDOW_MS = 15 * 60 * 1000;
 /** A finish alerts only this soon after it happened. */
-const FINISH_ALERT_WINDOW_MS = 2 * 60 * 1000;
+export const FINISH_ALERT_WINDOW_MS = 2 * 60 * 1000;
 const RUNNING_EXPIRY_MS = 2 * 60 * 60 * 1000;
 /**
  * The card travels sealed: base64url(nonce || ciphertext || tag) inside
@@ -82,6 +82,19 @@ export interface AgentActivitySessionFacts extends SessionAttentionSubject {
   isLoaded: boolean;
   /** `true` only for a session nothing was ever sent to. */
   draft?: boolean;
+  /**
+   * The turn ended but its completion episode has not been released
+   * (`finished-alert-episodes.ts`): running work holds it, or its
+   * confirmation window is open. An attached session reads Running, so
+   * neither Done nor its "Agent finished" alert shows; a detached one reads
+   * Done without an alert until the release.
+   */
+  finishHeld?: true;
+  /**
+   * Its finish is announced elsewhere: a Station-delegated child whose result
+   * returns to its parent. Done shows, without an "Agent finished" alert.
+   */
+  finishQuiet?: true;
 }
 
 /**
@@ -98,7 +111,9 @@ export interface AgentActivitySessionFacts extends SessionAttentionSubject {
  *   input request. `blocked` waits on the user too but has no plugin phase of
  *   its own; it reads `stale` ("Waiting"). It is not counted as attention:
  *   the phone's attention count means an approval or input request.
- * - `canceled` sessions leave the card; other finished sessions read Done.
+ * - `canceled` sessions leave the card; other finished sessions read Done,
+ *   except one whose completion episode is not released yet (`finishHeld`),
+ *   which reads Running while it is attached.
  * - An absent lifecycle state is not put on the card. The shared
  *   `foldedSessionLifecycleState` default leans live on purpose for in-app
  *   affordances; on a lock-screen card that would read "Working" forever.
@@ -116,8 +131,14 @@ export function agentActivityPhaseFor(
   if (facts.draft === true || facts.lifecycleState === undefined) return null;
   const disposition = sessionAttentionDisposition(facts);
   if (disposition.state === 'failed') return 'failed';
-  if (disposition.state === 'finished')
-    return facts.lifecycleState === 'canceled' ? null : 'completed';
+  if (disposition.state === 'finished') {
+    if (facts.lifecycleState === 'canceled') return null;
+    // A held finish reads Running only while something can still be
+    // running; a detached session reads Done (unalerted) until its release.
+    return facts.finishHeld === true && facts.isLoaded
+      ? 'running'
+      : 'completed';
+  }
   if (!facts.isLoaded) return null;
   if (disposition.state === 'awaiting') {
     if (disposition.via === 'needs_input') return 'waiting_for_input';
@@ -143,6 +164,11 @@ export interface AgentActivitySnapshot {
    * session is a different entry even when no observation saw it leave.
    */
   entryKey: string;
+  /**
+   * Done, but raises no "Agent finished": the finish is held (a detached
+   * session awaiting its release) or announced elsewhere (`finishQuiet`).
+   */
+  quietFinish?: true;
 }
 
 /** One alertable entry: an approval/input request, or a recent finish. */
@@ -297,7 +323,9 @@ export function buildAgentActivityCard(input: {
     .filter(
       (s) =>
         needsUser(s.phase) ||
-        (finished(s.phase) && now - s.enteredAt <= FINISH_ALERT_WINDOW_MS),
+        (finished(s.phase) &&
+          !(s.phase === 'completed' && s.quietFinish === true) &&
+          now - s.enteredAt <= FINISH_ALERT_WINDOW_MS),
     )
     .sort(
       (a, b) =>

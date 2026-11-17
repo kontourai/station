@@ -1,0 +1,7 @@
+{
+  "revision": "df2598a20ba7dc82a2ed14255425b4e3efb43682",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"#5087 changed only the Full telemetry channel sentence in the generated privacy policy (beta is omitted, not mapped to preview). Checked this guide's telemetry and privacy paragraphs: they link the working copy and public policy and make no channel claim, so they stay accurate.","inputs":["docs/user/concepts.md","docs/privacy-policy.md"]}
+  ]
+}

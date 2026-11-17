@@ -10,6 +10,7 @@ import type {
   GateExceptionAttentionItem,
   GateRouteBackAttentionItem,
   PluginLifecycleProposalAttentionItem,
+  PullRequestFeedbackAttentionItem,
   SessionFailedAttentionItem,
   SetupIncompleteAttentionItem,
 } from '@kontourai/station-sdk';
@@ -59,8 +60,25 @@ vi.mock('../../../utils/attentionOpen', async (importOriginal) => ({
   navigateToAttentionTarget: (href: string) => navigate(href),
 }));
 
+const feedbackScope = vi.hoisted(() => ({
+  apiBase: 'http://station.test',
+  authorityKey: 'owner',
+  isCurrent: () => true,
+}));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => feedbackScope,
+}));
+
+const feedbackSdk = vi.hoisted(() => ({
+  sendAgain: vi.fn(async () => undefined),
+  turnOff: vi.fn(async () => undefined),
+}));
+vi.mock('@kontourai/station-sdk/pull-request-feedback', () => ({
+  sendPullRequestFeedbackAgain: (...args: unknown[]) =>
+    feedbackSdk.sendAgain(...(args as [])),
+  turnOffPullRequestFeedback: (...args: unknown[]) =>
+    feedbackSdk.turnOff(...(args as [])),
 }));
 
 const acknowledgeApiBases: Array<string | undefined> = [];
@@ -959,4 +977,116 @@ describe('AttentionCard — Flow gate cards and the device Flow preview', () => 
       expect(screen.getByRole('button', { name: action })).toBeTruthy();
     },
   );
+});
+
+describe('AttentionCard — pull request feedback needs you', () => {
+  const identity = {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'acme', name: 'widgets' },
+    ref: '42',
+  };
+  const feedbackItem = (
+    overrides: Partial<PullRequestFeedbackAttentionItem> = {},
+  ): PullRequestFeedbackAttentionItem => ({
+    id: 'pull-request-feedback:0123456789abcdef',
+    kind: 'pull-request-feedback',
+    title: '#42 still failing after 3 rounds',
+    body: 'ci / unit-tests failed on a1b2c3d. Auto-fix is paused.',
+    createdAt: '2026-11-16T09:00:00.000Z',
+    updatedAt: '2026-11-16T09:00:00.000Z',
+    sessionId: 'session-a',
+    source: { conversationId: 'chat-a', identity },
+    reason: 'round-limit',
+    cap: 'head',
+    headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    pullRequestUrl: 'https://github.com/acme/widgets/pull/42',
+    openHref: '/projects/p?chat=session-a&dock=open',
+    viewerMayChange: true,
+    ...overrides,
+  });
+  const buttons = () =>
+    screen.getAllByRole('button').map((button) => button.textContent);
+
+  beforeEach(() => {
+    feedbackSdk.sendAgain.mockClear();
+    feedbackSdk.turnOff.mockClear();
+  });
+
+  test('paused: Send again is the one primary action, first, then Open pull request, Turn off last', async () => {
+    renderCard(feedbackItem());
+    const actions = document.querySelector(
+      '.attention-item__footer .notice-actions',
+    );
+    expect(
+      [...(actions?.children ?? [])].map((element) => element.textContent),
+    ).toEqual(['Send again', 'Open pull request', 'Turn off auto-fix']);
+    expect(screen.getByText('Agent feedback')).toBeTruthy();
+    expect(screen.getByText('#42 still failing after 3 rounds')).toBeTruthy();
+    const send = screen.getByRole('button', { name: 'Send again' });
+    expect(send.className).toContain('notice-action--primary');
+    expect(
+      screen
+        .getAllByRole('button')
+        .filter((button) => button.className.includes('--primary')),
+    ).toEqual([send]);
+    expect(
+      screen
+        .getByRole('link', { name: 'Open pull request' })
+        .getAttribute('href'),
+    ).toBe('https://github.com/acme/widgets/pull/42');
+    await act(async () => fireEvent.click(send));
+    expect(feedbackSdk.sendAgain).toHaveBeenCalledWith(
+      'http://station.test',
+      'chat-a',
+      identity,
+      { requestScope: feedbackScope },
+    );
+  });
+
+  test('agent stopped: Open chat is primary and there is no Send again', () => {
+    renderCard(
+      feedbackItem({
+        reason: 'agent-stopped',
+        title: '#42 has feedback waiting',
+        body: 'Its agent stopped, so 2 failing checks were not sent.',
+      }),
+    );
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    const open = screen.getByRole('link', { name: 'Open chat' });
+    expect(open.getAttribute('href')).toBe(
+      '/projects/p?chat=session-a&dock=open',
+    );
+    expect(open.className).toContain('notice-action--primary');
+    expect(buttons()).toContain('Turn off auto-fix');
+  });
+
+  test('Turn off turns this pull request off in its own chat', async () => {
+    renderCard(feedbackItem());
+    await act(async () =>
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Turn off auto-fix' }),
+      ),
+    );
+    expect(feedbackSdk.turnOff).toHaveBeenCalledWith(
+      'http://station.test',
+      'chat-a',
+      identity,
+      { requestScope: feedbackScope },
+    );
+    expect(feedbackSdk.sendAgain).not.toHaveBeenCalled();
+  });
+
+  test('a reader who may not change it gets the remedy, not buttons that would be refused', () => {
+    renderCard(feedbackItem({ viewerMayChange: false }));
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Turn off auto-fix' }),
+    ).toBeNull();
+    expect(screen.getByTestId('attention-pr-feedback-remedy').textContent).toBe(
+      "Change this from the chat on this Station's owner device.",
+    );
+    // The way to it stays.
+    expect(screen.getByRole('link', { name: 'Open chat' })).toBeTruthy();
+  });
 });

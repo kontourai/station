@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Added that a Codex source home that is a credential profile's own home applies that profile's overlay, refusing on an invalid one; the rest of the affinity description stands.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

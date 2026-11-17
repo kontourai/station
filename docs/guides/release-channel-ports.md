@@ -2,7 +2,7 @@
 
 Station channels are separate local runtimes. Their homes, launchers, install
 roots, and loopback ports are deliberately distinct so a stable session can
-remain live while beta, nightly, or a development worktree runs beside it.
+remain live while Nightly or a development worktree runs beside it.
 The table describes configured identities, not a receipt that every platform
 has been installed together or published. Mobile clients use their package
 identity and connect to a selected server; they do not host these local listeners.
@@ -11,17 +11,17 @@ identity and connect to a selected server; they do not host these local listener
 | --- | ---: | ---: | --- | --- | --- |
 | development worktree | 40141-40640 | 39141-39640 | `~/.station/instances/dev/<worktree-id>` | worktree command | the checked-out worktree |
 | stable | 18000 | 18141 | `~/.station/instances/stable` | `station` | stable release tag and verified release metadata |
-| beta | 28000 | 28141 | `~/.station/instances/beta` | `station-beta` | preview release tag and verified release metadata |
 | nightly | 38000 | 38141 | `~/.station/instances/nightly` | `station-nightly` | signed nightly manifest (`vX.Y.Z-nightly.N` from `origin/main`) |
 
 Development worktrees use the `40141-40640` UI and `39141-39640` server bands
 and must not borrow a release-channel port. `station dev` deterministically
 resolves an offset within those bands from the worktree contract. The release installer uses the public release protocol
-names `stable` and `preview`, then maps verified provenance to runtime names:
-stable becomes `stable`; preview becomes `beta`. A branch name is never a
-release provenance source: worktrees are development only, nightlies follow
-`origin/main`, beta uses the preview release protocol, and stable uses the
-stable release protocol. Release tag/commit binding and signature verification
+names `stable` and `nightly`, matching runtime names. An RC tag
+`vX.Y.Z-rc.N` selects Stable identity and the bare `X.Y.Z` version; it is an
+acceptance step, not another channel. Beta and the `preview` ring are retired;
+old keys and identifiers are rejected instead of remapped to Stable. A branch
+name never supplies release provenance: worktrees are development only and
+Nightly follows admitted main source. Release tag/commit binding and signature verification
 of release metadata/artifacts are distinct checks; a channel name does not
 prove a cryptographically signed Git tag.
 
@@ -46,13 +46,13 @@ passes the installer these two variables but not the runtime
 carries with its channel's defaults; change an installed port with the
 installer's variables.
 The owned launcher exports the exact channel, home, and install root on every
-later command and upgrade. Do not use the retired `STATION_CHANNEL=preview`:
-run `STATION_CHANNEL=beta` instead.
+later command and upgrade. Both retired selectors `STATION_CHANNEL=preview`
+and `STATION_CHANNEL=beta` are refused. Retained user data or a profile name
+containing “beta” is not permission to activate that retired runtime.
 
 `config/channel-ports.json` is the single source for these values: its
 `channels` hold each runtime's ports and home, and its `releaseRings` map
-each installable ring to the runtime it installs as (`preview` installs as
-`beta`), whether it is a prerelease, and its launcher. `install.sh` must stay
+each installable ring to its matching runtime, whether it is a prerelease, and its launcher. `install.sh` must stay
 one standalone file, so `scripts/install-script-generated.mjs` projects that
 table, the pinned signing keys from `config/release-manifest-keys.json`,
 portable targets from `packages/shared/src/portable-server-targets.mjs`, and
@@ -68,18 +68,17 @@ rewrites them.
 
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
 whose envelope names the pinned nightly key; the authenticated GitHub-release
-path serves stable and beta only. With no
+path serves Stable only. With no
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` (unset or empty), both installers use
 the rolling
 `https://github.com/kontourai/station/releases/download/portable-nightly/station-portable-nightly-manifest.json`,
 and the install state records that URL for upgrades. An explicit URL
-overrides it; verification is the same either way. Stable and beta have no
-such default yet (#2960). Stable and
-beta also accept a signed public manifest through the same variable. The
-release workflows can publish one per ring (`portable-stable`,
-`portable-preview`) once the owner enables them; see
+overrides it; verification is the same either way. Stable has no
+such default yet (#2960). It also accepts a signed public manifest through
+the same variable. Final publication can move `portable-stable` when enabled;
+RC publication signs only its versioned manifest and moves no rolling pointer; see
 [signed host-stream manifests](release-rings.md#signed-host-stream-manifests).
-The default path for stable and beta is still the authenticated one. Nightly has no
+The default Stable path is still the authenticated one. Nightly has no
 public/runtime name split: the ring, the runtime, and the provenance channel
 are all `nightly`, and portable versions use `X.Y.Z-nightly.YYYYMMDDNN`: the
 UTC date followed by a two-digit build index. The allocation remains bound
@@ -93,9 +92,9 @@ channel runtime: both default to `~/.station/instances/nightly` and ports
 therefore refuses to adopt a default nightly home that holds data it does not
 own (set `STATION_HOME` to share that home deliberately, or to another
 instance directory to keep separate data), and refuses to start a fresh
-nightly install over a port that is already in use. Stable and beta desktop
-apps share their channels' defaults in the same way; the installer does not
-yet guard those channels.
+nightly install over a port that is already in use. The Stable desktop app
+shares its channel's defaults in the same way; the installer does not
+yet apply those additional Nightly admission guards to Stable.
 
 ## Prebuilt archives and source releases
 
@@ -113,6 +112,10 @@ version's own `bin/station --version`, which must report the signed version
 on the manifest's Node.js, writes the `.station-install-complete` sentinel,
 and makes the directory read-only. `current` points at the active version,
 and the launcher (`station-owned-launcher-v2`) runs `current/bin/station`.
+Stable archives use schema-3 provenance bound to SHA, product version and
+Stable identity; promotion may retain a producing RC ref outside that archive.
+Nightly archives continue to use schema 2/ref for deployed-installer compatibility.
+Legacy schema-2 readers keep exact-ref validation.
 Nothing is built, and the archive's bundled Node.js runs Station. Pruning
 happens only after the installer itself starts Station: it keeps the active
 version and the one it replaced, and removes the rest. With
@@ -155,9 +158,8 @@ blocks `station upgrade`. See the [CLI reference](../reference/cli.md) for
 the service details.
 
 Source releases are still supported and are built on the host. They come from
-the authenticated GitHub-release path, which is how stable and beta install
-today, and from a schema 1 public manifest (`station-portable.tar.gz`), which
-stable and preview can publish until those rings ship archives. A source
+the authenticated Stable GitHub-release path, including an exact RC pin,
+and from a schema 1 public manifest (`station-portable.tar.gz`). A source
 release lives in `installs/<channel>/releases/<sha256>/`, needs Node.js 24
 and npm on the host, and uses the v1 launcher. An install can move from a
 source release to an archive: the installer recognises either launcher as its
@@ -204,8 +206,7 @@ with the same variables, files and messages:
 - `current` is a directory junction to it, switched by removing `current`
   and renaming `current.next` into its place; a later run finishes a switch a
   crash interrupted;
-- the owned launcher is `station.cmd`, `station-beta.cmd` or
-  `station-nightly.cmd` in `%USERPROFILE%\.local\bin` (or
+- the owned launcher is `station.cmd` or `station-nightly.cmd` in `%USERPROFILE%\.local\bin` (or
   `STATION_BIN_DIR`), recognized by its exact text
   (`rem station-owned-launcher-v2`); the installer prints a PATH hint and
   never edits PATH. cmd.exe reads a batch file in the console code page, so
@@ -282,18 +283,18 @@ apply.
 
 `config/channel-platform-matrix.json` is the explicit cross-platform contract
 for app names, bundle/package identifiers, homes, ports, and icon sources.
-macOS, Windows, Linux, and Android have distinct Stable, Beta, and Nightly
+macOS, Windows, Linux, and Android have distinct Stable and Nightly
 identities. Desktop development adds a worktree-derived identifier and home;
 Android development uses the separate `io.kontourai.station.debug` package.
 The Android release workflows reapply the selected channel icon to both the
 `main` and `debug` source sets after `tauri android init`, preventing Gradle
-source-set precedence from showing a Dev icon in Beta or Nightly.
+source-set precedence from showing a Dev icon in Stable or Nightly.
 
-iOS Stable, Beta and Nightly now have source-configured bundle identifiers,
+iOS Stable and Nightly now have source-configured bundle identifiers,
 pairing schemes and separate icon catalogs. The actual delivery owner is
 [`ios-testflight-channel.mjs`](../../scripts/ios-testflight-channel.mjs) and
 the reusable [TestFlight workflow](../../.github/workflows/testflight-delivery.yml).
-The release workflow selects Stable or Beta; Nightly staging selects Nightly.
+The release workflow selects Stable for RC and final; Nightly staging selects Nightly.
 These are implemented routes, not merely reserved identifiers. Their protected
 profiles, App Store Connect records, tester groups and successful provider
 receipts remain separate operational prerequisites; the matrix's

@@ -1696,6 +1696,28 @@ function taskWorktreeTerminalState(status: TaskStatus): WorktreeTerminalState {
   return status === 'done' ? 'completed' : 'failed';
 }
 
+/**
+ * #4507: the read-only worktree fields a Task record carries for a reader,
+ * from its worktree state. Nothing here is ever written back to the store.
+ */
+function taskWorktreeProjection(
+  state:
+    | { state: 'recorded'; entry: TaskWorktreeEntry }
+    | { state: 'none' }
+    | { state: 'unknown' },
+): Pick<TaskRecord, 'taskWorktree' | 'taskWorktreeUnknown'> {
+  if (state.state === 'unknown') return { taskWorktreeUnknown: true };
+  if (state.state === 'none') return {};
+  const { worktree, kept } = state.entry;
+  return {
+    taskWorktree: {
+      path: worktree.path,
+      branch: worktree.branch,
+      ...(kept ? { kept: { ...kept } } : {}),
+    },
+  };
+}
+
 export class TaskGraphService {
   private readCache?: {
     text: string;
@@ -2045,12 +2067,9 @@ export class TaskGraphService {
     const task = this.readTask(taskId);
     if (!task) return null;
     const workspaceBinding = await this.resolveWorkspaceForOpen(task);
-    const state = this.taskWorktreeState(task);
-    if (state.state === 'unknown')
-      return { ...task, workspaceBinding, taskWorktreeUnknown: true };
-    const entry = state.state === 'recorded' ? state.entry : undefined;
-    const worktree = entry?.worktree;
-    if (!worktree || !entry) return { ...task, workspaceBinding };
+    const projection = taskWorktreeProjection(this.taskWorktreeState(task));
+    const worktree = projection.taskWorktree;
+    if (!worktree) return { ...task, workspaceBinding, ...projection };
     // #4507: the Task's own worktree is where its work is. The Project
     // checkout stays `workingDirectory`; the Task view's existing "Task
     // worktree" and branch rows show the Task's checkout.
@@ -2061,12 +2080,40 @@ export class TaskGraphService {
         worktreePath: worktree.path,
         branch: worktree.branch,
       },
-      taskWorktree: {
-        path: worktree.path,
-        branch: worktree.branch,
-        ...(entry.kept ? { kept: { ...entry.kept } } : {}),
-      },
+      taskWorktree: worktree,
     };
+  }
+
+  /**
+   * #4507 for a Tasks list: each Task's worktree projection, as
+   * {@link readTaskForOpen} computes it, from one worktree-record read for
+   * the whole list. Only the projection fields are added; the Task's stored
+   * `workspaceBinding` is left as recorded. While the record store cannot be
+   * read, each Task with a repository root costs one `existsSync` of its
+   * default worktree path (the same fallback `readTaskForOpen` makes); a
+   * Project's list is bounded by its Task count, and that state is a fault.
+   */
+  projectTaskWorktrees<T extends TaskRecord>(tasks: readonly T[]): T[] {
+    if (!tasks.length) return [];
+    const listed = this.taskWorktrees.listState();
+    const entries =
+      listed.state === 'listed'
+        ? new Map(listed.entries.map(({ taskId, entry }) => [taskId, entry]))
+        : undefined;
+    return tasks.map((task) => {
+      const entry = entries?.get(task.id);
+      const read = !entries
+        ? ({ state: 'unreadable' } as const)
+        : entry?.taskCreatedAt === task.createdAt
+          ? ({ state: 'recorded', entry } as const)
+          : ({ state: 'none' } as const);
+      const projection = taskWorktreeProjection(
+        this.taskWorktreeStateFrom(task, read),
+      );
+      return projection.taskWorktree || projection.taskWorktreeUnknown
+        ? { ...task, ...projection }
+        : task;
+    });
   }
 
   /**
@@ -2100,7 +2147,23 @@ export class TaskGraphService {
     | { state: 'recorded'; entry: TaskWorktreeEntry }
     | { state: 'none' }
     | { state: 'unknown' } {
-    const read = this.taskWorktrees.readState(task.id, task.createdAt);
+    return this.taskWorktreeStateFrom(
+      task,
+      this.taskWorktrees.readState(task.id, task.createdAt),
+    );
+  }
+
+  /** {@link taskWorktreeState} from a record read already made. */
+  private taskWorktreeStateFrom(
+    task: Pick<TaskRecord, 'id' | 'createdAt' | 'workspaceBinding'>,
+    read:
+      | { state: 'recorded'; entry: TaskWorktreeEntry }
+      | { state: 'none' }
+      | { state: 'unreadable' },
+  ):
+    | { state: 'recorded'; entry: TaskWorktreeEntry }
+    | { state: 'none' }
+    | { state: 'unknown' } {
     if (read.state !== 'unreadable') return read;
     const root = task.workspaceBinding?.repoRoot;
     return root && existsSync(defaultTaskWorktreePath(root, task.id))
@@ -3248,6 +3311,19 @@ export class TaskGraphService {
   listKeptDeclaredPullRequests(taskId: string): TaskKeptDeclaredPullRequest[] {
     return this.readStore()
       .declaredPullRequestKeeps.filter((keep) => keep.taskId === taskId)
+      .map((keep) => structuredClone(stripDeclaredPullRequestKeep(keep)));
+  }
+
+  /**
+   * The kept declared pull requests of every Task in `taskIds`, in one store
+   * read: the Project board reads them for a whole page of Tasks.
+   */
+  listKeptDeclaredPullRequestsForTasks(
+    taskIds: readonly string[],
+  ): TaskKeptDeclaredPullRequest[] {
+    const wanted = new Set(taskIds);
+    return this.readStore()
+      .declaredPullRequestKeeps.filter((keep) => wanted.has(keep.taskId))
       .map((keep) => structuredClone(stripDeclaredPullRequestKeep(keep)));
   }
 

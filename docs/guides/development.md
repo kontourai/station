@@ -568,6 +568,22 @@ scopes whose owner PID and birth fingerprint are no longer live. This work does
 not make running turns survive server restarts; the
 [process supervisor proposal](../design/process-supervisor.md) owns that design.
 
+A scope whose cleanup fails (systemctl cannot inspect, kill or stop it) stays
+tracked and is retried with jittered exponential backoff from 2 seconds up to
+5 minutes. After 10 failed attempts Station abandons it and stops retrying.
+When systemctl cannot reach the user manager's bus at all (`Failed to connect
+to user scope bus`), every attempt waits the full 5 minutes and the scope is
+abandoned after 3. Each scope logs one warning on its first failure and one
+when abandoned; the attempts between are debug lines. Shutdown still tries
+every scope once more, abandoned ones included, and reports any that do not
+settle. `GET /api/system/workload` and the resource-posture route list pending
+and abandoned scopes under `cleanup` (at most 256 abandoned are kept, with a
+count of any dropped). Settings › Advanced › Host options lists the abandoned
+ones, with a restart hint, whether or not the workload budget preview is on.
+Attempts are counted by
+`station.workload.scope_cleanup.attempts`, and the backlog is observed by
+`station.workload.scope_cleanup.backlog`.
+
 The [process fixture](../../src-server/services/infra/__tests__/workload-resources.process.test.ts)
 exercises the manager from a disposable service, including real OOMs and PTY
 behavior when the native dependency is available. It is not a live provider,
@@ -602,11 +618,9 @@ homes under one `STATION_ROOT` (`~/.station` by default):
 +-- cache/
 +-- installs/
 |   +-- stable/
-|   +-- beta/
 |   +-- nightly/
 +-- instances/
     +-- stable/       # runtime home: config, projects, agents, plugins, logs...
-    +-- beta/
     +-- nightly/
     +-- dev/<worktree-id>/
 ```
@@ -991,6 +1005,12 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
+`test:focused`, `test:changed`, `typecheck`, the code-health gate
+(`node scripts/code-health-gate.mjs`) and the fallow audits wait for one
+[host heavy-check slot](testing.md#host-heavy-check-slots) shared by every
+worktree, so concurrent runs from several agents serialize instead of sharing
+one memory limit. Let them wait rather than working around the queue.
+
 `npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
@@ -1002,7 +1022,9 @@ the fixed invariants plus browser/performance smoke and the UI bundle budget.
 The `fast-checks` result combines job outcomes with exact-plan shard receipts;
 the required `Source verification policy` context reconciles it (the
 [ruleset](#landing-a-pull-request) lists required contexts). A failing shard also annotates each failed test and uploads its
-redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
+redacted Vitest JSON report. After its summary line the shard log lists each
+failed test as `file > name`, then failed suites and infrastructure errors,
+because a job log shows an annotation's message but not its file or title. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
 Follow the [local feedback rule](testing.md#what-counts-as-tested).
@@ -1020,7 +1042,7 @@ source only; scheduled/manual success then runs all five packaging/platform
 validation families. Replaced pending revisions have no qualification claim. Optional
 PR delivery families run in sequence after core fast checks, selected by a
 trusted base-owned diff planner; required integration contexts stay unchanged.
-Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
+Scheduled main qualification and tagged Stable RC/final releases require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
 
 Nightly runs independently: an hourly eligibility decision enforces a six-hour
 default publication minimum before source tests or builds. Eligible sources
@@ -1057,7 +1079,7 @@ Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manif
 
 Dependency updates retain lock and compatibility checks. Feature PRs, merge
 queues and Nightly builds do not run advisory audits; the central scheduled
-scan tracks disclosures, and Preview/Stable publication enforces a fresh
+scan tracks disclosures, and RC/final publication enforces a fresh
 exact-source floor. See [Dependency security](dependency-security.md) for graph
 views, accountable ownership, trusted release policy and exception contracts.
 

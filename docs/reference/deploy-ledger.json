@@ -1,5 +1,55 @@
 [
   {
+    "timestampUtc": "2026-11-16T12:18:53Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261116.43863134706",
+    "sha": "d25dc082385145dcdf133590bd49d12e02f4198f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43863134706",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261116.43863134706 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+      "groups": {
+        "feat": [
+          "[#5039](https://github.com/kontourai/station/pull/5039) feat(chat): message-free, compact Agent/engine handoff and one-click Continue in Station",
+          "[#5035](https://github.com/kontourai/station/pull/5035) feat(environments): open remote sessions read-only; owner-only remote reads",
+          "[#5002](https://github.com/kontourai/station/pull/5002) feat(peers): grey out and refuse paired Stations that are not ready",
+          "[#5030](https://github.com/kontourai/station/pull/5030) feat(sessions): discover Codex sessions across configured homes; opt-in ACP session listing",
+          "[#4935](https://github.com/kontourai/station/pull/4935) feat(remote-tasks): drive cloud coding agents through one remote task engine abstraction",
+          "[#5027](https://github.com/kontourai/station/pull/5027) feat(chat-dock): regroup composer + and dock ⋯ menus; open terminal from the composer"
+        ],
+        "fix": [
+          "[#5014](https://github.com/kontourai/station/pull/5014) fix(workload): back off and abandon failing scope cleanup",
+          "[#5036](https://github.com/kontourai/station/pull/5036) fix(nightly): read the rolling desktop release past the 1 MiB capture default",
+          "[#5038](https://github.com/kontourai/station/pull/5038) fix(ci): keep the supersession pass going when a force-cancel is refused",
+          "[#5016](https://github.com/kontourai/station/pull/5016) fix(logging): rotate the stdout log file and rate-limit repeated warnings",
+          "[#4890](https://github.com/kontourai/station/pull/4890) fix(ui): plain Task, monitoring, scheduler, settings and Skills copy",
+          "[#5024](https://github.com/kontourai/station/pull/5024) fix(sessions): discover current Claude Code transcripts and stop following subagent sidechains",
+          "[#5023](https://github.com/kontourai/station/pull/5023) fix(inbox): unify waiting, turn navigation, and shared controls",
+          "[#5025](https://github.com/kontourai/station/pull/5025) fix(opencode): read OpenCode 2.x session stores",
+          "[#5017](https://github.com/kontourai/station/pull/5017) fix(telemetry): drop permanently refused usage batches and back off retries"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5032](https://github.com/kontourai/station/pull/5032) perf(desktop): drop the server compile cache and cap new space in the sidecar",
+          "[#5034](https://github.com/kontourai/station/pull/5034) chore(ui): ratchet UI copy style and CSS slop, and document the copy standard",
+          "[#4097](https://github.com/kontourai/station/pull/4097) chore: version packages",
+          "[#5026](https://github.com/kontourai/station/pull/5026) perf(tools): leaner Station tool listings, budgeted for every engine, with stated families",
+          "[#5031](https://github.com/kontourai/station/pull/5031) test(ios): follow the smoke test's renamed tap and select its text pins on a Swift change"
+        ]
+      },
+      "note": null,
+      "commitCount": 20
+    }
+  },
+  {
     "timestampUtc": "2026-11-16T03:26:30Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261116.43796408425",

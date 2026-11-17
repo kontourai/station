@@ -25,6 +25,13 @@ import {
 } from '@kontourai/station-shared/redaction';
 import pino from 'pino';
 import pinoPretty from 'pino-pretty';
+import {
+  createLogRepeatLimiter,
+  type LogRepeatLimiter,
+  type LogRepeatLimitPolicy,
+  logRepeatKey,
+  resolveLogRepeatLimitPolicy,
+} from './log-repeat-limiter.js';
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
@@ -65,6 +72,74 @@ let installedLineSink: LoggerLineSink | undefined;
  */
 export function installLoggerLineSink(sink: LoggerLineSink | undefined): void {
   installedLineSink = sink;
+}
+
+/**
+ * The process-wide limiter for repeated identical warnings (#4995), shared by
+ * every logger so one identity is counted once however many module-scope
+ * loggers carry the same component name. Configured from
+ * `STATION_LOG_REPEAT_LIMIT` / `STATION_LOG_REPEAT_WINDOW_SECONDS` at load.
+ */
+let repeatLimiter: LogRepeatLimiter = createLogRepeatLimiter(
+  resolveLogRepeatLimitPolicy(),
+);
+
+/**
+ * Replaces the repeat limiter, writing any pending summaries of the one it
+ * replaces. `undefined` re-reads the environment; `{ limit: 0 }` turns
+ * limiting off. For tests and diagnostics that must see every repeat; `now`
+ * is a test clock.
+ */
+export function configureLogRepeatLimit(
+  policy?: Partial<LogRepeatLimitPolicy>,
+  now?: () => number,
+): void {
+  repeatLimiter.flush();
+  repeatLimiter = createLogRepeatLimiter(
+    { ...resolveLogRepeatLimitPolicy(), ...policy },
+    now,
+  );
+}
+
+/**
+ * Writes every pending "Suppressed K repeats" summary now, before its window
+ * ends (#5054). Graceful shutdown in `index.ts` is the one caller: a process
+ * that exits mid-window would otherwise never write the summary, leaving only
+ * the `station.logs.suppressed_records` count. Never throws.
+ */
+export function flushLogRepeatSummaries(): void {
+  try {
+    repeatLimiter.flush();
+  } catch {
+    // Shutdown must never fail on a log summary.
+  }
+}
+
+// Lazy for the same reason as `services/infra/server-log-store.ts`: a static
+// import of the OTel instruments from the logger seam would load them ahead
+// of vi.mock hoisting in nearly every suite. The import happens only once a
+// record is actually suppressed. Counting never blocks or throws.
+type SuppressedRecordsCounter = {
+  add(value: number, attributes: Record<string, string>): void;
+};
+let suppressedRecordsCounter: SuppressedRecordsCounter | undefined;
+let suppressedRecordsCounterLoading: Promise<void> | undefined;
+function countSuppressedRecord(component: string, level: LogLevel): void {
+  const attributes = { component, level };
+  if (suppressedRecordsCounter) {
+    suppressedRecordsCounter.add(1, attributes);
+    return;
+  }
+  suppressedRecordsCounterLoading ??= import('../telemetry/metrics.js')
+    .then((module) => {
+      suppressedRecordsCounter = module.logRecordsSuppressed;
+    })
+    .catch(() => {
+      suppressedRecordsCounterLoading = undefined;
+    });
+  void suppressedRecordsCounterLoading.then(() =>
+    suppressedRecordsCounter?.add(1, attributes),
+  );
 }
 
 /**
@@ -339,43 +414,75 @@ function safeMessage(msg: unknown): string {
 
 function wrapPinoInstance(
   pinoInstance: pino.Logger,
+  component: string,
   bindings: Record<string, unknown> = {},
 ): Logger {
   const hasBindings = Object.keys(bindings).length > 0;
+  const write = (level: LogLevel, msg: string, context?: unknown): void => {
+    try {
+      if (installedLineSink) {
+        const storeContext = hasBindings
+          ? {
+              ...bindings,
+              ...normalizeContextForStore(context),
+            }
+          : normalizeContextForStore(context);
+        writeUnredactedStoreLine(pinoInstance, level, msg, storeContext);
+      }
+    } catch {
+      // Serialization and store writes must never throw out of a log call.
+    }
+
+    const normalized = normalizeContext(context);
+    const merged = hasBindings ? { ...bindings, ...normalized } : normalized;
+    const redacted = redactContext(merged);
+    // A logging call must never throw. `sanitizeFreeText` rejects a
+    // non-string, and a caller using pino's (obj, msg) argument order
+    // instead of this interface's (msg, context) hands it an object — which
+    // threw INSIDE an async error path, surfaced as an unhandled rejection,
+    // and killed the ACP probe that was trying to report a failure. Engines
+    // then never registered and chats failed with "Agent not found".
+    // Coercing keeps the miscall visible in the logs instead of destroying
+    // the path that reported it: the same doctrine as `logFatalAndFlush`,
+    // where the crash path must never crash.
+    (pinoInstance[level] as (obj: object, msg?: string) => void)(
+      redacted,
+      safeMessage(msg),
+    );
+  };
   const emit =
     (level: LogLevel) =>
     (msg: string, context?: unknown): void => {
       if (!pinoInstance.isLevelEnabled(level)) return;
-      try {
-        if (installedLineSink) {
-          const storeContext = hasBindings
-            ? {
-                ...bindings,
-                ...normalizeContextForStore(context),
-              }
-            : normalizeContextForStore(context);
-          writeUnredactedStoreLine(pinoInstance, level, msg, storeContext);
+      // #4995: only `warn` is limited; `error` and `fatal` always reach the
+      // log. The summary is written through this same logger and bypasses
+      // the limiter, so it is never itself suppressed.
+      if (level === 'warn') {
+        let admitted = true;
+        try {
+          admitted = repeatLimiter.admit(
+            logRepeatKey(component, msg, context),
+            (suppressed, windowMs) => {
+              if (!pinoInstance.isLevelEnabled('warn')) return;
+              write(
+                'warn',
+                `Suppressed ${suppressed} repeats of: ${rawMessage(msg).slice(0, 300)}`,
+                {
+                  suppressedRepeats: suppressed,
+                  windowSeconds: windowMs / 1000,
+                },
+              );
+            },
+          );
+        } catch {
+          // A limiter failure never drops a record.
         }
-      } catch {
-        // Serialization and store writes must never throw out of a log call.
+        if (!admitted) {
+          countSuppressedRecord(component, level);
+          return;
+        }
       }
-
-      const normalized = normalizeContext(context);
-      const merged = hasBindings ? { ...bindings, ...normalized } : normalized;
-      const redacted = redactContext(merged);
-      // A logging call must never throw. `sanitizeFreeText` rejects a
-      // non-string, and a caller using pino's (obj, msg) argument order
-      // instead of this interface's (msg, context) hands it an object — which
-      // threw INSIDE an async error path, surfaced as an unhandled rejection,
-      // and killed the ACP probe that was trying to report a failure. Engines
-      // then never registered and chats failed with "Agent not found".
-      // Coercing keeps the miscall visible in the logs instead of destroying
-      // the path that reported it: the same doctrine as `logFatalAndFlush`,
-      // where the crash path must never crash.
-      (pinoInstance[level] as (obj: object, msg?: string) => void)(
-        redacted,
-        safeMessage(msg),
-      );
+      write(level, msg, context);
     };
 
   return {
@@ -386,7 +493,10 @@ function wrapPinoInstance(
     error: emit('error'),
     fatal: emit('fatal'),
     child(childBindings: Record<string, unknown>): Logger {
-      return wrapPinoInstance(pinoInstance, { ...bindings, ...childBindings });
+      return wrapPinoInstance(pinoInstance, component, {
+        ...bindings,
+        ...childBindings,
+      });
     },
     setLevel(level: ConfigurableLogLevel): void {
       pinoInstance.level = level;
@@ -425,7 +535,7 @@ export function createLogger(options: CreateLoggerOptions): Logger {
   };
   const pinoInstance = pino(pinoOptions, buildDestination(level));
   rootPinoInstances.add(pinoInstance);
-  return wrapPinoInstance(pinoInstance);
+  return wrapPinoInstance(pinoInstance, options.name);
 }
 
 /**

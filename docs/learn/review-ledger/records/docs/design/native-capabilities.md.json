@@ -122,7 +122,9 @@
 
     "src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/ImageIntake.kt",
 
-    "src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/ShareIntakeSession.kt"
+    "src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/ShareIntakeSession.kt",
+
+    "src-ui/src/__tests__/PlatformProfile.test.tsx"
   ],
 
   "checks": [

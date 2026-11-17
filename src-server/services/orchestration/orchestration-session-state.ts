@@ -607,6 +607,14 @@ export function buildOrchestrationSessionSummary(options: {
    * stays absent unless the thread's own events rule it out).
    */
   conversationDraftFacts?: ConversationDraftFacts;
+  /**
+   * #5050: the admitted Station runtime home, for the "is `cwd` a folder
+   * Station made" check. A READER so a list builder admits the home once per
+   * build and only when some row has a `cwd`; resolving it per row repeated
+   * the whole admission filesystem walk for every session. Omitted, the check
+   * resolves the home itself.
+   */
+  readStationHome?: () => string;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   const persistedNativeState =
@@ -747,7 +755,7 @@ export function buildOrchestrationSessionSummary(options: {
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
     // #4389: a no-project chat's scratch folder is one Station made too.
-    ...(base.cwd && isStationChatFolder(base.cwd)
+    ...(base.cwd && isStationChatFolder(base.cwd, options.readStationHome?.())
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(appliedApprovalMode ? { appliedApprovalMode } : {}),

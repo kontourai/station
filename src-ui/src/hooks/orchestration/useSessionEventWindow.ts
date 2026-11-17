@@ -213,7 +213,7 @@ const NO_PARTIAL_TURNS: ReadonlySet<string> = new Set();
  * reads that reach it page down contiguously from the events above. A start
  * a detached page re-added is partial unless a read already closed it.
  */
-function notePartialTurnStarts(
+export function notePartialTurnStarts(
   page: Pick<
     OrchestrationConversationEventWindow,
     'events' | 'turnStartDetached'

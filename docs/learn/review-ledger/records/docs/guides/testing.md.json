@@ -290,7 +290,13 @@
 
     "scripts/__tests__/windows-portable-floor.test.ts",
 
-    "scripts/__tests__/server-scenario-probe.test.ts"
+    "scripts/__tests__/server-scenario-probe.test.ts",
+
+    "tests/helpers/gallery-app-error-state.ts",
+
+    "tests/helpers/gallery-document-tracker.ts",
+
+    "tests/helpers/gallery-screen-attempt.ts"
   ],
 
   "checks": [

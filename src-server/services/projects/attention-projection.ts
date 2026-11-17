@@ -10,6 +10,7 @@ import {
   isStandingAttentionKind,
   type PluginLifecycleProposalAttentionItem,
   type ProposedChangeAttentionItem,
+  type PullRequestFeedbackAttentionItem,
   parseAttentionSnoozeUntil,
   type SessionFailedAttentionItem,
   type SetupIncompleteAttentionItem,
@@ -71,6 +72,13 @@ import {
   resolvePluginProposalSource,
 } from '../plugins/plugin-lifecycle-proposals.js';
 import { ToolLibraryService } from '../plugins/tool-library-service.js';
+import {
+  PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE,
+  type PullRequestFeedbackAttentionSource,
+  pullRequestFeedbackAttentionCopy,
+  pullRequestFeedbackAttentionId,
+  pullRequestFeedbackNoticeTag,
+} from '../pull-requests/pull-request-feedback-attention.js';
 import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
 import type { FileAttentionSnoozeStore } from './attention-snooze-store.js';
 import type { ProposedChangeService } from './proposed-change-service.js';
@@ -292,6 +300,15 @@ export class AttentionProjectionService {
       preview: FeaturePreviewSelector;
       now?: () => number;
     },
+    private readonly sources: {
+      /**
+       * Pull request agent feedback that needs a person: paused, or waiting
+       * on a stopped agent. Absent (hosted, or not composed) projects none.
+       */
+      pullRequestFeedback?: {
+        attentionSources(): readonly PullRequestFeedbackAttentionSource[];
+      };
+    } = {},
   ) {}
 
   /**
@@ -338,6 +355,13 @@ export class AttentionProjectionService {
         taskId: string,
         requestType: string | undefined,
       ) => boolean;
+      /**
+       * Whether the caller could Send again or turn feedback off for this
+       * chat's pull request feedback, evaluated at the HTTP seam with the
+       * feedback routes' own writer rule. Absent means unknown: no item
+       * claims the caller can change it.
+       */
+      mayChangePullRequestFeedback?: (conversationId: string) => boolean;
     },
   ): Promise<AttentionProjection> {
     const readAuthority = authority ?? this.defaultReadAuthority();
@@ -435,6 +459,12 @@ export class AttentionProjectionService {
     );
 
     const setupItems = await this.projectSetupRequirement(readAuthority);
+    const pullRequestFeedbackItems = this.projectPullRequestFeedback(
+      readAuthority,
+      sessionsById,
+      activeNotifications,
+      viewer?.mayChangePullRequestFeedback,
+    );
 
     const proposedChangeItems = this.projectProposedChanges(readAuthority);
     const pluginProposalItems = viewer?.isOperator
@@ -470,6 +500,7 @@ export class AttentionProjectionService {
         : []),
       ...gateReviews.items,
       ...pairingItems,
+      ...pullRequestFeedbackItems,
       ...setupItems,
     ];
     // The inventory's key (`conversationAcknowledgementKey`), so a person's
@@ -1403,6 +1434,71 @@ export class AttentionProjectionService {
           };
         })
     );
+  }
+
+  /**
+   * Pull request feedback that needs a person, one item per pull request,
+   * only for a Session in `sessionsById` (already filtered by the reader's
+   * authority), named after that Session's Project. `updatedAt` is the
+   * source's own `at`, so acknowledging holds until the next pause.
+   */
+  private projectPullRequestFeedback(
+    authority: SessionReadAuthority,
+    sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>,
+    activeNotifications: Notification[],
+    mayChange: ((conversationId: string) => boolean) | undefined,
+  ): PullRequestFeedbackAttentionItem[] {
+    if (isHostedSessionReadAuthority(authority)) return [];
+    let sources: readonly PullRequestFeedbackAttentionSource[];
+    try {
+      sources = this.sources.pullRequestFeedback?.attentionSources() ?? [];
+    } catch {
+      // A store that cannot be read is not a reason to fail the inbox.
+      return [];
+    }
+    return sources.flatMap((source) => {
+      const session = sessionsById.get(source.sessionId);
+      if (!session) return [];
+      const tag = pullRequestFeedbackNoticeTag(
+        source.prKey,
+        source.reason,
+        source.at,
+      );
+      const notificationId = activeNotifications.find(
+        (notification) =>
+          notification.source === PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE &&
+          notification.metadata?.dedupeTag === tag,
+      )?.id;
+      const projectSlug = sessionProjectSlug(session);
+      const waiting = source.waiting?.reduce(
+        (total, entry) => total + entry.count,
+        0,
+      );
+      return [
+        {
+          id: pullRequestFeedbackAttentionId(source.prKey),
+          kind: 'pull-request-feedback' as const,
+          ...pullRequestFeedbackAttentionCopy(source),
+          createdAt: source.at,
+          updatedAt: source.at,
+          sessionId: source.sessionId,
+          ...(projectSlug ? { projectSlug } : {}),
+          source: {
+            conversationId: source.conversationId,
+            identity: source.identity,
+            ...(notificationId ? { notificationId } : {}),
+          },
+          reason: source.reason,
+          ...(source.cap ? { cap: source.cap } : {}),
+          headSha: source.headSha,
+          ...(source.failing?.length ? { failing: source.failing } : {}),
+          ...(waiting ? { waiting } : {}),
+          ...(source.url ? { pullRequestUrl: source.url } : {}),
+          openHref: sessionOpenHref(session),
+          viewerMayChange: mayChange?.(source.conversationId) ?? false,
+        },
+      ];
+    });
   }
 
   /**

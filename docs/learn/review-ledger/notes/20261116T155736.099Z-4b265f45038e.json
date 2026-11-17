@@ -1,0 +1,29 @@
+{
+  "revision": "f2816cab8c6fb8840c1d6cde5b2ba70ba14171df",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the new Qualify tool-family loading section against scripts/qualify-tool-disclosure.ts (cases, six observed checks, exit codes 0/1/3, --codex/--receipt) and an executed run with codex-cli 0.167.0 on 2026-11-16: feature off not qualified for exec and app-server; exec -c, app-server -c and thread/start config with features.mcp_tool_list_changed=true qualified. 'Without either half it fails at the list-after-loading step' was executed by removing the server notification and by the feature-off controls. Checked the list_changed-on-own-stream claim against station-control-mcp-server.ts and its route test. Limits stated: no real-model choice, resume or ACP agent qualified; Station's adapter does not set the flag.","inputs":["docs/guides/agent-efficiency.md"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"The only change is load_tool_family sending notifications/tools/list_changed related to its own call, registered only when disclosure is on. Checked the citing pages: none describes tool-family loading or that notification (mcp-ui-host's list_changed claim is about prompts), so no cited claim changes.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The only change is load_tool_family sending notifications/tools/list_changed related to its own call, registered only when disclosure is on. Checked the citing pages: none describes tool-family loading or that notification (mcp-ui-host's list_changed claim is about prompts), so no cited claim changes.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]},
+
+    {"path":"docs/guides/testing.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Only adds qualify:tool-disclosure (tsx scripts/qualify-tool-disclosure.ts). No existing script changed or was removed; the citing pages name other scripts, whose definitions are unchanged.","inputs":["package.json#/scripts"]}
+  ]
+}

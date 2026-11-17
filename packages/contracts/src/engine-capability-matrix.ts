@@ -725,27 +725,30 @@ export function toolPolicyDeliveryLabel(
   return 'Station approvals do not apply';
 }
 
-/** The detailed, non-overclaiming explanation paired with the label above. */
+/**
+ * The plain explanation paired with the label above: what Station's approval
+ * rules do for this engine, without overclaiming coverage.
+ */
 export function toolPolicyDeliveryExplanation(
   delivery: ToolPolicyDelivery | undefined,
 ): string {
   if (!delivery) {
-    return 'Station cannot tell whether its tool approvals cover this session: no engine capability matrix resolved.';
+    return "Station can't tell whether its approval rules apply here.";
   }
   if (delivery.state === 'native') {
-    return 'Station checks its blocks and auto-approve grants before every tool call.';
+    return "Station's approval rules apply to every tool call.";
   }
   if (delivery.state === 'partial') {
     const limits = [
-      "Station auto-applies only its matching auto-approve grants; everything else still goes through this engine's own approval flow.",
+      "Station auto-approves what your rules allow; everything else follows this engine's own approvals.",
       delivery.coverageLimit,
       delivery.toolIdentity === 'self-reported'
-        ? 'Tool identity is self-reported by the engine.'
+        ? 'Tool names come from the engine.'
         : undefined,
     ].filter(Boolean);
     return limits.join(' ');
   }
-  return "This engine runs its own approvals; Station's blocks and auto-approve grants are not consulted.";
+  return "This engine handles its own approvals; Station's rules aren't used.";
 }
 
 /**
@@ -1318,6 +1321,14 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   acp: {
     engineId: toEngineId('acp'),
     durability: ACP_ENGINE_DURABILITY,
+    // `AcpSessionListSource` lists sessions an ACP agent ran outside Station,
+    // read-only and without history. Nothing shows that resuming one keeps
+    // its conversation, so continuing one is not offered.
+    externalSessionContinuation: {
+      state: 'unsupported',
+      reason:
+        'Station lists these sessions read-only and has no evidence that resuming one keeps its history.',
+    },
     systemPrompt: { state: 'unsupported' },
     // archive#895 wave C: `acp-adapter.ts` already builds an ordinary
     // `{type:'text', text: input.input}` prompt content block on every

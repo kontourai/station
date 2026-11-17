@@ -10,9 +10,9 @@ describe('internal iOS TestFlight authority', () => {
     expect(
       internalTestFlightBuild({ channel: 'stable', version: '0.1.10' }),
     ).toBe('11100');
-    expect(
+    expect(() =>
       internalTestFlightBuild({ channel: 'beta', version: '0.1.10' }),
-    ).toBe('11100');
+    ).toThrow(/unknown channel/);
     expect(
       internalTestFlightAuthorityRef({
         channel: 'stable',
@@ -22,11 +22,19 @@ describe('internal iOS TestFlight authority', () => {
     ).toBe('refs/tags/ios-testflight/stable/v0.1.10/11100');
     expect(() =>
       internalTestFlightAuthorityRef({
-        channel: 'beta',
+        channel: 'stable',
         version: '0.1.10',
         bundleVersion: '11101',
       }),
     ).toThrow(/reserved internal build/);
+  });
+
+  test('refuses retired Beta internal authority tags', () => {
+    expect(() =>
+      parseInternalTestFlightAuthorityRef(
+        'refs/tags/ios-testflight/beta/v0.1.10/11100',
+      ),
+    ).toThrow(/not an internal/);
   });
 
   test('leaves Nightly on the globally monotonic allocator', () => {

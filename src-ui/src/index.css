@@ -44,7 +44,7 @@
    and `channel-text-contrast.test.tsx` measures the rendered text on its
    real surfaces, including the raised rows the panel links sit on and the
    sidebar home button's hover fill behind the badge. Where a channel's
-   signature hue fails (nightly #8b5cf6, beta #5865f2, the dev light
+   signature hue fails (nightly #8b5cf6 and the dev light
    #a75f0d), the mode uses a nearby shade of it for brand and roles alike. A dark-mode fill light enough to read on the dark page cannot
    carry white text at 4.5:1, so dark modes pair it with dark text. */
 :root.is-dev-build {
@@ -76,22 +76,6 @@
   --k-focus: #98560c;
 }
 
-:root[data-app-channel="beta"] {
-  --k-brand: #7983f4;
-  --k-brand-contrast: #06080b;
-  --k-action: #7983f4;
-  --k-action-contrast: #06080b;
-  --k-focus: #7983f4;
-}
-
-:root[data-app-channel="beta"][data-theme="light"] {
-  --k-brand: #4f5bd5;
-  --k-brand-contrast: #ffffff;
-  --k-action: #4f5bd5;
-  --k-action-contrast: #ffffff;
-  --k-focus: #4f5bd5;
-}
-
 :root[data-app-channel="nightly"] {
   --k-brand: #9d7bf8;
   --k-brand-contrast: #06080b;
@@ -108,10 +92,6 @@
   --k-focus: #7c3aed;
 }
 
-:root[data-app-channel="beta"] img[src="/favicon.png"] {
-  content: url("/favicon-beta.png");
-}
-
 :root[data-app-channel="nightly"] img[src="/favicon.png"] {
   content: url("/favicon-nightly.png");
 }
@@ -121,7 +101,7 @@
    that suppress outlines. Pointer focus remains visually unchanged.
 
    The ring follows `--k-focus` where something chose a focus colour: a
-   white-label theme, or a Dev, Beta or Nightly build (the channel blocks
+   white-label theme, or a Dev or Nightly build (the channel blocks
    above). Everywhere else it follows the accent, so a device accent chosen
    in Appearance colours it. The installed @kontourai/ui tokens always define
    `--k-focus`, so "is it defined" cannot tell those apart; instead
@@ -147,7 +127,6 @@
 :is(
     :root[data-brand-focus],
     :root.is-dev-build,
-    :root[data-app-channel="beta"],
     :root[data-app-channel="nightly"]
   )
   :where(
@@ -1226,6 +1205,12 @@ button:hover {
   z-index: var(--layer-system) !important;
 }
 
+/* A popover opened from inside this one stands in for it
+   (`yieldToChildPopover`): one surface shows at a time. */
+.responsive-surface-overlay[data-yielded] > .responsive-surface-panel {
+  visibility: hidden;
+}
+
 /* station#753: one open transition for every dialog/sheet that renders
    through `ResponsiveDialogSurface` (NewChatModal, the ACP setup dialog, the
    model picker, confirm/prompt modals, …) — a single declaration at the
@@ -1791,8 +1776,23 @@ button:hover {
 
 .region-tabs__item {
   display: flex;
-  flex: 0 0 auto;
+  /* Unselected tabs give way first, down to a few letters with an ellipsis,
+     so a narrow side bar keeps the selected pane's name whole instead of
+     scrolling it out behind the bar's buttons ("Agen"). */
+  flex: 0 1 auto;
+  min-width: 4em;
   align-items: center;
+}
+
+.region-tabs__item:has(> [aria-selected="true"]) {
+  flex-shrink: 0;
+  min-width: max-content;
+}
+
+.region-tabs__item > .region-tabs__tab {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .region-tabs__tab {
@@ -4064,16 +4064,24 @@ button:hover {
   }
 }
 
-/* Backgrounded provider tasks that outlive the assistant turn. */
+/* Backgrounded work that outlives the assistant turn: the strip's card holds
+   its count line and the running tasks the transcript does not show. It does
+   not clip its content, so the product-wide focus ring (offset outside the
+   button) stays whole. */
+.background-tasks-strip {
+  margin: 8px 0;
+  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+}
+
 .background-tasks-banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .background-tasks-banner__label {
@@ -4095,6 +4103,18 @@ button.background-tasks-banner {
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+/* The card's inner radius (10px less its 1px border), so the hover fill
+   meets its corners; square at the bottom when task rows follow. */
+button.background-tasks-banner {
+  border-radius: 9px;
+}
+
+.background-tasks-strip:has(.background-tasks-banner__tasks)
+  > button.background-tasks-banner {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 button.background-tasks-banner:hover,
@@ -9458,6 +9478,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-height: 56px;
   justify-content: flex-start;
 }
+/* Glyph and radio mark sit on the title's line, not the middle of a wrapped
+   description. Compounded: chat.css loads after this file and its
+   `.composer-actions-menu__item` centres every row. */
+.composer-actions-menu__item.composer-mode-sheet__option {
+  align-items: flex-start;
+  padding-block: var(--k-space-2);
+}
 
 /* The notes above the list start where a row's content does: the list's
    padding (`--space-2`, i.e. `--k-space-1`) plus the row's own
@@ -9498,9 +9525,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-glyph {
   flex: 0 0 auto;
+  display: grid;
+  place-items: center;
   width: 24px;
-  text-align: center;
+  height: var(--composer-mode-sheet-title-line, 24px);
   font-size: var(--text-lg);
+  line-height: 1;
 }
 
 .composer-mode-sheet__option-body {
@@ -9511,6 +9541,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-width: 0;
 }
 
+.composer-mode-sheet__option-body strong {
+  line-height: var(--composer-mode-sheet-title-line, 24px);
+}
+
 .composer-mode-sheet__option-body small {
   color: var(--text-muted);
   font-size: var(--k-text-sm);
@@ -9519,6 +9553,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-mark {
   flex: 0 0 auto;
+  /* Centred on the 24px title line. */
+  margin-block-start: 2px;
   width: 20px;
   height: 20px;
   border: 2px solid var(--border-secondary);
@@ -9553,6 +9589,24 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
   font-size: var(--k-text-sm);
   line-height: 1.4;
+}
+
+/* What is running now: the one note a reader needs before choosing. */
+.composer-mode-sheet__status {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--k-text-sm);
+  line-height: 1.4;
+}
+
+/* The shared Checkbox, on a row tall enough to hit comfortably. */
+.composer-mode-sheet__save-default {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+.composer-mode-sheet__save-default .cb__label {
+  font-size: var(--k-text-sm);
 }
 
 /* #3290: the read-only approval explanation of an engine-decided engine. */

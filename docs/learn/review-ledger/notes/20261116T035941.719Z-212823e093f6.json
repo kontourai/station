@@ -1,0 +1,89 @@
+{
+  "revision": "f525db32e0ecd001762b660df944b73a0b7f8d62",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"The list now asks remotes for limit=200 under an 8,388,608-byte cap sized from measured summaries; an oversized list or search answer keeps the existing unavailable/unreachable status and is logged by environment id alone. Checked against remote-session-reader.ts, orchestration.ts read-model limit and their tests.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Corrected the cause sentence's referent, added searchConversationMessages to the readers that keep StationResponseTooLargeError as cause, noted the agent-entry export of SessionDetailWindowUnsupportedError, and documented listOrchestrationSessions' { limit } with its older-host behavior. Checked against client/orchestration.ts, client/conversations.ts and agent/index.ts.","inputs":["docs/reference/sdk.md","packages/sdk/src/agent/index.ts","packages/sdk/src/client/conversations.ts","packages/sdk/src/client/orchestration.ts","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Only change: GET /sessions/read-model accepts an optional limit (1-1,000) answering the newest N, oldest first; without it the answer is unchanged. Scanned every citing page for read-model claims; only sdk.md describes the read-model and its existing claims (deadlines, caching) still hold.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Only added read-model limit tests; the citing page's claims about route tests are unchanged.","inputs":["src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"]},
+
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"Only change: SessionDetailWindowUnsupportedError added as an explicit agent-entry export beside the other error classes, as ADR 0021 asks (explicit exports, no wildcard). No citing page enumerates the entry's error classes, so none needs a change.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only change: SessionDetailWindowUnsupportedError added as an explicit agent-entry export beside the other error classes, as ADR 0021 asks (explicit exports, no wildcard). No citing page enumerates the entry's error classes, so none needs a change.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Only change: SessionDetailWindowUnsupportedError added as an explicit agent-entry export beside the other error classes, as ADR 0021 asks (explicit exports, no wildcard). No citing page enumerates the entry's error classes, so none needs a change.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Only change: SessionDetailWindowUnsupportedError added as an explicit agent-entry export beside the other error classes, as ADR 0021 asks (explicit exports, no wildcard). No citing page enumerates the entry's error classes, so none needs a change.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only change: SessionDetailWindowUnsupportedError added as an explicit agent-entry export beside the other error classes, as ADR 0021 asks (explicit exports, no wildcard). No citing page enumerates the entry's error classes, so none needs a change.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"examples/headless-agent/README.md","note":"Only change: SessionDetailWindowUnsupportedError added as an explicit agent-entry export beside the other error classes, as ADR 0021 asks (explicit exports, no wildcard). No citing page enumerates the entry's error classes, so none needs a change.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Only change: SessionDetailWindowUnsupportedError added as an explicit agent-entry export beside the other error classes, as ADR 0021 asks (explicit exports, no wildcard). No citing page enumerates the entry's error classes, so none needs a change.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only change: an unreadable 2xx search body's error now carries the underlying error as cause; message and status classification unchanged.","inputs":["packages/sdk/src/client/conversations.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"listOrchestrationSessions gained an optional { limit } query; the bounded-detail refusal remains SessionDetailWindowUnsupportedError. sdk.md documents both.","inputs":["packages/sdk/src/client/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"The list asks for limit=200 and keeps the newest 200, its cap is 8,388,608 bytes, and oversized answers are logged by environment id. Citing pages (architecture, machine-relationships, threat model) hold; the threat model is updated.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The list asks for limit=200 and keeps the newest 200, its cap is 8,388,608 bytes, and oversized answers are logged by environment id. Citing pages (architecture, machine-relationships, threat model) hold; the threat model is updated.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The list asks for limit=200 and keeps the newest 200, its cap is 8,388,608 bytes, and oversized answers are logged by environment id. Citing pages (architecture, machine-relationships, threat model) hold; the threat model is updated.","inputs":["src-server/services/ssh/remote-session-reader.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the remote-history error paragraph changed; citing pages route to sdk.md generally.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Only the remote-history error paragraph changed; citing pages route to sdk.md generally.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/design/automations.md","note":"Only the Cross-station reads cap and status sentences changed; citing pages' references remain accurate.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

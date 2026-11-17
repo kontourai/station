@@ -1,0 +1,9 @@
+{
+  "revision": "f6d1ee9ae50afb4766b282e3061d45249fba26f6",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the packaged-upgrade table-only change against both cited OAuth documents. It changes the retired Beta/Preview row from successful delegation to exact provenance refusal before installer or Git effects; Stable and Nightly delegation controls remain. Three admission cases and six adjacent refusal controls passed. Restoring Preview in the actual shared ring table made the named Beta test fail because upgrade succeeded; exact bytes restored and the named control passed. The cited production UI proxy transport tests, OAuth handlers, release exposure and protocol/real-client historical receipts are unchanged. No prose change or OAuth/native/provider evidence renewal is needed.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the packaged-upgrade table-only change against both cited OAuth documents. It changes the retired Beta/Preview row from successful delegation to exact provenance refusal before installer or Git effects; Stable and Nightly delegation controls remain. Three admission cases and six adjacent refusal controls passed. Restoring Preview in the actual shared ring table made the named Beta test fail because upgrade succeeded; exact bytes restored and the named control passed. The cited production UI proxy transport tests, OAuth handlers, release exposure and protocol/real-client historical receipts are unchanged. No prose change or OAuth/native/provider evidence renewal is needed.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

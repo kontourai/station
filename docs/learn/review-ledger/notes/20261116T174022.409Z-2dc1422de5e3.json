@@ -1,0 +1,23 @@
+{
+  "revision": "bbd4ca4407ac2930c2f6863973e06ee8987780bf",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock only routes the child-covered signal through useChatDockOverlays.onChildCoveredChange beside setIsChildReaderOpen; no composer, placement, pane, config, API or board claim changes.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

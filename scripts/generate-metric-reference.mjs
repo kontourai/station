@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript-api';
@@ -328,8 +327,6 @@ export function parseMetricDeclarations(source) {
           kind: method,
           ...options(call),
           ...declarationContext(call),
-          line:
-            file.getLineAndCharacterOfPosition(call.getStart(file)).line + 1,
         });
       }
     }
@@ -357,14 +354,22 @@ function cell(value) {
     .replaceAll('~', '\\~');
 }
 
+/**
+ * Render a merge-friendly catalog: one row per declaration, sorted by name,
+ * with no totals, source digest or source line numbers. Each addition then
+ * changes only its own row, so independent additions merge in git unless they
+ * sort between the same two existing names (#5056).
+ */
 export function renderMetricReference(source) {
-  const declarations = parseMetricDeclarations(source);
-  const digest = createHash('sha256').update(source).digest('hex');
+  const declarations = parseMetricDeclarations(source).toSorted(
+    (left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  );
   const rows = declarations.map((entry) => {
     const binding = entry.binding
       ? `${entry.binding}${entry.declarationExported ? ' (exported declaration)' : ' (local declaration)'}`
       : `unbound call${entry.container ? ` in ${entry.container}` : ''}`;
-    return `| ${cell(entry.name)} | ${entry.kind} | ${cell(binding)} | ${cell(entry.description)} | ${cell(entry.unit)} | [line ${entry.line}](../../${sourcePath}#L${entry.line}) |`;
+    return `| ${cell(entry.name)} | ${entry.kind} | ${cell(binding)} | ${cell(entry.description)} | ${cell(entry.unit)} |`;
   });
   return [
     '# Metric declarations — not emitted-metric evidence',
@@ -373,17 +378,16 @@ export function renderMetricReference(source) {
     '',
     'These source declarations do **not** establish producers, live collection, correct labels, observed units or billing accuracy. Names and descriptions below are declared metadata; even a description copied exactly from source may be wrong about runtime behavior.',
     '',
-    'The [Monitoring guide](../guides/monitoring.md) owns producer semantics, configuration and current limitations. Follow a declaration’s source link to find its callers before making an operational claim. Observable declarations inside a function do not establish that the function is called or its callback runs.',
+    'The [Monitoring guide](../guides/monitoring.md) owns producer semantics, configuration and current limitations. Search the source for a declaration’s binding or name to find its callers before making an operational claim. Observable declarations inside a function do not establish that the function is called or its callback runs.',
     '',
     `Source: [\`${sourcePath}\`](../../${sourcePath}).`,
-    `Source SHA-256: \`${digest}\`. This identifies the input file, not a running build or collection receipt.`,
     '',
-    `The TypeScript AST contains **${declarations.length} creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default.`,
+    'Every creation call in the TypeScript AST is listed once, sorted by declared name. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default. The catalog deliberately omits totals, a source digest and source line numbers, so that independent additions change only their own rows and merge without conflict.',
     '',
     'Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm run docs:metrics:check`. The documentation gate runs the check. This owner supports named metrics/trace imports from `@opentelemetry/api`, direct `metrics.getMeter` calls initializing non-exported top-level constants, and direct meter factories with literal names and description/unit options. Other runtime imports, API/meter escapes, unsupported factories, dynamic metadata, duplicate names and an empty inventory fail. This is a deliberately restricted declaration grammar, not analysis of arbitrary JavaScript execution.',
     '',
-    '| Declared instrument name | Factory kind | Binding at declaration | Declared description | Declared unit | Source |',
-    '| --- | --- | --- | --- | --- | --- |',
+    '| Declared instrument name | Factory kind | Binding at declaration | Declared description | Declared unit |',
+    '| --- | --- | --- | --- | --- |',
     ...rows,
     '',
   ].join('\n');

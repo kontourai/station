@@ -436,6 +436,41 @@ export const routingDecision = meter.createCounter('station.routing.decision', {
 export const agentOps = meter.createCounter('station.agent.operations', {
   description: 'Agent CRUD operations',
 });
+/**
+ * #4995: setup-requirement probe reads (not memoized reuses) by bounded
+ * `outcome`: `ready` | `blocked` | `failed`. No Agent slug or error text.
+ */
+export const stationSetupRequirementProbeOutcomes = meter.createCounter(
+  'station.setup_requirement.probe_outcomes',
+  {
+    description:
+      'Station setup requirement probe reads by bounded outcome (ready, blocked, failed)',
+  },
+);
+/**
+ * #4995: bytes one durable JsonFileStore write puts on disk, for stores that
+ * name themselves. Attributes: `store` (closed `JsonFileStoreMetricName`) and
+ * `artifact` (`primary` | `previous`, the retained prior copy).
+ */
+export const jsonFileStoreWriteBytes = meter.createHistogram(
+  'station.json_store.write_bytes',
+  {
+    description:
+      'Bytes written per durable JSON store write by bounded store and artifact (primary, previous)',
+    unit: 'By',
+  },
+);
+/**
+ * #4995: startup sweep of orphaned `*.mutation.<uuid>.tmp` lock temporaries,
+ * by bounded `outcome`: `removed` | `retained_live` | `failed`.
+ */
+export const fileMutationLockOrphanTemporaries = meter.createCounter(
+  'station.file_mutation_lock.orphan_temporaries',
+  {
+    description:
+      'Orphaned file mutation lock temporaries found by the startup sweep, by bounded outcome',
+  },
+);
 export const projectOps = meter.createCounter('station.project.operations', {
   description: 'Project CRUD operations',
 });
@@ -1477,6 +1512,18 @@ export const notificationOps = meter.createCounter(
   },
 );
 /**
+ * #5052: settled records (`status`: `expired` | `actioned` | `dismissed`)
+ * removed from `notifications.json` once their settle time is older than the
+ * retention window. Never carries ids, sources, tags or content.
+ */
+export const notificationRetentionPruned = meter.createCounter(
+  'station.notification.retention_pruned',
+  {
+    description:
+      'Settled notification records removed by retention, by bounded status',
+  },
+);
+/**
  * #2584: `notify_user` outcomes by `result` (the tool's status) and
  * `urgency`. Never carries session ids, titles or bodies.
  */
@@ -1606,6 +1653,27 @@ export const schedulerConcurrencyDeferrals = meter.createCounter(
 export const schedulerHealthy = meter.createObservableGauge(
   'station.scheduler.healthy',
   { description: 'Scheduler heartbeat health (1=healthy, 0=unhealthy)' },
+);
+
+// ── Linux workload scopes ──
+/**
+ * Settled and failed workload scope cleanup attempts (#4993). Attributes are
+ * closed: `outcome`, `error_kind` and `trigger`; never a unit or session.
+ */
+export const workloadScopeCleanupAttempts = meter.createCounter(
+  'station.workload.scope_cleanup.attempts',
+  {
+    description:
+      "Workload scope cleanup attempts by outcome ('settled' | 'retry_scheduled' | 'abandoned'), error_kind ('none' | 'bus_unavailable' | 'command_failed' | 'other') and trigger ('monitor' | 'close' | 'shutdown')",
+  },
+);
+/** Workload scopes whose cleanup has failed and not settled, by state. */
+export const workloadScopeCleanupBacklog = meter.createObservableGauge(
+  'station.workload.scope_cleanup.backlog',
+  {
+    description:
+      "Workload scopes whose cleanup has not settled, by state ('pending' | 'abandoned')",
+  },
 );
 
 // ── MCP lifecycle ──
@@ -2611,6 +2679,27 @@ export const serverLogStoreRetentionRemovedFiles = meter.createCounter(
   'station.logs.store.retention_removed_files',
   {
     description: 'Server log store files removed by age/size retention',
+  },
+);
+
+/** #4995: repeated identical records the logger seam suppressed, by the
+ * logger's component (a source-literal `createLogger` name, so bounded by
+ * call sites) and level. Never message text or context. */
+export const logRecordsSuppressed = meter.createCounter(
+  'station.logs.suppressed_records',
+  {
+    description:
+      'Repeated identical log records suppressed by the logger repeat limit, by component and level',
+  },
+);
+
+/** #4995: size-cap rotations of the server's stdout log file
+ * (`STATION_LOG_FILE`), by bounded outcome (rotated|failed). */
+export const serverStdoutLogRotations = meter.createCounter(
+  'station.logs.stdout_file.rotations',
+  {
+    description:
+      'Size-cap rotations of the server stdout log file by outcome (rotated|failed)',
   },
 );
 

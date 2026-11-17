@@ -144,6 +144,7 @@ import {
   PACKAGED_RELEASE_MANIFEST_FILENAME,
   type PackagedReleaseChannel,
   type PackagedRuntimeChannel,
+  packagedReleaseVersion,
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
 import { isLoopbackSelfAuthEndpoint } from './local-self-auth.js';
@@ -3611,7 +3612,7 @@ function resolveSourceBuildManifest(): BuildManifest {
   }
   return {
     sha: releaseManifest.sha,
-    branch: releaseManifest.ref,
+    branch: `v${packagedReleaseVersion(releaseManifest)}`,
     builtAt: new Date().toISOString(),
   };
 }
@@ -5836,6 +5837,8 @@ function describeDirectStart(record: InstanceStateRecord): string {
  * back or was refused.
  */
 export async function restart(opts: StopOptions = {}): Promise<void> {
+  // Refuse before asking the supervisor to drain the healthy generation.
+  loadInstalledManagedPolicyChecked();
   const record = findRunningTarget(opts, 'restart');
   if (!record.supervised) {
     throw new Error(
@@ -6380,7 +6383,7 @@ function delegatePackagedUpgradeIfPresent(
   const state = readSafePackagedInstallState(
     join(installRoot, '.station-release-state.json'),
   );
-  // The manifest's `channel` is the runtime channel (stable|beta|nightly); the
+  // The manifest's `channel` is the runtime channel (stable|nightly); the
   // persisted ring is a release channel, so compare releaseChannel to
   // releaseChannel.
   if (manifest.releaseChannel !== state.releaseChannel) {
@@ -6660,7 +6663,7 @@ export function renderPrebuiltArchiveUpgradeRefusal(
 ): string {
   const { release } = codeRoot;
   return [
-    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is ${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring), and install.sh did not install it. Nothing was changed.`,
+    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is v${packagedReleaseVersion(release)} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring), and install.sh did not install it. Nothing was changed.`,
     'Install through install.sh to get upgrades (`station upgrade` re-runs the installer that installed the version).',
     'To move this copy to a newer version by hand: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
     `Instance state for the ${release.channel} channel lives in ${stateDir}, outside every version directory, so the new version sees and stops what this one started.`,

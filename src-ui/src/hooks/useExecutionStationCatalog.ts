@@ -1,4 +1,7 @@
-import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts/environment-security';
+import {
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+  stationReadinessReason,
+} from '@kontourai/station-contracts/environment-security';
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import {
   usePeerCredentialsQuery,
@@ -27,7 +30,31 @@ export type ExecutionStation = {
   id: string;
   name: string;
   kind: 'current' | 'ssh' | 'paired';
+  /**
+   * Set when the Station is listed but cannot take work right now (a paired
+   * Station that is not `online`). The picker shows it greyed with this
+   * reason instead of hiding it.
+   */
+  unavailableReason?: string;
+  /**
+   * Something worth knowing that does not stop the Station being chosen: an
+   * SSH Station whose last connection failed reconnects when work is sent,
+   * so it stays choosable and says so.
+   */
+  notice?: string;
 };
+
+/**
+ * A note for a saved SSH Station whose last connection failed. It is not a
+ * refusal: launching work there reconnects it (`remote-station-forwarder`),
+ * and the error phase stays until something reconnects, so greying it out
+ * would leave no way to choose it from here.
+ */
+function sshNotice(state: { phase: string }): string | undefined {
+  return state.phase === 'error'
+    ? 'Disconnected · reconnects when used'
+    : undefined;
+}
 
 /**
  * The Stations this caller may choose to run work on, as the server reports
@@ -48,20 +75,44 @@ export type ExecutionStation = {
  * `settled` is false until every read has answered, so nothing is offered
  * before it is known.
  *
+ * A Station that is offered but not ready to take work right now (a paired
+ * Station whose handshake is not `online`) stays listed with
+ * `unavailableReason`, so the picker can grey it out and say why. An SSH
+ * Station whose last connection failed stays choosable with a `notice`,
+ * because choosing it reconnects.
+ *
  * A paired Station whose id is also a saved SSH profile is that SSH profile:
  * the server resolves a saved id to its SSH profile first and the launcher
  * selects it the same way, so it is listed (or refused) once, as SSH.
  */
+/**
+ * How often an open Station list re-reads the peer list. The server answers
+ * from its readiness store and refreshes it in the background on each read,
+ * so this cadence is what keeps an open list current.
+ */
+export const STATION_READINESS_WATCH_MS = 5_000;
+
 export function useExecutionStations({
   projectSelected = false,
+  watchReadiness = false,
 }: {
   projectSelected?: boolean;
+  /** The list is open: read fresh on open and keep readiness current. */
+  watchReadiness?: boolean;
 } = {}) {
   const scope = useHostRequestAuthorityScope();
   const device = useDevicePresentation();
   const enabled = Boolean(scope?.isCurrent());
   const environments = useSshEnvironmentsQuery({ enabled });
-  const peers = usePeerCredentialsQuery({ enabled });
+  const peers = usePeerCredentialsQuery({
+    enabled,
+    ...(watchReadiness
+      ? {
+          refetchOnMount: 'always' as const,
+          refetchInterval: STATION_READINESS_WATCH_MS,
+        }
+      : {}),
+  });
   const authority = useQuery({
     queryKey: [
       'execution-station-authority',
@@ -104,6 +155,7 @@ export function useExecutionStations({
               id: entry.profile.environmentId,
               name: entry.profile.name,
               kind: 'ssh' as const,
+              notice: sshNotice(entry.state),
               offered:
                 canStartTasks &&
                 sshPlacementRefusals(entry.profile, projectSelected).length ===
@@ -116,12 +168,20 @@ export function useExecutionStations({
       id: entry.environmentId,
       name: peerStationLabel(entry),
       kind: 'paired' as const,
+      // An older host reports no readiness: unknown is not unavailable.
+      unavailableReason: entry.readiness
+        ? stationReadinessReason(entry.readiness)
+        : undefined,
       offered: canStartTasks && peerPlacementRefusals(entry).length === 0,
     })),
   ];
   const stations: ExecutionStation[] = listed
     .filter((station) => station.offered)
-    .map(({ offered: _offered, ...station }) => station);
+    .map(({ offered: _offered, unavailableReason, notice, ...station }) => ({
+      ...station,
+      ...(unavailableReason ? { unavailableReason } : {}),
+      ...(notice ? { notice } : {}),
+    }));
   return {
     enabled,
     stations,

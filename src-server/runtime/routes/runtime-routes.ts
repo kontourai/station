@@ -215,6 +215,7 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
+import { notifyProjectRoomMention } from '../../services/projects/project-room-mention-notifications.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import {
   createProjectRoomRuntime,
@@ -619,8 +620,10 @@ import {
 } from '../../routes/projects/terminal-session-routes.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
+import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
+import { createRemoteTaskEngineRoutes } from '../../routes/remote-task-engines/remote-task-engine-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
@@ -670,6 +673,7 @@ import {
   type PairingScopeContextStore,
   refusedOnWebSocket,
 } from '../../security/pairing-route-scopes.js';
+import { runtimeRemoteStationReadAuthority } from '../../security/remote-station-read-authority.js';
 import {
   attestedBrowserVisibleHost,
   attestedProxyPeerAddress,
@@ -738,6 +742,7 @@ import type { ConnectionService } from '../../services/connections/connection-se
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
 import {
   ANSWER_ASSESSMENT_UPDATED_EVENT,
   AnswerAssessmentModule,
@@ -871,6 +876,7 @@ import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.j
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
+import { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import { IntegrationIconAssets } from '../../services/plugins/integration-icon-assets.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
@@ -938,6 +944,9 @@ import {
   taskRoomVersionSource,
 } from '../../services/read-markers/room-version-sources.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
+import { RemoteTaskCredentials } from '../../services/remote-task-engines/credentials.js';
+import { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
+import { RemoteTaskTracker } from '../../services/remote-task-engines/tracker.js';
 import {
   conversationAutomationsFrom,
   readStoredScheduledTurnTerminal,
@@ -973,7 +982,7 @@ import {
   type NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
 } from '../../services/ssh/native-device-proof-binding-service.js';
-import { searchConnectedRemoteMessages } from '../../services/ssh/remote-session-reader.js';
+import { runtimeRemoteMessageSearch } from '../../services/ssh/remote-session-reader.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 import {
   createStarterOwnerAdapter,
@@ -1146,9 +1155,14 @@ import {
 } from './conversation-start-ports.js';
 import { createFullAccessRefusalIdentity } from './full-access-refusal-identity.js';
 import {
+  composeProjectLifecycle,
+  composeScheduledProjectRuns,
+} from './project-lifecycle-composition.js';
+import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
+import { composePullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -1687,10 +1701,10 @@ export function isProjectMemberDraftLease(method: string, path: string) {
 function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
       ) ||
-        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
           path,
         ))) ||
     (method === 'PUT' &&
@@ -1756,6 +1770,7 @@ export function configureRuntimeRoutes(
   let durableTaskFollowUpWake:
     | Pick<TaskFollowUpWake, 'placementRefusal'>
     | undefined;
+  let pullRequestFeedback: ReturnType<typeof composePullRequestFeedbackRuntime>;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -2049,9 +2064,13 @@ export function configureRuntimeRoutes(
   // here, at startup, so an invalid STATION_REMOTE_REQUEST_TIMEOUT_MS fails
   // the boot with its own message. (The peer store above has other
   // in-process readers for their own peer calls.)
+  // One readiness cache serves the peer list (`GET /api/environments/peers`)
+  // and the forwarder's refuse-before-dispatch check.
+  const peerReadiness = new PeerReadinessService();
   const remoteStations = createRemoteStationForwarder({
     ssh: context.sshEnvironmentService,
     peers: peerCredentialStore,
+    readiness: peerReadiness,
     warn: (message) => context.logger.warn(message),
   });
   const actionOperations = context.actionOperations;
@@ -4635,6 +4654,11 @@ export function configureRuntimeRoutes(
     '/api/pull-requests/*',
     bindConversationReadAuthority,
   );
+  context.app.on(
+    ['GET', 'PUT', 'POST', 'DELETE'],
+    '/api/pull-request-feedback/*',
+    bindConversationReadAuthority,
+  );
   context.app.use(
     '/api/projects/:slug/file-preview/*',
     bindConversationReadAuthority,
@@ -5851,6 +5875,9 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      pullRequestProviders: () =>
+        listProviders('pullRequest').map((entry) => entry.provider),
+      pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
       logger: context.logger,
       workChatConversations: taskInboxProjection,
       onRoomSystemLine: async ({
@@ -7034,7 +7061,8 @@ export function configureRuntimeRoutes(
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
           userId: input.payload.actor.userId,
-        }),
+        }) ??
+        pullRequestFeedback?.placementRefusal(input),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       // The live continuation's own rule (`canContinueConversation`): the
@@ -7252,6 +7280,23 @@ export function configureRuntimeRoutes(
         )
       : undefined;
 
+  // #5069: Pause and Archive hold a Project's turns (registered as a turn
+  // admission here) and its schedules. #5070: a Project job's run is a Task
+  // in its Project, queued through the same conversation run.
+  const projectLifecycle = composeProjectLifecycle(context);
+  const scheduledProjectRuns =
+    scheduledConversationRuns && context.orchestrationEventStore
+      ? composeScheduledProjectRuns({
+          taskGraphService: context.taskGraphService,
+          taskDispatcher: context.taskDispatcher,
+          eventStore: context.orchestrationEventStore,
+          conversationRuns: scheduledConversationRuns,
+          logger: context.logger,
+        })
+      : undefined;
+  // The scheduler is composed after the Project routes; Delete reads it late.
+  let projectScheduler: SchedulerService | undefined;
+
   // A Session killed for exhausting its workload memory continues once,
   // through the same inbox (capped, idempotent per dead turn). The person's
   // Continue reaches the same entry through the orchestration route.
@@ -7342,6 +7387,14 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    // #5070: a Project schedule is proposable only where Project runs exist
+    // and the `project-schedules` preview is on.
+    projectSchedulesEnabled: () =>
+      scheduledProjectRuns !== undefined &&
+      projectLifecycle.schedulesPreview.select({
+        enabled: () => true,
+        disabled: () => false,
+      }),
     // #4830: an agent proposes Automation sources and rules; a person
     // confirms. Not hosted: Automations have no tenant binding.
     ...(hostedTenantRegistry === undefined
@@ -8187,6 +8240,36 @@ export function configureRuntimeRoutes(
     createACPSignInRoutes({
       ctx: runtimeContext,
       service: engineSignInService,
+    }),
+  );
+  // docs/decisions/remote-task-engines.md: cloud coding agents. Bound here
+  // unconditionally so the preview is offered; every route, the tracker's
+  // polls and the service's vendor calls read the selector at each use.
+  const remoteTaskService = new RemoteTaskEngineService({
+    homeDir: context.configLoader.getProjectHomeDir(),
+    credentials: new RemoteTaskCredentials(
+      () => engineHostAuth()?.vault ?? null,
+    ),
+    preview: context.featurePreviews.bind({
+      id: 'remote-task-engines',
+      label: 'Remote task engines',
+      description:
+        "Send coding tasks to cloud agents (Devin, GitHub Copilot cloud agent, Cursor Cloud Agents) that run on the vendor's machines. Prompts and repository code leave this computer, and each task spends your vendor account's credits.",
+    }),
+    managedPolicy: () => context.managedPolicy ?? null,
+    fetch: (input, init) => fetch(input, init),
+    logger: context.logger,
+  });
+  const remoteTaskTracker = new RemoteTaskTracker({
+    service: remoteTaskService,
+    logger: context.logger,
+  });
+  context.app.route(
+    '/remote-task-engines',
+    createRemoteTaskEngineRoutes({
+      service: remoteTaskService,
+      tracker: remoteTaskTracker,
+      logger: context.logger,
     }),
   );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
@@ -9546,10 +9629,21 @@ export function configureRuntimeRoutes(
       );
     },
   });
+  // Bound once the notification service is composed below (#4799).
+  let roomMentionNotifications: NotificationService | undefined;
   const projectRoomService = new ProjectRoomService(
     roomStore.store,
     roomAccess,
     new ProjectRoomAttachments(join(roomHome, 'project-room-attachments')),
+    (event) => {
+      const service = roomMentionNotifications;
+      if (!service) return;
+      void notifyProjectRoomMention(service, event).catch((error: unknown) => {
+        context.logger.warn('Project room mention notification failed', {
+          error,
+        });
+      });
+    },
   );
   let roomAgentRuntime:
     | ReturnType<typeof createProjectRoomAgentRuntime>
@@ -10320,6 +10414,30 @@ export function configureRuntimeRoutes(
         },
         endProjectTerminals: async (projectId) =>
           scopedTerminals.sessions?.endProject(projectId),
+        projectLifecycle: projectLifecycle.lifecycle,
+        projectLifecyclePreview: projectLifecycle.pauseArchivePreview,
+        projectSchedules: {
+          count: async (projectId) =>
+            (await projectScheduler?.listJobs())?.filter(
+              (job) => job.projectId === projectId,
+            ).length ?? 0,
+          removeAll: async (projectId) => {
+            const jobs = ((await projectScheduler?.listJobs()) ?? []).filter(
+              (job) => job.projectId === projectId,
+            );
+            for (const job of jobs) await projectScheduler!.removeJob(job.name);
+            return jobs.length;
+          },
+        },
+        countProjectTasks: (projectId) =>
+          context.taskGraphService.listTasks(projectId).length,
+        countProjectSessions: (slug) =>
+          (context.orchestrationEventStore?.readSessions() ?? []).filter(
+            (session) =>
+              context.orchestrationService.resolveSessionProjectSlug(
+                session.threadId,
+              ) === slug,
+          ).length,
         visualFileFrameOrigin: clientReachableFrameOrigin(
           context.getMcpUiFrameOrigin,
         ),
@@ -10639,6 +10757,44 @@ export function configureRuntimeRoutes(
       },
     ),
   );
+  // Pull request agent feedback: composition, routes and the inbox's
+  // placement re-check live in runtime-pull-request-feedback.ts.
+  const canReadConversation = (request: Request, id: string) =>
+    context.orchestrationService.canUserReadConversation(
+      id,
+      conversationReadAuthorityForRequest(request),
+    );
+  pullRequestFeedback = composePullRequestFeedbackRuntime({
+    homeDir: context.configLoader.getProjectHomeDir(),
+    hosted: hostedTenantRegistry !== undefined,
+    featurePreviews: context.featurePreviews,
+    eventStore: context.orchestrationEventStore,
+    inbox: threadInbox,
+    orchestration: context.orchestrationService,
+    eventBus: context.eventBus,
+    logger: context.logger,
+    links: conversationPullRequestLinks,
+    providers: () =>
+      listProviders('pullRequest').map((entry) => entry.provider),
+    keptForSessions: (ids) =>
+      context.taskGraphService.listKeptDeclaredPullRequestsForSessions(ids),
+    access: {
+      current: isRequestPrincipalCurrent,
+      // The operator in person (never an agent), as the principal
+      // orchestration owns their chats under, not the OS alias.
+      operator: (request) =>
+        ownerIdentityForRequest(request)
+          ? conversationReadAuthorityForRequest(request).userId
+          : undefined,
+      canRead: canReadConversation,
+      readerOf: (request) => (id) => canReadConversation(request, id),
+    },
+  });
+  if (pullRequestFeedback)
+    context.app.route(
+      '/api/pull-request-feedback',
+      createPullRequestFeedbackRoutes(...pullRequestFeedback.routeArgs),
+    );
   context.app.route(
     '/api/pull-requests',
     createPullRequestRoutes(
@@ -10717,6 +10873,9 @@ export function configureRuntimeRoutes(
       context.sshEnvironmentService,
       undefined,
       peerCredentialStore,
+      undefined,
+      undefined,
+      runtimeRemoteStationReadAuthority(context.environmentSecurityService),
     ),
   );
   // station#1123 slice 2: outbound peer-credential admin routes. Gated to
@@ -10743,6 +10902,7 @@ export function configureRuntimeRoutes(
         hostname(),
         context.configLoader.getProjectHomeDir(),
       ),
+      peerReadiness,
     ),
   );
   context.app.route(
@@ -12400,14 +12560,11 @@ export function configureRuntimeRoutes(
       conversationAcknowledgements,
       conversationReadAuthorityForRequest,
       context.orchestrationService,
-      (query, signal) =>
-        searchConnectedRemoteMessages(
-          context.sshEnvironmentService,
-          query,
-          signal,
-          undefined,
-          peerCredentialStore,
-        ),
+      runtimeRemoteMessageSearch(
+        runtimeRemoteStationReadAuthority(context.environmentSecurityService),
+        context.sshEnvironmentService,
+        peerCredentialStore,
+      ),
       context.environmentSecurityService,
       readMarkers,
     ),
@@ -12476,11 +12633,15 @@ export function configureRuntimeRoutes(
     taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
+    pullRequestFeedback,
+    coordinatorWakes: () => coordinatorPlacement,
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
     ...(scheduledConversationRuns
       ? { conversationRuns: scheduledConversationRuns }
       : {}),
+    ...(scheduledProjectRuns ? { projectRuns: scheduledProjectRuns } : {}),
+    projectHold: projectLifecycle.projectHold,
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
     // by the bell is the same row the Review page lists.
@@ -12492,6 +12653,8 @@ export function configureRuntimeRoutes(
         context.projectService.listProjects().map((project) => project.slug),
       ),
   });
+  roomMentionNotifications = notificationService;
+  projectScheduler = schedulerService;
   automationActions = runtimeAutomationActions;
   durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
@@ -12834,6 +12997,12 @@ export function configureRuntimeRoutes(
       ...(scheduledConversationRuns
         ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
         : {}),
+      ...(scheduledProjectRuns
+        ? {
+            projectJobs: true,
+            projectJobsPreview: projectLifecycle.schedulesPreview,
+          }
+        : {}),
     }),
   );
   context.app.route(
@@ -12957,6 +13126,7 @@ export function configureRuntimeRoutes(
         resolvePrincipal: resolveOrchestrationRequestPrincipal,
         security: context.environmentSecurityService,
         stationControlDispatchScope,
+        pullRequestFeedback,
       }),
     ),
   );

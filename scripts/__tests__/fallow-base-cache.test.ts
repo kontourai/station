@@ -3,16 +3,20 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  realpathSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   prepareFallowRun,
   removeAbandonedFallowRuns,
+  resolveFallowCacheRoot,
 } from '../lib/fallow-base-cache.mjs';
 import {
   captureOwnedProcessOutput,
@@ -24,14 +28,16 @@ import { runFallowAnalysis } from '../run-fallow-audit.mjs';
 
 /**
  * #2529: `fallow audit` leaves a full base checkout in its temp directory per
- * base commit and never removes it. Each run gets a private temp directory
- * under the Station temp root, removed when the run ends.
+ * base commit and never removes it. Each run gets a private directory under
+ * the disk-backed fallow cache root, never tmpfs (#5080), removed when the
+ * run ends.
  */
 
 const makeTempDir = trackTempDirs();
 let scratch: string;
 const saved = {
-  STATION_TEMP_ROOT: process.env.STATION_TEMP_ROOT,
+  STATION_FALLOW_CACHE_DIR: process.env.STATION_FALLOW_CACHE_DIR,
+  XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
   TMPDIR: process.env.TMPDIR,
   FALLOW_AUDIT_BASE: process.env.FALLOW_AUDIT_BASE,
 };
@@ -75,7 +81,7 @@ describe('fallow audit base snapshots (#2529)', () => {
     const stationRoot = join(scratch, 'station-root');
     const systemTemp = join(scratch, 'system-temp');
     mkdirSync(systemTemp);
-    process.env.STATION_TEMP_ROOT = stationRoot;
+    process.env.STATION_FALLOW_CACHE_DIR = join(stationRoot, 'fallow');
     process.env.TMPDIR = systemTemp;
     process.env.FALLOW_AUDIT_BASE = 'HEAD';
 
@@ -109,7 +115,7 @@ describe('fallow audit base snapshots (#2529)', () => {
     );
     writeFileSync(join(repo, '.fallowrc.json'), '{"entry":');
     const stationRoot = join(scratch, 'station-root');
-    process.env.STATION_TEMP_ROOT = stationRoot;
+    process.env.STATION_FALLOW_CACHE_DIR = join(stationRoot, 'fallow');
 
     await expect(
       runFallowAnalysis(repo, 'audit', join(repo, 'refused-audit.json')),
@@ -119,7 +125,7 @@ describe('fallow audit base snapshots (#2529)', () => {
 
   test('a native spawn refusal retains its error code and releases its run directory', async () => {
     const stationRoot = join(scratch, 'spawn-refused-station');
-    process.env.STATION_TEMP_ROOT = stationRoot;
+    process.env.STATION_FALLOW_CACHE_DIR = join(stationRoot, 'fallow');
     await expect(
       runFallowAnalysis(
         join(scratch, 'missing-project'),
@@ -163,7 +169,10 @@ describe('fallow audit base snapshots (#2529)', () => {
         {
           windowsHide: true,
           stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-          env: { ...process.env, STATION_TEMP_ROOT: stationRoot },
+          env: {
+            ...process.env,
+            STATION_FALLOW_CACHE_DIR: join(stationRoot, 'fallow'),
+          },
         },
       );
       const child = execution.child;
@@ -206,7 +215,11 @@ describe('fallow audit base snapshots (#2529)', () => {
   );
 
   test('a run directory is removed when released, even if fallow left files in it', () => {
-    process.env.STATION_TEMP_ROOT = join(scratch, 'station-root');
+    process.env.STATION_FALLOW_CACHE_DIR = join(
+      scratch,
+      'station-root',
+      'fallow',
+    );
     const run = prepareFallowRun();
     writeFileSync(join(run.directory, 'fallow-audit-base-cache-x.lock'), '');
     mkdirSync(join(run.directory, 'fallow-audit-base-cache-x', 'src'), {
@@ -217,7 +230,11 @@ describe('fallow audit base snapshots (#2529)', () => {
   });
 
   test('two concurrent runs get different directories, and releasing one leaves the other', () => {
-    process.env.STATION_TEMP_ROOT = join(scratch, 'station-root');
+    process.env.STATION_FALLOW_CACHE_DIR = join(
+      scratch,
+      'station-root',
+      'fallow',
+    );
     const first = prepareFallowRun();
     const second = prepareFallowRun();
     expect(first.directory).not.toBe(second.directory);
@@ -246,5 +263,63 @@ describe('fallow audit base snapshots (#2529)', () => {
     expect(existsSync(abandoned)).toBe(false);
     expect(existsSync(live)).toBe(true);
     expect(existsSync(unrelated)).toBe(true);
+  });
+});
+
+describe('the fallow cache root (#5080)', () => {
+  const within = (parent: string, path: string) => {
+    const rel = relative(parent, path);
+    return !rel.startsWith('..') && !isAbsolute(rel);
+  };
+
+  test('is a disk-backed user cache, never under the system temp directory, by default', () => {
+    const root = resolveFallowCacheRoot({ env: {} });
+    expect(root).toBe(join(homedir(), '.cache', 'station', 'fallow'));
+    for (const temp of new Set([tmpdir(), realpathSync(tmpdir())]))
+      expect(within(temp, root), `${root} is under ${temp}`).toBe(false);
+    // A Station temp root is a temp directory too: it does not move the cache.
+    expect(
+      resolveFallowCacheRoot({ env: { STATION_TEMP_ROOT: tmpdir() } }),
+    ).toBe(root);
+  });
+
+  test('follows an absolute XDG_CACHE_HOME and the explicit override', () => {
+    const home = join(scratch, 'home');
+    expect(
+      resolveFallowCacheRoot({
+        env: { XDG_CACHE_HOME: join(scratch, 'xdg') },
+        homedir: home,
+      }),
+    ).toBe(join(scratch, 'xdg', 'station', 'fallow'));
+    // The XDG spec ignores a relative value.
+    expect(
+      resolveFallowCacheRoot({
+        env: { XDG_CACHE_HOME: 'relative' },
+        homedir: home,
+      }),
+    ).toBe(join(home, '.cache', 'station', 'fallow'));
+    expect(
+      resolveFallowCacheRoot({
+        env: {
+          STATION_FALLOW_CACHE_DIR: join(scratch, 'explicit'),
+          XDG_CACHE_HOME: join(scratch, 'xdg'),
+        },
+        homedir: home,
+      }),
+    ).toBe(join(scratch, 'explicit'));
+  });
+
+  test('a run without an override lands under the user cache, owner-only, and is removed', () => {
+    delete process.env.STATION_FALLOW_CACHE_DIR;
+    process.env.XDG_CACHE_HOME = join(scratch, 'xdg');
+    const run = prepareFallowRun();
+    const root = join(scratch, 'xdg', 'station', 'fallow');
+    expect(within(root, run.directory)).toBe(true);
+    if (process.platform !== 'win32') {
+      expect(statSync(root).mode & 0o777).toBe(0o700);
+      expect(statSync(run.directory).mode & 0o777).toBe(0o700);
+    }
+    run.release();
+    expect(listing(root)).toEqual([]);
   });
 });

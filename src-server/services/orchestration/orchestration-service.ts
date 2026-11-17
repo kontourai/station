@@ -35,7 +35,10 @@ import type {
   ClientOriginActor,
 } from '@kontourai/station-contracts/client-origin';
 import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
-import type { ConnectionRecoveryProjection } from '@kontourai/station-contracts/connection-recovery';
+import type {
+  ConnectionRecoveryProjection,
+  UsageLimitContinueOnOptions,
+} from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -298,7 +301,11 @@ import {
   canonicalPath,
   isCanonicalPathStrictlyWithin,
 } from '../../utils/path-containment.js';
-import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
+import {
+  expandTilde,
+  resolveHomeDir,
+  safeHomeDirectory,
+} from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import type {
@@ -441,6 +448,10 @@ import {
   readExecutionWorkspaceBinding,
 } from './execution-workspace-binding.js';
 import {
+  type FinishedAlertHoldReason,
+  finishedAlertHoldReasons,
+} from './finished-alert-hold.js';
+import {
   FinishedSessionParking,
   finishedSessionParkAfterMs,
 } from './finished-session-parking.js';
@@ -502,7 +513,10 @@ import {
   type PreparedTurnIntentView,
   samePreparedValue,
 } from './prepared-turn-intent.js';
-import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
+import {
+  markSessionUntouched,
+  type RecoveryDispatchAdapter,
+} from './recovery-dispatch-adapter.js';
 import {
   inspectRequestEvent,
   RequestEventGuardError,
@@ -1454,6 +1468,9 @@ export interface PeerReportedPendingRequest {
   callerCanRespond?: boolean;
 }
 
+/** Every peer delegation Activity record's thread id starts with this. */
+const PEER_DELEGATION_THREAD_PREFIX = 'peer-delegation:';
+
 function peerDelegationActivityThreadId(
   environmentId: string,
   taskId: string,
@@ -1463,7 +1480,7 @@ function peerDelegationActivityThreadId(
     .update(`${environmentId}\0${taskId}`)
     .digest('hex')
     .slice(0, 32);
-  return `peer-delegation:${digest}`;
+  return `${PEER_DELEGATION_THREAD_PREFIX}${digest}`;
 }
 
 function peerDelegationLifecyclePath(
@@ -4281,7 +4298,9 @@ export class OrchestrationService {
   }> {
     const existing = this.sessionReadModel.get(input.threadId);
     if (!existing) {
-      throw new Error('Credential profile recovery session is unavailable.');
+      throw markSessionUntouched(
+        new Error('Credential profile recovery session is unavailable.'),
+      );
     }
     // #484 phase A follow-up: credential-recovery replays carry no
     // admission context, and the caller follows this restart with a DIRECT
@@ -4294,8 +4313,11 @@ export class OrchestrationService {
       const unadmittedConsent = this.persistedPortableConsentOfThread(
         input.threadId,
       );
+      // Nothing has been stopped yet: recovery must not restore this session.
       if (unadmittedConsent)
-        throw portableRefusalForUnadmittedThread(unadmittedConsent);
+        throw markSessionUntouched(
+          portableRefusalForUnadmittedThread(unadmittedConsent),
+        );
     }
     // archive#3476: resolve by the session's own persisted provider rather
     // than by probing every adapter for a live thread. This path REPLACES the
@@ -5268,6 +5290,35 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * The peer delegation Activity records `authority` may read, in read-model
+   * order (oldest first): what the peer-delegation refresh reconciles.
+   *
+   * Every such record is written by `recordPeerDelegationActivityDispatch`
+   * under a `peer-delegation:` thread id, so this reads only those threads
+   * instead of folding every readable Session (#5051). It is the same read
+   * model with the same readability and ephemeral checks, narrowed: a record
+   * the caller cannot read is not returned.
+   */
+  async listPeerDelegationActivity(
+    authority: SessionReadScope,
+  ): Promise<OrchestrationSessionSummary[]> {
+    this.initialize();
+    const threadIds = new Set<string>(
+      this.options.eventStore?.listSessionIdsByThreadPrefix(
+        PEER_DELEGATION_THREAD_PREFIX,
+      ) ?? [],
+    );
+    for (const threadId of this.sessionReadModel.keys()) {
+      if (threadId.startsWith(PEER_DELEGATION_THREAD_PREFIX))
+        threadIds.add(threadId);
+    }
+    return this.listSessionReadModel(authority, {
+      purpose: 'peer-delegation-refresh',
+      threadIds: [...threadIds],
+    });
+  }
+
   /** Advance a peer Activity record only from an observed peer lifecycle. */
   recordPeerDelegationActivityOutcome(input: {
     taskId: string;
@@ -5450,6 +5501,12 @@ export class OrchestrationService {
     const lineageByThread =
       eventStore?.conversationLineageForThreads(readableThreadIds);
     const nextWakeUps = eventStore?.agentScheduleStore().nextArmedWakeUps();
+    // #5050: admit the runtime home once per build, and only if some row
+    // asks. Admission walks every path component (`lstat`/`realpath`); per
+    // row it was the read model's largest CPU cost. Never kept across builds,
+    // so each read still admits the home as it is now.
+    let stationHome: string | undefined;
+    const readStationHome = () => (stationHome ??= resolveHomeDir());
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -5495,6 +5552,7 @@ export class OrchestrationService {
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
             : {}),
+          readStationHome,
           answerability: this.observeAnswerability(
             threadId,
             (loaded ?? persisted)?.provider,
@@ -6161,6 +6219,48 @@ export class OrchestrationService {
   }
 
   /**
+   * The profiles a waiting usage-limit stop can be continued on ("Continue
+   * on <label>"). A separate read from the banner's, because it lists this
+   * Station's accounts: its route takes the credential-management tier. A
+   * hosted Station offers none (a tenant's Session must not switch a shared
+   * connection's account), and an unreadable list offers none.
+   */
+  async readUsageLimitContinueOn(
+    threadId: string,
+  ): Promise<UsageLimitContinueOnOptions> {
+    this.initialize();
+    const none: UsageLimitContinueOnOptions = { profiles: [] };
+    const list =
+      this.options.credentialProfileRecoveryAdapter?.listContinueOnProfiles;
+    if (
+      !list ||
+      !this.credentialRecovery ||
+      // Blocked admission: no profile can be staged until it reconciles.
+      this.credentialRecovery.admission() !== undefined ||
+      this.options.requireTenantExecutionContext?.() === true
+    )
+      return none;
+    const projection = this.recoveryCoordinator?.latestProjection(threadId);
+    const stopId = this.recoveryCoordinator?.usageLimitStopId(threadId);
+    if (
+      !stopId ||
+      !projection?.usageLimit ||
+      projection.scope !== 'account' ||
+      (projection.outcome !== 'armed' && projection.outcome !== 'manual')
+    )
+      return none;
+    const provider =
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    if (!provider) return none;
+    try {
+      const profiles = await list(provider);
+      return profiles.length > 0 ? { stopId, profiles } : none;
+    } catch {
+      return none;
+    }
+  }
+
+  /**
    * #3157: the banner's "Resume now" and "Cancel auto-resume". The caller
    * authorizes the mutation. Each answers with what it did and the projection
    * as it stands afterward, so a click on a banner that has since settled
@@ -6168,13 +6268,40 @@ export class OrchestrationService {
    */
   async actOnUsageLimitRecovery(
     threadId: string,
-    action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold',
+    action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold' | 'continue-on',
+    /**
+     * `continue-on` only: the profile chosen and the stop it was offered for
+     * (`UsageLimitContinueOnOptions.stopId`).
+     */
+    continueOn?: { profileRef: string; stopId: string },
   ): Promise<{
     result: UsageLimitRecoveryActionResult;
     recovery: ConnectionRecoveryProjection | null;
   }> {
     this.initialize();
     const coordinator = this.recoveryCoordinator;
+    if (action === 'continue-on') {
+      // Only a profile this stop is offered now may be chosen.
+      const before = await this.readUsageLimitRecovery(threadId);
+      const waiting =
+        before?.outcome === 'armed' || before?.outcome === 'manual';
+      const options = await this.readUsageLimitContinueOn(threadId);
+      const offered = options.profiles.some(
+        (profile) => profile.ref === continueOn?.profileRef,
+      );
+      const result: UsageLimitRecoveryActionResult =
+        !coordinator || !waiting || !continueOn
+          ? { kind: 'not-waiting' }
+          : offered
+            ? // The coordinator refuses a stop id that is not the waiting stop.
+              await coordinator.continueUsageLimitOnProfile(
+                threadId,
+                continueOn.profileRef,
+                continueOn.stopId,
+              )
+            : { kind: 'not-switched' };
+      return { result, recovery: await this.readUsageLimitRecovery(threadId) };
+    }
     const result: UsageLimitRecoveryActionResult = coordinator
       ? action === 'resume'
         ? await coordinator.resumeUsageLimitNow(threadId)
@@ -7891,6 +8018,40 @@ export class OrchestrationService {
    */
   consumeInternalStopSuppression(turnId: string): boolean {
     return this.internalStops.consume(turnId);
+  }
+
+  /**
+   * Why this session's "finished" alert, and its phone card's Done phase,
+   * must wait (see `finished-alert-hold.ts`). The facts are the ones the
+   * idle park reads (owned sessions, child work, the adapter's open engine
+   * work) plus Claude's follow-up-pending observation. The runtime adds a
+   * queued inbox follow-up, because the inbox lives outside this service.
+   * Empty means nothing holds it.
+   */
+  readFinishedAlertHold(threadId: string): FinishedAlertHoldReason[] {
+    const provider = this.sessionReadModel.get(threadId)?.provider;
+    const activity = this.conversationActivity?.readForThread(threadId);
+    return finishedAlertHoldReasons({
+      ownedWork: this.readOwnedWork(threadId),
+      childWork: this.childWork.read(threadId, provider),
+      openEngineWork:
+        this.sessionAdapters.get(threadId)?.hasOpenEngineWork?.(threadId) ===
+        true,
+      followUpPending: activity?.runningChildWork?.followUpPending === true,
+    });
+  }
+
+  /**
+   * A Station-delegated child session whose results are delivered back to
+   * the conversation that delegated it (#3158's owner record). That parent
+   * reports the outcome, so the child's own finish is not announced.
+   */
+  isDelegatedChildSession(threadId: string): boolean {
+    const store = this.options.eventStore;
+    if (!store) return false;
+    const conversationId =
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    return store.delegationResultStore().owner(conversationId) !== undefined;
   }
 
   isRuntimeConversation(conversationId: string): boolean {
@@ -13520,7 +13681,7 @@ export class OrchestrationService {
   }
 
   private isPeerDelegationActivityRecord(threadId: string): boolean {
-    if (!threadId.startsWith('peer-delegation:')) return false;
+    if (!threadId.startsWith(PEER_DELEGATION_THREAD_PREFIX)) return false;
     return Boolean(
       this.sessionReadModel.get(threadId) ??
         this.options.eventStore?.readSessionByThread(threadId),

@@ -75,8 +75,43 @@ async function seedRoutes(
   declaredProfile: ProviderDurabilityProfile | null = STEERING_ENGINE_DURABILITY,
   projectionWait?: Promise<void>,
   blockedRecovery = false,
+  continueOnRecovery?: Record<string, unknown>,
 ) {
   const prepared = new Map<string, Record<string, unknown>>();
+  // Either fixture stops the started turn on a usage limit.
+  const stopped = blockedRecovery || continueOnRecovery !== undefined;
+  if (continueOnRecovery) {
+    // The server's shapes: `{ recovery }` from the banner read, and the
+    // enrolled accounts from the access:manage `continue-on` leaf.
+    await page.route('**/api/orchestration/sessions/*/usage-limit', (route) =>
+      route.fulfill(
+        json({ success: true, data: { recovery: continueOnRecovery } }),
+      ),
+    );
+    await page.route(
+      '**/api/orchestration/sessions/*/usage-limit/continue-on',
+      (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill(
+              json({
+                success: true,
+                data: {
+                  stopId: 'usage-limit-stop',
+                  profiles: [{ ref: 'work', label: 'Work account' }],
+                },
+              }),
+            )
+          : route.fulfill(
+              json({
+                success: true,
+                data: {
+                  result: { kind: 'not-switched' },
+                  recovery: continueOnRecovery,
+                },
+              }),
+            ),
+    );
+  }
   if (blockedRecovery)
     await page.route('**/api/orchestration/sessions/*/usage-limit', (route) =>
       route.fulfill(
@@ -228,14 +263,14 @@ async function seedRoutes(
             ...(declaredProfile ? { durability: declaredProfile } : {}),
             model: 'gpt-6.1-sol',
             assignedAgentSlug: 'codex',
-            status: blockedRecovery ? 'error' : 'running',
-            lifecycleState: blockedRecovery ? 'failed' : 'running',
+            status: stopped ? 'error' : 'running',
+            lifecycleState: stopped ? 'failed' : 'running',
             createdAt: '2026-04-12T00:00:00Z',
             updatedAt: '2026-04-12T00:00:00Z',
             isLoaded: true,
             isPersisted: true,
-            eventCount: blockedRecovery ? 2 : 1,
-            ...(blockedRecovery
+            eventCount: stopped ? 2 : 1,
+            ...(stopped
               ? {
                   lastEventMethod: 'runtime.error',
                   lastRuntimeErrorUsageLimit: true,
@@ -270,7 +305,7 @@ async function seedRoutes(
               createdAt: '2026-04-12T00:00:00Z',
               prompt: request.message,
             },
-            ...(blockedRecovery
+            ...(stopped
               ? [
                   {
                     eventId: `${turnId}-limit`,
@@ -564,6 +599,93 @@ test('blocked credential recovery explains its reason and retry at both widths a
     }
 });
 
+for (const [state, recovery] of [
+  [
+    'reset-known',
+    {
+      failureKind: 'rate-limit',
+      scope: 'account',
+      decision: 'wait-until-reset',
+      outcome: 'armed',
+      dueAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+      attempts: 0,
+      maxAttempts: 1,
+      usageLimit: true,
+      autoResume: true,
+      updatedAt: '2026-04-12T00:00:01Z',
+    },
+  ],
+  [
+    'reset-unknown',
+    {
+      failureKind: 'rate-limit',
+      scope: 'account',
+      decision: 'manual',
+      outcome: 'manual',
+      attempts: 0,
+      maxAttempts: 1,
+      usageLimit: true,
+      updatedAt: '2026-04-12T00:00:01Z',
+    },
+  ],
+] as const) {
+  test(`a usage-limit stop (${state}) offers Continue on another account at both widths and themes`, async ({
+    page,
+  }, testInfo) => {
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await installMockOrchestrationSse(page);
+    await seedRoutes(
+      page,
+      executionRequests,
+      false,
+      STEERING_ENGINE_DURABILITY,
+      undefined,
+      false,
+      recovery,
+    );
+    const { composer, started } = await openStartComposer(page, 'desktop');
+    await closeRunSetup(page);
+    await composer
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill('start and reach the usage limit');
+    await composer.getByRole('button', { name: 'Start', exact: true }).click();
+    await started();
+    const banner = page.getByTestId('usage-limit-banner');
+    await expect(banner).toContainText('Usage limit reached');
+    await expect(
+      banner.getByRole('button', { name: 'Resume now', exact: true }),
+    ).toBeEnabled();
+    if (state === 'reset-unknown') {
+      // The free labelled slot carries the other account.
+      await expect(
+        banner.getByRole('button', { name: 'Continue on Work account' }),
+      ).toBeEnabled();
+    } else {
+      // Both labelled slots are taken; the account is behind the menu.
+      await banner
+        .getByRole('button', { name: 'More usage limit actions' })
+        .click();
+      await expect(
+        page.getByRole('menuitem', { name: 'Continue on Work account' }),
+      ).toBeVisible();
+    }
+    for (const width of [390, 1440])
+      for (const theme of ['dark', 'light']) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        await evidence(
+          page,
+          testInfo,
+          `usage-limit-continue-on-${state}-${width}-${theme}.png`,
+        );
+      }
+  });
+}
+
 for (const [label, viewport] of [
   ['desktop', { width: 1280, height: 860 }],
   ['phone', { width: 390, height: 844 }],
@@ -631,7 +753,10 @@ for (const [label, viewport] of [
     );
     // A person taps the option's row (its label); choosing full access
     // swaps the list for its confirmation.
-    await sheet.getByText('Never ask (full access)', { exact: true }).click();
+    await sheet
+      .getByRole('radiogroup')
+      .getByText('Full access', { exact: true })
+      .click();
     await sheet.getByRole('button', { name: 'Enable full access' }).click();
     await expect(sheet).toBeHidden();
     await expect(
@@ -689,72 +814,65 @@ for (const [label, viewport] of [
     await expect(dialog).toBeHidden();
     await expect(mic).toBeFocused();
   });
+  test(`${label}: typing keeps Stop fixed at the send-row edge`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await installMockOrchestrationSse(page);
+    await seedRoutes(page, executionRequests);
+    const { composer, started } = await openStartComposer(page, label);
+    await closeRunSetup(page);
+    await composer
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill('start the task');
+    await composer.getByRole('button', { name: 'Start', exact: true }).click();
+    await started();
+    await waitForMockOrchestrationSse(page);
+    await expect
+      .poll(() => executionRequests.length, { timeout: 15_000 })
+      .toBe(1);
 
-  {
-    test(`${label}: typing keeps Stop fixed at the send-row edge`, async ({
-      page,
-    }, testInfo) => {
-      await page.setViewportSize(viewport);
-      const executionRequests: Array<Record<string, unknown>> = [];
-      await installMockOrchestrationSse(page);
-      await seedRoutes(page, executionRequests);
-      const { composer, started } = await openStartComposer(page, label);
-      await closeRunSetup(page);
-      await composer
-        .getByRole('textbox', { name: 'What would you like done?' })
-        .fill('start the task');
-      await composer
-        .getByRole('button', { name: 'Start', exact: true })
-        .click();
-      await started();
-      await waitForMockOrchestrationSse(page);
-      await expect
-        .poll(() => executionRequests.length, { timeout: 15_000 })
-        .toBe(1);
-
-      const messageComposer = page.getByRole('group', {
-        name: 'Message composer',
-        exact: true,
-      });
-      const textarea = messageComposer.getByRole('textbox');
-      await expect(textarea).toHaveAttribute('placeholder', /follow-up|Steer/);
-      const stop = page.getByRole('button', { name: 'Stop the current turn' });
-      await expect(stop).toBeVisible();
-      await evidence(page, testInfo, `running-turn-empty-${label}.png`);
-      if (label === 'phone') {
-        // An empty phone draft has nothing to send or steer: Send and its
-        // Steer/Queue segment take no room, and Run setup gets the width.
-        await expect(
-          messageComposer.locator('.chat-input__submit-controls'),
-        ).toBeHidden();
-        expect(
-          await messageComposer
-            .locator('.chat-input__submit-controls')
-            .boundingBox(),
-        ).toBeNull();
-      }
-
-      const before = (await stop.boundingBox())!;
-      await textarea.fill('a follow-up');
-      await expect(
-        page.getByRole('button', { name: 'Send', exact: true }),
-      ).toBeVisible();
-      const after = (await stop.boundingBox())!;
-      const geometry = await page
-        .locator('.chat-controls-row')
-        .evaluate((row) =>
-          [...row.children].map((el) => ({
-            className: el.className,
-            x: el.getBoundingClientRect().x,
-            width: el.getBoundingClientRect().width,
-            flex: getComputedStyle(el).flex,
-            minWidth: getComputedStyle(el).minWidth,
-          })),
-        );
-      expect(after.x, JSON.stringify(geometry)).toBeCloseTo(before.x, 0);
-      await evidence(page, testInfo, `${label}-stop-after-typing.png`);
+    const messageComposer = page.getByRole('group', {
+      name: 'Message composer',
+      exact: true,
     });
-  }
+    const textarea = messageComposer.getByRole('textbox');
+    await expect(textarea).toHaveAttribute('placeholder', /follow-up|Steer/);
+    const stop = page.getByRole('button', { name: 'Stop the current turn' });
+    await expect(stop).toBeVisible();
+    await evidence(page, testInfo, `running-turn-empty-${label}.png`);
+    if (label === 'phone') {
+      // An empty phone draft has nothing to send or steer: Send and its
+      // Steer/Queue segment take no room, and Run setup gets the width.
+      await expect(
+        messageComposer.locator('.chat-input__submit-controls'),
+      ).toBeHidden();
+      expect(
+        await messageComposer
+          .locator('.chat-input__submit-controls')
+          .boundingBox(),
+      ).toBeNull();
+    }
+
+    const before = (await stop.boundingBox())!;
+    await textarea.fill('a follow-up');
+    await expect(
+      page.getByRole('button', { name: 'Send', exact: true }),
+    ).toBeVisible();
+    const after = (await stop.boundingBox())!;
+    const geometry = await page.locator('.chat-controls-row').evaluate((row) =>
+      [...row.children].map((el) => ({
+        className: el.className,
+        x: el.getBoundingClientRect().x,
+        width: el.getBoundingClientRect().width,
+        flex: getComputedStyle(el).flex,
+        minWidth: getComputedStyle(el).minWidth,
+      })),
+    );
+    expect(after.x, JSON.stringify(geometry)).toBeCloseTo(before.x, 0);
+    await evidence(page, testInfo, `${label}-stop-after-typing.png`);
+  });
 
   test(`${label}: a running turn keeps attach usable and says why files wait`, async ({
     page,

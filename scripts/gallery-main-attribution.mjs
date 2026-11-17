@@ -20,7 +20,10 @@
 //
 // `compare` judges the base's targeted capture of exactly those screens and
 // prints `verdict=main` only when every composed failure also fails on the
-// base the same way; anything else is `verdict=pr`. "The same way" is the
+// base the same way. When the failures main does not have are all lazy chunk
+// downloads (chunkLoadFailure), it prints `verdict=infrastructure`: the job
+// stays red, but names chunk delivery rather than the pull request's layout.
+// Anything else is `verdict=pr`. "The same way" is the
 // screen plus the finding identity, and for a screen that did not render or
 // whose audit threw (identities `capture-failed`, `audit-error`,
 // `audit-missing`, which are constants) also its normalised error text; see
@@ -108,7 +111,7 @@ const APPENDED_CONSOLE_LINE = /\nBrowser errors: \[.*\]$/;
  *   `Browser errors: [...]` (console output carries bundle hashes and ports
  *   that differ between any two builds, and never fails a screen on its own);
  *   the same text anywhere else is kept, so an error whose own message
- *   embeds console output (telemetry-feedback-mobile's) is never excused.
+ *   embeds console output is never excused.
  *   A message whose own last line is `Browser errors: [...]` cannot be told
  *   from the appended one; no current message ends that way;
  * - in a Playwright `Call log:`, every line after the first entry (retry
@@ -238,18 +241,46 @@ export function planAttribution(failures, baseScreens, max) {
 }
 
 /**
+ * The identity line tests/screenshots.spec.ts leads a screen's error with when
+ * the screen showed an app error surface AND an app chunk request of the live
+ * document failed (tests/helpers/gallery-app-error-state.ts,
+ * formatAppErrorIdentity). A surface with `no failed chunk request` (a render
+ * error, a chunk that downloaded and threw) does not match.
+ */
+const CHUNK_LOAD_IDENTITY =
+  /^app-error-surface: [a-z, -]+; failed chunk requests: \S/;
+
+/**
+ * Whether a composed failure is a lazy chunk that failed to download: the
+ * capture's own app-error identity, never a layout finding (the capture does
+ * not audit that state). The capture captures such a screen once more while
+ * its run budget lasts, so reaching here means it failed again or the budget
+ * was spent.
+ */
+function chunkLoadFailure({ identity, signature }) {
+  return (
+    identity === 'capture-failed' &&
+    typeof signature === 'string' &&
+    CHUNK_LOAD_IDENTITY.test(signature.split('\n')[0])
+  );
+}
+
+/**
  * `main` only when every composed failure also fails, with the same finding
  * identity and normalised error, on the base's capture of the same screens.
+ * `infrastructure` when main does not have some of them but every one it does
+ * not have is a chunk download failure: still a failure, attributed to chunk
+ * delivery rather than to the pull request's layout. Otherwise `pr`.
  */
 export function compareAttribution(failures, baseFailures) {
   const onBase = new Set(baseFailures.map(key).filter((k) => k !== null));
   const alsoOnMain = failures.filter((failure) => onBase.has(key(failure)));
   const introduced = failures.filter((failure) => !onBase.has(key(failure)));
-  return {
-    verdict: failures.length > 0 && introduced.length === 0 ? 'main' : 'pr',
-    alsoOnMain,
-    introduced,
-  };
+  let verdict = 'pr';
+  if (failures.length > 0 && introduced.length === 0) verdict = 'main';
+  else if (introduced.length > 0 && introduced.every(chunkLoadFailure))
+    verdict = 'infrastructure';
+  return { verdict, alsoOnMain, introduced };
 }
 
 const MAX_SHOWN = 160;
@@ -339,23 +370,33 @@ function runCompare(options) {
   const result = compareAttribution(plan.failures, baseFailures);
   const sha = options['base-sha'];
   const lines =
-    result.verdict === 'main'
+    result.verdict === 'infrastructure'
       ? [
-          `Every Gallery failure here also fails on main at ${sha}; this pull request, merged into that main, introduces none.`,
+          `Main at ${sha} captured these screens cleanly, and every failure here that main does not have is a lazy chunk that failed to download (the capture already captured each such screen once more while its second-capture budget lasted); no layout was judged for those screens. Attributed to chunk delivery, not to this pull request's layout. If the same chunk fails again on a re-run, suspect this pull request's change to that chunk.`,
+          ...listFailures(result.introduced).map(
+            (line) => `CHUNK LOAD ${line}`,
+          ),
           ...listFailures(result.alsoOnMain).map(
             (line) => `ALSO ON MAIN ${line}`,
           ),
         ]
-      : [
-          `This pull request, merged into main at ${sha}, introduces ${result.introduced.length} Gallery failure(s) that main does not have.`,
-          ...result.introduced.map(
-            (failure) =>
-              `INTRODUCED ${describeIntroduced(failure, baseFailures)}`,
-          ),
-          ...listFailures(result.alsoOnMain).map(
-            (line) => `ALSO ON MAIN ${line}`,
-          ),
-        ];
+      : result.verdict === 'main'
+        ? [
+            `Every Gallery failure here also fails on main at ${sha}; this pull request, merged into that main, introduces none.`,
+            ...listFailures(result.alsoOnMain).map(
+              (line) => `ALSO ON MAIN ${line}`,
+            ),
+          ]
+        : [
+            `This pull request, merged into main at ${sha}, introduces ${result.introduced.length} Gallery failure(s) that main does not have.`,
+            ...result.introduced.map(
+              (failure) =>
+                `INTRODUCED ${describeIntroduced(failure, baseFailures)}`,
+            ),
+            ...listFailures(result.alsoOnMain).map(
+              (line) => `ALSO ON MAIN ${line}`,
+            ),
+          ];
   if (result.verdict === 'main')
     console.log(
       `::warning title=Gallery failure already on main::${result.alsoOnMain.length} failure(s) also fail on main at ${sha}: ${listFailures(result.alsoOnMain).join('; ')}`,

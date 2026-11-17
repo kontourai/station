@@ -24,6 +24,7 @@ import {
 } from './orchestration.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
+import { PROJECT_HELD_REFUSAL_CODE } from './project-lifecycle.js';
 import {
   PROJECT_ROOM_FILES_UNAVAILABLE_CODE,
   PROJECT_ROOM_FORBIDDEN_CODE,
@@ -229,6 +230,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [PROJECT_ROOM_PROJECT_NOT_FOUND_CODE]: 'input_unsupported',
   // Someone else's (or an Agent's) room message (#4797): a retry is refused too.
   [PROJECT_ROOM_FORBIDDEN_CODE]: 'permission_denied',
+  // A paused or archived Project admits no turn (#5069): only a person's
+  // Resume or Unarchive changes that, so a retry cannot succeed.
+  [PROJECT_HELD_REFUSAL_CODE]: 'conflict',
   // The room's file store cannot prove its references (#4852): attachments
   // pause until an operator repairs it; a later retry can succeed.
   [PROJECT_ROOM_FILES_UNAVAILABLE_CODE]: 'unavailable',

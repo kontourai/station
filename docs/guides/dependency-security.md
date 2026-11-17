@@ -20,7 +20,7 @@ run and source and asks the owner to separate findings from scan errors and
 coordinate one compatible repair. The next complete successful scan closes the
 tracker. The schedule is nominal, not a detection deadline.
 
-Preview (Beta) and Stable publication require a fresh blocking scan of the
+Stable RC/final publication requires a fresh blocking scan of the
 exact candidate graph. [The release gate](../../scripts/release-advisory-gate.mjs)
 runs from a trusted default-branch policy checkout, not a tag's evaluator or
 exception file. A supplied policy snapshot must be an ancestor of the freshly
@@ -39,7 +39,7 @@ checked against the candidate tree using the trusted remediation record.
 
 The shared [release workflow](../../.github/workflows/release-advisory.yml)
 gates tagged staging before GHCR/Play/store effects, protected native/portable
-publication (including pointer repair), manual npm publication and Beta/Stable
+publication (including pointer repair), manual npm publication and Stable
 TestFlight upload, including the internal cohort entrypoint. Nightly TestFlight
 skips the advisory job and retains its existing source, artifact and provider
 gates. Operational failures retain a separate `NOT_VERIFIED` receipt with

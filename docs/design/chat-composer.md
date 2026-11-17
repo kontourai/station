@@ -24,10 +24,20 @@ status/resync action stay above the box when present.
 Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
 secondary-weight model label, and the shared caret. The Agent mark names the
 Agent, so the label spends its text on the model; without an Agent mark it reads
-Agent · model and the Agent name truncates first. A requested reasoning effort
+Agent · model and the Agent name truncates first, but never below about eight
+characters: where that and the model do not both fit, the name is left out of the
+label rather than cut to a stub (the accessible name keeps it). A requested reasoning effort
 follows the model ("Opus · High") and truncates before it; with no effort
 requested the engine default applies and no level is named. Safety warnings stay
-on the marks, and the open panel repeats the mark on the choice that raised it. In narrow composers the label hides, keeping marks and caret. On phones, More draft options groups Saved drafts
+on the marks, and the open panel repeats the mark on the choice that raised it. When the
+Agent now points at another engine (and its Session has not ended; see 3.1), the trigger
+adds "· Agent moved" at every width, 8px after the label and with a plain space after
+the dot. The label gives way before it, and in narrow composers the label hides,
+keeping marks, the hint without its dot, and caret. Showing the hint on the trigger at
+every width is a decision of #4971: before #4897 a wide composer said "Agent now on …"
+in the Engine chip's caption and a narrow one "Agent moved", and from #4897 the closed
+row said neither. The trigger's accessible name ends with "Agent moved"
+and its description gives the full sentence. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
@@ -283,7 +293,21 @@ accepts. A failed Station-list read keeps the chooser reachable, with an
 access/version explanation and a Retry action rather than hiding the control.
 The list uses one shared rule set: a verified SSH environment when no
 Project is selected (a Project is never placed over SSH), or a paired Station
-the caller may list whose credential holds `orchestration:operate`. A caller
+the caller may list whose credential holds `orchestration:operate`. An
+offered Station that cannot take work right now stays listed but disabled,
+with its reason in place of its kind: a paired Station whose public handshake
+is not `online` (**Recovering · server down or restarting**, **Unreachable**,
+**Unconfirmed · not answering as a Station**, or an identity mismatch). An
+SSH environment whose last connection failed stays choosable and reads
+**Disconnected · reconnects when used**, because launching work
+there reconnects it. The
+server keeps each paired Station's last handshake answer and returns it with
+`GET /api/environments/peers` without waiting on a probe
+([peer readiness](../../src-server/services/peers/peer-readiness-service.ts));
+each read refreshes stale answers in the background, and the open list re-reads
+every 5 seconds. A peer not yet probed, or one from an older host that reports
+no readiness, stays choosable. The
+current choice is never hidden. A caller
 whose authority observation reports a grant without `orchestration:operate`
 is offered This Station only; any failed read of the observation (an older
 Station without it, a refusal, a server error or an unreadable body) hides
@@ -503,7 +527,16 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 
 Pending tool permissions feed Needs approval; questions and forms feed Needs
 answer. Permission takes priority when both wait. The action opens the
-conversation's request sheet. Background work keeps the pill visible after the
+conversation's request sheet. Opening the sheet asks Station about each
+request it lists and drops any already settled, from the sheet and the pill
+alike; a failed check keeps the request. While a reconnect replays missed
+events, the sheet and the pill hold what they showed (at most five seconds),
+so requests opened and resolved in the gap do not run the count up and down.
+With two or more permissions waiting, the sheet's pinned actions offer
+**Allow all (N)** and, in its menu, **Allow all for this session**; each
+answer is its own authority check, and one refusal does not stop the rest.
+An in-flight decision shows on its chosen button (Allowing…, Denying…) with no
+status sentence. Background work keeps the pill visible after the
 main turn ends, using the server count and oldest reported start. Failed history or
 continuation observation shows Status unavailable and withholds the cached
 working clock; the remote turn may still be running. Already loaded transcript
@@ -688,7 +721,13 @@ without the "Running" its highlight already says; the full label is its
 tooltip and what a screen reader hears. The batch fills the answer's column for its whole
 life, so its running calls changing never resize the card, and the elapsed time
 holds its column from the start, so its appearing never widens it. A call is shown running only inside
-the turn the server reports open. Reduced motion disables the highlight and
+the turn the server reports open, or, once settled, while this Station's live tool record still
+holds it open (`tool.started` seen, no `tool.completed`, not closed by the turn's end): the record the
+Agents pane lists as running. Batches, inline call rows and browser activity summaries all read it.
+A reconnect snapshot keeps such a call running while the conversation still reports running child
+work; with none, it settles `unresolved` everywhere at once. A settled call with neither reads
+"no result". A chat reopened while a call runs reads "no result" until the call's next event, since
+the live record is not seeded from history. Reduced motion disables the highlight and
 makes pill size changes immediate.
 
 On a phone, a settled answer without anchored child work shows its tool work as one row. Every call from
@@ -705,12 +744,15 @@ own tool row or inside an activity summary. A Claude background shell command
 (`local_bash`, including one a Monitor launched) is child work of kind
 `command`/`monitor`, not a subagent: its card shows a terminal mark, the
 command line and its exit code, with no model, instructions or transcript.
-After the turn ends, the banner that says background work continues lists
-each running task the loaded transcript does not already draw as a card, with
-the same activity line the Background tasks sheet and Agents pane show (latest
-tool, progress, elapsed time), ticking live. A carded task appears once, as
-its card, which carries its own activity and elapsed time; with every running
-task carded, no list renders.
+After the turn ends, a strip says background work continues. It and the status
+pill read one list of the chat's running work and count it by kind ("9 agents
+and 3 tools running"), even before Station's own count catches up; only a single
+task is named. Each running task appears once in the transcript: work the
+transcript already shows (a subagent card, a call in a tool batch) is counted
+"above" ("9 agents above · 3 tools running"), and the strip's card lists only
+the rest, each with a kind glyph and the activity line the Background tasks
+sheet and Agents pane show (latest tool, progress, elapsed time), ticking live.
+With everything shown above, no list renders.
 A chat that recorded a local failure (a send refused during a restart, an
 earlier session's error) still reads Running in the inbox and header while the
 server reports the conversation's current execution running a turn or
@@ -783,7 +825,10 @@ without the directory retain the explicitly labelled loaded-window map.
 - **Turn rail.** A 16px gutter over the transcript's right edge, inside its
   scrollbar, with one tick per indexed turn placed by its ordinal position. The loaded
   fallback places ticks by their positions among transcript rows. The rows on screen are drawn as a band, and their turns' ticks are
-  highlighted; both are written from the scroll handler, once per frame. Hover
+  highlighted; both are written from the scroll handler, once per frame. At rest
+  the ticks are faint, so a long chat's packed ticks do not read as a dashed
+  bar; pointing at or focusing the rail brings them up, and the current turn
+  and marked turns stay at full strength. Hover
   or keyboard focus previews a turn: its prompt and, when loaded, the start of its first
   reply. Escape dismisses the preview without moving focus or the pointer:
   while it shows, the preview carries `data-escape-owner`, so the app's
@@ -869,10 +914,22 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 1. **Input primary.** The textarea is the visually dominant element; everything else is
    secondary chrome.
-2. **One grouped secondary-actions affordance.** Delegate / Commands / Files /
-   Task-context collapse into a single "+" (or overflow) menu next to attach + mic;
+2. **One grouped secondary-actions affordance.** The composer's actions collapse into
+   a single "+" menu next to attach + mic, in three labelled groups divided by a rule
+   (2026-11-15): **Add to message** (Reference chat…, Commands); **Work in this
+   project** (Open terminal, which places the Project's Terminal in the bottom dock
+   region with a shell open, adopting a running one, even where the pane would
+   otherwise show its kind picker (`requestProjectShell`); Open in Coding, which switches to the chat's coding layout, where the same
+   chat shows; Delegate…); and **This conversation** (Continue with another agent…,
+   then Reset agent context… last, in the error tone). Open terminal is offered on a
+   desktop region host only, and is disabled with its reason as visible row text when
+   the chat has no working directory or the dock is bound to another Project (the
+   Terminal pane binds to the dock's Project). Panel toggles (Changed files, Task
+   context) are not composer actions: they are rows of the dock header's More menu
+   and of the phone's Actions sheet.
    Send stays a labeled primary button. Every item: real `button` role, accessible name,
    44px target (the ResponsiveDialogSurface/actions floor already owns this on mobile).
+   A disabled row states why in its own text, since a touch screen has no tooltip.
 3. **Model/connection selector is a value-only dialog button.** Its accessible name names Model and the active Provider/model;
    popover on the dialog-surface layer (no interception); shows model + connection with
    auth state; glossary vocabulary only. Default selection must prefer an
@@ -922,13 +979,15 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …" (a narrow composer: "Agent moved", kept visible by letting the
-  engine name shrink to an ellipsis first), and the accessible name says
-  the conversation runs on its engine and the Agent now uses another. Once the Session's
+  adds "Agent now on …" on its own line below the engine name, with no separator, wrapping
+  rather than being cut, and the accessible name says
+  the conversation runs on its engine and the Agent now uses another. The closed Run
+  setup trigger says "Agent moved" (see Run setup in the composer toolbar). Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
   "Next turn on …", because the next turn starts a successor
-  there. A narrow composer has no chip room for a destination name, so it says this on
-  its own line above the chips instead ("Next turn starts on …"). A tab that has observed no status for the Session, such as a freshly opened
+  there. Since the closed trigger has no room for a destination name, the composer also
+  says this on its own line above the box ("Next turn starts on …"), and the trigger's
+  description gives the sentence. A tab that has observed no status for the Session, such as a freshly opened
   conversation, reads that from the open read's `nextTurnStartsSession` (#4179), the
   server's continuation rule, while it still describes the chat's current Session.
   Both surfaces resolve the execution Agent with `chatExecutionBinding`: an override
@@ -959,6 +1018,13 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   takes its confirmation); the pick is the new chat's own and rides its first
   send. In the dock's New chat draft the picker opens on the popover layer, as
   on Home.
+  On desktop a picker opened from Run setup (approval, model) replaces the
+  panel rather than stacking on it: Run setup hides, the picker opens at the Run
+  setup trigger and stays inside the composer's column, Escape returns to Run
+  setup and a click outside closes both. The approval picker's first line says
+  the mode in effect as the engine confirmed it, or that the engine has not
+  confirmed one yet; its list and the chip both call the broadest mode
+  **Full access**.
   The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - New-chat and running-chat selectors use `ComposerChoice` for the caption,
@@ -1387,16 +1453,26 @@ continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
 
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
-work, with Settled at the bottom by default. Shelf menus offer Move up and
+work, with Settled at the bottom by default. With no shelf expanded they stack
+from the top of the list. A collapsed shelf still lists the row of the chat on
+screen, so the open chat is never hidden from the inbox. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
-shelves. The inbox header contains search
-and New chat. Search also finds dismissed work; there is no Dismissed shelf in
+shelves. The inbox header is one line: search, the
+work scope picker (its "Show work" label kept for assistive technology), and
+New chat. Work the scope hides that needs the person is a count badge on the
+picker, which shows all work (2026-11-16); the phone keeps its "Show all"
+notice. Search also finds dismissed work; there is no Dismissed shelf in
 the normal list. Third-party sessions can be hidden without stopping the
 external harness, and stay hidden through its status updates. Adoption into
 Station restores their normal status handling. Task family summaries use an
 explicit Open task control; chat rows open chats. Browse all conversations
-retains paginated history, rename and delete. Refresh lives in overflow with a
-direct retry on failure. Dismissal offers a
+sits at the end of the list and retains paginated history, rename and delete.
+The inbox has no overflow menu: a failed read offers Retry, disabled while the
+re-read runs. A card row reads its title and time first. On a hover row the
+second and last line is the agent's mark, the status and the project (the
+project gives way first); the mark's tooltip and the hover card name the
+agent, and a row with no mark keeps the agent in words. A touch row keeps
+the agent named in words beside its mark (#4266). Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 

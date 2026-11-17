@@ -7,7 +7,9 @@ vi.mock('../query-core', () => ({
   useApiQuery: mocks.useApiQuery,
 }));
 
+import { useApiMutation } from '../query-core';
 import {
+  useMergePullRequestMutation,
   usePullRequestContextQuery,
   usePullRequestQuery,
 } from '../query-domains/pullRequests';
@@ -69,4 +71,15 @@ describe('usePullRequestQuery', () => {
       '/repos/b',
     ]);
   });
+});
+
+test('a merge invalidates every Task board’s pull request facts', () => {
+  vi.mocked(useApiMutation).mockReset();
+  useMergePullRequestMutation('github', 'github.com', 'acme', 'app', '7', {
+    project: 'demo',
+  });
+  const keys = vi.mocked(useApiMutation).mock.calls[0]?.[1]?.invalidateKeys;
+  // The prefix of `taskQueries.pullRequestFacts(projectId)`, so it matches
+  // every Project's facts query.
+  expect(keys).toContainEqual(['task-pull-request-facts']);
 });

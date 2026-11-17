@@ -1,0 +1,7 @@
+{
+  "revision": "a67ca01f8bc06a4dd81ffa8aac82bf61f3635db1",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added the conversation_handoff_predecessor_busy row (busy, retryable) matching PROVIDER_FAILURE_KINDS and its pinned contract test; the rest of the table is unchanged.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

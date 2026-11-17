@@ -1,0 +1,7 @@
+{
+  "revision": "92ade235ca3549fc8c5bf7c06815a4917dc59866",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"station-capability-flags.ts only stopped exporting servesPullRequestFeedback (module-private now); the page's claims about remote execution capability flags are unchanged.","inputs":["docs/design/remote-execution-preparation.md","src-server/capabilities/station-capability-flags.ts"]}
+  ]
+}

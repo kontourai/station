@@ -1,0 +1,7 @@
+{
+  "revision": "dda782fc179791048d20713a2ac49eff256047ca",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"fast-checks paragraph now states the shard log lists failed tests as file > name, then suites and infrastructure errors, after its summary line; checked against failureBlock and failureAnnotations in scripts/fast-checks-shard.mjs.","inputs":["docs/guides/development.md",".githooks/pre-push","scripts/fast-checks-shard.mjs"]}
+  ]
+}

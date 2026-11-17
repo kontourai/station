@@ -9,6 +9,7 @@ import {
   getBrandingProvider,
   listProviders,
 } from '../../providers/registries/registry.js';
+import { AcpSessionListSource } from '../../providers/sessions/acp-session-list-source.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
@@ -177,8 +178,10 @@ import { runMuseSchemaCommand } from '../../providers/adapters/muse-serve-schema
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
+  configuredEngineHomes,
   createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
+  credentialProfileEnvForHome,
 } from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
@@ -238,6 +241,7 @@ import { OrchestrationStreamPresence } from '../../services/orchestration/orches
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
+import { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
 import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
@@ -899,7 +903,17 @@ export class StationRuntime {
   private host?: string;
   private approvalRegistry: ApprovalRegistry;
   private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
-  private readonly codexRolloutSource = new CodexRolloutSessionSource();
+  // Discovery also reads the Codex homes Station points its own sessions at
+  // (connection config home, app home, credential profiles), so a session
+  // run under one of them is found and continues in that same home.
+  private readonly codexRolloutSource = new CodexRolloutSessionSource({
+    listConfiguredHomes: () =>
+      configuredEngineHomes({
+        engine: 'codex',
+        loadConnectionSettings: async () =>
+          (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+      }),
+  });
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   // The Claude adapter's app-home settings and connection-launch resolver,
@@ -1071,7 +1085,22 @@ export class StationRuntime {
         this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
     },
     resolveSourceHome: (affinity) =>
-      this.codexRolloutSource.resolveSourceHome(affinity),
+      this.codexRolloutSource.resolveSourceHomeWithRefresh(affinity),
+    // A session found in a credential-profile home runs with that profile's
+    // overlay too, as a profile spawn would (proxy URL, masked ambient keys).
+    resolveSourceHomeEnv: (sourceHome) =>
+      credentialProfileEnvForHome(
+        {
+          engine: 'codex',
+          loadConnectionSettings: async () =>
+            (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+          warn: (message) =>
+            (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
+              message,
+            ),
+        },
+        sourceHome,
+      ),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
     // §6.1's overlay model, channel 2) — mirrors claudeAdapter's
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
@@ -1785,7 +1814,7 @@ export class StationRuntime {
           id: 'codex-bound-browser-device-tools',
           label: 'Codex browser and device tools',
           description:
-            'Let Codex Sessions use authorized browser and device tools through a bound channel.',
+            'Let Codex Sessions use authorized browser and device tools through a bound channel. New Sessions also get Station Control there instead of a header token, adding about 110 KB of tool definitions to each thread.',
         });
       }
       // Journal consumers wire after the quarantine notice: the runtime must
@@ -1822,6 +1851,7 @@ export class StationRuntime {
           connect: (id) => this.sshEnvironmentService.connect(id),
         },
         peers: new PeerCredentialStore(projectHomeDir),
+        readiness: new PeerReadinessService(),
         warn: (message) => this.logger.warn(message),
       });
       this.discordGatewayService = new DiscordGatewayService({
@@ -2253,21 +2283,26 @@ export class StationRuntime {
       controlPlaneObservation?: ControlPlaneObservation;
     }>
   > {
-    return (await this.connectionService.listRuntimeConnections()).map(
-      (connection) => ({
-        id: engineConnectionId(connection.id),
-        type: connection.type,
-        name: connection.name,
-        enabled: connection.enabled,
-        status: connection.status,
-        engineId: parseEngineId(connection.config.engineId),
-        capabilities: connection.capabilities,
-        // archive#1549: per connection, from the projection the picker
-        // reads — so the bootstrap binding and the picker derive the same
-        // capability from the same evidence.
-        controlPlaneObservation: connection.controlPlaneObservation,
-      }),
-    );
+    // Readiness comes from prerequisites, so the binding asks for neither
+    // model discovery nor commands: both can start an engine at every boot.
+    return (
+      await this.connectionService.listRuntimeConnections({
+        includeModelCatalog: false,
+        includeCommands: false,
+      })
+    ).map((connection) => ({
+      id: engineConnectionId(connection.id),
+      type: connection.type,
+      name: connection.name,
+      enabled: connection.enabled,
+      status: connection.status,
+      engineId: parseEngineId(connection.config.engineId),
+      capabilities: connection.capabilities,
+      // archive#1549: per connection, from the projection the picker
+      // reads — so the bootstrap binding and the picker derive the same
+      // capability from the same evidence.
+      controlPlaneObservation: connection.controlPlaneObservation,
+    }));
   }
 
   /**
@@ -4453,6 +4488,11 @@ export class StationRuntime {
             this.codexRolloutSource,
             new GrokSessionSource({ logger: this.logger }),
             this.openCodeSessionSource,
+            // Opt-in (STATION_EXTERNAL_ACP_SESSIONS=1), list only: reads the
+            // session lists the ACP capability probes already fetched.
+            new AcpSessionListSource({
+              listings: () => this.acpBridge?.sessionListings() ?? [],
+            }),
           ],
           port: this.port,
           host: this.host,

@@ -3,7 +3,6 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const INTERNAL_TESTFLIGHT_ENVIRONMENTS = Object.freeze({
   stable: 'native-release',
-  beta: 'ios-beta',
   nightly: 'ios-nightly',
 });
 export const INTERNAL_TESTFLIGHT_TAG_PATTERN = 'refs/tags/ios-testflight/**';

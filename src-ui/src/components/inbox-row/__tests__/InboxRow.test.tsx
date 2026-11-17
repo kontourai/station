@@ -511,12 +511,12 @@ describe('the chip line exists only when a chip does', () => {
       ['remote', 'Station: home-media'],
       ['woke', 'Woke from snooze'],
     ]);
-    // #4266: no full-line "Unsent draft" chip. A pencil on the meta line,
+    // #4266: no full-line "Unsent draft" chip. A pencil after the project,
     // hidden from assistive tech: the row's name already says it.
     const marker = screen.getByTestId('inbox-row-draft-marker');
     expect(marker.getAttribute('title')).toBe('Unsent draft');
     expect(marker.getAttribute('aria-hidden')).toBe('true');
-    expect(marker.closest('.inbox-row__meta')).not.toBeNull();
+    expect(marker.closest('.inbox-row__context')).not.toBeNull();
     expect(screen.queryByText('Unsent draft')).toBeNull();
     expect(
       screen.getByRole('button', { name: /, unsent draft$/ }),
@@ -1290,14 +1290,14 @@ describe("the project's colour is a swatch, never the name's colour", () => {
     expect(swatch).not.toBeNull();
     expect(swatch!.getAttribute('aria-hidden')).toBe('true');
     expect(swatch!.style.backgroundColor).toBe('var(--event-tool-call)');
-    // Before the name, beside it on the meta line.
+    // Before the name, beside it on the state line.
     const project = row.querySelector<HTMLElement>('.inbox-row__project')!;
     expect(swatch!.nextElementSibling).toBe(project);
     expect(project.textContent).toBe('station');
     // The accent is never a text colour (accent-foreground ratchet).
     expect(project.style.color).toBe('');
     expect(
-      row.querySelector('.inbox-row__meta-text')!.getAttribute('style'),
+      row.querySelector('.inbox-row__context')!.getAttribute('style'),
     ).toBeNull();
     // The open button's name still says the project in words.
     expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
@@ -1428,4 +1428,76 @@ it('renders the answer rung for an input request after server projection', () =>
     }),
   );
   expect(statusText()).toBe('Needs input');
+});
+
+describe('a collapsed inbox section that holds the open chat', () => {
+  const idle = (threadId: string, title: string) =>
+    rowFor({
+      threadId,
+      displayTitle: title,
+      lifecycleState: 'idle',
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    }).item;
+
+  it('still shows that one row under its header, and only that row', () => {
+    const open = idle('T-open', 'The chat on screen');
+    const other = idle('T-other', 'Another chat');
+    const activeId = open.orchestrationThreadId ?? open.chatSessionId ?? '';
+    expect(activeId).not.toBe('');
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[{ id: 'open', label: 'Open', items: [other, open] }]}
+          idPrefix="test"
+          activeChatSessionId={activeId}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="touch"
+          collapsible={{ sections: { open: false }, onToggle: vi.fn() }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    const section = screen.getByRole('region', { name: /^Open/ });
+    expect(
+      within(section)
+        .getByRole('button', { name: /^Open/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    const rows = within(section).getAllByTestId('inbox-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('The chat on screen');
+  });
+
+  it('stacks collapsed sections from the top when none is expanded', () => {
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'open', label: 'Open', items: [idle('T-a', 'A')] },
+            { id: 'external', label: 'Third-party', items: [idle('T-b', 'B')] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="touch"
+          collapsible={{
+            sections: { open: false, external: false },
+            onToggle: vi.fn(),
+          }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(container.querySelectorAll('.chat-dock-inbox__group')).toHaveLength(
+      2,
+    );
+    expect(
+      container.querySelector('.chat-dock-inbox__group--shelf-start'),
+    ).toBeNull();
+  });
 });

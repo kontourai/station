@@ -500,6 +500,29 @@ function runPrune(options) {
   return 0;
 }
 
+/**
+ * One line per screen that passed only on its second capture, from the
+ * capture's `secondCaptures` record. Informational: it never changes a
+ * verdict, but a reader of the judge should see that the app was in an error
+ * state there once.
+ */
+function transientLines(capture, screens) {
+  const records = Array.isArray(capture.secondCaptures)
+    ? capture.secondCaptures
+    : [];
+  return records
+    .filter(
+      (record) =>
+        record?.second === 'passed' &&
+        typeof record.screen === 'string' &&
+        (!screens || screens.includes(record.screen)),
+    )
+    .map(
+      (record) =>
+        `TRANSIENT ${record.screen}: passed on a second capture after ${typeof record.identity === 'string' ? record.identity : 'an app error surface'}`,
+    );
+}
+
 function runCheck(options) {
   const capture = readCapture(options.gallery);
   const verdict = judge(
@@ -507,9 +530,12 @@ function runCheck(options) {
     readAllowlist(options.allowlist),
     options.screens,
   );
-  const lines = formatVerdict(verdict, {
-    partial: Boolean(options.screens) || capture.selection !== null,
-  });
+  const lines = [
+    ...transientLines(capture, options.screens),
+    ...formatVerdict(verdict, {
+      partial: Boolean(options.screens) || capture.selection !== null,
+    }),
+  ];
   console.log(lines.join('\n'));
   if (options.summary)
     appendFileSync(

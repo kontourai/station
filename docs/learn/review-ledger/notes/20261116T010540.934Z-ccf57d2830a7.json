@@ -1,0 +1,7 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Adds configuredEngineHomes, a create-nothing listing of the connection config home, legacy app home and every credential-profile home; the resolver and peek selection and precedence are unchanged, so citing claims about profile spawn env remain accurate.","inputs":["src-server/providers/app-home/credential-profile-env.ts"]}
+  ]
+}

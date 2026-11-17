@@ -112,6 +112,7 @@ names what the module owns. Read the module before depending on it.
 - `/work-claims`: a Session's work claim as Station's routes answer it (information, not a lock), its parser and labels.
 - `/pull-request-provider`: provider-neutral pull request capabilities and merge methods.
 - `/conversation-pull-request-links`: pull requests linked to a conversation and how each link was found.
+- `/pull-request-feedback`: pull request agent feedback: switches, the forge observation, status and delivery history.
 - `/action-operation`: the durable execution-status envelope around an existing mutation.
 - `/operational-event`: versioned, bounded facts emitted by Station actors; contract only.
 - `/live-activity`: the Activity live-collaborator roster projection.

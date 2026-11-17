@@ -52,21 +52,21 @@ describe('documentation foundations', () => {
     const { channels } = JSON.parse(read('config/channel-ports.json')) as {
       channels: Record<string, { instanceDirectory: string; uiPort: number }>;
     };
-    const { stable, beta } = channels;
+    const { stable, nightly } = channels;
 
     for (const fact of [
       `~/.station/installs/${stable.instanceDirectory}`,
       `~/.station/instances/${stable.instanceDirectory}`,
       `http://localhost:${stable.uiPort}`,
-      'station-beta',
-      `~/.station/instances/${beta.instanceDirectory}`,
-      `http://localhost:${beta.uiPort}`,
-      'STATION_CHANNEL=beta',
+      'station-nightly',
+      `~/.station/instances/${nightly.instanceDirectory}`,
+      `http://localhost:${nightly.uiPort}`,
+      'STATION_CHANNEL=nightly',
     ])
       expect(guide).toContain(fact);
     expect(guide).not.toContain('~/.local/share/station/current');
     expect(guide).not.toContain('http://localhost:3000');
-    expect(installer).toContain('runtime_launcher_name=station-beta');
+    expect(installer).toContain('runtime_launcher_name=station-nightly');
     expect(installer).toContain(
       `station_home="\${STATION_HOME:-$station_root/instances/$runtime_channel}"`,
     );
@@ -177,7 +177,7 @@ describe('documentation foundations', () => {
       );
     }
     expect(guide).toContain(
-      `STATION_CHANNEL=beta "\${STATION_ROOT:-$HOME/.station}/installs/beta/current/install.sh" uninstall`,
+      `STATION_CHANNEL=nightly "\${STATION_ROOT:-$HOME/.station}/installs/nightly/current/install.sh" uninstall`,
     );
     expect(cli).not.toContain('STATION_CHANNEL=preview');
     expect(cli).toContain('selected runtime instance data');

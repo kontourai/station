@@ -2136,7 +2136,8 @@ plugin or grant its server-side permissions.
 
 A failed inventory or bundle load produces a notification linking to Extensions.
 The screen retains the failure message and Retry extensions until the registry
-recovers. A failure to start the deferred registry itself produces a notification
+recovers. A rejected registry import on a healthy connection is retried once before a
+persistent failure is reported. A failure to start the deferred registry itself produces a notification
 with Reload Station; it does not displace unrelated work with a global banner.
 Core shell and connection recovery retain their own failure surfaces.
 

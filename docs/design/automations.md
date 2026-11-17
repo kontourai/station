@@ -354,7 +354,7 @@ Four findings shape the design.
   scheduled jobs retain `{kind:'scheduled-job', jobId}`).
 - **The monitor Task path.** `onActionableMonitor` in
   [`runtime-route-support.ts`](../../src-server/runtime/routes/runtime-route-support.ts)
-  (around line 440) calls
+  calls
   `createTaskIdempotent(..., `${jobId}:${fingerprint}`)`, then
   `taskDispatcher.dispatch` with `fullAccessGrant: null`, the operator as
   owner, unattributed attribution, a budget envelope and
@@ -440,7 +440,10 @@ This introduces no contract break.
   action would reuse: a framed Station turn on the conversation's inbox, as
   [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
   sends it. `SchedulerEvent`s such as `job.failed` become `station-event`
-  sources for `notify`.
+  sources for `notify`. A job with a `projectId` (#5070) instead runs each
+  time as a new Task in that Project
+  ([ScheduledProjectRuns](../../src-server/services/scheduling/scheduled-project-runs.ts)),
+  and is not claimed while the Project is paused or archived.
 - The monitor Task path is generalized, not copied:
   `MonitorTaskDispatchIntent` becomes `UnattendedTaskEnvelope`, and
   `runWithScheduledPrincipal` becomes `runWithUnattendedPrincipal`.

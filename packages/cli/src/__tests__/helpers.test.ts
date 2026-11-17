@@ -45,7 +45,7 @@ afterAll(() => {
 });
 
 describe('channel lifecycle homes', () => {
-  it('resolves stable and beta homes independently when STATION_HOME is absent', () => {
+  it('resolves stable and nightly homes independently when STATION_HOME is absent', () => {
     expect(
       resolveLifecycleHomeTarget({ env: { STATION_CHANNEL: 'stable' } }),
     ).toMatchObject({
@@ -53,9 +53,9 @@ describe('channel lifecycle homes', () => {
       source: 'default',
     });
     expect(
-      resolveLifecycleHomeTarget({ env: { STATION_CHANNEL: 'beta' } }),
+      resolveLifecycleHomeTarget({ env: { STATION_CHANNEL: 'nightly' } }),
     ).toMatchObject({
-      projectHome: join(process.env.HOME!, '.station', 'instances', 'beta'),
+      projectHome: join(process.env.HOME!, '.station', 'instances', 'nightly'),
       source: 'default',
     });
   });
@@ -63,7 +63,7 @@ describe('channel lifecycle homes', () => {
   it('keeps an explicit STATION_HOME ahead of a channel home', () => {
     expect(
       resolveLifecycleHomeTarget({
-        env: { STATION_CHANNEL: 'beta', STATION_HOME: EXPLICIT_HOME },
+        env: { STATION_CHANNEL: 'nightly', STATION_HOME: EXPLICIT_HOME },
       }),
     ).toMatchObject({
       projectHome: normalizeHomePath(EXPLICIT_HOME),
