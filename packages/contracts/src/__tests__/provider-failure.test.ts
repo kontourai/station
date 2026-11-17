@@ -134,6 +134,8 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['session_start_in_flight', 'busy', true],
     ['transcript-line-skipped', 'warning', false],
     ['workload-command-oom-killed', 'warning', false],
+    ['workload-memory-pressure', 'warning', false],
+    ['workload-memory-pressure-cleared', 'warning', false],
   ];
 
 describe('provider failure wire contract', () => {

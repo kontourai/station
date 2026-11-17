@@ -1696,6 +1696,17 @@ export const workloadScopeMemoryPressure = meter.createCounter(
       "Workload scope memory-pressure transitions by transition ('enter': working set reached the configured share of memory.max | 'exit') and scope_kind ('engine' | 'command')",
   },
 );
+/**
+ * Workload notices (#5113) an engine adapter handled for its own scope.
+ * Attributes are closed: `provider_family`, `kind` and `outcome`.
+ */
+export const engineWorkloadNotices = meter.createCounter(
+  'station.engine.workload_notices',
+  {
+    description:
+      "Workload notices engine adapters handled, by provider_family ('claude' | 'codex'), kind ('pressure-enter' | 'pressure-exit' | 'oom-kill') and outcome ('delivered-mid-turn': in the running turn | 'delivered-turn-start': with the next turn's input | 'superseded': a later transition replaced it before delivery | 'expired': undelivered for 10 minutes | 'discarded': the session ended first)",
+  },
+);
 
 // ── MCP lifecycle ──
 export const mcpLifecycle = meter.createCounter('station.mcp.lifecycle', {

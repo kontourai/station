@@ -5,8 +5,15 @@ import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import * as loggerUtils from '../../utils/logger.js';
-import { CdpPipeTransport } from '../browser/cdp-pipe-transport.js';
-import { ChromiumServerHost } from '../browser/hosts/chromium-server-host.js';
+import {
+  CdpPipeTransport,
+  CdpTransportClosedError,
+} from '../browser/cdp-pipe-transport.js';
+import { ChromiumAcquisition } from '../browser/chromium-acquisition.js';
+import {
+  ChromiumServerHost,
+  SERVED_DOCUMENT_URL,
+} from '../browser/hosts/chromium-server-host.js';
 import { HtmlReplyPreview } from '../html-reply-preview.js';
 
 const makeTempDir = trackTempDirs();
@@ -494,7 +501,7 @@ test('Chromium preview returns PNG, measured height and console stacks inside th
     const service = new HtmlReplyPreview(makeTempDir('html-preview-'));
     const result = await service.render(
       {
-        html: `<h1>Preview integration</h1><script>console.log('preview log');console.log('heap limit',performance.memory.jsHeapSizeLimit);console.warn('preview warning');console.error('preview error');try{parent.document.body;console.log('PARENT ACCESS ALLOWED')}catch{console.log('parent blocked')}setTimeout(()=>{throw new Error('preview uncaught')},0)</script>`,
+        html: `<h1>Preview integration</h1><script>console.log('preview log');console.log('heap limit',performance.memory.jsHeapSizeLimit);console.warn('preview warning');console.error('preview error');try{parent.document.body;console.log('PARENT ACCESS ALLOWED')}catch{console.log('parent blocked')}setTimeout(()=>{throw new Error('preview uncaught')},0);console.log('referrer',JSON.stringify(document.referrer))</script>`,
         height: 400,
       },
       800,
@@ -535,6 +542,8 @@ test('Chromium preview returns PNG, measured height and console stacks inside th
           level: 'log',
           text: expect.stringContaining('parent blocked'),
         }),
+        // The served bootstrap page must not leak its address to the frame.
+        expect.objectContaining({ level: 'log', text: 'referrer ""' }),
       ]),
     );
     expect(
@@ -731,3 +740,157 @@ test('preview blocks ICE UDP in nested srcdoc and declarative closed shadow fram
     for (const socket of sockets) socket.close();
   }
 }, 30000);
+
+/**
+ * The abort probe records a fact and never gates: any browser death during
+ * its one action (any signal, any non-zero exit, a closed pipe) is "aborts",
+ * an answer from the frame is "survives", and anything else means the probe
+ * did not run.
+ */
+function classifyAbortProbe(outcome: {
+  answer?: unknown;
+  exitReason?: string;
+  error?: unknown;
+}): 'aborts' | 'survives' | undefined {
+  if (outcome.answer === 'survives') return 'survives';
+  if (outcome.exitReason !== undefined) return 'aborts';
+  if (outcome.error instanceof CdpTransportClosedError) return 'aborts';
+  return undefined;
+}
+
+test('the abort probe classifies every browser death as aborts and an answer as survives', () => {
+  const exited = (detail: string) => ({
+    error: new Error('The browser host is no longer running'),
+    exitReason: `browser process exited (${detail}): tail`,
+  });
+  expect(classifyAbortProbe(exited('code none, signal SIGABRT'))).toBe(
+    'aborts',
+  );
+  expect(classifyAbortProbe(exited('code none, signal SIGTRAP'))).toBe(
+    'aborts',
+  );
+  expect(classifyAbortProbe(exited('code none, signal SIGILL'))).toBe('aborts');
+  expect(classifyAbortProbe(exited('code none, signal SIGSEGV'))).toBe(
+    'aborts',
+  );
+  expect(classifyAbortProbe(exited('code 133, signal none'))).toBe('aborts');
+  expect(
+    classifyAbortProbe({
+      error: new CdpTransportClosedError('Runtime.evaluate', 'pipe ended'),
+    }),
+  ).toBe('aborts');
+  expect(classifyAbortProbe({ answer: 'survives' })).toBe('survives');
+  expect(classifyAbortProbe({ error: new Error('evaluation failed') })).toBe(
+    undefined,
+  );
+});
+
+test('records whether the installed Chromium still aborts when an about:blank page adds a sandboxed srcdoc frame (#4917)', async (context) => {
+  // The preview serves its bootstrap page only because of this abort. The
+  // run log shows the day Chromium stops aborting, so that reason can be
+  // revisited; neither answer fails the run.
+  const executablePath = new ChromiumAcquisition(
+    makeTempDir('html-preview-abort-probe-home-'),
+  ).resolveExecutable();
+  if (!executablePath) return context.skip('no Chromium for the abort probe');
+  const host = new ChromiumServerHost({
+    executablePath,
+    launchTimeoutMs: 15_000,
+    denyHostResolution: true,
+    egressPolicy: {
+      listeners: () => ({ ports: [], hostnames: [] }),
+      interfaceAddresses: () => [],
+      reach: { kind: 'none' },
+    },
+  });
+  let version = 'unknown';
+  const outcome: { answer?: unknown; exitReason?: string; error?: unknown } =
+    {};
+  try {
+    const target = await host.openTarget({
+      profileDir: makeTempDir('html-preview-abort-probe-'),
+      viewport: { width: 400, height: 300, deviceScaleFactor: 1 },
+    });
+    const send = <T>(expression: string) =>
+      host
+        .cdp()
+        .send<{ result: { value?: T } }>(
+          'Runtime.evaluate',
+          { expression, awaitPromise: true, returnByValue: true },
+          target.cdpSessionId,
+        );
+    version =
+      (await send<string>('navigator.userAgent')).result.value?.match(
+        /Chrome\/[0-9.]+/,
+      )?.[0] ?? 'unknown';
+    try {
+      outcome.answer = (
+        await send<string>(
+          `new Promise(resolve=>{const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.srcdoc='<script>parent.postMessage(1,"*")<\\/script>';addEventListener('message',()=>resolve('survives'));document.body.append(frame)})`,
+        )
+      ).result.value;
+    } catch (error) {
+      outcome.error = error;
+      for (let i = 0; i < 100 && host.exited === undefined; i++)
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      outcome.exitReason = host.exited;
+    }
+  } finally {
+    await host.shutdown().catch(() => {});
+  }
+  const verdict = classifyAbortProbe(outcome);
+  process.stdout.write(
+    `Chromium about:blank + sandboxed srcdoc frame probe: ${verdict ?? 'did not run'} (${version}, ${executablePath})\n`,
+  );
+  if (!verdict) throw outcome.error ?? new Error('abort probe did not run');
+}, 30_000);
+
+test('one real render requests nothing but the served bootstrap document', async () => {
+  // Chrome's own update and account requests are not on the preview target's
+  // session, so watching that session's Network events counts only what the
+  // preview page and its frame ask for. The frame's own process is a separate
+  // target; its srcdoc makes no request.
+  const urls: string[] = [];
+  const load = (
+    ChromiumServerHost.prototype as unknown as {
+      loadServedDocument: (...args: unknown[]) => Promise<void>;
+    }
+  ).loadServedDocument;
+  const spy = vi
+    .spyOn(
+      ChromiumServerHost.prototype as unknown as {
+        loadServedDocument: (...args: unknown[]) => Promise<void>;
+      },
+      'loadServedDocument',
+    )
+    .mockImplementation(async function (this: unknown, ...args: unknown[]) {
+      const [running, , sessionId] = args as [
+        { launch: { transport: CdpPipeTransport } },
+        string,
+        string,
+      ];
+      const transport = running.launch.transport;
+      transport.on('Network.requestWillBeSent', (params, eventSessionId) => {
+        const url = (params as { request?: { url?: unknown } })?.request?.url;
+        if (eventSessionId === sessionId && typeof url === 'string')
+          urls.push(url);
+      });
+      await transport.send('Network.enable', {}, sessionId);
+      return load.apply(this, args);
+    });
+  try {
+    const service = new HtmlReplyPreview(makeTempDir('html-preview-requests-'));
+    const result = await service.render(
+      { html: '<h1>requests</h1>', height: 400 },
+      800,
+      'dark',
+    );
+    expect(result.contentHeight).toBeGreaterThan(0);
+  } finally {
+    spy.mockRestore();
+  }
+  // data: URLs (the inert icon) never leave the browser.
+  expect(urls.filter((url) => !url.startsWith('data:'))).toEqual([
+    SERVED_DOCUMENT_URL,
+  ]);
+}, 30_000);

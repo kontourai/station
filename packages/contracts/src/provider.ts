@@ -1037,6 +1037,16 @@ export function lastRuntimeError<T extends { readonly method?: unknown }>(
 export const WORKLOAD_COMMAND_OOM_KILLED_CODE = 'workload-command-oom-killed';
 
 /**
+ * #5113: `runtime.warning` codes for an engine's own workload scope entering
+ * and leaving near-cap memory pressure. `details` carries
+ * `workingSetBytes`, `memoryMaxBytes` and `thresholdPercent`. The engine is
+ * told the same transition in its turn.
+ */
+export const WORKLOAD_MEMORY_PRESSURE_CODE = 'workload-memory-pressure';
+export const WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE =
+  'workload-memory-pressure-cleared';
+
+/**
  * A provider reported a failed query/turn without disproving its native binding.
  * This is not a completed turn, a retry instruction, or a resumability claim.
  */
