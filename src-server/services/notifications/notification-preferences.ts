@@ -92,8 +92,10 @@ function agentNotificationLevel(
  * finished, stopped or failed, and a request for input or approval. A
  * Project's level governs them when they name the Project.
  */
-export const PROJECT_WORK_NOTIFICATION_SUBSYSTEMS: ReadonlySet<string> =
-  new Set([TURN_COMPLETION_NOTIFICATION_SOURCE, 'approval-inbox']);
+const PROJECT_WORK_NOTIFICATION_SUBSYSTEMS: ReadonlySet<string> = new Set([
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
+  'approval-inbox',
+]);
 
 /**
  * Agent sources follow the agent, Project and global levels. Of the system

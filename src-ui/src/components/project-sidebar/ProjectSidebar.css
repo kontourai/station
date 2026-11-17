@@ -347,7 +347,7 @@
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 999px;
-  background: var(--accent-primary);
+  background: var(--k-brand);
 }
 
 .sidebar--collapsed .sidebar__project-waiting {

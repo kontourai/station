@@ -313,7 +313,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--k-space-1);
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   white-space: nowrap;
 }
@@ -322,7 +322,7 @@
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 999px;
-  background: var(--accent-primary);
+  background: var(--k-brand);
 }
 
 .project-room__header--screen .project-room__waiting-label {

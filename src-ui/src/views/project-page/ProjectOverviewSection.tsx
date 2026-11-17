@@ -243,9 +243,12 @@ function ProjectOverviewGroups({
       aria-labelledby="project-overview-title"
     >
       <div className="project-page__section-header">
-        <h2 id="project-overview-title" className="project-page__section-label">
+        <span
+          id="project-overview-title"
+          className="project-page__section-label"
+        >
           Tasks
-        </h2>
+        </span>
         {board.pullRequests.failed && (
           <Button onClick={() => board.pullRequests.refetch()}>
             Retry PR status

@@ -192,7 +192,7 @@ function withoutSystemProject(
 }
 
 /** The local Project a record is about, when its source names one. */
-export function notificationProjectId(
+function notificationProjectId(
   env: Pick<NotificationEnvelopeV1, 'source'>,
 ): string | undefined {
   return env.source.kind === 'agent' || env.source.kind === 'system'
