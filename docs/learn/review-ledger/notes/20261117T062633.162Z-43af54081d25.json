@@ -1,0 +1,7 @@
+{
+  "revision": "fdc210b0bd05629d1f20dc1a021beb771b9be8c7",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"#5120: added the branch-scoped readiness paragraph in Verification; checked against scripts/run-veritas-readiness.mjs (merge-base replacement of a non-ancestor --changed-from, ancestors passed through), Veritas 1.12.2 src/report/inputs.mjs two-point git diff, and run-veritas-readiness.process.test.ts. Other Verification claims are unchanged.","inputs":["docs/guides/development.md"]}
+  ]
+}
