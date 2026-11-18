@@ -302,6 +302,9 @@ first opened online. New build workers
 activate immediately and remove older shell caches; registration bypasses the
 HTTP worker cache and checks for updates at launch and on returning to the tab.
 An already open page offers **Reload to update** when its controller changes.
+The action appears above the Chat dock or below its header when the dock fills
+a phone screen. **Read saved copies** retains a separate position when both
+actions appear.
 A page loaded from the anonymous fallback reloads on reconnect to obtain the
 current runtime bootstrap. Ordinary navigations always request fresh HTML.
 
