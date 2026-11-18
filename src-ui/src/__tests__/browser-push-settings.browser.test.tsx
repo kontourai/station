@@ -75,6 +75,7 @@ test('Web Push Settings distinguishes authentication, access and unsupported res
             theme,
           );
           await page.screenshot({
+            animations: 'disabled',
             path: resolve(capture, `push-${width}-${theme}.png`),
           });
         }
