@@ -333,9 +333,9 @@ test('a phone composer\'s Run setup trigger keeps "Default differs" whole while 
     await sheet.getByLabel(/^Engine details/).click();
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
-      expect(
-        await sheet.getByText('Engine differs', { exact: true }).isVisible(),
-      ).toBe(width > 360);
+      await sheet.getByText('Engine differs', { exact: true }).waitFor({
+        state: width > 360 ? 'visible' : 'hidden',
+      });
       const move = await page.evaluate(
         unclipped,
         '.composer-run-panel .chat-input__engine-moved',
