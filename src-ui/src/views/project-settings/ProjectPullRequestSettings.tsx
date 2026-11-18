@@ -68,11 +68,7 @@ export function ProjectPullRequestSettings({
         <Empty
           variant="compact"
           label="Add a GitHub repository to use pull requests"
-          description={
-            context?.available === false
-              ? context.reason
-              : 'Choose a repository in Sources. Your saved settings are kept.'
-          }
+          description="Choose a repository in Sources. Your saved settings are kept."
           action={<Button onClick={onSources}>Open Sources</Button>}
         />
       )}
