@@ -1397,12 +1397,11 @@ caller must review the result before presenting the request as approved.
 `useRevokeStationPersonTokenMutation` make the operator's changes. A person's
 own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
 `useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
-`StationAccessError` with the HTTP `status` and the server's `code`:
-`isOperatorCredentialRequired` detects the current 401 refusal. Only the operator
-credential (host CLI) or an operator passkey session with step-up can change groups
-and manage other people’s tokens. The current refusal status for other callers
-is tracked in [#4109](https://github.com/kontourai/station/issues/4109): the SDK
-treats that 401 as a dead credential and removes it.
+`StationAccessError` with the HTTP `status` and the server's `code`.
+`isOperatorCredentialRequired` recognizes `403 operator_credential_required`.
+This refusal preserves the Device credential. Group changes and management of
+other people’s tokens require the host operator credential or an operator
+passkey session with step-up. HTTP 401 still signals authentication failure.
 `isStationAccessUnavailable` is a read refused as not for this caller (401, 403 or
 404), which a surface hides rather than shows. A mint
 answers the secret once. The mint mutation holds that answer while observed, so

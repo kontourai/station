@@ -15643,7 +15643,7 @@ export function configureDevicePairingHostRoutes(
         ...(code === 'operator_credential_required'
           ? {
               message:
-                'Sign in with an operator passkey or use the Station host CLI to change groups and tokens.',
+                'Group and token changes require the host operator credential or an operator passkey session with step-up.',
             }
           : { signInUrl: options.operatorSessions?.signInUrl ?? null }),
       },

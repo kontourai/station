@@ -194,10 +194,9 @@ can list People through its independent home-possession grant, but that grant
 cannot change groups or manage other people's tokens; signing in does not elevate
 those independently admitted requests. Only the operator credential (host CLI)
 or an operator passkey session with step-up can change groups and manage other
-people's tokens. The current refusal status for other callers is tracked in
-[#4109](https://github.com/kontourai/station/issues/4109): the SDK treats the
-current `401` as a dead credential and removes it. Use the host CLI for these
-controls today. A person's **Your access tokens** uses separate device-bound
+people's tokens. A current Desktop grant receives `403 operator_credential_required`
+for those writes and keeps its connection. Use the host CLI for these controls
+today. A person's **Your access tokens** uses separate device-bound
 self-service routes and does not request operator step-up. A newly minted token's secret appears **once**, in the consent-origin
 commit response and review page. The transaction's later status reads contain
 only token metadata. Copy the secret then; a lost response requires revoking
