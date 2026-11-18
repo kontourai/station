@@ -250,7 +250,10 @@ export function ProjectConversationList({
                 {channelRows.map(renderRow)}
               </ul>
             ) : (
-              <Empty variant="compact" label="No channels to show." />
+              <Empty
+                variant="compact"
+                label="This Project has no channels available to you."
+              />
             )}
             {index.channels.unreadError && (
               <ErrorState

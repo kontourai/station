@@ -150,7 +150,7 @@ export function useProjectConversationIndex(
     ],
     queryFn: async ({ signal }) => {
       if (!member?.isCurrent() || !requestScope)
-        throw new Error('The selected Station authority changed.');
+        throw new Error('The Station connection changed.');
       const result = await fetchReadMarkerSummary(
         requestScope.apiBase,
         targets,
@@ -160,7 +160,7 @@ export function useProjectConversationIndex(
         },
       );
       if (!member.isCurrent())
-        throw new Error('The selected Station authority changed.');
+        throw new Error('The Station connection changed.');
       return result;
     },
     enabled:
