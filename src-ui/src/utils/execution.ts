@@ -17,7 +17,6 @@ import {
   type ExecutionMode,
   type ModelOption,
   type RuntimeCatalogSource,
-  readCatalogModelRoute,
 } from '@kontourai/station-contracts/tool';
 import {
   type ConversationActivityCarrier,
@@ -447,14 +446,12 @@ function asModelOptions(value: unknown): ModelOption[] {
     ) {
       return [];
     }
-    const catalogRoute = readCatalogModelRoute(entry.catalogRoute);
     return [
       {
         id: entry.id,
         name: entry.name,
         originalId:
           typeof entry.originalId === 'string' ? entry.originalId : entry.id,
-        ...(catalogRoute ? { catalogRoute } : {}),
         ...(typeof entry.resolvedModel === 'string'
           ? { resolvedModel: entry.resolvedModel }
           : {}),
