@@ -1082,9 +1082,13 @@ export class NotificationService {
     });
   }
 
-  async markStatus(id: string, status: Notification['status']): Promise<void> {
-    const notification = await this.updateStatus(id, status);
-    this.clearTimer(id);
+  async markStatus(
+    id: string,
+    status: Notification['status'],
+    expected?: { source: string; revision: number },
+  ): Promise<void> {
+    const notification = await this.updateStatus(id, status, expected);
+    if (notification || !expected) this.clearTimer(id);
     if (notification) {
       this.eventBus.emit(
         SERVER_EVENTS.NOTIFICATION_UPDATED,
@@ -1300,12 +1304,27 @@ export class NotificationService {
     status?: string[];
     category?: string[];
   }): Promise<Notification[]> {
+    return (await this.readFiltered(opts)).map(toPublicNotification);
+  }
+
+  /** Internal snapshot for callers that must retire only the row they read. */
+  async listWithRevision(opts?: { status?: string[]; category?: string[] }) {
+    return (await this.readFiltered(opts)).map((row) => ({
+      notification: toPublicNotification(row),
+      revision: row.revision,
+    }));
+  }
+
+  private async readFiltered(opts?: {
+    status?: string[];
+    category?: string[];
+  }) {
     let results = await this.read();
     if (opts?.status?.length)
       results = results.filter((n) => opts.status!.includes(n.status));
     if (opts?.category?.length)
       results = results.filter((n) => opts.category!.includes(n.category));
-    return results.map(toPublicNotification);
+    return results;
   }
 
   async clearAll(
@@ -1622,13 +1641,19 @@ export class NotificationService {
   private async updateStatus(
     id: string,
     status: Notification['status'],
+    expected?: { source: string; revision: number },
   ): Promise<StoredNotification | undefined> {
     return this.mutate((all) => {
       const n = all.find((notification) => notification.id === id);
       if (
         !n ||
         n.status === 'dismissed' ||
-        n.actionLease?.phase === 'dispatching'
+        n.actionLease?.phase === 'dispatching' ||
+        (expected !== undefined &&
+          (n.source !== expected.source ||
+            n.revision !== expected.revision ||
+            n.actionLease !== undefined ||
+            (n.status !== 'pending' && n.status !== 'delivered')))
       ) {
         return { result: undefined };
       }
