@@ -3733,11 +3733,12 @@ export class CodexAdapter implements ProviderAdapterShape {
   }
 
   private rememberCancelledTurn(record: CodexSessionRecord, turnId: string) {
-    record.cancelledBoundTurns ??= new Set();
-    record.cancelledBoundTurns.add(turnId);
-    if (record.cancelledBoundTurns.size > 32) {
-      const oldest = record.cancelledBoundTurns.values().next().value;
-      if (oldest !== undefined) record.cancelledBoundTurns.delete(oldest);
+    const cancelledTurns = record.cancelledBoundTurns ??= new Set();
+    cancelledTurns.delete(turnId);
+    cancelledTurns.add(turnId);
+    for (const oldest of cancelledTurns) {
+      if (cancelledTurns.size <= 32) break;
+      cancelledTurns.delete(oldest);
     }
   }
 
@@ -4236,8 +4237,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     const record = this.transport.getSession(threadId);
     if (record) {
       if (record.activeTurnId) {
-        record.cancelledBoundTurns ??= new Set();
-        record.cancelledBoundTurns.add(record.activeTurnId);
+        this.rememberCancelledTurn(record, record.activeTurnId);
       }
       this.cancelBoundToolApprovals(record);
     }
