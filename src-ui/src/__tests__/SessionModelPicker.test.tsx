@@ -104,9 +104,7 @@ function renderNestedPicker(onOuterClose = vi.fn()) {
   render(<Harness />);
 }
 
-function modelChoices(
-  group = screen.getByRole('group', { name: 'Models', exact: true }),
-) {
+function modelChoices(group = screen.getByRole('group', { name: /^Models$/ })) {
   return Array.from(
     group.querySelectorAll<HTMLButtonElement>('button[aria-current]'),
   );
@@ -927,7 +925,7 @@ describe('SessionModelPicker', () => {
         { id: 'gpt-5.5', name: 'GPT-5.5' },
       ],
     });
-    const results = screen.getByRole('group', { name: 'Models', exact: true });
+    const results = screen.getByRole('group', { name: /^Models$/ });
     const options = modelChoices(results);
     expect(options.map((option) => option.textContent)).toEqual([
       expect.stringContaining('GPT-5.6'),

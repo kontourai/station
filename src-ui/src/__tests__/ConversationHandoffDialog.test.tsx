@@ -673,7 +673,7 @@ describe('ConversationHandoffDialog', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /^Model / }));
     const models = within(
-      await screen.findByRole('group', { name: 'Models', exact: true }),
+      await screen.findByRole('group', { name: /^Models$/ }),
     );
     expect(models.getByRole('button', { name: /^GPT-5/ })).toBeTruthy();
     expect(models.queryByRole('button', { name: /^GPT locked/ })).toBeNull();

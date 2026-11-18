@@ -87,7 +87,7 @@ describe('StartModelPicker', () => {
     const onSelect = vi.fn();
     render(<Harness onSelect={onSelect} />);
     const choices = within(
-      await screen.findByRole('group', { name: 'Models', exact: true }),
+      await screen.findByRole('group', { name: /^Models$/ }),
     );
     fireEvent.click(choices.getByRole('button', { name: /^Fast model/ }));
     expect(onSelect).toHaveBeenCalledWith(
