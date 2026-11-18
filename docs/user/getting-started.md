@@ -1356,7 +1356,8 @@ Each conversation is filed under a Project by the folder it ran in:
 
 Rows can show **Directory · …/parent/folder** when a working folder is recorded
 without a Project label. The label provides folder context and leaves Project
-membership unchanged.
+membership unchanged. A reopened delegated chat can show **CLI (reported)**
+when Station's accepted start receipt records a CLI caller.
 
 A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
