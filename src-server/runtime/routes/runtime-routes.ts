@@ -7181,7 +7181,13 @@ export function configureRuntimeRoutes(
       steerFidelity: (threadId) => service.steerFidelityForThread(threadId),
       inspectSteer: (input) => eventStore.readSteerInput(input),
       steer: stationServerEntry(
-        async ({ threadId, clientInputId, payload, turnId }) => {
+        async ({
+          threadId,
+          clientInputId,
+          payload,
+          turnId,
+          targetIsCurrent,
+        }) => {
           const dispatched = await service.dispatchWithReceipt(
             {
               type: 'steerTurn',
@@ -7197,9 +7203,12 @@ export function configureRuntimeRoutes(
               clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
             },
             // #4827: a steer a person typed and queued stays theirs.
-            payload.authoredBy === 'person'
-              ? { personAuthored: true }
-              : undefined,
+            {
+              ...(payload.authoredBy === 'person'
+                ? { personAuthored: true }
+                : {}),
+              steerTargetIsCurrent: targetIsCurrent,
+            },
           );
           const result = dispatched.result as
             | { outcome: string; turnId?: string }
@@ -7474,6 +7483,8 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    projectExists: projectLifecycle.projectHold.projectExists,
+    principalMayInProject,
     // #5070: a Project schedule is proposable only where Project runs exist
     // and the `project-schedules` preview is on.
     projectSchedulesEnabled: () =>
@@ -13386,7 +13397,7 @@ export function configureRuntimeRoutes(
         : {}),
       ...(scheduledProjectRuns
         ? {
-            projectJobs: true,
+            maySetProjectJob: agentSchedule.maySetProjectJob,
             projectJobsPreview: projectLifecycle.schedulesPreview,
           }
         : {}),

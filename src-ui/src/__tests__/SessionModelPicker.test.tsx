@@ -104,6 +104,12 @@ function renderNestedPicker(onOuterClose = vi.fn()) {
   render(<Harness />);
 }
 
+function modelChoices(group = screen.getByRole('group', { name: /^Models$/ })) {
+  return Array.from(
+    group.querySelectorAll<HTMLButtonElement>('button[aria-current]'),
+  );
+}
+
 describe('SessionModelPicker', () => {
   test('keeps direct and engine routes distinct for the same model and provider', () => {
     renderPicker({
@@ -133,13 +139,13 @@ describe('SessionModelPicker', () => {
     });
     expect(
       screen
-        .getByRole('option', { name: /Direct model/ })
-        .getAttribute('aria-selected'),
+        .getByRole('button', { name: /^Direct model/ })
+        .getAttribute('aria-current'),
     ).toBe('true');
     expect(
       screen
-        .getByRole('option', { name: /Codex model/ })
-        .getAttribute('aria-selected'),
+        .getByRole('button', { name: /^Codex model/ })
+        .getAttribute('aria-current'),
     ).toBe('false');
     expect(screen.getByRole('radio', { name: 'High' })).toBeTruthy();
     expect(screen.queryByRole('radio', { name: 'Low' })).toBeNull();
@@ -170,11 +176,7 @@ describe('SessionModelPicker', () => {
       ],
     });
     expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
-    expect(
-      within(screen.getByRole('listbox', { name: 'Models' })).getAllByRole(
-        'option',
-      ),
-    ).toHaveLength(2);
+    expect(modelChoices()).toHaveLength(2);
   });
 
   test('shows settings only for the exact current provider route', () => {
@@ -217,7 +219,7 @@ describe('SessionModelPicker', () => {
     expect(screen.getByText('Nothing matches your search.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Browse all models' }));
     fireEvent.keyDown(search, { key: 'ArrowDown' });
-    const firstModel = screen.getByRole('option', { name: /GPT-5.6/ });
+    const firstModel = screen.getByRole('button', { name: /^GPT-5.6/ });
     expect(document.activeElement).toBe(firstModel);
     fireEvent.keyDown(firstModel, { key: 'ArrowUp' });
     expect(document.activeElement).toBe(search);
@@ -284,7 +286,7 @@ describe('SessionModelPicker', () => {
     const props = renderPicker();
 
     expect(screen.getByRole('group', { name: 'Thinking effort' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('option', { name: /GPT-5.5/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^GPT-5.5/ }));
     fireEvent.click(screen.getByRole('radio', { name: 'Highest' }));
 
     expect(props.onSelect).toHaveBeenCalledWith({
@@ -297,12 +299,8 @@ describe('SessionModelPicker', () => {
     });
     expect(props.onRuntimeOptionChange).toHaveBeenCalledWith('effort', 'xhigh');
     fireEvent.click(screen.getByRole('button', { name: 'Recent' }));
-    expect(
-      within(screen.getByRole('listbox', { name: 'Models' })).getAllByRole(
-        'option',
-      ),
-    ).toHaveLength(1);
-    expect(screen.getByRole('option', { name: /GPT-5.5/ })).toBeTruthy();
+    expect(modelChoices()).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /^GPT-5.5/ })).toBeTruthy();
   });
 
   test('removes the effort override when model default is selected', () => {
@@ -470,7 +468,7 @@ describe('SessionModelPicker', () => {
         }) as HTMLInputElement
       ).value,
     ).toBe('5.5');
-    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(modelChoices()).toHaveLength(1);
   });
 
   test('renders one provider-reported Auto mode control', () => {
@@ -672,13 +670,11 @@ describe('SessionModelPicker', () => {
       screen.getByRole('button', { name: 'LiteLLM · Local Setup required' }),
     ).toHaveProperty('disabled', true);
     fireEvent.click(screen.getByRole('button', { name: 'Bedrock · Prod' }));
-    const bedrockModel = screen.getByRole('option', {
-      name: /GPT-5.6Bedrock · Prod/,
+    const bedrockModel = screen.getByRole('button', {
+      name: /^GPT-5.6Bedrock · Prod/,
     });
     expect(
-      screen.queryByRole('option', {
-        name: /GPT-5.6Codex · Work/,
-      }),
+      screen.queryByRole('button', { name: /^GPT-5.6Codex · Work/ }),
     ).toBeNull();
     fireEvent.click(bedrockModel);
     expect(props.onSelect).toHaveBeenCalledWith(
@@ -707,17 +703,17 @@ describe('SessionModelPicker', () => {
     });
     expect(screen.getByText(/200k/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Vision' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: /Plain/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Plain/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Vision' }));
-    expect(screen.getByRole('option', { name: /Reasoner/ })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: /Plain/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Reasoner/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Plain/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Tool calling' }));
-    expect(screen.getByRole('option', { name: /Reasoner/ })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: /No surface/ })).toBeNull();
-    expect(screen.queryByRole('option', { name: /Empty surface/ })).toBeNull();
-    expect(screen.queryByRole('option', { name: /Abort only/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Reasoner/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^No surface/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Empty surface/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Abort only/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getAllByRole('option')).toHaveLength(5);
+    expect(modelChoices()).toHaveLength(5);
     expect(
       screen
         .getByRole('button', { name: 'Vision' })
@@ -745,11 +741,11 @@ describe('SessionModelPicker', () => {
     const favorites = screen.getByRole('button', { name: 'Favorites' });
     fireEvent.click(favorites);
     fireEvent.click(screen.getByRole('button', { name: 'Vision' }));
-    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(modelChoices()).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect(modelChoices()).toHaveLength(2);
     expect(favorites.getAttribute('aria-pressed')).toBe('true');
-    expect(screen.queryByRole('option', { name: /Other model/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Other model/ })).toBeNull();
   });
 
   test.each([undefined, 'codex'])(
@@ -773,12 +769,12 @@ describe('SessionModelPicker', () => {
       });
       if (!currentExecutionAgentId) {
         expect(collection).toBeNull();
-        expect(screen.getAllByRole('option')).toHaveLength(2);
+        expect(modelChoices()).toHaveLength(2);
       } else {
         fireEvent.click(screen.getByRole('button', { name: 'Current engine' }));
-        expect(screen.getAllByRole('option')).toHaveLength(1);
+        expect(modelChoices()).toHaveLength(1);
         expect(
-          screen.getByRole('option', { name: /Engine model/ }),
+          screen.getByRole('button', { name: /^Engine model/ }),
         ).toBeTruthy();
       }
     },
@@ -798,7 +794,7 @@ describe('SessionModelPicker', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole('option', { name: /Bedrock model/ }),
+        screen.getByRole('button', { name: /^Bedrock model/ }),
       ).toBeTruthy(),
     );
     expect(authenticatedFetch).not.toHaveBeenCalled();
@@ -832,7 +828,7 @@ describe('SessionModelPicker', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search models' }), {
       target: { value: 'bedrock' },
     });
-    expect(screen.getByRole('option', { name: /Claude Sonnet/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Claude Sonnet/ })).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Add Claude Sonnet (Bedrock · Prod) to favorites',
@@ -879,16 +875,14 @@ describe('SessionModelPicker', () => {
     });
     const group = screen.getByRole('group', { name: 'Claude Sonnet 4.5' });
     expect(group.tagName).toBe('FIELDSET');
-    expect(
-      within(group)
-        .getAllByRole('option')
-        .map((option) => option.textContent),
-    ).toEqual([
+    expect(modelChoices(group).map((option) => option.textContent)).toEqual([
       expect.stringContaining('Claude Sonnet 4.5'),
       expect.stringContaining('sonnet'),
     ]);
-    expect(within(group).queryByRole('option', { name: /GPT-5.6/ })).toBeNull();
-    expect(screen.getByRole('listbox', { name: 'Models' })).toBeTruthy();
+    expect(
+      within(group).queryByRole('button', { name: /^GPT-5.6/ }),
+    ).toBeNull();
+    expect(screen.getByRole('group', { name: 'Models' })).toBeTruthy();
   });
 
   test('a lone identified route is a plain row, not a group of one', () => {
@@ -906,11 +900,11 @@ describe('SessionModelPicker', () => {
       ],
     });
     expect(
-      within(screen.getByRole('listbox', { name: 'Models' })).queryByRole(
+      within(screen.getByRole('group', { name: 'Models' })).queryByRole(
         'group',
       ),
     ).toBeNull();
-    expect(screen.getByRole('option', { name: /sonnet/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^sonnet/ })).toBeTruthy();
   });
 
   test('arrow keys cross a group boundary in visual order', () => {
@@ -931,9 +925,8 @@ describe('SessionModelPicker', () => {
         { id: 'gpt-5.5', name: 'GPT-5.5' },
       ],
     });
-    const options = within(
-      screen.getByRole('listbox', { name: 'Models' }),
-    ).getAllByRole('option');
+    const results = screen.getByRole('group', { name: /^Models$/ });
+    const options = modelChoices(results);
     expect(options.map((option) => option.textContent)).toEqual([
       expect.stringContaining('GPT-5.6'),
       expect.stringContaining('Claude Sonnet 4.5'),
@@ -943,7 +936,7 @@ describe('SessionModelPicker', () => {
     // The boundary must actually exist: the middle two sit inside the group,
     // the outer two do not. Without this the test passes on a flat list.
     expect(
-      options.map((option) => option.closest('fieldset') !== null),
+      options.map((option) => option.closest('fieldset') !== results),
     ).toEqual([false, true, true, false]);
     options[0]!.focus();
     fireEvent.keyDown(options[0]!, { key: 'ArrowDown' });
@@ -958,8 +951,8 @@ describe('SessionModelPicker', () => {
 
   test('moves between model options with arrow, Home, and End keys', () => {
     renderPicker({ currentModel: undefined });
-    const first = screen.getByRole('option', { name: /GPT-5.6/ });
-    const last = screen.getByRole('option', { name: /GPT-5.5/ });
+    const first = screen.getByRole('button', { name: /^GPT-5.6/ });
+    const last = screen.getByRole('button', { name: /^GPT-5.5/ });
 
     first.focus();
     fireEvent.keyDown(first, { key: 'ArrowDown' });
@@ -1011,15 +1004,13 @@ describe('SessionModelPicker', () => {
   test('renders the selected-model check glyph on the selected option only', () => {
     renderPicker();
 
-    const options = within(
-      screen.getByRole('listbox', { name: 'Models' }),
-    ).getAllByRole('option');
+    const options = modelChoices();
     const withCheck = options.filter((option) =>
       option.querySelector('.session-model-picker__model-check'),
     );
     expect(options.length).toBeGreaterThan(1);
     expect(withCheck).toEqual([
-      screen.getByRole('option', { name: /GPT-5.6/ }),
+      screen.getByRole('button', { name: /^GPT-5.6/ }),
     ]);
   });
 });

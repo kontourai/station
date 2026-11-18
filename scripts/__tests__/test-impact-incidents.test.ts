@@ -78,6 +78,14 @@ const dependencyReasons = (result: ReturnType<typeof select>) =>
 describe('Nightly regressions outside the import graph', () => {
   test.each([
     [
+      'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+      'scripts/__tests__/check-required-tests-ran.test.ts',
+    ],
+    [
+      'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
+      'scripts/__tests__/check-required-tests-ran.test.ts',
+    ],
+    [
       'src-ui/src/views/project-settings/OverviewNotificationsSection.tsx',
       'src-ui/src/__tests__/project-settings.browser.test.tsx',
     ],
@@ -96,6 +104,10 @@ describe('Nightly regressions outside the import graph', () => {
     [
       'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
       'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'tests/interactive-workspace-performance-bridge.spec.ts',
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
     ],
   ])('%s selects its executable contract %s', (path, suite) => {
     expect(executed(select([path], head, true))).toContain(suite);

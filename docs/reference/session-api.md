@@ -733,13 +733,16 @@ retry returns its retained entry even after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
 
-- **Steer:** text and head are durable before handoff. Native placement is
+- **Steer:** Station records the active Session and the turn's opening event
+  with the text before handoff. If the head has no active turn, admission
+  answers `inbox_stale_head`. If the target ends before placement, the entry
+  is refused with `steer_turn_ended`. Native placement is
   engine-defined and disclosed, including OpenCode and ACP sessions whose
   handshake selects a native channel. Other ACP sessions can interrupt the
   active prompt, wait for its terminal answer, and re-prompt with a continuation
   instruction on the same turn. Where Station owns the loop,
-  input waits for its next observed post-tool boundary; otherwise it waits
-  for the next turn boundary. The current VoltAgent loop observes the boundary
+  input waits for its next observed post-tool boundary in that turn.
+  The current VoltAgent loop observes the boundary
   after the preceding step's tools settle. Prompt injection leaves the entry
   claimed. It becomes sent only after the carrying model request returns and
   its user message and steer event are recorded durably. A crash before that

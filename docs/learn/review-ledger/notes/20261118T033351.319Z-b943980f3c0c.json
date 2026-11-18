@@ -1,0 +1,133 @@
+{
+  "revision": "315c0b41e8142d49103a5a55f0f37ae4231a17c5",
+
+  "notes": [
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Browser preview host composition and the ADR's dated platform evidence are unaffected. Runtime changes only supply Project lookup and authorization to the scheduler.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"The runtime additions only wire Project schedule authorization. Orchestration resume and live-surface transport selection are unchanged.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"The host adapter, browser operator mounts and browser presentation/log-read authority are unchanged by the Project schedule wiring. Preserve the dated browser evidence.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"The new Project checks are injected into the existing scheduler composition. The runtime, event and provider relationships shown by the architecture diagrams still apply.","inputs":["docs/architecture.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The configuration change documents room-only attachment custody and capacity. It does not change the setting limits discussed in the abstraction review.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the changed Scheduler and ProjectTaskRoom sections against Project view and creator execute, operator cleanup, built-in job ID checks, in-lock upload authority and complete-reference reclamation. This is source review.","inputs":["docs/architecture/module-map.md","src-server/routes/operations/scheduler.ts","src-server/routes/orchestration/project-task-rooms.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/project-task-room-runtime.ts","src-server/services/scheduling/__tests__/scheduler-ledger.test.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Scheduler route admission and same-name replacement refusal preserve the distinction between a run request and a durable run receipt. The evidence definitions are unaffected.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The existing scheduler routes still own job and run operations. Project-scoped admission and job identity checks do not change the documented occurrence/receipt or Personal analytics ownership boundaries.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/routes/operations/scheduler.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"The changed runtime wiring is confined to Project scheduling. Answer-share management, token validation and view routes retain their existing admission.","inputs":["docs/design/answer-share-permalinks.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"The scheduler wiring does not reach browser host composition or the dated experiment assumptions. No experiment was rerun.","inputs":["docs/design/browser-preview-host-spike.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"The scheduler wiring does not alter the browser pane's grants or session reference. The MVP evidence remains dated.","inputs":["docs/design/browser-preview-pane-mvp.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Task file upload now rechecks writable scope under its own store lock. The channel-home prepare/advance, source seals and other room-write authority paths do not change. Scheduler wiring is separate.","inputs":["docs/design/channel-home-authority.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The referenced-write admission runs only for Task files, leaving chat attachment intake, inline reference handling and retention unchanged.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/attachment-blob-store.ts"]},
+
+    {"path":"docs/design/conversation-state.md","note":"The task-room runtime diff touches upload scope only. Conversation-state and channel-home behavior in the dated source survey are unaffected.","inputs":["docs/design/conversation-state.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/live-work-session.md","note":"The shared history adapter and lifecycle transitions are unaffected by the attachment upload scope recheck.","inputs":["docs/design/live-work-session.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Runtime changes are isolated to the scheduler. Purpose-keyed bootstrap mint/exchange and the launcher admission described here are unchanged.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"The Project schedule wiring leaves device fingerprints, current operator authority and consent/commit routes unchanged. Existing operator device citations retain their stated evidence limits.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"The scheduler now consumes the existing Project view/execute predicates. Membership composition, role meanings and membership management routes remain unchanged.","inputs":["docs/design/project-membership.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"The attachment POST adds a capacity refusal and moves its current-scope check under the file lock. History reads, document writes, presence and durable projection remain unchanged.","inputs":["docs/design/project-task-room-history.md","src-server/routes/orchestration/project-task-rooms.ts","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Only attachment upload scope is rechecked under a file lock. The room bridge's attribution, revision binding and proposed-change lookup boundary are untouched.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Configuration prose changes only the separate Task file store behavior. The settings registry, scoped overrides and telemetry destination references remain accurate.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/station-topology.md","note":"The personal Task attachment 409 changes an existing route outcome without changing the route installation or the topology boundary.","inputs":["docs/design/station-topology.md","src-server/routes/orchestration/project-task-rooms.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"The added Project scheduler authorization hooks leave Survey routes, their Project-store binding and Flow delegation unchanged.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked upload/resolve/read authority, current scope under the upload lock, complete-reference reclamation, deduplicated budget, and refusal before file publication. Attachment fixture changes were read as source only.","inputs":["docs/design/task-room-agent-requests.md","src-server/routes/orchestration/__tests__/task-room-attachments.test.ts","src-server/routes/orchestration/project-task-rooms.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/project-task-room-runtime.ts","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The runtime and API changes cover Project schedules and Task attachment upload. Terminal transport, host and lifecycle scopes are unchanged.","inputs":["docs/design/terminal.md","docs/reference/api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"The scheduler uses existing Project actions and scope terminology. Runtime composition cited in the glossary retains the same vocabulary and owners.","inputs":["docs/glossary.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"The changed runtime lines supply Project scheduler authorization, outside browser acquisition, control, viewer and lease composition.","inputs":["docs/guides/browser-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Project schedule authorization does not change portable delegation submission, deduplication or attempt lookup routes.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"The new Project schedule gates consume existing person and membership authority. Account-bound Device, application-session and shared-content admission described here retain their predicates.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Runtime injection is limited to Project scheduling; checkout, container and hosted deployment composition and authentication described here are unchanged.","inputs":["docs/guides/deployment.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"The new Project scheduler dependency wiring is outside Home transfer preparation, advance and protected control-grant composition.","inputs":["docs/guides/home-transfer-controller.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The linked API and SDK references add scoped scheduler and Task room upload behavior. The integration route to those references, prerequisites and deployment ownership remain valid.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"The runtime diff affects Project scheduler authority only. Collaboration lab admission, signing and dated evidence are unaffected.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The scheduler wiring does not change pairing, remote visibility, server-owned SSH or the device/account boundaries cited by this guide.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Device workspace mounting and sharing are untouched by the Project scheduler wiring.","inputs":["docs/guides/mobile-device-workspace.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Project scheduler changes do not alter operator passkey enrollment, step-up or the device-bound consent session.","inputs":["docs/guides/operator-passkeys.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The admitted ID checks apply to generic built-in updates/removal/manual claims. Starter Work's prepare/activate/release and exact intent path remain separate. The Task room change is scoped to attachment upload.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/project-task-room-runtime.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Project scheduler authorization is independent of default-off walkthrough import and scoped manifest/image routes.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Project scheduler wiring leaves push registration, subscriber authority and activation/revocation routes unchanged.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"The new runtime scheduler dependencies do not reach the trusted Board renderer or its owner-resolved Home and reference routes.","inputs":["docs/guides/work-board-security.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Upload-only lock and scope changes do not affect the saved shared-document scenario or the dated walkthrough captions.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked Project schedule create/edit/enable/run authority and disable/delete cleanup against owner/operator and creator execute checks, job/run visibility against Project view, and built-in ID refusal against the ledger. Checked Task upload 409 and scoped reads against the room route.","inputs":["docs/reference/api.md","src-server/routes/operations/scheduler.ts","src-server/routes/orchestration/project-task-rooms.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked independent Task blob retention and deduplicated capacity against the protected write path. Unknown bindings prevent reclamation. Chat retention, Project file cleanup and scheduler configuration guidance still apply.","inputs":["docs/reference/config.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/attachment-blob-store.ts","src-server/services/projects/task-room-attachments.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Project schedule dependency wiring does not touch Connect offer, exchange, broker or revocation composition.","inputs":["docs/reference/connect.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Project schedule checks consume existing authority without changing the documented contracts, public export subpaths or account/relay declarations.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The runtime delta does not change an environment resolver or scheduler configuration key. Existing environment and attachment setting citations remain accurate.","inputs":["docs/reference/env-vars.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Only attachment publication admission is moved under a file lock. This does not change interactive performance fixtures or the documented measurement protocol.","inputs":["docs/reference/interactive-workspace-performance.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"The attachment upload delta does not change Task document edits, exact Session association or restart assertions. No browser lane was rerun for this review.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The Task attachment SDK still sends scoped descriptors and receives authenticated bytes. The API adds 409 for batches whose new unique bytes exceed capacity. Reviewed the documentation and callers from source.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The touched runtime wiring is specifically for Project schedules. Foreground session, continuation and SSE behaviors in this reference are outside the change.","inputs":["docs/reference/session-api.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Inspected regenerated module-map topic text for Task file custody and built-in schedule guard, including the matching bundle digest. The hand-authored manual contract remains unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Scheduler composition changes do not alter telemetry activation, configuration or collection routes.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The scheduler applies existing person/operator and Project authority at its job/read boundary. The remote access transport, token, origin and pairing rules referenced here are unchanged.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The Task room copy now separates protected attachment bytes and capacity refusal from chat image expiry. Checked upload admission and reclamation against the room store.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Project schedule dependency substitution does not change pull-request guide generation or read-only serving.","inputs":["docs/user/pull-request-guides.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Project scheduler wiring is outside checkpoint capture, preview and caller/workspace admission routes.","inputs":["docs/user/workspace-checkpoints.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"The runtime change does not affect the example's integration resolve/read mounts or MCP UI trust boundary.","inputs":["examples/mcp-ui-demo/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"The runtime change does not affect the example's canonical Session API mounts or authentication boundary. The dated reader repair limitation remains.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The SDK reference's Task upload status clarification preserves public export routing, import policy and the cancellation evidence instruction.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Task attachment upload is the only changed ProjectTaskRoomRuntime path. Document save/reload is unaffected. The image, capture revision and captured evidence are retained.","inputs":["docs/learn/media/shared-task-document.png","src-server/services/orchestration/project-task-room-runtime.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Project scheduler wiring does not alter paired-browser sign-in visibility or the device listing gate. The historical image and capture identity are retained.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Project scheduler wiring does not alter list disclosure after operator sign-in. The historical image and capture identity are retained.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Project scheduler wiring does not alter the separate consent origin or the step-up review. The historical image and capture identity are retained.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Project scheduler wiring does not alter device access mutation or the post-confirmation list. The historical image and capture identity are retained.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

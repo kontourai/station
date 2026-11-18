@@ -749,7 +749,12 @@ const CONSUMED_FLAGS: Record<
         readAuthorityForRequest: () =>
           ({ mode: hosted ? 'hosted' : 'personal' }) as never,
         // Runtime composition passes it only where a Project runner exists.
-        ...(hosted ? {} : { projectJobs: true }),
+        ...(hosted
+          ? {}
+          : {
+              jobOwner: () => ({ userId: 'local-operator' }),
+              maySetProjectJob: () => true,
+            }),
       },
     );
     const response = await routes.request('/jobs', {

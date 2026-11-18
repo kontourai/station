@@ -36,7 +36,9 @@
 
     "scripts/__tests__/interactive-workspace-playwright-adapter.test.ts",
 
-    "src-ui/src/performance/__tests__/interactive-workspace-performance-bridge.test.ts"
+    "src-ui/src/performance/__tests__/interactive-workspace-performance-bridge.test.ts",
+
+    "scripts/__tests__/interactive-workspace-performance-host-gate.test.ts"
   ],
 
   "checks": [

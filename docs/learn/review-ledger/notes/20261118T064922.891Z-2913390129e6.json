@@ -1,0 +1,35 @@
+{
+  "revision": "a809b36f16f0f333b6e35001e5d047bfac20b4d0",
+
+  "notes": [
+    {"path":"README.md","note":"Checked the CLI reference linked by the root README. It now states local workspace defaults, usage refusal for ambiguous model options and the confirmed request JSON contract. The root installation and product entry points still describe the same CLI distribution.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked the orchestration chat caller changes against the ADR's supersession note and retained route boundary. Optional request inspection follows the existing canonical acceptance and event observation, and does not affect the historical rollout flag.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Checked the CLI help diff against the repository-launcher-only migration note. The edited foreground chat help does not change the migration entry point.","inputs":["docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Preserved the historical CLI findings and linked the current callers. Checked parser refusal, workspace assembly and exact request inspection using the CLI HTTP fixtures and outside-checkout executable coverage. Checkpoint restore remains a separate finding. No engine run was exercised.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md","packages/cli/src/commands/core.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Checked the CLI reference diff against the triage design's resolver, doctor injection and diagnostic permission boundaries. The revised chat contract does not change triage behavior.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Checked the delegate fixture additions against target-side preparation and path admission. Tests exercise model flag parsing and outgoing prompts independently of the documented preparation contract.","inputs":["docs/design/remote-execution-preparation.md","packages/cli/src/__tests__/delegate.test.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Checked the CLI help diff against the authoring flows, validation and inspection command guidance. The changed foreground chat help leaves those command routes and claims accurate.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the shared argument parser change against saved profile, local Station target resolution and credential selection. A malformed model-option flag now fails before those steps, and valid connection command targeting is unchanged.","inputs":["docs/guides/connections.md","packages/cli/src/commands/core-api.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the CLI reference linked from the integration guide against the foreground caller and HTTP fixtures. The integration surface links and hosted tenant qualification requirements still apply.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked the argument parser change against the explicit endpoint and saved Station invocation examples. Workspace import target selection, filesystem authority and package handling do not depend on model options.","inputs":["docs/guides/workspace-packages.md","packages/cli/src/commands/core-api.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Traced chat and delegate flags through the shared parser and model options collector, chat workspace through the invocation directory and server target resolver, and JSON pending state through bounded Session detail and exact request inspection. The two focused suites passed 214 local tests, including actual launcher HTTP payloads and a resolution between reads. No live provider or protected host was exercised.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/core-http.test.ts","packages/cli/src/__tests__/delegate.test.ts","packages/cli/src/commands/core-api.ts","packages/cli/src/commands/core.ts","packages/cli/src/commands/session-client.ts","packages/cli/src/help.ts","packages/sdk/src/client/request-inspection.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the shared parser delta against profile resolution, pairing and token use in Connect examples. The bare model-option usage error does not change any of those control paths.","inputs":["docs/reference/connect.md","packages/cli/src/commands/core-api.ts"]},
+
+    {"path":"examples/portable-author-kit/README.md","note":"Checked the shared parser delta against local discovery and explicit or saved Station selection for the author kit. The new chat workspace default does not change directory source admission.","inputs":["examples/portable-author-kit/README.md","packages/cli/src/commands/core-api.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Checked workspace defaults, target selection, continuation refusal and observed versus confirmed request JSON against foreground chat. Local HTTP tests verified the outgoing workspace and latest request state, including execution through the checkout launcher and dev entry point.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/__tests__/core-http.test.ts","packages/cli/src/commands/core-api.ts","packages/cli/src/commands/core.ts","packages/cli/src/commands/session-client.ts","packages/cli/src/help.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked the CLI parser delta against the SDK README's directory-source and install selection details. Bare model-option refusal does not alter plugin install authority or SDK client contracts.","inputs":["packages/sdk/README.md","packages/cli/src/commands/core-api.ts"]}
+  ]
+}
