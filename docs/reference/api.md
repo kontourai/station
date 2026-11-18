@@ -6536,6 +6536,13 @@ A read-only paired device reads `{continue: false, startChat: false}`. The field
 is omitted when the request has no authenticated principal; clients treat that
 as unknown.
 
+`fresh-context-ready` names an authorized, unstarted empty-context reservation.
+The result carries the predecessor and reserved Session IDs and the earlier
+transcript remains readable through the Conversation history. A successful
+continuation starts the reserved Session and sends the new message with fresh
+engine context. The open result carries neither a current Session nor an
+execution binding.
+
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,
 messageCount, messages, prevCursor, nextCursor}`. `limit` is 1 to 50 (default

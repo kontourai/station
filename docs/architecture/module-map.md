@@ -2297,7 +2297,16 @@ without reserving anything (`nextTurnStartsSession`, from
 a reserved child that has not started. A model switch depends on the send that
 asks for it and is not counted. It reports nothing for a turn the send would
 refuse: a handoff awaiting its target, or a continuation, fork, or handoff
-context delivery not yet completed on the current Session.
+context delivery not yet completed on the current Session. The composer only
+predicts a new Session when the open read describes its current child and
+permits continuation.
+
+An authorized, unstarted empty-context reservation opens as
+`fresh-context-ready`. The predecessor's messages remain in Conversation
+history and the next ordinary send starts the reserved Session with fresh
+engine context. The read publishes the two reservation identities separately
+from a current Session or execution binding. Claimed, cancelled, and
+indeterminate boundaries do not receive this ready state.
 
 `OrchestrationService` parks an at-rest engine left unused past
 `idleSessionParkAfterMs`, provided it is at rest, has no active turn or reported running child work,
