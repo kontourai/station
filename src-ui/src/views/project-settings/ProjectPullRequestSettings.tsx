@@ -34,7 +34,7 @@ export function ProjectPullRequestSettings({
   const context =
     repository.isError || repository.isFetching ? undefined : repository.data;
   const controlsAvailable =
-    context?.available && context.provider === 'github' && project;
+    context?.available && context.automation?.feedback === true && project;
   return (
     <PageSection
       id="section-pull-requests"
@@ -52,7 +52,11 @@ export function ProjectPullRequestSettings({
           settings={project.pullRequestWatch}
           onSaved={onSaved}
         >
-          {feedbackAvailable && <AgentFeedbackDefaultsSection slug={slug} />}
+          {feedbackAvailable &&
+            context?.available &&
+            context.automation?.taskBranchDiscovery && (
+              <AgentFeedbackDefaultsSection slug={slug} />
+            )}
         </PullRequestWatchSection>
       ) : repository.isPending || repository.isFetching || !project ? (
         <SkeletonBlock />
@@ -64,10 +68,27 @@ export function ProjectPullRequestSettings({
             <Button onClick={() => void repository.refetch()}>Retry</Button>
           }
         />
+      ) : context?.available ? (
+        <Empty
+          variant="compact"
+          label={`Automatic feedback is not available for ${context.providerLabel ?? 'this repository'}`}
+          description={
+            context.automation
+              ? 'You can use this repository for code work and open its pull requests. Saved settings are kept.'
+              : 'Update this Station to check its automatic feedback support. Saved settings are kept.'
+          }
+        />
+      ) : context?.cause === 'unsupported-forge' ? (
+        <Empty
+          variant="compact"
+          label="Pull request integration is not available for this remote"
+          description="Your repository is still available for code work. Saved settings are kept."
+          action={<Button onClick={onSources}>Open Sources</Button>}
+        />
       ) : (
         <Empty
           variant="compact"
-          label="Add a GitHub repository to use pull requests"
+          label="Add a repository to use pull requests"
           description="Choose a repository in Sources. Your saved settings are kept."
           action={<Button onClick={onSources}>Open Sources</Button>}
         />

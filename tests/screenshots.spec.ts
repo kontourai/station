@@ -3180,7 +3180,7 @@ function pullRequestWatchScreens(): Screen[] {
         },
         async afterGoto(page) {
           await expect(
-            page.getByText('Add a GitHub repository to use pull requests'),
+            page.getByText('Add a repository to use pull requests'),
           ).toBeVisible();
           await expect(
             page.getByRole('button', { name: 'Open Sources' }),

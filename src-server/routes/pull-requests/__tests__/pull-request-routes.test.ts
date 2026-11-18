@@ -79,6 +79,43 @@ function app(
   };
 }
 describe('pull request operator gate', () => {
+  test.each([
+    ['github', true],
+    ['gitlab', false],
+  ] as const)(
+    'context derives %s automation support from the registered adapter without contacting the forge',
+    async (provider, feedback) => {
+      const transport = vi.fn(async () => {
+        throw new Error('Context discovery must not call the forge');
+      });
+      const routes = createPullRequestRoutes(
+        () => [
+          new GitHubPullRequestProvider(transport),
+          new GitLabPullRequestProvider(transport),
+        ],
+        async () => ({
+          ...(await context()),
+          context: {
+            ...(await context()).context,
+            repository: {
+              owner: 'o',
+              name: 'r',
+              remote: `https://${provider}.com/o/r.git`,
+            },
+          },
+        }),
+        { operatorIdentityForRequest: () => undefined },
+      );
+      const result = await routes.request('/context?project=station');
+      await expect(result.json()).resolves.toMatchObject({
+        data: {
+          provider,
+          automation: { feedback, taskBranchDiscovery: feedback },
+        },
+      });
+      expect(transport).not.toHaveBeenCalled();
+    },
+  );
   test('exposes server-resolved forge identity and preserves unavailable reasons', async () => {
     const x = app();
     const available = await x.app.request('/context?project=station');
@@ -90,6 +127,7 @@ describe('pull request operator gate', () => {
         host: 'github.com',
         repository: { owner: 'o', name: 'r' },
         branch: 'b',
+        automation: { feedback: false, taskBranchDiscovery: false },
       },
     });
 

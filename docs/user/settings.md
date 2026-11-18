@@ -107,10 +107,15 @@ own automations. See
 
 ## Feature previews
 
-Project settings → **Pull requests** uses the Project's repository. If Station
-cannot resolve a GitHub repository there, it offers **Open Sources** to attach
-or repair it. Stored watch and feedback choices are preserved. A readable
-checkout is also needed for Station's review of each new head.
+Project settings → **Pull requests** uses the Project's repository and the
+connected Station's provider capabilities. A missing repository offers
+**Open Sources**; a valid remote without automatic feedback shows that limit
+without asking you to replace the repository. Stored choices are preserved.
+Today GitHub supports automatic feedback and Task-branch discovery. GitLab.com
+has native merge-request views but no automatic feedback adapter yet. Bitbucket
+and Azure DevOps remain usable as Git repositories; native pull-request
+integration is not implemented. Self-managed GitLab is not auto-detected.
+A readable checkout is also needed for Station's review of each new head.
 
 **Paired Station chats** lets New Chat use another paired Station. Choose its
 Project; the chat header says **Via <Station>**. Full access, folder selection,

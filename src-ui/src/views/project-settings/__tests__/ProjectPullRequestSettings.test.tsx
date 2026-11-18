@@ -54,6 +54,7 @@ test('remount rechecks a previously valid repository at the same path before off
           ? {
               available: true,
               provider: 'github',
+              automation: { feedback: true, taskBranchDiscovery: true },
               host: 'github.com',
               repository: { owner: 'acme', name: 'widgets' },
             }
@@ -91,7 +92,7 @@ test('remount rechecks a previously valid repository at the same path before off
   mount();
   await waitFor(() => expect(contextReads).toBe(2));
   expect(
-    await screen.findByText('Add a GitHub repository to use pull requests'),
+    await screen.findByText('Add a repository to use pull requests'),
   ).toBeTruthy();
   expect(
     screen.queryByRole('switch', { name: 'Watch Task pull requests' }),

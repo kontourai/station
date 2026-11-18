@@ -1,0 +1,9 @@
+{
+  "revision": "2963cb09f140c4fd919159aae8daeebe95cc8a04",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the exact historical Project PR settings capture exclusion: only this dated evidence README is classified, matching existing review artifacts. Published documents, Pages sources, topics, ordering and renderer pin are unchanged.","inputs":["corpus.json"]},
+
+    {"path":"docs/pages/README.md","note":"Reviewed the exact historical Project PR settings capture exclusion: only this dated evidence README is classified, matching existing review artifacts. Published documents, Pages sources, topics, ordering and renderer pin are unchanged.","inputs":["corpus.json"]}
+  ]
+}

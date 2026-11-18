@@ -62,6 +62,10 @@ const sdkMocks = vi.hoisted(() => ({
   // Station-wide previews the host reports, and the checkout freshness read.
   previews: [] as Array<{ id: string; enabled: boolean }>,
   repository: true,
+  repositoryProvider: 'github',
+  repositoryProviderLabel: 'GitHub',
+  repositoryAutomation: true,
+  repositoryCause: undefined as 'unsupported-forge' | undefined,
   repositoryError: false,
   repositoryFetching: false,
   repositoryRefetch: vi.fn(),
@@ -195,11 +199,20 @@ vi.mock('@kontourai/station-sdk', () => ({
     data: sdkMocks.repository
       ? {
           available: true,
-          provider: 'github',
+          provider: sdkMocks.repositoryProvider,
+          providerLabel: sdkMocks.repositoryProviderLabel,
+          automation: {
+            feedback: sdkMocks.repositoryAutomation,
+            taskBranchDiscovery: sdkMocks.repositoryAutomation,
+          },
           host: 'github.com',
           repository: { owner: 'acme', name: 'widgets' },
         }
-      : { available: false, reason: 'No repository attached.' },
+      : {
+          available: false,
+          reason: 'No repository attached.',
+          cause: sdkMocks.repositoryCause,
+        },
     isPending: false,
     isError: sdkMocks.repositoryError,
     isFetching: sdkMocks.repositoryFetching,
@@ -478,6 +491,10 @@ function expectPageFullRoot(container: HTMLElement) {
 // warning's state starts empty for each test.
 beforeEach(() => {
   sdkMocks.repository = true;
+  sdkMocks.repositoryProvider = 'github';
+  sdkMocks.repositoryProviderLabel = 'GitHub';
+  sdkMocks.repositoryAutomation = true;
+  sdkMocks.repositoryCause = undefined;
   sdkMocks.repositoryError = false;
   sdkMocks.repositoryFetching = false;
   sdkMocks.repositoryRefetch.mockClear();
@@ -1890,6 +1907,51 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
 });
 
 describe('Pull requests section (#5066)', () => {
+  test('a recognized remote without a PR adapter is not presented as a missing repository', () => {
+    sdkMocks.repository = false;
+    sdkMocks.repositoryCause = 'unsupported-forge';
+    renderProjectSettings('pull-requests');
+    expect(
+      screen.getByText(
+        'Pull request integration is not available for this remote',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('Add a repository to use pull requests'),
+    ).toBeNull();
+  });
+  test.each([
+    ['gitlab', 'GitLab'],
+    ['bitbucket', 'Bitbucket'],
+    ['azure-devops', 'Azure DevOps'],
+  ])(
+    'a valid %s repository without automation gets an honest capability state',
+    (provider, label) => {
+      sdkMocks.repositoryProvider = provider;
+      sdkMocks.repositoryProviderLabel = label;
+      sdkMocks.repositoryAutomation = false;
+      renderProjectSettings('pull-requests');
+      expect(
+        screen.getByText(`Automatic feedback is not available for ${label}`),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText('Add a repository to use pull requests'),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
+      ).toBeNull();
+      expect(sdkMocks.setPullRequestWatch).not.toHaveBeenCalled();
+    },
+  );
+  test('a future provider with feedback support uses the same controls', () => {
+    sdkMocks.repositoryProvider = 'another-forge';
+    sdkMocks.repositoryProviderLabel = 'Another forge';
+    sdkMocks.repositoryAutomation = true;
+    renderProjectSettings('pull-requests');
+    expect(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeTruthy();
+  });
   beforeEach(() => {
     sdkMocks.repository = true;
     sdkMocks.setPullRequestWatch.mockClear();
@@ -1935,7 +1997,7 @@ describe('Pull requests section (#5066)', () => {
     };
     renderProjectSettings('pull-requests');
     expect(
-      screen.getByText('Add a GitHub repository to use pull requests'),
+      screen.getByText('Add a repository to use pull requests'),
     ).toBeTruthy();
     expect(
       screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
