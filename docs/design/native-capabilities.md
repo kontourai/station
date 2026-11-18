@@ -294,11 +294,12 @@ mobile storage behavior or a completed collaborator journey.
 
 `src-desktop/capabilities/default.json` grants the typed event bridge plus the
 listed app-name, window-drag/maximize, notification, haptics, and deep-link
-operations. It is the exact JavaScript permission inventory; event listening
-is not its only permission. `scripts/native-platform-boundary.mjs` refuses any
-updater or process grant in every file under `capabilities/` and
-`permissions/` and in `app.security.capabilities` of every Tauri config, and
-refuses any file there that is not JSON, since the gate parses only JSON.
+operations. The [source gate](../../scripts/native-platform-boundary.mjs) checks explicit
+updater and process grant declarations under `src-desktop/capabilities/`,
+`src-desktop/permissions/`, and the root `src-desktop/tauri*.conf.json` files.
+Files it scans for these declarations must be JSON. Resolved Tauri ACL
+coverage, including plugin permission sets and generated packaging overlays,
+is tracked in #3864.
 Application commands registered by the Rust host remain outside
 the plugin permission surface. The manifest no longer grants `core:default`,
 `shell:allow-open`, or `shell:allow-execute`. The desktop tray opens its validated local Station UI or fixed `/ui` API-docs
@@ -323,8 +324,11 @@ or Project authority. The separate [selected-route owner](../../src-ui/src/platf
 and [fresh enrollment ceremony](native-relay-enrollment.md) supply those distinct
 source paths. See the [broker lifecycle contract](../guides/self-hosted-broker.md#native-routing-grant-foundation-v2).
 
-The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
-`__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
+The static `native-platform:ratchet` checks native adapter access and
+credential-hydration references in tracked TypeScript and TSX under
+`src-ui/src`, excluding `__tests__`. It separately checks the named Connect
+connection-list component for the manual credential guard. The gate reports
+the source roots and file counts it inspected.
 
 <a id="desktop-application-signaling-commands"></a>
 

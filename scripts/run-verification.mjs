@@ -413,6 +413,10 @@ function tailFallback(bounded, stdoutTail) {
               : {}),
           }
         : {}),
+      ...(withExcerpt &&
+      typeof bounded.summary?.diagnosticExcerpts?.[0] === 'string'
+        ? { diagnosticExcerpts: [bounded.summary.diagnosticExcerpts[0]] }
+        : {}),
       // Carried through truncation: a capped list of file names is small, and
       // it is the field that says where to look. Dropping it here would
       // reproduce #1139 for exactly the largest, least readable failures.
