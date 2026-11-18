@@ -827,8 +827,8 @@ export function ChatInputArea({
     : aliasLabel;
   const agentEngineMoveSentence = agentEngineMove
     ? agentEngineMove.nextTurn
-      ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
-      : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
+      ? `The next turn starts a new Session on ${agentEngineMove.to}, where its Agent now points.`
+      : `This conversation used ${executionEngineLabel ?? 'another engine'}. Its Agent now uses ${agentEngineMove.to}.`
     : undefined;
   const modelAccessibleLabel = [
     'Engine & model:',
