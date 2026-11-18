@@ -1013,8 +1013,8 @@ slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Main pushes, scheduled main runs, and
-tagged Stable RC/final use it. Every canonical phase and the Android viewport
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final
+use it, along with main pushes. Every canonical phase and the Android viewport
 suite must succeed, with bounded exact-source reuse. Pushes that change only
 the two deploy-ledger files are ignored. UI-only pushes qualify their own SHA,
 including the Android viewport job. Qualification completion triggers
