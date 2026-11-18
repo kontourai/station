@@ -274,7 +274,7 @@ beforeAll(async () => {
   // The matrix stops at the authority boundary. A 204 with this probe's
   // record proves the guard forwarded the exact leaf to its next handler.
   // Other tests still exercise the representative route handlers below.
-  app.use('*', (c, next) => {
+  app.use('*', async (c, next) => {
     if (boundaryProbe?.leaf !== `${c.req.method} ${c.req.path}`) return next();
     boundaryProbe.reached.push(stationControlRequestAuthority(c.req.raw));
     return c.body(null, 204);
