@@ -314,14 +314,17 @@ Sending a message to an ACP-connected agent is identical, from the UI's perspect
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
 
-The chat composer defaults to Queue while an ACP turn runs (Steer is the
-default only for native steering). Its Steer mode uses a
-conservative safe-waiting fallback for ACP connections: the current adapters
-provide no confirmed safe execution boundary, so the composer waits for the turn
-to finish. Attachments remain in the draft until then. See the
+The chat composer reads the live session's steering declaration. A confirmed
+native channel defaults to Steer; cancel-and-reprompt defaults to Queue. You
+can select Steer on the fallback too: Station cancels the active prompt, waits
+up to ten seconds for its terminal answer, then sends the additional instruction
+with a short continuation instruction on the same session and Station turn.
+The continuation keeps the current task unless your instruction changes it.
+If cancellation fails or times out, Station stops the session and sends no
+replacement prompt. Attachments are queued for the next turn. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro, Grok and OpenCode 2.x answer methods they do not declare as extension methods, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag; OpenCode 2.x's `_meta.steering.supported`, steered through `_session/steering`, where an answer of `promptRequired` means no turn was running and the steer fails as ended). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, including OpenCode 1.x, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+The adapter `steerTurn` command steers the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro, Grok and OpenCode 2.x answer methods they do not declare as extension methods, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag; OpenCode 2.x's `_meta.steering.supported`, steered through `_session/steering`, where an answer of `promptRequired` means no turn was running and the steer fails as ended). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, including OpenCode 1.x, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, waiting for its terminal answer, and re-prompting with the continuation instruction on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -1246,14 +1249,14 @@ OpenCode 1.18.18 (npm `opencode-ai`). OpenCode 2.x behaves differently, and
 Station reads the binary's `--version` to tell the two apart
 ([version probe](../../src-server/providers/adapters/opencode-version-probe.ts)).
 
-- **Approval rules.** Station's check reads 1.x's `opencode debug agent <name>`.
-  2.x has no such subcommand: it exits 1 with "Unknown subcommand", which is the
-  failure reported in #4435. 2.x's `debug agents` (plural) lists each agent's
-  configured rules but not the approvals the person saved. Over ACP, Station
-  therefore does not govern 2.x (ruling R1). A start or takeover that asks for a
-  Station approval mode on 2.x is refused with `acp_approval_governance_refused`,
-  and the reason names the version. Without a Station mode, OpenCode's own
-  approvals apply as before. No launch overlay is built for 2.x.
+- **Approval rules.** Station's confined-mode check reads 1.x's
+  `opencode debug agent <name>`. 2.x has no such subcommand; its `debug agents`
+  lists configured rules but not saved approvals. Ask, Auto, and Never ask
+  confined to Auto therefore remain refused over ACP. **Never ask in a host
+  session is supported on 2.x**, on start, takeover, and resume. Station sends
+  no 1.x launch overlay and answers the permission requests OpenCode makes;
+  OpenCode's own denies still apply, and rules or saved approvals may let an
+  action run without asking. Default keeps OpenCode's own settings.
 - **Steering.** 2.x's `initialize` declares `_meta.steering.supported`, and
   Station steers it through `_session/steering`
   ([steer channels](../../src-server/providers/adapters/acp-steer.ts)). 1.x
@@ -1271,8 +1274,8 @@ Station reads the binary's `--version` to tell the two apart
   on each permission OpenCode asks for, as over ACP. That path does not
   need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
   and every chat while the preview is off still run over ACP. A 2.x chat that
-  falls back to ACP gets the refusal above (ruling R1) for any Station approval
-  mode, Ask and Auto included; without one, OpenCode's own approvals apply. The design,
+  falls back to ACP supports host Never ask; confined modes retain the refusal
+  above. Without a Station mode, OpenCode's own approvals apply. The design,
   fallback rules and limits are in
   [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
   #4435 stays open until this ships.

@@ -69,7 +69,10 @@ function launcher(dir: string, name: string): string {
   return path;
 }
 
-function harness(command: 'opencode' | 'kiro-cli'): Harness {
+function harness(
+  command: 'opencode' | 'kiro-cli',
+  extra: Partial<ConstructorParameters<typeof AcpAdapter>[0]> = {},
+): Harness {
   const dir = makeTempDir('station-acp-approval-');
   const cwd = makeTempDir('station-acp-approval-cwd-');
   mkdirSync(join(cwd, '.git'));
@@ -84,6 +87,7 @@ function harness(command: 'opencode' | 'kiro-cli'): Harness {
   };
   process.env.FAKE_OPENCODE_RECORD = recordPath;
   const adapter = new AcpAdapter({
+    ...extra,
     getConnections: async () => [connection],
     logger: {
       debug: () => {},
@@ -314,6 +318,129 @@ describe.skipIf(process.platform === 'win32')(
       await start(h, 'r1-own-approvals');
       expect(launches(h)).toHaveLength(1);
       expect(launches(h)[0]?.OPENCODE_CONFIG_CONTENT ?? null).toBeNull();
+    });
+
+    test('OpenCode 2.x host never-ask starts, takes over, and resumes without a 1.x overlay', async () => {
+      process.env.FAKE_OPENCODE_VERSION = 'opencode v2.3.0';
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        permission: 'ask',
+      });
+      h = harness('opencode');
+      await start(h, 'v2-full', 'never', 'host');
+      const first = await turn(h, 'v2-full', 'run: echo first', {
+        confinement: 'host',
+      });
+      expect(first.asked).toBeUndefined();
+      expect(JSON.stringify(first.started)).toContain('bash ran');
+      expect(turnStarted(first.started)?.metadata?.approvalMode).toBe('never');
+      const [session] = await h.adapter.listSessions();
+      await h.adapter.stopSession('v2-full');
+      await h.adapter.startSession({
+        provider: 'acp',
+        threadId: 'v2-resumed',
+        cwd: h.cwd,
+        confinement: 'host',
+        metadata: { connectionId: 'engine-under-test' },
+        resumeCursor: session?.resumeCursor,
+        modelOptions: { approvalMode: 'never' },
+      });
+      const resumed = await turn(h, 'v2-resumed', 'run: echo resumed', {
+        confinement: 'host',
+      });
+      expect(resumed.asked).toBeUndefined();
+      expect(JSON.stringify(resumed.started)).toContain('bash ran');
+      await start(h, 'v2-default');
+      const takeover = await turn(h, 'v2-default', 'run: echo takeover', {
+        approvalMode: 'never',
+        confinement: 'host',
+      });
+      expect(takeover.asked).toBeUndefined();
+      expect(JSON.stringify(takeover.started)).toContain('bash ran');
+      expect(agentReads(h)).toEqual([]);
+      expect(
+        launches(h).every((launch) => launch.OPENCODE_CONFIG_CONTENT === null),
+      ).toBe(true);
+      await expect(
+        start(h, 'v2-confined-never', 'never', 'workspace'),
+      ).rejects.toMatchObject({ code: 'acp_approval_governance_refused' });
+    });
+
+    test('a new managed 1.x binary gets its verified confined overlay after a 2.x full-access start', async () => {
+      process.env.FAKE_OPENCODE_VERSION = 'opencode v2.3.0';
+      h = harness('opencode');
+      await start(h, 'pin-switch', 'never', 'host');
+      const pinned = join(makeTempDir('station-acp-pin-switch-'), 'opencode');
+      writeFileSync(
+        pinned,
+        `#!/bin/sh\nFAKE_OPENCODE_VERSION='1.18.18' exec "${process.execPath}" "${FIXTURE}" "$@"\n`,
+      );
+      chmodSync(pinned, 0o755);
+      const parsed = parseManagedPolicyDocument({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: {
+          engines: {
+            allowed: ['acp'],
+            instances: { acp: { locked: true, binaryPath: pinned } },
+          },
+        },
+      });
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+      installManagedEngineLimits({
+        document: parsed.document,
+        summary: summarizeManagedPolicy(parsed.document),
+      });
+      try {
+        const result = await turn(h, 'pin-switch', 'run: echo must-ask', {
+          approvalMode: 'ask',
+          confinement: 'host',
+          answer: 'decline',
+        });
+        expect(result.asked).toBeDefined();
+        expect(JSON.stringify(result.started)).not.toContain('bash ran');
+        expect(buildRules(launches(h).at(-1))).toMatchObject({ 'bas?': 'ask' });
+      } finally {
+        installManagedEngineLimits(null);
+      }
+    });
+
+    test('Stop wins while the replacement launch is probing its binary', async () => {
+      let probes = 0;
+      let release!: () => void;
+      let held!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        held = resolve;
+      });
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      h = harness('opencode', {
+        probeOpenCodeVersion: async () => {
+          if (++probes === 3) {
+            held();
+            await waiting;
+          }
+          return { major: 1, minor: 18, patch: 18, text: '1.18.18' };
+        },
+      });
+      await start(h, 'stop-probe');
+      const sending = h.adapter.sendTurn({
+        threadId: 'stop-probe',
+        input: 'run: echo must-not-run',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+      const outcome = sending.catch((error: unknown) => error);
+      await ready;
+      await h.adapter.stopSession('stop-probe');
+      release();
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(launches(h)).toHaveLength(1);
+      expect(
+        records(h).some((entry) =>
+          JSON.stringify(entry).includes('must-not-run'),
+        ),
+      ).toBe(false);
     });
 
     test("ruling R1 reads the version of the binary a managed policy's acp pin launches, not the connection's command", async () => {

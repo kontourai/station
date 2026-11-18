@@ -4,6 +4,14 @@ import {
   formatInteractiveWorkspaceBatchTiming,
   INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER,
 } from '@shared/interactive-workspace-performance-timing';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
+import { createElement } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import referenceContract from '../../../../scripts/fixtures/interactive-workspace/performance-contract.json';
 import {
@@ -29,7 +37,97 @@ import {
 } from '../interactive-workspace-performance-hooks';
 import { WORK_BOARD_DRIVER_READY_EVENT } from '../work-board-performance-bridge';
 
+const brief = vi.hoisted(() => ({
+  document: {
+    data: {
+      kind: 'snapshot',
+      revision: `swsr-v1:${'a'.repeat(64)}`,
+      text: 'base',
+    },
+    isLoading: false,
+    isError: false,
+  },
+  discovery: {
+    data: {
+      kind: 'existing',
+      capabilities: { documentRead: true, documentWrite: true },
+    },
+    isLoading: false,
+  },
+  listener: undefined as
+    | ((value: { kind: 'snapshot'; revision: string; text: string }) => void)
+    | undefined,
+  adopt: true,
+  corruptBatch: false,
+}));
+vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
+  projectTaskRoomQueries: { document: () => ({ queryKey: ['brief'] }) },
+  useProjectTaskRoomDiscoveryQuery: () => brief.discovery,
+  useProjectTaskRoomDocumentQuery: () => brief.document,
+  usePlanProjectTaskRoomEditMutation: () => ({
+    isPending: false,
+    mutateAsync: async (input: unknown) =>
+      (
+        await (
+          await window.fetch('/api/tasks/task-1/room/edit-plan', {
+            method: 'POST',
+            body: JSON.stringify(input),
+          })
+        ).json()
+      ).data,
+  }),
+  useSubmitProjectTaskRoomBatchMutation: () => ({
+    isPending: false,
+    mutateAsync: async (input: { intentId: string; intentDigest: string }) =>
+      (
+        await (
+          await window.fetch('/api/tasks/task-1/room/batches', {
+            method: 'POST',
+            body: JSON.stringify(
+              brief.corruptBatch
+                ? { ...input, intentId: 'foreign-intent' }
+                : input,
+            ),
+          })
+        ).json()
+      ).data,
+  }),
+  adoptCommittedProjectTaskRoomDocument: (
+    _client: unknown,
+    _task: string,
+    _observed: unknown,
+    result: { revision: string; text: string },
+  ) =>
+    brief.adopt
+      ? { kind: 'snapshot', revision: result.revision, text: result.text }
+      : undefined,
+  refetchAuthoritativeProjectTaskRoomDocument: async () => {
+    throw new Error('fixture adoption unavailable');
+  },
+}));
+vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => ({ getQueryData: () => brief.document.data }),
+}));
+vi.mock('../../workspace-panes/ProjectTaskRoomContext', () => ({
+  useProjectTaskRoomContext: () => ({
+    discovery: brief.discovery,
+    stream: 'live',
+    live: { panes: [], cursors: [] },
+    command: async () => ({ kind: 'available' }),
+    subscribeDocument: (listener: NonNullable<typeof brief.listener>) => {
+      brief.listener = listener;
+      return () => {
+        brief.listener = undefined;
+      };
+    },
+  }),
+}));
+
+import { TaskRoomEditorPane } from '../../workspace-panes/TaskRoomEditorPane';
+
 afterEach(() => {
+  cleanup();
+  delete window.__stationInteractiveWorkspacePerformanceDriver;
   document.body.replaceChildren();
   delete window.__stationInteractiveWorkspacePerformance;
   vi.restoreAllMocks();
@@ -439,88 +537,199 @@ test('file measurement keeps zero-duration scroll marks ordered across epoch con
   }
 });
 
-test('matches remote apply by revision while retaining unqualified clock evidence unchanged', async () => {
-  const before = `swsr-v1:${'a'.repeat(64)}`;
-  const after = `swsr-v1:${'b'.repeat(64)}`;
-  const epoch = browserEpochMs();
-  document.body.innerHTML = `<p role="status">Shared document saved.</p>
-    <textarea data-station-performance-surface="task-editor" data-station-task-id="task-1" data-station-working-revision="${before}">base</textarea>
-    <button disabled>Join room</button><button>Announce work</button><button>Leave room</button><button>Save shared document</button>`;
-  const editor = document.querySelector('textarea')!;
-  editor.addEventListener('input', () =>
-    emitTaskInputPerformanceMark({
-      taskId: 'task-1',
-      workingRevision: before,
-      text: editor.value,
-      enteredEpochMs: epoch,
-      exitedEpochMs: epoch,
-    }),
-  );
+type BriefFault =
+  | 'none'
+  | 'no-receipt'
+  | 'wrong-task'
+  | 'wrong-revision'
+  | 'wrong-text'
+  | 'wrong-intent'
+  | 'foreign-layout'
+  | 'missing-apply'
+  | 'refused'
+  | 'unsettled'
+  | 'hidden'
+  | 'read-only';
+
+async function mountedBrief(fault: BriefFault = 'none') {
+  const before = `swsr-v2:${'a'.repeat(64)}`;
+  const after = `swsr-v2:${'b'.repeat(64)}`;
+  brief.document.data = { kind: 'snapshot', revision: before, text: 'base' };
+  brief.adopt = fault !== 'unsettled';
+  brief.corruptBatch = fault === 'wrong-intent';
+  brief.discovery.data.capabilities.documentWrite = fault !== 'read-only';
+  vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue({
+    length: 1,
+  } as DOMRectList);
+  let desired = '';
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => {
-      editor.dataset.stationWorkingRevision = after;
-      emitTaskDocumentApplyPerformanceMark({
-        taskId: 'task-1',
-        workingRevision: after,
-        appliedEpochMs: epoch + 19,
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      if (url.endsWith('/edit-plan')) {
+        desired = body.desiredText;
+        return Response.json({
+          success: true,
+          data: {
+            kind: 'planned',
+            intentId: 'opaque-server-intent',
+            digest: 'c'.repeat(64),
+            selection: body.selection,
+            operationCount: 1,
+          },
+        });
+      }
+      expect(body).toEqual({
+        intentId:
+          fault === 'wrong-intent' ? 'foreign-intent' : 'opaque-server-intent',
+        intentDigest: 'c'.repeat(64),
       });
-      emitTaskCommitPerformanceMark({
-        taskId: 'task-1',
-        workingRevision: after,
-        text: editor.value,
-        committedEpochMs: epoch + 21,
-      });
-      return new Response('{}', {
-        headers: {
-          [INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER]:
-            formatInteractiveWorkspaceBatchTiming({
-              taskId: 'task-1',
-              ingressEpochMs: epoch + 1,
-              acceptedEpochMs: epoch + 20,
-            })!,
+      const epoch = browserEpochMs();
+      if (fault !== 'missing-apply')
+        brief.listener?.({
+          kind: 'snapshot',
+          revision:
+            fault === 'foreign-layout' ? `swsr-v2:${'d'.repeat(64)}` : after,
+          text: desired,
+        });
+      return Response.json(
+        {
+          success: true,
+          data:
+            fault === 'refused'
+              ? { kind: 'rejected', reason: 'fixture refusal' }
+              : {
+                  kind: 'committed',
+                  revision: fault === 'wrong-revision' ? before : after,
+                  text: fault === 'wrong-text' ? 'other text' : desired,
+                },
         },
-      });
+        {
+          headers:
+            fault === 'no-receipt'
+              ? {}
+              : {
+                  [INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER]:
+                    formatInteractiveWorkspaceBatchTiming({
+                      taskId: fault === 'wrong-task' ? 'task-other' : 'task-1',
+                      ingressEpochMs: epoch,
+                      acceptedEpochMs: epoch,
+                    })!,
+                },
+        },
+      );
     }),
   );
-  document.querySelectorAll('button')[3]!.addEventListener('click', () => {
-    void window.fetch('/api/tasks/task-1/room/batches', { method: 'POST' });
+  render(
+    createElement(TaskRoomEditorPane, {
+      taskId: 'task-1',
+      startInPreview: true,
+    }),
+  );
+  expect(screen.queryByRole('textbox', { name: 'Task brief' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }));
+  const editor = screen.getByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Task brief',
   });
+  if (fault === 'hidden') editor.parentElement!.hidden = true;
+  window.__stationInteractiveWorkspacePerformanceDriver = async (command) => {
+    if (command.kind !== 'brief-input')
+      throw new Error('unexpected fixture driver command');
+    await act(async () => {
+      fireEvent.change(editor, { target: { value: command.text } });
+    });
+    // Blur submits synchronously, before the input driver can return its receipt.
+    await act(async () => {
+      fireEvent.blur(editor);
+    });
+    return { kind: 'brief-input-completed' };
+  };
+  return editor;
+}
+
+function remoteApplyInput(samples = 1) {
   const fixture = referenceContract.fixtures.find(
     (entry) => entry.id === 'remote-apply',
   )!;
+  return {
+    sampling: { warmups: 0, samples },
+    fixtureCorpus: referenceContract.fixtureCorpus,
+    fixtures: [
+      {
+        ...fixture,
+        measurementPhases: { measured: fixture.measurementPhases.measured! },
+      },
+    ],
+  };
+}
+
+test('observes a mounted Brief autosave before the input driver returns and waits for Saved adoption', async () => {
+  const editor = await mountedBrief();
   const result = await measureInteractiveWorkspace(
-    {
-      sampling: { warmups: 0, samples: 1 },
-      fixtureCorpus: referenceContract.fixtureCorpus,
-      fixtures: [
+    remoteApplyInput(),
+    'task-1',
+  );
+  expect(result.observations[0]).toMatchObject({
+    counts: { failures: 0, degraded: 0 },
+    autosave: {
+      debounceMs: 450,
+      samples: [
         {
-          id: fixture.id,
-          workloads: fixture.workloads,
-          measurementPhases: { measured: fixture.measurementPhases.measured! },
+          iteration: 0,
+          inputToBatchRequestMs: expect.any(Number),
+          inputToSavedMs: expect.any(Number),
         },
       ],
     },
-    'task-1',
-  );
-  const measurements = Reflect.get(
-    result.observations[0]!,
-    'measurements',
-  ) as Array<{
-    phases: {
-      measured: {
-        actions: Array<{ kind: string; marks: Record<string, number> }>;
-      };
-    };
-  }>;
-  expect(measurements).toHaveLength(1);
-  const apply = measurements[0]!.phases.measured.actions.find(
-    (entry) => entry.kind === 'authoritative-document-apply',
-  )!;
-  // Capture the real mark instead of timing out or clamping the negative
-  // interval. The unchanged reference validator must reject this clock evidence.
-  expect(apply.marks.appliedAt).toBeLessThan(apply.marks.applyStartedAt!);
+    measurements: [{ iteration: 0 }],
+  });
+  expect(editor.value).toBe('base0');
+  expect(screen.getByRole('status').textContent).toBe('Saved');
 });
+
+test.each<BriefFault>([
+  'no-receipt',
+  'wrong-task',
+  'wrong-revision',
+  'wrong-text',
+  'wrong-intent',
+  'foreign-layout',
+  'missing-apply',
+  'refused',
+  'unsettled',
+  'hidden',
+  'read-only',
+])(
+  'refuses remote-apply evidence for %s in the mounted Brief',
+  async (fault) => {
+    await mountedBrief(fault);
+    const result = await measureInteractiveWorkspace(
+      remoteApplyInput(),
+      'task-1',
+    );
+    expect(result.observations[0]).toMatchObject({
+      status: 'NOT_VERIFIED',
+      counts: { failures: 1 },
+    });
+    expect(result.observations[0]).not.toHaveProperty('measurements');
+    expect(result.observations[0]).toHaveProperty(
+      'reasonCodes',
+      expect.arrayContaining([
+        fault === 'no-receipt'
+          ? 'PRODUCT_SERVER_RECEIPT_UNAVAILABLE'
+          : fault === 'hidden' || fault === 'read-only'
+            ? 'PRODUCT_TASK_IDENTITY_UNAVAILABLE'
+            : fault === 'foreign-layout'
+              ? 'PRODUCT_TASK_COMMIT_TIMEOUT'
+              : fault === 'missing-apply'
+                ? 'PRODUCT_TASK_APPLY_TIMEOUT'
+                : fault === 'unsettled'
+                  ? 'PRODUCT_SETTLED_STATE_INDETERMINATE'
+                  : 'PRODUCT_AUTOSAVE_RECEIPT_INVALID',
+      ]),
+    );
+  },
+);
 
 test('identifies the missing task product mark without exposing arbitrary error text', () => {
   for (const kind of ['input', 'apply', 'commit']) {
@@ -770,68 +979,6 @@ test('preserves only the closed workspace cause through 100k stage handling', as
     )) as any;
     expect(evidence.observations[0].reasonCodes).toContain(expected);
   }
-});
-
-test('rejects browser RTT when the real batch response has no server receipt', async () => {
-  document.body.innerHTML = `
-    <p role="status">Shared document saved.</p>
-    <textarea aria-label="Task document"
-      data-station-performance-surface="task-editor"
-      data-station-task-id="task-1"
-      data-station-working-revision="swsr-v1:${'a'.repeat(64)}">base</textarea>
-    <button>Join room</button>
-    <button>Announce work</button>
-    <button>Leave room</button>
-    <button>Save shared document</button>
-  `;
-  const editor = document.querySelector('textarea')!;
-  editor.addEventListener('input', () => {
-    const enteredEpochMs = browserEpochMs();
-    emitTaskInputPerformanceMark({
-      taskId: 'task-1',
-      workingRevision: `swsr-v1:${'a'.repeat(64)}`,
-      text: editor.value,
-      enteredEpochMs,
-      exitedEpochMs: browserEpochMs(),
-    });
-  });
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(
-      async () =>
-        new Response(JSON.stringify({ success: true }), { status: 200 }),
-    ),
-  );
-  document.querySelector('button')!.addEventListener('click', () => {
-    void window.fetch('/api/tasks/task-1/room/batches').catch(() => {});
-  });
-  const evidence = (await measureInteractiveWorkspace(
-    {
-      sampling: { warmups: 0, samples: 1 },
-      fixtureCorpus: { id: 'corpus', sha256: 'a'.repeat(64) },
-      fixtures: [
-        {
-          id: 'remote-apply',
-          workloads: [
-            'remote-ingress',
-            'transport',
-            'server-acceptance',
-            'authoritative-document-apply',
-            'render-commit',
-          ],
-          measurementPhases: { measured: [] },
-        },
-      ],
-    },
-    'task-1',
-  )) as { observations: Array<Record<string, unknown>> };
-  expect(evidence.observations[0]).toMatchObject({
-    status: 'NOT_VERIFIED',
-    reasonCodes: expect.arrayContaining([
-      'PRODUCT_MARK_MEASUREMENT_FAILED_remote-apply',
-      'PRODUCT_SERVER_RECEIPT_UNAVAILABLE',
-    ]),
-  });
 });
 
 test('rejects an already-current editor DOM when no apply was observed', async () => {

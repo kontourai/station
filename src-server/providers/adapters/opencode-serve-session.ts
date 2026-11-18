@@ -239,6 +239,7 @@ export type OpenCodeNativeDecision =
   | 'cancel';
 
 export interface OpenCodeNativeSessionDeps {
+  steerCustody?: { begin(id: string): void; complete(id: string): void };
   readonly threadId: string;
   readonly provider: EngineId;
   /** The engine's name, as output lines and requests attribute it. */
@@ -429,6 +430,7 @@ interface PendingSteer {
   readonly text: string;
   /** Its prompt is in flight: a withdrawal must be repeated once it lands. */
   posting: boolean;
+  delivered?: boolean;
   withdrawn: boolean;
   resolve(): void;
   reject(error: Error): void;
@@ -638,6 +640,16 @@ export class OpenCodeNativeSession {
 
   /** Refuse, before anything reaches the engine, while a turn runs. */
   assertIdle(): void {
+    if (this.stopped)
+      throw new SendTurnRefusedError(
+        'This OpenCode session has stopped.',
+        'unavailable',
+      );
+    if (this.withdrawalUnconfirmed || this.withdrawingSteers.size > 0)
+      throw new SendTurnRefusedError(
+        'OpenCode steer withdrawal is unconfirmed; this session cannot accept more work.',
+        'unavailable',
+      );
     if (this.rewinding) throw new SessionRewindingError();
     const live = this.turn ?? this.pendingStart;
     if (live && !live.settled) {
@@ -783,6 +795,7 @@ export class OpenCodeNativeSession {
     });
     // A withdrawal can reject it before it is awaited below.
     delivered.catch(() => undefined);
+    this.deps.steerCustody?.begin(inboxId);
     this.steers.set(inboxId, steer);
     try {
       await this.deps.client.request(
@@ -791,12 +804,20 @@ export class OpenCodeNativeSession {
         { id: inboxId, text, delivery: 'steer' },
       );
     } catch (error) {
+      if (steer.delivered) {
+        this.deps.steerCustody?.complete(inboxId);
+        return;
+      }
       this.steers.delete(inboxId);
-      if (steer.withdrawn) throw new ProviderTurnEndedError();
-      throw error;
+      // An HTTP failure does not establish that the prompt was never queued.
+      await this.deleteInboxItem(inboxId, false);
+      throw new Error(
+        `OpenCode did not confirm the steering request; the input may still be queued: ${redactSecrets(errorMessage(error))}`,
+      );
     } finally {
       steer.posting = false;
     }
+    if (steer.delivered) this.deps.steerCustody?.complete(inboxId);
     if (steer.withdrawn) {
       // Withdrawn while in flight: the item it made must not wait for the
       // next execution. This steer takes it back itself, so it leaves the
@@ -804,11 +825,21 @@ export class OpenCodeNativeSession {
       // would otherwise take it back a second time.
       this.steers.delete(inboxId);
       await this.deleteInboxItem(inboxId);
-      steer.reject(new ProviderTurnEndedError());
+      steer.reject(
+        this.withdrawalUnconfirmed
+          ? new Error(
+              'OpenCode steer withdrawal is unconfirmed; the input may still be queued.',
+            )
+          : new ProviderTurnEndedError(),
+      );
     } else if (turn.settled) {
       // The execution ended while the prompt was in flight.
       void this.withdrawSteer(inboxId);
     }
+    if (this.withdrawalUnconfirmed)
+      throw new Error(
+        'OpenCode steer withdrawal is unconfirmed; the input may still be queued.',
+      );
     await delivered;
   }
 
@@ -1084,7 +1115,13 @@ export class OpenCodeNativeSession {
     this.controller.abort();
     for (const [inboxId, steer] of this.steers) {
       this.steers.delete(inboxId);
-      steer.reject(new ProviderTurnEndedError());
+      steer.reject(
+        this.withdrawalUnconfirmed
+          ? new Error(
+              'OpenCode steer withdrawal is unconfirmed; the input may still be queued.',
+            )
+          : new ProviderTurnEndedError(),
+      );
     }
     for (const turn of [this.turn, this.pendingStart]) {
       if (turn && !turn.settled) {
@@ -1178,9 +1215,7 @@ export class OpenCodeNativeSession {
         }),
       ...[...this.steers.entries()]
         .filter(([, steer]) => !steer.posting)
-        .map(([inboxId]) =>
-          send('DELETE', `/api/session/${this.sessionId}/inbox/${inboxId}`),
-        ),
+        .map(([inboxId]) => this.deleteInboxItem(inboxId)),
     ]);
   }
 
@@ -1273,9 +1308,11 @@ export class OpenCodeNativeSession {
       );
       for (const inboxId of [...this.steers.keys()]) {
         if (queued.has(inboxId)) continue;
-        // No longer queued: delivered during the gap, or the run ended.
-        if (running) this.onSteerDelivered(inboxId);
-        else void this.withdrawSteer(inboxId);
+        // Only the exact user message proves consumption. An absent inbox
+        // item can also be cancelled, or its POST may still be in flight.
+        if (history?.some((item) => ownRecord(item)?.id === inboxId))
+          this.onSteerDelivered(inboxId);
+        else if (!running && history) void this.withdrawSteer(inboxId);
       }
     });
     if (running !== false) return;
@@ -2052,21 +2089,55 @@ export class OpenCodeNativeSession {
     if (!steer) return;
     this.steers.delete(inboxId);
     steer.withdrawn = true;
+    this.withdrawingSteers.add(inboxId);
     // Still in flight: `steer` deletes the item once its prompt lands, before
     // it reports the refusal.
-    if (!steer.posting) await this.deleteInboxItem(inboxId);
-    steer.reject(new ProviderTurnEndedError());
+    if (steer.posting) return;
+    await this.deleteInboxItem(inboxId);
+    steer.reject(
+      this.withdrawalUnconfirmed
+        ? new Error(
+            'OpenCode steer withdrawal is unconfirmed; the input may still be queued.',
+          )
+        : new ProviderTurnEndedError(),
+    );
   }
 
-  private async deleteInboxItem(inboxId: string): Promise<void> {
+  private withdrawalUnconfirmed = false;
+  private readonly withdrawingSteers = new Set<string>();
+
+  private async deleteInboxItem(
+    inboxId: string,
+    postConfirmed = true,
+  ): Promise<void> {
+    if (!postConfirmed) this.withdrawalUnconfirmed = true;
+    this.withdrawingSteers.add(inboxId);
     await this.deps.client
       .request('DELETE', `/api/session/${this.sessionId}/inbox/${inboxId}`)
-      .catch(() => undefined);
+      .then(() => {
+        this.withdrawingSteers.delete(inboxId);
+        if (postConfirmed) this.deps.steerCustody?.complete(inboxId);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof OpenCodeServeHttpError && error.status === 404) {
+          this.withdrawingSteers.delete(inboxId);
+          if (postConfirmed) this.deps.steerCustody?.complete(inboxId);
+          return;
+        }
+        this.withdrawalUnconfirmed = true;
+        this.emit({
+          method: 'runtime.warning',
+          severity: 'warning',
+          message: `OpenCode could not confirm that a queued steer was withdrawn: ${redactSecrets(errorMessage(error))}. This session cannot accept more work.`,
+        });
+      });
   }
 
   private onSteerDelivered(inboxId: string): void {
     const steer = this.steers.get(inboxId);
     if (!steer) return;
+    if (!steer.posting) this.deps.steerCustody?.complete(inboxId);
+    steer.delivered = true;
     this.steers.delete(inboxId);
     this.emit({
       method: 'turn.started',

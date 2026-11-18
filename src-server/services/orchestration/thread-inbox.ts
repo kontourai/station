@@ -832,10 +832,11 @@ export interface ThreadInboxDeliveryPorts {
     threadId: string,
   ):
     | 'native'
+    | 'interrupting'
     | 'emulated'
     | 'none'
     | 'pending'
-    | Promise<'native' | 'emulated' | 'none' | 'pending'>;
+    | Promise<'native' | 'interrupting' | 'emulated' | 'none' | 'pending'>;
   /** Read the durable receipt before deciding whether a steer may be handed off. */
   inspectSteer?(input: {
     readonly threadId: string;
@@ -2032,7 +2033,7 @@ export class ThreadInboxDelivery {
             continue;
           }
           if (
-            fidelity !== 'native' ||
+            (fidelity !== 'native' && fidelity !== 'interrupting') ||
             !this.ports.steer ||
             !this.ports.inspectSteer
           ) {
