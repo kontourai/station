@@ -94,9 +94,7 @@ describe('Connection Manager return focus (station#1245)', () => {
       await screen.findByText(/No Stations found/);
       const back = screen.getByRole('button', { name: 'Back to Stations' });
       expect(document.activeElement).toBe(back);
-      expect(
-        screen.queryByRole('button', { name: 'Back', exact: true }),
-      ).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
       expect(
         screen.getByRole('button', { name: 'Close Station manager' }),
       ).toBeTruthy();
