@@ -1875,8 +1875,11 @@ visible and never reaches the model. Display notes have a separate 50-note
 capacity and expire after the seven-day settled retention period on the next
 submission. Steer keys and dismissed uncertain claims retain their replay fence.
 
-Native steer text and head persist before the durable claim. Recovery settles
-a confirmed receipt or surfaces unconfirmed without replaying a claimed handoff.
+New steer rows persist the text, head and the observed turn's opening event
+sequence before the durable claim. Both placement paths recheck that the
+target is still current. An ended target settles as refused before any handoff.
+Previously stored rows without a target retain their original placement rules.
+Recovery settles a confirmed receipt or surfaces an unconfirmed handoff.
 The current Station tool-loop hook calls
 [inbox step preparation](../../src-server/runtime/conversation/inbox-model-step.ts)
 through VoltAgent's prepareStep after tools settle. The
