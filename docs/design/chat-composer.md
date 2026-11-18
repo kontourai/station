@@ -104,17 +104,17 @@ rows expose their metadata and link to the Session for surrounding context.
 No input or result body is read until that row is selected. The compact answer
 inspection remains a separate entry point.
 
-A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
-visible at rest, and opens the Chat inventory scoped to that answer
+A settled answer's **Basis** chip stays visible while the other actions are
+hidden and opens the Chat inventory scoped to that answer
 ([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
 It reads plain **Basis** for an unassessed answer, which is nearly every answer
 today, and states that standing only in its accessible name. A notable standing
 (policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
 **Basis · Policy met**
 ([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
-In a narrow dock or phone row, Surface's label is cut short with an ellipsis
-after a whole **Basis ·**, and the full label stays in the chip's accessible
-name and tooltip.
+The answer footer wraps when its controls need more space. In a narrow dock
+or phone row, a long Surface label can end in an ellipsis after a whole
+**Basis ·**. The full label stays in the chip's accessible name and tooltip.
 The chip reads an answer's standing only after the answer has stayed on screen
 for about 150ms, so a fling through history sends no read for answers it only
 passes. It cancels a read that scrolls off screen unanswered, does not re-read a
