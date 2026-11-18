@@ -1,0 +1,13 @@
+{
+  "revision": "1879bd6a10b2347f72400746f1126dc9ff8bf82f",
+
+  "notes": [
+    {"path":"docs/privacy-policy.md","note":"Reviewed the station-notification-push row against the shared inventory and Android/iOS alert producers: both seal a Session reference for opening, and Android supports retraction. This aligns the generated policy with the existing Play disclosure. No change to classification tuples or claims of live push delivery, public publication or store approval.","inputs":["docs/privacy-policy.md","src-server/services/privacy-inventory.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the added supplemental edges against the selector and browser fixture string entry point. Project settings and generated privacy artifacts now add their existing executable tests while preserving related selection and escalation. Context maps, verification and code-quality guidance, scoped instructions, theming/frontend guidance and distribution design remain accurate: no product behavior, UI styling, package boundary, gate or deadline changes. Selector regression is baseline-red, fixed-green, and a committed edge mutation fails for the intended missing-suite assertion then passes after restoration.","inputs":["scripts/test-impact-manifest.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed plan checkout delta: low-speed Git transport abort is scoped to checkout and lets its existing bounded retries execute inside the unchanged ten-minute job fence. Event SHA, reservation binding, signing and publication gates are unchanged. Nightly, ecosystem/Homebrew/manifest guides and README remain accurate; no release or install success follows from actionlint or this source change.","inputs":[".github/workflows/portable-nightly-publish.yml"]},
+
+    {"path":"packaging/manifest/README.md","note":"Reviewed plan checkout delta: low-speed Git transport abort is scoped to checkout and lets its existing bounded retries execute inside the unchanged ten-minute job fence. Event SHA, reservation binding, signing and publication gates are unchanged. Nightly, ecosystem/Homebrew/manifest guides and README remain accurate; no release or install success follows from actionlint or this source change.","inputs":[".github/workflows/portable-nightly-publish.yml"]}
+  ]
+}
