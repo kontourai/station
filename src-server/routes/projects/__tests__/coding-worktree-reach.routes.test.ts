@@ -209,11 +209,14 @@ describe('a Project that is one folder of a larger repository', () => {
     const query = `projectSlug=app&path=${encodeURIComponent(monoProject)}`;
     const diff = await mounted.request(`/git/diff?${query}`);
     expect(diff.status).toBe(200);
-    expect((await diff.json()).data.diff).toContain('packages/app/index.ts');
+    expect(await diff.json()).toHaveProperty(
+      'data.diff',
+      expect.stringContaining('packages/app/index.ts'),
+    );
 
     const repos = await mounted.request(`/repos?${query}`);
     expect(repos.status).toBe(200);
-    expect((await repos.json()).data).toEqual({
+    expect(await repos.json()).toHaveProperty('data', {
       workspace: realpathSync(monoProject),
       workspaceIsRepo: true,
       repos: [
