@@ -50,6 +50,7 @@ import {
 } from '../../services/orchestration/agent-schedule.js';
 import type { SessionReadScope } from '../../services/orchestration/orchestration-service.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
+import type { ProjectPrincipalAction } from '../../services/projects/project-principal-permission.js';
 import { stationControlScopeRefusal } from '../../tools/station-control-policy.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type {
@@ -101,6 +102,12 @@ export interface AgentScheduleCompositionDeps {
   agentProject(agentSlug: string): Promise<string | undefined>;
   /** #5070: whether a job proposal may name a Project. */
   projectSchedulesEnabled?(): boolean;
+  projectExists?(projectId: string): boolean;
+  principalMayInProject?(
+    principalId: string,
+    projectId: string,
+    action: ProjectPrincipalAction,
+  ): boolean;
   /**
    * The automations whose runs land in a conversation. Absent (hosted, no
    * scheduler): the chat's schedule lists none.
@@ -152,6 +159,7 @@ export interface AgentScheduleComposition {
   readonly admitAutomationTarget: AutomationTargetAdmission;
   /** #2377 slice D: who an untargeted job created by this request runs as. */
   readonly jobOwner: (c: Context) => SchedulerAutomationCreator | undefined;
+  maySetProjectJob(projectId: string, creatorId: string): boolean;
   /** The scheduler routes' rule for acting on a job with a stored target. */
   readonly admitAutomationJob: AutomationJobAdmission;
   readonly mayReadAutomationRun: (
@@ -305,14 +313,14 @@ function admitAutomationJobFor(
 ): AutomationJobAdmission {
   return (c, job) => {
     const conversationId = job.target?.conversationId;
+    const owner = job.createdBy?.userId;
     if (requestMayBeAnAgent(c.req.raw)) {
       const authority = stationControlRequestAuthority(c.req.raw);
       if (authority?.kind !== 'caller') return TARGET_OUT_OF_SCOPE;
       // #2377 slice D: an untargeted job's runs act as its owner, so only
       // an agent acting for that same person may change or run it.
       if (!job.target)
-        return job.createdBy?.userId !== undefined &&
-          authority.caller.principal?.id === job.createdBy.userId
+        return owner !== undefined && authority.caller.principal?.id === owner
           ? { ok: true }
           : TARGET_OUT_OF_SCOPE;
       const own = authority.caller.conversationId ?? authority.caller.sessionId;
@@ -342,7 +350,7 @@ function admitAutomationJobFor(
     const allowed =
       conversationId !== undefined
         ? requester.mayMutate(conversationId)
-        : requester.userId === job.createdBy?.userId;
+        : requester.userId === owner;
     return allowed
       ? { ok: true }
       : {
@@ -376,6 +384,16 @@ export function composeAgentSchedule(
           tenant,
         ),
     };
+  };
+  const mayViewProjectJob = (c: Context, projectId: string) => {
+    if (requestMayBeAnAgent(c.req.raw)) return false;
+    const requester = person(c);
+    return (
+      !!requester &&
+      (isOperatorAtHostNotAgent(c.req.raw) ||
+        deps.principalMayInProject?.(requester.userId, projectId, 'view') ===
+          true)
+    );
   };
   // Approves a restart cut short are open again, with or without an inbox.
   // Synchronous, before any route is served, and bounded by this start
@@ -592,8 +610,12 @@ export function composeAgentSchedule(
     person,
     admitAutomationTarget: admitAutomationTargetFor(deps, person),
     jobOwner: jobOwnerFor(deps, person),
+    maySetProjectJob: (projectId, creatorId) =>
+      deps.projectExists?.(projectId) === true &&
+      deps.principalMayInProject?.(creatorId, projectId, 'execute') === true,
     admitAutomationJob: admitAutomationJobFor(person),
     mayReadAutomationJob: (c, job) => {
+      if (job.projectId) return mayViewProjectJob(c, job.projectId);
       if (requestMayBeAnAgent(c.req.raw)) {
         const authority = stationControlRequestAuthority(c.req.raw);
         if (authority?.kind !== 'caller') return false;
@@ -613,6 +635,7 @@ export function composeAgentSchedule(
     mayReadAutomationRun: (c, job, run) => {
       if (run.jobId && run.jobId !== job.unattendedPrincipal?.jobId)
         return false;
+      if (job.projectId && !mayViewProjectJob(c, job.projectId)) return false;
       const isAgent = requestMayBeAnAgent(c.req.raw);
       const requester = isAgent ? undefined : person(c);
       if (run.runTarget === undefined) {

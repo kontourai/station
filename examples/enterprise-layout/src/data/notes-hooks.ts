@@ -24,7 +24,7 @@ import type {
 
 export type { NoteFrontmatter } from '../types/knowledge';
 
-const NAMESPACE = 'enterprise-notes';
+export const NOTES_NAMESPACE = 'enterprise-notes';
 
 /** A note as the Notes pane lists and selects it. */
 export interface NoteSummary {
@@ -49,7 +49,7 @@ export function useNoteTree(): {
   isLoading: boolean;
 } {
   const projectSlug = useProjectSlug();
-  const query = useKnowledgeTreeQuery(projectSlug ?? '', NAMESPACE, {
+  const query = useKnowledgeTreeQuery(projectSlug ?? '', NOTES_NAMESPACE, {
     enabled: !!projectSlug,
   });
   return { data: query.data?.children ?? [], isLoading: query.isLoading };
@@ -70,7 +70,7 @@ export function useFilteredNotes(filter: {
   if (filter.status) metadata.status = filter.status;
   const query = useKnowledgeFilteredQuery(
     projectSlug ?? '',
-    NAMESPACE,
+    NOTES_NAMESPACE,
     { metadata },
     { enabled: !!projectSlug },
   );
@@ -88,23 +88,23 @@ export function useFilteredNotes(filter: {
 
 export function useNoteContent(docId: string | null) {
   const projectSlug = useProjectSlug();
-  return useKnowledgeDocContentQuery(projectSlug ?? '', docId, NAMESPACE);
+  return useKnowledgeDocContentQuery(projectSlug ?? '', docId, NOTES_NAMESPACE);
 }
 
 /** Creates a note: `{ filename, content, metadata }`. */
 export function useSaveNote() {
   const projectSlug = useProjectSlug();
-  return useKnowledgeSaveMutation(projectSlug ?? '', NAMESPACE);
+  return useKnowledgeSaveMutation(projectSlug ?? '', NOTES_NAMESPACE);
 }
 
 /** Updates a note in place: `{ docId, content, metadata }`. */
 export function useUpdateNote() {
   const projectSlug = useProjectSlug();
-  return useKnowledgeUpdateMutation(projectSlug ?? '', NAMESPACE);
+  return useKnowledgeUpdateMutation(projectSlug ?? '', NOTES_NAMESPACE);
 }
 
 /** Deletes a note by document id. */
 export function useDeleteNote() {
   const projectSlug = useProjectSlug();
-  return useKnowledgeDeleteMutation(projectSlug ?? '', NAMESPACE);
+  return useKnowledgeDeleteMutation(projectSlug ?? '', NOTES_NAMESPACE);
 }

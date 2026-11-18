@@ -49,7 +49,6 @@ vi.mock('../components/chat/TaskShapingComposer', () => ({
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: {
     focus: vi.fn(),
-    openCollection: vi.fn(),
     registerNavigation: ({ focus }: any) => {
       openChatsStore.focus = focus;
       return vi.fn();
@@ -349,7 +348,6 @@ function ChatLayoutController() {
   useEffect(() => {
     const unregister = openChatsStore.registerNavigation({
       focus: () => chatControllerAction('fullscreen:focus'),
-      openCollection: vi.fn(),
     });
     const onNewChat = () => chatControllerAction('fullscreen:new');
     window.addEventListener('station:open-new-chat', onNewChat);
@@ -365,7 +363,6 @@ function AmbientChatControllerStub() {
   useEffect(() => {
     const unregister = openChatsStore.registerNavigation({
       focus: () => chatControllerAction('dock:focus'),
-      openCollection: vi.fn(),
     });
     const onNewChat = () => chatControllerAction('dock:new');
     window.addEventListener('station:open-new-chat', onNewChat);

@@ -166,7 +166,13 @@
 
     "src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx",
 
-    "tests/chat-dock-inbox-open.spec.ts"
+    "tests/chat-dock-inbox-open.spec.ts",
+
+    "src-ui/src/components/chat-dock/CommandLauncher.tsx",
+
+    "src-ui/src/components/chat-dock/ActiveWorkContextFrame.tsx",
+
+    "src-ui/src/__tests__/menu-dismiss-backdrop.hit-test.test.tsx"
   ],
 
   "checks": [

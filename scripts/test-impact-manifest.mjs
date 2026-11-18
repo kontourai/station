@@ -617,6 +617,16 @@ const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
   ...[
+    'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+    'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['scripts/__tests__/check-required-tests-ran.test.ts'],
+    reason:
+      'the profile audit collects kernel test registrations through a child process',
+  })),
+  ...[
     'src-ui/src/views/ProjectSettingsView.tsx',
     'src-ui/src/views/project-settings/**',
   ].map((pattern) => ({
@@ -626,6 +636,15 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
     reason:
       'the browser fixture bundles ProjectSettingsView from a string outside the import graph',
   })),
+  {
+    pattern: 'tests/interactive-workspace-performance-bridge.spec.ts',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
+    ],
+    reason:
+      'the non-reference host guard executes this Playwright spec through a child process',
+  },
   ...[
     'docs/reference/play-data-safety.md',
     'docs/privacy-policy.md',

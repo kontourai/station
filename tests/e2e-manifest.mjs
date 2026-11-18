@@ -1108,6 +1108,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/enterprise-pane-lifecycle.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'On an isolated clean Station, previews and installs Enterprise and its real provider dependency, opens Dashboard and Notes from server-issued Project Pane occurrences, checks filesystem-backed Notes and unscoped retrieval with deterministic embeddings, and proves dependency ownership on uninstall.',
+    exceptions: [],
+  },
+  {
     path: 'tests/layout-stack-parity.spec.ts',
     bucket: 'extended',
     surface: 'Plugins',

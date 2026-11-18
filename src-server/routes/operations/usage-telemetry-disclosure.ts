@@ -312,15 +312,18 @@ export function createUsageTelemetryDisclosureRoutes(
         { success: false, error: { code: 'telemetry_publisher_invalid' } },
         400,
       );
-    if (
-      publisher === 'kontour' &&
-      !(await service.telemetryStatus()).authorEndpoint
-    )
+    const status = await service.telemetryStatus();
+    if (publisher === 'kontour' && !status.authorEndpoint)
       return c.json(
         { success: false, error: { code: 'telemetry_unconfigured' } },
         409,
       );
-    if (!(await service.telemetryStatus()).publishers[publisher])
+    if (publisher === 'kontour' && !status.publishers.kontour.fullAvailable)
+      return c.json(
+        { success: false, error: { code: 'telemetry_detailed_unavailable' } },
+        409,
+      );
+    if (!status.publishers[publisher])
       return c.json(
         { success: false, error: { code: 'telemetry_publisher_invalid' } },
         400,

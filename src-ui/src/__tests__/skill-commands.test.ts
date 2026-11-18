@@ -150,6 +150,20 @@ describe('findMatchingSkillCommand', () => {
 // a provided value nor a usable default is REJECTED and named — never
 // silently substituted with an empty string.
 describe('substituteSkillVariables', () => {
+  test('preserves replacement patterns, backslashes and placeholder-like values for Test preview', () => {
+    const input = "$$ $& $` $' \\path {{next}}";
+    expect(
+      substituteSkillVariables(
+        'Head {{value}} / {{value}} then {{next}} End',
+        [{ name: 'value' }, { name: 'next', default: 'default' }],
+        { value: input, next: '' },
+      ),
+    ).toEqual({
+      ok: true,
+      content: 'Head ' + input + ' / ' + input + ' then default End',
+    });
+  });
+
   // In production the variables list is derived FROM the body
   // (`mergeSkillVariables`), so each case's list names only placeholders its
   // body actually contains.

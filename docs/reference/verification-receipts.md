@@ -602,6 +602,17 @@ and CPU contention. Terminal output is a bounded redacted summary. A bounded
 redacted prefix of stdout/stderr and approved text attachments lives under
 `.kontourai/verification-output/<request-key>/` and is referenced by digest.
 
+When the console document exceeds 8 KiB, it can omit artifact entries and
+other diagnostics while retaining the request key, terminal verdict, counts,
+and cleanup. The compact document identifies omitted details and points to the
+worktree-relative canonical receipt for a normal request.
+
+If a full-regression phase cannot start, `summary.phaseAdmission` names the
+pending phase and the stop reason. The summary keeps this distinct from
+`failingStep`, which describes execution. Earlier phases' output and
+checkpoints remain available under the same request. A terminal publication
+still requires the output ownership fence.
+
 The bounded summary's `firstCausalExcerpt` (station#1871/#2591/#3189) names the
 single most actionable diagnostic line found in the captured output, scoped to
 the step that actually failed. Station#4249 adds `causalExcerpts` alongside

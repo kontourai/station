@@ -1,0 +1,19 @@
+{
+  "revision": "c6616cdceda842a8ad05e66203e537b437596224",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The testing guide changes the Gallery merge-group classifier description. The operations, code quality, and scoped agent guidance still link to the same verification lanes, host controls, and fixture procedures.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The testing guide changes the Gallery merge-group classifier description. The operations, code quality, and scoped agent guidance still link to the same verification lanes, host controls, and fixture procedures.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"The testing guide changes the Gallery merge-group classifier description. The operations, code quality, and scoped agent guidance still link to the same verification lanes, host controls, and fixture procedures.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"The testing guide changes the Gallery merge-group classifier description. The operations, code quality, and scoped agent guidance still link to the same verification lanes, host controls, and fixture procedures.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The testing guide changes the Gallery merge-group classifier description. The operations, code quality, and scoped agent guidance still link to the same verification lanes, host controls, and fixture procedures.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"The testing guide changes the Gallery merge-group classifier description. The operations, code quality, and scoped agent guidance still link to the same verification lanes, host controls, and fixture procedures.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked Gallery event admission against gallery-pr-check.yml and the parsed workflow regression. Pull request classification feeds capture. Merge groups execute the independent allowlist ceiling. The workflow condition mutation admitted the redundant job and failed its regression as expected.","inputs":["docs/guides/testing.md",".github/workflows/gallery-pr-check.yml","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

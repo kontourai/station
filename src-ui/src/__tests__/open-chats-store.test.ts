@@ -48,7 +48,6 @@ describe('openChatsStore', () => {
       const unregister = openChatsStore.registerNavigation({
         openConversation,
         focus: vi.fn(),
-        openCollection: vi.fn(),
       });
       try {
         expect(await pending).toBe(state === 'current');
@@ -76,7 +75,6 @@ describe('openChatsStore', () => {
     const unregister = openChatsStore.registerNavigation({
       openConversation,
       focus,
-      openCollection: vi.fn(),
     });
     try {
       expect(
@@ -109,27 +107,10 @@ describe('openChatsStore', () => {
     ).toEqual(['older']);
   });
 
-  test('routes the exact focus target and collection-open action', () => {
-    const focus = vi.fn();
-    const openCollection = vi.fn();
-    const unregister = openChatsStore.registerNavigation({
-      focus,
-      openCollection,
-    });
-
-    openChatsStore.focus({ sessionId: 'wanted' });
-    openChatsStore.openCollection();
-
-    expect(focus).toHaveBeenCalledWith({ sessionId: 'wanted' });
-    expect(openCollection).toHaveBeenCalledOnce();
-    unregister();
-  });
-
   test('routes a resolved focus transition to the intended session', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     const target = focusChatEventDetailForAction({
       kind: 'focus',
@@ -149,7 +130,6 @@ describe('openChatsStore', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
 
     expect(focus).toHaveBeenCalledWith({ sessionId: 'queued' });
@@ -163,7 +143,6 @@ describe('openChatsStore', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
 
     expect(focus).not.toHaveBeenCalled();
@@ -172,7 +151,6 @@ describe('openChatsStore', () => {
     const nextFocus = vi.fn();
     const unregisterNext = openChatsStore.registerNavigation({
       focus: nextFocus,
-      openCollection: vi.fn(),
     });
     expect(nextFocus).not.toHaveBeenCalled();
     unregisterNext();
