@@ -3732,6 +3732,15 @@ export class CodexAdapter implements ProviderAdapterShape {
     return { outcome: 'steered', turnId };
   }
 
+  private rememberCancelledTurn(record: CodexSessionRecord, turnId: string) {
+    record.cancelledBoundTurns ??= new Set();
+    record.cancelledBoundTurns.add(turnId);
+    if (record.cancelledBoundTurns.size > 32) {
+      const oldest = record.cancelledBoundTurns.values().next().value;
+      if (oldest !== undefined) record.cancelledBoundTurns.delete(oldest);
+    }
+  }
+
   async interruptTurn(threadId: string, turnId?: string) {
     const record = this.transport.requireSession(threadId);
     const activeTurnId = record.activeTurnId;
@@ -3750,12 +3759,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (turnId && turnId !== activeTurnId) {
       return { outcome: 'target-mismatch', activeTurnId } as const;
     }
-    record.cancelledBoundTurns ??= new Set();
-    record.cancelledBoundTurns.add(activeTurnId);
-    while (record.cancelledBoundTurns.size > 32) {
-      const oldest = record.cancelledBoundTurns.values().next().value;
-      if (oldest !== undefined) record.cancelledBoundTurns.delete(oldest);
-    }
+    this.rememberCancelledTurn(record, activeTurnId);
     this.cancelBoundToolApprovals(record, activeTurnId);
     const targetTurnId = turnId ?? activeTurnId;
 
@@ -3847,6 +3851,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     threadId: string,
     targetTurnId: string,
   ) {
+    this.rememberCancelledTurn(record, targetTurnId);
     try {
       await this.transport.sendRequest(
         record,
@@ -3873,6 +3878,9 @@ export class CodexAdapter implements ProviderAdapterShape {
     // (it completed normally while this RPC was still out), that terminal
     // stands: a second, contradictory `turn.aborted` must not follow it.
     if (!codexTurnAlreadyTerminal(record, targetTurnId)) {
+      markCodexTurnTerminal(record, targetTurnId);
+      record.turnOutput.delete(targetTurnId);
+      record.turnOutputItemId?.delete(targetTurnId);
       this.transport.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -3891,7 +3899,6 @@ export class CodexAdapter implements ProviderAdapterShape {
     // turn's own tracking for an interrupt that was never about it.
     if (record.activeTurnId === targetTurnId) {
       record.activeTurnId = undefined;
-      markCodexTurnTerminal(record, targetTurnId);
     }
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
   }

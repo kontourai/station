@@ -252,6 +252,16 @@ export function mapAcpSessionUpdate(
   // a fact Station already recorded when it happened.
   if (isReplayMarkedUpdate(update)) return;
 
+  // Reply chunks carry no prompt ID. A draining cancelled prompt makes
+  // ownership ambiguous even while a successor is active.
+  if (
+    (update.sessionUpdate === 'agent_message_chunk' ||
+      update.sessionUpdate === 'agent_thought_chunk') &&
+    (!ctx.activeTurnId || ctx.state?.quarantinedTurnIds?.size)
+  ) {
+    return;
+  }
+
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
       const rendered = renderAcpContentBlockAsText(update.content);

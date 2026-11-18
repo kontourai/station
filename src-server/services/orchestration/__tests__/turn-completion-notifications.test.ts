@@ -471,6 +471,35 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     );
   });
 
+  test('a Codex abort followed by its interrupted terminal only notifies Stop', async () => {
+    const schedule = vi
+      .spyOn(notificationService, 'scheduleEnveloped')
+      .mockResolvedValue({} as never);
+    const event = (overrides: Record<string, unknown>) =>
+      baseEvent({ provider: 'codex', ...overrides });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.started' }),
+    });
+    await emit('orchestration:event', {
+      event: event({
+        method: 'session.stop-settled',
+        outcome: 'cooperative',
+        initiatedBy: 'user',
+      }),
+    });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.aborted', reason: 'interrupted' }),
+    });
+    await emit('orchestration:event', {
+      event: event({ method: 'turn.completed', finishReason: 'cancelled' }),
+    });
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(
+      'turn-completion',
+      expect.objectContaining({ category: 'turn-stopped' }),
+      expect.anything(),
+    );
+  });
+
   describe('#2324 (D1): a turn the engine opened on its own', () => {
     const provider = {
       metadata: { trigger: 'provider' },

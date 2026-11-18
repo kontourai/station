@@ -54,6 +54,7 @@ import { claudeSourceResumeCursor } from './claude-resume-cursor.js';
 import {
   type ClaudeSdkTurnContext,
   type ClaudeSdkTurnLedger,
+  claudeReplyWasStopped,
   claudeTurnTerminalMetadata,
   clearClaudeSdkTurns,
   ensureClaudeTurnStartPublished,
@@ -896,6 +897,7 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'stream_event') {
+    if (claudeReplyWasStopped(record, message)) return;
     const streamEvent = message.event as any;
     if (
       message.parent_tool_use_id === null &&
@@ -987,11 +989,15 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'result') {
-    const usageLimit = takeClaudeUsageLimitDetails(record, message);
     // #2324: the result closes the turn it names (its user uuids), else the
     // running turn — never "whichever turn Station allocated last". Resolved
     // before anything is published so its usage lands on the same turn.
     const target = resolveClaudeResultTarget(record, message);
+    if (target.kind === 'stale-stop') {
+      record.interruptedResultObserved = true;
+      return;
+    }
+    const usageLimit = takeClaudeUsageLimitDetails(record, message);
     const resultTurn =
       target.kind === 'turn' && target.turn.kind !== 'untracked'
         ? target.turn
@@ -1255,6 +1261,11 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'assistant') {
+    if (
+      message.parent_tool_use_id === null &&
+      claudeReplyWasStopped(record, message)
+    )
+      return;
     if (message.parent_tool_use_id === null && message.error === 'rate_limit')
       record.usageLimitReply = true;
     // #2324: before the model capture below — a frame that starts a turn
