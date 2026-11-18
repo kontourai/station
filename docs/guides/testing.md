@@ -700,9 +700,9 @@ targets and executes no test, is incomplete. Hosted `fast-checks` still passes
 such a plan when its bounded mapped tests and invariants pass, but it reports
 the pass as provisional with a warning that names the deferred
 lanes, and the required `Source verification policy` status stays success with
-a provisional note in its description. The hosted classifier reads the
-`fast-checks` provisional output when publishing that commit status. The
-required `Merge-queue regression` job can still admit the candidate based on
+a provisional note in its description. The `fast-checks` aggregate output
+triggers the `Mark fast-checks provisional` workflow step. The source policy
+publisher reads that step's name and conclusion from the jobs API. The required `Merge-queue regression` job can still admit the candidate based on
 the exact bounded integration plan and its successful receipts. Main
 qualification owns the deferred full corpus. An E2E, desktop or pre-push
 deferral is owned outside the selection and leaves the run complete.
