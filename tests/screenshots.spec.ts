@@ -7330,10 +7330,10 @@ const SCREENS: Screen[] = [
             // audit reads its name, so capture only once the row says so.
             await expect(
               page
-                .locator(
-                  '[data-testid=inbox-row] button.chat-dock-inbox__item' +
-                    '[aria-label^="Toolbar layout,"][aria-label$=", unsent draft"]',
-                )
+                .getByTestId('inbox-row')
+                .getByRole('button', {
+                  name: /^Toolbar layout.*Waiting on you.*No project.*unsent draft$/,
+                })
                 .first(),
             ).toBeAttached();
           },

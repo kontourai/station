@@ -4427,7 +4427,7 @@ button.tool-call__line:hover {
 
 .tool-call__status-footer {
   margin-top: 0.5rem;
-  color: var(--success-text);
+  color: var(--k-text);
   font-size: 0.9em;
 }
 

@@ -507,7 +507,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
   const taskSwitcher = page.getByRole('region', { name: 'Inbox', exact: true });
   await taskSwitcher
-    .getByRole('button', { name: 'Reference dispatch, default' })
+    .getByRole('button', { name: /^Reference dispatch.*default/ })
     .click();
   const answer = page.getByText(quote.excerpt, { exact: true });
   await expect(answer).toBeVisible();
@@ -1801,7 +1801,7 @@ test('a Task inventory outage does not block the mobile inbox or New chat', asyn
   const menu = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(menu.getByText('Some chats may be out of date.')).toHaveCount(0);
   await expect(
-    menu.getByRole('button', { name: 'Station Chat, Default' }).first(),
+    menu.getByRole('button', { name: /^Station Chat.*Default/ }).first(),
   ).toBeVisible();
   await page
     .getByTestId('chat-dock-mobile-header')
@@ -1836,17 +1836,15 @@ test('switches between mobile tasks and restores the exact active chat context',
   const menu = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(menu).toBeVisible();
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
-  // Shared inbox rows (archive#3312): the row button's accessible name is
-  // "{title}, {project}" and the state renders as the row's status line
-  // ("Running"/"Waiting on you"), so state discrimination filters on the
-  // status text rather than the old raw-text accessible name.
+  // Match the conversation and its Project. The same title appears in two
+  // lanes, so the visible status distinguishes the rows.
   await expect(
     menu
-      .getByRole('button', { name: 'Station Chat, Default' })
+      .getByRole('button', { name: /^Station Chat.*Default/ })
       .filter({ hasText: 'Running' }),
   ).toBeVisible();
   const reviewRow = menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/ })
     .filter({ hasText: 'Waiting on you' });
   await expect(reviewRow).toBeVisible();
   const reviewBox = await reviewRow.boundingBox();
@@ -1884,14 +1882,14 @@ test('switches between mobile tasks and restores the exact active chat context',
 
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/ })
     .filter({ hasText: 'Running' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
 
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/ })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
@@ -1913,7 +1911,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // unanchored title match would resolve to both. The delegated row is titled
   // by its task, "Worker task · delegated review".
   await menu
-    .getByRole('button', { name: /^Worker task · delegated review,/i })
+    .getByRole('button', { name: /^Worker task · delegated review(?:\s|$)/i })
     .click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -1926,7 +1924,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // the chat dock. Returning to the prior chat restores its in-memory draft.
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/ })
     .filter({ hasText: 'Waiting on you' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
@@ -1948,7 +1946,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await expect(
     menu
-      .getByRole('button', { name: 'Station Chat, Default' })
+      .getByRole('button', { name: /^Station Chat.*Default/ })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
@@ -1968,7 +1966,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await page
     .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/ })
     .filter({ hasText: 'Running' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
@@ -1976,7 +1974,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // The task retains its canonical identity after opening.
   await page
     .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: /^Worker task · delegated review,/i })
+    .getByRole('button', { name: /^Worker task · delegated review(?:\s|$)/i })
     .click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -1984,7 +1982,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await page
     .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/ })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
@@ -2555,7 +2553,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   // must survive: Escape dismisses a sheet, it does not undo a task switch.
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/ })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(menu).toBeHidden();
@@ -4568,7 +4566,7 @@ test('profiles switching between authoritative conversations', async ({
       for (const state of ['Waiting on you', 'Running', 'Waiting on you']) {
         await switcher.click();
         await menu
-          .getByRole('button', { name: 'Station Chat, Default' })
+          .getByRole('button', { name: /^Station Chat.*Default/ })
           .filter({ hasText: state })
           .click();
         await expect(menu).toBeHidden();
