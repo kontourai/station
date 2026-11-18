@@ -1,4 +1,7 @@
-import type { AppConfig } from '@kontourai/station-contracts/config';
+import {
+  type AppConfig,
+  parseTemplateDateTimeFormat,
+} from '@kontourai/station-contracts/config';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { createLogger } from '../../utils/logger.js';
 
@@ -97,20 +100,21 @@ function getCustomTemplateVariables(
         replacements[key] = variable.value || '';
         break;
       case 'date':
-        replacements[key] = variable.format
-          ? now.toLocaleDateString('en-US', JSON.parse(variable.format))
-          : now.toLocaleDateString();
-        break;
       case 'time':
-        replacements[key] = variable.format
-          ? now.toLocaleTimeString('en-US', JSON.parse(variable.format))
-          : now.toLocaleTimeString();
+      case 'datetime': {
+        const options = parseTemplateDateTimeFormat(
+          variable.type,
+          variable.format,
+          variable.key,
+        );
+        const locale = options ? 'en-US' : undefined;
+        if (variable.type === 'date')
+          replacements[key] = now.toLocaleDateString(locale, options);
+        else if (variable.type === 'time')
+          replacements[key] = now.toLocaleTimeString(locale, options);
+        else replacements[key] = now.toLocaleString(locale, options);
         break;
-      case 'datetime':
-        replacements[key] = variable.format
-          ? now.toLocaleString('en-US', JSON.parse(variable.format))
-          : now.toLocaleString();
-        break;
+      }
       case 'custom':
         replacements[key] = variable.value || '';
         break;
