@@ -240,13 +240,19 @@ export type ServiceUpdateProgress =
  * a check finds it. Downloading never restarts the server; only an explicit
  * apply (or apply-when-idle) does.
  */
-export type ServerUpdateDownloadPolicy = 'never' | 'after-24h' | 'immediately';
+export const UPDATE_DOWNLOAD_POLICIES = [
+  'never',
+  'after-24h',
+  'immediately',
+] as const;
+export type UpdateDownloadPolicy = (typeof UPDATE_DOWNLOAD_POLICIES)[number];
+export const DEFAULT_UPDATE_DOWNLOAD_POLICY: UpdateDownloadPolicy = 'after-24h';
 
+export type ServerUpdateDownloadPolicy = UpdateDownloadPolicy;
 export const SERVER_UPDATE_DOWNLOAD_POLICIES: readonly ServerUpdateDownloadPolicy[] =
-  ['never', 'after-24h', 'immediately'];
-
-export const DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY: ServerUpdateDownloadPolicy =
-  'after-24h';
+  UPDATE_DOWNLOAD_POLICIES;
+export const DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY =
+  DEFAULT_UPDATE_DOWNLOAD_POLICY;
 
 /**
  * The server's own view of its update (#3851 slice 4), served by
