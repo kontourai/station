@@ -318,7 +318,7 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
       `[fast-checks] related discovery: ${(plan.relatedDiscovery.milliseconds / 1000).toFixed(1)}s` +
         (plan.relatedDiscovery.timeoutMilliseconds === undefined
           ? '\n'
-          : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout\n`),
+          : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout${plan.relatedDiscovery.timedOut ? '; timed out, retained exact suites only' : ''}\n`),
     );
   if (plan.escalatedImporters) {
     const { paths, suites, added } = plan.escalatedImporters;

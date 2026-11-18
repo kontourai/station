@@ -278,7 +278,9 @@ reader's parser and rendered heading IDs. It checks relative and self links,
 including section anchors, and GitHub `main` or exact-current-revision links
 that the reader opens locally. Historical revision links remain external;
 this check does not crawl external sites. Fenced and inline code examples are
-not links. Duplicate headings receive unique suffixes. For a stable explicit
+not links. A valid leading YAML metadata block supplies no
+rendered anchors. Link diagnostics still use original source line numbers.
+Duplicate headings receive unique suffixes. For a stable explicit
 anchor, the reader accepts an empty `<a id="stable-name"></a>` or
 `<span id="stable-name"></span>` with a safe ID; arbitrary raw HTML stays escaped.
 The learning generator runs the same validation against the captured document

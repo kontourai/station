@@ -852,6 +852,7 @@ describe('verification status projection', () => {
     const worktree = mkdtempSync(join(tmpdir(), 'station-1827-overcap-'));
     const key = 'e'.repeat(64);
     const cause = CI_FAST_BUDGET_EXCEEDED_CAUSE;
+    const warning = 'scripts/check-workflows.mjs:2:1 warning: context only';
     try {
       const persisted = persistVerificationOutput({
         root: worktree,
@@ -890,6 +891,7 @@ describe('verification status projection', () => {
           },
           firstCausalExcerpt: cause,
           infrastructureCause: cause,
+          diagnosticExcerpts: [warning],
         },
       });
 
@@ -905,6 +907,7 @@ describe('verification status projection', () => {
       // together or not at all.
       expect(parsed.summary.firstCausalExcerpt).toBe(cause);
       expect(parsed.summary.infrastructureCause).toBe(cause);
+      expect(parsed.summary.diagnosticExcerpts).toEqual([warning]);
     } finally {
       rmSync(worktree, { recursive: true, force: true });
     }
