@@ -162,7 +162,11 @@
 
     "package.json#/devDependencies/jsdom",
 
-    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1"
+    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1",
+
+    "src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx",
+
+    "tests/chat-dock-inbox-open.spec.ts"
   ],
 
   "checks": [
