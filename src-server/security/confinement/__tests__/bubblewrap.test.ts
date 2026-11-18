@@ -42,6 +42,18 @@ import {
   seatbeltHiddenPaths,
 } from '../seatbelt.js';
 
+const shortRoots = vi.hoisted(() => [] as string[]);
+
+vi.mock(
+  '../../../services/infra/session-tmpdir.js',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../services/infra/session-tmpdir.js')
+    >()),
+    shortSessionTmpRoots: () => shortRoots,
+  }),
+);
+
 /**
  * Outside `/tmp` on Linux: the sandbox replaces `/tmp` with its own, so a
  * layout there would need no shadowing at all.
@@ -49,6 +61,14 @@ import {
 const makeTempDir = trackTempDirs(
   process.platform === 'linux' ? { base: '/var/tmp' } : {},
 );
+
+beforeEach(() => {
+  shortRoots.splice(
+    0,
+    shortRoots.length,
+    join(canonicalPath(makeTempDir('bubblewrap-short-')), 'stn-test'),
+  );
+});
 
 /** A host layout on disk: the arguments are built from what exists. */
 interface Layout {
