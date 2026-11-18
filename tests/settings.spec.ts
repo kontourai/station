@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   openHeaderSettings,
@@ -13,7 +13,9 @@ async function goToSettings(page: import('@playwright/test').Page) {
   // left in the header or the sidebar footer — so the route, not the control,
   // is what this asks for.
   await openHeaderSettings(page);
-  await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
+  await expect(
+    page.getByRole('searchbox', { name: 'Filter settings' }),
+  ).toBeVisible();
 }
 
 /**
@@ -466,6 +468,16 @@ test.describe('Settings', () => {
     await expect(page.locator('.settings__var-row')).toHaveCount(
       initialCount + 1,
     );
+    const type = page.getByRole('combobox', {
+      name: `Template variable ${initialCount + 1} type`,
+    });
+    await type.selectOption('date');
+    await expect(
+      page
+        .locator('.settings__var-row')
+        .last()
+        .getByPlaceholder('Format (optional)'),
+    ).toBeVisible();
     // Remove the last one
     await page.locator('.settings__var-remove').last().click();
     await expect(page.locator('.settings__var-row')).toHaveCount(initialCount);
@@ -795,4 +807,265 @@ test.describe('Settings scope and provenance', () => {
       await expect(page.locator('#personal-knowledge-store')).toBeInViewport();
     });
   }
+});
+
+test.describe('Settings discovery and preferences', () => {
+  const destinations = [
+    {
+      query: 'local accounts',
+      title: 'Accounts and sign-in',
+      id: 'local-accounts',
+    },
+    {
+      query: 'usage disclosure',
+      title: 'What usage sharing includes',
+      id: 'usage-disclosure',
+    },
+    {
+      query: 'skill shortcuts',
+      title: 'Skill shortcuts',
+      id: 'skill-shortcuts',
+    },
+    {
+      query: 'model picker preferences',
+      title: 'Model picker preferences',
+      id: 'model-picker-preferences',
+    },
+  ];
+
+  test('discovers the four rows through Settings search and the palette', async ({
+    page,
+  }, testInfo) => {
+    await goToSettings(page);
+    for (const destination of destinations) {
+      const target = page.locator(`[data-catalog-id="${destination.id}"]`);
+      const search = page.getByRole('searchbox', { name: 'Filter settings' });
+      await search.fill(destination.query);
+      await expect(target).toBeVisible();
+      await search.clear();
+
+      await page.getByRole('button', { name: /Search or jump to/ }).click();
+      const palette = page.getByRole('dialog', { name: 'Command palette' });
+      await palette.getByRole('combobox').fill(destination.title);
+      await palette
+        .getByRole('option', {
+          name: new RegExp(`Settings: ${destination.title}`),
+        })
+        .click();
+      await expect(page).toHaveURL(
+        (url) => url.searchParams.get('highlight') === destination.id,
+      );
+      await expect(target).toBeInViewport();
+
+      if (destination.id === 'usage-disclosure') {
+        await target.getByText('View included fields', { exact: true }).click();
+        await expect(
+          target.getByRole('region', { name: 'Anonymous usage counts' }),
+        ).toBeVisible();
+        await expect(target.getByRole('radio')).toHaveCount(0);
+      }
+    }
+
+    const picker = page.locator('[data-catalog-id="model-picker-preferences"]');
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await picker.scrollIntoViewIfNeeded();
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        await page.screenshot({
+          path: testInfo.outputPath(`settings-catalog-${width}-${theme}.png`),
+          animations: 'disabled',
+        });
+      }
+    }
+  });
+
+  test('edits a prior skill binding and only clears model recents', async ({
+    page,
+  }) => {
+    const modelKey = (model: string) => `settings-models\u001f${model}`;
+    const priorModels = {
+      favorites: [modelKey('alpha')],
+      hidden: [modelKey('beta')],
+      order: [modelKey('beta'), modelKey('alpha')],
+      recents: [modelKey('alpha')],
+    };
+    let accountModels: typeof priorModels | undefined;
+    let revision = 'before-import';
+    await page.route('**/api/me/preferences*', async (route) => {
+      const request = route.request();
+      if (request.method() === 'PATCH') {
+        const onlyMissing = new URL(request.url()).searchParams.get(
+          'onlyMissing',
+        );
+        if (onlyMissing === 'true') {
+          expect(accountModels).toBeUndefined();
+          expect(request.postDataJSON()).toEqual({
+            modelPickerPreferences: priorModels,
+          });
+          accountModels = priorModels;
+          revision = 'imported';
+        } else {
+          expect(request.headers()['if-match']).toBe('imported');
+          expect(request.postDataJSON()).toEqual({
+            modelPickerPreferences: { ...priorModels, recents: [] },
+          });
+          accountModels = { ...priorModels, recents: [] };
+          revision = 'cleared';
+        }
+      } else if (request.method() !== 'GET') {
+        return rejectUnexpectedFixtureRequest(route);
+      }
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            schemaVersion: 1,
+            revision,
+            values: accountModels
+              ? { modelPickerPreferences: accountModels }
+              : {},
+          },
+        },
+      });
+    });
+    await page.addInitScript((preferences) => {
+      if (localStorage.getItem('settings-discovery-seeded')) return;
+      localStorage.setItem('settings-discovery-seeded', '1');
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({
+          version: 2,
+          values: {
+            skillShortcuts: {
+              'settings-probe': { key: 'F7', modifiers: ['alt'] },
+              'unavailable-skill': { key: 'F6', modifiers: ['alt'] },
+            },
+            modelPickerPreferences: preferences,
+          },
+        }),
+      );
+    }, priorModels);
+    await page.route('**/api/system/skills', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              name: 'settings-probe',
+              description: 'Command skill for Settings verification',
+              command: { enabled: true, name: 'settings-probe' },
+            },
+          ],
+        },
+      }),
+    );
+    await page.route('**/api/connections/models', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              kind: 'model',
+              id: 'settings-models',
+              type: 'openai-compat',
+              name: 'Settings test models',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['llm'],
+              config: {
+                baseUrl: 'https://settings-models.example.test/v1',
+                modelOptions: [
+                  { id: 'alpha', name: 'Alpha' },
+                  { id: 'beta', name: 'Beta' },
+                ],
+              },
+              prerequisites: [],
+              lastCheckedAt: null,
+            },
+          ],
+        },
+      }),
+    );
+    await goToSettings(page);
+    await page
+      .getByRole('link', { name: 'Keyboard shortcuts', exact: true })
+      .click();
+    const skills = page.locator('[data-catalog-id="skill-shortcuts"]');
+    const shortcut = skills.getByRole('button', {
+      name: 'Shortcut for Run /settings-probe',
+    });
+    await expect(shortcut).toContainText('F7');
+    await expect(
+      skills.getByRole('list', {
+        name: 'Saved shortcuts for unavailable skills',
+      }),
+    ).toContainText('unavailable-skill');
+    await shortcut.click();
+    await page.keyboard.press('Alt+F8');
+    await expect(shortcut).toContainText('F8');
+
+    const readValues = () =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem('station-device-settings-v1') ?? '{}')
+            .values,
+      );
+    await expect.poll(readValues).toMatchObject({
+      skillShortcuts: {
+        'settings-probe': { key: 'F8', modifiers: ['alt'] },
+        'unavailable-skill': { key: 'F6', modifiers: ['alt'] },
+      },
+      modelPickerPreferences: priorModels,
+    });
+    await page.reload();
+    await expect(shortcut).toContainText('F8');
+
+    const search = page.getByRole('searchbox', { name: 'Filter settings' });
+    await search.fill('model picker preferences');
+    const models = page.locator('[data-catalog-id="model-picker-preferences"]');
+    await expect(models).toContainText(
+      'Previous model picker choices are saved on this device.',
+    );
+    await models
+      .getByRole('button', { name: 'Review preference import' })
+      .click();
+    const importButton = page.getByRole('button', {
+      name: 'Import previous preferences',
+    });
+    await expect(importButton).toBeInViewport();
+    await importButton.click();
+    await expect.poll(() => accountModels).toEqual(priorModels);
+    await search.fill('model picker preferences');
+    await expect(models).toContainText('Favorites: 1');
+    await expect(models).toContainText('Hidden: 1');
+    await expect(models).toContainText('Ordered: 2');
+    await expect(models).toContainText('Recent: 1');
+    await models.getByRole('button', { name: 'Clear recent models' }).click();
+    await expect
+      .poll(() => accountModels)
+      .toEqual({ ...priorModels, recents: [] });
+    await expect
+      .poll(readValues)
+      .toMatchObject({ modelPickerPreferences: priorModels });
+    await page.reload();
+    await search.fill('model picker preferences');
+    await expect(
+      models.getByRole('button', { name: 'Clear recent models' }),
+    ).toBeDisabled();
+    await models
+      .getByRole('button', { name: 'Open model connections' })
+      .click();
+    await expect(page).toHaveURL(/\/connections\/models$/);
+    await page
+      .getByRole('button', { name: 'Settings test models', exact: true })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Remove Alpha from favorites' }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Show Beta' })).toBeVisible();
+  });
 });

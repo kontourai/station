@@ -85,6 +85,7 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { ModelPickerPreferencesRow } from './settings/ModelPickerPreferencesRow';
 import { OfflineReadingSection } from './settings/OfflineReadingSection';
 import { OpenAppearanceButton } from './settings/OpenAppearanceButton';
 import { PairingSection } from './settings/PairingSection';
@@ -1221,12 +1222,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       provenance={stationProvenance}
                     />
                     <ExistingSetupImportStepper />
-                    {/* #2182: who may sign in to this Station. It has no
-                  catalog row of its own (giving it one is out of scope —
-                  see the epic), so it had to be placed by hand when the card
-                  it used to sit in was dissolved. System is where this page
-                  already keeps Station administration: updates, log level,
-                  export and import, and the two resets. */}
                     {/* #4305: whether this Station shares Projects with local
                   accounts at all; the account list below manages them. */}
                     <AccountSharingSection />
@@ -1667,6 +1662,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="device"
                       projectOverride={projectOverride}
                     />
+                    <ModelPickerPreferencesRow />
                     {/* #585: one control names all device-local delivery
                   outcomes. The in-chat gear panel renders the same options
                   from the same mapping module. */}

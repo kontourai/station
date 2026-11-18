@@ -356,6 +356,7 @@ export function AgentDefaultsSection({
                     placeholder="variable_name"
                   />
                   <select
+                    aria-label={`Template variable ${index + 1} type`}
                     value={variable.type}
                     onChange={(event) => {
                       const updated = [...(config.templateVariables || [])];
