@@ -17,7 +17,7 @@ import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { WORKSPACE_PANE_HOST_ACTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { Hono } from 'hono';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { resolveMaxSteps } from '../../constants.js';
+import { resolveStationRunMaxSteps } from '../../constants.js';
 import {
   isCredentialShapedMessage,
   outwardModelProviderError,
@@ -778,13 +778,9 @@ async function launchPersistedAgentWithOverride({
       },
       model,
       tools: [],
-      maxSteps:
-        appConfig.runtime === 'strands'
-          ? undefined
-          : resolveMaxSteps({
-              specMaxSteps: spec.maxSteps,
-              defaultMaxTurns: appConfig.defaultMaxTurns,
-            }),
+      maxSteps: resolveStationRunMaxSteps(appConfig, {
+        specMaxSteps: spec.maxSteps,
+      }),
       memoryAdapter,
     });
     requireCurrentRuntimeConfiguration(ctx, configurationLease);

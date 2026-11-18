@@ -1,3 +1,5 @@
+import type { AppConfig } from '@kontourai/station-contracts/config';
+
 /**
  * Shared server-wide constants. Values used in more than one module live here
  * so the meaning is named once and changed in one place.
@@ -28,6 +30,23 @@ export function resolveMaxSteps(opts: {
   defaultMaxTurns?: number;
 }): number {
   return opts.specMaxSteps || opts.defaultMaxTurns || DEFAULT_MAX_STEPS;
+}
+
+/** Cap for Station's current framework, preserving its built-in default when unset. */
+export function resolveStationRunMaxSteps(
+  config: Pick<AppConfig, 'runtime' | 'defaultMaxTurns'>,
+  {
+    specMaxSteps,
+    builtin = false,
+  }: { specMaxSteps?: number | null; builtin?: boolean } = {},
+): number | undefined {
+  if (config.runtime === 'strands') return undefined;
+  return builtin
+    ? config.defaultMaxTurns || undefined
+    : resolveMaxSteps({
+        specMaxSteps,
+        defaultMaxTurns: config.defaultMaxTurns,
+      });
 }
 
 /** Default Ollama server base URL. */

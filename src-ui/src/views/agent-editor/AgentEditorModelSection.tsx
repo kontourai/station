@@ -274,8 +274,8 @@ export function AgentEditorModelSection({
             Steps per turn
           </label>
           <InfoTip label="Steps per turn">
-            VoltAgent stops at this many model steps per turn. Leave blank to
-            use its fallback. Strands and external engines use their own limits.
+            Limits model steps per VoltAgent turn. Strands and external engines
+            use their own limits.
           </InfoTip>
         </div>
         <input
