@@ -85,6 +85,7 @@ import { withDeliveryCheck } from '../utils/messageDeliveryState';
 import { describeStationFailure } from '../utils/stationFailure';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
+import { publishConversationInboxReceipt } from './useConversationInbox';
 import { useStreamingMessage } from './useStreamingMessage';
 
 interface SendTransaction {
@@ -1326,6 +1327,14 @@ export function useSendMessage(
             : undefined;
         if (queuedResult?.outcome === 'queued') {
           stopDeliveryWatch?.();
+          await publishConversationInboxReceipt(
+            queryClient,
+            requestScope,
+            apiBase,
+            queuedResult,
+            sentConversationId,
+            resolvedTurnId,
+          );
           await live?.accepted();
           if (requestScope && !requestScope.isCurrent()) return true;
           const latest = activeChatsStore.getSnapshot()[sessionId];

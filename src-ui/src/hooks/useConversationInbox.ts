@@ -1,4 +1,7 @@
-import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationInboxEntry,
+  ConversationInboxQueuedReceipt,
+} from '@kontourai/station-contracts/orchestration';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   cancelConversationInboxEntry,
@@ -72,6 +75,42 @@ function inboxQueryKey(
   apiBase = scope?.apiBase,
 ) {
   return ['conversation-inbox', apiBase, scope?.authorityKey, conversationId];
+}
+
+export async function publishConversationInboxReceipt(
+  client: QueryClient,
+  scope: InboxScope | undefined,
+  apiBase: string,
+  receipt: ConversationInboxQueuedReceipt,
+  conversationId: string,
+  clientTurnId: string,
+) {
+  const { entry } = receipt;
+  if (
+    !scope?.isCurrent() ||
+    scope.apiBase !== apiBase ||
+    receipt.conversationId !== conversationId ||
+    receipt.clientTurnId !== clientTurnId ||
+    entry.conversationId !== conversationId ||
+    entry.clientTurnId !== clientTurnId
+  )
+    return;
+
+  const queryKey = inboxQueryKey(scope, conversationId, apiBase);
+  const query = client.getQueryState<ConversationInboxEntry[]>(queryKey);
+  if (!query || query.status === 'error' || query.fetchStatus === 'paused')
+    return;
+
+  // A read begun before admission can still answer with the old queue.
+  await client.cancelQueries({ queryKey, exact: true });
+  if (!scope.isCurrent()) return;
+  client.setQueryData<ConversationInboxEntry[]>(queryKey, (previous) => {
+    const current = previous?.find(
+      (item) => item.clientTurnId === clientTurnId,
+    );
+    if (current && current.updatedAt >= entry.updatedAt) return previous;
+    return [...(previous ?? []).filter((item) => item !== current), entry];
+  });
 }
 
 /**

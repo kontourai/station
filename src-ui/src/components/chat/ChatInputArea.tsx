@@ -197,9 +197,8 @@ interface ChatInputAreaProps {
    */
   turnInFlight: boolean;
   /**
-   * What Enter does while a turn is in flight. Steer is the default on
-   * engines that can take mid-turn input; queue is the only path otherwise
-   * (and whenever this send carries attachments).
+   * Whether the running turn offers an explicit steer. A follow-up queues
+   * by default, including when the engine can steer.
    */
   busyFollowUp?: 'steer' | 'queue';
   busySteeringKind?: 'native' | 'safe-stop';
@@ -654,19 +653,11 @@ export function ChatInputArea({
   const removalUnblocksSend =
     removalUnblocksSendProp ||
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
-  // A follow-up during a running turn steers it when the engine takes the
-  // message natively (it joins the turn at its next tool boundary). Safe-stop
-  // steering ends the turn early, so there Queue stays the default. An
-  // explicit choice holds until the conversation changes.
-  const [chosenSendMode, setSendMode] = useState<'queue' | 'steer' | null>(
-    null,
-  );
-  const sendMode =
-    chosenSendMode ?? (busySteeringKind === 'native' ? 'steer' : 'queue');
+  const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
     void sessionId;
-    setSendMode(null);
+    setSendMode('queue');
     setSendModeOpen(false);
     setSendAfterUploads(false);
   }, [sessionId]);

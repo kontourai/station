@@ -14,7 +14,7 @@ import {
   within,
 } from '@testing-library/react';
 import { type ReactNode, useSyncExternalStore } from 'react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   AGENT,
   CONVERSATION,
@@ -35,6 +35,12 @@ import {
 } from '../lib/outboundQueue';
 
 const connection = vi.hoisted(() => ({ status: 'connected' }));
+const requestScope = vi.hoisted(() => ({
+  apiBase: 'http://inbox.station',
+  authorityKey: 'reader',
+  requiresEnrolledCredential: false,
+  isCurrent: () => true,
+}));
 
 vi.mock('../components/chat/FileAttachmentInput', () => ({
   FileAttachmentInput: () => null,
@@ -46,16 +52,12 @@ vi.mock('../contexts/AccountPreferencesContext', () => ({
   useAccountPreferences: () => ({
     status: 'account',
     data: { schemaVersion: 1, values: { interactiveApprovalModes: {} } },
+    requestScope,
   }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://inbox.station' }),
-  useHostRequestAuthorityScope: () => ({
-    apiBase: 'http://inbox.station',
-    authorityKey: 'reader',
-    requiresEnrolledCredential: false,
-    isCurrent: () => true,
-  }),
+  useHostRequestAuthorityScope: () => requestScope,
 }));
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
@@ -151,6 +153,10 @@ function Composer() {
           agentSlug: AGENT,
           agentName: 'Claude',
           title: 'Inbox',
+          conversationId: sessions[sessionId]?.conversationId,
+          currentSessionId: sessions[sessionId]?.currentSessionId,
+          orchestrationDurability: sessions[sessionId]?.orchestrationDurability,
+          openTurnId: sessions[sessionId]?.openTurnId,
           messages: sessions[sessionId]?.messages ?? [],
           input: sessions[sessionId]?.input ?? '',
           attachments: sessions[sessionId]?.attachments ?? [],
@@ -182,6 +188,12 @@ function Composer() {
 
 describe('mounted composer inbox handoff (test-scoped caller)', () => {
   const station = createInboxHarness();
+  beforeEach(() => {
+    setClientCredentialResolver(() => ({
+      origin: apiBase,
+      requestAuthority: requestScope,
+    }));
+  });
   afterEach(() => {
     cleanup();
     activeChatsStore.removeChat(sessionId);
@@ -386,7 +398,7 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     client.clear();
   });
 
-  test('queues a busy follow-up through SDK and Hono for an independent reader', async () => {
+  test('shows a queued receipt while the list refresh waits and shares the entry with another reader', async () => {
     // SQLite returns Node-realm blobs; use that realm's byte-array constructor.
     vi.stubGlobal(
       'Uint8Array',
@@ -394,8 +406,24 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     );
     const world = station();
     await world.busy();
-    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
-      world.app.request(new Request(input, init)),
+    let holdInboxReads = false;
+    let heldReads = 0;
+    const { promise: readsReleased, resolve: releaseReads } =
+      Promise.withResolvers<void>();
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (
+          holdInboxReads &&
+          request.method === 'GET' &&
+          new URL(request.url).pathname.endsWith('/inbox')
+        ) {
+          heldReads += 1;
+          await readsReleased;
+        }
+        return world.app.request(request);
+      },
     );
     activeChatsStore.initChat(sessionId, {
       agentSlug: AGENT,
@@ -424,14 +452,29 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     );
     const mounted = render(<Composer />, { wrapper });
     const textbox = await screen.findByRole('textbox');
-    fireEvent.click(screen.getByRole('button', { name: /Send mode:/ }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Queue for next turn' }),
+    await waitFor(() =>
+      expect(
+        client.getQueryData([
+          'conversation-inbox',
+          apiBase,
+          requestScope.authorityKey,
+          CONVERSATION,
+        ]),
+      ).toEqual([]),
     );
-    fireEvent.keyDown(textbox, {
-      key: 'Enter',
-      ctrlKey: true,
-    });
+    holdInboxReads = true;
+    try {
+      fireEvent.keyDown(textbox, { key: 'Enter', ctrlKey: true });
+      await waitFor(() => expect(heldReads).toBeGreaterThan(0));
+      fireEvent.click(
+        await screen.findByRole('button', { name: '1 pending message' }),
+      );
+      expect(screen.getByText('then summarize')).toBeTruthy();
+      expect(textbox).toHaveProperty('value', '');
+    } finally {
+      holdInboxReads = false;
+      releaseReads();
+    }
     await waitFor(async () => {
       const response = await world.listInbox(READER);
       const body = await response.json();

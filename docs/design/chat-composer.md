@@ -1159,13 +1159,12 @@ Stop follows them at the row's trailing edge, so it does not move when they
 appear; Run setup narrows instead. At 390px a running turn's full row (Clear,
 Send, mode picker and Stop) still wraps to a second line once the draft holds
 text. Names and the selected mode remain accessible, and the opened picker
-uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
-picker defaults to **Steer** where the selected engine can prove native mid-turn
-input, and to **Queue** (a new turn after the entire current turn finishes)
-everywhere else, including safe-stop steering. A chosen mode holds until the
-conversation changes. Claude Code, Codex and Muse on `muse serve` have additive
-steering; a Muse Session on the `muse exec` fallback reports no steering in
-its Session summary, so it defaults to **Queue**, and refuses a steer.
+uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
+The mode picker defaults to **Queue** for every engine. Station holds a
+follow-up for the next turn when the current one is still running. A chosen
+mode holds until the conversation changes. Claude Code, Codex and Muse on
+`muse serve` have additive steering. A Muse Session on `muse exec` reports no
+steering in its Session summary and refuses a steer.
 ACP sessions report their live handshake's native channel, or an interrupting
 cancel-and-reprompt fallback. Explicit Steer on the fallback cancels the current
 prompt, waits for its terminal answer, and continues the same task with the
@@ -1229,7 +1228,9 @@ owned unconfirmed steer offers explicit Review and resend.
 A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before
-queuing. The browser retires its in-flight outbox row on either accepted receipt.
+queuing. The browser shows a matching held receipt in the open inbox before
+retiring its in-flight outbox row, then fetches the latest list. A started-turn
+receipt also retires the outbox row.
 If the answer is lost, it retains the original key for delivery inspection.
 This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another
