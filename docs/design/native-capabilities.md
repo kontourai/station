@@ -294,9 +294,10 @@ mobile storage behavior or a completed collaborator journey.
 
 `src-desktop/capabilities/default.json` grants the typed event bridge plus the
 listed app-name, window-drag/maximize, notification, haptics, and deep-link
-operations. The [source gate](../../scripts/native-platform-boundary.mjs) checks explicit
-updater and process grant declarations under `src-desktop/capabilities/`,
-`src-desktop/permissions/`, and the root `src-desktop/tauri*.conf.json` files.
+operations. The [source gate](../../scripts/native-platform-boundary.mjs)
+checks explicit updater and process grant declarations in the desktop
+capability manifests, the desktop root's Tauri configuration files, and its
+optional `permissions` subtree when present.
 Files it scans for these declarations must be JSON. Resolved Tauri ACL
 coverage, including plugin permission sets and generated packaging overlays,
 is tracked in #3864.
