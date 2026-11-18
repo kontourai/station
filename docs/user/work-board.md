@@ -6,7 +6,8 @@ receipts, and availability are always read from their owning feature.
 
 ## Pin and arrange work
 
-Open a Project, choose **Add Pane**, then choose **Work Board**. Enter the
+Open a Project, expand **Open workspace**, then choose **Add pane** and
+**Work Board**. Enter the
 exact reference ID and any required owner scope. A Task's owner scope is the
 exact Station Project **slug** (not its UUID); a Flow run's scope is the exact
 Project ID. You can pin Projects, Tasks, Sessions, approval requests, gate or

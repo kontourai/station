@@ -50,6 +50,7 @@ test.describe
       expect(project.id).toBeTruthy();
 
       await page.goto(`/projects/${slug}`);
+      await page.getByText('Open workspace', { exact: true }).click();
       await page
         .getByRole('button', { name: '+ Add pane', exact: true })
         .click();
@@ -353,6 +354,7 @@ test.describe
       });
 
       await page.goto(`/projects/${slug}`);
+      await page.getByText('Open workspace', { exact: true }).click();
       await page
         .getByRole('button', { name: '+ Add pane', exact: true })
         .click();
