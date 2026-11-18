@@ -1025,11 +1025,11 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. With a live native steering channel, **Send**
-defaults to **Steer**; otherwise it defaults to **Queue**, which delivers after
-the turn finishes. The dropdown switches between the available modes. For an
-ACP engine without native steering, choosing **Steer** stops its current step
-and continues the task with your additional instruction once cancellation
+Keep typing during a turn. **Send** defaults to **Queue**. Station holds the
+message and delivers it after the turn finishes. The message appears in the
+pending list as soon as Station accepts it. The dropdown switches between the
+available modes. For an ACP engine without native steering, choosing **Steer**
+stops its current step and continues the task with your instruction once cancellation
 finishes. Station-owned steering waits for the next safe boundary. A Muse chat
 on `muse exec` supports Queue only. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the

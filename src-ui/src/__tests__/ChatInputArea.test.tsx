@@ -146,7 +146,7 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
-  test('keeps Send and Stop available during a turn, steering natively by default', () => {
+  test('queues with Send on a native steering engine and keeps Stop available', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -156,11 +156,11 @@ describe('ChatInputArea', () => {
       onSend,
     });
     expect(screen.getByRole('textbox').getAttribute('placeholder')).toBe(
-      'Steer this turn…',
+      'Queue a follow-up…',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(onSend).toHaveBeenCalledOnce();
-    expect(onQueueFollowUp).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onQueueFollowUp).toHaveBeenCalledOnce();
     expect(
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
@@ -172,7 +172,7 @@ describe('ChatInputArea', () => {
     expect(composer?.contains(screen.getByRole('textbox'))).toBe(true);
   });
 
-  test('an explicit Queue choice wins over the native steer default', () => {
+  test('switching back to Queue clears an explicit Steer choice', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -182,6 +182,8 @@ describe('ChatInputArea', () => {
       onSend,
     });
     fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Steer this turn' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Steer' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Queue for next turn' }),
     );
