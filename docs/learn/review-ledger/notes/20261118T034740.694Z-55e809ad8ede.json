@@ -1,0 +1,7 @@
+{
+  "revision": "bac21b3e7c7233a5c6097c98f4faaa4d3df6dc7b",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"The same Stable sender and SQLite-backed Worker integration now lives with the Worker tests and compiles under the Worker TypeScript configuration. Its receiver acceptance, outbox and exact-aggregate assertions passed after the move.","inputs":["docs/reference/usage-telemetry.md","src-server/services/__tests__/telemetry-publishers.test.ts","deploy/telemetry-worker/test/station-sender.test.ts"]}
+  ]
+}
