@@ -16305,6 +16305,40 @@ export class OrchestrationService {
     this.options.eventStore?.ownedSessionActivities([threadId]).get(threadId);
 
   /** Read-only quiescence seam for derived projections that must not race a turn. */
+  /** A start command is preparing this thread before its turn can run. */
+  isSessionStartUnderway(threadId: string): boolean {
+    return this.startsUnderway.has(threadId);
+  }
+
+  /** Follow only the current plain reservation back to its readable predecessor. */
+  async readPreparingContinuationPredecessor(
+    conversationId: string,
+    sessionId: string,
+    authority: SessionReadScope,
+  ): Promise<OrchestrationSessionDetail | null> {
+    const unmaterialized = () =>
+      !this.sessionReadModel.has(sessionId) &&
+      !this.options.eventStore?.readSessionByThread(sessionId);
+    if (!this.startsUnderway.has(sessionId) || !unmaterialized()) return null;
+    const predecessor =
+      this.conversationLineage.plainReservationPredecessor(conversationId);
+    if (
+      !predecessor ||
+      this.currentConversationSessionId(conversationId) !== sessionId
+    )
+      return null;
+    const detail = await this.readSession(predecessor, authority, {
+      eventMethods: ['session.started', 'session.configured'],
+    });
+    return this.startsUnderway.has(sessionId) &&
+      unmaterialized() &&
+      this.currentConversationSessionId(conversationId) === sessionId &&
+      this.conversationLineage.plainReservationPredecessor(conversationId) ===
+        predecessor
+      ? detail
+      : null;
+  }
+
   hasActiveTurn(threadId: string): boolean {
     return this.sessionExecutionCoordinator.hasActiveTurn(threadId);
   }

@@ -83,6 +83,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
   readonly starts: ProviderSessionStartInput[] = [];
   /** Leave each turn running until `complete` ends it. */
   holdTurns = false;
+  prepareNextSession?: Promise<void>;
   workspaceHome?: string;
   /** Refuse the next send as a turn the engine opened itself. */
   refuseNextAsBusy = false;
@@ -98,6 +99,9 @@ class ScriptedAdapter implements ProviderAdapterShape {
 
   async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
+    const preparation = this.prepareNextSession;
+    this.prepareNextSession = undefined;
+    if (preparation) await preparation;
     const now = new Date().toISOString();
     const cwd = this.workspaceHome
       ? await prepareManagedAcpWorkspace(
@@ -510,7 +514,9 @@ export function createInboxHarness() {
           store.readInputlessTurnDisposition(threadId),
         readInvocationTerminal: (threadId, invocationId, turnId) =>
           store.readInvocationTerminal(threadId, invocationId, turnId),
-        coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
+        coordinatorBusy: (threadId) =>
+          service.isSessionStartUnderway(threadId) ||
+          service.hasActiveTurn(threadId),
         hasPossibleEffect: (threadId) =>
           store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
         conversationOf: (threadId) =>

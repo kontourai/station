@@ -7123,6 +7123,9 @@ export function configureRuntimeRoutes(
     const service = context.orchestrationService;
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
+      coordinatorBusy: (threadId) =>
+        service.isSessionStartUnderway(threadId) ||
+        service.hasActiveTurn(threadId),
       get automation() {
         return automationActions;
       },

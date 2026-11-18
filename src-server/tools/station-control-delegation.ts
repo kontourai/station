@@ -7865,11 +7865,17 @@ export async function matchFollowUpTargetBinding(
     orchestrationService.currentConversationSessionId(conversationId);
   if (orchestrationService.reservedConversationHandoff(currentSessionId))
     return undefined;
-  const currentDetail = await orchestrationService.readSession(
-    currentSessionId,
-    readAuthority,
-    SESSION_BINDING_EVENTS,
-  );
+  const currentDetail =
+    (await orchestrationService.readSession(
+      currentSessionId,
+      readAuthority,
+      SESSION_BINDING_EVENTS,
+    )) ??
+    (await orchestrationService.readPreparingContinuationPredecessor?.(
+      conversationId,
+      currentSessionId,
+      readAuthority,
+    ));
   if (!currentDetail) return undefined;
   const metadata = sessionBinding(rootDetail);
   const currentMetadata = sessionBinding(currentDetail);
@@ -7893,8 +7899,12 @@ export async function matchFollowUpTargetBinding(
     record(rootDetail.session).cwd,
   ).workspace;
   const requested = target.workspace;
+  const matched =
+    currentDetail.session.threadId === currentSessionId
+      ? {}
+      : { expectedInboxSessionId: currentSessionId };
   if (!requested) {
-    if (!workspace) return {};
+    if (!workspace) return matched;
     if (
       workspace.kind === 'directory' &&
       rootDetail.session.cwdManagedWorkspace === true &&
@@ -7913,7 +7923,7 @@ export async function matchFollowUpTargetBinding(
       workspace?.kind === 'directory' &&
       workspace.cwd === requested.cwd)
   )
-    return {};
+    return matched;
   return undefined;
 }
 
