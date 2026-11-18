@@ -35,7 +35,8 @@ Custom Agent artwork takes precedence.
 The additional monochrome SVGs come from the ACP Registry at commit
 `90600ada478cc938a021868f6482127b4221ac41`. The paths below are relative to
 that revision. Station renders them as local masks that take the icon's
-foreground color in either theme.
+foreground color in either theme. The mask rendering and Hermes image load
+through the same lazy icon chunk as the inline marks.
 
 | Mark | Source path |
 | --- | --- |

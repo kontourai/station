@@ -4,7 +4,13 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AgentPickerGroups } from '../components/chat-start/AgentPickerRow';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -70,7 +76,7 @@ function row(slug: string): HTMLElement {
 afterEach(cleanup);
 
 describe('Agent picker row presentation', () => {
-  test('shows the detected coding app mark and respects custom artwork', () => {
+  test('shows the detected coding app mark and respects custom artwork', async () => {
     const gemini: AgentData = {
       slug: agentId('gemini-default'),
       name: 'Gemini CLI',
@@ -89,9 +95,11 @@ describe('Agent picker row presentation', () => {
       unavailable: false,
     }));
 
-    expect(
-      row(gemini.slug).querySelector('[data-brand-key="gemini"]'),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        row(gemini.slug).querySelector('[style*="/provider-icons/gemini.svg"]'),
+      ).toBeTruthy(),
+    );
     expect(within(row(custom.slug)).getByText('★')).toBeTruthy();
   });
 

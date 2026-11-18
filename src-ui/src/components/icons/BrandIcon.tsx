@@ -5,19 +5,18 @@ import { getInitials } from '../../utils/layout';
 import { LazyBoundary } from '../LazyBoundary';
 import './BrandIcon.css';
 
-const INLINE_BRANDS = [
+const BRAND_KEYS = [
   'station',
   'claude',
   'codex',
   'pi',
   'kiro',
   'opencode',
-] as const;
-
-/** Brands drawn as inline SVG, in `BrandMarks`. */
-export type InlineBrandKey = (typeof INLINE_BRANDS)[number];
-
-const MASK_BRANDS = [
+  'muse',
+  'cursor',
+  'goose',
+  'qwen',
+  'hermes',
   'antigravity',
   'auggie',
   'cline',
@@ -32,24 +31,7 @@ const MASK_BRANDS = [
   'mistral-vibe',
 ] as const;
 
-type BrandKey =
-  | InlineBrandKey
-  | 'muse'
-  | 'cursor'
-  | 'goose'
-  | 'qwen'
-  | 'hermes'
-  | (typeof MASK_BRANDS)[number];
-
-const BRAND_KEYS = [
-  ...INLINE_BRANDS,
-  'muse',
-  'cursor',
-  'goose',
-  'qwen',
-  'hermes',
-  ...MASK_BRANDS,
-] as const satisfies readonly BrandKey[];
+export type BrandKey = (typeof BRAND_KEYS)[number];
 
 /** Exact engine-id-to-mark lookup. Engine display names never participate. */
 export function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
@@ -169,15 +151,8 @@ function Mark({ brand }: { brand: BrandKey }) {
     case 'cursor':
     case 'goose':
     case 'qwen':
-    case 'hermes':
       return <img src={`/provider-icons/${brand}.svg`} alt="" />;
-    case 'station':
-    case 'claude':
-    case 'codex':
-    case 'pi':
-    case 'kiro':
-    case 'opencode':
-      // Until the chunk arrives the tile shows its sized, neutral box.
+    default:
       return (
         <LazyBoundary
           load={loadBrandMarks}
@@ -185,13 +160,6 @@ function Mark({ brand }: { brand: BrandKey }) {
           pending={null}
           unavailable={noMark}
           shareAcrossMounts
-        />
-      );
-    default:
-      return (
-        <span
-          className="brand-icon__mask"
-          style={{ maskImage: `url(/provider-icons/${brand}.svg)` }}
         />
       );
   }
@@ -254,18 +222,11 @@ export function BrandIcon({
     ? safeSameOriginImage(icon)
     : undefined;
   const imageSource = localUrl ?? safeImageIcon;
-  const fallback = getInitials(name || id || '?');
-  const content = explicitBrand(icon)
-    ? undefined
-    : isGlyph(icon)
-      ? icon
-      : undefined;
-  const usesInitialsFallback =
-    !content &&
-    !explicitBrandKey &&
-    !(imageSource && failedImageSource !== imageSource) &&
-    !brand;
-  const isIdenticon = Boolean(identiconSeed) && usesInitialsFallback;
+  const hasLocalImage = imageSource && failedImageSource !== imageSource;
+  const content = !explicitBrandKey && isGlyph(icon) ? icon : undefined;
+  const isIdenticon = Boolean(
+    identiconSeed && !content && !hasLocalImage && !brand,
+  );
 
   return (
     <span
@@ -303,7 +264,7 @@ export function BrandIcon({
         </span>
       ) : explicitBrandKey ? (
         <Mark brand={explicitBrandKey} />
-      ) : imageSource && failedImageSource !== imageSource ? (
+      ) : hasLocalImage ? (
         <img
           src={imageSource}
           alt=""
@@ -313,7 +274,9 @@ export function BrandIcon({
         <Mark brand={brand} />
       ) : (
         (fallbackContent ?? (
-          <span className="brand-icon__initials">{fallback}</span>
+          <span className="brand-icon__initials">
+            {getInitials(name || id || '?')}
+          </span>
         ))
       )}
     </span>
