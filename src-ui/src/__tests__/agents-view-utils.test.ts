@@ -508,8 +508,6 @@ describe('agents view utils', () => {
     });
   });
 
-  // #2613: the editor has no control for `unattendedAutoApprove` yet (#2658),
-  // so a save must write back exactly what it loaded and never invent the key.
   test('load then save keeps an unattended opt-in exactly', () => {
     const form = formFromAgent({
       slug: 'nightly',

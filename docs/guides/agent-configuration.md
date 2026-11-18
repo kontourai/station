@@ -460,6 +460,12 @@ legacy `autoApprove` against the runtime name only, so the usual
 that match the runtime name, including `*`, keep working as before. Effective
 Ask rules still require a person.
 
+The Agent editor's Tools tab shows the configured patterns under **Unattended
+approvals**. Removing an integration clears its integration-specific patterns.
+Disabling tools narrows those patterns to the remaining selected tools.
+Agent-wide patterns such as `*` remain in effect. Copies start without
+unattended approval patterns.
+
 To let an agent run a tool unattended, list it in `unattendedAutoApprove`. For
 a scheduled job, an operator can instead record an unattended tool grant for
 that job alone through `/api/agents/unattended-grants`, keyed by the exact
