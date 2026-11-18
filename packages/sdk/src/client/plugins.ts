@@ -39,19 +39,47 @@ export async function checkPluginUpdates(
       );
     throw error;
   });
-  if (!response.ok || result?.success === false)
+  if (!response.ok)
     throw envelopeError(response, result, 'Could not check for plugin updates');
-  if (!Array.isArray(result?.updates))
+  if (!result || typeof result !== 'object' || Array.isArray(result))
     throw new Error('Plugin update check response is malformed');
-  const status = result.status;
+  const { status, updates, managedByPolicy, success } = result as Record<
+    string,
+    unknown
+  >;
+  if (success === false)
+    throw envelopeError(response, result, 'Could not check for plugin updates');
   if (
-    status !== undefined &&
-    status !== 'complete' &&
-    status !== 'partial' &&
-    status !== 'unavailable'
+    !Array.isArray(updates) ||
+    updates.some(
+      (update) =>
+        !update ||
+        typeof update !== 'object' ||
+        typeof update.name !== 'string' ||
+        typeof update.currentVersion !== 'string' ||
+        typeof update.latestVersion !== 'string' ||
+        typeof update.source !== 'string',
+    ) ||
+    (status !== undefined &&
+      status !== 'complete' &&
+      status !== 'partial' &&
+      status !== 'unavailable') ||
+    (managedByPolicy !== undefined &&
+      (!Array.isArray(managedByPolicy) ||
+        managedByPolicy.some(
+          (entry) =>
+            !entry ||
+            typeof entry !== 'object' ||
+            typeof entry.name !== 'string' ||
+            typeof entry.message !== 'string',
+        )))
   )
     throw new Error('Plugin update check response is malformed');
-  return { ...result, status: status ?? 'unknown' };
+  return {
+    status: status ?? 'unknown',
+    updates,
+    ...(managedByPolicy !== undefined ? { managedByPolicy } : {}),
+  };
 }
 
 export type InstalledPluginRecord =

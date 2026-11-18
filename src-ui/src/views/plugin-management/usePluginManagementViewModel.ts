@@ -237,7 +237,10 @@ export function usePluginManagementViewModel() {
     () => filterPlugins(plugins, search),
     [plugins, search],
   );
-  const items = useMemo(() => buildPluginListItems(filtered), [filtered]);
+  const items = useMemo(
+    () => buildPluginListItems(filtered, updates),
+    [filtered, updates],
+  );
 
   useEffect(() => {
     if (!requestedProposalId) return;

@@ -311,6 +311,9 @@ test.describe('Plugin Update Flow', () => {
     await expect(page.getByText('1 update available')).toBeVisible();
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await expect(
+        page.getByText('v1.0.0 · Update available', { exact: true }),
+      ).toBeVisible();
       for (const theme of ['light', 'dark']) {
         await page.evaluate(
           (value) => document.documentElement.setAttribute('data-theme', value),

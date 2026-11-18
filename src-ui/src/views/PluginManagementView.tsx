@@ -165,9 +165,9 @@ export function PluginManagementView({
             </Button>
           </>
         }
-        sidebarActions={
+        listIntro={
           checkMessage && (
-            <>
+            <div className="plugins__update-check">
               <span role="status">{checkMessage}</span>
               {checkStatus && checkStatus !== 'complete' && (
                 <Button
@@ -178,7 +178,7 @@ export function PluginManagementView({
                   Retry update check
                 </Button>
               )}
-            </>
+            </div>
           )
         }
         emptyIcon={<PlugGlyph />}
