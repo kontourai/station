@@ -25,7 +25,7 @@ const example = resolve(__dirname, '../../../examples/meeting-transcription');
 const makeTempDir = trackTempDirs({ lifetime: 'file' });
 const sdkEntry = '@kontourai/station-sdk/agent';
 const host = window as Window & {
-  __station_ai_shared: Record<string, unknown>;
+  __station_ai_shared?: Record<string, unknown>;
   __station_ai_plugins?: Record<string, unknown>;
   require?: unknown;
 };
@@ -157,11 +157,11 @@ test('Station loads the built meeting pane and sends only to the cataloged Stati
 });
 
 test('a host SDK predating the identity export loads the pane with upgrade guidance', async () => {
-  const current = host.__station_ai_shared[
-    sdkEntry
-  ] as typeof import('@kontourai/station-sdk/agent');
-  const older = { ...current, STATION_AGENT_ID: undefined };
-  host.__station_ai_shared[sdkEntry] = older;
+  const shared = host.__station_ai_shared;
+  if (!shared) throw new Error('Station did not publish the shared SDK.');
+  const current = shared[sdkEntry];
+  const agent = await import('@kontourai/station-sdk/agent');
+  shared[sdkEntry] = { ...agent, STATION_AGENT_ID: undefined };
   try {
     const Pane = await loadMeetingPane();
     render(<Pane />);
@@ -170,6 +170,6 @@ test('a host SDK predating the identity export loads the pane with upgrade guida
     );
     expect(screen.queryByRole('button', { name: 'Start meeting' })).toBeNull();
   } finally {
-    host.__station_ai_shared[sdkEntry] = current;
+    shared[sdkEntry] = current;
   }
 });
