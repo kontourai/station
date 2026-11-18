@@ -510,6 +510,9 @@ instead of Dismiss, and Hide records a third-party Session on the host for the
 person rather than in the browser; the action keeps the same row, tray and
 Details placement.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
+On desktop, move the pointer from an Inbox row into its preview to scroll
+long content such as Basis. The preview stays inside the window as late
+details arrive. Escape or scrolling the Inbox closes it.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
 and renders 390px and 1440px in both themes. Physical-device behavior remains

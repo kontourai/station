@@ -216,6 +216,7 @@ function ProjectAccentSwatch({
  * cards can never be open at once without a coordinator.
  */
 const INBOX_HOVER_OPEN_DELAY_MS = 300;
+const INBOX_HOVER_CLOSE_DELAY_MS = 180;
 
 function useInboxRowHoverCard() {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -234,19 +235,27 @@ function useInboxRowHoverCard() {
     clearTimeout(timeout.current);
     setAnchor(null);
   }, []);
+  const cancelHoverTimer = useCallback(() => {
+    clearTimeout(timeout.current);
+  }, []);
   const onPointerEnter = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
       if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
       clearTimeout(timeout.current);
+      if (anchor) return;
       const target = event.currentTarget;
       timeout.current = setTimeout(
         () => setAnchor(target),
         INBOX_HOVER_OPEN_DELAY_MS,
       );
     },
-    [],
+    [anchor],
   );
-  const onPointerLeave = close;
+  // Keep the card open while the pointer crosses the gap beside the row.
+  const onPointerLeave = useCallback(() => {
+    clearTimeout(timeout.current);
+    if (anchor) timeout.current = setTimeout(close, INBOX_HOVER_CLOSE_DELAY_MS);
+  }, [anchor, close]);
   // focusin/focusout bubble, so a focus move BETWEEN the row's own controls
   // (open button → snooze) must not close the card: only a focus leaving the
   // row entirely does.
@@ -269,6 +278,7 @@ function useInboxRowHoverCard() {
     close,
     onPointerEnter,
     onPointerLeave,
+    cancelHoverTimer,
     onFocus,
     onBlur,
   };
@@ -1130,6 +1140,8 @@ export function InboxRow({
             projectIcon,
             anchor: hover.anchor,
             onClose: hover.close,
+            onPointerEnter: hover.cancelHoverTimer,
+            onPointerLeave: hover.onPointerLeave,
             id: hoverCardId,
           }}
         />

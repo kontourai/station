@@ -1,4 +1,8 @@
-import { expect, type Page } from '@playwright/test';
+import { copyFile } from 'node:fs/promises';
+import { expect, type Page, type TestInfo } from '@playwright/test';
+import gallerySessionInventory from './fixtures/gallery-session-inventory.json' with {
+  type: 'json',
+};
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { mockChatShell } from './helpers/chat-shell-fixture';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -6,6 +10,7 @@ import {
   dismissSetupLauncher,
   installMockOrchestrationSse,
 } from './helpers/orchestration';
+import { chooseChatRegionRow } from './helpers/region-placement';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 const json = (body: unknown) => ({
@@ -20,6 +25,7 @@ const UPDATED_AT = new Date(Date.now() - 5 * 60_000).toISOString();
 const CREATED_AT = new Date(Date.now() - 10 * 60_000).toISOString();
 const TITLE = 'Stored pricing review';
 const ANSWER = 'The stored answer is back on screen.';
+const PROMPT = 'Review the stored pricing.';
 
 /**
  * A conversation the Station keeps, with no chat open for it in this
@@ -145,6 +151,61 @@ async function storeConversation(page: Page) {
           )
         : rejectUnexpectedFixtureRequest(route),
   );
+  await page.route(
+    `**/api/orchestration/session-reads/${THREAD_ID}/turn-directory*`,
+    (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      const includeCount =
+        new URL(route.request().url()).searchParams.get('includeCount') !==
+        'false';
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            session: {
+              conversationId: THREAD_ID,
+              ...(includeCount ? { turnCount: 1 } : {}),
+            },
+            turns: [
+              {
+                turnId: 'turn-0',
+                startedAt: CREATED_AT,
+                request: PROMPT,
+                outcome: 'completed',
+              },
+            ],
+            nextCursor: null,
+          },
+        }),
+      );
+    },
+  );
+  await page.route('**/api/coding/git/status**', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          ...json({
+            success: false,
+            error: 'Git is unavailable for this stored chat fixture',
+          }),
+          status: 503,
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  // Rebind the captured inventory and its nested references to this chat.
+  const { inventory } = JSON.parse(
+    JSON.stringify(gallerySessionInventory).replaceAll(
+      'gallery-inventory-conversation',
+      THREAD_ID,
+    ),
+  );
+  await page.route(
+    `**/api/orchestration/sessions/${THREAD_ID}/inventory?**`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill(json({ success: true, data: inventory }))
+        : rejectUnexpectedFixtureRequest(route),
+  );
   await mockRuntimeConversation(page, {
     id: THREAD_ID,
     agentSlug: 'station',
@@ -157,9 +218,25 @@ async function storeConversation(page: Page) {
       buildLongSessionTurns({
         threadId: THREAD_ID,
         turnCount: 1,
+        baseTimestamp: CREATED_AT,
+        promptText: () => PROMPT,
         replyText: () => ANSWER,
       }),
   });
+}
+
+async function capturePlacement(page: Page, testInfo: TestInfo, name: string) {
+  const directory = process.env.STATION_UI_REVIEW_SCREENSHOT_DIR;
+  const screenshot = await page.screenshot({
+    path: testInfo.outputPath(`${name}.png`),
+    animations: 'disabled',
+  });
+  await testInfo.attach(name, { body: screenshot, contentType: 'image/png' });
+  if (directory)
+    await copyFile(
+      testInfo.outputPath(`${name}.png`),
+      `${directory}/${name}.png`,
+    );
 }
 
 // #4814: opening a stored conversation binds a new dock chat to its inbox
@@ -189,4 +266,108 @@ test('an inbox row for a stored conversation with no open chat opens its transcr
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
     .not.toBeNull();
+});
+
+test('the desktop Inbox hover card scrolls to Basis in a short window', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 300 });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await mockChatShell(page);
+  await installMockOrchestrationSse(page);
+  await storeConversation(page);
+
+  await page.goto('/?dock=open&maximize=true');
+  await dismissSetupLauncher(page);
+  const inbox = page.locator('#chat-dock').getByRole('complementary', {
+    name: 'Inbox chats',
+    exact: true,
+  });
+  const row = inbox.getByRole('button', { name: /^Station session\b/i });
+  await row.hover();
+  const card = page
+    .getByRole('tooltip')
+    .filter({ has: page.getByRole('heading', { name: 'Basis', exact: true }) });
+  const basis = card.getByRole('region', { name: 'Basis', exact: true });
+  await expect(basis).toBeAttached();
+  await expect
+    .poll(() =>
+      card.evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        return bounds.top >= 8 && bounds.bottom <= window.innerHeight - 8;
+      }),
+    )
+    .toBe(true);
+  const cardBox = await card.boundingBox();
+  const rowBox = await row.boundingBox();
+  if (!cardBox || !rowBox)
+    throw new Error('The Inbox row and hover card must have bounds');
+  expect(
+    await basis.evaluate(
+      (node) =>
+        node.getBoundingClientRect().bottom >
+        node.closest('[role="tooltip"]')!.getBoundingClientRect().bottom,
+    ),
+  ).toBe(true);
+  await capturePlacement(page, testInfo, 'inbox-basis-before-wheel');
+  await page.mouse.move(
+    cardBox.x + cardBox.width / 2,
+    Math.max(cardBox.y + 12, rowBox.y + rowBox.height / 2),
+    { steps: 8 },
+  );
+  await page.mouse.wheel(0, 480);
+  await expect
+    .poll(() => card.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(0);
+  await expect(basis).toBeInViewport({ ratio: 0.9 });
+  await capturePlacement(page, testInfo, 'inbox-basis-scrolled');
+  await page.keyboard.press('Escape');
+  await expect(card).toBeHidden();
+});
+
+test('This chat opens on the roomier side of the actual dock header', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 880, height: 820 });
+  await mockChatShell(page);
+  await installMockOrchestrationSse(page);
+  await storeConversation(page);
+  await page.goto('/?dock=open');
+  await dismissSetupLauncher(page);
+
+  const dock = page.locator('#chat-dock');
+  await dock.getByRole('button', { name: /^Station session\b/i }).click();
+  await expect(page.getByText(ANSWER, { exact: true })).toBeVisible();
+  const chip = dock.getByRole('button', { name: /^This chat(?: — |$)/ });
+  const sheet = page.getByRole('dialog', { name: 'This chat' });
+  for (const side of ['above', 'below']) {
+    await chip.click();
+    await expect(sheet).toBeVisible();
+    await expect
+      .poll(async () => {
+        const trigger = await chip.boundingBox();
+        const panel = await sheet.boundingBox();
+        if (!trigger || !panel) return null;
+        const height = page.viewportSize()!.height;
+        return {
+          roomier:
+            trigger.y >= height - (trigger.y + trigger.height)
+              ? 'above'
+              : 'below',
+          placed:
+            panel.y >= trigger.y + trigger.height
+              ? 'below'
+              : panel.y + panel.height <= trigger.y
+                ? 'above'
+                : 'overlap',
+          contained: panel.y >= 0 && panel.y + panel.height <= height,
+        };
+      })
+      .toEqual({ roomier: side, placed: side, contained: true });
+    await capturePlacement(page, testInfo, `chat-context-${side}`);
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    await expect(chip).toBeFocused();
+    if (side === 'above') await chooseChatRegionRow(page, 'Maximize');
+  }
 });
