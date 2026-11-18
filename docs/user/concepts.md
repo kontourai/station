@@ -190,8 +190,9 @@ sends it using the same key. **More delivery actions → Copy message** preserve
 Uncertain delivery remains fenced to prevent duplicate work.
 
 Native steering has engine-defined placement. Station-owned steering waits for
-an observed tool boundary, otherwise the next turn. If a handoff may already
-have reached an engine, **May have been sent** stays visible. **Review and resend**
+an observed tool boundary in that turn. The pending row shows a refusal if the
+turn ends before the steer is placed. If a handoff may have reached an engine,
+**May have been sent** stays visible. **Review and resend**
 restores the text into an empty composer; sending again is your explicit choice.
 Display-only notes appear immediately without sending anything to an engine.
 
