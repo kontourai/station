@@ -27,6 +27,7 @@ export interface AttachAnswerToTaskAdapter extends TaskPickerAdapter {
 export interface AttachAnswerToTaskButtonProps {
   sessionId: string;
   turnId: string;
+  triggerLabel?: string;
   projectId?: string;
   excerpt?: string;
   adapter: AttachAnswerToTaskAdapter;
@@ -53,6 +54,7 @@ function answerSuccess(task: TaskPickerTask) {
 export function AttachAnswerToTaskButton({
   sessionId,
   turnId,
+  triggerLabel = 'Add to Task',
   projectId,
   excerpt,
   adapter,
@@ -64,7 +66,7 @@ export function AttachAnswerToTaskButton({
   return (
     <TaskPicker
       target={{ sessionId, turnId }}
-      triggerLabel="Add to Task"
+      triggerLabel={triggerLabel}
       triggerAriaLabel="Add to Task: answer"
       dialogTitle="Add to Task"
       eyebrow="Add to Task"
@@ -102,6 +104,7 @@ function useTaskPickerAdapter(projectId?: string) {
 export function ConnectedAttachAnswerToTaskButton({
   sessionId,
   turnId,
+  triggerLabel,
   projectId,
   excerpt,
   menuItem,
@@ -112,6 +115,7 @@ export function ConnectedAttachAnswerToTaskButton({
   AttachAnswerToTaskButtonProps,
   | 'sessionId'
   | 'turnId'
+  | 'triggerLabel'
   | 'projectId'
   | 'excerpt'
   | 'menuItem'
@@ -143,6 +147,7 @@ export function ConnectedAttachAnswerToTaskButton({
     <AttachAnswerToTaskButton
       sessionId={sessionId}
       turnId={turnId}
+      triggerLabel={triggerLabel}
       projectId={projectId}
       excerpt={excerpt}
       menuItem={menuItem}
