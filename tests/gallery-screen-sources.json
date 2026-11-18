@@ -216,7 +216,13 @@
     "developer-telemetry": ["src-ui/src/views/DeveloperView.tsx"],
     "profile": ["src-ui/src/pages/ProfilePage.tsx"],
     "settings": ["src-ui/src/views/SettingsView.tsx"],
-    "appearance": ["src-ui/src/pages/AppearancePage.tsx"],
+    "appearance": [
+      "src-ui/src/pages/AppearancePage.tsx",
+      "src-ui/src/pages/CustomAppearanceSection.tsx",
+      "src-ui/src/pages/AppearanceStudio.tsx",
+      "src-ui/src/pages/AppearanceStudio.css",
+      "src-ui/src/lib/custom-appearance/visual-css.ts"
+    ],
     "settings-info-tip": ["src-ui/src/views/SettingsView.tsx"],
     "agent-editor": ["src-ui/src/views/AgentsView.tsx"],
     "agent-editor-not-runnable": ["src-ui/src/views/AgentsView.tsx"],
@@ -964,7 +970,10 @@
       "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
       "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
       "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
-      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
     ],
     "child-chat-light-1440": [
       "src-ui/src/components/chat-dock/ChatDock.tsx",
@@ -973,7 +982,10 @@
       "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
       "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
       "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
-      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
     ],
     "child-chat-dark-412": [
       "src-ui/src/components/chat-dock/ChatDock.tsx",
@@ -1000,7 +1012,10 @@
       "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
       "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
       "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
-      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
     ],
     "child-chat-light-390": [
       "src-ui/src/components/chat-dock/ChatDock.tsx",
@@ -1009,7 +1024,10 @@
       "src-ui/src/components/chat-dock/ChatDockHeader.tsx",
       "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
       "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
-      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts"
+      "src-ui/src/workspace-panes/agents/childTranscriptMessages.ts",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
     ],
     "new-chat-dark-phone": [
       "src-ui/src/views/HomeView.tsx",
@@ -1021,7 +1039,10 @@
     ],
     "active-chat-phone": [
       "src-ui/src/views/HomeView.tsx",
-      "src-ui/src/components/chat-dock/ChatDock.tsx"
+      "src-ui/src/components/chat-dock/ChatDock.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.tsx",
+      "src-ui/src/components/chat/AppearanceProposalCard.css",
+      "src-ui/src/lib/custom-appearance/proposal-actions.ts"
     ],
     "detected-project-phone": [
       "src-ui/src/views/HomeView.tsx",

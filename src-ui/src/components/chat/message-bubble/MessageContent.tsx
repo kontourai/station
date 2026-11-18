@@ -56,6 +56,7 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 export const INLINE_RUN_LIMIT = 1;
 
 interface MessageContentProps {
+  sessionId?: string;
   /**
    * What the server's open read says this caller may do in the
    * conversation; a reloaded runtime-error part picks its hint by it, as the
@@ -84,6 +85,7 @@ interface MessageContentProps {
 }
 
 function MessageContentComponent({
+  sessionId,
   callerAccess,
   contentParts,
   messageKey = 'message',
@@ -158,6 +160,7 @@ function MessageContentComponent({
     <ToolCallDisplay
       key={index}
       toolCall={part as any}
+      sessionId={sessionId}
       showDetails={showToolDetails}
       onApprove={
         // #2316: a card bound to its request by the projection answers from
@@ -416,6 +419,7 @@ function areMessageContentPropsEqual(
     return previous.textContent === next.textContent;
   }
   return (
+    previous.sessionId === next.sessionId &&
     previous.contentParts === next.contentParts &&
     previous.textContent === next.textContent &&
     previous.chatFontSize === next.chatFontSize &&
