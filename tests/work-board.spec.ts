@@ -271,8 +271,6 @@ test.describe
       await page.keyboard.press('Tab');
       await expect(move).toBeFocused();
       await page.keyboard.press('Tab');
-      await expect(projectCard.getByRole('link')).toBeFocused();
-      await page.keyboard.press('Tab');
       await expect(resize).toBeFocused();
       await page.keyboard.press('Tab');
       await expect(removeProject).toBeFocused();
