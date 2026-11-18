@@ -21,7 +21,10 @@ export function UsageDisclosureRow({
       {...settingsRow('usage-disclosure')}
       description="Review the fields this Station reports for each usage sharing choice."
     >
-      <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <details
+        className="usage-telemetry-disclosure__inventory"
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+      >
         <summary>View included fields</summary>
         {open && (
           <>

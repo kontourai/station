@@ -258,7 +258,14 @@ export function StationConfigSection({
       ? projectOverride.values[overrideKey]
       : undefined;
     return renderSettingRow({
-      definition,
+      definition:
+        key === 'defaultMaxTurns' && config.runtime === 'strands'
+          ? {
+              ...definition,
+              description:
+                'The saved step limit is inactive with this Station configuration.',
+            }
+          : definition,
       value:
         overridable && overrideValue !== undefined
           ? overrideValue

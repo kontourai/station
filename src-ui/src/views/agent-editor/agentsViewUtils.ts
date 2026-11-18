@@ -273,6 +273,11 @@ export function validateAgentForm(
   if (requiresPrompt && !form.prompt.trim()) {
     errors.prompt = 'System prompt is required';
   }
+  if (form.maxSteps) {
+    const steps = Number(form.maxSteps);
+    if (!Number.isInteger(steps) || steps < 1 || steps > 100)
+      errors.maxSteps = 'Enter a whole number from 1 to 100.';
+  }
   if (isCreating) {
     if (!form.slug.trim()) errors.slug = 'Slug is required';
     else if (!/^[a-z0-9-]+$/.test(form.slug))
@@ -415,7 +420,7 @@ export function agentSaveErrorMessage(error: unknown): string {
 
 export function buildAgentPayload(
   form: AgentFormData,
-  options: { isCreating?: boolean } = {},
+  options: { isCreating?: boolean; previousMaxSteps?: string } = {},
 ) {
   return {
     slug: agentId(form.slug),
@@ -425,7 +430,11 @@ export function buildAgentPayload(
     model: form.modelId || undefined,
     region: form.region || undefined,
     guardrails: form.guardrails || undefined,
-    maxSteps: form.maxSteps ? parseInt(form.maxSteps, 10) : undefined,
+    maxSteps: form.maxSteps
+      ? Number(form.maxSteps)
+      : options.previousMaxSteps
+        ? null
+        : undefined,
     // Send `tools` when ANY of its fields carries state. Gating on
     // mcpServers alone silently discarded available/autoApprove/aliases for
     // an agent with no MCP servers — a save the editor reported as success

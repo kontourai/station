@@ -53,25 +53,48 @@ function composer(
   {
     model = 'claude-sonnet-4-5-20250929',
     to = 'OpenCode Zen gateway (work)',
+    reopenFreshContext = false,
   } = {},
 ) {
   return `
-    import React, {useRef} from 'react';
+    import React, {useEffect, useRef, useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {ChatInputArea} from './src-ui/src/components/chat/ChatInputArea';
+    import {chatNextTurnStartsSession} from './src-ui/src/utils/engine';
+    import {conversationCanMutate} from './src-ui/src/contexts/conversation-open-policy';
+    import {resolveConversationOpen} from './packages/sdk/src/conversation-open';
+    const fresh = ${reopenFreshContext};
     function App(){
       const textareaRef=useRef(null);
+      const [open, setOpen] = useState(undefined);
+      const [text, setText] = useState('');
+      const [sent, setSent] = useState('');
+      useEffect(() => {
+        if (fresh) resolveConversationOpen('fixture-conversation', 'http://station.test').then(setOpen);
+      }, []);
+      const canSend = !fresh || (conversationCanMutate({
+        conversationOpenPending: !open,
+        conversationOpenState: open,
+      }) && open?.callerAccess?.continue !== false);
       const noop=()=>{};
       return <div className="chat-dock__body" style={{height:700,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
-        <ChatInputArea agentSlug="reviewer" sessionId="fixture" input="" textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={false} modelSupportsAttachments={false} fontSize={14} dockHeight={700} apiBase="http://station.test" canModelSelect={true} availableModels={[]} modelQuery={null} commandQuery={null} slashCommands={[]}
+        {fresh && <output id="sent-continuation">{sent}</output>}
+        <ChatInputArea agentSlug="reviewer" sessionId="fixture" input={text} textareaRef={textareaRef} attachments={[]} disabled={!canSend} turnInFlight={false} modelSupportsAttachments={false} fontSize={14} dockHeight={700} apiBase="http://station.test" canModelSelect={true} availableModels={[]} modelQuery={null} commandQuery={null} slashCommands={[]}
           agentLabel="Release reviewer (work)" onOpenAgentHandoff={noop}
           executionEngineLabel="Claude Code (work)"
-          agentEngineMove={{to:'${to}', nextTurn:${nextTurn}}}
+          agentEngineMove={{to:'${to}', nextTurn:chatNextTurnStartsSession({
+            conversationId:'fixture-conversation', currentSessionId:'fixture-session',
+            orchestrationStatus: 'exited',
+            conversationOpenState: {
+              status: 'resolved', conversation: { id: 'fixture-conversation' }, currentSessionId: 'fixture-session',
+              canContinue: true, nextTurnStartsSession: ${nextTurn ? 'true' : 'undefined'},
+            },
+          })}}
           currentModel="${model}"
           executionMode="external"
           acpSessionModes={[{id:'build',name:'build'},{id:'plan',name:'plan'}]} acpCurrentModeId="build" onAcpSessionModeChange={noop}
           acpApproval={{control:'engine', engineName:'OpenCode Zen gateway (work)', engineId:'opencode'}}
-          onInputChange={noop} onSend={noop} onCancel={noop} onClearInput={noop} selectAttachmentFiles={noop} onRemoveAttachment={noop} onClearAttachments={noop} onModelSelect={noop} onModelReset={noop} onModelClose={noop} onModelOpen={noop} onModelRuntimeOptionChange={noop} onApprovalModeChange={noop} onCommandSelect={noop} onCommandClose={noop} onHistoryUp={noop} onHistoryDown={noop} onShowStats={noop} updateFromInput={noop} closeAll={noop}/>
+          onInputChange={setText} onSend={async () => setSent(text)} onCancel={noop} onClearInput={noop} selectAttachmentFiles={noop} onRemoveAttachment={noop} onClearAttachments={noop} onModelSelect={noop} onModelReset={noop} onModelClose={noop} onModelOpen={noop} onModelRuntimeOptionChange={noop} onApprovalModeChange={noop} onCommandSelect={noop} onCommandClose={noop} onHistoryUp={noop} onHistoryDown={noop} onShowStats={noop} updateFromInput={noop} closeAll={noop}/>
       </div>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
@@ -212,6 +235,22 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
   );
   try {
     expect(errors).toEqual([]);
+    const captureDir = process.env.STATION_CHAT_CONTINUATION_CAPTURE_DIR;
+    if (captureDir) {
+      for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 844 });
+        for (const theme of ['light', 'dark']) {
+          await page.evaluate(
+            (value) =>
+              document.documentElement.setAttribute('data-theme', value),
+            theme,
+          );
+          await page.screenshot({
+            path: resolve(captureDir, `engine-${width}-${theme}.png`),
+          });
+        }
+      }
+    }
     expect(await page.locator('.chat-input__next-turn-notice').count()).toBe(0);
     // With Run setup closed, its trigger says the Agent moved, at every phone
     // width: where the label collapses to marks (320, 360) and where it shows.
@@ -272,7 +311,7 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
             ?.textContent,
       ),
     ).toBe(
-      'This conversation runs on Claude Code (work). Its Agent now uses OpenCode Zen gateway (work).',
+      'This conversation used Claude Code (work). Its Agent now uses OpenCode Zen gateway (work).',
     );
 
     // Opened, the sheet holds the four real controls and names where the
@@ -386,3 +425,57 @@ function sheetFaults() {
   }
   return faults;
 }
+
+test('a freshly reopened context reservation enables a real composer submission', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(
+    composer(false, { reopenFreshContext: true }),
+    [controls],
+    { viewport: { width: 390, height: 844 } },
+    async (page) => {
+      await page.route(
+        'http://station.test/api/conversations/fixture-conversation/open',
+        (route) =>
+          route.fulfill({
+            json: {
+              success: true,
+              data: {
+                status: 'fresh-context-ready',
+                conversation: {
+                  id: 'fixture-conversation',
+                  title: 'Context reset',
+                  agentSlug: 'reviewer',
+                },
+                predecessorSessionId: 'fixture-session',
+                reservedSessionId: 'fresh-session',
+                transcript: {
+                  available: true,
+                  owner: 'runtime',
+                  messageCount: 2,
+                },
+                canContinue: true,
+                answerability: { answerable: true },
+                recoveryActions: [],
+              },
+            },
+          }),
+      );
+    },
+  );
+  try {
+    const reopened = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/fixture-conversation/open') && response.ok(),
+    );
+    await page.reload();
+    await reopened;
+    const input = page.locator('textarea');
+    await input.fill('Continue with a fresh context');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    expect(await page.locator('#sent-continuation').textContent()).toBe(
+      'Continue with a fresh context',
+    );
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

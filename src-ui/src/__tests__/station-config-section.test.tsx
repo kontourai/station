@@ -124,6 +124,48 @@ test('#2182: a key renders under the section its deep link names', () => {
   expect(disagreements).toEqual([]);
 });
 
+test('the configured runtime explains an inactive step limit without dropping its saved value', () => {
+  const props = {
+    containerScope: 'station' as const,
+    section: 'agent-runs' as const,
+    onChange: vi.fn(),
+  };
+  const view = render(
+    <StationConfigSection
+      {...props}
+      config={{ runtime: 'strands', defaultMaxTurns: 17 }}
+    />,
+  );
+  expect(
+    screen
+      .getByText(
+        'The saved step limit is inactive with this Station configuration.',
+      )
+      .closest('details:not([open]), [hidden]'),
+  ).toBeNull();
+  expect(
+    (screen.getByLabelText('Default max turns') as HTMLInputElement).value,
+  ).toBe('17');
+
+  view.rerender(
+    <StationConfigSection
+      {...props}
+      config={{ runtime: 'voltagent', defaultMaxTurns: 17 }}
+    />,
+  );
+  expect(
+    screen
+      .getByText(
+        'Fallback step limit for supported runs on Station’s own engine.',
+      )
+      .closest('details:not([open]), [hidden]'),
+  ).toBeNull();
+  expect(screen.queryByText(/step limit is inactive/)).toBeNull();
+  expect(
+    (screen.getByLabelText('Default max turns') as HTMLInputElement).value,
+  ).toBe('17');
+});
+
 test('per-publisher telemetry controls round-trip the saved choice and retain Off under DNT', () => {
   const onChange = vi.fn();
   const view = render(

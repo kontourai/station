@@ -101,7 +101,7 @@
     },
     "maxSteps": {
       "type": ["integer", "null"],
-      "description": "Maximum conversation steps (optional, falls back to global default)",
+      "description": "VoltAgent model steps per turn (1–100). Null or absent uses the fallback. Strands and external engines do not apply this field.",
       "minimum": 1,
       "maximum": 100
     },

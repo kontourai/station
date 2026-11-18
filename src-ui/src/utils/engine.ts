@@ -124,35 +124,26 @@ export function chatEngineIdentity(input: {
   };
 }
 
-/** Session statuses whose engine binding can take no further turn. */
-const ENDED_SESSION_STATUSES: ReadonlySet<string> = new Set([
-  'exited',
-  'closed',
-  'dead',
-  'error',
-]);
-
 /**
- * Whether the chat's next turn starts a new Session, on the Agent's current
- * engine, instead of running in the current one. A live status observed for
- * the Session answers first: its engine binding ended
- * (`exited`/`closed`/`dead`/`error`; `errored` can be a failed turn on a
- * Session that continues). With none observed, as after a fresh open, the
- * open read's `nextTurnStartsSession` answers (#4179), the server's own
- * continuation rule, and only while it describes the chat's current Session.
+ * Only an exact, current open read can establish a successor. A local
+ * binding exit says nothing about unresolved context delivery or write access.
  */
 export function chatNextTurnStartsSession(chat: {
-  orchestrationStatus?: string;
   currentSessionId?: string;
   conversationId?: string;
   conversationOpenState?: ConversationOpenResolution;
+  conversationOpenPending?: boolean;
+  conversationOpenFailed?: boolean;
 }): boolean {
-  if (chat.orchestrationStatus !== undefined)
-    return ENDED_SESSION_STATUSES.has(chat.orchestrationStatus);
   const open = chat.conversationOpenState;
   return (
+    !chat.conversationOpenPending &&
+    !chat.conversationOpenFailed &&
     open?.status === 'resolved' &&
+    open.conversation.id === chat.conversationId &&
     open.currentSessionId === (chat.currentSessionId ?? chat.conversationId) &&
+    open.canContinue &&
+    open.callerAccess?.continue !== false &&
     open.nextTurnStartsSession === true
   );
 }

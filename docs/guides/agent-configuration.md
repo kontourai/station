@@ -17,7 +17,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | Field | Description |
 |-------|-------------|
 | `name` | Display name |
-| `prompt` | Agent instructions (supports `{{key}}` template variables); delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines (and again with the next message when an ACP engine had to start a new session in place of the conversation; see [the ACP guide](acp.md#creation)) |
+| `prompt` | Agent instructions. Station expands `{{key}}` when it builds the prompt. External engines receive authored text. Delivered as a system prompt where supported, or with the first message on Codex and other first-turn engines (and again with the next message when an ACP engine had to start a new session in place of the conversation; see [the ACP guide](acp.md#creation)) |
 | `model` | Station-engine model preference; see resolution order below |
 | `execution.agentConnectionId` | Saved engine connection binding; absence selects Station's engine |
 | `execution.modelConnectionId` | Model connection selection for Station's engine; separate from the engine binding |
@@ -25,7 +25,8 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.sharedTurns` | Optional operator declaration for separately negotiated shared model-only turns; shared execution is not yet available |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | (Station guidance) | With the `station-orchestration-instructions` Feature Preview on, Agents offered `station-control` also get Station-written guidance on using it, kept separate from `prompt`. See [orchestration instructions](self-configuring-agent.md#orchestration-instructions) |
-| `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
+| Step cap | Top-level `maxSteps` for VoltAgent, 1–100 |
+| `guardrails` | `maxTokens`, `temperature` |
 | `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |
 
 ### MCP Tool Configuration
@@ -227,7 +228,7 @@ Station guardrail declaration does not establish external enforcement:
 }
 ```
 
-- `maxSteps` — top-level Agent step cap applied by VoltAgent; the Agent file schema rejects it inside `guardrails`. Strands does not apply this configured cap.
+- `maxSteps` — top-level model-step cap per VoltAgent turn. Set 1–100 or leave it unset to inherit the Station fallback. Strands and external engines use their own limits.
 - `maxTokens` — maximum output tokens per model call (overrides `defaultMaxOutputTokens` from app.json)
 - `temperature` / `topP` — standard inference parameters. On VoltAgent, `topP` is ignored when `temperature` is also set (see the [config reference](../reference/config.md)).
 - `stopSequences` — accepted and typed, but not currently applied by any engine. Do not rely on it to constrain model output.

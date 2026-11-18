@@ -5356,6 +5356,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-secondary);
 }
 
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .usage-telemetry-disclosure__inventory > summary {
+    min-block-size: 44px;
+    align-content: center;
+  }
+}
+
 .usage-telemetry-disclosure__actions {
   display: flex;
   align-items: center;

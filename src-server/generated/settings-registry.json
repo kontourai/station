@@ -460,7 +460,7 @@
     {
       "id": "default-agent-instructions",
       "label": "Default Agent Instructions",
-      "help": "Every agent starts its context with these instructions, ahead of its own.",
+      "help": "Station prepends these to prompts it builds, uses them in place of its built-in prompt, and omits them for external engines.",
       "scope": "defaults",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=default-agent-instructions",
@@ -469,7 +469,7 @@
     {
       "id": "template-variables",
       "label": "Template Variables",
-      "help": "Agent instructions can reference these values as {{key}} instead of repeating them.",
+      "help": "Station expands {{key}} in prompts it builds, while external engines receive the authored placeholders.",
       "scope": "defaults",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=template-variables",
@@ -487,7 +487,7 @@
     {
       "id": "default-max-turns",
       "label": "Default max turns",
-      "help": "Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.",
+      "help": "Set the fallback step limit for supported runs on Station’s own engine, while external engines use their own limits.",
       "scope": "station",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=default-max-turns",

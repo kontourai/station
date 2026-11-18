@@ -864,11 +864,31 @@ test.describe('Settings discovery and preferences', () => {
       await expect(target).toBeInViewport();
 
       if (destination.id === 'usage-disclosure') {
-        await target.getByText('View included fields', { exact: true }).click();
-        await expect(
-          target.getByRole('region', { name: 'Anonymous usage counts' }),
-        ).toBeVisible();
-        await expect(target.getByRole('radio')).toHaveCount(0);
+        const original = page.viewportSize();
+        if (!original)
+          throw new Error('Settings discovery requires a viewport.');
+        const summary = target.getByText('View included fields', {
+          exact: true,
+        });
+        for (const width of [320, 390, 1440]) {
+          await page.setViewportSize({ width, height: 844 });
+          await summary.scrollIntoViewIfNeeded();
+          if (width <= 390) {
+            await expect
+              .poll(async () => (await summary.boundingBox())?.height ?? 0)
+              .toBeGreaterThanOrEqual(44);
+          }
+          await summary.click();
+          await expect(
+            target.getByRole('region', { name: 'Anonymous usage counts' }),
+          ).toBeVisible();
+          await expect(target.getByRole('radio')).toHaveCount(0);
+          await summary.click();
+          await expect(
+            target.getByRole('region', { name: 'Anonymous usage counts' }),
+          ).toBeHidden();
+        }
+        await page.setViewportSize(original);
       }
     }
 

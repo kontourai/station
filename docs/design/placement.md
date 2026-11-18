@@ -1953,8 +1953,10 @@ per conversation.** Below the fold nothing above changes.
   44px boxes on a pointer that cannot hover, since the side panel opens by
   width alone. A pull request review inside the pane fences its own
   changed-files diff from the head, so the head always speaks for the Diff
-  pane. File Preview's head is left for the per-file Changes rework in
-  flight to build on.
+  pane. File Preview's Changes view uses these same tools. In the File view,
+  wrapped continuations align with the code column beside the line numbers.
+  Local and provider diff comments show relative time, with the original
+  instant in a tooltip.
 
 - **The folded inbox's edge.** While the inbox is folded past the fold (by
   the layout or by hand) on a fine pointer, the Chat column's left edge

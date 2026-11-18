@@ -1,0 +1,41 @@
+{
+  "revision": "2856b1d382c5e8bc39816176b67ee10f102eecea",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"The foreground dispatch still uses the orchestration owner. A matched 202 projects a held follow-up and carries no execution-start claim.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced ordinary composer input through queue intent, the existing foreground route and its caller-bound receipt. Station still owns placement and prior order. The inbox read supplies order and the temporary receipt covers acceptance during refresh.","inputs":["docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the shared ConversationBody send adapter against the host-binding and explicit feedback requirements. The queue request and its receipt use the same Station authority and request identity.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the composer default, idle-to-busy transition, held queue receipt, stale list read and failed-read Retry against the mounted composer and the real Station inbox route.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useConversationInbox.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked the live outbox handoff and uncertain-response path. A matching queued receipt retires the browser row and a mismatched receipt keeps the original request eligible for delivery inspection.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked that chat send still obtains the account request scope and current approval defaults from existing owners before dispatch. Queue receipt publication does not write settings.","inputs":["docs/design/settings-architecture.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the same ConversationBody props for the shell surfaces. Active conversation, workspace and Station routing remain governed by the existing resolved connection.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Verified the new accepted-row cache uses the inbox query scope, target API base and conversation identity. The composer passes next-turn intent through the existing established transport.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/guides/commands.md","note":"Checked ambient context and slash-command handling in the shared compose path. Queue intent accompanies an ordinary send through preparation while command parsing still receives the original text.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Checked that the shared phone composer uses the same inbox observer and preserves existing retry, constrained-network polling and Stop controls. The change is independent of native packaging.","inputs":["docs/guides/mobile-release.md","src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the existing ConversationInboxQueuedReceipt and ConversationInboxEntry fields, including optional position. The composer validates the conversation and message key before applying the receipt.","inputs":["docs/reference/contracts.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the public client signatures for inbox list, foreground send and delivery lookup. The validated receipt is interpreted in the existing shell dispatch adapter and does not widen the SDK interface.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Compared composer behavior with the documented 202 receipt and list/read scope. The response confirms server custody, while the list response remains the source of send order and current state.","inputs":["docs/reference/session-api.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked that the normal send carries Queue intent without changing skill draft preparation or the bound skill startup request. The receipt applies to an existing inbox result only.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the pending list and context-card counts. A matching receipt contributes one row until the current read supersedes it, and a failed read shows Retry without a zero count.","inputs":["docs/user/concepts.md","src-ui/src/hooks/useConversationInbox.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated the during-turn Send instructions after exercising Queue as the default and the held message appearing before the list refresh completes. Reviewed the separate Stop and explicit steering flow.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/lib/foregroundMessageDispatch.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked that the composer still enters through the host-specific request owner and the existing SDK client. No new plugin command, SDK export or dependency is introduced.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked ConversationBody, composer and inbox responsibilities against the existing bound connection and shared controls. The temporary receipt is isolated by host, authority and conversation.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

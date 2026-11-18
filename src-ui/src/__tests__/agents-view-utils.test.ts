@@ -254,6 +254,20 @@ describe('agents view utils', () => {
     });
   });
 
+  test('validates whole-number step caps and clears an authored cap explicitly', () => {
+    const form = { ...createEmptyAgentForm(), slug: 'writer' };
+    for (const maxSteps of ['0', '1.5', '101']) {
+      expect(validateAgentForm({ ...form, maxSteps }, false).maxSteps).toBe(
+        'Enter a whole number from 1 to 100.',
+      );
+    }
+    expect(buildAgentPayload({ ...form, maxSteps: '8' }).maxSteps).toBe(8);
+    expect(
+      buildAgentPayload(form, { previousMaxSteps: '8' }).maxSteps,
+    ).toBeNull();
+    expect(buildAgentPayload(form).maxSteps).toBeUndefined();
+  });
+
   test('buildAgentPayload strips empty fields and preserves runtime settings', () => {
     expect(
       buildAgentPayload({
