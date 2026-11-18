@@ -673,7 +673,11 @@ export function CoreUpdateCheck({
               ? 'Pulls from the git remote, then restarts the server.'
               : 'Checks the connected server. Desktop app updates use the app’s signed update channel.';
 
-  const checkButton = (
+  const manifestUnavailable =
+    !comparisonSuperseded &&
+    view?.kind === 'release' &&
+    status?.releaseCheck === 'not-recorded';
+  const checkButton = manifestUnavailable ? null : (
     <Button
       onClick={() => {
         // A re-check is also the recovery path out of a failed background
@@ -910,7 +914,9 @@ export function CoreUpdateCheck({
         {progressHistory && serviceProgressLine && (
           <p className="settings__field-hint">{serviceProgressLine.text}</p>
         )}
-        <p className="settings__field-hint">{methodHint}</p>
+        {!manifestUnavailable && (
+          <p className="settings__field-hint">{methodHint}</p>
+        )}
       </details>
     </div>
   );
