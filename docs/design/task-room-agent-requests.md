@@ -109,14 +109,18 @@ the clipboard's images into the same intake (see
 
 The [Task asset store](../../src-server/services/projects/task-room-attachments.ts)
 saves bytes separately from room history. Upload and reference resolution require
-current message-write authority; byte reads require current history-read authority.
+current message-write authority. Upload rechecks that authority and the Task's
+binding while holding the store-wide lock through publication. Byte reads
+require current history-read authority.
 Bindings include the canonical Project, Task ID and Task creation time. Knowing an
 attachment ID grants no access. An image's bytes must start with its declared image
-type's signature (a prefix check, not a full decode). Room history and durable agent requests store only
-`TaskRoomAttachment` descriptors. Bytes use the existing content-addressed store's
-retention settings (90 days and 512 MiB by default); a retained history entry may
-therefore outlive its bytes and show an unavailable attachment, even while its
-message stands (#4947).
+type's signature (a prefix check, not a full decode). Room history and durable
+agent requests store only `TaskRoomAttachment` descriptors. Each binding protects
+its content-addressed bytes from age and size reclamation. Upload can reclaim
+bytes only when a complete binding scan proves they are unbound. If the batch's
+new unique bytes would exceed the store's size budget, upload returns 409.
+Earlier eviction can still leave a history descriptor with unavailable bytes.
+See [attachment storage settings](../reference/config.md#chat-attachments).
 
 The [room routes](../../src-server/routes/orchestration/project-task-rooms.ts)
 expose upload and authenticated byte reads under `/api/tasks/:taskId/room/attachments`.

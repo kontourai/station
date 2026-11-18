@@ -230,8 +230,10 @@ flow, an owner with repository administration access can open **Settings →
 Secrets and variables → Actions → Variables**, create the repository variable
 `STATION_AUTHOR_TELEMETRY_ENDPOINT`, and enter the receiver's HTTPS URL. For
 the [Kontour Worker receiver](../../deploy/telemetry-worker/README.md) that is
-`https://telemetry.kontourai.io/v1/lite/station`. Senders post the daily ping
-to this URL unchanged. The `station` source lists every ring's channel and the
+`https://telemetry.kontourai.io/v1/lite/station`. Official builds post anonymous
+daily counts to this URL unchanged. Station disables Detailed for this
+receiver. Operators can choose Detailed for a compatible additional
+destination under **Privacy & sharing → Advanced**. The `station` source lists every ring's channel and the
 ping carries its own, so one URL serves every ring. Never revoke `station`
 while builds post to it: senders record a refused ping as dropped without
 retrying, so revoking it would silently lose every ring's pings. Its channel
@@ -282,6 +284,18 @@ URL/context rejection and workflow leaks:
 ```sh
 npm run test:focused -- scripts/__tests__/author-telemetry-build.test.ts
 ```
+
+For release acceptance, use an installed candidate with an isolated Station
+home on a supported desktop or portable host. Record its version, channel and
+source SHA. Confirm that Kontour offers anonymous counts and Off, and that a
+fresh desktop home sends only after the usage notice is handled. Run the host
+across a UTC day boundary with anonymous counts enabled, then inspect
+`station telemetry outbox --publisher kontour` for an acknowledged
+`station_daily` row with that version and channel. Read the exact version and
+channel breakdown in [private Insights](https://telemetry.kontourai.io/insights)
+for the corresponding receiver arrival day. Record the receiver evidence
+alongside the sender evidence. Public weekly estimates include privacy noise
+and may be published without reports.
 
 These are build and policy checks. They do not deploy a receiver, enable data
 flow, or prove signed native artifacts or store delivery.

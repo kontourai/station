@@ -260,6 +260,49 @@ not measured.
 **Sizes.** Sizes are UTF-8 bytes and Unicode code points. No tokenizer is
 applied, so the results contain no token counts or estimates.
 
+### Paired multi-turn requests (optional, report-only)
+
+`npm run perf:station-weight -- --multi-turn --report-only` adds a separate
+three-turn conversation after the ordinary samples and first-turn comparison.
+Without `--report-only`, the ordinary gate still compares its original metrics;
+the added conversation is always diagnostic and never a budget. `--multi-turn`
+cannot record a baseline. The default workload, metrics and baseline schema
+are unchanged when the flag is absent.
+
+The Station conversation uses `/api/orchestration/chat` with the same
+conversation id for both follow-ups. The SDK control resumes its own session,
+using the same bundled executable, fixture directory and model at ordinals
+1, 2 and 3. Each prompt and canned reply carries a distinct run/ordinal marker.
+There are no real provider API or plan calls, tool calls, discovery transitions, or
+context edits in this workload. Required instructions and tools remain enabled.
+The control must receive `CLAUDE.md`; Station must receive both `CLAUDE.md`
+and `AGENTS.md` on every turn.
+
+`requestConversation.turns` records each pair's cumulative request sizes,
+history text, loaded and named deferred tools, request count, sidecalls and
+other endpoint calls. `stationAdded` uses the same line-multiset and whole-tool
+definition comparison as the first-turn metric. `text` and
+`stationAdded.addedTextProgress` split cumulative lines into those repeated
+from the preceding ordinal and those newly introduced; removed lines are
+reported too. This is a multiset accounting of observed text, not a causal
+classification. History deliberately repeated on follow-ups is not all new
+overhead. Only the existing billing-header version suffix is normalized.
+There are no token or cost estimates.
+
+Every pair requires one unambiguous prompt-bearing request per caller window,
+successful completion with that ordinal's exact reply, intact ordered prompt
+and reply history, matching Claude versions/models, and fresh request and
+accepted-turn identities. A missing/refused/replayed/ambiguous turn is
+`not_measured` (`NOT_MEASURED` in the summary); later turns are explicitly
+skipped, and the run fails even in report-only mode. The bounded workload has
+three turns; dispatch and completion waits retain the existing 90 s and 120 s
+bounds per Station turn, and each SDK query has a 120 s interruption deadline.
+
+This diagnostic does not measure parking cost, memory or latency. In particular,
+the released and warm follow-ups below have different history ordinals and
+cannot establish a causal parking-cost difference. Codex/ACP parity and a
+read-only discovery transition remain `NOT_VERIFIED`.
+
 ### Delegated run (optional, report-only)
 
 `--delegated-run` adds one step after the idle-session sample. It writes a

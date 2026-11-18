@@ -1,0 +1,7 @@
+{
+  "revision": "b96caee9798ebe9e2c803a564f5fa2478259e66f",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed the Windows fixture follow-up against terminal transport design: real synchronized ConPTY output can create more than two credit windows because of echo/repaints. Replay now ACKs each received window until the fixed captured journal end, asserts each post-ACK increment is no larger than the unchanged 128-frame credit, and retains the initial exact-window stall, >140-record premise, end/ready and SDK applied-output assertions. No product behavior or thresholds change. The earlier Windows run reached 396 records and exposed the inherited single-replenishment assumption; final platform verification is reported separately.","inputs":["src-server/services/terminal/__tests__/terminal-gateway.process.test.ts"]}
+  ]
+}

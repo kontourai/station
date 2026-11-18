@@ -17,9 +17,11 @@ describe('ProvenanceBadge', () => {
     expect(container.textContent).toBe('');
   });
 
-  test('source: default renders a subtle Default chip', () => {
-    render(<ProvenanceBadge provenance={{ source: 'default' }} />);
-    expect(screen.getByText('Default')).toBeTruthy();
+  test('keeps the built-in default off the row', () => {
+    const { container } = render(
+      <ProvenanceBadge provenance={{ source: 'default' }} />,
+    );
+    expect(container.textContent).toBe('');
   });
 
   test('source: env renders "Set by operator: {envVar}"', () => {

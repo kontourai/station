@@ -768,6 +768,40 @@ describe('#2601 a request with no verified caller claims no lineage', () => {
     );
   });
 
+  test.each([true, false])(
+    'inherited constraints refuse before foreground dispatch (matching attestation: %s)',
+    async (matchingAttestation) => {
+      const original = createChildDelegationContext({ agentSlug: 'planner' });
+      const delegation = { ...original, toolAllowlistConstraints: [[]] };
+      const response = await fetch(
+        `${baseUrl}/api/orchestration/chat/delegated`,
+        {
+          method: 'POST',
+          headers: internalHeaders(),
+          body: JSON.stringify(
+            keyedTurnRequest({
+              ...body,
+              delegation,
+              delegationAttestation: attestDelegationContext(
+                matchingAttestation ? delegation : original,
+              ),
+            }),
+          ),
+        },
+      );
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({
+        code: 'delegation_lineage_unavailable',
+        error: expect.stringContaining(
+          matchingAttestation
+            ? 'unavailable for execution'
+            : 'no matching runtime attestation',
+        ),
+      });
+      expect(executeForegroundMessage).not.toHaveBeenCalled();
+    },
+  );
+
   test('an unattested context, or one whose attestation vouches for a different context, is dropped: the session starts as a root', async () => {
     const genuine = createChildDelegationContext({
       agentSlug: 'planner',

@@ -7185,7 +7185,13 @@ export function configureRuntimeRoutes(
       steerFidelity: (threadId) => service.steerFidelityForThread(threadId),
       inspectSteer: (input) => eventStore.readSteerInput(input),
       steer: stationServerEntry(
-        async ({ threadId, clientInputId, payload, turnId }) => {
+        async ({
+          threadId,
+          clientInputId,
+          payload,
+          turnId,
+          targetIsCurrent,
+        }) => {
           const dispatched = await service.dispatchWithReceipt(
             {
               type: 'steerTurn',
@@ -7201,9 +7207,12 @@ export function configureRuntimeRoutes(
               clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
             },
             // #4827: a steer a person typed and queued stays theirs.
-            payload.authoredBy === 'person'
-              ? { personAuthored: true }
-              : undefined,
+            {
+              ...(payload.authoredBy === 'person'
+                ? { personAuthored: true }
+                : {}),
+              steerTargetIsCurrent: targetIsCurrent,
+            },
           );
           const result = dispatched.result as
             | { outcome: string; turnId?: string }
@@ -7478,6 +7487,8 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    projectExists: projectLifecycle.projectHold.projectExists,
+    principalMayInProject,
     // #5070: a Project schedule is proposable only where Project runs exist
     // and the `project-schedules` preview is on.
     projectSchedulesEnabled: () =>
@@ -10200,9 +10211,25 @@ export function configureRuntimeRoutes(
   // The person's own custom appearance. Station-control requests resolve to
   // the session's recorded owner, so an agent proposes into its person's
   // document; the route refuses agents every step but read and propose.
+  const appearanceStudioPreview = context.featurePreviews.bind({
+    id: 'appearance-studio',
+    label: 'Appearance studio',
+    description:
+      'Customize backgrounds and styling, save and share theme files, and preview agent proposals in chat. Images stay in the theme file; accepted appearances remain when this is turned off.',
+  });
   context.app.route(
     '/api/me',
     createCustomAppearanceRoutes({
+      studioEnabled: () =>
+        appearanceStudioPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
+      resolveProposalSourceSessionId: (c) =>
+        resolveStationControlCallerForRequest(
+          c.req.raw,
+          resolveStationControlCallerRecord,
+        )?.sessionId,
       store: new CustomAppearanceStore(
         context.configLoader.getProjectHomeDir(),
       ),
@@ -13369,7 +13396,7 @@ export function configureRuntimeRoutes(
         : {}),
       ...(scheduledProjectRuns
         ? {
-            projectJobs: true,
+            maySetProjectJob: agentSchedule.maySetProjectJob,
             projectJobsPreview: projectLifecycle.schedulesPreview,
           }
         : {}),

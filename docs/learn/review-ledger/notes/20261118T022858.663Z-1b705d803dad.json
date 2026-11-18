@@ -1,0 +1,7 @@
+{
+  "revision": "882dbc89580c8fcc495df2f561817661821fb603",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed the contracts package name, files, and exports against the package ownership and published source layout. The delegation-group type subpath is used by the dormant server owner.","inputs":["docs/architecture.md","packages/contracts/package.json#/exports"]}
+  ]
+}

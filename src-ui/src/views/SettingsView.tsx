@@ -768,6 +768,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   throw new SharingDetailsChangedError();
                 const author = data.authorDisclosure;
                 if (
+                  telemetryConsentPublishers.includes('kontour') &&
+                  telemetryTier?.kontour === 'full' &&
+                  dntAtSave?.kontour?.reason !== 'DNT' &&
                   telemetryStatus.data?.authorEndpoint &&
                   (!author ||
                     author.inventoryRevision !== telemetryConsentRevision ||

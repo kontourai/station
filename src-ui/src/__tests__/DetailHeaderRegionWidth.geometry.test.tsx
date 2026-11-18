@@ -34,27 +34,11 @@
  * them: every declaration involved was "present" throughout every defect.
  *
  * ---------------------------------------------------------------------------
- * BEFORE ADDING AN ASSERTION HERE: DO NOT ASSERT A LINE COUNT.
- *
- * This harness can never load the product's own font. `page.setContent` gives
- * the document no base URL, so every `@font-face` src 404s —
- * `document.fonts.check('16px "DM Sans"')` is false and each face reports
- * status `error` — and Chromium lays the text out in whatever the platform
- * supplies instead. That face differs between a developer machine and CI.
- *
- * A WIDTH survives that: the subtitle's box is the identity's box, so it
- * tracks the region rather than the glyphs. A LINE COUNT does not: it is a
- * step function of glyph metrics, so the same text measured two lines locally
- * and three on a Linux runner, reddening a lane while every property the test
- * existed for was still true.
- *
- * This is not hypothetical and it is not handled by the note further down
- * about the collapse guardrail's widths. Three line-count assertions were
- * written into this file AFTER that note existed, by someone who had just
- * written it. So: assert widths, box geometry, overflow, and whether the
- * header wrapped. Where a line count really is the property, assert it in the
- * DIRECTION that discriminates (`>= 2` for "this must wrap at all") and never
- * as an exact value or a tight upper bound.
+ * These measurements use a platform fallback font. Keep meaningful margins
+ * around clipping and row-placement thresholds and avoid exact line counts.
+ * When text must wrap at all, a lower bound can distinguish wrapping without
+ * pinning glyph metrics. When text must stay inside a box, measure the
+ * content's Range rectangles.
  * ---------------------------------------------------------------------------
  */
 
@@ -130,7 +114,7 @@ function headerMarkup(): string {
 function longTitleMarkup(): string {
   const { container, unmount } = render(
     <DetailHeader
-      title="Reduce default toolbar clutter in the chat dock"
+      title="Reduce default toolbar clutter in the chat dock without losing access to workspace controls and current Project actions"
       badge={{ label: 'unsaved', variant: 'warning' }}
     >
       <button type="button" className="editor-btn editor-btn--danger">
@@ -186,15 +170,11 @@ function shortIdentityWideActionsMarkup(): string {
  * longer than the 62ch cap, so the cap binds and the text needs two lines at
  * any width this header can offer.
  */
-function subtitledCompactActionsMarkup(): string {
+function subtitledCompactActionsMarkup(
+  subtitle = 'Connect this project to an external issue tracker and keep its task state in sync across every workspace and device that opens it later on',
+): string {
   const { container, unmount } = render(
-    <DetailHeader
-      title="Issue tracker"
-      subtitle={
-        'Connect this project to an external issue tracker and keep its task ' +
-        'state in sync across every workspace and device that opens it later on'
-      }
-    >
+    <DetailHeader title="Issue tracker" subtitle={subtitle}>
       <button type="button" className="editor-btn">
         Disconnect
       </button>
@@ -286,6 +266,10 @@ describe.skipIf(!chromiumAvailable)(
           if (!header || !title || !left || !region) {
             throw new Error('header not found');
           }
+          const actions = pick('.detail-header__actions');
+          const directActions = actions?.querySelectorAll(
+            ':scope > :is(button, a)',
+          );
           // Optional: several consumers render no subtitle at all, and the
           // long-title fixture below is one of them.
           const subtitle = pick('.detail-header__subtitle');
@@ -293,7 +277,29 @@ describe.skipIf(!chromiumAvailable)(
             ? Number.parseFloat(getComputedStyle(subtitle).lineHeight)
             : 0;
           const regionRight = region.getBoundingClientRect().right;
+          const identityBottom = left.getBoundingClientRect().bottom;
+          let subtitleOverflow = null;
+          if (subtitle) {
+            const range = document.createRange();
+            range.selectNodeContents(subtitle);
+            const bounds = subtitle.getBoundingClientRect();
+            subtitleOverflow = Math.max(
+              0,
+              ...Array.from(range.getClientRects(), (rect) =>
+                Math.max(bounds.left - rect.left, rect.right - bounds.right),
+              ),
+            );
+          }
           return {
+            actionsWrapBelow: actions
+              ? actions.getBoundingClientRect().top >= identityBottom
+              : null,
+            actionHeights: Array.from(
+              directActions ?? [],
+              (action) => action.getBoundingClientRect().height,
+            ),
+            subtitleOverflow,
+            titleTextWidth: title.scrollWidth,
             identityWidth: Math.round(left.getBoundingClientRect().width),
             // The identity's own box height. `flex-basis` is the MAIN size, so
             // a wrap threshold written as one is read as a HEIGHT wherever a
@@ -396,19 +402,7 @@ describe.skipIf(!chromiumAvailable)(
      * the same region width.
      */
     test('the same region width lays out identically across viewports', async () => {
-      // 1440 and 1200 both sit ABOVE the 769-1180 tablet band, which
-      // deliberately gives the actions their own row as a property of the
-      // viewport class rather than of this header's width. Everywhere else,
-      // one region width must mean one layout.
-      //
-      // 1200 replaced an earlier 1000, which is inside that band: there
-      // `__left` resolves to a band-forced `flex-basis: 100%` rather than to
-      // anything this fix decides, and the comparison passed only because a
-      // 600px region is one of the few widths where the forced and the
-      // content-derived layouts coincide. At a 900px region it does not: 376px
-      // of identity against 852px. So 900 is compared too — it is the width
-      // that would have shown the earlier mistake on sight, and a region where
-      // the header shares its row rather than wrapping.
+      // Two desktop viewports preserve both the same-line and wrapped cases.
       const wide = await measure(600, 1440);
       const wideAbove = await measure(900, 1440);
       expect(await measure(600, 1200)).toEqual(wide);
@@ -422,6 +416,38 @@ describe.skipIf(!chromiumAvailable)(
       // wrapped layout; it cannot say anything about an unwrapped one.
       expect(await measure(600, 700)).toEqual(wide);
     }, 120_000);
+
+    test('tablet actions share the row when they fit and keep 44px touch targets', async () => {
+      const markup = subtitledCompactActionsMarkup();
+      const [desktop, tablet] = await Promise.all([
+        measure(900, 1440, { markup }),
+        measure(900, 1000, { markup }),
+      ]);
+      expect(desktop.actionsWrapBelow).toBe(false);
+      expect(tablet.actionsWrapBelow).toBe(false);
+      expect(tablet.identityWidth).toBe(desktop.identityWidth);
+      expect(tablet.actionHeights).toHaveLength(2);
+      expect(Math.min(...tablet.actionHeights)).toBeGreaterThanOrEqual(44);
+
+      const narrow = await measure(500, 1000);
+      expect(narrow.actionsWrapBelow).toBe(true);
+      expect(narrow.titleClipped).toBe(false);
+    }, 60_000);
+
+    test('a long plugin reference stays inside the subtitle box', async () => {
+      const markup = subtitledCompactActionsMarkup(
+        `Registry reference ${'artifact1234567890'.repeat(12)}`,
+      );
+      for (const [regionWidth, viewportWidth] of [
+        [700, 1440],
+        [500, 1440],
+        [390, 390],
+      ]) {
+        const measured = await measure(regionWidth, viewportWidth, { markup });
+        expect(measured.subtitleWidth).toBeGreaterThan(0);
+        expect(measured.subtitleOverflow).toBeLessThanOrEqual(1);
+      }
+    }, 60_000);
 
     /**
      * OVERFLOW. The regression a floor-based fix introduces, pinned so it
@@ -455,6 +481,7 @@ describe.skipIf(!chromiumAvailable)(
         });
         expect(m.overflow).toBe(0);
         expect(m.titleClipped).toBe(true);
+        expect(m.titleTextWidth).toBeGreaterThan(m.titleWidth * 1.25);
         expect(m.identityWidth).toBeLessThanOrEqual(regionWidth);
       },
       60_000,

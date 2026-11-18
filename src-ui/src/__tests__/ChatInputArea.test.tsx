@@ -1225,7 +1225,7 @@ describe('ChatInputArea', () => {
     expect(
       screen.getByText('Existing models, if shown, may be out of date.'),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('option', { name: /Claude Sonnet/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Claude Sonnet/ }));
     expect(onModelSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'claude-sonnet' }),
     );
@@ -2538,13 +2538,13 @@ test('on a phone, choosing another engine closes Run setup; another model of the
     expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
     fireEvent.click(
       await screen.findByRole(
-        'option',
-        { name: /Claude Opus/ },
+        'button',
+        { name: /^Claude Opus/ },
         { timeout: 5_000 },
       ),
     );
     expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('option', { name: /GPT Six/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^GPT Six/ }));
     expect(onModelSelect).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: 'gpt-6' }),
     );

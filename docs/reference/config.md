@@ -162,7 +162,9 @@ remain fallbacks (`false` means Off). Distribution/operator policy inputs only
 lower defaults; user choice wins otherwise. `STATION_AUTHOR_TELEMETRY_ENDPOINT`
 is a build-time server-banner constant, empty in source, never a runtime enabling
 variable. It is exposed in resolved telemetry configuration independently of the
-operator address; its independent sender remains inert when the build value is empty. See the [program decision](../decisions/telemetry-tiers.md).
+operator address. An empty build value leaves the sender inactive. An author
+address under `/v1/lite/` limits Kontour to anonymous counts after notice and
+fixed-choice feedback. See the [program decision](../decisions/telemetry-tiers.md).
 
 URLs cannot contain embedded credentials, a query or a fragment. Destination
 and key-reference writes through the live route require the operator or an
@@ -384,9 +386,11 @@ refused before it is dispatched.
 
 Task room uploads use a separate store under
 `<STATION_HOME>/task-room-attachments`, with the same retention variables and
-defaults applied to that store independently; descriptors remain in room
-history after byte eviction, even while their message stands (#4947). Project
-channel uploads use another store under
+defaults applied to that store independently. When admitting an upload, Station
+reclaims only blobs that a complete binding scan shows are unbound. An unknown
+binding skips reclamation. A batch that would add unique bytes beyond the size
+budget returns 409. A batch that adds no new bytes can still fit when an existing
+store already exceeds the budget. Project channel uploads use another store under
 `<STATION_HOME>/project-room-attachments` that the retention variables do not
 apply to: it never evicts by age or size, deletes only bytes no file names,
 and stops deleting and pauses new uploads while any file record or store

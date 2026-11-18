@@ -120,7 +120,8 @@ function unit(
       Object.keys(before).filter(
         (file) => file.startsWith(dir) && before[file] !== undefined,
       ),
-    addedBy: (file: string) => ({ ...ADDED_BY, ...overrides.addedBy })[file],
+    addedBy: (files: string[]) =>
+      files.map((file) => [file, { ...ADDED_BY, ...overrides.addedBy }[file]]),
   });
   return {
     manifests: [...result.manifests].sort(),

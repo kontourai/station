@@ -1013,8 +1013,13 @@ slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final use it: every canonical phase and Android viewport test must
-succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final
+use it, along with main pushes. Every canonical phase and the Android viewport
+suite must succeed, with bounded exact-source reuse. Pushes that change only
+the two deploy-ledger files are ignored. UI-only pushes qualify their own SHA,
+including the Android viewport job. Qualification completion triggers
+Main: Qualification health, whose result is watched by Main: Health.
+A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour
 minimum publication interval before running lint, all typecheck lanes, native
@@ -1763,9 +1768,8 @@ spec. The job checks out the base without replace refs or hooks, refuses a
 base checkout that is not exactly the base commit and clean, and runs the
 attribution with the `node` resolved before candidate code; that keeps honest
 accidents out, nothing more. Nothing may trust the PR Gallery
-conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
-workflow's contexts, but the capture job skips there: Gallery is not a required
-context, so a candidate's capture could not stop a landing. Combined changes
+conclusion, which is one reason it is not a required check. Merge-queue candidates run the allowlist ceiling and skip both capture and its
+input classifier. GitHub still reports the Gallery job contexts for each candidate. Combined changes
 are otherwise captured after landing by `Nightly: Gallery` once a day, which
 checks capture integrity and reports pixel differences but does not run the
 product assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
@@ -3185,13 +3189,12 @@ Focused automation:
 
 The connected-agent macro runs the same provider/service/route coverage
 through the existing focused runner, with one worker, no file parallelism,
-and the original 10-second test bound. The high-cardinality EventStore case is
-the first of seven test files and owns a fresh process-exclusive test-file lifecycle.
-EventStore is explicitly process-exclusive
-in the resource manifest; calling raw Vitest would bypass that constraint and
-run its high-cardinality SQLite fixture alongside other suites. This routing
-change neither removes a suite nor increases its timer. The fixed macro accepts
-no CLI overrides; other focused runs retain their existing defaults.
+and a 10-second limit per test. The high-cardinality EventStore projection runs
+to completion in its own Vitest invocation before the other six files start.
+Both phases report in-flight diagnostics. An ordinary test failure in either
+phase makes the command exit nonzero after both phases run. EventStore is
+process-exclusive in the resource manifest, so use the focused runner to retain
+that constraint. The macro accepts no CLI overrides.
 
 ```bash
 npm run test:connected-agents
@@ -3490,7 +3493,10 @@ The `seatbelt-kernel` profile pins the kernel legs of
 - **Where they do not:** every pull-request, merge-queue and corpus lane.
   Those run on Linux or Windows, where the whole suite skips and the skip
   passes. A regression in these legs therefore shows after merge, on the
-  `main` push that introduced it, not on its pull request.
+  `main` push that introduced it, not on its pull request. Registration/profile
+  alignment is checked separately before landing when either kernel test file
+  changes; that audit collects test identities without running the bodies and
+  is not kernel execution evidence.
 - **Restricted network (#4769):** the nested `with a restricted network
   (#4769)` legs run real `sandbox-exec` children under the broker-only
   profile with an in-process egress broker and local listeners only; no

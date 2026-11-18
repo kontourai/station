@@ -268,8 +268,8 @@ export function LayoutView({
         prompt.label,
         projectSlug,
       );
+      setActiveChat(sessionId);
       setDockState(true);
-      setActiveChat(null); // New chat, no conversation yet
 
       await sendMessage(sessionId, targetAgent.slug, undefined, promptText);
     },
