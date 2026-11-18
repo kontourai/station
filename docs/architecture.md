@@ -187,6 +187,15 @@ conversation (Automations) rather than as a Station-engine file run. MonitoringE
 and persistence callback, not the orchestration EventBus. Follow each owner
 before treating a similarly named helper as the current implementation.
 
+During shutdown, the runtime closes admission for session and deferred Task
+worktree finalization, then waits for admitted operations before stopping
+orchestration. Session exits produced during orchestration shutdown can still
+release assignment claims. Those releases and startup claim reconciliation
+must settle before the EventStore closes. Both waits use the configuration
+drain deadline. If an operation is still running at its deadline, shutdown
+reports failure and retains the Station home runtime lease. See
+[StationRuntime shutdown](../src-server/runtime/bootstrap/station-runtime.ts).
+
 ## Self-Configuring Loop
 
 An admitted Agent can inspect and request supported Station changes through
