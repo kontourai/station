@@ -678,6 +678,29 @@ test.describe('compatibility-aware reconnect', () => {
               await expect(
                 page.getByText('1 of 1 visible', { exact: true }),
               ).toBeVisible();
+              const defaultModel = page.getByRole('combobox', {
+                name: 'Default model',
+                exact: true,
+              });
+              await defaultModel.selectOption('');
+              await expect(defaultModel).toHaveValue('');
+              await defaultModel.selectOption('fixture-model');
+              const enabled = page.getByRole('checkbox', {
+                name: 'Enabled',
+                exact: true,
+              });
+              await enabled.uncheck();
+              await expect(enabled).not.toBeChecked();
+              await enabled.check();
+              const modelAdvanced = page.getByText('Advanced', { exact: true });
+              await modelAdvanced.tap();
+              await expect(
+                page.getByRole('combobox', {
+                  name: 'Connection type',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await modelAdvanced.tap();
               const modelPath = `/api/connections/${modelId}`;
               const updatedModel = page.getByRole('button', {
                 name: new RegExp(`^Renamed model ${suffix}`),
@@ -740,6 +763,33 @@ test.describe('compatibility-aware reconnect', () => {
               await expect(
                 page.getByRole('button', { name: /^Station Docs\b/ }),
               ).toBeVisible();
+              const bindings = page.getByRole('region', {
+                name: 'Advanced: Secret bindings',
+              });
+              const bindingsDisclosure = bindings.getByText(
+                'Advanced: Secret bindings',
+                { exact: true },
+              );
+              await bindingsDisclosure.tap();
+              await expect(
+                bindings.getByRole('textbox', {
+                  name: 'Reference',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await expect(
+                bindings.getByRole('button', {
+                  name: 'Create binding',
+                  exact: true,
+                }),
+              ).toBeDisabled();
+              await bindingsDisclosure.tap();
+              await expect(
+                bindings.getByRole('textbox', {
+                  name: 'Reference',
+                  exact: true,
+                }),
+              ).toBeHidden();
               await page
                 .getByRole('button', { name: 'Add tool server', exact: true })
                 .tap();
@@ -1355,6 +1405,20 @@ test.describe('compatibility-aware reconnect', () => {
             });
             await week.tap();
             await expect(week).toHaveAttribute('aria-pressed', 'true');
+            const activity = account.getByRole('combobox', {
+              name: 'Activity for',
+              exact: true,
+            });
+            await activity.selectOption('account');
+            await expect(
+              account.getByText(
+                'This Station · selected account · attributed runs',
+              ),
+            ).toBeVisible();
+            await activity.selectOption('engine');
+            await expect(
+              account.getByText('This Station · this engine · all accounts'),
+            ).toBeVisible();
             await page
               .getByRole('button', {
                 name: 'Manage proxies in Models',
@@ -1563,6 +1627,21 @@ test.describe('compatibility-aware reconnect', () => {
                 ? /Needs re-pairing/
                 : /Choose Station — Connected/,
             );
+            const delegation = page.getByText(
+              'Advanced: delegate to another Station',
+              { exact: true },
+            );
+            await delegation.tap();
+            const copy = page.getByRole('button', {
+              name: 'Copy command',
+              exact: true,
+            });
+            await copy.tap();
+            await expect(
+              page.getByRole('button', { name: "Can't copy", exact: true }),
+            ).toBeVisible();
+            await delegation.tap();
+            await expect(copy).toBeHidden();
             await page
               .getByRole('button', { name: 'Add computer', exact: true })
               .tap();
@@ -1901,6 +1980,30 @@ test.describe('compatibility-aware reconnect', () => {
               await expect(
                 enter.getByRole('button', { name: 'Enter manually' }),
               ).toHaveAttribute('aria-pressed', 'true');
+              await expect(
+                enter.getByRole('button', { name: 'Connect', exact: true }),
+              ).toBeDisabled();
+              await page.evaluate(() => {
+                Object.defineProperty(navigator.clipboard, 'readText', {
+                  configurable: true,
+                  value: () =>
+                    Promise.reject(
+                      new DOMException(
+                        'Clipboard not allowed',
+                        'NotAllowedError',
+                      ),
+                    ),
+                });
+              });
+              await enter
+                .getByRole('button', {
+                  name: 'Paste pairing code',
+                  exact: true,
+                })
+                .tap();
+              await expect(enter.getByRole('alert')).toContainText(
+                'Clipboard paste is unavailable.',
+              );
               await enter
                 .getByRole('button', { name: 'Back', exact: true })
                 .tap();
