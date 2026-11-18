@@ -178,7 +178,7 @@ export const DEVICE_CODE_PROMPT_TIMEOUT_MS = 90_000;
 const DEVICE_CODE_KILL_GRACE_MS = 5_000;
 /** Output kept for parsing. A CLI that writes more than this is not prompting. */
 const DEVICE_CODE_OUTPUT_MAX_CHARS = 64 * 1024;
-/** Concurrent live logins across every profile. */
+/** Host slots reserved by active logins and process trees awaiting confirmed exit. */
 export const DEVICE_CODE_MAX_LIVE_LOGINS = 4;
 /** How long a finished record stays readable before it is pruned. */
 const DEVICE_CODE_RECORD_RETENTION_MS = 10 * 60_000;
@@ -304,7 +304,7 @@ interface PendingStart {
 }
 
 function busyReason(): string {
-  return `${DEVICE_CODE_MAX_LIVE_LOGINS} device logins are already waiting for approval on this host.`;
+  return `All ${DEVICE_CODE_MAX_LIVE_LOGINS} device sign-in slots on this host are in use. Process cleanup keeps a slot reserved until exit is confirmed.`;
 }
 
 function isLive(record: DeviceCodeLoginRecord): boolean {
@@ -357,7 +357,7 @@ export class DeviceCodeLoginManager {
     if (existing && isLive(existing.record)) {
       return { kind: 'existing', record: existing.record };
     }
-    if (this.#liveCount() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
+    if (this.#occupiedLoginSlots() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
       return { kind: 'busy', reason: busyReason() };
     }
     const pending: PendingStart = { profileDir, engine };
@@ -423,7 +423,7 @@ export class DeviceCodeLoginManager {
     if (raced && isLive(raced.record)) {
       return { kind: 'existing', record: raced.record };
     }
-    if (this.#liveCount() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
+    if (this.#occupiedLoginSlots() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
       return { kind: 'busy', reason: busyReason() };
     }
 
@@ -645,10 +645,10 @@ export class DeviceCodeLoginManager {
     );
   }
 
-  #liveCount(): number {
-    let count = 0;
-    for (const session of this.#sessions.values()) {
-      if (isLive(session.record)) count += 1;
+  #occupiedLoginSlots(): number {
+    let count = this.#stopping.size;
+    for (const [profileDir, session] of this.#sessions) {
+      if (isLive(session.record) && !this.#stopping.has(profileDir)) count += 1;
     }
     return count;
   }

@@ -542,6 +542,53 @@ describe('cancelling', () => {
     expect(spawnLogin).toHaveBeenCalledTimes(2);
   });
 
+  test('active, stopping, and unconfirmed logins share the host limit', async () => {
+    const { manager, children, spawnLogin } = harness();
+    const profiles = Array.from(
+      { length: DEVICE_CODE_MAX_LIVE_LOGINS },
+      (_, index) => `${PROFILE_DIR}-${index}`,
+    );
+    for (const profile of profiles) {
+      expect((await manager.start('codex', profile)).kind).toBe('started');
+    }
+
+    children[1].stop.mockRejectedValueOnce(new Error('synthetic stop failure'));
+    manager.cancel(profiles[1]);
+    const confirmExit = new Map<string, () => void>();
+    for (const [index, profile] of profiles.entries()) {
+      if (index < 2) continue;
+      children[index].stop.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            confirmExit.set(profile, resolve);
+          }),
+      );
+      manager.cancel(profile);
+    }
+    try {
+      const replacements = await Promise.all(
+        profiles.map((profile) => manager.start('codex', `${profile}-new`)),
+      );
+      expect(replacements.map(({ kind }) => kind)).toEqual(
+        profiles.map(() => 'busy'),
+      );
+      expect(spawnLogin).toHaveBeenCalledTimes(DEVICE_CODE_MAX_LIVE_LOGINS);
+
+      confirmExit.get(profiles[2])?.();
+      await vi.waitFor(async () => {
+        expect((await manager.start('codex', `${profiles[2]}-new`)).kind).toBe(
+          'started',
+        );
+      });
+      expect((await manager.start('codex', `${profiles[3]}-new`)).kind).toBe(
+        'busy',
+      );
+      expect(spawnLogin).toHaveBeenCalledTimes(DEVICE_CODE_MAX_LIVE_LOGINS + 1);
+    } finally {
+      for (const resolve of confirmExit.values()) resolve();
+    }
+  });
+
   test('an unconfirmed stop blocks only the affected credential profile', async () => {
     const { manager, children, spawnLogin } = harness();
     await manager.start('codex', PROFILE_DIR);

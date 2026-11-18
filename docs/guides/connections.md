@@ -107,6 +107,13 @@ confirms authentication. **Cancel** stops a pending login. Returning to the
 account resumes status checks. Login capabilities come from the installed CLI;
 unsupported or unreadable installations remain unavailable.
 
+If Station cannot confirm that a device-code sign-in process stopped, it keeps
+the host slot reserved. Ask the Station host operator to verify that the
+launcher and all its descendants have stopped before restarting Station. If the
+operator cannot verify the whole process tree, restart the host before resuming
+device-code sign-in. Check the selected profile's sign-in status before
+starting another attempt.
+
 Muse Code (#1942) signs in with a device code too: Station runs the bare
 `muse login`, offered only while `muse login --help` still says "approve a code
 in your browser", and relays its link and code. Sign-in state comes from
