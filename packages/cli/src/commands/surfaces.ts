@@ -48,6 +48,7 @@ import {
   printJson,
   printResolvedTarget,
   requestJson,
+  requestText,
   requirePositional,
   resolveApiBase,
   streamSse,
@@ -1057,10 +1058,11 @@ async function runAuthCommand(args: string[]) {
       const subaction = requirePositional(parsed, 1, 'users action');
       if (subaction === 'search') {
         const query = requirePositional(parsed, 2, 'query');
-        await requestRawAndPrint(
+        const { body } = await requestText(
           apiBase,
           `/api/users/search?q=${encodeURIComponent(query)}`,
         );
+        printJson(JSON.parse(body));
         return;
       }
       if (subaction === 'get') {

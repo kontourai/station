@@ -2354,10 +2354,9 @@ separate live request admission from persisted data identity.
 
 ### `useProjectConversationsQuery(projectSlug: string, limit?, config?)`
 
-Fetches recent conversations for a project. Default limit: 10. This legacy
-reader can turn a non-OK response or invalid/failed envelope into `[]`; an empty
-result does not distinguish no conversations from those failures. Transport or
-JSON-decoding failures can still reject. See `fetchProjectConversations` below.
+Wraps the legacy `fetchProjectConversations` endpoint. The query reports HTTP
+and response failures through its error state. The current Project view uses
+the scoped channel and Task room queries. See `fetchProjectConversations` below.
 
 ### `useRenameConversationMutation()`
 
@@ -2943,11 +2942,13 @@ does not mean a layout is installed and ready to load.
 
 ### `fetchProjectConversations(projectSlug: string, limit?: number): Promise<any[]>`
 
-Fetches recent conversations for a project, with a default limit of 10. The
-underlying [legacy helper](../../packages/sdk/src/api-knowledge-utils.ts) uses
-`allowFailure`, returning `[]` for HTTP refusals, false or malformed envelopes,
-or missing `data`. Network and JSON-decoding errors still reject. Consumers
-must not use this helper's empty array as proof that the Project has no history.
+Reads the legacy Project conversation endpoint on the selected Station. The
+default limit is 10. A valid array response is returned unchanged. HTTP and
+response failures reject with `StationHttpError`, which keeps the observed
+status and any server-supplied code, details, or `Retry-After`. The current
+Station refuses this legacy read with `project_conversations_unavailable`
+because its file-memory records lack a trusted Project binding. Use the scoped
+Project Room and Task room query surfaces for Project conversations.
 
 ### `addProjectLayoutFromPlugin(projectSlug: string, plugin: string): Promise<any>`
 

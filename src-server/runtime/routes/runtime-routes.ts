@@ -269,9 +269,9 @@ import {
 import { TelemetryIncidentLinks } from '../../services/telemetry-incident-links.js';
 import { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
-import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
+import { RouteError } from '../../utils/route-error.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
 import { registerConversationDeliveryShutdown } from '../bootstrap/runtime-shutdown.js';
 import {
@@ -11297,31 +11297,11 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest: conversationReadAuthorityForRequest,
     }),
   );
-  context.app.get('/api/projects/:slug/conversations', async (routeContext) => {
-    // File-memory conversations have no tenant binding.  They are therefore
-    // not a hosted projection, even if an old shared home still contains
-    // records; return the same empty inventory shape rather than exposing a
-    // cross-tenant count or title.
-    // Only the deployment mode is read, which does not depend on the user.
-    if (readAuthorityForRequest(routeContext.req.raw).mode === 'hosted') {
-      return routeContext.json({ success: true, data: [] });
-    }
-    const limit =
-      boundedIntQuery(routeContext.req.query('limit'), {
-        min: 0,
-        max: 1000,
-      }) ?? 50;
-    const adapter = context.memoryAdapters.values().next().value;
-    if (!adapter) {
-      return routeContext.json({ success: true, data: [] });
-    }
-    const conversations = await adapter.queryConversations({});
-    conversations.sort((a: any, b: any) =>
-      (b.updatedAt || '').localeCompare(a.updatedAt || ''),
-    );
-    return routeContext.json({
-      success: true,
-      data: conversations.slice(0, limit),
+  context.app.get('/api/projects/:slug/conversations', () => {
+    // The legacy file-memory inventory has no authoritative Project binding.
+    // Project admission alone cannot make those records safe to return.
+    throw new RouteError(503, 'Project conversation history is unavailable', {
+      code: 'project_conversations_unavailable',
     });
   });
   if (localMediaPreviews) {
