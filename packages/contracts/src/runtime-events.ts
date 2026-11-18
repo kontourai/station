@@ -1082,6 +1082,7 @@ export interface RuntimeWarningEvent extends CanonicalRuntimeEventBase {
 
 export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'token-usage.updated';
+  servedModelObservation?: UsageReceipt['servedModelObservation'];
   /** Separate reported reasoning tokens; tariff rules decide whether output already includes them. */
   reasoningTokens?: number;
   /** Contemporaneous route observation, never reconstructed from the current connection. */

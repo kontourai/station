@@ -312,12 +312,27 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         (event) =>
           event.method === 'token-usage.updated' && event.turnId === turnId,
       ),
-    ).toMatchObject({ promptTokens: 102, completionTokens: 20 });
+    ).toMatchObject({
+      promptTokens: 102,
+      completionTokens: 20,
+      servedModelObservation: {
+        source: 'opencode-step-started',
+        providerId: 'mock',
+        modelId: 'mock-1',
+        assistantMessageId: 'msg_1d71adc1f001pAM06JQG2JhsQi',
+      },
+    });
     expect(h.replay.misses).toEqual([]);
   });
 
   test('tool calls complete with their output and the edit carries its patch', async () => {
-    const h = await setup({ scenario: 'tools' });
+    const h = await setup({
+      scenario: 'tools',
+      omit: (record) =>
+        record.event?.type === 'session.step.started' &&
+        record.event.data?.assistantMessageID ===
+          'msg_1d71ae47d001ZdfbHR6imr6fWE',
+    });
     await h.start();
     const first = await h.adapter.sendTurn({
       threadId: 'thread-1',
@@ -329,6 +344,17 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       input: 'DO_EDIT now',
     });
     await h.waitFor(completedFor(second.turnId));
+    const continuationUsage = h.events.filter(
+      (event) =>
+        event.method === 'token-usage.updated' &&
+        event.turnId === second.turnId,
+    );
+    expect(continuationUsage).toHaveLength(2);
+    expect(continuationUsage[0]).not.toHaveProperty('servedModelObservation');
+    expect(continuationUsage[1]).toHaveProperty(
+      'servedModelObservation.assistantMessageId',
+      'msg_1d71ae4f800160PtNAChRchfdq',
+    );
     const tools = h.events.filter((event) => event.method === 'tool.completed');
     expect(tools.map((event) => [event.toolName, event.status])).toEqual([
       ['write', 'success'],

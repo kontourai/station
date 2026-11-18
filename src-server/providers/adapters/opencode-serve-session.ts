@@ -369,6 +369,10 @@ interface NativeTurn {
    */
   displacedUnwithdrawn?: { readonly turnId: string };
   outputText: string;
+  stepModel?: Extract<
+    EventBody,
+    { method: 'token-usage.updated' }
+  >['servedModelObservation'];
   readonly openTools: Map<string, string>;
   readonly done: Promise<void>;
   resolveDone(): void;
@@ -1258,6 +1262,7 @@ export class OpenCodeNativeSession {
   }
 
   private onDisconnect(): void {
+    if (this.turn) delete this.turn.stepModel;
     for (const part of this.parts.values()) {
       if (part.open) part.gapped = true;
     }
@@ -1758,6 +1763,9 @@ export class OpenCodeNativeSession {
         this.withTurn((turn) => this.onStepEnded(turn, data));
         return;
       case 'session.step.failed':
+        this.withTurn((turn) => {
+          delete turn.stepModel;
+        });
         return;
       case 'session.text.delta':
       case 'session.reasoning.delta':
@@ -2150,6 +2158,21 @@ export class OpenCodeNativeSession {
 
   private onStepStarted(data: Record<string, unknown>): void {
     this.onConfigured(data);
+    this.withTurn((turn) => {
+      const model = ownRecord(data.model);
+      const providerId = readString(model?.providerID);
+      const modelId = readString(model?.id);
+      const assistantMessageId = readString(data.assistantMessageID);
+      delete turn.stepModel;
+      if (providerId && modelId && assistantMessageId) {
+        turn.stepModel = {
+          source: 'opencode-step-started',
+          providerId,
+          modelId,
+          assistantMessageId,
+        };
+      }
+    });
   }
 
   private onConfigured(data: Record<string, unknown>): void {
@@ -2175,11 +2198,16 @@ export class OpenCodeNativeSession {
   }
 
   private onStepEnded(turn: NativeTurn, data: Record<string, unknown>): void {
+    const stepModel = turn.stepModel;
+    delete turn.stepModel;
     const usage = openCodeStepUsage(data);
     if (!usage) return;
     this.publishForTurn(turn, {
       method: 'token-usage.updated',
       turnId: turn.turnId,
+      ...(stepModel && stepModel.assistantMessageId === data.assistantMessageID
+        ? { servedModelObservation: stepModel }
+        : {}),
       ...usage,
     });
   }
