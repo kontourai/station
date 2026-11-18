@@ -3005,7 +3005,7 @@ and qualification limits.
 `GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
 scope and returns `data.publishers.kontour` and `data.publishers.operator`, each
 with an effective `tier` (`off`, `lite`, `full`) and `reason` (`DNT`, `policy`,
-`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`) optional saved `userChoice`, and `fullAvailable` (true for Kontour when its build destination exists, true for Operator). Older servers may omit availability; clients must not infer Full support from absence. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
+`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`), optional saved `userChoice`, and `fullAvailable`. Kontour reports `endpointConfigured: true` when the build has a destination, and reports `fullAvailable: false` for a Lite-only address. Operator reports `fullAvailable: true`. Older servers may omit availability. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
 field catalog in `liteInventory`, and the optional build-time author endpoint. Responses are private/no-store;
 a service not yet constructed returns 503 `telemetry_not_ready`.
 
@@ -3028,10 +3028,12 @@ the comparison was computed; agent feedback metadata is refused before validatio
 No credentials, destinations, or other config values are included.
 While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
 remains pending and needs confirmation after DNT is removed.
-A new Kontour Full preference at the mounted config route requires a current
-Kontour acknowledgement when a build destination is configured. DNT and an
-absent author destination permit a pending saved preference, without granting
-permission to send. A route constructed without that runtime consent capability
+A new Kontour Full preference requires a receiver that supports Detailed and a
+current Kontour acknowledgement when a build destination is configured. A
+Lite-only receiver refuses a new Full choice, including under DNT. Its
+acknowledgement route returns 409 `telemetry_detailed_unavailable`. For a
+compatible receiver under DNT or an absent author destination, the preference
+can be saved pending confirmation. A route constructed without that runtime consent capability
 retains its default refusal. On builds without an author destination, status
 reports `fullAvailable: false`; a pending preference cannot send to Kontour and
 there is no author confirmation to review. `GET /api/usage-telemetry/disclosure` exposes only

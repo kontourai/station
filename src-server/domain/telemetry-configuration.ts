@@ -46,6 +46,10 @@ export function resolveTelemetryConfiguration(
    */
   ignoreManagedPolicy = false,
 ): ResolvedTelemetryConfiguration {
+  const authorEndpoint = STATION_AUTHOR_TELEMETRY_ENDPOINT || undefined;
+  const authorFullAvailable =
+    authorEndpoint !== undefined &&
+    !new URL(authorEndpoint).pathname.startsWith('/v1/lite/');
   // #4521: a managed `limits.telemetry: false` turns every publisher off,
   // whatever the saved choice, environment or Do Not Track say.
   const managedOff = !ignoreManagedPolicy && !telemetryAllowedByManagedPolicy();
@@ -68,7 +72,9 @@ export function resolveTelemetryConfiguration(
   const resolvePublisher = (
     publisher: TelemetryPublisherId,
   ): ResolvedTelemetryConfiguration['publishers']['operator'] => {
-    const acknowledged = disclosures[publisher] === true;
+    const acknowledged =
+      disclosures[publisher] === true &&
+      (publisher !== 'kontour' || authorFullAvailable);
     const userChoice =
       config.telemetryTier?.[publisher] ??
       (!publisher.startsWith('publisher:') &&
@@ -118,14 +124,24 @@ export function resolveTelemetryConfiguration(
       ...(managedDenial !== undefined ? { managedDenial } : {}),
     };
   };
+  const kontour = resolvePublisher('kontour');
   const publishers: ResolvedTelemetryConfiguration['publishers'] = {
     ...Object.fromEntries(publisherIds.map((id) => [id, resolvePublisher(id)])),
-    kontour: resolvePublisher('kontour'),
+    kontour: {
+      ...kontour,
+      ...(authorEndpoint &&
+      !authorFullAvailable &&
+      kontour.reason === 'disclosure'
+        ? { reason: 'policy' }
+        : {}),
+      endpointConfigured: authorEndpoint !== undefined,
+      fullAvailable: authorFullAvailable,
+    },
     operator: resolvePublisher('operator'),
   };
   return {
     publishers,
-    authorEndpoint: STATION_AUTHOR_TELEMETRY_ENDPOINT || undefined,
+    authorEndpoint,
     // Compatibility projection for clients of the former operator-only resolver.
     source: publishers.operator.source,
     notices: [...tierEnvironment.notices, ...legacyEnvironment.notices],
