@@ -2750,8 +2750,12 @@ full-corpus call on the merge queue's critical path.
 validates the plan, exact candidate SHA and base, including its explicit
 coverage deferrals. The required aggregate accepts only successful diff,
 plan and `fast-checks` jobs plus an exact `integration-ready=true` output.
-Missing, invalid, foreign, cancelled or unavailable evidence blocks integration;
-it does not start an expensive fallback corpus. The required
+Missing, invalid, foreign, cancelled or unavailable evidence blocks integration.
+If an owned related-discovery child reaches its timeout and settles cleanly,
+the hosted plan runs the mapped exact suites plus bounded direct UI component
+importers. The plan names the timeout and retains the `ci-fast` deferral.
+Those shard results are diagnostic and the aggregate and queue decision block
+admission. A refused launch or failed cleanup still stops planning. The required
 `Source verification policy` status for the queue head is published from
 inside the merge-group run once `fast-checks` settles; the post-run lifecycle
 reconcile recomputes the same verdict from the same jobs and stays the
