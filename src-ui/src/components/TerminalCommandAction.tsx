@@ -30,6 +30,8 @@ function OpenStationTerminalButton({
   return (
     <Button
       variant="ghost"
+      aria-label="Copy and open terminal"
+      title="Copy and open terminal"
       onClick={() => {
         if (!host.isCurrent()) return;
         onOpen();
@@ -37,7 +39,7 @@ function OpenStationTerminalButton({
         show('coding:terminal', undefined, { region: 'bottom' });
       }}
     >
-      <TerminalGlyph /> Copy and open terminal
+      <TerminalGlyph />
     </Button>
   );
 }

@@ -23,8 +23,18 @@
   font-size: var(--k-text-sm);
 }
 
+.terminal-command__header .action-row {
+  display: flex;
+  flex-flow: row nowrap;
+  gap: 0;
+}
+
 .terminal-command__header .button {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 44px;
   min-block-size: 44px;
+  padding: 0;
 }
 
 .terminal-command pre,
