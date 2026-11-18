@@ -101,7 +101,7 @@ async function swipe(
     during,
     cancel = false,
   }: {
-    name?: string;
+    name?: string | RegExp;
     during?: () => Promise<void>;
     cancel?: boolean;
   } = {},
