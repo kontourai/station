@@ -331,17 +331,23 @@ describe('same-origin terminal gateway with real sockets', () => {
       scope,
       record.terminalId,
       windows
-        ? // ConPTY renders a frame at a time: space the writes so each
-          // character is its own record.
-          line(
+        ? line(
             await nodeProgram(
               root,
               'records.js',
-              "let i=0;const t=setInterval(()=>{process.stdout.write('x');if(++i<160)return;clearInterval(t);setTimeout(()=>process.stdout.write('end-'+'marker\\n'),50)},40)",
+              "const input=require('node:readline').createInterface({input:process.stdin,terminal:false});let i=0;console.log('records-ready');input.on('line',()=>{console.log('credit-'+i+':x');if(++i<160)return;console.log('end-'+'marker');input.close();process.stdin.pause()})",
             ),
           )
         : "i=0; while [ $i -lt 160 ]; do printf x; sleep 0.01; i=$((i+1)); done; printf '\\033]8;;file:///tmp/private\\007'; sleep 0.05; printf 'end-marker\\n'\r",
     );
+    if (windows) {
+      await journal(record.terminalId, 'records-ready');
+      // ConPTY may coalesce timed writes. Observe each record before producing the next.
+      for (let index = 0; index < 160; index += 1) {
+        await sessions.write('operator', scope, record.terminalId, '\r');
+        await journal(record.terminalId, `credit-${index}:x`);
+      }
+    }
     await journal(record.terminalId, 'end-marker');
     // ConPTY repaints the prompt, title and cursor after the program ends:
     // take the last record once the journal has gone quiet.
