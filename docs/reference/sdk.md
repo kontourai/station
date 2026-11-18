@@ -4809,8 +4809,8 @@ registration status. The status contains an opaque fingerprint of the
 subscription or a null fingerprint when the current device is unregistered.
 Older Stations can omit the status. Request options can carry a bound
 `requestScope` and an abort signal, including when subscribing or
-unsubscribing. HTTP refusals retain their status and an explicit pairing
-refusal raises `DevicePairingRequiredError`.
+unsubscribing. The discovery read retains HTTP status and raises
+`DevicePairingRequiredError` for an explicit pairing refusal.
 
 ### `NotificationsAPI`
 
