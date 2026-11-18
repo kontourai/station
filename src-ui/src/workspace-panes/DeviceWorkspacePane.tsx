@@ -1196,7 +1196,8 @@ function DeviceStage({
     />
   );
   return (
-    <div
+    <section
+      aria-label="Device workspace"
       className="device-pane__workspace"
       data-tools-layout={layout}
       data-tools-cover-stage={coversStage || undefined}
@@ -1312,7 +1313,7 @@ function DeviceStage({
           pending={<SkeletonBlock count={1} label="Loading device tools" />}
         />
       ) : null}
-    </div>
+    </section>
   );
 }
 
