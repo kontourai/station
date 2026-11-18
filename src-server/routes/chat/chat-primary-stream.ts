@@ -640,7 +640,7 @@ export function streamPrimaryAgentChat({
         memoryBrief?.delivered();
         return agent.streamText(input as string, streamOptions);
       };
-      result = nativeForeground
+      const invokedResult: IStreamResult = nativeForeground
         ? await nativeForeground.invoke(
             {
               get spec() {
@@ -653,6 +653,7 @@ export function streamPrimaryAgentChat({
             invokeAgent,
           )
         : await invokeAgent();
+      result = invokedResult;
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 
@@ -695,9 +696,9 @@ export function streamPrimaryAgentChat({
           error: err,
         });
       };
-      result.text?.catch(recordAuxiliaryRejection);
-      result.usage?.catch(recordAuxiliaryRejection);
-      result.finishReason?.catch(recordAuxiliaryRejection);
+      invokedResult.text?.catch(recordAuxiliaryRejection);
+      invokedResult.usage?.catch(recordAuxiliaryRejection);
+      invokedResult.finishReason?.catch(recordAuxiliaryRejection);
 
       const saveCancellationMessage = async () => {
         await StreamOrchestrator.saveCancellationMessage(
@@ -793,7 +794,7 @@ export function streamPrimaryAgentChat({
       });
 
       const wrappedStream = stripOutputDeclarationHandles(
-        injectableStream.wrap(result.fullStream),
+        injectableStream.wrap(invokedResult.fullStream),
       );
       for await (const chunk of pipeline.run(wrappedStream)) {
         requireCurrentRuntimeConfiguration(ctx, configurationLease);
