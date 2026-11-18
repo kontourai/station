@@ -1238,7 +1238,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       ).toBeFocused();
     };
     const bedrockOption = (picker: Locator) =>
-      picker.getByRole('option', { name: /Bedrock · Prod · shared-model/ });
+      picker.getByRole('button', {
+        name: /^Shared model.*Bedrock · Prod · shared-model/,
+      });
 
     const picker = await openPicker();
     // The draft offers only providers this Agent can use; the provider the
@@ -1247,7 +1249,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       picker.getByRole('button', { name: 'LiteLLM · Local' }),
     ).toHaveCount(0);
     await expect(bedrockOption(picker)).toHaveAttribute(
-      'aria-selected',
+      'aria-current',
       'false',
     );
     await bedrockOption(picker).click();
@@ -1255,10 +1257,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(commands).toEqual([]);
 
     const chosen = await openPicker();
-    await expect(bedrockOption(chosen)).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(bedrockOption(chosen)).toHaveAttribute('aria-current', 'true');
     // The reset names the default it restores, never the choice it clears
     // ("Use session override"): here, the Agent's default.
     await chosen
@@ -1268,7 +1267,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     const cleared = await openPicker();
     await expect(bedrockOption(cleared)).toHaveAttribute(
-      'aria-selected',
+      'aria-current',
       'false',
     );
     await bedrockOption(cleared).click();
@@ -1327,8 +1326,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeDisabled();
     await picker.getByRole('button', { name: 'Bedrock · Prod' }).click();
     await picker
-      .getByRole('option', {
-        name: /Bedrock · Prod · shared-model/,
+      .getByRole('button', {
+        name: /^Shared model.*Bedrock · Prod · shared-model/,
       })
       .click();
 

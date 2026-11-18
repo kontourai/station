@@ -302,13 +302,12 @@ export function SessionModelPicker({
       >
         <button
           type="button"
-          role="option"
-          aria-selected={active}
+          aria-current={active}
           disabled={model.available === false}
-          className={active ? 'session-model-picker__model--active' : ''}
+          className="session-model-picker__model-choice"
           onClick={() => selectModel(model)}
           onKeyDown={(event) =>
-            moveOptionFocus(
+            moveModelFocus(
               event,
               event.key === 'Home'
                 ? 'first'
@@ -368,7 +367,7 @@ export function SessionModelPicker({
       </div>
     );
   };
-  const moveOptionFocus = (
+  const moveModelFocus = (
     event: KeyboardEvent<HTMLButtonElement>,
     direction: -1 | 1 | 'first' | 'last',
   ) => {
@@ -380,7 +379,7 @@ export function SessionModelPicker({
       event.currentTarget
         .closest<HTMLElement>('[role="dialog"]')
         ?.querySelectorAll<HTMLButtonElement>(
-          '[role="option"]:not(:disabled)',
+          '.session-model-picker__model-choice:not(:disabled)',
         ) ?? [],
     );
     if (options.length === 0) return;
@@ -501,7 +500,7 @@ export function SessionModelPicker({
                               const first = event.currentTarget
                                 .closest('[role="dialog"]')
                                 ?.querySelector<HTMLButtonElement>(
-                                  '[role="option"]:not(:disabled)',
+                                  '.session-model-picker__model-choice:not(:disabled)',
                                 );
                               if (first) {
                                 event.preventDefault();
@@ -561,14 +560,11 @@ export function SessionModelPicker({
                       </div>
                       <div
                         className="session-model-picker__models"
-                        role="listbox"
+                        role="group"
                         aria-label="Models"
                       >
                         {modelSections.map((section) =>
                           section.kind === 'model' ? (
-                            // A fieldset IS role="group", which is what a listbox
-                            // accepts around its options; the legend names the model
-                            // whose routes these are.
                             <fieldset
                               key={`model:${section.canonicalId}`}
                               className="session-model-picker__model-group"

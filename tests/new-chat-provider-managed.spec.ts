@@ -414,9 +414,11 @@ test('provider-managed project ignores a stale unsupported project model even wh
     .getByRole('button', { name: /^(?:Model:|Engine & model:) / })
     .click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
-  await expect(picker.getByRole('option', { name: /Llama 3.2/ })).toBeVisible();
   await expect(
-    picker.getByRole('option', { name: /Qwen 3 Coder/ }),
+    picker.getByRole('button', { name: /^Llama 3.2/ }),
+  ).toBeVisible();
+  await expect(
+    picker.getByRole('button', { name: /^Qwen 3 Coder/ }),
   ).toBeVisible();
 });
 
@@ -1040,7 +1042,7 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
   await expect(rowModel).not.toContainText('runtime');
   await rowModel.click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
-  await picker.getByRole('option', { name: /GPT-5.5/ }).click();
+  await picker.getByRole('button', { name: /^GPT-5.5/ }).click();
   // Choosing the Model closes the picker; nothing is left to dismiss.
   await expect(picker).toBeHidden();
   const chip = await runSetupControl(startComposer(page), (panel) =>
