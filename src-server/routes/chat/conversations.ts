@@ -789,6 +789,7 @@ export function createConversationRoutes(
   importCaller?: (
     request: Request,
   ) => { deviceId: string; stationName: string } | undefined,
+  mayUseOwnedConversationRoute?: (context: Context) => boolean,
 ) {
   const app = new Hono();
   const sessionSummaries =
@@ -2087,8 +2088,19 @@ export function createConversationRoutes(
   );
 
   // Delete conversation
-  app.delete('/:slug/conversations/:conversationId', async (c) => {
+  const deleteConversation = async (c: Context, ownerOnly: boolean) => {
+    const ownedNotFound = () =>
+      c.json(
+        {
+          success: false,
+          error: 'Conversation not found',
+          code: 'owned_conversation_not_found',
+        },
+        404,
+      );
     try {
+      if (ownerOnly && !mayUseOwnedConversationRoute?.(c))
+        return ownedNotFound();
       conversationOps.add(1, { operation: 'delete', agent: param(c, 'slug') });
       const slug = param(c, 'slug');
       const conversationId = param(c, 'conversationId');
@@ -2098,11 +2110,14 @@ export function createConversationRoutes(
       // fence before the adapter because the file store is process-global in a
       // hosted deployment.
       if (isHostedSessionReadAuthority(authority)) {
+        if (ownerOnly) return ownedNotFound();
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       }
-      const adapter = getAdapter(runtimeAgentKey(slug));
+      const agentKey = runtimeAgentKey(slug);
+      const adapter = getAdapter(agentKey);
 
       if (!adapter) {
+        if (ownerOnly) return ownedNotFound();
         return c.json({ success: false, error: 'Agent not found' }, 404);
       }
       // #2377 slice B: a station-control agent deletes only a conversation
@@ -2117,6 +2132,15 @@ export function createConversationRoutes(
             404,
           );
       }
+      const ownsStoredConversation = async () => {
+        const stored = await adapter.getConversation(conversationId);
+        return (
+          stored?.userId === authority.userId &&
+          (stored.resourceId === agentKey || stored.resourceId === slug)
+        );
+      };
+      if (ownerOnly && !(await ownsStoredConversation()))
+        return ownedNotFound();
       if (
         await sessionMessageReader?.readSessionConversation(
           conversationId,
@@ -2132,7 +2156,13 @@ export function createConversationRoutes(
         );
       }
 
-      await reserveFork(conversationId, async () => {
+      const deleted = await reserveFork(conversationId, async () => {
+        if (
+          ownerOnly &&
+          (!mayUseOwnedConversationRoute?.(c) ||
+            !(await ownsStoredConversation()))
+        )
+          return false;
         const fork = sessionMessageReader?.readForkConversation?.(
           conversationId,
           authority,
@@ -2157,7 +2187,9 @@ export function createConversationRoutes(
           );
         }
         await adapter.deleteConversation(conversationId);
+        return true;
       });
+      if (!deleted) return ownedNotFound();
       // Derived summaries do not outlive their source conversation. Their
       // owner-scoped coordinate prevents an ID reused later from inheriting
       // this conversation's derived text.
@@ -2190,7 +2222,13 @@ export function createConversationRoutes(
         error,
       );
     }
-  });
+  };
+  app.delete('/:slug/conversations/:conversationId', (c) =>
+    deleteConversation(c, false),
+  );
+  app.delete('/:slug/conversations/:conversationId/owned', (c) =>
+    deleteConversation(c, true),
+  );
 
   // Get messages for a conversation
   // The one unified read seam (`conversation-message-reader.ts`): every

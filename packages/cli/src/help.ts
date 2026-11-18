@@ -823,15 +823,17 @@ const VERBS: Record<string, VerbSpec> = {
   },
   conversation: {
     group: 'Core Workspace',
-    summary: 'Export, fork, settle or reopen a conversation',
+    summary: 'Search, delete, export, fork, settle or reopen conversations',
     targets: true,
     usage: [
+      'station conversation delete <agent> <conversationId> --confirm',
+      'station conversation search <phrase> [--project=<slug>] [--agent=<slug>] [--limit=<n>]',
       'station conversation export <agent> <conversationId>',
       'station conversation fork <agent> <conversationId> [--json]',
       'station conversation settle <conversationId> [--json]',
       'station conversation reopen <conversationId> [--json]',
     ],
-    actions: ['export', 'fork', 'settle', 'reopen'],
+    actions: ['delete', 'export', 'fork', 'settle', 'reopen', 'search'],
     detail: [
       'export:',
       '  --format=<fmt>        thread (default), anthropic-messages, openai-chat, gemini, markdown',

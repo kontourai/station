@@ -264,6 +264,10 @@
       "missing": 4286,
       "want": "Update_connection"
     },
+    "conversation delete": {
+      "tools": ["delete_conversation"],
+      "note": "The CLI uses the person-only owned file route. The tool uses its existing caller authorization."
+    },
     "conversation export": {
       "tools": ["get_conversation_messages", "read_conversation"],
       "note": "Export endpoint GET /agents/:slug/conversations/:id/export?format= has no tool; transcript read is covered."
@@ -273,6 +277,10 @@
     },
     "conversation reopen": {
       "tools": ["settle_conversation"]
+    },
+    "conversation search": {
+      "tools": ["search_conversations"],
+      "note": "The CLI uses the person’s conversation read authority. The tool keeps the verified agent’s Project and transcript rules."
     },
     "conversation settle": {
       "tools": ["settle_conversation"]
@@ -1235,8 +1243,7 @@
       "cli": ["agents delete"]
     },
     "delete_conversation": {
-      "missing": 4281,
-      "want": "Agents delete-conversation"
+      "cli": ["conversation delete"]
     },
     "delete_integration": {
       "cli": ["tools delete"]
@@ -1665,8 +1672,7 @@
       "reason": "Wake-up is bound to the caller's own conversation (route rule wake-up-stays-in-own-conversation)."
     },
     "search_conversations": {
-      "missing": 4281,
-      "want": "Conversations search"
+      "cli": ["conversation search"]
     },
     "search_knowledge": {
       "cli": ["knowledge search"]

@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { runCli } from '../../../../packages/cli/src/cli.js';
 import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -740,6 +741,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     }
 
     return {
+      base,
       personRequest,
       store,
       memory: context.memoryAdapters.get('default')!,
@@ -940,6 +942,111 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       expect(result.body.data.results).toEqual([
         expect.objectContaining({ conversationId: 'empty-file' }),
       ]);
+    });
+
+    test('searches as the CLI person through the authenticated route', async () => {
+      const { base, rawRequest } = await setup();
+      const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const cli = (query: string, ...flags: string[]) =>
+        runCli([
+          'conversation',
+          'search',
+          query,
+          ...flags,
+          `--api-base=${base}`,
+          `--credential=${OPERATOR_CREDENTIAL}`,
+        ]);
+      try {
+        await cli('zephyrquartz', '--project=project-1');
+        expect(JSON.parse(String(output.mock.lastCall?.[0]))).toMatchObject({
+          results: [
+            expect.objectContaining({
+              conversationId: 'a-anchor',
+              projectSlug: 'project-1',
+            }),
+          ],
+        });
+        await cli('CAROL-SECRET');
+        expect(JSON.parse(String(output.mock.lastCall?.[0]))).toMatchObject({
+          results: [],
+        });
+        expect(
+          await rawRequest('/api/conversations/work/search?query=zephyrquartz'),
+        ).toMatchObject({
+          status: 403,
+          body: { code: 'station_control_caller_required' },
+        });
+      } finally {
+        output.mockRestore();
+      }
+    });
+
+    test('CLI deletes only the person’s owned saved conversation from the matching Agent', async () => {
+      const { base, memory } = await setup();
+      for (const [id, userId] of [
+        ['mine', A],
+        ['a-anchor', A],
+        ['foreign', CAROL],
+        ['legacy', 'old-os-alias'],
+      ] as const) {
+        await memory.createConversation({
+          id,
+          userId,
+          resourceId: 'default',
+          title: id,
+          metadata: {},
+        });
+      }
+      const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const remove = (agent: string, id: string, ...flags: string[]) =>
+        runCli([
+          'conversation',
+          'delete',
+          agent,
+          id,
+          ...flags,
+          `--api-base=${base}`,
+          `--credential=${OPERATOR_CREDENTIAL}`,
+        ]);
+      try {
+        await expect(remove('station', 'mine')).rejects.toThrow(
+          'requires --confirm',
+        );
+        await expect(memory.getConversation('mine')).resolves.toMatchObject({
+          userId: A,
+        });
+        for (const [agent, id] of [
+          ['assistant', 'mine'],
+          ['station', 'foreign'],
+          ['station', 'legacy'],
+        ] as const) {
+          await expect(remove(agent, id, '--confirm')).rejects.toMatchObject({
+            status: 404,
+            code: 'owned_conversation_not_found',
+          });
+        }
+        await expect(
+          remove('station', 'a-anchor', '--confirm'),
+        ).rejects.toMatchObject({
+          status: 409,
+        });
+        await expect(memory.getConversation('a-anchor')).resolves.toMatchObject(
+          { userId: A },
+        );
+        await remove('station', 'mine', '--confirm');
+        expect(JSON.parse(String(output.mock.lastCall?.[0]))).toMatchObject({
+          success: true,
+        });
+        await expect(memory.getConversation('mine')).resolves.toBeNull();
+        await expect(memory.getConversation('foreign')).resolves.toMatchObject({
+          userId: CAROL,
+        });
+        await expect(memory.getConversation('legacy')).resolves.toMatchObject({
+          userId: 'old-os-alias',
+        });
+      } finally {
+        output.mockRestore();
+      }
     });
 
     test('searches title and content, misses, filters agent/project, bounds results and preserves read authorization', async () => {

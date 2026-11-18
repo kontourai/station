@@ -1441,15 +1441,27 @@ Boards. All six commands return JSON.
 
 ### `conversation`
 
-Export a conversation as a portable thread, or in a provider-native format,
-fork it into a new conversation, or settle or reopen it in your own inbox.
+Search conversations you can read, export them in a portable or
+provider-native format, fork or delete saved conversations, or settle or reopen them in your inbox.
 
 ```
+station conversation delete <agent> <conversationId> --confirm
+station conversation search <phrase> [--project=<slug>] [--agent=<slug>] [--limit=<n>]
 station conversation export <agent> <conversationId>
 station conversation fork <agent> <conversationId> [--target-agent=<slug>] [--project=<slug>] [--turn=<id>] [--idempotency-key=<key>] [--json]
 station conversation settle <conversationId> [--json]
 station conversation reopen <conversationId> [--json]
 ```
+
+Search returns matching titles and message excerpts as JSON. Filters narrow
+the conversations available to your Station credential. Results marked
+`partial` may omit matches. File conversations need a recorded owner matching
+your principal, so old records stamped with an OS alias can be absent.
+
+Delete requires confirmation and matches both the named Agent and your
+recorded owner identity. It applies to saved file conversations on personal
+Stations. Runtime-managed history and old rows with ambiguous ownership are
+refused.
 
 `export`:
 

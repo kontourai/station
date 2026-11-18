@@ -8504,6 +8504,10 @@ export function configureRuntimeRoutes(
     '/api/agents',
     createChatRoutes({
       ...runtimeContext,
+      fileConversationOwnerId: (request) => {
+        const authority = knowledgeReadAuthorities.get(request);
+        return authority?.mode === 'personal' ? authority.userId : undefined;
+      },
       memoryBrief: (request, session) =>
         memoryBriefProvider
           ? memoryBriefProvider(request, session)
@@ -12692,6 +12696,19 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  const isCurrentConversationPerson = (c: Context) => {
+    const request = c.req.raw;
+    const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
+    return (
+      !!authenticated &&
+      authenticated.kind !== 'internal' &&
+      isRequestPrincipalCurrent(request) &&
+      resolveInboundDeviceKindForRequest(request, (credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      ) !== 'delegation' &&
+      resolveOrchestrationRequestPrincipal(c).kind === 'human'
+    );
+  };
   // Bind the SAME domain as the constructor's verifier to the real final-Request
   // resolver. Only retained native intents consume handles; replay stays ordinary.
   const nativeForkStoredReadMount = context.nativeForkStoredReadBinder?.(
@@ -12756,6 +12773,7 @@ export function configureRuntimeRoutes(
       pairedStationImportCaller((credential) =>
         context.environmentSecurityService.identifyDevice(credential),
       ),
+      isCurrentConversationPerson,
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from
@@ -12996,6 +13014,7 @@ export function configureRuntimeRoutes(
         context.memoryAdapters.values().next().value,
       search: context.runtimeSearch,
       current: isRequestPrincipalCurrent,
+      maySearchAsPerson: isCurrentConversationPerson,
     }),
   );
   context.app.route(
