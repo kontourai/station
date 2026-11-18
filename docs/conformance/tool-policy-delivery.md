@@ -126,6 +126,15 @@ tools. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
+Inherited delegation allowlists are conjunctive. Each group is an allowlist
+from an ancestor, and the tool must match every group as well as the child's
+own allowlist. An empty group permits no tool. Station preserves the groups
+in delegated requests and binds them to the runtime attestation. Station
+refuses execution of requests or recorded sessions carrying inherited groups,
+including managed Station execution and forwarding to a peer or SSH target.
+Enabling that execution requires binding the policy to conversation reuse and
+durable intent, then proving enforcement at the actual tool effect.
+
 Child fan-out is the one denial Station also enforces server-side for every
 engine. A delegated child that calls `delegate_task` or `send_message` is
 refused at the routes behind them (`POST /api/orchestration/delegations`, and

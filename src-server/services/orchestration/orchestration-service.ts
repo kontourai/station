@@ -434,6 +434,7 @@ import {
   type CredentialRecoveryModule,
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
+import { assertInheritedDelegationToolPolicy } from './delegation-tool-policy.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
 import { splitOversizedDeltas } from './delta-splitting.js';
 import {
@@ -4363,6 +4364,17 @@ export class OrchestrationService {
         new Error('Credential profile recovery session is unavailable.'),
       );
     }
+    try {
+      assertInheritedDelegationToolPolicy(
+        this.firstStartedMetadataOfThread(input.threadId)?.delegation,
+      );
+      assertInheritedDelegationToolPolicy(
+        this.readLatestSessionStartMetadata(input.threadId)?.delegation,
+      );
+    } catch (error) {
+      if (error instanceof Error) throw markSessionUntouched(error);
+      throw error;
+    }
     // #484 phase A follow-up: credential-recovery replays carry no
     // admission context, and the caller follows this restart with a DIRECT
     // `adapter.sendTurn` that bypasses dispatch — so a thread whose
@@ -4491,6 +4503,7 @@ export class OrchestrationService {
         ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
       });
       startInput = await this.resolveSessionAgentForStart(startInput);
+      assertInheritedDelegationToolPolicy(startInput.metadata?.delegation);
       throwIfAborted(startInput.signal);
       // #4435: before the start boundary, so a governance refusal is
       // definitive rather than a start that may have happened.
@@ -8666,6 +8679,10 @@ export class OrchestrationService {
             );
         },
         validateReattach: (input, existing) => {
+          assertInheritedDelegationToolPolicy(input.metadata?.delegation);
+          assertInheritedDelegationToolPolicy(
+            this.firstStartedMetadataOfThread(input.threadId)?.delegation,
+          );
           const reattach = normalizeOmittedModelId(input);
           const model = reattach.modelId?.trim();
           if (model) {
@@ -8701,6 +8718,9 @@ export class OrchestrationService {
             this.latestStartedMetadataOfThread(threadId),
         },
         prepareStart: async (postureInput, context, internal, adapter) => {
+          assertInheritedDelegationToolPolicy(
+            postureInput.metadata?.delegation,
+          );
           // #1796: a full-access grant that names no grantor would stamp an
           // unconfined session nothing could revoke. Refused before the
           // start does anything.
@@ -9160,6 +9180,7 @@ export class OrchestrationService {
           return startInput;
         },
         start: async (adapter, input, context, internal) => {
+          assertInheritedDelegationToolPolicy(input.metadata?.delegation);
           const startedAt = performance.now();
           if (this.options.eventStore) {
             let resolve!: () => void;
@@ -9632,6 +9653,9 @@ export class OrchestrationService {
   }
 
   private assertTurnAdmitted(threadId: string): void {
+    assertInheritedDelegationToolPolicy(
+      this.firstStartedMetadataOfThread(threadId)?.delegation,
+    );
     for (const admission of this.turnAdmissions) {
       const result = admission({ threadId });
       if (!result.allowed) throw new Error(result.reason);
