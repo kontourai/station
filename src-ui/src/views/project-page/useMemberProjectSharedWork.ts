@@ -43,7 +43,7 @@ export function useScopedMemberProjectSharedTasksQuery(
     queryFn: async ({ signal }) => {
       const captured = requestScope;
       if (!captured?.isCurrent())
-        throw new Error('The selected Station authority is unavailable.');
+        throw new Error('Access to this Station is unavailable.');
       const { listProjectSharedTasks } = await import(
         '@kontourai/station-sdk/project-shared-tasks'
       );
@@ -59,7 +59,7 @@ export function useScopedMemberProjectSharedTasksQuery(
         },
       );
       if (!captured.isCurrent())
-        throw new Error('The selected Station authority changed.');
+        throw new Error('Your access to this Station changed.');
       if (
         values.some(
           (value) =>
@@ -149,13 +149,13 @@ export function useScopedMemberProjectSharedTaskDetails(
     queryFn: async ({ signal }) => {
       const captured = requestScope;
       if (!captured?.isCurrent())
-        throw new Error('The selected Station authority is unavailable.');
+        throw new Error('Access to this Station is unavailable.');
       const { getProjectSharedTaskPublication } = await import(
         '@kontourai/station-sdk/project-shared-tasks'
       );
       signal.throwIfAborted();
       if (!captured.isCurrent())
-        throw new Error('The selected Station authority changed.');
+        throw new Error('Your access to this Station changed.');
       const value = await getProjectSharedTaskPublication(
         captured.apiBase,
         project.slug,
@@ -169,7 +169,7 @@ export function useScopedMemberProjectSharedTaskDetails(
         },
       );
       if (!captured.isCurrent())
-        throw new Error('The selected Station authority changed.');
+        throw new Error('Your access to this Station changed.');
       if (
         value.kind === 'shared'
           ? !sameSharedProjectTask(value.publication, sharedTask)
@@ -220,13 +220,13 @@ export function useScopedMemberProjectSharedTaskDetails(
       requirePublication();
       const captured = requestScope;
       if (!captured?.isCurrent())
-        throw new Error('The selected Station authority is unavailable.');
+        throw new Error('Access to this Station is unavailable.');
       const { readProjectSharedTaskHistory } = await import(
         '@kontourai/station-sdk/project-shared-tasks'
       );
       signal.throwIfAborted();
       if (!captured.isCurrent())
-        throw new Error('The selected Station authority changed.');
+        throw new Error('Your access to this Station changed.');
       const value = await readProjectSharedTaskHistory(
         captured.apiBase,
         project.slug,
@@ -241,7 +241,7 @@ export function useScopedMemberProjectSharedTaskDetails(
         },
       );
       if (!captured.isCurrent())
-        throw new Error('The selected Station authority changed.');
+        throw new Error('Your access to this Station changed.');
       requirePublication();
       return value;
     },
@@ -255,13 +255,13 @@ export function useScopedMemberProjectSharedTaskDetails(
     queryFn: async ({ signal }) => {
       const captured = requestScope;
       if (!captured?.isCurrent())
-        throw new Error('The selected Station authority is unavailable.');
+        throw new Error('Access to this Station is unavailable.');
       const { readProjectSharedTaskDocument } = await import(
         '@kontourai/station-sdk/project-shared-tasks'
       );
       signal.throwIfAborted();
       if (!captured.isCurrent())
-        throw new Error('The selected Station authority changed.');
+        throw new Error('Your access to this Station changed.');
       const value = await readProjectSharedTaskDocument(
         captured.apiBase,
         project.slug,
@@ -275,7 +275,7 @@ export function useScopedMemberProjectSharedTaskDetails(
         },
       );
       if (!captured.isCurrent())
-        throw new Error('The selected Station authority changed.');
+        throw new Error('Your access to this Station changed.');
       if (
         value.kind === 'snapshot' &&
         (value.project.id !== project.id ||

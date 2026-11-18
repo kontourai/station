@@ -1029,7 +1029,19 @@ test.describe('Orchestration Chat Flow', () => {
       'decisions follow the command preview',
     ).toBeGreaterThanOrEqual(detailsBox!.y + detailsBox!.height);
     await expectClearLayout('desktop uncertain delivery');
-    await card.getByRole('button', { name: 'Check status' }).click();
+    const checkStatus = card.getByRole('button', { name: 'Check status' });
+    const [unavailableStatus] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname ===
+          `/api/orchestration/sessions/session-1/requests/${requestId}`,
+      ),
+      checkStatus.click(),
+    ]);
+    expect(await unavailableStatus.json()).toMatchObject({
+      data: { state: 'unavailable' },
+    });
+    await expect(checkStatus).toBeEnabled();
     await expect(card.getByRole('alert')).toContainText(
       'Delivery is not confirmed.',
     );
@@ -1038,7 +1050,7 @@ test.describe('Orchestration Chat Flow', () => {
     );
     await expect(allowOnce).toBeDisabled();
     answer = 'settled';
-    await card.getByRole('button', { name: 'Check status' }).click();
+    await checkStatus.click();
     await expect(card.getByRole('status')).toHaveText('Already answered.');
     await expectClearLayout('desktop inspected decision');
 
