@@ -336,7 +336,9 @@ export function projectSessionLifecycle(options: {
     terminalEvent?.method === 'runtime.error'
       ? terminalEvent
       : lifecycleState === 'failed'
-        ? options.events.findLast((event) => event.method === 'runtime.error')
+        ? [...options.events]
+            .reverse()
+            .find((event) => event.method === 'runtime.error')
         : undefined;
   if (!blockedReason && lastBlockingError?.method === 'runtime.error') {
     blockedReason = lastBlockingError.message;

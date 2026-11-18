@@ -1083,7 +1083,7 @@ export function describeAcpTurnStopFailure(event: {
  */
 export function interpretAcpTurnStop(
   event: TurnCompletedEvent,
-): TurnCompletedEvent | RuntimeErrorEvent {
+): TurnCompletedEvent | ProviderRuntimeErrorEvent {
   const index = acpCompletionFailureIndex(event);
   if (index === undefined) return event;
   const {
