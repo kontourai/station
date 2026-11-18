@@ -104,31 +104,34 @@ alert appeared. Coalescing, delayed sends, and a disabled card can affect the
 actual experience. Those remaining timing and device boundaries need their
 own evidence; sharing a helper does not resolve them automatically.
 
-### CLI request assembly does not always use the shared client contract
+### CLI request assembly and request state
 
-The [chat caller](../../packages/cli/src/commands/core.ts) builds workspace
-selection separately from saved-Station selection. The source launcher changes
-working directory, and continuation omits workspace flags without a warning.
-[#2733](https://github.com/kontourai/station/issues/2733) tracks one explicit
-workspace-selection contract across those paths.
+The original audit at
+`3c655ae4cb3223a5c7b5438edb95f14c7a917d94` found that chat could use the
+checkout's directory when invoked elsewhere, silently drop continuation
+workspace flags, and fold a space-separated model option into the prompt.
+It also reproduced a completed chat whose JSON still named a resolved request
+as pending.
 
-The [model-option collector](../../packages/cli/src/commands/model-options.ts)
-does not reject the bare flag produced by the advertised spaced syntax;
-the following value becomes prompt text. A local parser/collector probe
-confirmed that the equals spelling works and the spaced spelling loses the
-option. [#2732](https://github.com/kontourai/station/issues/2732) tracks support
-or explicit refusal, with tests through chat and delegate callers.
+The [chat caller](../../packages/cli/src/commands/core.ts) now uses the
+invocation directory for new local directory-based chats, lets the server
+resolve a selected Project's directory, and rejects workspace changes on
+continuation. [#2733](https://github.com/kontourai/station/issues/2733)
 
-[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts) now takes
-its target, credential and deadline from the common client path, but still
-confirms its returned preview without displaying it. [#2734](https://github.com/kontourai/station/issues/2734)
-tracks the visible confirmation journey. These are
-source/caller findings, not proof of a real restore or engine execution.
+The [argument parser](../../packages/cli/src/commands/core-api.ts) now rejects
+bare and space-separated model options before chat or delegate dispatch.
+[#2732](https://github.com/kontourai/station/issues/2732)
 
-The CLI's final JSON can also retain `pendingRequest` after that request has
-resolved and the turn completed. An isolated caller/SSE probe reproduced this
-combination. [#2741](https://github.com/kontourai/station/issues/2741) tracks a
-response contract that distinguishes current pending work from the last notice.
+[Chat JSON](../../packages/cli/src/commands/session-client.ts) now exposes
+the last opening notice as `lastObservedRequest`. A responder command in
+`pendingRequest` requires a bounded Session read and exact request inspection.
+Local launcher and HTTP fixture evidence covers these caller contracts.
+[#2741](https://github.com/kontourai/station/issues/2741)
+
+[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts)
+takes its target, credential and deadline from the common client path. It
+still confirms its returned preview without displaying it.
+[#2734](https://github.com/kontourai/station/issues/2734)
 
 ### A declared namespace and its consumer can name different stores
 

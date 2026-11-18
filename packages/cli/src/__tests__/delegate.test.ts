@@ -1615,6 +1615,7 @@ describe('station delegate over HTTP', () => {
       '--effort=high',
       '--model-option=effort=low',
       '--model-option=fastMode=true',
+      '--model-option=fastMode=false',
       '--json',
       'Review the diff',
       `--api-base=${apiBase}`,
@@ -1626,11 +1627,41 @@ describe('station delegate over HTTP', () => {
     const target = request?.body.target as
       | { model?: { options?: unknown } }
       | undefined;
+    expect(request?.body.prompt).toBe('Review the diff');
     expect(target?.model?.options).toEqual({
-      fastMode: true,
+      fastMode: false,
       effort: 'high',
     });
   });
+
+  test.each([
+    { args: ['--model-option'] },
+    { args: ['--model-option', 'fastMode=true'] },
+    {
+      args: [
+        '--model-option=fastMode=true',
+        '--model-option',
+        'fastMode=false',
+      ],
+    },
+    { args: ['--model-option=fastMode'] },
+  ])(
+    'delegate rejects invalid model option argv $args before HTTP',
+    async ({ args }) => {
+      const { runCli } = await import('../cli.js');
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      await expect(
+        runCli([
+          'delegate',
+          '--agent=codex',
+          ...args,
+          'Review the diff',
+          `--api-base=${apiBase}`,
+        ]),
+      ).rejects.toThrow('--model-option');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
 
   test('rejects an invalid --approval-mode value as a usage error before any request (#978 AC5)', async () => {
     const { runCli } = await import('../cli.js');
