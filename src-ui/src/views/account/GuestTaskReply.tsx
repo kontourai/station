@@ -8,6 +8,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { RoomComposer } from '../../components/room/RoomComposer';
+import { SkeletonBlock } from '../../components/state';
 import { requireGuestAccount } from './guest-account-authority';
 
 export function GuestTaskReply({
@@ -95,7 +96,7 @@ export function GuestTaskReply({
       sending.current = false;
     }
   }
-  if (room.isPending) return <p role="status">Checking reply access…</p>;
+  if (room.isPending) return <SkeletonBlock label="Checking reply access" />;
   if (room.isError)
     return (
       <Button onClick={() => void room.refetch()}>Retry reply access</Button>
