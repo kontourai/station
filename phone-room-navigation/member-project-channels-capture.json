@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "runId": null,
+  "capturedAt": "2026-11-18T05:06:54.701Z",
+  "assetDiagnosticsRetention": "INCOMPLETE",
+  "assetDiagnosticsBudget": {
+    "retention": "INCOMPLETE",
+    "incomplete": true,
+    "reason": "OWNED_OUTPUT_EXISTS",
+    "totalBytes": 444788
+  },
+  "expected": 303,
+  "selection": [
+    "member-project-channels-light",
+    "member-project-channels-dark"
+  ],
+  "secondCaptures": [],
+  "faultInjection": null,
+  "screens": [
+    {
+      "file": "member-project-channels-light.png",
+      "ok": true,
+      "name": "member-project-channels-light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "error": null,
+      "browserErrors": [
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      ],
+      "sha256": "f32e8ffcef0a3d481068cce3b319372aae8524c24cddb079bd64eb2f97e3d9ff",
+      "controls": [
+        {
+          "label": "Toggle menu",
+          "disabled": false
+        },
+        {
+          "label": "Search or jump to…",
+          "disabled": false
+        },
+        {
+          "label": "Choose Station — Connected · Station E2E",
+          "disabled": false
+        },
+        {
+          "label": "Notifications",
+          "disabled": false
+        },
+        {
+          "label": "More actions",
+          "disabled": false
+        },
+        {
+          "label": "Refresh shared work",
+          "disabled": false
+        },
+        {
+          "label": "general, 3 unread",
+          "disabled": false
+        },
+        {
+          "label": "design",
+          "disabled": false
+        },
+        {
+          "label": "launch-plan, 1 unread",
+          "disabled": false
+        },
+        {
+          "label": "Fix the login redirect on Safari, Task room, 2 unread",
+          "disabled": false
+        },
+        {
+          "label": "Read shared item: Fix the login redirect on Safari",
+          "disabled": false
+        },
+        {
+          "label": "Full screen chat",
+          "disabled": false
+        },
+        {
+          "label": "New chat",
+          "disabled": false
+        }
+      ],
+      "uiAudit": {
+        "findings": [],
+        "overlapDiagnostics": {
+          "admittedOverlapOccurrences": 0,
+          "diagnosticOccurrencesStored": 0,
+          "omittedInvalid": 0,
+          "omittedLimit": 0,
+          "representativesWithDiagnostics": 0,
+          "duplicateOccurrences": 0
+        },
+        "measured": {
+          "controls": 14,
+          "smallTargets": 0,
+          "viewport": 390,
+          "auditMs": 502
+        }
+      },
+      "attempts": 1,
+      "controlsAfterPhoto": {
+        "changed": false,
+        "added": [],
+        "removed": [],
+        "omitted": 0
+      },
+      "controlMovement": {
+        "compared": 13,
+        "moved": 0,
+        "largest": null,
+        "windowMs": 558
+      }
+    },
+    {
+      "file": "member-project-channels-dark.png",
+      "ok": true,
+      "name": "member-project-channels-dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "error": null,
+      "browserErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      ],
+      "sha256": "b9ad57dde1a8cfddff6e04e22f16900e1242e7aa0ac51113bd58812acce75e34",
+      "controls": [
+        {
+          "label": "Toggle menu",
+          "disabled": false
+        },
+        {
+          "label": "Search or jump to…",
+          "disabled": false
+        },
+        {
+          "label": "Choose Station — Connected · Station E2E",
+          "disabled": false
+        },
+        {
+          "label": "Notifications",
+          "disabled": false
+        },
+        {
+          "label": "More actions",
+          "disabled": false
+        },
+        {
+          "label": "Refresh shared work",
+          "disabled": false
+        },
+        {
+          "label": "general, 3 unread",
+          "disabled": false
+        },
+        {
+          "label": "design",
+          "disabled": false
+        },
+        {
+          "label": "launch-plan, 1 unread",
+          "disabled": false
+        },
+        {
+          "label": "Fix the login redirect on Safari, Task room, 2 unread",
+          "disabled": false
+        },
+        {
+          "label": "Read shared item: Fix the login redirect on Safari",
+          "disabled": false
+        },
+        {
+          "label": "Full screen chat",
+          "disabled": false
+        },
+        {
+          "label": "New chat",
+          "disabled": false
+        }
+      ],
+      "uiAudit": {
+        "findings": [],
+        "overlapDiagnostics": {
+          "admittedOverlapOccurrences": 0,
+          "diagnosticOccurrencesStored": 0,
+          "omittedInvalid": 0,
+          "omittedLimit": 0,
+          "representativesWithDiagnostics": 0,
+          "duplicateOccurrences": 0
+        },
+        "measured": {
+          "controls": 14,
+          "smallTargets": 0,
+          "viewport": 390,
+          "auditMs": 529
+        }
+      },
+      "attempts": 1,
+      "controlsAfterPhoto": {
+        "changed": false,
+        "added": [],
+        "removed": [],
+        "omitted": 0
+      },
+      "controlMovement": {
+        "compared": 13,
+        "moved": 0,
+        "largest": null,
+        "windowMs": 571
+      }
+    }
+  ]
+}
