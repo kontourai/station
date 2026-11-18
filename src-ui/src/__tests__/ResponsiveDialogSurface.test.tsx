@@ -1185,7 +1185,7 @@ describe('ResponsiveDialogSurface', () => {
 
     render(
       <ResponsiveDialogSurface
-        layer="dialog"
+        layer="popover"
         ariaLabel="Anchored picker"
         anchorRef={{ current: anchor }}
         onClose={vi.fn()}
@@ -1202,6 +1202,7 @@ describe('ResponsiveDialogSurface', () => {
         .getByRole('dialog', { name: 'Anchored picker' })
         .getAttribute('aria-modal'),
     ).toBe('true');
+    expect(overlay.getAttribute('data-responsive-layer')).toBe('popover');
     expect(overlay.hasAttribute('data-anchored')).toBe(true);
     expect(overlay.style.getPropertyValue('--responsive-anchor-top')).toBe(
       '600px',
@@ -1265,7 +1266,7 @@ describe('ResponsiveDialogSurface', () => {
 
     render(
       <ResponsiveDialogSurface
-        layer="dialog"
+        layer="popover"
         ariaLabel="Sheet picker"
         anchorRef={{ current: anchor }}
         onClose={vi.fn()}
@@ -1282,6 +1283,7 @@ describe('ResponsiveDialogSurface', () => {
         .getByRole('dialog', { name: 'Sheet picker' })
         .getAttribute('aria-modal'),
     ).toBe('true');
+    expect(overlay.getAttribute('data-responsive-layer')).toBe('dialog');
     expect(overlay.hasAttribute('data-anchored')).toBe(false);
     expect(overlay.style.getPropertyValue('--responsive-anchor-top')).toBe('');
     anchor.remove();

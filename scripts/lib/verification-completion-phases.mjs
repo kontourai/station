@@ -201,6 +201,21 @@ function completionPhaseSequenceIsExact(context) {
   }
 }
 
+function phaseAdmissionReason(admission, timedOut) {
+  if (timedOut || admission.deadlineExpired)
+    return admission.waitReason
+      ? `request_deadline while waiting for ${admission.waitReason}`
+      : 'request_deadline';
+  if (admission.canceled) return 'canceled';
+  if (admission.hostPressureOutcome)
+    return `host_pressure_${admission.hostPressureOutcome}`;
+  return 'admission_unavailable';
+}
+
+export function describeCompletionPhaseAdmission({ id, admission }, timedOut) {
+  return `Phase ${id} did not start: ${phaseAdmissionReason(admission, timedOut)}`;
+}
+
 async function runCompletionPhaseSequence(input) {
   const { context, directory, owner, outputLock, getLease, setLease, signal } =
     input;
@@ -257,16 +272,16 @@ async function runCompletionPhaseSequence(input) {
       if (admission.outputOwned) seams.removeOwnedDirectory(outputLock, owner);
       return {
         status: null,
+        phaseAdmission: { id: phase.id, admission },
         ...(admission.deadlineExpired ? { deadlineExpired: true } : {}),
         signal:
           admission.canceled && !admission.deadlineExpired
             ? 'SIGTERM'
             : undefined,
-        error:
-          admission.canceled || admission.deadlineExpired
-            ? undefined
-            : new Error('completion phase admission failed'),
         output: output.output(),
+        cleanup: output.cleanup(),
+        attachmentRoot: phaseRoot,
+        attachments,
       };
     }
     const queuedPhase = getLease().phase ?? {};

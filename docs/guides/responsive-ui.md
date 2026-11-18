@@ -127,8 +127,10 @@ the sheet scrolls or activates what it started on.
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
 anchored surface-popover, navigation, notification, toolbar-menu and palette
-tiers as well as sticky/dialog/system. A surface popover stays above the dock
-but below navigation and notification chrome. A menu opened from the toolbar
+tiers as well as sticky/dialog/system. A desktop surface popover stays above
+the dock and below navigation and notification chrome. An anchored popover
+takes the dialog layer when it presents as a phone sheet. The dock's command
+launcher and mobile task context also portal to the dialog layer. A menu opened from the toolbar
 (or the sidebar's account control) sits just above notifications, because the
 toolbar's right end opens into their column; its dismiss backdrop stays below
 them. A modal dialog supersedes notification chrome.

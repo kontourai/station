@@ -9,7 +9,13 @@ import {
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   CONVERSATION_HANDOFF_RESET_FIELDS,
 } from '@kontourai/station-contracts/orchestration';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -666,8 +672,11 @@ describe('ConversationHandoffDialog', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /^Model / }));
-    expect(await screen.findByRole('option', { name: /GPT-5/ })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: /GPT locked/ })).toBeNull();
+    const models = within(
+      await screen.findByRole('group', { name: /^Models$/ }),
+    );
+    expect(models.getByRole('button', { name: /^GPT-5/ })).toBeTruthy();
+    expect(models.queryByRole('button', { name: /^GPT locked/ })).toBeNull();
   });
 
   test('handoff uses the shared model picker and sends its runtime settings', async () => {

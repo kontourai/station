@@ -1,0 +1,19 @@
+{
+  "revision": "d8709ac4c6c2e9b4f11997ca7eca8237f8535d2c",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the canonical full-regression qualification route against main-qualification.yml. Main pushes are coalesced and exclude only deploy-ledger-only changes. The separate Nightly usability gate retains its scope. Rechecked the guide after retaining the scheduled and tagged qualification wording required by the verification policy gate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the distinction between bounded local CI and hosted exact-source qualification against the revised testing guide and the reusable workflow. The Android viewport job belongs to hosted full regression. Rechecked the guide after retaining the scheduled and tagged qualification wording required by the verification policy gate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Traced UI-only main pushes through the ledger-only filter, reusable source_sha input, Android viewport checkout and test command, and the qualification-health completion chain. Focused contract tests verified source wiring. The historical UI-only Actions receipt is separate hosted job evidence. Rechecked the guide after retaining the scheduled and tagged qualification wording required by the verification policy gate.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked testing-guide references for the verification schedule, reuse, heavy slots and fixture controls. The new text reflects push qualification and does not change the scripts scope or command owners. Rechecked the guide after retaining the scheduled and tagged qualification wording required by the verification policy gate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the linked fixture-fidelity anchor and the independent qualification paragraph change. Server batching and test-evidence guidance remain as written. Rechecked the guide after retaining the scheduled and tagged qualification wording required by the verification policy gate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the linked journey profiling and mutation anchor. UI-only push qualification adds source-trigger context while leaving the documented browser and layout evidence requirements intact. Rechecked the guide after retaining the scheduled and tagged qualification wording required by the verification policy gate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Checked the links for test lanes and fixture fidelity. Hosted Android viewport execution at the push SHA is distinct from the fixture and Playwright interaction rules already documented. Rechecked the guide after retaining the scheduled and tagged qualification wording required by the verification policy gate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -202,6 +202,12 @@ export function createInboxStepPreparation(
                       'The model request carrying this steer was already attempted.',
                     );
                   attempted = true;
+                  if (pending.some((input) => !input.canDispatch())) {
+                    for (const input of pending) input.onNotDispatched();
+                    throw new Error(
+                      'The turn changed before Station could steer it.',
+                    );
+                  }
                   let result: Awaited<ReturnType<typeof doStream>>;
                   try {
                     result = await doStream();

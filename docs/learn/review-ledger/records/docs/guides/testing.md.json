@@ -304,7 +304,9 @@
 
     "tests/first-run-live.spec.ts",
 
-    "tests/helpers/lazy-surface-readiness.ts"
+    "tests/helpers/lazy-surface-readiness.ts",
+
+    "scripts/required-test-profiles.json"
   ],
 
   "checks": [

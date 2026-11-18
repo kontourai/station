@@ -172,7 +172,7 @@ describe('KnowledgeStoreSection', () => {
     });
   });
 
-  test('shows the personal store, not the conversation root listed before it', () => {
+  test('shows the first ordinary personal store when multiple roots are registered', () => {
     rootsQueryResult.data = [
       conversationRoot,
       {
@@ -183,11 +183,23 @@ describe('KnowledgeStoreSection', () => {
         displayName: 'Personal knowledge',
         createdAt: '2026-01-02T00:00:00Z',
       },
+      {
+        id: 'root:personal:2',
+        scope: { kind: 'personal' },
+        adapterId: 'kit-obsidian-store',
+        storeRoot: '/home/knowledge/other',
+        displayName: 'Other personal store',
+        createdAt: '2026-01-03T00:00:00Z',
+      },
     ];
     render(<KnowledgeStoreSection />);
     expect(screen.getByText(/Personal knowledge is on/)).toBeTruthy();
     expect(screen.getByText('/home/knowledge/personal')).toBeTruthy();
     expect(screen.queryByText('/home/data/orchestration.sqlite')).toBeNull();
+    expect(screen.queryByText('/home/knowledge/other')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Create recommended store' }),
+    ).toBeNull();
   });
 
   beforeEach(() => {
