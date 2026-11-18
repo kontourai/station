@@ -32,10 +32,10 @@ The Pane remains unavailable until the declared MCP integration and renderer
 capability are available. Installation alone does not prove runtime
 availability.
 
-The referenced sessions MCP example currently has an unqualified data reader:
-[#2785](https://github.com/kontourai/station/issues/2785) tracks its route,
-authentication and failure display. This descriptor's conformance test does
-not establish that the panel can read real Station sessions.
+The referenced Sessions MCP integration needs the Station origin and a read
+credential in its child environment. Failed reads appear as unavailable and a
+verified empty snapshot appears as empty. The descriptor's real Station and
+external-host journey remains unverified. See the [Sessions MCP setup](../station-sessions-mcp/README.md).
 
 ## Verify
 

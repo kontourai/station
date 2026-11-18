@@ -28,12 +28,10 @@ export function activate(
   { apiBase }: PluginHostContext,
   realtimeRegistry: VoiceSessionAdapterRegistry = voiceSessionAdapterRegistry,
 ): () => void {
-  const disposeSTT = voiceRegistry.registerSTT(
-    new ElevenLabsSTTProvider(apiBase),
-  );
-  const disposeTTS = voiceRegistry.registerTTS(
-    new ElevenLabsTTSProvider(apiBase),
-  );
+  const stt = new ElevenLabsSTTProvider(apiBase);
+  const tts = new ElevenLabsTTSProvider(apiBase);
+  const disposeSTT = voiceRegistry.registerSTT(stt);
+  const disposeTTS = voiceRegistry.registerTTS(tts);
   const realtimeRegistration = installElevenLabsRealtimeVoice(
     {
       readiness: async () => ({
@@ -51,6 +49,8 @@ export function activate(
   );
   return () => {
     realtimeRegistration.dispose();
+    stt.stopListening();
+    tts.cancel();
     disposeTTS();
     disposeSTT();
   };
