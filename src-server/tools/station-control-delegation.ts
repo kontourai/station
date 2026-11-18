@@ -5662,7 +5662,10 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
-  input = { ...input, clientTurnId: input.clientTurnId ?? randomUUID() };
+  input = snapshotTurnSubmissionFields(
+    { ...input, clientTurnId: input.clientTurnId ?? randomUUID() },
+    ['target', 'createRequestIntent', 'taskRoomAttachments'],
+  );
   if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
     throw new Error('Task attachments require Task room invocation admission.');
   if (
