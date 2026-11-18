@@ -1259,6 +1259,12 @@ In a dock too short for the list and the draft, the list yields before the
 draft does, down to its toggle row (and, while open, its first row); the rest
 scrolls inside it.
 
+A no-project composer can omit its workspace when the conversation already
+runs in a Station-managed chat folder. Station holds that follow-up for the
+Session and folder it observed at admission. If a different Session takes
+over before placement, the held message is refused. A request that names an
+explicit directory or Project still has to match the conversation's binding.
+
 The pending-message section starts collapsed, showing only its
 count and a Needs review (or Not sent) indicator; a live region outside the
 collapsed rows announces it when it appears. The region mounts empty and takes

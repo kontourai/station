@@ -7284,6 +7284,7 @@ export async function executeExecutionTargetMessage(
         provider: EngineId;
         connectionId?: string;
         modelOverride?: string;
+        expectedInboxSessionId?: string;
       },
     ) => {
       // The runtime service always owns this seam. Keep explicitly scoped
@@ -7845,39 +7846,39 @@ export function resumedWorkspaceBinding(
  * which rebuilds the target from the binding, so a body that names anything
  * else must take the live path, which checks it while the sender waits.
  * Conservative: a reserved handoff, an unreadable or unbound conversation,
- * or any shape it does not recognise answers `false`.
+ * or any shape it does not recognise returns no match.
  */
-export async function followUpTargetMatchesBinding(
+export async function matchFollowUpTargetBinding(
   orchestrationService: OrchestrationService,
   conversationId: string,
   target: ExecutionTarget,
   readAuthority: SessionReadAuthority,
-): Promise<boolean> {
-  if (target.expectedEngine) return false;
+): Promise<{ expectedInboxSessionId?: string } | undefined> {
+  if (target.expectedEngine) return undefined;
   const rootDetail = await orchestrationService.readSession(
     conversationId,
     readAuthority,
     SESSION_BINDING_EVENTS,
   );
-  if (!rootDetail) return false;
+  if (!rootDetail) return undefined;
   const currentSessionId =
     orchestrationService.currentConversationSessionId(conversationId);
   if (orchestrationService.reservedConversationHandoff(currentSessionId))
-    return false;
+    return undefined;
   const currentDetail = await orchestrationService.readSession(
     currentSessionId,
     readAuthority,
     SESSION_BINDING_EVENTS,
   );
-  if (!currentDetail) return false;
+  if (!currentDetail) return undefined;
   const metadata = sessionBinding(rootDetail);
   const currentMetadata = sessionBinding(currentDetail);
   const bound = delegationTargetBinding(currentMetadata);
-  if (!bound || !metadata) return false;
+  if (!bound || !metadata) return undefined;
   const agent = target.agent;
   // A stale-definition precondition is checked only by the live path.
   if (typeof agent !== 'string' && agent.expectedDefinitionFingerprint)
-    return false;
+    return undefined;
   const requestedAgent = typeof agent === 'string' ? agent : agent.agent;
   const requestedExecution =
     typeof agent === 'string' ? undefined : agent.executionAgent;
@@ -7886,23 +7887,34 @@ export async function followUpTargetMatchesBinding(
       ? currentMetadata.executionAgentId
       : undefined;
   if (requestedAgent !== bound.id || requestedExecution !== boundExecution)
-    return false;
+    return undefined;
   const workspace = resumedWorkspaceBinding(
     metadata,
     record(rootDetail.session).cwd,
   ).workspace;
   const requested = target.workspace;
-  if (!requested) return workspace === undefined;
-  if (requested.kind === 'project')
-    return (
+  if (!requested) {
+    if (!workspace) return {};
+    if (
+      workspace.kind === 'directory' &&
+      rootDetail.session.cwdManagedWorkspace === true &&
+      currentDetail.session.cwd === workspace.cwd
+    )
+      return { expectedInboxSessionId: currentSessionId };
+    return undefined;
+  }
+  if (
+    (requested.kind === 'project' &&
       workspace?.kind === 'project' &&
       workspace.projectSlug === requested.projectSlug &&
       requested.cwd === undefined &&
-      requested.workspaceIsolation === undefined
-    );
-  if (requested.kind === 'directory')
-    return workspace?.kind === 'directory' && workspace.cwd === requested.cwd;
-  return false;
+      requested.workspaceIsolation === undefined) ||
+    (requested.kind === 'directory' &&
+      workspace?.kind === 'directory' &&
+      workspace.cwd === requested.cwd)
+  )
+    return {};
+  return undefined;
 }
 
 export async function continueExecutionTargetMessage(
@@ -7983,6 +7995,11 @@ export async function continueExecutionTargetMessage(
   const currentSessionId = orchestrationService.currentConversationSessionId(
     input.conversationId,
   );
+  if (
+    context?.expectedInboxSessionId !== undefined &&
+    currentSessionId !== context.expectedInboxSessionId
+  )
+    throw new Error('The conversation changed while this message was waiting.');
   const currentDetail = await orchestrationService.readSession(
     currentSessionId,
     readAuthority,

@@ -7001,6 +7001,7 @@ export function configureRuntimeRoutes(
         {
           submissionDigest: input.inputDigest,
           ...(input.inboxPlacement ? { inboxPlacement: true } : {}),
+          expectedInboxSessionId: input.expectedInboxSessionId,
           ...(input.dispatchOrigin
             ? { dispatchOrigin: input.dispatchOrigin }
             : {}),

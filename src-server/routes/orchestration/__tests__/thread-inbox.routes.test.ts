@@ -26,6 +26,95 @@ import {
 describe('POST /chat whenBusy queue (#3568)', () => {
   const station = createInboxHarness();
 
+  test.each(['same', 'changed', 'changed-during-placement'] as const)(
+    'queues an implicit Station-managed folder and preserves its Session binding (%s)',
+    async (head) => {
+      const changed = head !== 'same';
+      const world = station({ managedWorkspace: true });
+      await world.busy();
+      const current = world.service.currentConversationSessionId(CONVERSATION);
+      const sent = await world.send('follow', 'then summarize', {
+        whenBusy: 'queue',
+      });
+      expect(sent.status, await sent.clone().text()).toBe(202);
+      expect(await sent.json()).toMatchObject({
+        data: { entry: { state: 'queued', message: 'then summarize' } },
+      });
+      const row = world.store.threadInboxStore().read(CONVERSATION, 'follow');
+      expect(JSON.parse(row!.payload)).toMatchObject({
+        expectedInboxSessionId: current,
+      });
+      const anotherView = await world.listInbox(READER);
+      expect(await anotherView.json()).toMatchObject({
+        data: { entries: [{ state: 'queued', message: 'then summarize' }] },
+      });
+      expect(world.prompts()).toEqual(['read the file']);
+      const replaceSession = () => {
+        world.store.reserveNextConversationSession({
+          conversationId: CONVERSATION,
+          predecessorSessionId: current,
+          proposedSessionId: `${CONVERSATION}:replacement`,
+          createdAt: new Date().toISOString(),
+        });
+        expect(
+          world.service.currentConversationSessionId(CONVERSATION),
+        ).not.toBe(current);
+      };
+      const differentDirectory = await world.send(
+        'other-folder',
+        'send elsewhere',
+        {
+          whenBusy: 'queue',
+          target: {
+            environment: { kind: 'current' },
+            agent: AGENT,
+            workspace: { kind: 'directory', cwd: world.root },
+          },
+        },
+      );
+      expect(differentDirectory.status).toBeGreaterThanOrEqual(400);
+      expect(
+        world.store.threadInboxStore().read(CONVERSATION, 'other-folder'),
+      ).toBeUndefined();
+      let releasePlacement!: () => void;
+      const placement = new Promise<void>((resolve) => {
+        releasePlacement = resolve;
+      });
+      if (head === 'changed') replaceSession();
+      if (head === 'changed-during-placement')
+        world.inboxStartGate.wait = placement;
+      world.adapter.holdTurns = false;
+      world.adapter.complete();
+      if (head === 'changed-during-placement') {
+        try {
+          await eventually(() =>
+            expect(world.inboxStartGate.wait).toBeUndefined(),
+          );
+          replaceSession();
+        } finally {
+          releasePlacement();
+        }
+      }
+      await eventually(() =>
+        expect(
+          world.store.threadInboxStore().read(CONVERSATION, 'follow'),
+        ).toMatchObject({
+          state: changed ? 'refused' : 'placed',
+        }),
+      );
+      if (changed) {
+        const retry = await world.send('follow', 'then summarize');
+        expect(retry.status).toBe(409);
+        expect(await retry.json()).toMatchObject({
+          code: 'conversation_binding_changed',
+        });
+      }
+      expect(world.prompts()).toEqual(
+        changed ? ['read the file'] : ['read the file', 'then summarize'],
+      );
+    },
+  );
+
   test('the inbox read exposes the current session head for a steer submission', async () => {
     const world = station();
     await world.busy();
