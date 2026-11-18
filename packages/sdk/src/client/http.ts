@@ -1166,9 +1166,8 @@ async function reportUnauthorized(
 }
 
 /**
- * The mirror of `reportUnauthorized`, and deliberately gated on the same two
- * facts: a request that did not carry this Station's credentials says nothing
- * about them either way.
+ * Credential recovery requires a direct JSON success marked by Station.
+ * This check leaves the response untouched for normal caller validation.
  *
  * `authentication: 'omit'` is a DELIBERATELY public request — the event-stream
  * resume probe and the session-event-window probe both use it against
