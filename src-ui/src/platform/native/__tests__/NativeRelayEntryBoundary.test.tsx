@@ -283,6 +283,7 @@ function expectOperatorProviderPlacement() {
     true,
   );
   expect(authority.contains(recovery)).toBe(false);
+  expect(recovery.contains(authority)).toBe(false);
   expect(authority.contains(workspace)).toBe(true);
 }
 
