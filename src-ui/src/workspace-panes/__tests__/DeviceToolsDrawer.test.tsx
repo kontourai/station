@@ -336,8 +336,8 @@ describe('the Tools drawer', () => {
     await click(within(drawer).getByRole('button', { name: 'London' }));
     const readback = await within(drawer).findByText('51.5074, -0.1278');
     const status = readback.closest('[role="status"]');
-    expect(status).toHaveTextContent('Last set from Station');
-    expect(status).toHaveTextContent(
+    expect(status?.textContent).toContain('Last set from Station');
+    expect(status?.textContent).toContain(
       'This device cannot report its location back.',
     );
   });
@@ -463,7 +463,7 @@ describe('drawer focus (S5)', () => {
     expect(drawer.closest('[inert]')).toBeNull();
 
     fireEvent.keyDown(drawer, { key: 'Escape' });
-    await waitFor(() => expect(more).toHaveFocus());
+    await waitFor(() => expect(document.activeElement).toBe(more));
     expect(more.closest('[inert]')).toBeNull();
   });
 

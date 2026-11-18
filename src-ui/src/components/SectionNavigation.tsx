@@ -24,8 +24,8 @@ export function SectionNavigation({
   return (
     <div className="section-navigation section-nav--rail">
       {children}
-      <label className="section-navigation__picker" htmlFor={pickerId}>
-        {pickerLabel}
+      <div className="section-navigation__picker">
+        <label htmlFor={pickerId}>{pickerLabel}</label>
         <Select
           id={pickerId}
           value={activeKey}
@@ -40,7 +40,7 @@ export function SectionNavigation({
             </option>
           ))}
         </Select>
-      </label>
+      </div>
       <SectionNav
         className="section-navigation__links section-nav--rail"
         aria-label={label}

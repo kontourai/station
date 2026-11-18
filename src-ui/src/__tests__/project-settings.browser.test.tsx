@@ -31,7 +31,7 @@ const fixtures: Plugin = {
           useAvailableProjectLayoutsQuery=()=>query([]),useKnowledgeDocsQuery=()=>query([{id:'readme',filename:'README.md',chunkCount:4}]),
           useKnowledgeStatusQuery=()=>query({totalChunks:4,documentCount:1}),
           useIntegrationsQuery=()=>query([]),useKnowledgeRootsQuery=()=>query([]),
-          useFeaturePreviewsQuery=()=>query([{id:'stale-project-checkout',enabled:true}]);
+          useFeaturePreviewsQuery=()=>query([{id:'stale-project-checkout',enabled:true},{id:'project-overview',enabled:true}]);
         // #4518: the managed policy read every approval picker imports
         // (ManagedPolicyContext); this host has none.
         export const useManagedPolicyStatusQuery=()=>query({state:'none'});
