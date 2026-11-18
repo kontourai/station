@@ -1402,7 +1402,7 @@ describe('thread inbox (#3568)', () => {
         await held;
       };
       const world = boot(path(), {
-        steerFidelity: async () => {
+        steerFidelity: async (): Promise<'native'> => {
           if (boundary === 'engine profile') await pause();
           return 'native';
         },

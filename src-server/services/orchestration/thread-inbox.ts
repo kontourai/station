@@ -1111,14 +1111,16 @@ export class ThreadInboxDelivery {
     const anchor = turnIdentityAnchorForEvents(lifecycle);
     const invocationId =
       typeof anchor === 'object' ? anchor.invocationId : undefined;
-    const opening = events.findLast(
-      ({ event }) =>
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const { event, sequence } = events[index];
+      if (
         event.method === 'turn.started' &&
         event.turnId === turnId &&
         event.invocationId === invocationId &&
-        event.inputKind !== 'steer',
-    );
-    if (opening) return { threadId, turnId, openingSequence: opening.sequence };
+        event.inputKind !== 'steer'
+      )
+        return { threadId, turnId, openingSequence: sequence };
+    }
   }
 
   private ownsSteerTurn(
