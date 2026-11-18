@@ -616,6 +616,26 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  ...[
+    'src-ui/src/views/ProjectSettingsView.tsx',
+    'src-ui/src/views/project-settings/**',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/project-settings.browser.test.tsx'],
+    reason:
+      'the browser fixture bundles ProjectSettingsView from a string outside the import graph',
+  })),
+  ...[
+    'docs/reference/play-data-safety.md',
+    'docs/privacy-policy.md',
+    'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-server/services/__tests__/privacy-inventory.test.ts'],
+    reason: 'privacy inventory tests compare generated artifacts read by path',
+  })),
   // The signer CLI imports these shared modules, and ecosystem-manifest.test.ts
   // reaches them only through that CLI as a child process, which the import
   // graph cannot see. (The vectors test imports them directly.)
