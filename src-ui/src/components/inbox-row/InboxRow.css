@@ -40,13 +40,8 @@
 }
 
 .inbox-row__approval {
-  flex: 1 0 100%;
   padding-inline: var(--inbox-row-pad-inline);
   padding-block-end: var(--inbox-row-pad-block);
-}
-
-.inbox-row--touch:has(> .inbox-row__approval) {
-  flex-wrap: wrap;
 }
 
 @keyframes inbox-row-enter {
