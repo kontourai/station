@@ -1930,11 +1930,17 @@ test('message files: Task retention and Project reclamation stay in separate roo
     taskId: 'task',
     taskCreatedAt: 'now',
   };
-  const [taskFile] = task.store(scope, [asInput(png('task.png'))]);
+  const [taskFile] = (await task.store(
+    async () => scope,
+    [asInput(png('task.png'))],
+  ))!;
   const old = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
   utimesSync(f.blobOf(file!.id), old, old);
   vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 60 * 60 * 1000);
-  task.store(scope, [asInput(pngVariant('different.png', 'different'))]);
+  await task.store(
+    async () => scope,
+    [asInput(pngVariant('different.png', 'different'))],
+  );
   expect((await h.request('bob', `/attachments/${file!.id}`)).status).toBe(200);
   expect(await f.remove(sent.messageId)).toBe(200);
   expect(task.read(scope, taskFile!.id)?.bytes).toEqual(PNG);

@@ -28,6 +28,7 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
+import { TaskRoomAttachmentCapacityError } from '../../services/projects/task-room-attachments.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 import { SSE_KEEPALIVE_FRAME, streamSSE } from '../sse-response.js';
 import {
@@ -596,17 +597,23 @@ export function createProjectTaskRoomRoutes(
     '/:taskId/room/attachments',
     validate(taskRoomAttachmentUploadSchema),
     async (c) => {
-      const attachments = await runtime.storeAttachments({
-        taskId: param(c, 'taskId'),
-        request: c.req.raw,
-        ...getBody(c),
-      });
-      return attachments
-        ? c.json({ success: true, data: attachments })
-        : c.json(
-            { success: false, error: 'Task attachments are unavailable.' },
-            404,
-          );
+      try {
+        const attachments = await runtime.storeAttachments({
+          taskId: param(c, 'taskId'),
+          request: c.req.raw,
+          ...getBody(c),
+        });
+        return attachments
+          ? c.json({ success: true, data: attachments })
+          : c.json(
+              { success: false, error: 'Task attachments are unavailable.' },
+              404,
+            );
+      } catch (error) {
+        if (error instanceof TaskRoomAttachmentCapacityError)
+          return c.json({ success: false, error: error.message }, 409);
+        throw error;
+      }
     },
   );
   app.get('/:taskId/room/attachments/:attachmentId', async (c) => {

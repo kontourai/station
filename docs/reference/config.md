@@ -384,9 +384,11 @@ refused before it is dispatched.
 
 Task room uploads use a separate store under
 `<STATION_HOME>/task-room-attachments`, with the same retention variables and
-defaults applied to that store independently; descriptors remain in room
-history after byte eviction, even while their message stands (#4947). Project
-channel uploads use another store under
+defaults applied to that store independently. When admitting an upload, Station
+reclaims only blobs that a complete binding scan shows are unbound. An unknown
+binding skips reclamation. A batch that would add unique bytes beyond the size
+budget returns 409. A batch that adds no new bytes can still fit when an existing
+store already exceeds the budget. Project channel uploads use another store under
 `<STATION_HOME>/project-room-attachments` that the retention variables do not
 apply to: it never evicts by age or size, deletes only bytes no file names,
 and stops deleting and pauses new uploads while any file record or store

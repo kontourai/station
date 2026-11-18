@@ -7474,6 +7474,8 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    projectExists: projectLifecycle.projectHold.projectExists,
+    principalMayInProject,
     // #5070: a Project schedule is proposable only where Project runs exist
     // and the `project-schedules` preview is on.
     projectSchedulesEnabled: () =>
@@ -13365,7 +13367,7 @@ export function configureRuntimeRoutes(
         : {}),
       ...(scheduledProjectRuns
         ? {
-            projectJobs: true,
+            maySetProjectJob: agentSchedule.maySetProjectJob,
             projectJobsPreview: projectLifecycle.schedulesPreview,
           }
         : {}),
