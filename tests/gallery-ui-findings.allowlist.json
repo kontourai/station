@@ -230,9 +230,6 @@
     "overlay-mobile-sheet": [
       "hit-target:small:input.attachment-input[type=file]"
     ],
-    "overlay-new-project-modal": [
-      "axe:label-content-name-mismatch:button.new-project-modal__identity-icon[Choose project icon]"
-    ],
     "overlay-region-chooser-from-toggle": [
       "axe:label-content-name-mismatch:button.menu-row[Chat Move here from Bottom]",
       "axe:label-content-name-mismatch:button.menu-row[Diff Choose a project for this dock before opening that pane.]",
@@ -323,12 +320,6 @@
     "reply-composer-light-412-short": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
-    ],
-    "run-setup-model-stacked-dark-412": [
-      "axe:aria-required-children:div.session-model-picker__models[Models]"
-    ],
-    "run-setup-model-stacked-light-412": [
-      "axe:aria-required-children:div.session-model-picker__models[Models]"
     ],
     "settings": ["axe:select-name:div.settings__var-row select"],
     "skills": [

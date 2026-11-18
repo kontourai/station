@@ -421,9 +421,41 @@ describe('nightly native product-version propagation', () => {
     expect(tauriBuildSteps[0].run).toContain('tauri android build --aab --apk');
     expect(tauriBuildSteps[1].run).toContain('cohort-plan.json');
     expect(tauriBuildSteps[1].run).toContain('tauri build --no-sign');
-    expect(nativeCohort).toContain(
-      'attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
+  });
+
+  it('attests the staged Android, macOS, and Windows artifacts with one immutable action pin', () => {
+    const expectedSubjects = {
+      'stage-android': [
+        'cohort-android/station-nightly-universal.aab',
+        'cohort-android/station-nightly-universal.apk',
+        'cohort-android/station-client-build.json',
+        '',
+      ].join('\n'),
+      'stage-macos': [
+        'cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz',
+        'cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig',
+        'cohort-macos/station-nightly-desktop-macos-aarch64.dmg',
+        'cohort-macos/station-client-build.json',
+        '',
+      ].join('\n'),
+      'stage-windows': 'cohort-windows/*',
+      'assemble-desktop': 'cohort/cohort-macos/latest.json',
+    };
+    const attestations = Object.entries(expectedSubjects).map(
+      ([id, subjectPath]) => {
+        const steps = workflowJob(nativeCohort, id).steps?.filter(({ uses }) =>
+          uses?.startsWith('actions/attest-build-provenance@'),
+        );
+        expect(steps, id).toHaveLength(1);
+        expect(steps?.[0]?.with).toEqual({ 'subject-path': subjectPath });
+        const action = steps?.[0]?.uses;
+        expect(action, id).toMatch(
+          /^actions\/attest-build-provenance@[0-9a-f]{40}$/,
+        );
+        return action;
+      },
     );
+    expect(new Set(attestations).size).toBe(1);
   });
 
   it('reserves one macOS deadline before setup and carries the cohort bundle version through notarization', () => {
