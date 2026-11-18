@@ -3009,6 +3009,12 @@ durable boundary with bounded summary and Task-state seeds. Their successor
 cuts earlier model history without deleting the transcript; exact source and
 summary provenance remain attached. Unknown native state is omitted explicitly.
 
+The conversation-open contract represents a reserved empty-context reset as
+`fresh-context-ready`. The reservation names the predecessor that owns the
+earlier transcript and the successor that can start on the next send. The
+current Session and execution binding become available only with an observed
+Session.
+
 `@kontourai/station-contracts/project-supervision` names opt-in supervision,
 Task incarnation, checkpoint, coordinator and known wait facts. The server
 reconciles through the existing inbox; it does not infer a new workflow DAG.

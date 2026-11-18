@@ -1033,15 +1033,15 @@ test.describe('Orchestration Chat Flow', () => {
     const [unavailableStatus] = await Promise.all([
       page.waitForResponse(
         (response) =>
+          response.request().method() === 'GET' &&
           new URL(response.url()).pathname ===
-          `/api/orchestration/sessions/session-1/requests/${requestId}`,
+            `/api/orchestration/sessions/session-1/requests/${requestId}`,
       ),
       checkStatus.click(),
     ]);
     expect(await unavailableStatus.json()).toMatchObject({
       data: { state: 'unavailable' },
     });
-    await expect(checkStatus).toBeEnabled();
     await expect(card.getByRole('alert')).toContainText(
       'Delivery is not confirmed.',
     );
@@ -1049,6 +1049,7 @@ test.describe('Orchestration Chat Flow', () => {
       'Check this request before trying again.',
     );
     await expect(allowOnce).toBeDisabled();
+    await expect(checkStatus).toBeEnabled();
     answer = 'settled';
     await checkStatus.click();
     await expect(card.getByRole('status')).toHaveText('Already answered.');
