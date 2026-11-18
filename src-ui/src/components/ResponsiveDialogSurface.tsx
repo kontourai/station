@@ -30,55 +30,9 @@ import {
 
 type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
 /**
- * #1638/#1662: which layer this surface owns, and every consumer states it —
- * there is no default. A default was wrong for some consumer three times on
- * this branch (an anchored-popover proxy, a scrim proxy, and `'dialog'` for
- * surfaces that are not dialogs), and an omission is now a type error at the
- * call site rather than a click the wrong surface swallows at runtime.
- *
- * - `dialog`   — owns the viewport until dismissed; supersedes notifications.
- * - `popover`  — belongs to its trigger. Escapes the dock (every surface
- *                portals now, so the dock cannot clamp it) and outranks it,
- *                but stays below the chrome a user needs in order to act:
- *                `NotificationContainer.css` states that only dialogs and
- *                system blockers supersede a notification.
- * - `system`   — an explicit system blocker; supersedes everything.
- *
- * THE BOUNDARY OF THAT GUARANTEE, because a required prop can only bind the
- * callers that pass props. It covers consumers of THIS component. SIX
- * components apply `responsive-surface-overlay` as a literal class string
- * instead, so they take `--layer-dialog` from the bare rule in `index.css`
- * without declaring anything, and no compile-time check could ever have
- * reached them. (An earlier draft of this comment said four. The set was
- * never re-derived after the two portaling ones were identified, which is a
- * different mistake from the one it was correcting.) Five are in the dock,
- * where the layer they take is clamped:
- *
- * - `DelegationLauncher` (#1180) and `MobileTaskSwitcher` portal themselves,
- *   so they already escape the dock and the free dialog layer is true for
- *   them.
- * - `ShareTargetPickerModal` reaches the dock through `ShareIntakeController`,
- *   which `ChatDock` mounts, and does NOT portal. The controller renders it
- *   only when the host reports `image-share-intake` enabled (the Android
- *   app's image share target), so it is a third instance on Android only,
- *   and it is why "portal the two" is not the whole remedy.
- *
- * The sixth, `ProjectKnowledgeViewerModal`, is not in the dock at all, so
- * nothing clamps it; it still takes the dialog layer without declaring one.
- * - `CommandLauncher` and `ActiveWorkContextFrame` do NOT portal. They mount
- *   inside the dock, so the dialog layer they take is clamped by the dock's
- *   stacking context exactly as #1638 describes, and a notice covers them.
- *   The mount point is established as the CAUSE rather than assumed: all four
- *   were measured with identical markup, identical CSS and a marker at the
- *   notice layer, varying only where the overlay mounts — the two inside the
- *   dock hit the marker, the two outside hit their own control. Varying one
- *   thing in both directions is what rules out the alternative that they are
- *   covered for some reason of their own. Pre-existing and untouched by this
- *   change — filed as #1684 rather than folded in here.
- *
- * #1686 proposes closing the boundary structurally, with a static gate that
- * only the shared surface may apply this class in markup and these four as
- * dated exceptions, so the next borrowed class is a build failure.
+ * Each caller chooses its layer. An anchored popover uses the dialog layer
+ * when it becomes a phone sheet (#1696). Desktop popovers stay below
+ * notifications, and a system blocker keeps its explicit layer.
  */
 type ResponsiveSurfaceLayer = 'dialog' | 'popover' | 'system';
 type DialogHistoryMode = 'entry' | 'route' | 'none';
@@ -262,6 +216,8 @@ export function ResponsiveDialogSurface({
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const isMobile = useIsMobile();
+  const resolvedLayer =
+    isMobile && anchorRef && layer === 'popover' ? 'dialog' : layer;
   // What this surface is to anything floating inside it — see overlay-layer.
   // Linked to the overlay this one was opened from, which a body portal hides
   // from the DOM but not from React.
@@ -534,7 +490,7 @@ export function ResponsiveDialogSurface({
         ...(!open ? { display: 'none' } : {}),
       }}
       aria-hidden={!open || undefined}
-      data-responsive-layer={layer}
+      data-responsive-layer={resolvedLayer}
       /**
        * #1638: a modal or popover surface is not part of the dock's resize
        * gesture, whether or not it happens to be a DOM descendant of it. This

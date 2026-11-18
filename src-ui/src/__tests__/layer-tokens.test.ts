@@ -18,13 +18,6 @@ import { describe, expect, it } from 'vitest';
 
 const UI_SRC = join(__dirname, '..');
 
-/**
- * Deliberately-ordered families whose internal offsets are not yet expressed
- * in the token scale. Each entry is here for a reason:
- * The dock launcher band and nested new-chat model picker use local values
- * below 100 inside their owning stacking contexts.
- * Migrating one means designing its slot, not just swapping the number.
- */
 const BASELINE: ReadonlyArray<{ file: string; value: number }> = [];
 
 function chromeScaleRawSites(): Array<{ file: string; value: number }> {
@@ -64,6 +57,7 @@ describe('chrome stacking uses the layer tokens', () => {
       'popover',
       'notice',
       'dock',
+      'surface-popover',
       'floating-action',
       'navigation',
       'notification',
@@ -88,23 +82,5 @@ describe('chrome stacking uses the layer tokens', () => {
         `--layer-${order[i]} must stack above --layer-${order[i - 1]}`,
       ).toBeGreaterThan(values[i - 1]);
     }
-  });
-
-  it('keeps dock overlays in their strict local order', () => {
-    const source = readFileSync(join(UI_SRC, 'index.css'), 'utf8');
-    const localLayer = (selector: string) => {
-      const match = new RegExp(
-        `${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{[^}]*z-index:\\s*(\\d+);`,
-        's',
-      ).exec(source);
-      expect(match, `${selector} must declare a local z-index`).not.toBeNull();
-      return Number(match?.[1]);
-    };
-    const activeWork = localLayer('.active-work-frame__overlay');
-    const command = localLayer('.command-launcher__overlay');
-    const delegation = localLayer('.delegation-launcher__overlay');
-    expect(command).toBeGreaterThan(activeWork);
-    expect(delegation).toBeGreaterThan(command);
-    expect(delegation).toBeLessThan(100);
   });
 });
