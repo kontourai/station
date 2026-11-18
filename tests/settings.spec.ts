@@ -781,7 +781,16 @@ test.describe('Settings scope and provenance', () => {
       });
       await expect
         .soft(target)
-        .toContainText('The Station operator manages this personal store.');
+        .toContainText('Managed by the Station operator.');
+      const scopeDetail = target.getByText('Managed by the Station operator.', {
+        exact: true,
+      });
+      await expect(scopeDetail).toBeVisible();
+      expect(
+        await scopeDetail.evaluate(
+          (detail) => detail.scrollWidth - detail.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(1);
       await target.click();
       await expect(page.locator('#personal-knowledge-store')).toBeInViewport();
     });

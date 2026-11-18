@@ -516,9 +516,7 @@ describe('CommandPalette', () => {
     const command = await screen.findByRole('option', {
       name: /Settings: My knowledge store/i,
     });
-    expect(command.textContent).toContain(
-      'The Station operator manages this personal store.',
-    );
+    expect(command.textContent).toContain('Managed by the Station operator.');
     fireEvent.click(command);
 
     expect(navigateMock).toHaveBeenCalledWith('/settings', {

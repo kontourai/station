@@ -928,7 +928,7 @@ const SETTINGS_MESSAGES = {
   scopeDefaults: 'Saved as Station defaults.',
   scopeAccount:
     'Saved to your account on this Station when signed in; otherwise saved on this device.',
-  scopePersonal: 'The Station operator manages this personal store.',
+  scopePersonal: 'Managed by the Station operator.',
   scopeDevice: 'Saved to this device.',
   scopeMixed: 'Exports and imports include this Station and this device.',
   scopeTemporary: 'Available only for this browser session.',
