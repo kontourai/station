@@ -927,6 +927,8 @@ export function streamPrimaryAgentChat({
               message: spanError.message,
             });
             chatSpan.recordException(spanError);
+          } else if (completionReason === 'error') {
+            chatSpan.setStatus({ code: SpanStatusCode.ERROR });
           } else if (
             agentInvoked &&
             streamDrained &&

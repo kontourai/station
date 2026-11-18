@@ -230,6 +230,15 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
           throw failure;
         }),
       );
+      await run(
+        vi.fn(async () => ({
+          ...normal(),
+          fullStream: (async function* () {
+            yield { type: 'finish', finishReason: 'error' };
+          })(),
+          finishReason: Promise.resolve('error'),
+        })),
+      );
       await run(vi.fn(async () => normal()));
       const controller = new AbortController();
       await run(
@@ -245,6 +254,7 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
         .filter((span) => span.name === 'station.chat');
       expect(spans.map((span) => span.status.code)).toEqual([
         SpanStatusCode.ERROR,
+        SpanStatusCode.ERROR,
         SpanStatusCode.OK,
         SpanStatusCode.UNSET,
       ]);
@@ -256,6 +266,7 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
       ]);
       expect(spans[1]?.events).toHaveLength(0);
       expect(spans[2]?.events).toHaveLength(0);
+      expect(spans[3]?.events).toHaveLength(0);
     } finally {
       await provider.shutdown();
       trace.disable();

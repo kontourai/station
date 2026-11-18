@@ -1619,7 +1619,8 @@ exist and an active span is available; the code does not establish that every
 such event belongs to the new chat span. Other engines have their own paths.
 The stream owner settles its span once after finalization. A thrown stream or
 finalization error is recorded as ERROR, with the exception on the source
-span. A normally drained invocation is OK. Confirmed client cancellation and
+span. A terminal stream reason of `error` is also ERROR. A normally drained
+invocation is OK. Confirmed client cancellation and
 requests that never enter the agent remain unset. The Collector's trace
 projection keeps the status code and strips exception events and messages.
 
