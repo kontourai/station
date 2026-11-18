@@ -89,6 +89,10 @@ Layout's tab and global action bars. `prompts` is the plugin MANIFEST's own
 field name — the manifest's `skills` field already means the skill-package
 list, so the two cannot be merged.
 
+When a command skill declares variables, Station validates its arguments before
+sending the expanded text. Variable values are inserted literally. See the
+[command argument guide](../../docs/guides/commands.md#parameter-expansion).
+
 ## File Structure
 
 ```

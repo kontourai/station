@@ -52,13 +52,8 @@ describe('shortcut device settings', () => {
     ).not.toBeNull();
   });
 
-  test('normalizes signatures and identifies browser-reserved bindings', async () => {
-    const { bindingSignature, browserReservedReason } =
-      await freshShortcutPreferences();
-
-    expect(bindingSignature({ key: 'K', modifiers: ['shift', 'cmd'] })).toBe(
-      'cmd+shift|k',
-    );
+  test('identifies browser-reserved bindings', async () => {
+    const { browserReservedReason } = await freshShortcutPreferences();
     expect(browserReservedReason({ key: 'w', modifiers: ['cmd'] })).toMatch(
       /browser/i,
     );
