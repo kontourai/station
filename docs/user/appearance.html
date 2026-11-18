@@ -26,7 +26,8 @@
             <h1 id="custom-appearance">Custom appearance</h1>
 <p>Station's <strong>Appearance</strong> page (<code>/appearance</code>, in Customize and the command palette) sets the mode, a color theme, the accent, density and motion. Its <strong>Custom</strong> section adds your own look on top: a palette and CSS that belong to you on this Station. Other people on the same Station never get yours.</p>
 <h2 id="ask-an-agent">Ask an agent</h2>
-<p>An agent can propose a custom appearance, for example &quot;make the sidebar quieter and round the buttons&quot;. It cannot apply one. The proposal appears under <strong>Proposed</strong> on the Appearance page:</p>
+<p>An agent can propose a custom appearance, for example &quot;make the sidebar quieter and round the buttons&quot;. It cannot apply one. The proposal appears under <strong>Proposed</strong> on the Appearance page. With the <strong>Appearance studio</strong> Feature Preview enabled, the proposing tool also shows a card in the chat. Choose <strong>Preview</strong> there to try it without leaving the conversation. The card is tied to that exact proposal and Session; replaced or settled proposals lose their actions. Relayed and other-Station conversations require switching to the Station that owns the appearance.</p>
+<p>On either surface:</p>
 <ol>
 <li>Choose <strong>Preview</strong>. The proposal applies in this tab only, and a bar at the bottom counts down from 20 seconds.
 </li>
@@ -42,6 +43,13 @@
 <p>While an approval or consent prompt is on screen (a tool or permission approval, a plugin install, a device pairing, a sharing change), your custom CSS is switched off so nothing can disguise the buttons. Your palette stays.</p>
 <h2 id="turn-it-off">Turn it off</h2>
 <p><strong>Turn off custom appearance</strong> on the Appearance page removes it. If your CSS makes Station hard to use, open Station with <code>?appearance=safe</code> at the end of the address (for example <code>/appearance?appearance=safe</code>). Custom appearance is then off in that tab until you turn it back on from the Appearance page.</p>
+<h2 id="appearance-studio">Appearance studio</h2>
+<p>Turn on <strong>Appearance studio</strong> in Settings → Advanced → Feature previews to use visual controls, a saved theme library and portable theme files. It is off by default. Turning it off hides these new actions; your accepted appearance keeps rendering, and you can still turn custom appearance off.</p>
+<p>In Appearance → Custom, choose <strong>Create</strong> or <strong>Edit</strong>. Visual controls set a background image, Fill/Fit/Tile, its position and dimming, panel opacity, corner rounding and text size. The Advanced CSS disclosure keeps the existing CSS editor available. Preview uses the same 20-second Keep/Discard bar.</p>
+<p>Choose or drop a PNG, JPEG or WebP background. The browser opens it, scales it to at most 1,920 pixels on its longest side, and encodes a bounded image inside the theme. No remote image link is needed. Accepted background files have at most 1 MiB of raster bytes after base64 decoding, at most 4,096 pixels per side and 16 million pixels. The server checks their signatures, structural headers and dimensions; the browser must still decode their compressed pixels. Background images and visual styling pause alongside custom CSS while an approval or consent prompt is open.</p>
+<h3 id="save-and-share-themes">Save and share themes</h3>
+<p><strong>Save to library</strong> keeps a named theme for later without applying it. Saved cards show the image and colors. <strong>Apply</strong> starts a protected preview; <strong>Keep</strong> accepts it. <strong>Edit</strong> changes a saved theme. The card's more-actions menu offers Favorite, Duplicate, Export theme pack and Delete. Favorites can be filtered. The library belongs to your signed-in person on this Station and survives reload. It holds up to 24 themes within a 16 MiB total appearance-document limit; large images can reach the byte limit first.</p>
+<p><strong>Export theme pack</strong> downloads one <code>.station-theme.json</code> file containing the palette, CSS, visual settings and embedded image. It contains no person, Session, proposal or revision data. To use another person's file, choose <strong>Import theme pack</strong>. A valid file opens an unsaved draft. Preview it before applying, or save it to your library. Import never applies a theme immediately. An unsupported version, invalid image, remote background URL or file over the 1.5 MiB pack limit is refused with an error so you can choose another file.</p>
           </article>
         </div>
       </main>
