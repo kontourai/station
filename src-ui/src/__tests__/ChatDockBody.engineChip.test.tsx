@@ -258,7 +258,8 @@ async function engineChip() {
   return {
     button,
     trigger,
-    engine: caption?.firstChild?.textContent ?? '',
+    engine:
+      caption?.firstChild?.textContent?.replace(/^This session: /, '') ?? '',
     hint:
       caption?.querySelector('.chat-input__engine-moved')?.textContent ?? null,
     shortHint:
@@ -300,18 +301,19 @@ describe('ChatDockBody composer engine chip', () => {
     const { button, trigger, engine, hint, shortHint, triggerDescription } =
       await engineChip();
     expect(engine).toBe('Codex');
+    expect(
+      button.querySelector('.chat-input__chip-caption-engine')?.textContent,
+    ).toBe('This session: Codex');
     // The repoint is stated as a fact about the Agent, never as the engine.
-    expect(hint).toBe('Agent now on OpenCode');
-    expect(shortHint).toBe('· Agent moved');
-    expect(trigger.getAttribute('aria-label')).toMatch(/; Agent moved$/);
+    expect(hint).toBe('Agent default: OpenCode');
+    expect(shortHint).toBe('· Default differs');
+    expect(trigger.getAttribute('aria-label')).toMatch(/; Default differs$/);
     expect(triggerDescription).toBe(
-      'This conversation runs on Codex. Its Agent now uses OpenCode.',
+      'This session: Codex. Agent default: OpenCode.',
     );
     expect(document.querySelector('.chat-input__next-turn-notice')).toBeNull();
     const name = button.getAttribute('aria-label') ?? '';
-    expect(name).toContain(
-      'This conversation runs on Codex. Its Agent now uses OpenCode.',
-    );
+    expect(name).toContain('This session: Codex. Agent default: OpenCode.');
     // An open Session keeps its engine: nothing predicts the next turn moves.
     expect(name).not.toMatch(/new session|next turn/i);
   });
@@ -336,13 +338,11 @@ describe('ChatDockBody composer engine chip', () => {
     expect(hint).toBe('Next turn on OpenCode');
     // The notice above the draft states this move, so the trigger does not.
     expect(shortHint).toBeNull();
-    expect(trigger.getAttribute('aria-label')).not.toMatch(/Agent moved/);
-    expect(triggerDescription).toBe(
-      "This conversation's Codex session has ended; its next turn starts on OpenCode, where its Agent now points.",
-    );
+    expect(trigger.getAttribute('aria-label')).not.toMatch(/Default differs/);
+    expect(triggerDescription).toBe('Next message: OpenCode.');
     expect(notice).toBe('Next turn starts on OpenCode');
     expect(button.getAttribute('aria-label')).toContain(
-      "This conversation's Codex session has ended; its next turn starts on OpenCode",
+      'Next message: OpenCode',
     );
   });
 
@@ -353,7 +353,7 @@ describe('ChatDockBody composer engine chip', () => {
     });
     const { engine, hint } = await engineChip();
     expect(engine).toBe('OpenCode');
-    expect(hint).toBe('Agent now on Codex');
+    expect(hint).toBe('Agent default: Codex');
   });
 
   test("a session on the Agent's own engine carries no repoint hint", async () => {
@@ -525,7 +525,7 @@ describe('ChatDockBody composer engine chip', () => {
       renderDock(reopened(open), { id: 'opencode', name: 'OpenCode' });
       const { engine, hint } = await engineChip();
       expect(engine).toBe('Codex');
-      expect(hint).toBe('Agent now on OpenCode');
+      expect(hint).toBe('Agent default: OpenCode');
     },
   );
 
@@ -616,8 +616,9 @@ describe('ChatDockBody composer engine chip', () => {
         />,
       );
       const header =
-        document.querySelector('.chat-dock__active-identity-engine')
-          ?.textContent ?? null;
+        document
+          .querySelector('.chat-dock__active-identity-engine')
+          ?.textContent?.replace(/^This session: /, '') ?? null;
       return { engine, header };
     }
 

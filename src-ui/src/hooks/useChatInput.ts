@@ -1003,7 +1003,7 @@ export function useChatInput({
       if (!isAlreadyActive) {
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `Model changed to **${model.providerName ? `${model.providerName} · ` : ''}${model.name}**`,
+          content: `Model selected: **${model.providerName ? `${model.providerName} · ` : ''}${model.name}**`,
         });
       }
       closeModel();

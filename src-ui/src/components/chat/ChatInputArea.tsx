@@ -827,8 +827,8 @@ export function ChatInputArea({
     : aliasLabel;
   const agentEngineMoveSentence = agentEngineMove
     ? agentEngineMove.nextTurn
-      ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
-      : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
+      ? `Next message: ${agentEngineMove.to}.`
+      : `This session: ${executionEngineLabel ?? 'engine unknown'}. Agent default: ${agentEngineMove.to}.`
     : undefined;
   const modelAccessibleLabel = [
     'Engine & model:',
@@ -850,7 +850,12 @@ export function ChatInputArea({
     .join(' ');
   // The shared handoff reason names no action ("Send a message first."), so
   // the refused state names it here, where the action is known.
-  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${
+  const routeSuffix = agentRoute ? ` · via ${agentRoute}` : undefined;
+  const setupAgentLabel =
+    routeSuffix && agentLabel?.endsWith(routeSuffix)
+      ? agentLabel.slice(0, -routeSuffix.length)
+      : agentLabel;
+  const agentAccessibleLabel = `Agent: ${setupAgentLabel ?? 'current Agent'}.${agentRoute ? ` Connection: ${agentRoute}.` : ''} ${
     agentHandoffDisabled
       ? `Can’t change Agent yet.${agentHandoffDisabledReason ? ` ${agentHandoffDisabledReason}` : ''}`
       : 'Change Agent'
@@ -1218,6 +1223,11 @@ export function ChatInputArea({
                 providers={modelProviders}
                 currentProviderId={currentProviderId}
                 currentExecutionAgentId={currentExecutionAgentId}
+                connectionLabel={
+                  agentEngineMove?.nextTurn
+                    ? agentEngineMove.to
+                    : executionEngineLabel
+                }
                 bindingLabel={
                   currentExecutionAgentId
                     ? 'Conversation override'
@@ -1848,7 +1858,7 @@ export function ChatInputArea({
               // next-turn move has its own notice above the draft instead.
               notice={
                 agentEngineMove && !agentEngineMove.nextTurn
-                  ? 'Agent moved'
+                  ? 'Default differs'
                   : undefined
               }
               description={agentEngineMoveSentence}
@@ -1872,10 +1882,10 @@ export function ChatInputArea({
                   valueClassName="chat-input__agent-name"
                   value={
                     <>
-                      {agentLabel ?? 'Current Agent'}
+                      {setupAgentLabel ?? 'Current Agent'}
                       {agentRoute && (
                         <span className="chat-input__agent-route">
-                          {' · '}
+                          {' · Connection: '}
                           {agentRoute}
                         </span>
                       )}
@@ -1899,18 +1909,17 @@ export function ChatInputArea({
                 title={modelAccessibleLabel}
                 caption={
                   <>
-                    {/* The move hint has its own line below the engine name,
-                    so it needs no separator and is never cut. */}
                     <span className="chat-input__chip-caption-engine">
+                      {agentEngineMove && executionEngineLabel && (
+                        <span>This session: </span>
+                      )}
                       {executionEngineLabel ?? 'Engine & model'}
                     </span>
-                    {/* The closed Run setup trigger says "Agent moved"; here
-                    the open panel names the destination. */}
                     {agentEngineMove && (
                       <span className="chat-input__engine-moved">
                         {agentEngineMove.nextTurn
                           ? `Next turn on ${agentEngineMove.to}`
-                          : `Agent now on ${agentEngineMove.to}`}
+                          : `Agent default: ${agentEngineMove.to}`}
                       </span>
                     )}
                     {currentExecutionAgentId ? (

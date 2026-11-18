@@ -31,13 +31,10 @@ follows the model ("Opus · High") and truncates before it; with no effort
 requested the engine default applies and no level is named. Safety warnings stay
 on the marks, and the open panel repeats the mark on the choice that raised it. When the
 Agent now points at another engine (and its Session has not ended; see 3.1), the trigger
-adds "· Agent moved" at every width, 8px after the label and with a plain space after
+adds "· Default differs" at every width, 8px after the label and with a plain space after
 the dot. The label gives way before it, and in narrow composers the label hides,
-keeping marks, the hint without its dot, and caret. Showing the hint on the trigger at
-every width is a decision of #4971: before #4897 a wide composer said "Agent now on …"
-in the Engine chip's caption and a narrow one "Agent moved", and from #4897 the closed
-row said neither. The trigger's accessible name ends with "Agent moved"
-and its description gives the full sentence. On phones, More draft options groups Saved drafts
+keeping marks, the hint without its dot, and caret. The trigger’s accessible
+description names the session engine and Agent default. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
@@ -1044,10 +1041,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …" on its own line below the engine name, with no separator, wrapping
-  rather than being cut, and the accessible name says
-  the conversation runs on its engine and the Agent now uses another. The closed Run
-  setup trigger says "Agent moved" (see Run setup in the composer toolbar). Once the Session's
+  labels the two routes "This session" and "Agent default" on separate lines.
+  The picker identifies the connection in scope. Saving a model choice says
+  "Model selected" while the engine has yet to serve a turn. The closed Run
+  setup trigger says "Default differs" (see Run setup in the composer toolbar). Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
   "Next turn on …", because the next turn starts a successor
   there. Since the closed trigger has no room for a destination name, the composer also

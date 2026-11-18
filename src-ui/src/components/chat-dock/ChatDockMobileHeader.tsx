@@ -290,7 +290,10 @@ export function ChatDockMobileHeader({
               {stationName && `Via ${stationName}`}
               {stationName && agentIdentity && ' · '}
               {agentIdentity?.name}
-              {!stationName && routeLabel && ` · via ${routeLabel}`}
+              {!stationName &&
+                routeLabel &&
+                !agentIdentity?.name.includes(routeLabel) &&
+                ` · ${routeLabel}`}
               {sessionProjectMismatchLabel &&
                 ` · ${sessionProjectMismatchLabel}`}
             </span>

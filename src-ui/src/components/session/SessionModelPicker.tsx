@@ -73,6 +73,7 @@ interface SessionModelPickerProps {
   returnFocusTarget?: HTMLElement | null;
   /** See `ModelPickerDialogFrame`'s `hostTitleId`. */
   hostTitleId?: string;
+  connectionLabel?: string;
 }
 
 export function formatContextWindow(tokens: number): string {
@@ -102,6 +103,7 @@ export function SessionModelPicker({
   onClose,
   returnFocusTarget,
   hostTitleId,
+  connectionLabel,
 }: SessionModelPickerProps) {
   const [query, setQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState('all');
@@ -409,6 +411,11 @@ export function SessionModelPicker({
       }
     >
       {stationControl}
+      {connectionLabel && (
+        <p className="session-model-picker__binding">
+          Connection: {connectionLabel}
+        </p>
+      )}
       {catalogNotice && (
         <p className="session-model-picker__binding" role="alert">
           {catalogNotice}
