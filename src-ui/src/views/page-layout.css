@@ -730,8 +730,13 @@
 
 .section-navigation__picker {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--k-space-2);
   margin-block: var(--k-space-3);
+}
+
+.section-navigation__picker select {
+  text-overflow: ellipsis;
 }
 
 @media (min-width: 769px) and (not (pointer: coarse)) {

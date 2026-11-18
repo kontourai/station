@@ -26,6 +26,7 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -61,6 +62,7 @@ import {
 } from '../float-over-chat/floatStore';
 import { useAnnounceShownSource } from '../float-over-chat/shownSources';
 import { useActiveProject } from '../hooks/useActiveProject';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useNarrowViewport } from '../hooks/useNarrowViewport';
 import {
   LiveSurfaceCanvas,
@@ -928,6 +930,18 @@ function DeviceStage({
   const workspaceRef = useRef<HTMLDivElement>(null);
   const layout = deviceToolsLayout(useElementWidth(workspaceRef));
   const [toolsView, setToolsView] = useState<DeviceToolsView | null>(null);
+  const mobile = useIsMobile();
+  const coversStage = toolsView !== null && layout === 'overlay' && mobile;
+  const stageRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!coversStage) return;
+    const active = document.activeElement;
+    if (active === document.body || stageRef.current?.contains(active)) {
+      // Keep Escape available while the drawer loads or when a resize covers
+      // the focused stage. The drawer takes focus when it mounts.
+      workspaceRef.current?.focus({ preventScroll: true });
+    }
+  }, [coversStage]);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   // Closing the drawer (its Close or Escape) returns focus to the ⋯ button,
   // so a keyboard user is not dropped on <body>.
@@ -1046,7 +1060,6 @@ function DeviceStage({
   };
   // #90 D9: while this device is on screen here, the float-over-chat hides
   // it (and so never streams it a second time).
-  const stageRef = useRef<HTMLDivElement>(null);
   useAnnounceShownSource(deviceFloatSourceKey(target), stageRef);
   // "Float over chat": a chat's floater takes it, and this pane lets go of
   // it (only this viewer's view — the session stays open), so the float,
@@ -1186,9 +1199,17 @@ function DeviceStage({
     <div
       className="device-pane__workspace"
       data-tools-layout={layout}
+      data-tools-cover-stage={coversStage || undefined}
+      onKeyDown={(event) => {
+        if (coversStage && event.key === 'Escape') {
+          event.stopPropagation();
+          setToolsView(null);
+        }
+      }}
       ref={workspaceRef}
+      tabIndex={coversStage ? -1 : undefined}
     >
-      <div className="device-pane__stage" ref={stageRef}>
+      <div className="device-pane__stage" inert={coversStage} ref={stageRef}>
         {canvas}
         {recordingActive ? (
           <div className="device-pane__recording">

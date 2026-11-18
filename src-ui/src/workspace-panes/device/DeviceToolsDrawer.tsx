@@ -131,16 +131,44 @@ function unreadableLine<T>(readBack: DeviceReadBack<T>): string | null {
     : null;
 }
 
-function locationLine(location: DeviceLocationReadBack): string {
-  if (location.state === 'read')
-    return `Reported by the device: ${formatCoordinate(location.value.latitude)}, ${formatCoordinate(location.value.longitude)}`;
-  if (location.state === 'last-set') {
-    const at = new Date(location.setAt).toLocaleTimeString();
-    return location.value
-      ? `Last set from Station at ${at}: ${formatCoordinate(location.value.latitude)}, ${formatCoordinate(location.value.longitude)}. This device cannot report its location back.`
-      : `Cleared from Station at ${at}. This device cannot report its location back.`;
-  }
-  return UNREADABLE_COPY[location.reason];
+function LocationReadback({ location }: { location?: DeviceLocationReadBack }) {
+  if (!location || location.state === 'unreadable')
+    return (
+      <p className="device-tools__line" role="status">
+        {location ? unreadableLine(location) : '—'}
+      </p>
+    );
+
+  const { value } = location;
+  const coordinates = value
+    ? `${formatCoordinate(value.latitude)}, ${formatCoordinate(value.longitude)}`
+    : null;
+  return (
+    <div className="device-tools__row" role="status">
+      {location.state === 'read' ? (
+        <span className="device-tools__label">Reported by device</span>
+      ) : (
+        <span className="device-tools__label">
+          {value ? 'Last set from Station' : 'Cleared from Station'}
+          {' · '}
+          <time dateTime={location.setAt}>
+            {new Date(location.setAt).toLocaleTimeString([], {
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
+          </time>
+        </span>
+      )}
+      {coordinates ? (
+        <code className="device-tools__value">{coordinates}</code>
+      ) : null}
+      {location.state === 'last-set' ? (
+        <p className="device-tools__muted">
+          This device cannot report its location back.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 /** Which part of the device tools the ⋯ menu opened. */
@@ -949,9 +977,7 @@ function LocationSection({
   const typed = latitude.trim() !== '' || longitude.trim() !== '';
   return (
     <Section title="Location">
-      <p className="device-tools__line" role="status">
-        {location ? locationLine(location) : '—'}
-      </p>
+      <LocationReadback location={location} />
       <fieldset
         aria-label="Location presets"
         className="device-tools__actions device-tools__fieldset"

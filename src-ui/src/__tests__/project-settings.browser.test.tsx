@@ -246,6 +246,94 @@ test('project settings remain usable above the dock at phone and desktop widths 
         await page.locator('label[for="project-agent-builder"]').click();
         await page.getByRole('button', { name: 'Save', exact: true }).click();
         await page.screenshot({ path: `${out}/agents-${width}-${theme}.png` });
+        for (const [key, sectionName, labels] of [
+          [
+            'overview',
+            'Overview and notifications',
+            [
+              ['Resolve idle Tasks', /Moves an Idle Task to Resolved/],
+              ['Notify me', /Nothing is sent to a device/],
+            ],
+          ],
+          [
+            'new-chat',
+            'New chats',
+            [
+              [
+                'Starting model',
+                /AI model above|Agent’s own model|starting model/,
+              ],
+              ['Starting approval mode', /approval mode below/],
+              ['Set approval mode', /Full access requires permission/],
+            ],
+          ],
+        ] as const) {
+          if (width <= 768)
+            await page
+              .getByLabel('Project settings section', { exact: true })
+              .selectOption(key);
+          else
+            await page
+              .getByRole('link', { name: sectionName, exact: true })
+              .click();
+
+          for (const [label, hint] of labels) {
+            const choice = page.getByRole('combobox', {
+              name: label,
+              exact: true,
+            });
+            await page
+              .locator('label')
+              .filter({ hasText: new RegExp(`^${label}$`) })
+              .click();
+            expect(
+              await choice.evaluate(
+                (element) => document.activeElement === element,
+              ),
+            ).toBe(true);
+            expect(
+              await choice.evaluate((element) => {
+                const id = element.getAttribute('aria-describedby');
+                const description = id ? document.getElementById(id) : null;
+                return description?.textContent;
+              }),
+            ).toMatch(hint);
+            await choice.scrollIntoViewIfNeeded();
+            const measure = () =>
+              choice.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                const chevron =
+                  element.nextElementSibling?.getBoundingClientRect();
+                if (!chevron) throw new Error('Expected an inset chevron');
+                return {
+                  appearance: getComputedStyle(element).appearance,
+                  start: chevron.left - box.left,
+                  end: box.right - chevron.right,
+                  width: chevron.width,
+                  hits44: [-21, 21].every(
+                    (offset) =>
+                      document.elementFromPoint(
+                        box.x + box.width / 2,
+                        box.y + box.height / 2 + offset,
+                      ) === element,
+                  ),
+                };
+              });
+            const ltr = await measure();
+            expect(ltr.appearance).toBe('none');
+            expect(ltr.end).toBeGreaterThan(8);
+            expect(ltr.width).toBeGreaterThan(8);
+            if (width <= 768) expect(ltr.hits44).toBe(true);
+            await page.evaluate(() => {
+              document.documentElement.dir = 'rtl';
+            });
+            expect((await measure()).start).toBeCloseTo(ltr.end, 0);
+            await page.evaluate(() => {
+              document.documentElement.dir = '';
+            });
+          }
+        }
+
         if (width <= 768)
           await page
             .getByLabel('Project settings section', { exact: true })

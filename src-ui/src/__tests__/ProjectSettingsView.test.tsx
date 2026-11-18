@@ -1216,7 +1216,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ).toBe('inherit');
       expect(
         screen.getByRole('option', {
-          name: 'Use the Station approval default (currently: Ask first)',
+          name: 'Station default (Ask first)',
         }),
       ).toBeTruthy();
       expect(sdkMocks.chatDefaultsQuery).toHaveBeenCalledWith(

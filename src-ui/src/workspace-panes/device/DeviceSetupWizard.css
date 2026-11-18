@@ -10,28 +10,24 @@
 }
 
 .device-setup__steps {
+  border-block-end: 1px solid var(--border-primary);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--k-space-1);
+  gap: var(--k-space-1) var(--k-space-3);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-/* Where the person is in setup: plain text (step names with a separator),
-   not bordered chips that read as clickable tabs. */
 .device-setup__step-label {
+  border-block-end: 2px solid transparent;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
-}
-
-.device-setup__step-label:not(:last-child)::after {
-  color: var(--k-text-faint);
-  content: "›";
-  margin-inline-start: var(--k-space-1);
+  padding-block-end: var(--k-space-2);
 }
 
 .device-setup__step-label--current {
+  border-block-end-color: var(--accent-primary);
   color: var(--k-text);
   font-weight: 600;
 }

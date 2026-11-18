@@ -138,14 +138,12 @@
 }
 
 .station-connect-discovery__toolbar,
-.station-connect-discovery__candidate {
-  align-items: center;
-  gap: var(--k-space-2, 8px);
-}
-
-.station-connect-discovery__toolbar {
+.station-connect-discovery__candidate-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--k-space-2, 8px);
+  row-gap: var(--k-space-1, 4px);
 }
 
 .station-connect-discovery__status {
@@ -157,33 +155,86 @@
 }
 
 .station-connect-discovery__candidate {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   background: var(--bg-primary, #0a0a0a);
 }
 
-.station-connect-discovery__candidate-details {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 .station-connect-discovery__candidate-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   font-size: var(--k-text-md, 14px);
   font-weight: 600;
+  line-height: 1.35;
 }
 
 .station-connect-discovery__candidate-meta,
+.station-connect-discovery__http-warning,
+.station-connect-discovery__identity,
 .station-connect-discovery__saved {
+  font-size: var(--k-text-sm, 13px);
+  line-height: var(--k-leading-normal, 1.45);
+}
+
+.station-connect-discovery__candidate-meta,
+.station-connect-discovery__http-warning {
+  margin: var(--k-space-1, 4px) 0 0;
+}
+
+.station-connect-discovery__candidate-meta,
+.station-connect-discovery__saved,
+.station-connect-discovery__identity dt {
   color: var(--text-secondary, #999);
 }
 
-.station-connect-discovery__candidate-meta {
-  margin-top: 2px;
-  font-size: var(--k-text-xs, 11px);
+.station-connect-discovery__http-warning {
+  color: var(--warning-text, #fbbf24);
 }
 
+.station-connect-discovery__candidate-actions {
+  margin-top: var(--k-space-2, 8px);
+}
+
+.station-connect-discovery__candidate-actions > button,
 .station-connect-discovery__saved {
-  font-size: var(--k-text-sm, 12px);
+  margin-inline-start: auto;
+}
+
+.station-connect-discovery__identity[open] {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.station-connect-discovery__identity > summary {
+  align-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  width: fit-content;
+  cursor: pointer;
+}
+
+.station-connect-discovery__identity > summary:focus-visible {
+  outline: 2px solid var(--accent-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+.station-connect-discovery__identity dl {
+  display: grid;
+  gap: var(--k-space-1, 4px);
+  margin: 0;
+  padding: var(--k-space-2, 8px);
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+}
+
+.station-connect-discovery__identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.station-connect-discovery__identity dd + dt {
+  margin-top: var(--k-space-1, 4px);
 }
 
 /* Connection list */

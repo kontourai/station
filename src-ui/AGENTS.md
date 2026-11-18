@@ -54,7 +54,7 @@ In framed shell routes, `PageFrame` owns gutters, `PageSection` owns titled sect
 Applies to `src-ui`, `packages/basis-pane` and `packages/board-pane`.
 
 - Render loading, empty, error with retry/refetch, and partial (failed or pending reads) states.
-- Render at 390px and 1440px in both themes and open the PNGs.
+- Render at 390px and 1440px in both themes. Inspect the PNGs at native size for clipped values, uneven insets and crowded actions. Check keyboard focus in context.
 - Use these owners. Pane packages import published packages (`@kontourai/station-sdk` and its subpaths, `@kontourai/ui/react`, `@kontourai/station-contracts`), never `src-ui` modules.
 
 | Pattern | Shell (`src-ui`) | Pane packages |

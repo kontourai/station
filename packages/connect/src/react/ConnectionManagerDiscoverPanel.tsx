@@ -1,4 +1,8 @@
 import type { ConnectionCandidateProviderResult } from '../core/connectionCandidates';
+import {
+  httpConnectionConsentRequired,
+  httpDevelopmentOrigin,
+} from '../core/hostInput';
 import type {
   ConnectionCandidate,
   ConnectionCandidateSource,
@@ -99,40 +103,57 @@ export function ConnectionManagerDiscoverPanel({
         <div className="station-connect-discovery__candidates">
           {candidates.map((candidate) => {
             const alreadyAdded = existingUrls.has(candidate.url);
+            const needsHttpConsent =
+              !alreadyAdded &&
+              httpConnectionConsentRequired(candidate.url) &&
+              !httpDevelopmentOrigin(candidate.url);
             return (
               <div
                 key={candidate.id}
                 className="station-connect-discovery__candidate"
               >
-                <div className="station-connect-discovery__candidate-details">
-                  <div className="station-connect-discovery__candidate-name">
-                    {candidate.name}
-                  </div>
-                  <div className="station-connect-discovery__candidate-meta">
-                    {SOURCE_LABEL[candidate.source]} · Unverified · Access not
-                    granted
-                    <br />
-                    {candidate.url}
-                    <br />
-                    {candidate.url.startsWith('http:')
-                      ? 'Unencrypted HTTP · requires your consent'
-                      : 'HTTPS · still requires access approval'}
-                  </div>
+                <div className="station-connect-discovery__candidate-name">
+                  {candidate.name}
                 </div>
-                {alreadyAdded ? (
-                  <span className="station-connect-discovery__saved">
-                    Saved
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    aria-label={`Request access to ${candidate.name}`}
-                    onClick={() => onSelect(candidate)}
-                    style={compactPrimaryBtnStyle}
-                  >
-                    Request access
-                  </button>
+                <p className="station-connect-discovery__candidate-meta">
+                  {SOURCE_LABEL[candidate.source]} · Unverified
+                  {!alreadyAdded && ' · Access not granted'}
+                </p>
+                {candidate.url.startsWith('http:') && (
+                  <p className="station-connect-discovery__http-warning">
+                    Unencrypted HTTP
+                    {needsHttpConsent && ' · consent required'}
+                  </p>
                 )}
+                <div className="station-connect-discovery__candidate-actions">
+                  <details className="station-connect-discovery__identity">
+                    <summary
+                      aria-label={`Connection details for ${candidate.name}`}
+                    >
+                      Connection details
+                    </summary>
+                    <dl>
+                      <dt>Full name</dt>
+                      <dd>{candidate.name}</dd>
+                      <dt>Station address</dt>
+                      <dd>{candidate.url}</dd>
+                    </dl>
+                  </details>
+                  {alreadyAdded ? (
+                    <span className="station-connect-discovery__saved">
+                      Saved
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`Request access to ${candidate.name}`}
+                      onClick={() => onSelect(candidate)}
+                      style={compactPrimaryBtnStyle}
+                    >
+                      Request access
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
