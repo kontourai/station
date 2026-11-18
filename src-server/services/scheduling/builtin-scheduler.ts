@@ -85,6 +85,13 @@ export class SchedulerJobConflictError extends Error {
   }
 }
 
+export class SchedulerJobNotFoundError extends Error {
+  constructor(name: string) {
+    super(`Job '${name}' not found`);
+    this.name = 'SchedulerJobNotFoundError';
+  }
+}
+
 /** A monitor dispatches a Task through its declared Station authority only. */
 function assertMonitorAuthority(
   input: Pick<AddJobOpts, 'monitor' | 'retryCount' | 'trustAllTools'>,
@@ -1976,6 +1983,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
   async editJob(
     target: string,
     opts: Record<string, unknown>,
+    expectedJobId?: string,
   ): Promise<string> {
     const normalized: Record<string, unknown> =
       typeof opts.cron === 'string'
@@ -2003,7 +2011,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
       const existing = this.ledger.list();
       if (existing.kind === 'unavailable') throw storageError(existing);
       const job = existing.value.find((candidate) => candidate.name === target);
-      if (!job) throw new Error(`Job '${target}' not found`);
+      if (!job) throw new SchedulerJobNotFoundError(target);
       assertMonitorAuthority({
         ...job,
         ...normalized,
@@ -2021,7 +2029,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
           throw new Error(`Job '${target}' is unavailable for monitor reset`);
         const reset = this.ledger.resetMonitorAndUpdateJob({
           name: target,
-          monitorId: view.unattendedPrincipal.jobId,
+          monitorId: expectedJobId ?? view.unattendedPrincipal.jobId,
           ownerId: 'personal',
           update: {
             ...durableUpdate,
@@ -2037,7 +2045,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
         });
         if (reset.kind === 'unavailable') throw storageError(reset);
         if (reset.kind === 'not-found')
-          throw new Error(`Job '${target}' not found`);
+          throw new SchedulerJobNotFoundError(target);
         if (reset.kind === 'busy') throw new Error(monitorBusyMessage(target));
         return `Job '${target}' updated`;
       }
@@ -2051,14 +2059,24 @@ export class BuiltinScheduler implements ISchedulerProvider {
       const existing = this.ledger.list();
       if (existing.kind === 'unavailable') throw storageError(existing);
       const job = existing.value.find((candidate) => candidate.name === target);
-      if (!job) throw new Error(`Job '${target}' not found`);
-      if (job.monitor) return `Job '${target}' updated`;
+      if (!job) throw new SchedulerJobNotFoundError(target);
+      if (job.monitor) {
+        const view = this.requireRead(this.ledger.listViews()).find(
+          (candidate) => candidate.name === target,
+        );
+        if (
+          expectedJobId !== undefined &&
+          view?.unattendedPrincipal?.jobId !== expectedJobId
+        )
+          throw new SchedulerJobNotFoundError(target);
+        return `Job '${target}' updated`;
+      }
     }
     if (normalized.monitor === null) {
       const existing = this.ledger.list();
       if (existing.kind === 'unavailable') throw storageError(existing);
       const job = existing.value.find((candidate) => candidate.name === target);
-      if (!job) throw new Error(`Job '${target}' not found`);
+      if (!job) throw new SchedulerJobNotFoundError(target);
       if (job.monitor) {
         const view = this.requireRead(this.ledger.listViews()).find(
           (candidate) => candidate.name === target,
@@ -2072,32 +2090,33 @@ export class BuiltinScheduler implements ISchedulerProvider {
         };
         const reset = this.ledger.resetMonitorAndUpdateJob({
           name: target,
-          monitorId: view.unattendedPrincipal.jobId,
+          monitorId: expectedJobId ?? view.unattendedPrincipal.jobId,
           ownerId: 'personal',
           update: cleared,
         });
         if (reset.kind === 'unavailable') throw storageError(reset);
         if (reset.kind === 'not-found')
-          throw new Error(`Job '${target}' not found`);
+          throw new SchedulerJobNotFoundError(target);
         if (reset.kind === 'busy') throw new Error(monitorBusyMessage(target));
         return `Job '${target}' updated`;
       }
       // Explicit removal remains an idempotent update for a job already
       // without a monitor, but do not store JSON null as a phantom config.
-      const result = this.ledger.update(target, {
-        ...normalized,
-        monitor: undefined,
-      });
+      const result = this.ledger.update(
+        target,
+        { ...normalized, monitor: undefined },
+        expectedJobId,
+      );
       if (result.kind === 'unavailable') throw storageError(result);
       if (result.kind === 'not-found')
-        throw new Error(`Job '${target}' not found`);
+        throw new SchedulerJobNotFoundError(target);
       if (result.kind === 'busy') throw new Error(monitorBusyMessage(target));
       return `Job '${target}' updated`;
     }
-    const result = this.ledger.update(target, durableUpdate);
+    const result = this.ledger.update(target, durableUpdate, expectedJobId);
     if (result.kind === 'unavailable') throw storageError(result);
     if (result.kind === 'not-found')
-      throw new Error(`Job '${target}' not found`);
+      throw new SchedulerJobNotFoundError(target);
     if (result.kind === 'busy') throw new Error(monitorBusyMessage(target));
     return `Job '${target}' updated`;
   }
@@ -2330,21 +2349,24 @@ export class BuiltinScheduler implements ISchedulerProvider {
     return `Monitor '${target}' resolved from Task evidence`;
   }
 
-  async removeJob(target: string): Promise<void> {
-    const result = this.ledger.remove(target);
+  async removeJob(target: string, expectedJobId?: string): Promise<void> {
+    const result = this.ledger.remove(target, expectedJobId);
     if (result.kind === 'unavailable') throw storageError(result);
     if (result.kind === 'not-found')
-      throw new Error(`Job '${target}' not found`);
+      throw new SchedulerJobNotFoundError(target);
     if (result.kind === 'busy') throw new Error(monitorBusyMessage(target));
   }
 
-  async runJob(target: string): Promise<SchedulerManualRunReceipt> {
+  async runJob(
+    target: string,
+    expectedJobId?: string,
+  ): Promise<SchedulerManualRunReceipt> {
     const held = this.heldRunRefusal(target);
     if (held) throw new Error(held);
-    const claimed = this.ledger.claimManual(target, Date.now());
+    const claimed = this.ledger.claimManual(target, Date.now(), expectedJobId);
     if (claimed.kind === 'unavailable') throw storageError(claimed);
     if (claimed.kind === 'not-found')
-      throw new Error(`Job '${target}' not found`);
+      throw new SchedulerJobNotFoundError(target);
     if (claimed.kind === 'busy')
       throw new Error(`Job '${target}' is already running`);
     return this.executeManualClaim(target, claimed.receipt);
@@ -2531,11 +2553,11 @@ export class BuiltinScheduler implements ISchedulerProvider {
     };
   }
 
-  async enableJob(target: string): Promise<void> {
-    await this.editJob(target, { enabled: true });
+  async enableJob(target: string, expectedJobId?: string): Promise<void> {
+    await this.editJob(target, { enabled: true }, expectedJobId);
   }
-  async disableJob(target: string): Promise<void> {
-    await this.editJob(target, { enabled: false });
+  async disableJob(target: string, expectedJobId?: string): Promise<void> {
+    await this.editJob(target, { enabled: false }, expectedJobId);
   }
 
   async getJobLogs(target: string, count = 20): Promise<SchedulerLogEntry[]> {

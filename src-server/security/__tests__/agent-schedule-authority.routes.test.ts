@@ -51,6 +51,7 @@ import {
   vi,
 } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createUnattendedGrantRoutes } from '../../routes/agents/unattended-grants-routes.js';
 import { createStationControlMcpRoutes } from '../../routes/mcp/station-control-mcp-route.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
@@ -84,6 +85,7 @@ import {
   composeAgentSchedule,
 } from '../../runtime/routes/agent-schedule-composition.js';
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
+import { deploymentAccountPrincipal } from '../../services/identity/deployment-authentication-service.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   principalForRecordedSessionOwner,
@@ -109,6 +111,14 @@ import {
   ThreadInboxDelivery,
   type ThreadInboxStore,
 } from '../../services/orchestration/thread-inbox.js';
+import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
+import {
+  type ProjectMembershipAuthority,
+  ProjectMembershipService,
+} from '../../services/projects/project-membership-service.js';
+import { ProjectMembershipStore } from '../../services/projects/project-membership-store.js';
+import { createProjectPrincipalPermission } from '../../services/projects/project-principal-permission.js';
+import { ProjectService } from '../../services/projects/project-service.js';
 import type { ScheduledConversationRunInput } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { conversationAutomationsFrom } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
@@ -237,6 +247,10 @@ async function boot(options: {
   hosted: boolean;
   /** A real scheduler instead of the create-only stub. */
   scheduler?: SchedulerService;
+  projectAccess?: Pick<
+    Parameters<typeof composeAgentSchedule>[0],
+    'projectExists' | 'principalMayInProject'
+  >;
   notifications?: NotificationService;
   logDirectory?: string;
   diagnosticGrantStore?: UnattendedGrantStore;
@@ -324,6 +338,7 @@ async function boot(options: {
         },
         c as never,
       ),
+    ...options.projectAccess,
     agentProject: async (slug) => {
       if (!facts.agents.has(slug)) throw new Error('no such agent');
       return facts.agents.get(slug) ?? undefined;
@@ -437,6 +452,10 @@ async function boot(options: {
         admitAutomationJob: composition.admitAutomationJob,
         mayReadAutomationJob: composition.mayReadAutomationJob,
         mayReadAutomationRun: composition.mayReadAutomationRun,
+        jobOwner: composition.jobOwner,
+        ...(options.projectAccess
+          ? { maySetProjectJob: composition.maySetProjectJob }
+          : {}),
       },
     ),
   );
@@ -3335,6 +3354,15 @@ describe('acting on an untargeted job is admitted against its owner', () => {
       ...(requestUserId ? { requestUserId } : {}),
       ...(credentialAuthority ? { credentialAuthority } : {}),
       ...(extra.ownerStanding ? { ownerStanding: true } : {}),
+      ...(extra.projectId
+        ? {
+            projectAccess: {
+              projectExists: (id) => id === extra.projectId,
+              principalMayInProject:
+                createProjectPrincipalPermission(undefined),
+            },
+          }
+        : {}),
     });
     await scheduler.addJob({
       name: 'owned-job',
@@ -3760,6 +3788,217 @@ describe('acting on an untargeted job is admitted against its owner', () => {
       expect(ran.status).toBe(200);
     } finally {
       await world.close();
+    }
+  });
+});
+
+describe('Project schedule membership', () => {
+  const makeTempDir = trackTempDirs();
+
+  async function projectWorld() {
+    const home = makeTempDir('project-schedule-membership-');
+    const storage = new FileStorageAdapter(home);
+    const manifests = new ProjectManifestStore(home, storage);
+    const projects = new ProjectService(storage, manifests);
+    const project = await projects.createProject({
+      name: 'Atlas',
+      slug: 'atlas',
+    });
+    const db = new DatabaseSync(':memory:');
+    const membership = new ProjectMembershipService(
+      'station-one',
+      storage,
+      manifests,
+      new ProjectMembershipStore(db, 'station-one'),
+    );
+    const owner = deploymentAccountPrincipal('issuer', 'owner', 'Owner');
+    const member = deploymentAccountPrincipal('issuer', 'member', 'Member');
+    const outsider = deploymentAccountPrincipal(
+      'issuer',
+      'outsider',
+      'Outsider',
+    );
+    let actor = owner;
+    const access: ProjectMembershipAuthority = {
+      current: async () => ({
+        principal: actor,
+        verifiedEmails: actor.id === member.id ? ['member@example.test'] : [],
+      }),
+      operator: async () => undefined,
+    };
+    const view = await membership.enable(project.slug, project.id, access);
+    const invitation = await membership.invite(
+      view.scope,
+      {
+        email: 'member@example.test',
+        role: 'contributor',
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      },
+      access,
+    );
+    actor = member;
+    await membership.accept(invitation.token, access);
+    actor = outsider;
+    const projectExists = (id: string) =>
+      projects.listProjects().some((candidate) => candidate.id === id);
+    const scheduler = new SchedulerService({
+      logger: quietLogger(),
+      builtin: {
+        ledger: createSchedulerLedger({ directory: home }),
+        turnAdapter: { invoke: vi.fn() },
+        projectRuns: {
+          invoke: async () => ({ kind: 'completed', output: '' }),
+        },
+        projectHold: {
+          heldProjectIds: () => new Set(),
+          heldProjectSlugs: () => new Set(),
+          projectExists,
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      credentialAuthority: 'device-credential',
+      requestUserId: () => actor.id,
+      retargetsGrantedJob: () => false,
+      projectAccess: {
+        projectExists,
+        principalMayInProject: createProjectPrincipalPermission(membership),
+      },
+    });
+    const job = {
+      name: 'atlas-digest',
+      schedule: { kind: 'every', everyMs: 3_600_000 } as const,
+      prompt: 'Summarize Atlas activity',
+      projectId: project.id,
+    };
+    return {
+      job,
+      member,
+      scheduler,
+      request: (method: string, path: string, body?: unknown) =>
+        personRequest(method, path, body, served.baseUrl),
+      signInAsMember: () => {
+        actor = member;
+      },
+      demoteMember: async () => {
+        actor = owner;
+        await membership.changeMember(
+          view.scope,
+          member.id,
+          1,
+          { role: 'viewer', status: 'active' },
+          access,
+        );
+        actor = member;
+      },
+      close: async () => {
+        await served.close();
+        await scheduler.stop();
+        db.close();
+      },
+    };
+  }
+
+  test('a non-member cannot read a Project job or its runs, while a member can', async () => {
+    const { job, member, scheduler, request, signInAsMember, close } =
+      await projectWorld();
+    try {
+      await scheduler.addJob({ ...job, createdBy: { userId: member.id } });
+      expect((await scheduler.runJob(job.name)).outcome).toBe('completed');
+      const logs = `/scheduler/jobs/${job.name}/logs`;
+      expect((await request('GET', '/scheduler/jobs')).body.data).toEqual([]);
+      expect((await request('GET', logs)).status).toBe(404);
+      for (const [path, body] of [
+        ['restart', undefined],
+        ['resolve', { triggerId: 'test-trigger', action: 'resolve' }],
+      ] as const) {
+        for (const name of [job.name, 'missing']) {
+          const response = await request(
+            'POST',
+            `/scheduler/jobs/${name}/monitor/${path}`,
+            body,
+          );
+          expect(response).toEqual({
+            status: 404,
+            body: { success: false, error: 'Job not found' },
+          });
+        }
+      }
+      signInAsMember();
+      expect((await request('GET', '/scheduler/jobs')).body.data).toEqual([
+        expect.objectContaining({
+          name: job.name,
+          prompt: job.prompt,
+          projectId: job.projectId,
+          createdBy: { userId: member.id },
+        }),
+      ]);
+      expect((await request('GET', logs)).body.data).toEqual([
+        expect.objectContaining({ job: job.name, success: true }),
+      ]);
+    } finally {
+      await close();
+    }
+  });
+
+  test('only a member with execute may create a job in an existing Project', async () => {
+    const { job, member, scheduler, request, signInAsMember, close } =
+      await projectWorld();
+    try {
+      const jobs = '/scheduler/jobs';
+      expect((await request('POST', jobs, job)).status).toBe(404);
+      expect(await scheduler.listJobs()).toEqual([]);
+      signInAsMember();
+      expect(
+        (await request('POST', jobs, { ...job, projectId: 'missing-project' }))
+          .status,
+      ).toBe(404);
+      expect((await request('POST', jobs, job)).status).toBe(200);
+      expect(await scheduler.listJobs()).toEqual([
+        expect.objectContaining({
+          name: job.name,
+          projectId: job.projectId,
+          createdBy: { userId: member.id },
+        }),
+      ]);
+    } finally {
+      await close();
+    }
+  });
+
+  test('a demoted creator can read and clean up the job but cannot edit, enable, or run it', async () => {
+    const { job, scheduler, request, signInAsMember, demoteMember, close } =
+      await projectWorld();
+    try {
+      const path = `/scheduler/jobs/${job.name}`;
+      signInAsMember();
+      expect((await request('POST', '/scheduler/jobs', job)).status).toBe(200);
+      expect((await request('PUT', path, { prompt: 'Revised' })).status).toBe(
+        200,
+      );
+      await demoteMember();
+      expect((await request('GET', '/scheduler/jobs')).body.data).toEqual([
+        expect.objectContaining({ name: job.name, prompt: 'Revised' }),
+      ]);
+      expect((await request('PUT', path, { prompt: 'Denied' })).status).toBe(
+        404,
+      );
+      expect((await request('POST', `${path}/run`)).status).toBe(404);
+      expect((await request('PUT', `${path}/disable`)).status).toBe(200);
+      expect((await request('PUT', `${path}/enable`)).status).toBe(404);
+      expect(await scheduler.listJobs()).toEqual([
+        expect.objectContaining({
+          name: job.name,
+          prompt: 'Revised',
+          enabled: false,
+        }),
+      ]);
+      expect((await request('DELETE', path)).status).toBe(200);
+      expect(await scheduler.listJobs()).toEqual([]);
+    } finally {
+      await close();
     }
   });
 });

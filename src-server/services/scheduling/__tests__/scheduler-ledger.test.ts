@@ -497,7 +497,7 @@ describe('SchedulerLedger', () => {
     second.close();
   });
 
-  test('gives a delete-and-recreated display name a new server-issued principal', () => {
+  test('binds mutations and manual claims to the job identity across name reuse', () => {
     const ledger = createSchedulerLedger({ directory: tempDir });
     const job = {
       name: 'same-name',
@@ -512,14 +512,28 @@ describe('SchedulerLedger', () => {
     );
     if (first.kind !== 'claimed') throw new Error('expected first claim');
     const oldPrincipal = first.receipt.jobId;
-    ledger.remove('same-name');
-    ledger.create(job);
-    const second = ledger.claimManual(
-      'same-name',
-      Date.parse('2026-01-01T01:00:01.000Z'),
-    );
+    expect(ledger.remove('same-name', oldPrincipal)).toEqual({
+      kind: 'removed',
+    });
+    expect(ledger.create(job)).toMatchObject({ kind: 'created' });
+    expect(
+      ledger.update('same-name', { prompt: 'stale edit' }, oldPrincipal),
+    ).toEqual({
+      kind: 'not-found',
+    });
+    expect(ledger.remove('same-name', oldPrincipal)).toEqual({
+      kind: 'not-found',
+    });
+    const now = Date.parse('2026-01-01T01:00:01.000Z');
+    expect(ledger.claimManual('same-name', now, oldPrincipal)).toEqual({
+      kind: 'not-found',
+    });
+    const currentPrincipal = read(ledger.listViews(now))[0]!
+      .unattendedPrincipal!.jobId;
+    expect(currentPrincipal).not.toBe(oldPrincipal);
+    const second = ledger.claimManual('same-name', now, currentPrincipal);
     if (second.kind !== 'claimed') throw new Error('expected second claim');
-    expect(second.receipt.jobId).not.toBe(oldPrincipal);
+    expect(second.receipt.job.prompt).toBe('run');
     ledger.close();
   });
 
