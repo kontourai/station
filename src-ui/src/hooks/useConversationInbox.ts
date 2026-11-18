@@ -261,15 +261,11 @@ export function useConversationInbox(
       : query.isSuccess
         ? 'available'
         : 'loading';
-  const entries =
-    availability === 'unavailable'
-      ? undefined
-      : withInboxReceipts(query.data, receipts);
-  // A failed read keeps TanStack's last successful data; it is not shown (it
-  // may be stale), but it says whether there was anything to lose sight of.
+  const observedEntries = withInboxReceipts(query.data, receipts);
+  const entries = availability === 'unavailable' ? undefined : observedEntries;
   const lostSightOfEntries =
     availability === 'unavailable' &&
-    (visibleInboxEntries(query.data).length > 0 ||
+    (visibleInboxEntries(observedEntries).length > 0 ||
       query.data?.some(
         (entry) => entry.kind === 'display' && entry.state === 'sent',
       ) === true);

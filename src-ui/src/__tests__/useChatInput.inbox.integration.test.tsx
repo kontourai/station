@@ -418,6 +418,7 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     const world = station();
     await world.busy();
     let holdInboxReads = false;
+    let refuseInboxReads = false;
     let heldRead: Request | undefined;
     const { promise: readsReleased, resolve: releaseReads } =
       Promise.withResolvers<void>();
@@ -425,12 +426,13 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       'fetch',
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const request = new Request(input, init);
-        const response = await world.app.request(request);
-        if (
-          holdInboxReads &&
+        const inboxRead =
           request.method === 'GET' &&
-          new URL(request.url).pathname.endsWith('/inbox')
-        ) {
+          new URL(request.url).pathname.endsWith('/inbox');
+        if (inboxRead && refuseInboxReads)
+          return new Response(null, { status: 404 });
+        const response = await world.app.request(request);
+        if (inboxRead && holdInboxReads) {
           heldRead = request;
           await readsReleased;
         }
@@ -491,6 +493,19 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     }
     await act(async () => await refresh);
     expect(screen.getByText('then summarize')).toBeTruthy();
+    refuseInboxReads = true;
+    await act(() =>
+      client.refetchQueries({ queryKey: ['conversation-inbox'] }),
+    );
+    expect(
+      await screen.findByText('Couldn’t load inbox entries.'),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByText('then summarize')).toBeNull(),
+    );
+    refuseInboxReads = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('1 pending')).toBeTruthy();
     await waitFor(async () => {
       const response = await world.listInbox(READER);
       const body = await response.json();
