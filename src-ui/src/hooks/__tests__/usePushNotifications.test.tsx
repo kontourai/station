@@ -313,6 +313,32 @@ describe('usePushNotifications', () => {
     },
   );
 
+  test('reconnect can still verify an explicit re-enable after unsubscribe', async () => {
+    const original = browserSubscription('original');
+    const next = browserSubscription('next');
+    getSubscription.mockResolvedValue(original);
+    mocks.fetchWebPushRegistration.mockResolvedValue(
+      readRegistration(original.fingerprint),
+    );
+    const { result } = mount();
+    await waitFor(() => expect(result.current.subscribed).toBe(true));
+    await act(async () => result.current.unsubscribe());
+
+    pushManagerSubscribe.mockImplementation(async () => {
+      getSubscription.mockResolvedValue(next);
+      return next;
+    });
+    mocks.fetchWebPushRegistration.mockResolvedValue(readRegistration());
+    await act(async () => result.current.subscribe());
+    expect(result.current.subscribed).toBe(true);
+
+    act(() => window.dispatchEvent(new Event('online')));
+    await waitFor(() =>
+      expect(result.current.error).toContain('Register this browser'),
+    );
+    expect(result.current.subscribed).toBe(false);
+  });
+
   test('a failed browser unsubscribe leaves the Station registration alone', async () => {
     const subscription = browserSubscription('still-local');
     subscription.unsubscribe.mockResolvedValue(false);

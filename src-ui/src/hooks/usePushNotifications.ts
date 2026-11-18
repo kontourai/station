@@ -155,19 +155,23 @@ export function usePushNotifications({
   useEffect(() => {
     if (!supported) return;
     let cancelled = false;
-    const owner = scopeRef.current;
-    if (owner.authorityKey !== authorityKey) return;
-    const { version } = owner;
-    const isCurrent = () =>
-      !cancelled &&
-      version === scopeRef.current.version &&
-      owner.requestScope?.isCurrent?.() !== false;
-    const previousCleanup = cleanupRef.current;
     setError(null);
     setPairingRequired(false);
     const run = async () => {
+      const owner = scopeRef.current;
+      if (
+        owner.authorityKey !== authorityKey ||
+        owner.apiBase !== apiBase ||
+        owner.enabled !== enabled
+      )
+        return;
+      const { version } = owner;
+      const isCurrent = () =>
+        !cancelled &&
+        version === scopeRef.current.version &&
+        owner.requestScope?.isCurrent?.() !== false;
       try {
-        await previousCleanup;
+        await cleanupRef.current;
         if (!isCurrent()) return;
         setRegisteredVersion(-1);
         setError(null);
