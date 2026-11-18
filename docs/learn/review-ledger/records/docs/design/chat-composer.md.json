@@ -346,7 +346,9 @@
 
     "tests/chat-settings-and-task-notices.spec.ts",
 
-    "src-ui/src/hooks/useConversationInboxSnapshot.ts"
+    "src-ui/src/hooks/useConversationInboxSnapshot.ts",
+
+    "src-ui/src/lib/composerForegroundDispatch.ts"
   ],
 
   "checks": [
