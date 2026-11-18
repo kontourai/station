@@ -5351,16 +5351,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 }
 
 .usage-telemetry-disclosure__inventory > summary {
+  min-block-size: var(--touch-target-min, 0px);
+  align-content: center;
   cursor: pointer;
   padding: 8px 0;
   color: var(--text-secondary);
-}
-
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .usage-telemetry-disclosure__inventory > summary {
-    min-block-size: 44px;
-    align-content: center;
-  }
 }
 
 .usage-telemetry-disclosure__actions {
