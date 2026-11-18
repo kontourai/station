@@ -8,6 +8,12 @@ import {
 } from '../portability.js';
 import type { AgentSpec, AppConfig, ToolDef } from '../types.js';
 
+const appModelDefaults = {
+  defaultModel: 'gpt-5.4',
+  invokeModel: 'gpt-5.4',
+  structureModel: 'gpt-5.4',
+} satisfies Pick<AppConfig, 'defaultModel' | 'invokeModel' | 'structureModel'>;
+
 describe('portability helpers', () => {
   test('bounds an incomplete export-marker run (station#2384)', () => {
     const startedAt = performance.now();
@@ -35,9 +41,7 @@ ${'```x\n'.repeat(150_000)}`;
     const appConfig: AppConfig = {
       systemPrompt: 'Be helpful',
       approvalGuardian: { enabled: true, mode: 'review' },
-      defaultModel: 'gpt-5.4',
-      invokeModel: 'gpt-5.4',
-      structureModel: 'gpt-5.4',
+      ...appModelDefaults,
     };
     const agent: AgentSpec = {
       name: 'Writer',
@@ -165,7 +169,7 @@ ${'<!-- STATION:EXPORT:END -->'}
       ui: { component: 'writer-pane', workflowShortcuts: ['review'] },
     };
     const document = buildAgentsMdDocument({
-      appConfig: {},
+      appConfig: appModelDefaults,
       agents: [{ slug: 'writer', spec: legacy }],
       integrations: [],
       generatedAt: '2026-04-12T06:00:00.000Z',
