@@ -2661,7 +2661,10 @@ entries returns 413 `custom_appearance_library_full`. Current total storage is
 `size: cover|contain|tile`, `position: center|top|bottom|left|right`, `dim: 0..1`),
 `panelOpacity: 0.5..1`, `radius: 0..24` pixels and `fontSize: 12..20` pixels.
 Backgrounds must be bounded, canonical base64 PNG/JPEG/WebP raster data; remote
-URLs and SVG uploads are refused. Appearance studio must be enabled for new
+URLs and SVG uploads are refused. Raster file bytes after base64 decoding are
+limited to 1 MiB, with at most 4,096 pixels per side and 16 million pixels;
+animated raster headers are refused. Portable theme packs are limited to
+1.5 MiB of UTF-8 JSON. Appearance studio must be enabled for new
 visual proposal/save/keep and library operations. Disabled requests return
 404 `feature_preview_disabled` with `previewId` and `settingsPath`; accepted
 appearances, ordinary reads, turn-off and legacy palette/CSS operations remain.

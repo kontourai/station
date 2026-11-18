@@ -46,6 +46,9 @@ function App() {
       React.createElement('div', { 'data-surface': 'composer' }, 'Compose')),
     React.createElement('svg', { width: 20, height: 20 },
       React.createElement('path', { id: 'probe-path', d: 'M0 0 L10 10' })),
+    React.createElement('aside', { 'data-region': 'right' },
+      React.createElement('div', { className: 'chat-dock__content-area' },
+        React.createElement('div', { id: 'dock-transcript', 'data-surface': 'transcript' }, 'Conversation'))),
     open && React.createElement(PermissionRequestModal, {
       request: { pluginName: 'demo', permissions: [] },
       onApprove: () => events.push('approve'),
@@ -182,6 +185,49 @@ describe('custom appearance in Chromium', () => {
           .trim(),
       ),
     ).not.toBe('18px');
+  });
+
+  test('a typed raster background remains visible in a sibling dock when mobile hides main content', async () => {
+    const image =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jU1sAAAAASUVORK5CYII=';
+    const backdrop = await page.addStyleTag({
+      content: ':root {--k-bg:#101820;--k-panel:#16212c}',
+    });
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await harness('setVisual', {
+        background: {
+          dataUrl: image,
+          size: 'cover',
+          position: 'center',
+          dim: 0.4,
+        },
+        panelOpacity: 0.7,
+      });
+      await page.locator('.main-content').evaluate((element) => {
+        (element as HTMLElement).style.display = 'none';
+      });
+      expect(await page.locator('#dock-transcript').isVisible()).toBe(true);
+      expect(
+        await page
+          .locator('#dock-transcript')
+          .evaluate((element) => getComputedStyle(element).backgroundImage),
+      ).toContain('data:image/png;base64,');
+      await harness('showApproval', true);
+      expect(
+        await page
+          .locator('#dock-transcript')
+          .evaluate((element) => getComputedStyle(element).backgroundImage),
+      ).toBe('none');
+      await harness('showApproval', false);
+    } finally {
+      await harness('setActive', null);
+      await page.locator('.main-content').evaluate((element) => {
+        (element as HTMLElement).style.display = '';
+      });
+      await page.setViewportSize({ width: 1024, height: 700 });
+      await backdrop.evaluate((element) => element.remove());
+    }
   });
 
   const probe = (property: string) =>

@@ -4,7 +4,13 @@ import type {
   CustomAppearanceDocument,
   CustomAppearanceLibraryDocument,
 } from '@kontourai/station-contracts/custom-appearance';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const query = {
@@ -346,6 +352,36 @@ describe('Appearance studio', () => {
         appearance: appearance('Harbor updated'),
       },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    const next = {
+      revision: 'library-2',
+      themes: [
+        {
+          ...libraryQuery.data!.themes[0]!,
+          id: 'theme-2',
+          name: 'Harbor updated',
+          appearance: appearance('Harbor updated'),
+        },
+      ],
+    };
+    act(() => {
+      libraryQuery.data = next;
+      libraryMutate.mock.calls[0]![1].onSuccess(next);
+    });
+    expect(screen.getByRole('status').textContent).toContain(
+      'Saved to your theme library.',
+    );
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Harbor final' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save to library' }));
+    expect(libraryMutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: 'theme-2',
+        revision: 'library-2',
+        appearance: appearance('Harbor final'),
+      }),
+      expect.any(Object),
     );
     expect(mutate).not.toHaveBeenCalled();
     expect(preview).not.toHaveBeenCalled();

@@ -238,6 +238,17 @@ disabled label can vanish); the agent guide asks for both.
 measures the guard, the palette over a named theme, suspension, the keep bar
 against hostile CSS and the countdown in Chromium.
 
+Appearance studio adds typed visual settings through a separate generated sheet
+([visual-css.ts](../../src-ui/src/lib/custom-appearance/visual-css.ts)). Its
+background is validated raster data, never an arbitrary URL. That sheet pauses
+with CSS during decisions and is omitted from palette contrast measurements.
+The existing free-form CSS sandbox keeps its no-fetch policy and 50,000-character
+limit. The studio editor and saved library reuse the protected preview bar;
+inline chat actions additionally bind the exact proposal, Session, Station and
+current request authority. Proposal references survive event spill and history
+excerpts so a restored conversation can still show the exact pending card.
+
+
 ## White-label branding theme
 
 A branding provider's `getTheme()` answer is applied by
@@ -321,12 +332,3 @@ dark mode. Editors keep the native arrow; compact custom pickers continue to
 use `.choice-trigger`, `.choice-caret` and `ArrowDownGlyph`. Keep native select
 labels and keyboard behavior when applying page-specific sizing.
 
-Appearance studio adds typed visual settings through a separate generated sheet
-([visual-css.ts](../../src-ui/src/lib/custom-appearance/visual-css.ts)). Its
-background is validated raster data, never an arbitrary URL. That sheet pauses
-with CSS during decisions and is omitted from palette contrast measurements.
-The existing free-form CSS sandbox keeps its no-fetch policy and 50,000-character
-limit. The studio editor and saved library reuse the protected preview bar;
-inline chat actions additionally bind the exact proposal, Session, Station and
-current request authority. Proposal references survive event spill and history
-excerpts so a restored conversation can still show the exact pending card.

@@ -280,7 +280,7 @@ test('a newer proposal disables the old card and an action-time replacement is n
     },
   };
   fireEvent.click(preview);
-  await screen.findByText(/already been settled or replaced/);
+  await screen.findByText('Appearance proposal could not be updated');
   expect(keepBar.options).toBeUndefined();
   expect(writes).toHaveLength(0);
   expect(
