@@ -198,32 +198,26 @@ subscription: [#2753](https://github.com/kontourai/station/issues/2753).
 The channel race was exercised with synthetic state; physical browser delivery
 was not. See the current [Web Push guide](../guides/web-push-notifications.md).
 
-### Reusable prompts have two different argument contracts
+### Reusable prompts validate their own input
 
-Authored Agent commands and command skills both expand prompt text, but only
-the skill path rejects missing values and surplus positional words. Both use
-JavaScript replacement-string semantics, so dollar patterns in a supplied
-value can change its text. [#2764](https://github.com/kontourai/station/issues/2764)
-tracks authored argument validation;
-[#2763](https://github.com/kontourai/station/issues/2763) tracks literal-value
-preservation. The [command guide](../guides/commands.md) describes the current
-precedence and limits. A pure skill-helper probe reproduced the dollar-pattern
-behavior; no provider completion was inferred from prompt expansion.
+The original audit found that authored commands accepted missing and surplus
+arguments and that JavaScript replacement patterns changed the expanded text
+in both authored commands and command skills. Authored commands now enforce
+their declared positional parameters before dispatch. Both paths share a
+single literal substitution pass. Sender and preview-helper fixtures verify
+the expanded bytes. [Argument validation #2764](https://github.com/kontourai/station/issues/2764),
+[literal values #2763](https://github.com/kontourai/station/issues/2763),
+[command guide](../guides/commands.md)
 
-### Shortcut hints are separate from dispatch rules
+### Shortcut explanations come from registered rules
 
-The keyboard editor derives context hints from command IDs, while dispatch
-uses registered conditions plus modal/input ownership checks.
-[#2767](https://github.com/kontourai/station/issues/2767) tracks a shared source
-for the visible explanation and actual availability rule. The
-[shortcut guide](../guides/keyboard-shortcuts.md) now names that distinction and
-the current local settings store. This is a source-confirmed explanation gap,
-not a physical keyboard or native-shell failure.
-
-A separate mounted-editor probe found that a captured Space binding is saved
-under a different key spelling from the standard dispatched event.
-[#2771](https://github.com/kontourai/station/issues/2771) tracks normalization
-across capture, storage and dispatch, including existing saved bindings.
+The original audit found that settings derived hints from command IDs and
+that saving Space used a different spelling from the standard event key.
+Settings now displays the registered rule, and capture and dispatch share
+Space key normalization. A Chromium fixture exercises capture, reload,
+focus eligibility and modal suppression. [Rule explanations #2767](https://github.com/kontourai/station/issues/2767),
+[Space bindings #2771](https://github.com/kontourai/station/issues/2771),
+[shortcut guide](../guides/keyboard-shortcuts.md)
 
 ### One HTTP origin does not expose every realtime listener
 

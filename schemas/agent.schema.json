@@ -229,8 +229,16 @@
             "version": { "const": "station.agent-shared-turns/v1" },
             "mode": { "const": "model-only" },
             "allowedModelIds": {
-              "type": "array", "minItems": 1, "maxItems": 160, "uniqueItems": true,
-              "items": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^\\S(?:[\\s\\S]*\\S)?$" }
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 160,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+              }
             }
           }
         },
@@ -372,7 +380,7 @@
             "description": "Command parameters",
             "items": {
               "type": "object",
-              "required": ["name", "description"],
+              "required": ["name"],
               "properties": {
                 "name": {
                   "type": "string"

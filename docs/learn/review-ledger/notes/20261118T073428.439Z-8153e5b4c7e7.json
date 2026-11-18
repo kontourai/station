@@ -1,0 +1,37 @@
+{
+  "revision": "e83157470f0a63ba259c14a72bce86fb60008083",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the original command argument and shortcut findings against the current slash dispatcher, shared substitution, shortcut Settings and provider. Replacing those owners with main's versions produced the expected assertion failures, and the restored 222-test run passed. Engine execution and physical keyboard interception are outside the fixture evidence.","inputs":["docs/architecture/abstraction-review.md","docs/guides/commands.md","docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced shortcut registration and replacement through registry version subscriptions, device override reads and writes, key normalization, modal and input guards, and the handler. The controlled Chromium journey and existing identity and loop fixtures passed. The generated Station Docs topic was updated.","inputs":["docs/architecture/module-map.md","src-ui/src/contexts/KeyboardShortcutsContext.tsx","src-ui/src/settings/shortcutPreferences.ts","src-ui/src/views/settings/KeyboardShortcutsSection.tsx","src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx"]},
+
+    {"path":"docs/design/developer-surface.md","note":"Checked editor and launcher routing against the registration delta. Shortcut version changes publish actual registry mutations, while the Developer Surface retains its registered handler and device-binding behavior.","inputs":["docs/design/developer-surface.md","src-ui/src/contexts/KeyboardShortcutsContext.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked the Settings explanation and Device ownership against the actual Settings list, override writers and provider. Capture still saves to the versioned Device store and the displayed expression comes from registry metadata.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the Agent schema mutation at the nested command-parameter boundary. Parameter names remain required and descriptions are now optional to match SlashCommandParam. Agent identity, prompt, execution and tools contracts in this guide remain as written.","inputs":["docs/guides/agent-configuration.md","schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the Settings delta linked by the efficiency guide. Keyboard Settings now points to its command guide, while the Feature Preview anchor and local policy and context controls retain their meanings.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/commands.md","note":"Traced authored commands through the real slash handler to the normal sender. The test records exact expanded bytes for authored and skill commands and checks refusal before sends or run counters. Confirmed default and empty behavior, literal preview expansion, optional parameter description schema and ACP passthrough. No provider executed.","inputs":["docs/guides/commands.md","schemas/agent.schema.json","src-ui/src/slashCommands/dispatch.ts","src-ui/src/utils/skill-commands.ts","src-ui/src/__tests__/useActiveChatSessionMessaging.test.ts","src-ui/src/__tests__/skill-commands.test.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Inspected the Agent schema delta against provider, connection and Agent selection claims. The field now optional is the nested authored-command parameter description. ACP command text continues through the same dispatch path.","inputs":["docs/guides/connections.md","schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the new Keyboard shortcuts paragraph against the Settings guide's Feature Preview links. It leaves preview routing and persistence tiers intact.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Traced binding capture, saved Space spelling, conflict comparison and dispatcher match to the same key normalization. Checked the conditions and guards against changed registrations, ignored states and browser-reserved warnings. Chromium exercised modified Space across reload, composer focus and modal suppression, and the editor was inspected at 390px and 1440px in both themes.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx","src-ui/src/contexts/KeyboardShortcutsContext.tsx","src-ui/src/settings/shortcutPreferences.ts","src-ui/src/views/settings/KeyboardShortcutsSection.tsx","src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the nested Agent schema delta against self-configuration, runtime admission and editor flows. Optional command-parameter descriptions affect the shape only and grant no changes to tools or provider authority.","inputs":["docs/guides/self-configuring-agent.md","schemas/agent.schema.json"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the Agent config schema change and loader boundary. Only the required-field list for command parameters changes, so parameter descriptions become optional. Config paths and Project and host settings retain their contracts.","inputs":["docs/reference/config.md","schemas/agent.schema.json"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the generated docs registry change produced from the updated keyboard shortcut module map. The shipped topic describes actual key normalization and registration rules. The station-docs generation check passed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked Keyboard shortcuts navigation and registered-condition explanations against the Settings editor. Controlled Chromium verified whether the capture control is editable at desktop and read-only at 390px.","inputs":["docs/user/settings.md"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"Checked the prompt-source examples and split between prompt files and skill-package lists. The added variable guidance refers to the common command skill argument and substitution owners, exercised in slash sender and preview-helper fixtures.","inputs":["examples/enterprise-layout/README.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the Agent schema delta against the sample Agent configuration and excluded delegation field. Optional parameter descriptions do not affect the example's engine, tool or delegation validation.","inputs":["examples/self-configuring-agent/README.md","schemas/agent.schema.json"]}
+  ]
+}
