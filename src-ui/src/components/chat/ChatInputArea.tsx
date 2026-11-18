@@ -655,9 +655,6 @@ export function ChatInputArea({
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
   const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
-  const steeringSelected = sendMode === 'steer' && busyFollowUp === 'steer';
-  const sendModeLabel = steeringSelected ? 'Steer' : 'Queue';
-  const sendModeName = `Send mode: ${sendModeLabel}`;
   useEffect(() => {
     void sessionId;
     setSendMode('queue');
@@ -687,7 +684,7 @@ export function ChatInputArea({
     submitPending.current = true;
     setSubmitting(true);
     try {
-      if (turnInFlight && steeringSelected) {
+      if (turnInFlight && sendMode === 'steer' && busyFollowUp === 'steer') {
         await onSend('steer');
       } else if (turnInFlight && onQueueFollowUp) {
         await onQueueFollowUp();
@@ -870,7 +867,7 @@ export function ChatInputArea({
               ? 'Draft a follow-up while this turn finishes…'
               : 'Waiting on this chat — check again above to send…'
             : turnInFlight
-              ? steeringSelected
+              ? sendMode === 'steer' && busyFollowUp === 'steer'
                 ? busySteeringKind === 'native'
                   ? 'Steer this turn…'
                   : 'Send at a safe boundary…'
@@ -2115,15 +2112,17 @@ export function ChatInputArea({
                   className={`chat-input__send-mode ${
                     sendReady ? 'chat-input__send-mode--active' : ''
                   }`}
-                  aria-label={sendModeName}
-                  title={sendModeName}
+                  aria-label={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
+                  title={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   tabIndex={hideMobileSubmit ? -1 : 0}
                   aria-haspopup="dialog"
                   aria-expanded={sendModeOpen}
                   onClick={() => setSendModeOpen(true)}
                 >
                   <span className="chat-input__mode-label">
-                    {sendModeLabel}
+                    {sendMode === 'steer' && busyFollowUp === 'steer'
+                      ? 'Steer'
+                      : 'Queue'}
                   </span>
                   <ArrowDownGlyph />
                 </button>

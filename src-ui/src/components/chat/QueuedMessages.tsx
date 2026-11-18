@@ -12,7 +12,7 @@ import { Button } from '../Button';
 import { recordedDeliveryPort } from '../conversation/DeliveryPort';
 import { ArrowDownGlyph, EditGlyph } from '../icons/Glyph';
 import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
-import { pendingMessageCount } from './pendingMessages';
+import { heldSendsInOrder, pendingMessageCount } from './pendingMessages';
 import './QueuedMessages.css';
 
 interface QueuedMessagesProps {
@@ -197,9 +197,7 @@ export function QueuedMessages({
   // which lands first is not known ahead.
   const heldOrder = new Map(
     heldEntries
-      .filter(
-        (entry) => entry.state === 'queued' && entry.position !== undefined,
-      )
+      .filter(heldSendsInOrder)
       .sort(
         (a, b) =>
           (a.position ?? Number.MAX_SAFE_INTEGER) -

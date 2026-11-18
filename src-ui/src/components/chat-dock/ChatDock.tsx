@@ -117,7 +117,6 @@ import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
-import { useConversationInboxSnapshot } from '../../hooks/useConversationInboxSnapshot';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,
@@ -188,7 +187,6 @@ import type {
   MessageResendRequest,
 } from '../chat/fork-turn-source';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
-import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { requestProjectShell } from '../coding-layout/terminalShellRequest';
 import { LazyBoundary } from '../LazyBoundary';
@@ -3285,25 +3283,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeTaskItem?.orchestrationThreadId ??
     activeSession?.currentSessionId ??
     activeSession?.conversationId;
-  // The pending list's own count (every row it lists), from the same facts:
-  // this window's follow-ups, its outbox and what Station holds.
-  const sessionContextHeld = useConversationInboxSnapshot(
-    activeSession && !activeSession.replay
-      ? (activeSession.conversationId ?? '')
-      : '',
+  const sessionContextInboxId = activeSession?.replay
+    ? ''
+    : (activeSession?.conversationId ?? '');
+  const sessionContextInboxConnection =
     activeSession && !chatBelongsToStation(activeSession)
       ? (conversationConnection ?? null)
-      : undefined,
-  );
-  const sessionContextPendingMessages = activeSession
-    ? pendingMessageCount({
-        localIds: activeSession.queuedMessages.map(
-          (_, index) => activeSession.queuedMessageMetadata?.[index]?.id,
-        ),
-        held: sessionContextHeld,
-        outboxCount: activeSession.outboundQueuedTurns?.length ?? 0,
-      })
-    : 0;
+      : undefined;
+  const sessionContextQueued = activeSession?.queuedMessages;
+  const sessionContextQueueMetadata = activeSession?.queuedMessageMetadata;
+  const sessionContextOutboxCount =
+    activeSession?.outboundQueuedTurns?.length ?? 0;
   const sessionContextLayoutSlug =
     !scopedProjectSlug && sessionContextProjectSlug
       ? (sessionCodingLayout?.slug ?? null)
@@ -3355,7 +3345,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       backgroundTasksRunning: backgroundTasksRunningCount,
       backgroundTasksLimited,
       onOpenBackgroundTasks: () => actions().showBackgroundTasks(),
-      pendingMessages: sessionContextPendingMessages,
+      pendingMessages: {
+        conversationId: sessionContextInboxId,
+        connection: sessionContextInboxConnection,
+        localIds:
+          sessionContextQueued?.map(
+            (_, index) => sessionContextQueueMetadata?.[index]?.id,
+          ) ?? [],
+        outboxCount: sessionContextOutboxCount,
+      },
       conversationId: sessionContextConversationId,
       onOpenChatDetails: sessionContextDetailsId
         ? () => {
@@ -3399,7 +3397,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionContextStatus,
     backgroundTasksRunningCount,
     backgroundTasksLimited,
-    sessionContextPendingMessages,
+    sessionContextInboxId,
+    sessionContextInboxConnection,
+    sessionContextQueued,
+    sessionContextQueueMetadata,
+    sessionContextOutboxCount,
     sessionContextConversationId,
     sessionContextDetailsId,
     sessionInventoryPressable,

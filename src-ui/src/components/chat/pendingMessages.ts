@@ -1,8 +1,8 @@
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
 
 /**
- * The pending-message list's shared rules for its count and rows that need
- * the person. The list
+ * The pending-message list's shared rules: its count, which rows are in the
+ * send order it numbers, and which need the person. The list
  * (`QueuedMessages`), the dock that builds its outbox rows and the chat's
  * context card all read them here, so they cannot disagree.
  */
@@ -25,6 +25,11 @@ export function outboxNeedsReview(turn: PendingOutboxTurn): boolean {
     turn.status === 'may-have-started' ||
     turn.heldByClosedWindow === true
   );
+}
+
+/** A Station-held row Station sends itself when the turn ends, in position order. */
+export function heldSendsInOrder(entry: ConversationInboxEntry): boolean {
+  return entry.state === 'queued' && entry.position !== undefined;
 }
 
 /**

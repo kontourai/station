@@ -5,12 +5,22 @@ import {
   type ReactNode,
   useLayoutEffect,
 } from 'react';
+import type { StationConnection } from '../../connections/station-connection';
+import { useConversationInboxSnapshot } from '../../hooks/useConversationInboxSnapshot';
 import type { WorkStatusTone } from '../../views/home/work-status';
+import { pendingMessageCount } from '../chat/pendingMessages';
 import { BranchGlyph, FolderGlyph } from '../icons/Glyph';
 import { useConversationPullRequestLinks } from '../pull-requests/useConversationPullRequestLinks';
 import { SessionScheduledSection } from './SessionScheduledSection';
 import { SESSION_CONTEXT_CARD_WIDTH } from './sessionContextCardModel';
 import './SessionContextCard.css';
+
+interface PendingConversationMessages {
+  conversationId: string;
+  connection?: StationConnection | null;
+  localIds: readonly (string | undefined)[];
+  outboxCount: number;
+}
 
 /**
  * What the session context card shows. Every field is something the dock
@@ -44,7 +54,7 @@ export interface SessionContextCardProps {
   backgroundTasksLimited?: boolean;
   onOpenBackgroundTasks?: () => void;
   /** The composer queue's own count ("N pending messages"). */
-  pendingMessages: number;
+  pendingMessages: number | PendingConversationMessages;
   conversationId: string | null;
   /** Chat details, where the linked pull requests are managed. */
   onOpenChatDetails?: () => void;
@@ -75,6 +85,28 @@ export interface SessionContextCardProps {
 
 /** A folder Station made for this chat, named instead of shown as its hash path. */
 const MANAGED_WORKSPACE_LABEL = 'Chat workspace';
+
+function PendingMessageLabel({ count }: { count: number }) {
+  return count > 0 ? (
+    <span className="session-context-card__secondary">
+      {count} pending message{count === 1 ? '' : 's'}
+    </span>
+  ) : null;
+}
+
+function ConversationPendingMessageLabel({
+  source,
+}: {
+  source: PendingConversationMessages;
+}) {
+  const held = useConversationInboxSnapshot(
+    source.conversationId,
+    source.connection,
+  );
+  return (
+    <PendingMessageLabel count={pendingMessageCount({ ...source, held })} />
+  );
+}
 
 const directoryName = (path: string) =>
   path
@@ -315,12 +347,11 @@ export function SessionContextRows({
                 ? `Background tasks — ${backgroundTasksRunning} running${backgroundTasksLimited ? ' shown' : ''}`
                 : 'No background tasks running'}
             </span>
-            {pendingMessages > 0 ? (
-              <span className="session-context-card__secondary">
-                {pendingMessages} pending message
-                {pendingMessages === 1 ? '' : 's'}
-              </span>
-            ) : null}
+            {typeof pendingMessages === 'number' ? (
+              <PendingMessageLabel count={pendingMessages} />
+            ) : (
+              <ConversationPendingMessageLabel source={pendingMessages} />
+            )}
           </Row>
         ) : null}
         {origin ? (
