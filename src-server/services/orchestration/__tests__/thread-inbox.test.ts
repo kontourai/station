@@ -60,6 +60,10 @@ import { CoordinatorWakeDelivery } from '../coordinator-session.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
+import {
+  deliverPostToolInbox,
+  type PostToolSteerInput,
+} from '../post-tool-inbox.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
 import { evaluateSessionWait } from '../session-turn-wait.js';
 import { TURN_DEDUP_MAX_ENTRIES } from '../station-turn-dedup-bindings.js';
@@ -328,6 +332,28 @@ async function runningFirstTurn(world: World) {
     firstTurn,
   );
   return firstTurn;
+}
+
+async function replaceRunningTurn(
+  world: World,
+  original: OwningTurn,
+  turnId: string,
+) {
+  await emit(world, 'turn.completed', { turnId: 'turn-1' }, original);
+  world.adapter.nextProviderTurnId = turnId;
+  await world.service.dispatch({
+    type: 'sendTurn',
+    input: { threadId: THREAD, input: 'new work', clientTurnId: 'second' },
+  });
+  const successor = world.adapter.entered[1];
+  if (!successor?.invocationId) throw new Error('The next turn did not start.');
+  await emit(world, 'turn.started', { turnId, prompt: 'new work' }, successor);
+  expect(
+    world.store.listEventPayloads(THREAD, ['turn.started']).at(-1),
+  ).toMatchObject({
+    turnId,
+    invocationId: successor.invocationId,
+  });
 }
 
 const payload: ThreadInboxPayload = {
@@ -1331,30 +1357,62 @@ describe('thread inbox (#3568)', () => {
     );
   });
 
-  test.each(['turn-2', 'turn-1'])(
-    'a steer awaiting the engine profile cannot enter a successor named %s',
-    async (turnId) => {
-      let resolveFidelity!: (value: 'native') => void;
-      const fidelity = new Promise<'native'>((resolve) => {
-        resolveFidelity = resolve;
+  test.each([
+    { boundary: 'engine profile', turnId: 'turn-2' },
+    { boundary: 'engine profile', turnId: 'turn-1' },
+    { boundary: 'adapter resolution', turnId: 'turn-1' },
+  ])(
+    'a steer awaiting $boundary cannot enter a successor named $turnId',
+    async ({ boundary, turnId }) => {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
       });
       let observed!: () => void;
-      const reading = new Promise<void>((resolve) => {
+      const waiting = new Promise<void>((resolve) => {
         observed = resolve;
       });
-      const steer = vi.fn(async ({ turnId }: { turnId: string }) => ({
-        outcome: 'steered',
-        turnId,
-      }));
+      const pause = async () => {
+        observed();
+        await held;
+      };
       const world = boot(path(), {
-        steerFidelity: () => {
-          observed();
-          return fidelity;
+        steerFidelity: async () => {
+          if (boundary === 'engine profile') await pause();
+          return 'native';
         },
-        inspectSteer: () => undefined,
-        steer,
+        inspectSteer: (input) => world.store.readSteerInput(input),
+        steer: async ({
+          threadId,
+          turnId,
+          clientInputId,
+          payload,
+          targetIsCurrent,
+        }) => {
+          const dispatched = await world.service.dispatchWithReceipt(
+            {
+              type: 'steerTurn',
+              threadId,
+              turnId,
+              clientInputId,
+              input: payload.message,
+            },
+            { userId: payload.actor.userId },
+            { steerTargetIsCurrent: targetIsCurrent },
+          );
+          if (!dispatched.result || !('outcome' in dispatched.result))
+            throw new Error('Steer dispatch did not return an outcome.');
+          return dispatched.result;
+        },
       });
       const original = await runningFirstTurn(world);
+      if (boundary === 'adapter resolution')
+        vi.spyOn(world.adapter, 'hasSession').mockImplementationOnce(
+          async () => {
+            await pause();
+            return true;
+          },
+        );
       const accepted = world.inbox.submitSteer({
         conversationId: THREAD,
         clientTurnId: 'old-turn-steer',
@@ -1363,42 +1421,70 @@ describe('thread inbox (#3568)', () => {
       });
       try {
         expect(accepted.outcome).toBe('queued');
-        await reading;
-        await emit(world, 'turn.completed', { turnId: 'turn-1' }, original);
-        world.adapter.nextProviderTurnId = turnId;
-        await world.service.dispatch({
-          type: 'sendTurn',
-          input: {
-            threadId: THREAD,
-            input: 'new work',
-            clientTurnId: 'second',
-          },
-        });
-        const successor = world.adapter.entered[1];
-        if (!successor?.invocationId)
-          throw new Error('The next turn did not start.');
-        await emit(
-          world,
-          'turn.started',
-          { turnId, prompt: 'new work' },
-          successor,
-        );
-        expect(
-          world.store.listEventPayloads(THREAD, ['turn.started']).at(-1),
-        ).toMatchObject({
-          turnId,
-          invocationId: successor.invocationId,
-        });
+        await waiting;
+        await replaceRunningTurn(world, original, turnId);
       } finally {
-        resolveFidelity('native');
+        release();
       }
-      await world.inbox.idle();
-      expect(steer).not.toHaveBeenCalled();
+      await settle(world);
+      expect(world.adapter.steers).toEqual([]);
+      expect(
+        world.store.readSteerInput({
+          threadId: THREAD,
+          clientInputId: 'old-turn-steer',
+          input: payload.message,
+          turnId: 'turn-1',
+        }),
+      ).toBeUndefined();
       expect(world.inbox.list(THREAD)).toMatchObject([
         { state: 'refused', kind: 'steer', reasonCode: 'steer_turn_ended' },
       ]);
     },
   );
+
+  test('a late post-tool acknowledgement cannot record a steer in a successor with the same ID', async () => {
+    const world = boot(path(), {
+      steerFidelity: () => 'emulated',
+      subscribe: () => () => {},
+    });
+    const original = await runningFirstTurn(world);
+    expect(
+      world.inbox.submitSteer({
+        conversationId: THREAD,
+        clientTurnId: 'post-tool-late',
+        payload,
+        expectedHead: world.inbox.currentHead(THREAD),
+      }).outcome,
+    ).toBe('queued');
+    await world.inbox.idle();
+    const capture = vi.fn<(input: PostToolSteerInput) => void>();
+    deliverPostToolInbox(THREAD, 'turn-1', capture);
+    const input = capture.mock.calls[0]?.[0];
+    if (!input) throw new Error('The live turn did not claim the steer.');
+    expect(input.canDispatch()).toBe(true);
+    let releaseMemory!: () => void;
+    const pendingMemory = new Promise<void>((resolve) => {
+      releaseMemory = resolve;
+    });
+    const writeMemory = vi.fn(() => pendingMemory);
+    const acknowledgement = input.onDispatched(writeMemory);
+    try {
+      expect(writeMemory).toHaveBeenCalledOnce();
+      await replaceRunningTurn(world, original, 'turn-1');
+      expect(input.canDispatch()).toBe(false);
+    } finally {
+      releaseMemory();
+      await acknowledgement;
+    }
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
+    ]);
+    expect(
+      world.store.listEventPayloads(THREAD, ['turn.started']),
+    ).not.toContainEqual(
+      expect.objectContaining({ inputKind: 'steer', prompt: payload.message }),
+    );
+  });
 
   test.each(['before-claim', 'after-claim'] as const)(
     'native steer restart at %s preserves text and head without replaying a claim',

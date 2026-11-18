@@ -879,6 +879,7 @@ export interface ThreadInboxDeliveryPorts {
     readonly clientInputId: string;
     readonly payload: ThreadInboxPayload;
     readonly turnId: string;
+    readonly targetIsCurrent?: () => boolean;
   }): Promise<{ readonly outcome: string; readonly turnId?: string }>;
   /**
    * Continue the conversation with the entry's input, as its recorded actor.
@@ -1233,20 +1234,25 @@ export class ThreadInboxDelivery {
         const stillClaimed = () =>
           !this.stopped &&
           this.ports.store.read(conversationId, head.key)?.state === 'placing';
+        const targetIsCurrent = () =>
+          target
+            ? this.ownsSteerTurn(conversationId, target)
+            : this.ownsPostToolTurn(threadId, turnId);
         inject({
           key: head.key,
           onUnconfirmed,
           text: payload.message,
+          canDispatch: () => stillClaimed() && targetIsCurrent(),
           onDispatched: async (persistMemory) => {
             if (!stillClaimed()) return;
             try {
-              if (!this.ownsPostToolTurn(threadId, turnId)) {
+              if (!targetIsCurrent()) {
                 onUnconfirmed();
                 return;
               }
               await persistMemory();
               if (!stillClaimed()) return;
-              if (!this.ownsPostToolTurn(threadId, turnId)) {
+              if (!targetIsCurrent()) {
                 onUnconfirmed();
                 return;
               }
@@ -1928,10 +1934,11 @@ export class ThreadInboxDelivery {
       );
       return;
     }
-    if (
-      payload.steerTarget &&
-      !this.ownsSteerTurn(conversationId, payload.steerTarget)
-    ) {
+    const target = payload.steerTarget;
+    const targetIsCurrent = target
+      ? () => this.ownsSteerTurn(conversationId, target)
+      : undefined;
+    if (targetIsCurrent?.() === false) {
       store.settle(entry, 'refused', STEER_TURN_ENDED, this.now());
       return;
     }
@@ -1966,6 +1973,7 @@ export class ThreadInboxDelivery {
             turnId,
             clientInputId: entry.key,
             payload,
+            targetIsCurrent,
           });
           outcome = sent.outcome;
           return sent.outcome === 'steered' && sent.turnId
@@ -2062,17 +2070,22 @@ export class ThreadInboxDelivery {
       if (head.kind === 'steer') {
         if (head.state === 'placing' && head.placement?.startsWith('{')) {
           const pinned = decodeSteerPlacement(head.placement);
-          if (
-            pinned?.boundary === 'post-tool' &&
-            !this.ownsPostToolTurn(pinned.threadId, pinned.turnId)
-          ) {
-            store.settle(
-              head,
-              'unconfirmed',
-              { reasonCode: 'may_have_been_sent' },
-              this.now(),
-            );
-            continue;
+          if (pinned?.boundary === 'post-tool') {
+            const payload = decodePayload(head.payload);
+            if (
+              !payload ||
+              !(payload.steerTarget
+                ? this.ownsSteerTurn(conversationId, payload.steerTarget)
+                : this.ownsPostToolTurn(pinned.threadId, pinned.turnId))
+            ) {
+              store.settle(
+                head,
+                'unconfirmed',
+                { reasonCode: 'may_have_been_sent' },
+                this.now(),
+              );
+              continue;
+            }
           }
           if (!redrive) return;
           if (!pinned) {

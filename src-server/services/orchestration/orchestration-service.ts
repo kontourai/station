@@ -673,6 +673,8 @@ interface OrchestrationDispatchInternalOptions {
    * reaches this parameter.
    */
   personAuthored?: true;
+  /** The inbox's exact turn binding, evaluated at the provider handoff. */
+  steerTargetIsCurrent?: () => boolean;
   /** Original intent proof; null preserves unknown legacy inbox input. */
   submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
@@ -11900,73 +11902,70 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
-          if (
-            steerInput &&
-            !this.options.eventStore?.claimSteerInput(steerInput)
-          ) {
-            const result: SteerTurnResult =
-              this.options.eventStore?.readSteerInput(steerInput) ?? {
-                outcome: 'indeterminate',
-                threadId: command.threadId,
-                clientInputId: steerInput.clientInputId,
-              };
-            this.persistReceipt(receipt);
-            return { receipt, result };
-          }
           this.inFlightSteers.add(command.threadId);
           try {
             try {
-              this.assertAdapterCurrent(adapter);
-              // archive#4075 stage 2: the same begin/settle propagation
-              // `sendTurn` uses above (:3700/:3751 in this file) — reserved
-              // BEFORE the adapter call so the steer's own `turn.started
-              // (inputKind:'steer')` (published asynchronously through the
-              // adapter's own event queue, not synchronously here) picks up
-              // the STEERING caller's origin/principal rather than the
-              // dispatching caller's or none at all. `settle` reuses
-              // `activeTurnId`: steer never mints a new turn id, it appends
-              // to the one already open. The `inFlightSteers` gate above
-              // means this thread can never have a second steer racing
-              // here, so `begin()`'s return needs no check — exactly like
-              // `sendTurn`'s own ignored-return call above.
-              this.clientOriginTurns.begin(
-                command.threadId,
-                context?.clientOrigin,
-                context?.principal,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                internal?.personAuthored ? 'person' : undefined,
-              );
-              const steerInvocationId =
-                this.sessionExecutionCoordinator.invocationForTurn(
+              let steerInvocationId: string | undefined;
+              const early = await this.withCurrentSkillExperience<
+                SteerTurnResult | undefined
+              >(command.threadId, async () => {
+                this.assertAdapterCurrent(adapter);
+                if (internal?.steerTargetIsCurrent?.() === false)
+                  return {
+                    outcome: 'no-active-turn',
+                    threadId: command.threadId,
+                  };
+                if (
+                  steerInput &&
+                  !this.options.eventStore?.claimSteerInput(steerInput)
+                )
+                  return (
+                    this.options.eventStore?.readSteerInput(steerInput) ?? {
+                      outcome: 'indeterminate',
+                      threadId: command.threadId,
+                      clientInputId: steerInput.clientInputId,
+                    }
+                  );
+                this.clientOriginTurns.begin(
                   command.threadId,
-                  activeTurnId,
+                  context?.clientOrigin,
+                  context?.principal,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  internal?.personAuthored ? 'person' : undefined,
                 );
-              if (steerInvocationId)
-                this.clientOriginTurns.bindInvocation(
-                  command.threadId,
-                  steerInvocationId,
-                );
-              try {
-                await this.withCurrentSkillExperience(command.threadId, () => {
-                  this.assertAdapterCurrent(adapter);
-                  return adapter.steerTurn!(
+                steerInvocationId =
+                  this.sessionExecutionCoordinator.invocationForTurn(
+                    command.threadId,
+                    activeTurnId,
+                  );
+                if (steerInvocationId)
+                  this.clientOriginTurns.bindInvocation(
+                    command.threadId,
+                    steerInvocationId,
+                  );
+                try {
+                  await adapter.steerTurn!(
                     command.threadId,
                     command.input,
                     activeTurnId,
                   );
-                });
-              } catch (steerError) {
-                // Release transient attribution on a failed acknowledgement.
-                // The durable steer claim stays held because engine acceptance
-                // cannot be ruled out.
-                for (const held of this.clientOriginTurns.cancel(
-                  command.threadId,
-                ))
-                  this.projectAndPublishEvent(held);
-                throw steerError;
+                } catch (steerError) {
+                  // The durable claim stays held because engine acceptance is unknown.
+                  for (const held of this.clientOriginTurns.cancel(
+                    command.threadId,
+                  ))
+                    this.projectAndPublishEvent(held);
+                  throw steerError;
+                }
+              });
+              if (early) {
+                if (early.outcome === 'no-active-turn')
+                  return refuseSteer(early, engineId);
+                this.persistReceipt(receipt);
+                return { receipt, result: early };
               }
               const earlySteerOriginEvent = this.clientOriginTurns.settle(
                 command.threadId,

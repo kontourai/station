@@ -204,6 +204,10 @@ export function createInboxStepPreparation(
                   attempted = true;
                   let result: Awaited<ReturnType<typeof doStream>>;
                   try {
+                    if (pending.some((input) => !input.canDispatch()))
+                      throw new Error(
+                        'The turn changed before Station could steer it.',
+                      );
                     result = await doStream();
                   } catch (error) {
                     for (const input of pending) input.onUnconfirmed();

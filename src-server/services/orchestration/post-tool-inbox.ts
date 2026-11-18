@@ -1,6 +1,7 @@
 export interface PostToolSteerInput {
   readonly key: string;
   readonly text: string;
+  readonly canDispatch: () => boolean;
   readonly onUnconfirmed: () => void;
   readonly onDispatched: (persistMemory: () => Promise<void>) => Promise<void>;
 }
