@@ -96,7 +96,7 @@
 .composer-run-panel__routing {
   position: absolute;
   top: 100%;
-  z-index: 2;
+  z-index: var(--layer-popover);
   display: grid;
   width: max-content;
   max-width: min(260px, calc(100vw - 48px));
