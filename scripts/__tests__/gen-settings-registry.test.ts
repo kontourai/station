@@ -325,7 +325,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'station-routes': 'device',
   'open-last-station': 'device',
   'tts-readback': 'device',
-  'personal-knowledge-store': 'station',
+  'personal-knowledge-store': 'personal',
   // knowledgeStores, a Station setting, shown in My knowledge store.
   'knowledge-conversation-history': 'station',
   // #3557: groups and personal access tokens are stored on the Station.

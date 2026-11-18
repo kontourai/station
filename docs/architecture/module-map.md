@@ -3674,8 +3674,11 @@ built-in default-file and Obsidian adapters implement the checked-in Kit record
 contract; the conversation adapter is a read-only projection of Session history.
 Personal and Project are scope tags, not a universal uniqueness or authorization proof:
 the registry can allocate suffixed personal IDs, and the conversation root also has
-personal scope. The Settings card currently selects the first personal root. Root
-removal clears the cached adapter. File storage registers newly allocated root IDs
+personal scope. The Settings card shows the first ordinary personal root the
+operator can read, excluding author-private memory and read-only conversation
+history. The Settings catalog calls this row `personal`; it uses the
+operator-owned root registry through the Knowledge API. Root removal clears
+the cached adapter. File storage registers newly allocated root IDs
 with create-only conflict checks; concurrent providers cannot overwrite a registered
 root. Exact disconnect compares the observed root inside the registry mutation and
 refuses a changed incarnation. Neither removal form deletes source files. There is

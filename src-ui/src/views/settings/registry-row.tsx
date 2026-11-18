@@ -35,7 +35,7 @@ import {
  * one. An un-overridden setting has `value === undefined` while the runtime
  * applies `definition.defaultValue` — rendering the raw value made two
  * default-on toggles read "off" beside copy describing an active feature. The
- * default-vs-overridden distinction is the `DEFAULT` provenance chip's job.
+ * inheritance details show where that effective value comes from.
  *
  * Toggles and selects have no placeholder affordance, so they render the
  * effective value directly. Text/number inputs stay empty when un-overridden
