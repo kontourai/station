@@ -106,9 +106,20 @@ const BYPASSES: Record<string, Record<string, string>> = {
 
 describe('native platform boundary gate (#3851)', () => {
   test('passes a clean desktop root', () => {
-    const result = gate(desktopRoot({}));
-    expect(result.output).toContain('OK: native access remains');
+    const root = desktopRoot({});
+    const result = gate(root);
     expect(result.status).toBe(0);
+    expect(result.output).toMatch(
+      /src-ui\/src \([1-9]\d* \.ts\/\.tsx files\).*ConnectionListPanel\.tsx.*excluding __tests__/,
+    );
+    expect(result.output).toContain(
+      `2 file(s) in ${root}/capabilities, ${root}/permissions and ${root}/tauri*.conf.json`,
+    );
+    expect(result.output).toContain(
+      'Resolved Tauri ACL coverage is tracked in #3864',
+    );
+    expect(result.output).toContain('nonce markers in src-ui/index.html');
+    expect(result.output).not.toContain('permissions are minimal');
   });
 
   test.each(Object.entries(BYPASSES))('refuses %s', (_name, files) => {
