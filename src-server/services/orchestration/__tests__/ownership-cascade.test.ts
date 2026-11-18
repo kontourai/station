@@ -16,6 +16,138 @@ import { OrchestrationService } from '../orchestration-service.js';
 
 const makeTempDir = trackTempDirs();
 
+test('owned child activity follows its turn lifecycle across summary reads and reopen', async () => {
+  const path = join(makeTempDir('owned-child-activity-'), 'events.sqlite');
+  const store = new EventStore(path);
+  const service = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+    eventStore: store,
+    eventBus: new EventBus(),
+    logger: { debug() {}, warn() {} },
+  });
+  const readParent = async () => {
+    const detail = await service.readSession(
+      'parent',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    const listed = (
+      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+        purpose: 'session-list',
+      })
+    ).find((row) => row.threadId === 'parent');
+    const page = await service.readSessionEventPage('parent', {
+      afterSequence: 0,
+      limit: 5,
+      authority: INTERNAL_SESSION_READ_SCOPE,
+    });
+    return [detail?.session, listed, page?.session].map((summary) => ({
+      lifecycle: summary?.lifecycleState,
+      children: summary?.ownedWork?.runningChildCount ?? 0,
+    }));
+  };
+  try {
+    service.initialize();
+    await awaitSessionRecoveryCompleted(service);
+    for (const id of ['parent', 'child']) {
+      store.appendEvent({
+        eventId: `${id}-started`,
+        provider: 'acp',
+        threadId: id,
+        method: 'session.started',
+        sessionId: id,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        metadata:
+          id === 'child'
+            ? {
+                delegation: {
+                  parentSessionId: 'parent',
+                  parentConversationId: 'parent',
+                },
+                stationDelegationProvenance: 'caller-derived',
+              }
+            : {},
+      });
+      service.seedSessionRecord({
+        threadId: id,
+        provider: 'acp',
+        status: 'running',
+      });
+      store.appendEvent({
+        eventId: `${id}-turn`,
+        provider: 'acp',
+        threadId: id,
+        method: 'turn.started',
+        turnId: `${id}-turn`,
+        createdAt: '2026-01-01T00:00:01.000Z',
+      });
+      store.appendEvent({
+        eventId: `${id}-done`,
+        provider: 'acp',
+        threadId: id,
+        method: 'turn.completed',
+        turnId: `${id}-turn`,
+        finishReason: 'stop',
+        sessionState: 'idle',
+        createdAt: '2026-01-01T00:00:02.000Z',
+      });
+    }
+    // ACP may keep a stale durable provider row after the turn completes.
+    expect(store.readSessionByThread('child')?.status).toBe('running');
+    expect(await readParent()).toEqual(
+      Array(3).fill({ lifecycle: 'idle', children: 0 }),
+    );
+    store.appendEvent({
+      eventId: 'child-next',
+      provider: 'acp',
+      threadId: 'child',
+      method: 'turn.started',
+      turnId: 'next-turn',
+      createdAt: '2026-01-01T00:00:03.000Z',
+    });
+    expect(await readParent()).toEqual(
+      Array(3).fill({ lifecycle: 'running', children: 1 }),
+    );
+    store.appendEvent({
+      eventId: 'child-stale-done',
+      provider: 'acp',
+      threadId: 'child',
+      method: 'turn.completed',
+      turnId: 'child-turn',
+      finishReason: 'stop',
+      sessionState: 'idle',
+      createdAt: '2026-01-01T00:00:04.000Z',
+    });
+    expect(await readParent()).toEqual(
+      Array(3).fill({ lifecycle: 'running', children: 1 }),
+    );
+    store.appendEvent({
+      eventId: 'child-next-done',
+      provider: 'acp',
+      threadId: 'child',
+      method: 'turn.completed',
+      turnId: 'next-turn',
+      finishReason: 'stop',
+      sessionState: 'idle',
+      createdAt: '2026-01-01T00:00:05.000Z',
+    });
+    expect(await readParent()).toEqual(
+      Array(3).fill({ lifecycle: 'idle', children: 0 }),
+    );
+    const reopened = new EventStore(path);
+    try {
+      expect(
+        reopened.ownedSessionActivities(['parent']).get('parent')
+          ?.runningChildCount,
+      ).toBe(0);
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    await service.shutdown();
+    store.close();
+  }
+});
+
 test('targeted cancellation leaves children alone for a stale turn and cascades for the active turn', async () => {
   const path = join(makeTempDir('cascade-cancel-target-'), 'events.sqlite');
   const store = new EventStore(path);
