@@ -5,7 +5,10 @@ import type { ContentBlock } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { vi } from 'vitest';
-import type { ProviderAdapterShape } from '../adapter-shape.js';
+import type {
+  ProviderAdapterShape,
+  ProviderSessionStartInput,
+} from '../adapter-shape.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
 import { BedrockAdapter } from '../adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
@@ -546,8 +549,13 @@ export function createConformanceEngine(
   name: AdapterName,
   cwd: string,
   museTransport: 'serve' | 'exec-fallback' = 'serve',
+  launch?: (input: ProviderSessionStartInput) => Promise<unknown>,
 ): ConformanceEngine {
   const startInput = { threadId: THREAD, cwd, modelId: 'test-model' };
+  const launchSession = (
+    adapter: ProviderAdapterShape,
+    input: ProviderSessionStartInput,
+  ) => (launch ? launch(input) : adapter.startSession(input));
   if (name === 'claude') {
     const adapter = new ClaudeAdapter({ findBinary: async () => null });
     return {
@@ -613,7 +621,7 @@ export function createConformanceEngine(
     };
     return {
       adapter,
-      start: () => adapter.startSession({ ...startInput, provider: 'codex' }),
+      start: () => launchSession(adapter, { ...startInput, provider: 'codex' }),
       inputs: () => prompts,
       text,
       complete: () => {
@@ -680,7 +688,7 @@ export function createConformanceEngine(
         {
           id: 'conformance',
           name: 'Conformance',
-          command: 'fake-acp',
+          command: launch ? globalThis.process.execPath : 'fake-acp',
           args: [],
           enabled: true,
         },
@@ -703,7 +711,7 @@ export function createConformanceEngine(
     return {
       adapter,
       start: () =>
-        adapter.startSession({
+        launchSession(adapter, {
           ...startInput,
           provider: 'acp',
           modelId: undefined,
@@ -854,7 +862,7 @@ export function createConformanceEngine(
     return {
       adapter,
       transport: 'serve',
-      start: () => adapter.startSession({ ...startInput, provider: 'muse' }),
+      start: () => launchSession(adapter, { ...startInput, provider: 'muse' }),
       inputs: () => prompts,
       text,
       complete: () =>
@@ -920,7 +928,7 @@ export function createConformanceEngine(
     return {
       adapter,
       transport: 'exec-fallback',
-      start: () => adapter.startSession({ ...startInput, provider: 'muse' }),
+      start: () => launchSession(adapter, { ...startInput, provider: 'muse' }),
       inputs: () => prompts,
       wireMessages: () => messages,
       stopped: () => processes.at(-1)?.killed === true,
