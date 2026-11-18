@@ -8,7 +8,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
 import { registerConnectionCandidateProvider } from '../core/connectionCandidates';
 import type { StorageAdapter } from '../core/types';
@@ -17,6 +17,10 @@ import { ConnectionsProvider } from '../react/ConnectionsContext';
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory());
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 function memoryAdapter(): StorageAdapter {
@@ -150,7 +154,6 @@ describe('Connection Manager credential recovery', () => {
         authentication: { scheme: 'bearer', protocolVersion: 1 },
       },
     });
-    vi.unstubAllGlobals();
   });
 
   it('shows a per-connection request-access affordance naming the host, only where access is missing', () => {
@@ -288,7 +291,6 @@ describe('Connection Manager credential recovery', () => {
     expect(document.body.textContent).toContain(
       'you do not need to revoke anything',
     );
-    vi.unstubAllGlobals();
   });
 
   it('shows an explicit required state and accepts a masked credential', () => {
@@ -388,7 +390,6 @@ describe('Connection Manager credential recovery', () => {
       expect.objectContaining({ headers: { Accept: 'application/json' } }),
     );
     expect(store.getAll()[0].id).toBe(connection.id);
-    vi.unstubAllGlobals();
   });
 
   it('checks each row with only that environment credential', async () => {
@@ -455,7 +456,6 @@ describe('Connection Manager credential recovery', () => {
         request.url.endsWith('/.well-known/station/v1'),
       ),
     ).toBe(true);
-    vi.unstubAllGlobals();
   });
 
   it('does not send a saved bearer to an unconfirmed same-id endpoint', async () => {
@@ -498,10 +498,11 @@ describe('Connection Manager credential recovery', () => {
     expect(store.getActive()?.endpointCandidate?.url).toBe(
       'https://attacker.example.test',
     );
-    vi.unstubAllGlobals();
   });
 
-  it('selects a provider candidate into access review without saving, navigating or submitting', async () => {
+  it('selects a provider candidate into access review without saving, navigating or submitting', async ({
+    onTestFinished,
+  }) => {
     const unregister = registerConnectionCandidateProvider({
       id: 'test.tailnet',
       discover: async () => [
@@ -514,6 +515,7 @@ describe('Connection Manager credential recovery', () => {
         },
       ],
     });
+    onTestFinished(unregister);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -542,12 +544,11 @@ describe('Connection Manager credential recovery', () => {
     expect(store.getAll()).toHaveLength(1);
     expect(store.getActive()?.id).toBe(connection.id);
     expect(store.getAll()[0].url).toBe('https://station.example.test');
-
-    unregister();
-    vi.unstubAllGlobals();
   });
 
-  it('cancels provider work before leaving and starts a fresh discovery on re-entry', async () => {
+  it('cancels provider work before leaving and starts a fresh discovery on re-entry', async ({
+    onTestFinished,
+  }) => {
     const signals: AbortSignal[] = [];
     const unregister = registerConnectionCandidateProvider({
       id: 'test.lifecycle',
@@ -562,21 +563,21 @@ describe('Connection Manager credential recovery', () => {
         );
       },
     });
+    onTestFinished(unregister);
     setup();
     fireEvent.click(
       screen.getByRole('button', { name: 'Find nearby Stations' }),
     );
     await waitFor(() => expect(signals).toHaveLength(1));
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Stations' }));
     expect(signals[0].aborted).toBe(true);
     fireEvent.click(
       screen.getByRole('button', { name: 'Find nearby Stations' }),
     );
     await waitFor(() => expect(signals).toHaveLength(2));
     expect(signals[1].aborted).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Stations' }));
     expect(signals[1].aborted).toBe(true);
-    unregister();
   });
 
   it('hides the discovery entry point when no discovery provider is registered', () => {
