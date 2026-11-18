@@ -222,10 +222,10 @@ export function createUserRoutes() {
     if (!q) return c.json([]);
     try {
       return c.json(await getUserDirectoryProvider().searchPeople(q));
-    } catch (cause) {
+    } catch (error) {
       throw new RouteError(503, 'People directory is unavailable', {
         code: 'user_directory_unavailable',
-        cause,
+        cause: error,
       });
     }
   });

@@ -1186,7 +1186,7 @@ A promoted record is searchable once its store is reindexed
 `project_conversations_unavailable` when the Project read is admitted. The
 legacy file-memory inventory lacks an authoritative Project binding; admission
 to the selected Project cannot establish which records belong to it.
-Access refusals still come from the existing Project read guard. The Project UI
+Existing transport and Project admission refusals still apply. The Project UI
 uses the scoped Project Room and Task room endpoints for its conversation list.
 
 ## Shared Project Room
