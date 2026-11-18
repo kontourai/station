@@ -107,9 +107,7 @@ function skillWriteRefusalNote(refusal: SkillWriteRefusal): string {
   const remedy = Object.hasOwn(SKILL_WRITE_REMEDY, refusal.reason)
     ? SKILL_WRITE_REMEDY[refusal.reason]
     : undefined;
-  return remedy
-    ? `Read-only. ${refusal.detail} ${remedy}`
-    : `Read-only. ${refusal.detail}`;
+  return remedy ? `${refusal.detail} ${remedy}` : refusal.detail;
 }
 
 function skillMutationRefusal(error: unknown): SkillWriteRefusal | undefined {
@@ -126,16 +124,15 @@ function skillMutationRefusal(error: unknown): SkillWriteRefusal | undefined {
     typeof details !== 'object' ||
     !('reason' in details) ||
     typeof details.reason !== 'string' ||
+    !('packageDirectory' in details) ||
+    typeof details.packageDirectory !== 'string' ||
     !Object.hasOwn(SKILL_WRITE_REMEDY, details.reason)
   )
     return;
   return {
     reason: details.reason as SkillWriteRefusalReason,
-    detail: 'The skill package could not be changed.',
-    ...('packageDirectory' in details &&
-    typeof details.packageDirectory === 'string'
-      ? { packageDirectory: details.packageDirectory }
-      : {}),
+    detail: 'The skill package was read-only when Station checked.',
+    packageDirectory: details.packageDirectory,
   };
 }
 
@@ -853,7 +850,7 @@ export function SkillsView({
                       <>
                         <p className="skill-detail__source-note">
                           {writeRefusal
-                            ? skillWriteRefusalNote(writeRefusal)
+                            ? `${mutationRefusal ? '' : 'Read-only. '}${skillWriteRefusalNote(writeRefusal)}`
                             : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
                         </p>
                         {/* The path is AUTHOR-CONTROLLED — a plugin names its
