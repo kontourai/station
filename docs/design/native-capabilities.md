@@ -27,7 +27,9 @@ The boundary reports `enabled`, `disabled`, `unsupported`, or
 or error result. Tauri's `native_capability_report` command reports its actual
 compile target and Station-enabled states. Before that report is read,
 desktop-tray remains `disabled` rather than being guessed from the JavaScript
-host. The adapter skips a capability id it does not know (a newer shell's),
+host. After the host reports Android or iOS, the adapter skips the desktop
+tray subscription and replay commands. On desktop, subscribing before
+draining still lets pending actions replay at the renderer's early mount. The adapter skips a capability id it does not know (a newer shell's),
 but rejects the whole report for a malformed entry, a repeated id or a
 missing required id; an id the shell omits stays at its initial state.
 An older host may omit `channel`; an explicit retired, unknown or malformed
