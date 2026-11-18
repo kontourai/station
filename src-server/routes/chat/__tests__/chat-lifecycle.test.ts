@@ -47,7 +47,7 @@ function createRuntimeContext() {
         'agent-a',
         {
           model: 'model-a',
-          guardrails: { maxSteps: 7 },
+          maxSteps: 7,
         },
       ],
     ]),

@@ -119,6 +119,20 @@ export function conversationOpenPatch(
   },
 ): Partial<ChatUIState> {
   const resolved = resolution.status === 'resolved' ? resolution : undefined;
+  const freshContext =
+    resolution.status === 'fresh-context-ready' ? resolution : undefined;
+  if (freshContext && previous?.currentSessionId) {
+    const current = previous.currentSessionId;
+    if (
+      current !== freshContext.predecessorSessionId &&
+      (current !== freshContext.reservedSessionId ||
+        previous.agentConnectionObservedFor === current ||
+        previous.conversationActivity?.openTurn?.threadId === current ||
+        (previous.conversationOpenState?.status === 'resolved' &&
+          previous.conversationOpenState.currentSessionId === current))
+    )
+      return {};
+  }
   const execution = resolved?.execution;
   const changedChild = conversationExecutionChanged(resolution, previous);
   const native = execution?.provider === 'station-agent';
@@ -213,10 +227,7 @@ export function conversationOpenPatch(
         providerOptions: {},
         ...(changedChild
           ? {
-              // The predecessor's session status is not this child's. A
-              // reused tab whose previous child ended 'idle' would otherwise
-              // read as a LIVE session (`chatSessionIsLive`) for a child
-              // nothing has reported on yet (#2169).
+              // Clear the predecessor's process status when binding a new child.
               orchestrationStatus: undefined,
               sessionAutoApprove: [],
               pendingApprovals: [],
@@ -304,6 +315,21 @@ export function conversationOpenPatch(
   );
   return {
     ...(activity ? { conversationActivity: activity } : {}),
+    ...(freshContext
+      ? {
+          agentSlug: resolution.conversation.agentSlug,
+          executionAgentId: undefined,
+          expectedDefinitionFingerprint: undefined,
+          agentConnectionId: undefined,
+          agentConnectionObservedFor: undefined,
+          orchestrationProvider: undefined,
+          orchestrationModel: undefined,
+          orchestrationStatus: undefined,
+          orchestrationTurnOpen: false,
+          openTurnId: undefined,
+          lastAppliedApprovalMode: undefined,
+        }
+      : {}),
     conversationOpenPending: pendingChoice,
     conversationOpenFailed: unknownReplacement,
     conversationOpenState: resolution,
@@ -313,14 +339,8 @@ export function conversationOpenPatch(
       execution?.environment?.kind === 'current' ? true : undefined,
     currentSessionId: undefined,
     orchestrationSessionStarted: false,
-    // `resolved` means the conversation is BOUND and continuable, not that
-    // anything is running: a stopped session resolves too, and its next send
-    // takes the server's `startRequired` path. This flag is this codebase's
-    // "has an orchestration session been established for this chat" (the
-    // transcript rehydration guard, the unavailable-agent banner), so it is
-    // deliberately left as-is; a reader that needs LIVENESS must use
-    // `chatSessionIsLive` (utils/execution.ts), which treats a reopened
-    // conversation's absent `orchestrationStatus` as "not live" (#2169).
+    // A resolved open identifies a recorded Session. A fresh-context
+    // reservation holds an identity for the next start, without a Session yet.
     ...(resolution.status === 'resolved'
       ? {
           currentSessionId: resolution.currentSessionId,

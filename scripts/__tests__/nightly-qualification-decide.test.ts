@@ -91,6 +91,42 @@ describe('decideQualifiedNightly', () => {
     ).toBe(false);
   });
 
+  it.each([false, true])(
+    'does not let recovery bypass a newer ship (older partial: %s)',
+    (olderPartial) => {
+      const result = decide({
+        ledgerEntries: [
+          ...(olderPartial
+            ? [row('nightly-desktop', SOURCE, '2026-09-30T06:00:00Z')]
+            : []),
+          row('nightly-desktop', SHIPPED),
+          row('nightly-android', SHIPPED),
+        ],
+        now: new Date(Date.parse(SHIPPED_AT) + HOUR),
+        reservationRefs: reservation(SOURCE),
+        recovery: { recover: true, reason: 'terminal failed producer' },
+      });
+      expect(result.publish).toBe(false);
+      expect(result.reason).toMatch(/^published recently:/);
+    },
+  );
+
+  it('can recover a partial ship of the same source inside the interval', () => {
+    const result = decide({
+      now: new Date(Date.parse(SHIPPED_AT) + HOUR),
+      ledgerEntries: [
+        row('nightly-desktop', SOURCE),
+        row('nightly-android', OTHER, '2026-09-30T06:00:00Z'),
+      ],
+      reservationRefs: reservation(SOURCE),
+      recovery: { recover: true, reason: 'terminal failed producer' },
+    });
+    expect(result).toEqual({
+      publish: true,
+      reason: 'terminal failed producer',
+    });
+  });
+
   it('measures recency from the NEWEST native row, whatever the ledger order', () => {
     const decision = decide({
       ledgerEntries: [

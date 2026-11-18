@@ -130,7 +130,9 @@ describe('ChatDockInboxPanel', () => {
 
     const rowName = /^ready title.*ready project/;
     const idle = screen.getByRole('region', { name: 'Open' });
-    expect(within(idle).getByRole('button', { name: rowName })).not.toBeNull();
+    const row = within(idle).getByRole('button', { name: rowName });
+    expect(within(row).getAllByText('30m', { exact: true })).toHaveLength(1);
+    expect(within(row).queryByText(/last activity/i)).toBeNull();
     const running = screen.getByRole('region', { name: 'Working' });
     expect(within(running).queryByRole('button', { name: rowName })).toBeNull();
     expect(

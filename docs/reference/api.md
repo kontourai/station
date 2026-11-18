@@ -1076,14 +1076,17 @@ Personal Task rooms expose these authenticated routes:
   It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
   5 MiB each and 15 MiB decoded total. An image's bytes must start with the
   declared image type's signature (a prefix check, not a full decode). This exact POST has a 22 MiB JSON body
-  ceiling; it retains the standard mutation rate budget.
+  ceiling and the standard mutation rate budget. If the batch's new unique
+  bytes would exceed the Task room store's size budget, the request returns 409
+  before publishing any files in the batch.
 - `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
   returns authenticated bytes as `application/octet-stream`, with `nosniff`,
   sandbox CSP and `private, no-cache`. Unavailable reads return 404 and `no-store`.
 
 Upload and resolution require current room message-write authority; reads require
-history-read authority. The canonical Project, Task and creation time bind each
-reference. Returned descriptors can be sent as optional `attachments` on room
+history-read authority. Station rechecks upload authority and the current Task
+binding while holding the store-wide lock through publication. The canonical
+Project, Task and creation time bind each reference. Returned descriptors can be sent as optional `attachments` on room
 messages, `taskRoomRequest` on delegation, or `taskRoomReply` on continuation.
 Public requests carry references rather than paths or provider input bytes.
 See [SDK calls](sdk.md#task-room-attachments) and
@@ -3037,7 +3040,7 @@ and qualification limits.
 `GET /api/usage-telemetry/status` uses the existing `orchestration:read` read
 scope and returns `data.publishers.kontour` and `data.publishers.operator`, each
 with an effective `tier` (`off`, `lite`, `full`) and `reason` (`DNT`, `policy`,
-`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`) optional saved `userChoice`, and `fullAvailable` (true for Kontour when its build destination exists, true for Operator). Older servers may omit availability; clients must not infer Full support from absence. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
+`default`, `user`, `disclosure`, `environment`), per-publisher `source` (`config`, `env`, `default`), optional saved `userChoice`, and `fullAvailable`. Kontour reports `endpointConfigured: true` when the build has a destination, and reports `fullAvailable: false` for a Lite-only address. Operator reports `fullAvailable: true`. Older servers may omit availability. The top-level `source` remains the operator compatibility projection. It also returns Lite/Full inventory revisions, the exact server-side Lite
 field catalog in `liteInventory`, and the optional build-time author endpoint. Responses are private/no-store;
 a service not yet constructed returns 503 `telemetry_not_ready`.
 
@@ -3060,10 +3063,12 @@ the comparison was computed; agent feedback metadata is refused before validatio
 No credentials, destinations, or other config values are included.
 While DNT is active, acknowledgement returns 409. A Full choice saved under DNT
 remains pending and needs confirmation after DNT is removed.
-A new Kontour Full preference at the mounted config route requires a current
-Kontour acknowledgement when a build destination is configured. DNT and an
-absent author destination permit a pending saved preference, without granting
-permission to send. A route constructed without that runtime consent capability
+A new Kontour Full preference requires a receiver that supports Detailed and a
+current Kontour acknowledgement when a build destination is configured. A
+Lite-only receiver refuses a new Full choice, including under DNT. Its
+acknowledgement route returns 409 `telemetry_detailed_unavailable`. For a
+compatible receiver under DNT or an absent author destination, the preference
+can be saved pending confirmation. A route constructed without that runtime consent capability
 retains its default refusal. On builds without an author destination, status
 reports `fullAvailable: false`; a pending preference cannot send to Kontour and
 there is no author confirmation to review. `GET /api/usage-telemetry/disclosure` exposes only
@@ -4536,6 +4541,10 @@ not SSE**. Its body uses `prompt`, optional `model`, `tools`, `maxSteps`, and
 { "prompt": "Summarize the supplied text: ...", "tools": [], "maxSteps": 5 }
 ```
 
+For VoltAgent, an authored Agent cap bounds this invocation even when the
+request gives a higher `maxSteps`. An omitted request cap uses the Agent or
+Station fallback. Strands uses its own limits.
+
 With an explicit tools array, it builds a temporary Agent with the selected
 loaded tools. With a schema on that branch, it asks for JSON and parses the
 text; this is not JSON Schema validation. Without a tools array it calls the
@@ -5819,8 +5828,11 @@ instruction to execute a job.
 job `name`, provider-neutral schedule information, an automation's `target`
 and `createdBy.userId`, and the derived `consecutiveFailures` and
 `lastSuccessAt`. An agent sees jobs targeting its own conversation; a person
-sees jobs for conversations they can read, plus untargeted jobs. Run-derived
-fields are withheld if the job has unreadable runs. Provider read failures
+sees jobs for conversations they can read, plus untargeted jobs. Project jobs
+require a person with current Project `view` or Station operator access.
+The same gate applies to their run records, including SSE and RunService
+projections. A Project run recorded with `runTarget: null` needs only that
+gate. Older runs without a recorded `runTarget` also require owner access. Run-derived fields are withheld if the job has unreadable runs. Provider read failures
 propagate rather than becoming a fabricated empty schedule.
 
 ### Get Scheduler Stats
@@ -5923,7 +5935,10 @@ at create only. A Station without a Project runner answers 503
 `project_schedule_unavailable`; while the `project-schedules` Feature Preview
 is off, the route answers 404 `feature_preview_disabled`. Clients gate offering
 it on the `projectSchedules` capability flag, which, like `pullRequestFeedback`,
-says the route exists whatever the preview's state.
+says the route exists whatever the preview's state. The Project must exist and
+the recorded creator must hold `execute` there. If either prerequisite is
+missing, the route returns 404 `project_not_found`. The same check applies
+when approving a proposal.
 
 A person approves an agent's job proposal (`propose_job`) by sending this
 route the proposed job with its `proposalId`. The route then creates the job
@@ -6098,9 +6113,8 @@ enabling, disabling or deleting a job with an owner is admitted against that
 owner, for a person and for an agent's `update_job`/`run_job`, as for a
 targeted automation. The operator in person (the operator credential or
 home-possession, never an agent, never an owner device) may also manage any
-owned untargeted job; a run they trigger still acts as the job's owner, and
-its run record stays the owner's, so the operator cannot read it. Admitted
-that way, an edit whose body sets a `target` is refused with 403
+owned untargeted job. A run they trigger still acts as the job's owner.
+Run history uses the read rules above. Admitted that way, an edit whose body sets a `target` is refused with 403
 `automation_target_owner_only`: only the owner points their job at a
 conversation. The jobs the one-time owner migration covers are fixed when
 owner-aware code first opens the ledger (the jobs then stored with no owner).
@@ -6115,11 +6129,19 @@ carries `ownerNeeded` (the reason). Its runs get no Station caller and the model
 is told so; the Station tools are still listed to it, and every call is
 refused. A Project job (`projectId`) runs as a Task that belongs to its
 creator and replays the creator's recorded owner attribution, so its Session's
-Station tools, Project role and scope are the creator's. A run starts only
-while the creator holds `execute` in the Project; otherwise, and for an
+Station tools, Project role and scope are the creator's. After owner admission,
+editing, enabling and manual runs require an existing Project and the creator's
+current `execute`. Failure returns 404 `project_not_found`, including when the
+operator acts for another creator. Disable and delete keep owner admission, including
+the operator override, and do not require Project `execute`. A run starts only
+while the creator holds `execute` in the Project. Without it, or for an
 ownerless Project job (whose view carries `ownerNeeded` with its own reason),
 it creates no Task and fails without invoking anything. The scheduler routes answer
 404 on a hosted Station, so hosted jobs are out of reach here.
+
+Built-in job mutations and manual claims bind to the admitted job's ID. If
+that job is removed and another takes its name before the operation commits,
+the operation returns 404.
 
 For a job that already has a `target`, every edit (any field), `run`,
 `enable`, `disable` and `DELETE` is admitted against the **stored** target
@@ -6533,6 +6555,13 @@ credential by the same boundary gate ingress applies, against
 A read-only paired device reads `{continue: false, startChat: false}`. The field
 is omitted when the request has no authenticated principal; clients treat that
 as unknown.
+
+`fresh-context-ready` names an authorized, unstarted empty-context reservation.
+The result carries the predecessor and reserved Session IDs and the earlier
+transcript remains readable through the Conversation history. A successful
+continuation starts the reserved Session and sends the new message with fresh
+engine context. The open result carries neither a current Session nor an
+execution binding.
 
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,

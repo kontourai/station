@@ -603,8 +603,12 @@ export interface SchedulerLedger {
    * many jobs it changed.
    */
   backfillJobOwners(owner: SchedulerAutomationCreator | undefined): number;
-  update(name: string, update: Record<string, unknown>): SchedulerUpdateOutcome;
-  remove(name: string): SchedulerRemoveOutcome;
+  update(
+    name: string,
+    update: Record<string, unknown>,
+    expectedJobId?: string,
+  ): SchedulerUpdateOutcome;
+  remove(name: string, expectedJobId?: string): SchedulerRemoveOutcome;
   list(): SchedulerReadOutcome<StoredSchedulerJob[]>;
   listViews(now?: number): SchedulerReadOutcome<SchedulerJob[]>;
   /**
@@ -616,7 +620,11 @@ export interface SchedulerLedger {
     now: number,
     held?: (job: StoredSchedulerJob) => boolean,
   ): SchedulerReadOutcome<SchedulerDispatchReceipt[]>;
-  claimManual(name: string, now: number): SchedulerClaimOutcome;
+  claimManual(
+    name: string,
+    now: number,
+    expectedJobId?: string,
+  ): SchedulerClaimOutcome;
   claimStarterManualIntent(
     operationId: string,
     job: StoredSchedulerJob,
@@ -1224,13 +1232,18 @@ class SqliteSchedulerLedger implements SchedulerLedger {
   update(
     name: string,
     update: Record<string, unknown>,
+    expectedJobId?: string,
   ): SchedulerUpdateOutcome {
     const refused = this.refuseIfCorrupt();
     if (refused) return refused;
     try {
       return this.transaction(() => {
         const current = this.rowForJob(name);
-        if (!current) return { kind: 'not-found' };
+        if (
+          !current ||
+          (expectedJobId !== undefined && current.job_id !== expectedJobId)
+        )
+          return { kind: 'not-found' };
         // Monitor configuration is an authority boundary. A late task must
         // never settle into accounting a save has just erased or re-identified.
         // Generic enable/disable omits this key and cannot revive terminal state.
@@ -1264,13 +1277,17 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     }
   }
 
-  remove(name: string): SchedulerRemoveOutcome {
+  remove(name: string, expectedJobId?: string): SchedulerRemoveOutcome {
     const refused = this.refuseIfCorrupt();
     if (refused) return refused;
     try {
       return this.transaction(() => {
         const current = this.rowForJob(name);
-        if (!current) return { kind: 'not-found' } as const;
+        if (
+          !current ||
+          (expectedJobId !== undefined && current.job_id !== expectedJobId)
+        )
+          return { kind: 'not-found' } as const;
         const job = parseStoredJob(current.data);
         if (
           job.monitor &&
@@ -1464,13 +1481,21 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     }
   }
 
-  claimManual(name: string, now: number): SchedulerClaimOutcome {
+  claimManual(
+    name: string,
+    now: number,
+    expectedJobId?: string,
+  ): SchedulerClaimOutcome {
     const refused = this.refuseIfCorrupt();
     if (refused) return refused;
     try {
       const outcome = this.transaction<SchedulerClaimOutcome>(() => {
         const row = this.rowForJob(name);
-        if (!row) return { kind: 'not-found' };
+        if (
+          !row ||
+          (expectedJobId !== undefined && row.job_id !== expectedJobId)
+        )
+          return { kind: 'not-found' };
         // A manual request can recover exactly its own advanced manual retry;
         // it leaves every other dead claim untouched for its executor.
         const reclaimed = this.reconcileDeadClaims(
@@ -2651,7 +2676,8 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     try {
       return this.transaction(() => {
         const current = this.rowForJob(input.name);
-        if (!current) return { kind: 'not-found' } as const;
+        if (!current || current.job_id !== input.monitorId)
+          return { kind: 'not-found' } as const;
         if (this.monitorMutationBlocked(input.monitorId, input.ownerId))
           return { kind: 'busy' } as const;
         this.db

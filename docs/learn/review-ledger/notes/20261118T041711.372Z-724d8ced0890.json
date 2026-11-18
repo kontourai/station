@@ -1,0 +1,29 @@
+{
+  "revision": "8a58c0e90430dd1d51676ee356fac41d741e8472",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the picker delta against the ADR’s managed-provider selection boundary. The Results container now groups native actions, and selecting a route still calls the same selectModel owner and callback with the same provider and model identities. No change to the private adapter, command shape, bindings, or the ADR’s superseded status.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared picker’s route selection, selected route announcement, independent favorite control, and Arrow, Home and End focus behavior. Native model and favorite buttons sit in a named group, and the current model is marked with aria-current. Provider grouping, close/reset behavior, entitlement, and mobile Models and Settings remain as documented. Scoped Chromium evidence covers the named Gallery screens and focused component tests.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/NewChatModalEngineChips.test.tsx","src-ui/src/__tests__/SessionModelPicker.test.tsx","src-ui/src/components/session/SessionModelPicker.css","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the model picker change against the guide’s engine and model bindings. This accessibility change preserves the existing route selection callback, availability, provider identity and runtime settings. It does not alter saved Agent configuration or verification scope.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the Connections model selection and reset journey. Model route and favorite actions are now separate native buttons inside a named group. Choosing still closes the picker, runtime settings keep it open, and the same provider readiness and reset contracts apply.","inputs":["docs/guides/connections.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the Task-first Home and mobile composer test changes. They locate the same model through its available native button, and current-route, dispatch, focus and geometry assertions still target the named journeys. No browser-suite routing or coverage claim changes.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts","tests/task-first-home.spec.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed picker selection and Station scoping against the viewer and receiver claims. The only selection change is accessible role, grouping and current-route state. The Station and model delivered to the existing callback, and the document’s provider, sharing and authority boundaries, remain as documented.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the compact Run setup model picker and browser render owner. It selects the same model action by its native button name and retains the existing viewport-bound and screenshot assertions. Touch dimensions, the mobile sheet and keyboard focus behavior are preserved.","inputs":["docs/guides/responsive-ui.md","src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the choose-an-Agent, Station and model-override journey. The picker exposes model actions as native buttons, still sends the chosen provider/model to the existing dispatch owner and leaves all tool, grant, routing and posture contracts unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the listed model and execution binding surface. The picker preserves exact route identity and the same selection callback. The accessible model group and separately named favorite buttons have no effect on supported execution shapes or the inventory’s removal scope.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed the existing Home and mobile composer coverage links against updated semantic test locators. The tests still exercise route selection, current-state checks, focus and phone geometry. The scoped Gallery run does not renew broader campaign acceptance.","inputs":["docs/plans/whole-app-ux-campaign.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the accessible model picker against the Session command boundary. Native button and group semantics change the browser presentation. The existing selected route and runtime options still cross the same callback, with no wire, authorization, dispatch, persistence or receipt semantics change.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the example’s model and Agent setup against the accessible picker delta. The same model identifier and reachability choices reach the existing selection owner, and no example input, generated artifact, or setup instruction changes.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/session/SessionModelPicker.tsx"]}
+  ]
+}

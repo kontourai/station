@@ -727,20 +727,21 @@ default 0. Dispatch skips a plugin shortcut on a
 [reserved kernel or text-editing chord](../../src-ui/src/contexts/kernelReservedShortcuts.ts),
 and registration refuses one.
 
-**Caller limits.** The [editor](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx)
-uses ID-derived context hints rather than the actual dispatch rule, and checks
-the first matching enabled binding when offering replacement. Its captured
-Space spelling also differs from the standard event key. The
-[user guide](../guides/keyboard-shortcuts.md) explains current behavior and links
-[#2767](https://github.com/kontourai/station/issues/2767) and
-[#2771](https://github.com/kontourai/station/issues/2771) for those corrections.
+**Editor.** The [settings list](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx)
+describes registered `when` rules and the dispatcher's modal and focus guards.
+It checks the first matching effective chord when offering replacement. Key
+matching, chord comparison and capture share the same Space normalization,
+including saved bindings with the `Space` name. The
+[user guide](../guides/keyboard-shortcuts.md) covers device persistence,
+platform interception and read-only mobile settings.
 
 **Evidence.** [Editor tests](../../src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx)
 and [registry tests](../../src-ui/src/__tests__/KeyboardShortcutsContext.test.ts)
-exercise DOM events and synthetic handlers. The independent Space probe enters
-through the mounted editor and provider; it does not qualify physical keyboards
-or native-shell interception. Keep the modal-guard and registration-loop
-regression rationale when changing this owner.
+exercise prompt-free dispatch under changed registration and focus rules.
+A [Chromium fixture](../../src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx)
+captures, saves, reloads and dispatches a Space chord through the production
+editor and provider. Physical keyboard and native-shell interception require
+their own evidence.
 
 ## ColorThemes
 
@@ -1875,8 +1876,11 @@ visible and never reaches the model. Display notes have a separate 50-note
 capacity and expire after the seven-day settled retention period on the next
 submission. Steer keys and dismissed uncertain claims retain their replay fence.
 
-Native steer text and head persist before the durable claim. Recovery settles
-a confirmed receipt or surfaces unconfirmed without replaying a claimed handoff.
+New steer rows persist the text, head and the observed turn's opening event
+sequence before the durable claim. Both placement paths recheck that the
+target is still current. An ended target settles as refused before any handoff.
+Previously stored rows without a target retain their original placement rules.
+Recovery settles a confirmed receipt or surfaces an unconfirmed handoff.
 The current Station tool-loop hook calls
 [inbox step preparation](../../src-server/runtime/conversation/inbox-model-step.ts)
 through VoltAgent's prepareStep after tools settle. The
@@ -2297,7 +2301,16 @@ without reserving anything (`nextTurnStartsSession`, from
 a reserved child that has not started. A model switch depends on the send that
 asks for it and is not counted. It reports nothing for a turn the send would
 refuse: a handoff awaiting its target, or a continuation, fork, or handoff
-context delivery not yet completed on the current Session.
+context delivery not yet completed on the current Session. The composer only
+predicts a new Session when the open read describes its current child and
+permits continuation.
+
+An authorized, unstarted empty-context reservation opens as
+`fresh-context-ready`. The predecessor's messages remain in Conversation
+history and the next ordinary send starts the reserved Session with fresh
+engine context. The read publishes the two reservation identities separately
+from a current Session or execution binding. Claimed, cancelled, and
+indeterminate boundaries do not receive this ready state.
 
 `OrchestrationService` parks an at-rest engine left unused past
 `idleSessionParkAfterMs`, provided it is at rest, has no active turn or reported running child work,
@@ -3674,8 +3687,11 @@ built-in default-file and Obsidian adapters implement the checked-in Kit record
 contract; the conversation adapter is a read-only projection of Session history.
 Personal and Project are scope tags, not a universal uniqueness or authorization proof:
 the registry can allocate suffixed personal IDs, and the conversation root also has
-personal scope. The Settings card currently selects the first personal root. Root
-removal clears the cached adapter. File storage registers newly allocated root IDs
+personal scope. The Settings card shows the first ordinary personal root the
+operator can read, excluding author-private memory and read-only conversation
+history. The Settings catalog calls this row `personal`; it uses the
+operator-owned root registry through the Knowledge API. Root removal clears
+the cached adapter. File storage registers newly allocated root IDs
 with create-only conflict checks; concurrent providers cannot overwrite a registered
 root. Exact disconnect compares the observed root inside the registry mutation and
 refuses a changed incarnation. Neither removal form deletes source files. There is
@@ -3997,9 +4013,9 @@ any unknown record or unreadable or linked `bindings/` level refuses it with
 only: with every Station process stopped, fix or remove the damaged record
 under `bindings/`. A non-empty, linked or unreadable `repair/` (an earlier
 build's inbox) blocks uploads and releases and is never applied or deleted. The store never
-evicts by age or size. Task rooms keep age and size retention (#4947) and
-share only the whole-record write. Persisted records are validated
-against their row identities before use. History reads use a deferred transaction;
+evicts by age or size. Task rooms share the file lock and whole-record write
+and reclaim only blobs a complete scan proves are unbound. Persisted records
+are validated against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 
 The [access adapter](../../src-server/runtime/routes/project-room-access.ts)
@@ -4167,7 +4183,10 @@ serves both room and thread composers. The
 [Task asset store](../../src-server/services/projects/task-room-attachments.ts)
 binds descriptors to the Project, Task and creation time and keeps bytes in a
 separate content-addressed store. Upload and provider resolution require current
-message-write authority; downloads require history-read authority. Room messages
+message-write authority; downloads require history-read authority. Upload
+rechecks the binding under the store-wide lock, which also covers capacity
+admission and publication. Reclamation requires a complete binding scan.
+New unique bytes must fit the budget after reclamation. Room messages
 and request journals retain descriptors, while dispatch passes resolved bytes to
 the provider attachment contract. Attachment-bearing history advances to at least
 v4; member records advance to v5, with permanent old-writer fences. The private request journal advances to v4;
@@ -5512,7 +5531,15 @@ are the creator's, so the Session's station-control caller, Project role and
 scope follow from them. The run first checks that the creator holds `execute`
 in the Project (`createProjectPrincipalPermission`, the dispatch scope's
 membership rule) and refuses before creating a Task otherwise; an ownerless
-Project job starts nothing and its view carries `ownerNeeded`. The
+Project job starts nothing and its view carries `ownerNeeded`.
+[Agent schedule composition](../../src-server/runtime/routes/agent-schedule-composition.ts)
+supplies the Project existence and creator `execute` checks for creation,
+edits, enablement and manual runs. Disabling and deleting use the existing
+owner or person-operator admission even after the creator loses `execute`.
+The built-in ledger verifies the admitted job ID on update, removal and manual
+claim, so a replacement with the same name does not inherit admission.
+Schedule composition uses Project `view` or person-operator authority for job and run reads,
+with the run's recorded destination or legacy owner rule still applied.
 [ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
 composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
 is an orchestration turn admission (a paused or archived Project's chats admit

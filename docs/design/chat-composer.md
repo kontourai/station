@@ -1159,23 +1159,22 @@ Stop follows them at the row's trailing edge, so it does not move when they
 appear; Run setup narrows instead. At 390px a running turn's full row (Clear,
 Send, mode picker and Stop) still wraps to a second line once the draft holds
 text. Names and the selected mode remain accessible, and the opened picker
-uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
-picker defaults to **Steer** where the selected engine can prove native mid-turn
-input, and to **Queue** (a new turn after the entire current turn finishes)
-everywhere else, including safe-stop steering. A chosen mode holds until the
-conversation changes. Claude Code, Codex and Muse on `muse serve` have additive
-steering; a Muse Session on the `muse exec` fallback reports no steering in
-its Session summary, so it defaults to **Queue**, and refuses a steer.
+uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
+The mode picker defaults to **Queue** for every engine. Station holds a
+follow-up for the next turn when the current one is still running. A chosen
+mode holds until the conversation changes. Claude Code, Codex and Muse on
+`muse serve` have additive steering. A Muse Session on `muse exec` reports no
+steering in its Session summary and refuses a steer.
 ACP sessions report their live handshake's native channel, or an interrupting
 cancel-and-reprompt fallback. Explicit Steer on the fallback cancels the current
 prompt, waits for its terminal answer, and continues the same task with the
 additional instruction. It does not claim additive native steering.
-After a device's full access is revoked, a turn that started unconfined is not
-steerable: the server refuses with `confinement-changed` before claiming the
-input, and the message stays for the next turn, which runs confined (#2898).
+After a device's full access is revoked, a turn that started unconfined cannot
+take new steering input. The next turn runs confined (#2898).
 
-Station-owned steering waits durably for the next post-tool boundary the loop
-observes, otherwise the next turn boundary. Its wording says **Steer when safe**.
+Station-owned steering waits durably for the next post-tool boundary in the
+turn Station accepted. If the turn ends first, the pending row explains why
+Steer was refused. Its wording says **Steer when safe**.
 Claude and Codex retain engine-defined native placement. The composer reads the
 current adapter declaration sent by session snapshots and conversation-open
 responses. A missing declaration is unknown; the client does not infer it from
@@ -1198,11 +1197,12 @@ rather than moving to the newest position on every step.
 Named-conversation steers first save text, the observed `expectedHead` and an
 authority-scoped key in IndexedDB, then submit to the server inbox. Missing
 conversation identity or an unobserved offline head keeps the draft. The server
-persists the text and head before claiming a handoff. Before-claim restart can
-place it once; a confirmed acknowledgement is not repeated; the claim/ack gap
-is **May have been sent**, without automatic replay. Engine receipts can settle
-it. **Review and resend** restores text only into an empty composer and requires
-a new explicit Send; dismissing the old claim never makes its key reusable.
+persists the text, head and turn's opening event before claiming a handoff.
+A restart before the claim can still deliver to the same open turn. After
+acknowledgement, Station retains the receipt for retries. A claim without an
+acknowledgement shows **May have been sent**. Engine receipts can settle it.
+**Review and resend** restores text into an empty composer and requires a new
+explicit Send. Station retains the old key after dismissal.
 
 Follow-ups Station holds in the open conversation's server inbox share the
 pending-message list with this browser's outbox and retained legacy input
@@ -1229,7 +1229,10 @@ owned unconfirmed steer offers explicit Review and resend.
 A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before
-queuing. The browser retires its in-flight outbox row on either accepted receipt.
+queuing. The browser shows a matching held receipt in the open inbox before
+retiring its in-flight outbox row. The receipt confirms custody while the
+inbox read determines queue order. A started-turn receipt also retires the
+outbox row.
 If the answer is lost, it retains the original key for delivery inspection.
 This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another

@@ -308,6 +308,15 @@ detail. Unknown commands and actions fail with a diagnostic. Flag validation
 belongs to each command; use the documented spelling, including
 `--model-option=key=value` rather than a space-separated value.
 
+New chats on the current environment at an IP-literal loopback Station use the
+invocation directory by default. Use `--cwd=<path>` to choose a directory, or
+`--project=<slug>` to use the Project's configured workspace. Other targets
+choose their own default workspace unless you specify one. Continuations retain
+their workspace and reject workspace flags.
+
+Chat JSON reports an opening notice as `lastObservedRequest`. A legacy
+`pendingRequest` with a responder command requires confirmation from Station.
+
 The prose reference and availability table ship with the Station repository as
 `docs/reference/cli.md`. Its implementation links and stated limits distinguish
 current behavior from commands that need further qualification.

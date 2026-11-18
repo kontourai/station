@@ -47,6 +47,7 @@ const discardFixture = `
   import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
   import {InboxRow} from './src-ui/src/components/chat-dock/ChatDockInboxRows';
   import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
+  import {setClientCredentialResolver} from '@kontourai/station-sdk/client';
   const draft = {
     id:'draft', kind:'orchestration', kindLabel:'Conversation',
     orchestrationThreadId:'draft-thread', conversationId:'draft-conversation',
@@ -54,7 +55,8 @@ const discardFixture = `
     agentSlug:'codex', agentLabel:'Codex', provider:'codex',
     updatedAt:Date.now(), lifecycleLabel:'Draft',
   };
-  window.fixtureRequestScope = {apiBase:'', authorityKey:'discard-fixture', isCurrent:()=>true};
+  window.fixtureRequestScope = {apiBase:window.location.origin, authorityKey:'discard-fixture', isCurrent:()=>true};
+  setClientCredentialResolver(() => ({origin:window.location.origin, requestAuthority:window.fixtureRequestScope}));
   let root;
   window.mountDiscard = (inDetails) => {
     root?.unmount();
@@ -239,6 +241,16 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
     await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
+    await expect
+      .poll(() =>
+        page
+          .getByRole('button', {
+            name: 'Plan the next release, Station',
+            exact: true,
+          })
+          .evaluate((node) => document.activeElement === node),
+      )
+      .toBe(true);
     await page.getByRole('button', { name: 'Snoozed · 1' }).click();
     expect(
       await page
@@ -469,3 +481,84 @@ test('draft discard offers a reachable Undo without overflow in touch rows and d
     await browser.close();
   }
 }, 90_000);
+
+test('a refused direct discard keeps the 320px touch row readable and focused', async () => {
+  const { page, browser, errors } = await scrollBrowserFixture(
+    discardFixture,
+    [scopeStub],
+    { viewport: { width: 320, height: 720 }, hasTouch: true, isMobile: true },
+  );
+  try {
+    await page.addStyleTag({
+      content: ['src-ui/src/index.css', 'src-ui/src/components/chat/chat.css']
+        .map((path) => resolveCssImports(resolve(path)))
+        .join('\n'),
+    });
+    let sent: unknown;
+    await page.route('**/api/orchestration/commands', async (route) => {
+      expect(route.request().method()).toBe('POST');
+      sent = route.request().postDataJSON();
+      await route.fulfill({
+        status: 409,
+        json: {
+          success: false,
+          code: 'draft_busy',
+          error:
+            'This draft is starting on another device or tab, so it was not discarded. Try again in a moment.',
+        },
+      });
+    });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(() => Reflect.get(window, 'mountDiscard')(false));
+    await page.clock.install();
+    const row = page.getByTestId('inbox-row');
+    const discard = row.getByRole('button', { name: /^Discard draft / });
+    const geometry = () =>
+      row.evaluate((node) => {
+        const title = node.querySelector('.inbox-row__title-text');
+        const action = node.querySelector('[aria-label^="Discard draft "]');
+        if (!title || !action)
+          throw new Error('The draft row must lay out its title and action');
+        const rowBox = node.getBoundingClientRect();
+        const actionBox = action.getBoundingClientRect();
+        return {
+          titleWidth: title.getBoundingClientRect().width,
+          actionTop: actionBox.y - rowBox.y,
+          actionLeft: actionBox.x - rowBox.x,
+        };
+      });
+    const before = await geometry();
+    await discard.tap();
+    await row.getByRole('button', { name: /^Undo discard of / }).waitFor();
+    await page.clock.fastForward(8_100);
+    const alert = row.getByRole('alert');
+    await alert.waitFor();
+    expect(sent).toEqual({ type: 'discardDraft', threadId: 'draft-thread' });
+    expect(await alert.textContent()).toContain('starting on another device');
+    expect(
+      await discard.evaluate((node) => document.activeElement === node),
+    ).toBe(true);
+    const layout = await row.evaluate((node) => {
+      const message = node
+        .querySelector('[role="alert"]')!
+        .getBoundingClientRect();
+      return {
+        fits: node.scrollWidth <= node.clientWidth,
+        fullWidth: message.width >= node.clientWidth * 0.75,
+      };
+    });
+    await mkdir(resolve('.surface/inbox-dismiss-swipe'), { recursive: true });
+    await page.screenshot({
+      path: resolve('.surface/inbox-dismiss-swipe/discard-refused-320.png'),
+      animations: 'disabled',
+    });
+    expect(layout).toEqual({ fits: true, fullWidth: true });
+    const after = await geometry();
+    expect(after.titleWidth).toBeGreaterThanOrEqual(before.titleWidth - 4);
+    expect(after.actionTop).toBeCloseTo(before.actionTop);
+    expect(after.actionLeft).toBeCloseTo(before.actionLeft);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+}, 30_000);

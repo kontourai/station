@@ -1,0 +1,9 @@
+{
+  "revision": "20cbe9c200f3d626884494677b7e5892026ec91e",
+
+  "notes": [
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed the non-reference policy and diagnostic control against the unchanged bridge spec and updated subprocess guard. The child spec now has an additional opt-in Brief control; global skip totals no longer identify the workload/gate result. The guard still runs the whole spec with the same empty browser root, one worker, zero retries and unchanged deadlines. It reads actual Playwright JSON results and requires exactly one gate and one workload result: non-reference gate passed/workload skipped, diagnostic gate skipped/workload failed specifically on the missing executable. NOT_VERIFIED receipt, zero PASS fixtures, no Station provisioning and no browser launch checks remain intact. Baseline failed both brittle count assertions; repaired owner/selector tests passed. Committed producer-skip fault was caught as the named gate failed instead of skipped; exact restoration passed. No workload, 50ms bound, reference-host policy, hardware claim or performance verdict was changed or newly verified.","inputs":["docs/reference/interactive-workspace-performance.md","scripts/__tests__/interactive-workspace-performance-host-gate.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the supplemental edge from interactive-workspace-performance-bridge.spec.ts to the host-gate subprocess consumer. The real execution selector omitted that consumer on baseline and selects it after this change; broader E2E/related selection remains intact. Existing testing, code-quality, scoped instructions and context/frontend guidance remain accurate. This is evidence routing for the unchanged performance contract, not reference-host or Windows performance qualification.","inputs":["scripts/test-impact-manifest.mjs"]}
+  ]
+}

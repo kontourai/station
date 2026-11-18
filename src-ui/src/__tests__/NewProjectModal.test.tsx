@@ -446,7 +446,9 @@ describe('NewProjectModal starter layout picker', () => {
 
     expect(availableLayoutsQueryMock).toHaveBeenCalledWith({ enabled: true });
 
-    expect(screen.getByLabelText('Choose project icon')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /^Choose project icon/ }),
+    ).toBeTruthy();
     expect(screen.getByLabelText('Project name')).toBeTruthy();
     expect(screen.queryByText('Preview')).toBeNull();
     expect(screen.queryByText(/create as/i)).toBeNull();
@@ -468,7 +470,9 @@ describe('NewProjectModal starter layout picker', () => {
     fireEvent.change(screen.getByLabelText('Project folder'), {
       target: { value: '/tmp/station/' },
     });
-    fireEvent.click(screen.getByLabelText('Choose project icon'));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Choose project icon/ }),
+    );
     expect(
       screen
         .getByRole('button', { name: 'No icon' })
@@ -506,7 +510,9 @@ describe('NewProjectModal starter layout picker', () => {
       fireEvent.change(screen.getByLabelText('Project name'), {
         target: { value: 'Example' },
       });
-      fireEvent.click(screen.getByLabelText('Choose project icon'));
+      fireEvent.click(
+        screen.getByRole('button', { name: /^Choose project icon/ }),
+      );
       fireEvent.click(screen.getByRole('button', { name: 'No icon' }));
       if (choice === 'detected')
         fireEvent.click(
@@ -841,7 +847,9 @@ describe('NewProjectModal starter layout picker', () => {
     fireEvent.change(screen.getByLabelText(/Description/), {
       target: { value: 'Keep this description' },
     });
-    fireEvent.click(screen.getByLabelText('Choose project icon'));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Choose project icon/ }),
+    );
     fireEvent.change(screen.getByLabelText(/Emoji or symbol/), {
       target: { value: '🚀' },
     });
@@ -1069,7 +1077,9 @@ describe('NewProjectModal starter layout picker', () => {
     expect(
       (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
     ).toBe('/saved/repository');
-    fireEvent.click(screen.getByLabelText('Choose project icon'));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Choose project icon/ }),
+    );
     expect(
       screen
         .getByRole('button', { name: 'No icon' })
