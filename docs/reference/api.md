@@ -2634,10 +2634,39 @@ Every route but GET and the proposal refuses a request that may be an agent's
 (403 `custom_appearance_person_only`). A stale revision, or a report or keep
 for a proposal that is no longer pending, is 409 `custom_appearance_changed`.
 An invalid appearance is 400 `invalid_custom_appearance` with `violations`
-(shape, colour, role, CSS and contrast); bodies over 160 KiB are 413, and a
-change that would take the stored document over 512 KiB is 413
+(shape, colour, role, CSS and contrast); bodies over 160 KiB (1.5 MiB with Appearance studio enabled) are 413, and a
+change that would take the stored document over 16 MiB is 413
 `custom_appearance_store_full`. The render report's `stripped` list holds one
 `{where: "(sheet)", what: "*"}` entry when the browser refused the whole sheet.
+
+Appearance studio (`appearance-studio`) adds the following person-only routes:
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| GET | `/api/me/appearance/library` | `{revision, themes}` |
+| POST | `/api/me/appearance/library` | `{revision, appearance, id?, name?, favorite?}`; create, deduplicate or replace a saved theme |
+| PATCH | `/api/me/appearance/library` | `{revision, id, name?, favorite?}` |
+| DELETE | `/api/me/appearance/library` | `{revision, id}` |
+
+Every library mutation returns the updated library document. Its revision is
+separate from the active/proposed appearance revision, while all writes share
+one per-person atomic lock. Entries contain `{id, name, appearance, favorite,
+createdAt, updatedAt}`. IDs derive from the saved appearance; editing or
+renaming can return a new ID. Saving in the library does not apply a theme.
+Missing entries return 404 `custom_appearance_theme_not_found`; more than 24
+entries returns 413 `custom_appearance_library_full`. Current total storage is
+16 MiB. A stale revision returns 409 `custom_appearance_changed`.
+
+`CustomAppearance.visual` optionally contains `background` (`dataUrl`,
+`size: cover|contain|tile`, `position: center|top|bottom|left|right`, `dim: 0..1`),
+`panelOpacity: 0.5..1`, `radius: 0..24` pixels and `fontSize: 12..20` pixels.
+Backgrounds must be bounded, canonical base64 PNG/JPEG/WebP raster data; remote
+URLs and SVG uploads are refused. Appearance studio must be enabled for new
+visual proposal/save/keep and library operations. Disabled requests return
+404 `feature_preview_disabled` with `previewId` and `settingsPath`; accepted
+appearances, ordinary reads, turn-off and legacy palette/CSS operations remain.
+Proposal `sourceSessionId` is derived from the verified runtime caller. It is
+never accepted as an agent-supplied proposal field.
 
 ### Personal Board authoring
 

@@ -121,7 +121,9 @@ function RangeField({
 export function AppearanceVisualControls({
   visual,
   onChange,
+  onPreparing,
 }: {
+  onPreparing?(preparing: boolean): void;
   visual: CustomAppearanceVisual | undefined;
   onChange(visual: CustomAppearanceVisual): void;
 }) {
@@ -136,6 +138,7 @@ export function AppearanceVisualControls({
     if (!file) return;
     setError(null);
     setLoading(true);
+    onPreparing?.(true);
     try {
       const dataUrl = await prepareImage(file);
       if (!scope?.isCurrent()) return;
@@ -147,6 +150,7 @@ export function AppearanceVisualControls({
       setError(failureText(error));
     } finally {
       setLoading(false);
+      onPreparing?.(false);
     }
   };
   return (
@@ -622,14 +626,13 @@ export function SaveAppearanceToLibrary({
                   {
                     onSuccess: (next) => {
                       if (!scope?.isCurrent()) return;
-                      const saved = savedThemeId
-                        ? next.themes.find((theme) => theme.id === savedThemeId)
-                        : next.themes.find(
-                            (theme) =>
-                              !query.data?.themes.some(
-                                (previous) => previous.id === theme.id,
-                              ),
-                          );
+                      const canonical =
+                        createCustomAppearanceThemePack(appearance).appearance;
+                      const saved = next.themes.find(
+                        (theme) =>
+                          JSON.stringify(theme.appearance) ===
+                          JSON.stringify(canonical),
+                      );
                       if (saved) {
                         onSaved(saved.id);
                         setSavedAppearance(JSON.stringify(appearance));

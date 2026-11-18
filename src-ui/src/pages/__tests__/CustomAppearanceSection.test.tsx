@@ -426,3 +426,37 @@ describe('Appearance studio', () => {
     expect(screen.getByRole('button', { name: 'New theme' })).toBeTruthy();
   });
 });
+
+test('image preparation blocks Preview, direct Save and library Save until decoding settles', async () => {
+  query.data = doc();
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  class PendingImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    src = '';
+  }
+  URL.createObjectURL = () => 'blob:pending-image';
+  URL.revokeObjectURL = () => undefined;
+  vi.stubGlobal('Image', PendingImage);
+  try {
+    render(<CustomAppearanceSection studioEnabled />);
+    fireEvent.click(screen.getByRole('button', { name: 'New theme' }));
+    fireEvent.change(screen.getByLabelText('Background image file'), {
+      target: {
+        files: [new File(['image'], 'background.png', { type: 'image/png' })],
+      },
+    });
+    for (const name of ['Preview', 'Save', 'Save to library']) {
+      expect(
+        (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+    }
+    expect(mutate).not.toHaveBeenCalled();
+    expect(libraryMutate).not.toHaveBeenCalled();
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    vi.unstubAllGlobals();
+  }
+});

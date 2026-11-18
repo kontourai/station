@@ -223,7 +223,7 @@ The palette sets `APPEARANCE_ROLE_PROPERTIES` (the same list the color-theme
 catalog reads, now owned by the contracts) and an accent per mode, as one
 adopted sheet of `!important` values, so it wins over Station's tokens, a
 named theme, white-label branding and a device accent for what it sets. The
-CSS is a second adopted sheet, parsed and walked by
+CSS is an adopted sheet, parsed and walked by
 [sanitize-css.ts](../../src-ui/src/lib/custom-appearance/sanitize-css.ts)
 before it is adopted, and switched off while any approval or consent surface
 is mounted. `main.tsx` applies the last applied copy before the first render,
@@ -320,3 +320,13 @@ follows the selected app theme so platform option menus use the same light or
 dark mode. Editors keep the native arrow; compact custom pickers continue to
 use `.choice-trigger`, `.choice-caret` and `ArrowDownGlyph`. Keep native select
 labels and keyboard behavior when applying page-specific sizing.
+
+Appearance studio adds typed visual settings through a separate generated sheet
+([visual-css.ts](../../src-ui/src/lib/custom-appearance/visual-css.ts)). Its
+background is validated raster data, never an arbitrary URL. That sheet pauses
+with CSS during decisions and is omitted from palette contrast measurements.
+The existing free-form CSS sandbox keeps its no-fetch policy and 50,000-character
+limit. The studio editor and saved library reuse the protected preview bar;
+inline chat actions additionally bind the exact proposal, Session, Station and
+current request authority. Proposal references survive event spill and history
+excerpts so a restored conversation can still show the exact pending card.

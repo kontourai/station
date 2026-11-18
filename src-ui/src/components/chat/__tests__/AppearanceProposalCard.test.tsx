@@ -87,7 +87,12 @@ const tool: ToolCallData = {
 };
 
 function mount(
-  options: { scope?: typeof host; sessionId?: string; call?: typeof tool } = {},
+  options: {
+    scope?: typeof host;
+    apiBase?: string;
+    sessionId?: string;
+    call?: typeof tool;
+  } = {},
 ) {
   const scope = options.scope ?? host;
   const client = new QueryClient({
@@ -96,7 +101,10 @@ function mount(
   const view = render(
     <QueryClientProvider client={client}>
       <ConversationConnectionProvider
-        value={{ apiBase: scope.apiBase, requestScope: scope }}
+        value={{
+          apiBase: options.apiBase ?? scope.apiBase,
+          requestScope: scope,
+        }}
       >
         <ToolCallDisplay
           toolCall={options.call ?? tool}
@@ -288,7 +296,7 @@ test('a failed Keep reloads the saved server appearance and clears the optimisti
   fireEvent.click(await previewButton());
   await waitFor(() => expect(keepBar.options).toBeDefined());
   await act(async () => keepBar.options!.onKeep());
-  await screen.findByText('The appearance changed');
+  await screen.findByText('Appearance proposal could not be updated');
   expect(getCustomAppearanceSnapshot().active?.name).toBe('Saved elsewhere');
   expect(getCustomAppearanceSnapshot().previewing).toBeNull();
   expect(
@@ -296,17 +304,22 @@ test('a failed Keep reloads the saved server appearance and clears the optimisti
   ).toBeGreaterThanOrEqual(4);
 });
 
-test('a remote conversation uses its own reads and cannot paint or save the local Station appearance', async () => {
-  mount({ scope: peer });
-  await screen.findByText('Switch to this Station to preview its appearance.');
-  await waitFor(() =>
-    expect(reads.some((url) => url.endsWith('/appearance'))).toBe(true),
-  );
-  expect(reads.every((url) => url.startsWith(peer.apiBase))).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
-  expect(keepBar.options).toBeUndefined();
-  expect(writes).toHaveLength(0);
-});
+test.each([
+  { scope: peer, apiBase: peer.apiBase },
+  { scope: host, apiBase: `${host.apiBase}/api/environments/peer/chat-api` },
+])(
+  'a non-host conversation never reads or acts on host appearance: %j',
+  async (target) => {
+    mount(target);
+    await screen.findByText(
+      'Switch to this Station to preview its appearance.',
+    );
+    expect(reads).toEqual([]);
+    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+    expect(keepBar.options).toBeUndefined();
+    expect(writes).toHaveLength(0);
+  },
+);
 
 test('a colliding proposal ID from another Session cannot be previewed', async () => {
   documentState = {
@@ -373,7 +386,7 @@ test('a tool from another server cannot create an appearance card and mobile wor
   const blocks = foldTurnWork([
     ordinary,
     { type: 'text', content: 'Before' },
-    tool,
+    { ...tool },
     { type: 'text', content: 'After' },
     { ...ordinary, toolCallId: 'last' },
   ]);

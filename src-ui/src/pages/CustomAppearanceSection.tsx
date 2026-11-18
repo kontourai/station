@@ -256,7 +256,8 @@ function Editor({
     JSON.stringify(draftFrom(initialAppearance)),
   );
   const [libraryId, setLibraryId] = useState(savedThemeId);
-  const dirty = JSON.stringify(draft) !== baseline;
+  const [preparingImage, setPreparingImage] = useState(false);
+  const dirty = preparingImage || JSON.stringify(draft) !== baseline;
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
   const advancedId = useId();
   const [mode, setMode] = useState<AppearanceMode>('dark');
@@ -266,6 +267,7 @@ function Editor({
   const textProblems = customCssTextViolations(draft.css);
   const appearance = appearanceFrom(draft);
   const invalid =
+    preparingImage ||
     textProblems.length > 0 ||
     !draft.name.trim() ||
     !parseCustomAppearance(appearance).ok;
@@ -309,6 +311,7 @@ function Editor({
       {studioEnabled && (
         <AppearanceVisualControls
           visual={draft.visual}
+          onPreparing={setPreparingImage}
           onChange={(visual) => setDraft((d) => ({ ...d, visual }))}
         />
       )}

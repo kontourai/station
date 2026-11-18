@@ -12,6 +12,7 @@ import {
   dismissAppearanceProposal,
   previewAppearanceProposal,
 } from '../../lib/custom-appearance/proposal-actions';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
@@ -29,7 +30,15 @@ export function AppearanceProposalCard({
   const connection = useOptionalConversationConnection();
   const hostScope = useHostRequestAuthorityScope();
   const scope = connection?.requestScope;
-  const enabled = useAppearanceStudioEnabled(scope);
+  const localPainter =
+    !!connection &&
+    !!scope &&
+    !!hostScope &&
+    connection.apiBase === hostScope.apiBase &&
+    scope.apiBase === hostScope.apiBase &&
+    scope.authorityKey === hostScope.authorityKey &&
+    (!connection.station || connection.station.routeKind === 'host');
+  const enabled = useAppearanceStudioEnabled(localPainter ? scope : undefined);
   const query = useCustomAppearanceQuery(enabled ? scope : undefined, {
     refetchInterval: 5000,
   });
@@ -79,11 +88,7 @@ export function AppearanceProposalCard({
         isCurrent: () =>
           currentRef.current && scope.isCurrent() && !!hostScope?.isCurrent(),
         onError: (failure: unknown) =>
-          setError(
-            failure instanceof Error
-              ? failure.message
-              : 'Station could not save this appearance.',
-          ),
+          setError(describeStationFailure(failure, connection?.station).body),
         onSettled: setSettled,
       }
     : undefined;
@@ -111,6 +116,19 @@ export function AppearanceProposalCard({
         .filter((value): value is string => !!value),
     ),
   ].slice(0, 8);
+  if (connection && !localPainter)
+    return (
+      <section
+        className="appearance-proposal content-stack"
+        aria-label="Appearance proposal"
+      >
+        <StatusSummary
+          title={proposal.name}
+          badge={{ label: 'Proposed', tone: 'neutral' }}
+        />
+        <p>Switch to this Station to preview its appearance.</p>
+      </section>
+    );
   if (!enabled) return null;
   return (
     <section
