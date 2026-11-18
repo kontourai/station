@@ -12,20 +12,20 @@
 .provider-overview__title {
   font-size: 1rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--k-text);
   margin: 0 0 0.25rem;
   letter-spacing: -0.02em;
 }
 
 .provider-overview__desc {
   font-size: 0.78rem;
-  color: var(--text-muted);
+  color: var(--k-text-faint);
   margin: 0;
 }
 
 .provider-overview__card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
   border-radius: 8px;
   padding: 0.875rem 1rem;
 }
@@ -35,7 +35,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.82rem;
-  color: var(--text-primary);
+  color: var(--k-text);
   background: none;
   border: none;
   padding: 0.3rem 0.4rem;
@@ -47,7 +47,7 @@
 }
 
 .provider-overview__card-item:hover {
-  background: var(--bg-tertiary);
+  background: var(--k-panel-raised);
 }
 
 .provider-overview__dot {
@@ -55,30 +55,30 @@
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--text-muted);
+  background: var(--k-text-faint);
 }
 
 .provider-overview__dot--active {
-  background: var(--success-text, #22c55e);
+  background: var(--k-positive);
 }
 
 /* Quick Setup (shown when no providers exist) */
 .provider-overview__quickstart {
   margin-top: 1.5rem;
   padding-top: 1.5rem;
-  border-top: 1px solid var(--border-primary);
+  border-top: 1px solid var(--k-line);
 }
 
 .provider-overview__quickstart-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--k-text);
   margin: 0 0 0.25rem;
 }
 
 .provider-overview__quickstart-desc {
   font-size: 0.78rem;
-  color: var(--text-muted);
+  color: var(--k-text-faint);
   margin: 0 0 0.75rem;
 }
 
@@ -93,7 +93,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-muted);
+  color: var(--k-text-faint);
   margin: 1rem 0 0.5rem;
 }
 
@@ -114,7 +114,7 @@
 .provider-picker-modal__desc {
   margin: 0 0 0.75rem;
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: var(--k-text-faint);
 }
 
 .provider-picker-modal__search {
@@ -126,8 +126,8 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
   border-radius: 8px;
   cursor: pointer;
   text-align: left;
@@ -137,7 +137,7 @@
 }
 
 .provider-overview__quickstart-btn:hover {
-  border-color: var(--accent-primary);
+  border-color: var(--k-action);
 }
 
 .provider-overview__quickstart-icon {
@@ -147,11 +147,11 @@
 .provider-overview__quickstart-name {
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 
 .provider-overview__quickstart-meta {
   font-size: var(--k-text-sm);
-  color: var(--text-muted);
+  color: var(--k-text-faint);
   margin-top: 1px;
 }

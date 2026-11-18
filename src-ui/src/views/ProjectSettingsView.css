@@ -726,8 +726,8 @@
 }
 
 .project-dashboard__modal {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
   border-radius: 12px;
   padding: 24px;
   width: 90%;
@@ -742,30 +742,30 @@
   font-size: var(--k-text-sm);
   padding: 1px 6px;
   border-radius: 3px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
-  color: var(--text-muted);
+  background: var(--k-panel-raised);
+  color: var(--k-text-faint);
   flex-shrink: 0;
 }
 
 .knowledge-section__scan-result {
   margin-top: 8px;
-  font-size: var(--text-base);
-  color: var(--success-text, #22c55e);
+  font-size: var(--k-text-sm);
+  color: var(--k-positive);
 }
 
 .knowledge-section__empty {
-  font-size: var(--text-base);
-  color: var(--text-muted);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
   margin: 0;
 }
 
 .knowledge-section__dropzone {
-  border: 2px dashed var(--border-primary);
+  border: 2px dashed var(--k-line);
   border-radius: 8px;
   padding: 20px;
   text-align: center;
-  font-size: var(--text-md);
-  color: var(--text-muted);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
   cursor: pointer;
   transition:
     border-color var(--motion-fast) var(--ease-standard),
@@ -774,14 +774,14 @@
 }
 
 .knowledge-section__dropzone:hover {
-  border-color: var(--accent-primary);
+  border-color: var(--k-action);
   color: var(--text-secondary);
 }
 
 .knowledge-section__dropzone--active {
-  border-color: var(--accent-primary);
+  border-color: var(--k-action);
   background: color-mix(in srgb, var(--k-brand) 6%, transparent);
-  color: var(--accent-primary);
+  color: var(--k-action);
 }
 
 .knowledge-section__doc-list {
@@ -795,15 +795,15 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
   border-radius: 5px;
-  font-size: var(--text-base);
+  font-size: var(--k-text-sm);
 }
 
 .knowledge-section__doc-name {
   flex: 1;
-  color: var(--text-primary);
+  color: var(--k-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -812,15 +812,15 @@
 .knowledge-section__doc-remove {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--k-text-faint);
   cursor: pointer;
-  font-size: var(--text-xl);
+  font-size: var(--k-text-lg);
   padding: 0 2px;
   line-height: 1;
 }
 
 .knowledge-section__doc-remove:hover {
-  color: var(--error-text);
+  color: var(--k-negative);
 }
 
 .knowledge-section__status {
@@ -828,14 +828,14 @@
   align-items: center;
   justify-content: space-between;
   font-size: var(--k-text-sm);
-  color: var(--text-muted);
+  color: var(--k-text-faint);
   padding-top: 4px;
 }
 
 .knowledge-section__clear-btn {
   background: none;
   border: none;
-  color: var(--error-text);
+  color: var(--k-negative);
   cursor: pointer;
   font-size: var(--k-text-sm);
   padding: 2px 6px;
@@ -848,12 +848,12 @@
 .knowledge-section__migrate {
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--border-primary);
+  border-top: 1px solid var(--k-line);
 }
 
 .knowledge-section__migrate-copy {
-  font-size: var(--text-base);
-  color: var(--text-muted);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
   margin: 0 0 8px;
 }
 
@@ -861,5 +861,5 @@
   margin: 6px 0 0;
   padding-left: 18px;
   font-size: var(--k-text-sm);
-  color: var(--error-text);
+  color: var(--k-negative);
 }
