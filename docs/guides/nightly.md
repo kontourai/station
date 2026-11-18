@@ -30,6 +30,8 @@ does not produce that receipt. Manual dispatch retains the same source and
 artifact gates for recovery. An ordinary manual dispatch uses the same early
 cadence decision. Supplying `rebuild_index` retains the explicit rebuild path;
 the publishers still enforce cadence and ancestry under the delivery lock.
+Terminal-failure recovery may complete a partial ship of the same source inside
+the interval; a recent ship of another source still blocks early admission.
 The hourly qualification-health watchdog reports stale or missing qualification
 and failed delivery; see [the release procedure](releasing.md#release-procedure).
 The cohort decision compares its source
