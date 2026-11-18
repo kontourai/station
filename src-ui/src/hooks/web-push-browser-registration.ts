@@ -17,13 +17,13 @@ export type WebPushOwner = {
 };
 export type ConfirmedWebPushOwner = WebPushOwner & { endpoint: string };
 
-export function vapidKeyBytes(key: string): Uint8Array<ArrayBuffer> {
+function vapidKeyBytes(key: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (key.length % 4)) % 4);
   const binary = atob(key.replace(/-/g, '+').replace(/_/g, '/') + padding);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
-export function matchesVapidKey(
+function matchesVapidKey(
   subscription: PushSubscription,
   publicKey: string,
 ): boolean {
@@ -37,11 +37,11 @@ export function matchesVapidKey(
   );
 }
 
-export function requestOptions(owner: WebPushOwner) {
+function requestOptions(owner: WebPushOwner) {
   return owner.requestScope ? { requestScope: owner.requestScope } : undefined;
 }
 
-export async function readWebPushOwner(owner: WebPushOwner) {
+async function readWebPushOwner(owner: WebPushOwner) {
   const result = await fetchWebPushRegistration(
     owner.apiBase,
     requestOptions(owner),
@@ -57,7 +57,7 @@ export async function readWebPushOwner(owner: WebPushOwner) {
   };
 }
 
-export async function browserRegistrationFingerprint(
+async function browserRegistrationFingerprint(
   subscription: PushSubscription,
 ): Promise<string | null> {
   const { endpoint, keys } = subscription.toJSON();
