@@ -641,6 +641,16 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
         expect(JSON.stringify(snapshot)).not.toContain(
           'fixture provider refused the catalog model',
         );
+        const durable = eventStore
+          .listEvents(task.taskId)
+          .find(({ payload }) => payload.method === 'runtime.error');
+        expect(durable?.payload).toHaveProperty(
+          'message',
+          snapshot.reason?.detail,
+        );
+        expect(JSON.stringify(durable)).not.toContain(
+          'fixture provider refused the catalog model',
+        );
       }
     },
   );

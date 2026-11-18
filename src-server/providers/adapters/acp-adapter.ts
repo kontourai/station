@@ -209,6 +209,7 @@ import {
 import {
   ACP_TRANSPORT_CLOSED_CODE,
   ACP_TRANSPORT_CLOSED_GUIDANCE,
+  ACP_UNKNOWN_FAILURE_GUIDANCE,
 } from '../delegated-runtime-failure.js';
 import {
   effectiveModelMetadata,
@@ -6522,7 +6523,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             message: ACP_TRANSPORT_CLOSED_GUIDANCE,
           } satisfies ProviderRuntimeErrorEvent);
         } else {
-          const baseMessage = acpFailureMessage(error);
+          const delegated = record.recoveryStart.metadata?.taskId === threadId;
+          const baseMessage = delegated
+            ? ACP_UNKNOWN_FAILURE_GUIDANCE
+            : acpFailureMessage(error);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,
@@ -6533,9 +6537,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'runtime.error',
             ...providerFailure('provider_error'),
             severity: 'error',
-            message: coReportedCause
-              ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
-              : baseMessage,
+            message:
+              !delegated && coReportedCause
+                ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
+                : baseMessage,
           } satisfies ProviderRuntimeErrorEvent);
         }
         record.session.status = 'error';
