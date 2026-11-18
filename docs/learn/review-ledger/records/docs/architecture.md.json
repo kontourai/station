@@ -128,7 +128,9 @@
 
     "packages/shared/package.json#/types",
 
-    "src-server/services/ssh/remote-session-reader.ts"
+    "src-server/services/ssh/remote-session-reader.ts",
+
+    "src-server/services/orchestration/conversation-title-generation.ts"
   ],
 
   "checks": [
