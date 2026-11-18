@@ -164,7 +164,21 @@ test('a host SDK predating the identity export loads the pane with upgrade guida
   shared[sdkEntry] = { ...agent, STATION_AGENT_ID: undefined };
   try {
     const Pane = await loadMeetingPane();
-    render(<Pane />);
+    const launchChat = vi.fn();
+    render(
+      <SDKProvider
+        value={{
+          apiBase: '',
+          contexts: {
+            agents: { useAgents: () => [] },
+            activeChats: { useLaunchChat: () => launchChat },
+          },
+          hooks: {},
+        }}
+      >
+        <Pane />
+      </SDKProvider>,
+    );
     expect(screen.getByRole('status').textContent).toBe(
       'Update Station to use Meeting Transcription.',
     );
