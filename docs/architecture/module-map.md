@@ -2394,6 +2394,14 @@ ownership, or an implicit change to completed-session behavior.
 
 ## SessionCommandModule
 
+The dormant [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
+captures create inputs before acquiring the storage lock and reserves each
+member start durably before calling its host adapter. Flow supplies dependency
+readiness and claims. A missing Session receipt leaves the reservation occupied.
+A zero dispatch allowance closes admission at creation. The allowance counts
+reserved member starts. Dollar, token, and physical-attempt caps are unavailable.
+Issue #91 tracks production composition with Station Session authority.
+
 Starting a Session crosses two boundaries: an engine may start, and Station must record the command’s result. The [command owner](../../src-server/services/orchestration/session-command-module.ts) reports those facts separately; losing a receipt must not invite a second engine start.
 
 **Interface.** `execute({ type: 'start-session', input }, context)` is the closed caller Interface. It always returns one of `accepted`, `rejected`, `failed`, or `indeterminate`, together with a receipt and `receiptStatus: persisted|unavailable`. `accepted` has a persisted accepted receipt and a session. `rejected` and `failed` report whether their terminal receipt is durable. `indeterminate` covers uncertain provider creation as well as missing accepted-receipt durability; a Session is included only when one is known. The server-only `executeInternal` also carries recovery, Task dispatch, owned-workspace, and portable-execution admission capabilities. Those options are not accepted from public command JSON.
