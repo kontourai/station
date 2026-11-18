@@ -41,6 +41,12 @@ const chat = {
     { role: 'user', content: 'And APAC?' },
     // Still streaming: never cited.
     { role: 'assistant', content: 'APAC is…', turnId: 'turn-2' },
+    {
+      role: 'assistant',
+      content: 'An answer without an execution Session',
+      turnId: 'unbound-turn',
+      answerEligible: true,
+    },
     { role: 'system', content: 'Reconnected', ephemeral: true },
   ],
 };

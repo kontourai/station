@@ -23,8 +23,10 @@ import {
   turnInterruptedContinueClientTurnId,
 } from '@kontourai/station-shared/runtime-event-projection';
 import React, {
+  type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -304,7 +306,17 @@ const CALLER_CANNOT_SEND_REASON =
 const WORKSPACE_REFUSED_WITHOUT_NEW_CHAT_REASON =
   "This chat can only continue in its original workspace, and you can't start a new chat here.";
 
+export interface ConversationTranscriptSnapshot {
+  chatId: string;
+  conversationId?: string;
+  messages: readonly ChatMessage[];
+  requestScope: NonNullable<
+    ReturnType<typeof useConversationConnection>['requestScope']
+  >;
+}
+
 export interface ConversationBodyProps {
+  transcriptSnapshotRef?: RefObject<ConversationTranscriptSnapshot | null>;
   owner?: OwnerAttribution | null;
   activeSession: ChatSession;
   workingDirectory?: string | null;
@@ -564,6 +576,7 @@ export function ConversationBody(
 
 function LiveConversationBody({
   activeSession,
+  transcriptSnapshotRef,
   workingDirectory,
   activeOrchestrationSession,
   activeOrchestrationSessionRead = 'present',
@@ -613,6 +626,42 @@ function LiveConversationBody({
   const visibilityFlags = useSurfaceVisibilityFlags();
   const { transport, transcript, streamStatus, turnInFlight } =
     useConversationController(activeSession);
+  const currentTranscriptMessages = transcript.enabled
+    ? transcript.settled &&
+      !transcript.revalidating &&
+      !transcript.catchingUp &&
+      !transcript.error &&
+      !transcript.upgradeRequired
+      ? transcript.messages
+      : undefined
+    : activeSession.orchestrationSessionStarted
+      ? undefined
+      : activeSession.messages;
+  useLayoutEffect(() => {
+    if (
+      !transcriptSnapshotRef ||
+      !mentionRequestScope ||
+      !currentTranscriptMessages
+    )
+      return;
+    const snapshot = {
+      chatId: activeSession.id,
+      conversationId: activeSession.conversationId,
+      messages: currentTranscriptMessages,
+      requestScope: mentionRequestScope,
+    };
+    transcriptSnapshotRef.current = snapshot;
+    return () => {
+      if (transcriptSnapshotRef.current === snapshot)
+        transcriptSnapshotRef.current = null;
+    };
+  }, [
+    activeSession.id,
+    activeSession.conversationId,
+    currentTranscriptMessages,
+    mentionRequestScope,
+    transcriptSnapshotRef,
+  ]);
   // Open and Settled inbox: this host's own record for this person. A replay
   // or another Station's conversation has none here.
   const settledConversationId =

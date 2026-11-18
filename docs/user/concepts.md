@@ -128,7 +128,8 @@ keeps appears in the Library with a link to its Task.
 Turn on **Save to Project** in Settings → Advanced → Feature previews.
 
 When a chat produces a next step you want to keep, open its More menu and
-choose **Save to Project…**. Pick a destination:
+choose **Save to Project…**. A personal chat lets you pick a destination.
+For an answer that already belongs to a Project, Station selects that Project.
 
 - Choose a Project, edit the Task title and brief, then select **Create
   Task**. If the chat has a completed answer, the Task links back to it.

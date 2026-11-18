@@ -14909,15 +14909,27 @@ export class EventStore {
    * attribution can be established by a Session-level event with no turn id.
    */
   readConversationProjectSlug(threadId: string): string | undefined {
+    return (
+      this.readConversationProjectScope(threadId)?.projectSlug ?? undefined
+    );
+  }
+
+  /** Null records an unbound Session. An absent row cannot prove its scope. */
+  readConversationProjectScope(
+    threadId: string,
+  ): { projectSlug: string | null } | undefined {
     const row = this.db
       .prepare(
         `SELECT project_slug FROM orchestration_conversation_history
          WHERE thread_id = ? LIMIT 1`,
       )
-      .get(threadId) as { project_slug?: string | null } | undefined;
-    return typeof row?.project_slug === 'string' && row.project_slug.length > 0
-      ? row.project_slug
-      : undefined;
+      .get(threadId) as { project_slug: string | null } | undefined;
+    if (
+      row &&
+      (row.project_slug === null ||
+        (typeof row.project_slug === 'string' && row.project_slug.length > 0))
+    )
+      return { projectSlug: row.project_slug };
   }
 
   /** Deliberate composition seam; callers receive conversation intent, never SQLite. */

@@ -30,32 +30,47 @@ const STATION_CHANGED =
 
 export function ContinueInProjectDialog({
   conversation,
+  sourceOwnerKey,
+  sourceProjectSlug,
   onClose,
   now = () => new Date(),
 }: {
   conversation: ContinuedConversation;
+  sourceOwnerKey?: string;
+  sourceProjectSlug?: string;
   onClose: () => void;
   now?: () => Date;
 }) {
   const { navigate } = useNavigation();
   const authority = useHostRequestAuthorityScope();
-  const [ownerKey] = useState(() =>
-    authority ? projectCreationRecoveryIdentity(authority) : undefined,
+  const [ownerKey] = useState(
+    () =>
+      sourceOwnerKey ??
+      (authority ? projectCreationRecoveryIdentity(authority) : undefined),
   );
   const ownerMatches =
     authority !== undefined &&
     projectCreationRecoveryIdentity(authority) === ownerKey;
   const ownerCurrent = ownerMatches && authority.isCurrent();
-  const { projects, isConfirmedLoaded } = useProjects();
+  const { projects, isConfirmedLoaded, isLoading } = useProjects();
+  const boundProjectSlug = conversation.latestTurnId
+    ? sourceProjectSlug
+    : undefined;
+  const destinationProjects = boundProjectSlug
+    ? projects.filter(({ slug }) => slug === boundProjectSlug)
+    : projects;
   const queryClient = useQueryClient();
   const createTask = useCreateTaskMutation();
   const createReference = useCreateTaskReferenceMutation();
   const [chosenProject, setChosenProject] = useState<string>();
   const projectChoice =
+    boundProjectSlug ??
     chosenProject ??
     (isConfirmedLoaded && projects.length === 0 ? NEW_PROJECT : '');
   const newProject = projectChoice === NEW_PROJECT;
-  const selectedProject = projects.find(({ slug }) => slug === projectChoice);
+  const selectedProject = destinationProjects.find(
+    ({ slug }) => slug === projectChoice,
+  );
   const projectSlug = selectedProject?.slug ?? '';
   const [taskDraft] = useState(() =>
     draftTaskFromConversation(conversation, now()),
@@ -181,26 +196,29 @@ export function ContinueInProjectDialog({
           <Button onClick={onClose} disabled={pending}>
             {createdTask || !ownerCurrent ? 'Close' : 'Cancel'}
           </Button>
-          {ownerCurrent && newProject && (
-            <Button variant="primary" onClick={continueInNewProject}>
-              Review new Project
-            </Button>
-          )}
-          {ownerCurrent && (createdTask || selectedProject) && (
+          {ownerCurrent && (newProject || createdTask || selectedProject) && (
             <Button
               variant="primary"
-              disabled={pending || (!createdTask && !title.trim())}
-              onClick={() => void continueInExistingProject()}
+              disabled={
+                pending || (!newProject && !createdTask && !title.trim())
+              }
+              onClick={
+                newProject
+                  ? continueInNewProject
+                  : () => void continueInExistingProject()
+              }
             >
-              {needsCitation
-                ? pending
-                  ? 'Linking…'
-                  : 'Link chat to Task'
-                : createdTask
-                  ? 'Open Task'
-                  : pending
-                    ? 'Creating…'
-                    : 'Create Task'}
+              {newProject
+                ? 'Review new Project'
+                : needsCitation
+                  ? pending
+                    ? 'Linking…'
+                    : 'Link chat to Task'
+                  : createdTask
+                    ? 'Open Task'
+                    : pending
+                      ? 'Creating…'
+                      : 'Create Task'}
             </Button>
           )}
         </>
@@ -242,16 +260,26 @@ export function ContinueInProjectDialog({
                 setFailure(undefined);
               }}
             >
-              <option value="" disabled>
-                Choose a Project
-              </option>
-              {projects.map((project) => (
+              {(!boundProjectSlug || !selectedProject) && (
+                <option value="" disabled>
+                  {isLoading ? 'Loading Projects…' : 'Choose a Project'}
+                </option>
+              )}
+              {destinationProjects.map((project) => (
                 <option key={project.slug} value={project.slug}>
                   {project.name || project.slug}
                 </option>
               ))}
-              <option value={NEW_PROJECT}>New Project…</option>
+              {!boundProjectSlug && (
+                <option value={NEW_PROJECT}>New Project…</option>
+              )}
             </Select>
+            {boundProjectSlug && !selectedProject && !isLoading && (
+              <ErrorState
+                variant="compact"
+                title="The Project that owns this answer is unavailable"
+              />
+            )}
             {newProject && (
               <small className="continue-in-project__description">
                 The chat provides a draft Project name and brief.

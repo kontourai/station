@@ -471,6 +471,50 @@ describe('NewProjectModal starter layout picker', () => {
     }
   });
 
+  test('a Project-bound answer can only be saved with its link in its originating Project', async () => {
+    projectsQueryState.data = [
+      { slug: 'another-project', name: 'Another Project' },
+      { slug: 'source-project', name: 'Source Project' },
+    ];
+    createContinuationTask.mockReset().mockResolvedValue({
+      id: 'bound-task',
+      title: 'Continue: Completed work',
+    });
+    createContinuationReference.mockReset().mockResolvedValue({});
+    render(
+      <ContinueInProjectDialog
+        conversation={{
+          sessionId: 'answer-session',
+          latestTurnId: 'answer-turn',
+          title: 'Completed work',
+        }}
+        sourceProjectSlug="source-project"
+        onClose={onCloseMock}
+      />,
+    );
+    const picker = screen.getByRole('combobox', { name: 'Project' });
+    expect(picker).toHaveProperty('value', 'source-project');
+    expect(
+      within(picker)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['Source Project']);
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith('/tasks/bound-task'),
+    );
+    expect(createContinuationTask).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'source-project' }),
+    );
+    expect(createContinuationReference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'bound-task',
+        sessionId: 'answer-session',
+        turnId: 'answer-turn',
+      }),
+    );
+  });
+
   test('finishes a failed citation on the Project where the Task was created', async () => {
     projectsQueryState.data = [
       { slug: 'first-project', name: 'First Project' },

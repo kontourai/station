@@ -298,6 +298,8 @@ export function continuedConversationFromChat(
       (message) =>
         message.role === 'assistant' &&
         message.answerEligible === true &&
+        typeof message.sessionId === 'string' &&
+        message.sessionId.length > 0 &&
         typeof message.turnId === 'string' &&
         message.turnId.length > 0,
     );
