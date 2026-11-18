@@ -1,0 +1,17 @@
+{
+  "revision": "4232977839d151c25c6cb720e65610e370fb9bad",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the plain-language defaultMaxTurns wording and visible inactive runtime notice. Station still exposes the saved number for editing.","inputs":["docs/design/settings-architecture.md","packages/contracts/src/settings-registry.ts","src-ui/src/views/settings/SettingDescription.tsx"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Reviewed the shared Station-engine vocabulary and confirmed the documented VoltAgent and Strands applicability.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Reviewed the settings registry diff. The description change is limited to the fallback step limit.","inputs":["docs/guides/discord-gateway.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Confirmed the technical VoltAgent and Strands applicability and preservation of the saved defaultMaxTurns value.","inputs":["docs/reference/config.md","packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the generated wording refresh and confirmed the same config key and settings route.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the changed settings row and confirmed the runtime notice is scoped to the fallback step limit.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/views/settings/StationConfigSection.tsx"]}
+  ]
+}

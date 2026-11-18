@@ -163,6 +163,34 @@ describe('conversation-open callerAccess', () => {
       ),
     );
 
+  test('reads an exact fresh context reservation without a provider Session', async () => {
+    _setApiBase('https://station.example.test');
+    const data = {
+      ...unavailable(),
+      status: 'fresh-context-ready',
+      predecessorSessionId: 'old',
+      reservedSessionId: 'reserved',
+      transcript: { available: true, owner: 'runtime', messageCount: 2 },
+      canContinue: true,
+      recoveryActions: [],
+    };
+    respond(data);
+    await expect(resolveConversationOpen('c')).resolves.toEqual(data);
+    for (const malformed of [
+      { reservedSessionId: 'old' },
+      { predecessorSessionId: '' },
+      { currentSessionId: 'reserved' },
+      { execution: { sessionId: 'reserved' } },
+      { nextTurnStartsSession: true },
+      { continuationPending: true },
+    ]) {
+      respond({ ...data, ...malformed });
+      await expect(resolveConversationOpen('c')).rejects.toMatchObject({
+        kind: 'invalid-response',
+      });
+    }
+  });
+
   test('passes the server-reported access through and tolerates its absence', async () => {
     _setApiBase('https://station.example.test');
     respond(unavailable({ continue: false, startChat: true }));

@@ -32,6 +32,18 @@ contracts; a task board does not replace those surfaces.
 6. Review results and evidence. An engine stopping, a Task status of done, a saved
    artifact, and customer acceptance are separate observations.
 
+## Room navigation
+
+On a phone, a shared Project overview shows the channels the member can read
+and Task rooms whose shared Task and unread summary are available to the member.
+Opening a channel uses the full-screen conversation. Back returns to the same
+place in the Project list. A member opens a Task room through its existing
+shared-work publication in the Project.
+
+Opening an agent thread in a Task's Conversation tab adds it to the Task's
+address. Reloading that address reopens the thread from the Task room's
+authorized history. Browser Back returns to the room.
+
 ## Channel interaction
 
 `@agent` is an intentional request, not a trigger hidden in arbitrary prose.

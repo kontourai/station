@@ -1,5 +1,6 @@
 import {
   isApprovalMode,
+  providerSessionBindingEnded,
   readProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
 import type { QueryClient } from '@tanstack/react-query';
@@ -66,19 +67,23 @@ type ConversationRecord = NonNullable<
  * server keep the per-row fold.
  */
 function rowTurnIsOpen(
-  session: { hasActiveTurn?: boolean },
+  session: { hasActiveTurn?: boolean; status: string },
   record: ConversationRecord | undefined,
 ): boolean {
-  return record ? record.openTurn !== undefined : turnIsOpen(session);
+  return record
+    ? record.openTurn !== undefined
+    : !providerSessionBindingEnded(session.status) && turnIsOpen(session);
 }
 
 /** The explicit verdict for the legacy fold, or undefined when none was sent. */
 function rowTurnVerdict(
-  session: { hasActiveTurn?: boolean },
+  session: { hasActiveTurn?: boolean; status: string },
   record: ConversationRecord | undefined,
 ): boolean | undefined {
   if (record) return record.openTurn !== undefined;
-  return session.hasActiveTurn;
+  return providerSessionBindingEnded(session.status)
+    ? false
+    : session.hasActiveTurn;
 }
 
 /**
@@ -458,13 +463,14 @@ function planSnapshot(
       // not contradict a sibling's record.
       const runningChild = record
         ? record.openTurn?.threadId
-        : session.hasActiveTurn === true
+        : rowTurnVerdict(session, undefined) === true
           ? session.threadId
           : undefined;
       const currentChild = session.currentSessionId ?? runningChild;
-      const snapshotTurnOpen = record
-        ? record.openTurn !== undefined
-        : session.hasActiveTurn === true;
+      const snapshotTurnOpen = rowTurnVerdict(session, record) === true;
+      const bindingEnded =
+        providerSessionBindingEnded(session.status) &&
+        (!record?.openTurn || record.openTurn.threadId === session.threadId);
       const startedAt = record?.openTurn
         ? Date.parse(record.openTurn.startedAt)
         : undefined;
@@ -530,19 +536,21 @@ function planSnapshot(
           // 'running' with no open turn (hasActiveTurn === false) must not
           // re-strand the streaming shell after a reconnect — the exact
           // symptom archive#1005 fixed on the live-event path.
-          orchestrationStatus: snapshotTurnOpen
-            ? 'running'
-            : lastTurnEndMethod === 'runtime.error' &&
-                !rowTurnIsOpen(session, record)
-              ? 'errored'
-              : lastTurnEndMethod === 'turn.aborted' &&
+          orchestrationStatus: bindingEnded
+            ? session.status
+            : snapshotTurnOpen
+              ? 'running'
+              : lastTurnEndMethod === 'runtime.error' &&
                   !rowTurnIsOpen(session, record)
-                ? 'aborted'
-                : (session.status === 'running' ||
-                      session.status === 'ready') &&
+                ? 'errored'
+                : lastTurnEndMethod === 'turn.aborted' &&
                     !rowTurnIsOpen(session, record)
-                  ? 'idle'
-                  : session.status,
+                  ? 'aborted'
+                  : (session.status === 'running' ||
+                        session.status === 'ready') &&
+                      !rowTurnIsOpen(session, record)
+                    ? 'idle'
+                    : session.status,
           ...(blockingOpenRequestIds
             ? {
                 pendingApprovals: blockingOpenRequestIds,

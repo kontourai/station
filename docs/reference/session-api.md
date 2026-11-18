@@ -1397,6 +1397,18 @@ and `stopSession` (`{ type: 'stopSession', threadId }`).
 External transcript observation does not grant control of the original terminal
 process.
 
+When Station builds a conversation index for older events, it picks the newest
+text value for owner, Agent, and Project metadata. Startup can also recover a
+missing Project label in a bounded batch of already-indexed conversations.
+Existing owner and Agent bindings are kept during that Project-label repair.
+
+On cold follow, Station reads at most 64 recent configuration events to find
+the attachment's prior Project attribution. A full window without a claim
+leaves that attribution unknown. A new Project observation can record a
+recovery tied to the newest configuration in the window. An unattributed
+observation alone leaves a possibly older Project label in place. The follower
+advances its remembered attribution only after the configuration event commits.
+
 A read-only attached session's summary carries `attachedSourceActivity`
 (`{ state: 'active' | 'quiet' | 'idle', lastWriteAt? }`), derived at read time
 by [`deriveAttachedSourceActivity`](../../src-server/services/orchestration/attached-source-activity.ts)
