@@ -1,5 +1,10 @@
-/* Connection manager modal. Ships with @kontourai/station-connect and themes
-   against the host app's tokens, so every var() carries a standalone fallback. */
+/* Resolve the host's accent pair before the button declares its local
+   tokens. Standalone defaults stay inside the modal or discovery panel. */
+:where(.station-connect-modal-panel, .station-connect-discovery) {
+  --station-connect-action: var(--accent-primary, #2563eb);
+  --station-connect-action-hover: var(--accent-hover-fill, #1d4ed8);
+  --station-connect-action-text: var(--text-on-accent, #fff);
+}
 
 .station-connect-modal-overlay {
   --responsive-visual-viewport-height: 100dvh;
@@ -595,16 +600,17 @@
 }
 
 .station-connect-btn--primary {
+  --accent-primary: var(--station-connect-action);
+  --accent-hover-fill: var(--station-connect-action-hover);
+  --text-on-accent: var(--station-connect-action-text);
   border: none;
-  background: var(--accent-primary, #3b82f6);
-  color: var(--text-on-accent, white);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
 }
 
 .station-connect-btn--primary:hover:not(:disabled) {
-  background: var(
-    --accent-hover-fill,
-    color-mix(in srgb, var(--accent-primary, #3b82f6) 86%, white 14%)
-  );
+  background: var(--accent-hover-fill);
+  color: var(--text-on-accent);
 }
 
 .station-connect-btn--primary:disabled {
