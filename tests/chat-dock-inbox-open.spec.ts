@@ -349,7 +349,11 @@ for (const [mode, width, theme, decision] of [
       expect(approvalBox).not.toBeNull();
       expect(box!.y + box!.height).toBeLessThanOrEqual(approvalBox!.y);
     }
-    await row.screenshot({ path: testInfo.outputPath('approval-row.png') });
+    const screenshot = await row.screenshot();
+    await testInfo.attach('approval-row', {
+      body: screenshot,
+      contentType: 'image/png',
+    });
     await row
       .getByRole('button', {
         name: decision === 'accept' ? 'Approve once' : 'Deny',
