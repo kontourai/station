@@ -1,0 +1,7 @@
+{
+  "revision": "da78a2a55b896623c4fc7514fb82adc4f9e069a0",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the Home Start journey for existing coverage claims. The test now checks full-screen entry, the visible Restore control, landscape and both original portrait resize paths, transcript geometry, and the same unsent draft across drawer navigation. Managed Chromium viewport emulation is the proof boundary.","inputs":["tests/task-first-home.spec.ts"]}
+  ]
+}
