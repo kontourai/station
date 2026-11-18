@@ -8,6 +8,7 @@ import {
   verificationStatus,
 } from './lib/verification-coordinator.mjs';
 import { projectHostPressureForStatus } from './lib/verification-host-pressure.mjs';
+import { classifyTerminal } from './lib/verification-receipt.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 import {
   failedTestFilesFromCapture,
@@ -15,6 +16,7 @@ import {
   sweepVerificationArtifactOrphans,
   VERIFICATION_ARTIFACT_RETENTION_POLICY,
 } from './lib/verification-reporter.mjs';
+import { VERIFICATION_RECEIPT_ROOT } from './lib/verification-request-identity.mjs';
 import {
   redactVerificationSubmissionError,
   submitVerification,
@@ -375,6 +377,12 @@ function tailFallback(bounded, stdoutTail) {
       counts: bounded.summary?.counts,
       cleanup: bounded.summary?.cleanup,
       passed: bounded.summary?.passed,
+      ...(bounded.summary?.indeterminate === true
+        ? { indeterminate: true }
+        : {}),
+      ...(typeof bounded.summary?.failingStep === 'string'
+        ? { failingStep: bounded.summary.failingStep }
+        : {}),
       // Carried through truncation for the same reason as the file list below
       // it, and ahead of it: this is the sentence that says WHAT broke, and
       // dropping it is what made a red hosted nightly annotate itself "no
@@ -451,7 +459,10 @@ function tailFallback(bounded, stdoutTail) {
 
 export function renderBounded(result) {
   const bounded = boundedControlResult(result);
-  const stdoutTail = diagnosticStdoutTail(result);
+  const admissionStopped = typeof bounded?.summary?.phaseAdmission === 'string';
+  const stdoutTail = admissionStopped
+    ? undefined
+    : diagnosticStdoutTail(result);
   const productLawObservationTimeoutMs =
     result?.receipt?.provenance?.before?.productLawObservationTimeoutMs;
   if (Number.isFinite(productLawObservationTimeoutMs))
@@ -461,7 +472,9 @@ export function renderBounded(result) {
     };
   // Before the tail, and separately from it: the tail is what gets trimmed
   // when the envelope is over cap, and this is the part a reader needs first.
-  const failedTestFiles = diagnosticFailedTestFiles(result);
+  const failedTestFiles = admissionStopped
+    ? undefined
+    : diagnosticFailedTestFiles(result);
   if (failedTestFiles)
     bounded.summary = {
       ...bounded.summary,
@@ -472,11 +485,15 @@ export function renderBounded(result) {
       ...bounded.summary,
       failedCheckRedactedStdoutTail: stdoutTail,
     };
-  const rendered = JSON.stringify(bounded, null, 2);
+  const rendered = JSON.stringify(bounded ?? null, null, 2);
   if (Buffer.byteLength(rendered) <= CONTROL_OUTPUT_CAP) return rendered;
-  if (stdoutTail) return tailFallback(bounded, stdoutTail);
-  if (Array.isArray(bounded?.jobs))
-    return JSON.stringify(
+  if (stdoutTail) {
+    const withTail = tailFallback(bounded, stdoutTail);
+    if (Buffer.byteLength(withTail) <= CONTROL_OUTPUT_CAP) return withTail;
+  }
+  if (result?.receipt) return compactReceiptResult(result, bounded);
+  if (Array.isArray(bounded?.jobs)) {
+    const compactStatus = JSON.stringify(
       {
         ...bounded,
         jobs: bounded.jobs.slice(0, 4),
@@ -488,7 +505,96 @@ export function renderBounded(result) {
       null,
       2,
     );
+    if (Buffer.byteLength(compactStatus) <= CONTROL_OUTPUT_CAP)
+      return compactStatus;
+  }
   return JSON.stringify({ truncated: true }, null, 2);
+}
+
+function compactReceiptResult(result, bounded) {
+  const { terminal, counts, cleanup } = result.receipt;
+  const { key, laneId } = bounded.request;
+  const requestKey = /^[0-9a-f]{64}$/.test(typeof key === 'string' ? key : '')
+    ? key
+    : undefined;
+  const disposition = ['executed', 'joined', 'reused', 'forced'].includes(
+    result.disposition,
+  )
+    ? result.disposition
+    : undefined;
+  const phaseAdmission = bounded.summary?.phaseAdmission;
+  const controlCounts = boundedReceiptCounts(counts);
+  return JSON.stringify(
+    {
+      disposition,
+      request: {
+        key: requestKey,
+        laneId: /^[a-z0-9-]{1,64}$/.test(
+          typeof laneId === 'string' ? laneId : '',
+        )
+          ? laneId
+          : undefined,
+      },
+      canonicalReceipt:
+        requestKey && disposition && disposition !== 'forced'
+          ? `${VERIFICATION_RECEIPT_ROOT}/${requestKey}.canonical.json`
+          : undefined,
+      summary: {
+        ...compactTerminal(terminal, controlCounts, cleanup),
+        counts: controlCounts,
+        cleanup: {
+          status: ['passed', 'failed', 'not_required'].includes(cleanup?.status)
+            ? cleanup.status
+            : undefined,
+          survivingOwnedChildren: Number.isSafeInteger(
+            cleanup?.survivingOwnedChildren,
+          )
+            ? cleanup.survivingOwnedChildren
+            : undefined,
+        },
+        phaseAdmission:
+          typeof phaseAdmission === 'string'
+            ? redactVerificationOutput(phaseAdmission).slice(0, 512)
+            : undefined,
+      },
+      omittedDetails: ['artifacts', 'other diagnostics'],
+      truncated: true,
+    },
+    null,
+    2,
+  );
+}
+
+function compactTerminal(terminal, counts, cleanup) {
+  try {
+    const classified = classifyTerminal({
+      status: terminal?.status,
+      exitCode: terminal?.exitCode,
+      // The compact projection can carry an explicit receipt verdict. A
+      // completed status and passing counts alone do not establish stability.
+      provenanceStable:
+        terminal?.passed === true && terminal.indeterminate !== true,
+      cleanupStatus: cleanup?.status,
+      survivingOwnedChildren: cleanup?.survivingOwnedChildren ?? null,
+      counts,
+    });
+    return {
+      terminal: classified.status,
+      passed:
+        terminal.passed === false ? false : classified.passed || undefined,
+      indeterminate: terminal.indeterminate === true || undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function boundedReceiptCounts(counts) {
+  return Object.fromEntries(
+    ['executed', 'passed', 'failed', 'infrastructureErrors']
+      .filter((key) => Number.isSafeInteger(counts?.[key]) && counts[key] >= 0)
+      .map((key) => [key, counts[key]]),
+  );
 }
 
 function usage() {
