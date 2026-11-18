@@ -332,7 +332,10 @@ export async function finalizeChatRequest({
       traceId: operationContext.traceId,
       reason: completionReason,
       steps: 0,
-      maxSteps: ctx.agentSpecs.get(slug)?.guardrails?.maxSteps,
+      maxSteps:
+        ctx.appConfig?.runtime === 'strands'
+          ? undefined
+          : (ctx.agentSpecs.get(slug)?.maxSteps ?? undefined),
       inputChars:
         typeof input === 'string'
           ? input.length
