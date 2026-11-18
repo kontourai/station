@@ -301,6 +301,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [CLIENT_TURN_INPUT_CONFLICT_CODE]: 'conflict',
   [INBOX_KEY_CONFLICT_CODE]: 'conflict',
   [CLIENT_TURN_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
+  'person-authored-turn-required': 'permission_denied',
   client_turn_settled: 'conflict',
   [ATTACHMENT_INPUT_UNSUPPORTED_CODE]: 'input_unsupported',
   [SESSION_ENDED_REJECTION_CODE]: 'session_gone',
