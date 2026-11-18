@@ -51,6 +51,9 @@ function mac(context: AgentDelegationContext): string {
         context.allowedTools ?? null,
         context.blockedTools ?? null,
         context.denyApprovals ?? null,
+        ...(context.toolAllowlistConstraints === undefined
+          ? []
+          : [context.toolAllowlistConstraints]),
       ]),
     )
     .digest('base64url');

@@ -331,15 +331,20 @@ describe('same-origin terminal gateway with real sockets', () => {
         'operator',
         scope,
         record.terminalId,
-        // ConPTY paints frames rather than forwarding each write.
         line(
           await nodeProgram(
             root,
             'records.js',
-            "let i=0;const t=setInterval(()=>{process.stdout.write('x');if(++i<160)return;clearInterval(t);setTimeout(()=>process.stdout.write('end-'+'marker\\n'),50)},40)",
+            "const input=require('node:readline').createInterface({input:process.stdin,terminal:false});let i=0;console.log('records-ready');input.on('line',()=>{console.log('credit-'+i+':x');if(++i<160)return;console.log('end-'+'marker');input.close();process.stdin.pause()})",
           ),
         ),
       );
+      await journal(record.terminalId, 'records-ready');
+      // ConPTY may coalesce timed writes. Observe each record before producing the next.
+      for (let index = 0; index < 160; index += 1) {
+        await sessions.write('operator', scope, record.terminalId, '\r');
+        await journal(record.terminalId, `credit-${index}:x`);
+      }
     } else {
       await sessions.write(
         'operator',
@@ -411,8 +416,15 @@ describe('same-origin terminal gateway with real sockets', () => {
     expect(
       client.controls.filter((item) => item.type === 'progress'),
     ).toHaveLength(progressCount);
-    client.ack(1, client.output.at(-1)!.seq);
-    await expect.poll(() => client.output.at(-1)?.seq).toBe(end);
+    while (client.output.at(-1)!.seq < end) {
+      const received = client.output.length;
+      client.ack(1, client.output.at(-1)!.seq);
+      await expect.poll(() => client.output.length).toBeGreaterThan(received);
+      expect(client.output.length - received).toBeLessThanOrEqual(
+        TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+      );
+    }
+    expect(client.output.at(-1)!.seq).toBe(end);
     // ConPTY repaints its screen instead of passing a lone link opener
     // through, so only a POSIX PTY yields a record the filter empties.
     if (!windows)

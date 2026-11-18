@@ -29,7 +29,7 @@ function cannedMessage(model) {
   };
 }
 
-function writeStream(response, model) {
+function writeStream(response, model, reply) {
   response.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -48,7 +48,7 @@ function writeStream(response, model) {
   event('content_block_delta', {
     type: 'content_block_delta',
     index: 0,
-    delta: { type: 'text_delta', text: STUB_REPLY_TEXT },
+    delta: { type: 'text_delta', text: reply },
   });
   event('content_block_stop', { type: 'content_block_stop', index: 0 });
   event('message_delta', {
@@ -67,9 +67,13 @@ function json(response, status, body) {
 
 /**
  * @typedef {{ sequence: number, receivedAt: number, method: string, path: string, query: string, headers: Record<string, string>, bodyBytes: number, body: unknown, refused?: string }} StubRequest
+ * @param {{host?: string, turns?: ReadonlyArray<{prompt: string, reply: string}>}} [options]
  * @returns {Promise<{ url: string, requests: StubRequest[], close: () => Promise<void> }>}
  */
-export async function startStubAnthropic({ host = '127.0.0.1' } = {}) {
+export async function startStubAnthropic({
+  host = '127.0.0.1',
+  turns = [],
+} = {}) {
   /** @type {StubRequest[]} */
   const requests = [];
   const server = createServer((request, response) => {
@@ -117,10 +121,34 @@ export async function startStubAnthropic({ host = '127.0.0.1' } = {}) {
       if (refused) return json(response, 413, { type: 'error' });
       if (record.method === 'POST' && url.pathname === '/v1/messages') {
         const model = body?.model;
-        if (body?.stream === true) return writeStream(response, model);
+        const content = body?.messages?.findLast(
+          (message) => message.role === 'user',
+        )?.content;
+        const texts =
+          typeof content === 'string'
+            ? [content]
+            : Array.isArray(content)
+              ? content
+                  .filter((block) => block.type === 'text')
+                  .map((block) => block.text)
+              : [];
+        const matches = turns.filter((turn) =>
+          texts.some((text) => text.trimEnd().endsWith(turn.prompt)),
+        );
+        if (matches.length > 1)
+          return json(response, 400, {
+            type: 'error',
+            error: {
+              type: 'invalid_request_error',
+              message: 'ambiguous diagnostic prompt',
+            },
+          });
+        const reply = matches[0]?.reply ?? STUB_REPLY_TEXT;
+        record.reply = reply;
+        if (body?.stream === true) return writeStream(response, model, reply);
         return json(response, 200, {
           ...cannedMessage(model),
-          content: [{ type: 'text', text: STUB_REPLY_TEXT }],
+          content: [{ type: 'text', text: reply }],
           stop_reason: 'end_turn',
         });
       }

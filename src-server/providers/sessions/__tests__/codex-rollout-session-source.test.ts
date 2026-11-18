@@ -1,11 +1,14 @@
 import {
   appendFileSync,
+  closeSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
+  truncateSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -16,6 +19,33 @@ import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { AttachedSessionCursor } from '../attached-session-source.js';
 import { CodexRolloutSessionSource } from '../codex-rollout-session-source.js';
+import { readLeadingLine } from '../transcript-file-io.js';
+
+const readChunk = vi.hoisted(() =>
+  vi.fn<
+    (
+      descriptor: number,
+      buffer: NodeJS.ArrayBufferView,
+      offset: number,
+      length: number,
+      position: number | null,
+    ) => number
+  >(),
+);
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    readSync: readChunk.mockImplementation((...args) =>
+      actual.readSync(...args),
+    ),
+    openSync: vi.fn(actual.openSync),
+    closeSync: vi.fn(actual.closeSync),
+  };
+});
+
+const realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
 
 const roots: string[] = [];
 
@@ -78,12 +108,223 @@ async function drain(
 
 afterEach(() => {
   vi.restoreAllMocks();
+  readChunk
+    .mockReset()
+    .mockImplementation((...args) => realFs.readSync(...args));
+  vi.mocked(openSync).mockReset().mockImplementation(realFs.openSync);
+  vi.mocked(closeSync).mockReset().mockImplementation(realFs.closeSync);
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
 describe('CodexRolloutSessionSource', () => {
+  test('bounds repeated discovery and read validation to the leading record and observes a rewritten head', async () => {
+    const root = fixtureRoot();
+    const path = rolloutPath(root);
+    writeFileSync(
+      path,
+      line(meta('bounded-head')) + 'x'.repeat(8 * 1024 * 1024),
+    );
+    const source = new CodexRolloutSessionSource({ homeDir: root });
+    let actualBytes = 0;
+    await readChunk.withImplementation(
+      (descriptor, buffer, offset, length, position) => {
+        const bytesRead = realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          length,
+          position,
+        );
+        actualBytes += bytesRead;
+        return bytesRead;
+      },
+      async () => {
+        const first = await discoverOne(source);
+        expect(await discoverOne(source)).toEqual(first);
+        expect(await source.read(first, -1)).toMatchObject({
+          outcome: 'rejected_candidate',
+          events: [],
+          cursor: -1,
+        });
+        expect(actualBytes).toBeLessThanOrEqual(3 * 4096);
+        expect(readChunk).toHaveBeenCalledTimes(3);
+        writeFileSync(path, line(meta('rewritten-head')));
+        expect(await source.read(first)).toMatchObject({
+          outcome: 'rejected_candidate',
+          events: [],
+        });
+        expect((await discoverOne(source)).sessionId).toBe('rewritten-head');
+      },
+    );
+  });
+
+  test.each([4095, 4096, 4097, 128 * 1024])(
+    'accepts a %i-byte leading record with UTF-8 split across reads and a newline at the cap',
+    async (length) => {
+      const root = fixtureRoot();
+      const path = rolloutPath(root);
+      const content = `${'a'.repeat(length - 2)}é`;
+      writeFileSync(path, `${content}\nignored`);
+      expect(readLeadingLine(path, length)).toBe(content);
+      const head = JSON.stringify(meta('boundary', '/workspace/é'));
+      writeFileSync(
+        path,
+        `${head}${' '.repeat(length - Buffer.byteLength(head))}\nignored`,
+      );
+      const source = new CodexRolloutSessionSource({
+        homeDir: root,
+        maxLineBytes: length,
+      });
+      expect((await discoverOne(source)).cwd).toBe('/workspace/é');
+    },
+  );
+
+  test.each([
+    { content: '', expected: undefined },
+    { content: ' \r\nignored', expected: undefined },
+    { content: 'é', expected: 'é' },
+    { content: 'x'.repeat(4096), expected: 'x'.repeat(4096) },
+    { content: 'x'.repeat(4097), expected: null },
+    { content: `${'x'.repeat(4097)}\n`, expected: null },
+    { content: Buffer.from([0xc3, 0x28, 0x0a]), expected: '�(' },
+  ])(
+    'preserves EOF, blank, oversized and malformed UTF-8 handling ($content.length bytes)',
+    ({ content, expected }) => {
+      const path = rolloutPath(fixtureRoot());
+      writeFileSync(path, content);
+      expect(readLeadingLine(path, 4096)).toBe(expected);
+      for (const call of readChunk.mock.calls) {
+        expect(Number(call[4]) + call[3]).toBeLessThanOrEqual(4097);
+      }
+    },
+  );
+
+  test('continues short reads on one descriptor and closes it after EOF or a read failure', () => {
+    const path = rolloutPath(fixtureRoot());
+    writeFileSync(path, 'éabc');
+    readChunk.withImplementation(
+      (descriptor, buffer, offset, length, position) =>
+        realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 1),
+          position,
+        ),
+      () => expect(readLeadingLine(path, 4096)).toBe('éabc'),
+    );
+    expect(openSync).toHaveBeenCalledTimes(1);
+    expect(closeSync).toHaveBeenCalledTimes(1);
+    expect(readChunk).toHaveBeenCalledTimes(6);
+    readChunk.withImplementation(
+      () => {
+        throw new Error('read failed');
+      },
+      () => {
+        expect(() => readLeadingLine(path, 4096)).toThrow('read failed');
+      },
+    );
+    expect(closeSync).toHaveBeenCalledTimes(2);
+  });
+
+  test('bounds retained prefix storage across one-byte short reads', () => {
+    const path = rolloutPath(fixtureRoot());
+    const limit = 8192;
+    const head = 'a'.repeat(limit);
+    writeFileSync(path, `${head}\nignored`);
+    const storage = new Set<ArrayBufferLike>();
+    readChunk.withImplementation(
+      (descriptor, buffer, offset, length, position) => {
+        storage.add(buffer.buffer);
+        return realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 1),
+          position,
+        );
+      },
+      () => expect(readLeadingLine(path, limit)).toBe(head),
+    );
+    expect(
+      [...storage].reduce((bytes, buffer) => bytes + buffer.byteLength, 0),
+    ).toBeLessThanOrEqual(limit + 1);
+  });
+
+  test('does not combine replacement bytes across chunks and handles truncation at EOF', () => {
+    const path = rolloutPath(fixtureRoot());
+    const replacement = `${path}.replacement`;
+    writeFileSync(path, `${'a'.repeat(4096)}original\n`);
+    writeFileSync(replacement, `${'b'.repeat(4096)}replacement\n`);
+    readChunk.mockImplementationOnce(
+      (descriptor, buffer, offset, length, position) => {
+        const bytes = realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          length,
+          position,
+        );
+        renameSync(replacement, path);
+        return bytes;
+      },
+    );
+    expect(readLeadingLine(path, 8192)).toBe(`${'a'.repeat(4096)}original`);
+    readChunk.mockImplementationOnce(
+      (descriptor, buffer, offset, length, position) => {
+        const bytes = realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          length,
+          position,
+        );
+        truncateSync(path, 4096);
+        return bytes;
+      },
+    );
+    expect(readLeadingLine(path, 8192)).toBe('b'.repeat(4096));
+    expect(openSync).toHaveBeenCalledTimes(2);
+    expect(closeSync).toHaveBeenCalledTimes(2);
+  });
+
+  test('rejects a file swapped during secure open and closes the rejected descriptor', () => {
+    const path = rolloutPath(fixtureRoot());
+    const replacement = `${path}.replacement`;
+    writeFileSync(path, line(meta('original')));
+    writeFileSync(replacement, line(meta('replacement')));
+    vi.mocked(openSync).mockImplementationOnce((file, flags, mode) => {
+      renameSync(replacement, path);
+      return realFs.openSync(file, flags, mode);
+    });
+    expect(() => readLeadingLine(path, 4096)).toThrow(
+      'changed during secure open',
+    );
+    expect(readChunk).not.toHaveBeenCalled();
+    expect(closeSync).toHaveBeenCalledTimes(1);
+  });
+
+  test('rejects malformed or incomplete leading JSON until the record is completed', async () => {
+    const root = fixtureRoot();
+    const path = rolloutPath(root);
+    const head = JSON.stringify(meta('partial-head'));
+    const source = new CodexRolloutSessionSource({ homeDir: root });
+    writeFileSync(path, head.slice(0, -1));
+    expect(await source.discover()).toEqual({
+      outcome: 'malformed_record',
+      sessions: [],
+    });
+    appendFileSync(path, '}');
+    expect((await discoverOne(source)).sessionId).toBe('partial-head');
+    writeFileSync(path, Buffer.from([0xff, 0x0a]));
+    expect(await source.discover()).toEqual({
+      outcome: 'malformed_record',
+      sessions: [],
+    });
+  });
+
   test('binds descriptors to one opaque Codex home across restart and rejects foreign or replaced homes', async () => {
     const root = fixtureRoot();
     writeFileSync(rolloutPath(root), line(meta('affinity')));
