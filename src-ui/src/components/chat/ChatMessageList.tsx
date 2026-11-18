@@ -2052,6 +2052,11 @@ function ChatMessageListComponent({
       <ToolCallDisplay
         key={i}
         toolCall={part}
+        sessionId={
+          activeSession.replay
+            ? undefined
+            : (activeSession.currentSessionId ?? activeSession.id)
+        }
         showDetails={showToolDetails}
         onApprove={
           !activeSession.replay &&
@@ -2076,6 +2081,7 @@ function ChatMessageListComponent({
       showToolDetails,
       handleToolApproval,
       activeSession.id,
+      activeSession.currentSessionId,
       activeSession.agentSlug,
       activeSession.replay,
       approvalsHeld,

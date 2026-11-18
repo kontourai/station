@@ -1,5 +1,5 @@
 import type { ProjectIconCandidate } from '@kontourai/station-contracts/project';
-import type { RefObject } from 'react';
+import { type RefObject, useId } from 'react';
 import { ProjectIcon } from '../icons/ProjectIcon';
 import { PathAutocomplete } from '../PathAutocomplete';
 import { ProjectIconPicker } from '../project-icon/ProjectIconPicker';
@@ -102,6 +102,8 @@ export function NewProjectIdentityField({
   identityHint,
   inputRef,
 }: IdentityFieldProps) {
+  const iconLabelId = useId();
+  const iconPreviewId = useId();
   return (
     <div className="editor-field">
       <label className="editor-label" htmlFor="new-project-name">
@@ -111,15 +113,20 @@ export function NewProjectIdentityField({
         <button
           type="button"
           className="new-project-modal__identity-icon"
-          aria-label="Choose project icon"
+          aria-labelledby={`${iconLabelId} ${iconPreviewId}`}
           aria-expanded={showIconChoices}
           onClick={onToggleIconChoices}
         >
-          <ProjectIcon
-            project={{ name: name || derivedName || 'New Project', icon }}
-            size={44}
-            fallback="initials"
-          />
+          <span id={iconLabelId} hidden>
+            Choose project icon
+          </span>
+          <span id={iconPreviewId} aria-hidden="true">
+            <ProjectIcon
+              project={{ name: name || derivedName || 'New Project', icon }}
+              size={44}
+              fallback="initials"
+            />
+          </span>
         </button>
         <input
           ref={inputRef}

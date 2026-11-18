@@ -46,24 +46,20 @@ GitHub owns implementation work and current status. These sections retain the
 source observations that explain each finding. Their issue links include
 suggested fixes and documentation acceptance; they are not a second backlog.
 
-### Personal Knowledge scope and the Settings card disagree
+### Personal Knowledge scope and Settings selection
 
 `KnowledgeStoreProvider.generateRootId` allows `root:personal:2` and later
-suffixes; the runtime's read-only `root:conversations` also uses personal scope.
+suffixes. The read-only `root:conversations` also has personal scope.
 [KnowledgeStoreSection](../../src-ui/src/views/settings/KnowledgeStoreSection.tsx)
-selects the first personal root and stops offering creation. It skips private
-memory roots (by `readPolicy`) and, since `knowledgeStores` became an ordinary
-Settings row, the conversation root (by its `conversation-store` adapter id,
-the same check `ProjectKnowledgeSources` makes). Those are special cases, not a
-contract: a scope tag still cannot tell this UI whether it found the intended
-writable store. Review the desired uniqueness and adapter-capability contract
-before adding another. This is an existing model/UI mismatch, not a claim that
-the registry already enforces one writable store per person.
+shows the first personal root returned by the Knowledge API that has neither
+an author-private read policy nor the conversation adapter. If it finds a
+match, the card stops offering creation. This selection permits multiple
+registrations.
 
-The existing [Settings scope issue #2192](https://github.com/kontourai/station/issues/2192)
-now carries this model/UI clarification and documentation acceptance. Its
-original per-principal uniqueness claim needs a contract decision, not just a
-label change.
+The Settings catalog calls this row `personal` and identifies the Station
+operator as its manager. The configuration API and account preferences keep
+their own storage scopes. The Knowledge API controls access to roots and
+requires an operator for registration. [Settings scope #2192](https://github.com/kontourai/station/issues/2192)
 
 ### Capture provenance depends on mutable UI state
 
@@ -104,31 +100,34 @@ alert appeared. Coalescing, delayed sends, and a disabled card can affect the
 actual experience. Those remaining timing and device boundaries need their
 own evidence; sharing a helper does not resolve them automatically.
 
-### CLI request assembly does not always use the shared client contract
+### CLI request assembly and request state
 
-The [chat caller](../../packages/cli/src/commands/core.ts) builds workspace
-selection separately from saved-Station selection. The source launcher changes
-working directory, and continuation omits workspace flags without a warning.
-[#2733](https://github.com/kontourai/station/issues/2733) tracks one explicit
-workspace-selection contract across those paths.
+The original audit at
+`3c655ae4cb3223a5c7b5438edb95f14c7a917d94` found that chat could use the
+checkout's directory when invoked elsewhere, silently drop continuation
+workspace flags, and fold a space-separated model option into the prompt.
+It also reproduced a completed chat whose JSON still named a resolved request
+as pending.
 
-The [model-option collector](../../packages/cli/src/commands/model-options.ts)
-does not reject the bare flag produced by the advertised spaced syntax;
-the following value becomes prompt text. A local parser/collector probe
-confirmed that the equals spelling works and the spaced spelling loses the
-option. [#2732](https://github.com/kontourai/station/issues/2732) tracks support
-or explicit refusal, with tests through chat and delegate callers.
+The [chat caller](../../packages/cli/src/commands/core.ts) now uses the
+invocation directory for new local directory-based chats, lets the server
+resolve a selected Project's directory, and rejects workspace changes on
+continuation. [#2733](https://github.com/kontourai/station/issues/2733)
 
-[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts) now takes
-its target, credential and deadline from the common client path, but still
-confirms its returned preview without displaying it. [#2734](https://github.com/kontourai/station/issues/2734)
-tracks the visible confirmation journey. These are
-source/caller findings, not proof of a real restore or engine execution.
+The [argument parser](../../packages/cli/src/commands/core-api.ts) now rejects
+bare and space-separated model options before chat or delegate dispatch.
+[#2732](https://github.com/kontourai/station/issues/2732)
 
-The CLI's final JSON can also retain `pendingRequest` after that request has
-resolved and the turn completed. An isolated caller/SSE probe reproduced this
-combination. [#2741](https://github.com/kontourai/station/issues/2741) tracks a
-response contract that distinguishes current pending work from the last notice.
+[Chat JSON](../../packages/cli/src/commands/session-client.ts) now exposes
+the last opening notice as `lastObservedRequest`. A responder command in
+`pendingRequest` requires a bounded Session read and exact request inspection.
+Local launcher and HTTP fixture evidence covers these caller contracts.
+[#2741](https://github.com/kontourai/station/issues/2741)
+
+[Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts)
+takes its target, credential and deadline from the common client path. It
+still confirms its returned preview without displaying it.
+[#2734](https://github.com/kontourai/station/issues/2734)
 
 ### A declared namespace and its consumer can name different stores
 

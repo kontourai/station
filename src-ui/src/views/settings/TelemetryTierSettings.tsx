@@ -11,6 +11,7 @@ import { TelemetryFeedbackPrompt } from '../../components/TelemetryFeedbackPromp
 import {
   canChooseTelemetryTier,
   detailedConfirmation,
+  kontourReceivesOnlyLite,
   SHARING_LABELS,
   type SharingCounts,
   type SharingDisclosure,
@@ -113,7 +114,12 @@ export function TelemetryTierSettings({
     publishers?.[id]?.userChoice ??
     (publishers?.[id]?.reason === 'DNT' ? 'lite' : publishers?.[id]?.tier) ??
     'lite';
-  const kontourChoice = savedChoice('kontour');
+  const kontourLiteOnly = kontourReceivesOnlyLite(publishers?.kontour);
+  const savedKontourChoice = savedChoice('kontour');
+  const kontourChoice =
+    kontourLiteOnly && savedKontourChoice === 'full'
+      ? 'lite'
+      : savedKontourChoice;
   const additionalChoice = savedChoice('operator');
   const primaryChoice =
     kontourChoice === additionalChoice ? additionalChoice : undefined;
@@ -160,6 +166,7 @@ export function TelemetryTierSettings({
             });
           }}
           data={disclosure}
+          kontourLiteOnly={kontourLiteOnly}
           counts={counts}
           onDetailedIntent={onDetailedIntent}
           detailedAvailable={
@@ -241,9 +248,11 @@ export function TelemetryTierSettings({
                   description={
                     isPlugin
                       ? "Plugin counts can encode identifiers. Detailed adds a monthly publisher ID. The plugin's own notice is still required."
-                      : publisher === 'kontour'
-                        ? 'Sends one daily count after notice. Detailed needs a configured Kontour destination.'
-                        : 'Sends one daily count after notice, to a configured destination. Detailed adds a monthly-rotating ID, never your account.'
+                      : publisher === 'kontour' && kontourLiteOnly
+                        ? 'Kontour receives one anonymous daily count after notice.'
+                        : publisher === 'kontour'
+                          ? 'Sends one daily count after notice. Detailed needs a configured Kontour destination.'
+                          : 'Sends one daily count after notice, to a configured destination. Detailed adds a monthly-rotating ID, never your account.'
                   }
                   control={
                     <select
@@ -358,6 +367,10 @@ function effectiveSummary(
     return 'Effective: Off — DO_NOT_TRACK is active. Saved choices are not changed.';
   if (status.reason === 'managed')
     return 'Effective: Off — turned off by a managed policy.';
+  if (publisher === 'kontour' && kontourReceivesOnlyLite(status))
+    return status.tier === 'off'
+      ? 'Usage sharing is off.'
+      : 'Effective: Anonymous usage counts.';
   if (publisher === 'kontour' && status.fullAvailable === false)
     return 'This build has no Station usage destination, so nothing is sent to Kontour.';
   if (status.reason === 'disclosure')

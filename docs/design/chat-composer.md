@@ -800,7 +800,7 @@ the first to the last, and the narration between them, folds into a single
 summary where the first call was. The intent before it and the outcome after it
 stay visible. Opening the row lists the calls with that narration in its
 original order. Files, UI blocks, MCP app preview candidates, runtime errors
-and calls still waiting on a grant stay outside the fold, and so does the last narration when no text
+appearance proposal cards and calls still waiting on a grant stay outside the fold, and so does the last narration when no text
 follows the last call. While the turn is live it keeps the shape it streamed
 with. Messages with anchored subagents keep their original tool runs at every
 width, preserving each child card's expansion and keyboard focus during resizing.
@@ -1170,12 +1170,12 @@ ACP sessions report their live handshake's native channel, or an interrupting
 cancel-and-reprompt fallback. Explicit Steer on the fallback cancels the current
 prompt, waits for its terminal answer, and continues the same task with the
 additional instruction. It does not claim additive native steering.
-After a device's full access is revoked, a turn that started unconfined is not
-steerable: the server refuses with `confinement-changed` before claiming the
-input, and the message stays for the next turn, which runs confined (#2898).
+After a device's full access is revoked, a turn that started unconfined cannot
+take new steering input. The next turn runs confined (#2898).
 
-Station-owned steering waits durably for the next post-tool boundary the loop
-observes, otherwise the next turn boundary. Its wording says **Steer when safe**.
+Station-owned steering waits durably for the next post-tool boundary in the
+turn Station accepted. If the turn ends first, the pending row explains why
+Steer was refused. Its wording says **Steer when safe**.
 Claude and Codex retain engine-defined native placement. The composer reads the
 current adapter declaration sent by session snapshots and conversation-open
 responses. A missing declaration is unknown; the client does not infer it from
@@ -1198,11 +1198,12 @@ rather than moving to the newest position on every step.
 Named-conversation steers first save text, the observed `expectedHead` and an
 authority-scoped key in IndexedDB, then submit to the server inbox. Missing
 conversation identity or an unobserved offline head keeps the draft. The server
-persists the text and head before claiming a handoff. Before-claim restart can
-place it once; a confirmed acknowledgement is not repeated; the claim/ack gap
-is **May have been sent**, without automatic replay. Engine receipts can settle
-it. **Review and resend** restores text only into an empty composer and requires
-a new explicit Send; dismissing the old claim never makes its key reusable.
+persists the text, head and turn's opening event before claiming a handoff.
+A restart before the claim can still deliver to the same open turn. After
+acknowledgement, Station retains the receipt for retries. A claim without an
+acknowledgement shows **May have been sent**. Engine receipts can settle it.
+**Review and resend** restores text into an empty composer and requires a new
+explicit Send. Station retains the old key after dismissal.
 
 Follow-ups Station holds in the open conversation's server inbox share the
 pending-message list with this browser's outbox and retained legacy input

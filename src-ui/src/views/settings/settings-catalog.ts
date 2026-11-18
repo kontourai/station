@@ -61,6 +61,7 @@ export interface SettingsCatalogEntry {
   /** The persistence authority that owns an edit, when this is editable. */
   scope?:
     | 'account'
+    | 'personal'
     | 'station'
     | 'defaults'
     | 'device'
@@ -927,6 +928,7 @@ const SETTINGS_MESSAGES = {
   scopeDefaults: 'Saved as Station defaults.',
   scopeAccount:
     'Saved to your account on this Station when signed in; otherwise saved on this device.',
+  scopePersonal: 'Managed by the Station operator.',
   scopeDevice: 'Saved to this device.',
   scopeMixed: 'Exports and imports include this Station and this device.',
   scopeTemporary: 'Available only for this browser session.',
@@ -979,6 +981,7 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   // #2144 slice 6 item D: a derived status line with no writer, inside a
   // section whose other rows are all Station-scope writes.
   'telemetry-destination': 'informational',
+  'personal-knowledge-store': 'personal',
   'deployed-build': 'informational',
   'message-context': 'temporary',
   'mobile-pairing': 'informational',
