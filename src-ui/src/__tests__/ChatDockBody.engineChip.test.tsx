@@ -305,45 +305,31 @@ describe('ChatDockBody composer engine chip', () => {
     expect(shortHint).toBe('· Agent moved');
     expect(trigger.getAttribute('aria-label')).toMatch(/; Agent moved$/);
     expect(triggerDescription).toBe(
-      'This conversation runs on Codex. Its Agent now uses OpenCode.',
+      'This conversation used Codex. Its Agent now uses OpenCode.',
     );
     expect(document.querySelector('.chat-input__next-turn-notice')).toBeNull();
     const name = button.getAttribute('aria-label') ?? '';
     expect(name).toContain(
-      'This conversation runs on Codex. Its Agent now uses OpenCode.',
+      'This conversation used Codex. Its Agent now uses OpenCode.',
     );
     // An open Session keeps its engine: nothing predicts the next turn moves.
     expect(name).not.toMatch(/new session|next turn/i);
   });
 
-  test('once the Session has ended, the chip says the next turn starts on the new engine', async () => {
+  test('a local binding exit alone does not claim the next turn can start on the new engine', async () => {
     renderDock(
       buildSession(
         observed('codex', 'codex', { orchestrationStatus: 'exited' }),
       ),
-      { id: 'opencode', name: 'OpenCode' },
+      {
+        id: 'opencode',
+        name: 'OpenCode',
+      },
     );
-    const {
-      button,
-      trigger,
-      engine,
-      hint,
-      shortHint,
-      notice,
-      triggerDescription,
-    } = await engineChip();
+    const { engine, hint, notice } = await engineChip();
     expect(engine).toBe('Codex');
-    expect(hint).toBe('Next turn on OpenCode');
-    // The notice above the draft states this move, so the trigger does not.
-    expect(shortHint).toBeNull();
-    expect(trigger.getAttribute('aria-label')).not.toMatch(/Agent moved/);
-    expect(triggerDescription).toBe(
-      "This conversation's Codex session has ended; its next turn starts on OpenCode, where its Agent now points.",
-    );
-    expect(notice).toBe('Next turn starts on OpenCode');
-    expect(button.getAttribute('aria-label')).toContain(
-      "This conversation's Codex session has ended; its next turn starts on OpenCode",
-    );
+    expect(hint).toBe('Agent now on OpenCode');
+    expect(notice).toBeNull();
   });
 
   test("an ACP session is named by its own connection, not the Agent's new one", async () => {
@@ -519,10 +505,24 @@ describe('ChatDockBody composer engine chip', () => {
   test.each([
     ['the Session takes the next turn', { nextTurnStartsSession: false }],
     ['an older host says nothing', {}],
+    [
+      'context delivery has no verified continuation',
+      { nextTurnStartsSession: undefined },
+    ],
+    [
+      'the caller cannot send',
+      {
+        nextTurnStartsSession: true,
+        callerAccess: { continue: false, startChat: true },
+      },
+    ],
   ] as const)(
     '#4179: a fresh open where %s keeps the Agent copy',
     async (_case, open) => {
-      renderDock(reopened(open), { id: 'opencode', name: 'OpenCode' });
+      renderDock(
+        { ...reopened(open), orchestrationStatus: 'error' },
+        { id: 'opencode', name: 'OpenCode' },
+      );
       const { engine, hint } = await engineChip();
       expect(engine).toBe('Codex');
       expect(hint).toBe('Agent now on OpenCode');

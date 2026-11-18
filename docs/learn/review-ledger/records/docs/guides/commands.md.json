@@ -34,7 +34,11 @@
 
     "src-ui/src/slashCommands/mcpPrompt.ts",
 
-    "src-ui/src/utils/skill-command-catalog.ts"
+    "src-ui/src/utils/skill-command-catalog.ts",
+
+    "src-ui/src/__tests__/useActiveChatSessionMessaging.test.ts",
+
+    "src-ui/src/__tests__/skill-commands.test.ts"
   ],
 
   "checks": [

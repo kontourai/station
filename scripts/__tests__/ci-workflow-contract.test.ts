@@ -1693,6 +1693,12 @@ describe('CI verification workflow contracts', () => {
       'classify',
       'gallery-diff',
     ]);
+    const classifierRuns = (eventName: string) =>
+      evaluateJobIf(String(pr.jobs.classify.if ?? 'true'), {
+        github: { event_name: eventName },
+      });
+    expect(classifierRuns('pull_request_target')).toBe(true);
+    expect(classifierRuns('merge_group')).toBe(false);
     const classifyStep = pr.jobs.classify.steps.find(
       (step) => step.id === 'relevance',
     );

@@ -122,8 +122,7 @@ describe('keyboard shortcut registry (station#3736)', () => {
         // A sibling re-rendering for its own reasons must not republish the
         // registry. `useKeyboardShortcut`'s deps are stable, so a re-render
         // does not re-register at all — which is what keeps the loop closed
-        // now that a re-registration IS observable (it changes the entry's
-        // registration token; see `registrySignature`).
+        // now that a re-registration is observable through the registry version.
         forceRef.current((current) => (current < 3 ? current + 1 : current));
       });
       return (

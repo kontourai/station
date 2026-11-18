@@ -1,0 +1,632 @@
+{
+  "source": "1cdbe551e8bcf8550f0c7596637fc37467feeb60",
+  "browser": "Chromium",
+  "unit": "CSS px",
+  "viewports": [900, 1000, 1100],
+  "measurements": [
+    {
+      "id": "agent-editor",
+      "view": "Agent editor",
+      "fixture": "tests/agents-editor-roundtrip.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/agents/e2e-editor-cli",
+          "title": "E2E Editor CLI",
+          "heading": "H3",
+          "headerWidth": 387,
+          "contentWidth": 339,
+          "headerHeight": 133,
+          "identityWidth": 339,
+          "actionsWidth": 310.84375,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44, 44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/agents/e2e-editor-cli",
+          "title": "E2E Editor CLI",
+          "heading": "H3",
+          "headerWidth": 487,
+          "contentWidth": 439,
+          "headerHeight": 133,
+          "identityWidth": 439,
+          "actionsWidth": 310.84375,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44, 44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/agents/e2e-editor-cli",
+          "title": "E2E Editor CLI",
+          "heading": "H3",
+          "headerWidth": 587,
+          "contentWidth": 539,
+          "headerHeight": 133,
+          "identityWidth": 539,
+          "actionsWidth": 310.84375,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44, 44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "engine-connected",
+      "view": "Ready engine",
+      "fixture": "tests/connections-crud.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/connections/engines/codex",
+          "title": "Codex Runtime",
+          "heading": "H3",
+          "headerWidth": 387,
+          "contentWidth": 339,
+          "headerHeight": 61,
+          "identityWidth": 339,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/connections/engines/codex",
+          "title": "Codex Runtime",
+          "heading": "H3",
+          "headerWidth": 487,
+          "contentWidth": 439,
+          "headerHeight": 61,
+          "identityWidth": 439,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/connections/engines/codex",
+          "title": "Codex Runtime",
+          "heading": "H3",
+          "headerWidth": 587,
+          "contentWidth": 539,
+          "headerHeight": 61,
+          "identityWidth": 539,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "engine-retry",
+      "view": "Failing configured ACP engine",
+      "fixture": "tests/connections-crud.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/connections/engines/codex",
+          "title": "Codex Runtime",
+          "heading": "H3",
+          "headerWidth": 387,
+          "contentWidth": 339,
+          "headerHeight": 77,
+          "identityWidth": 208,
+          "actionsWidth": 107,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/connections/engines/codex",
+          "title": "Codex Runtime",
+          "heading": "H3",
+          "headerWidth": 487,
+          "contentWidth": 439,
+          "headerHeight": 77,
+          "identityWidth": 308,
+          "actionsWidth": 107,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/connections/engines/codex",
+          "title": "Codex Runtime",
+          "heading": "H3",
+          "headerWidth": 587,
+          "contentWidth": 539,
+          "headerHeight": 77,
+          "identityWidth": 408,
+          "actionsWidth": 107,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "engine-unconnected",
+      "view": "Unconfigured engine",
+      "fixture": "tests/connections-crud.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/connections/engines/claude",
+          "title": "Claude Code",
+          "heading": "H3",
+          "headerWidth": 387,
+          "contentWidth": 339,
+          "headerHeight": 61,
+          "identityWidth": 339,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/connections/engines/claude",
+          "title": "Claude Code",
+          "heading": "H3",
+          "headerWidth": 487,
+          "contentWidth": 439,
+          "headerHeight": 61,
+          "identityWidth": 439,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/connections/engines/claude",
+          "title": "Claude Code",
+          "heading": "H3",
+          "headerWidth": 587,
+          "contentWidth": 539,
+          "headerHeight": 61,
+          "identityWidth": 539,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "engine-setup",
+      "view": "Custom engine setup",
+      "fixture": "tests/connections-crud.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/connections/engines/new/custom",
+          "title": "Custom engine",
+          "heading": "H2",
+          "headerWidth": 636,
+          "contentWidth": 636,
+          "headerHeight": 62.796875,
+          "identityWidth": 636,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": 0,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/connections/engines/new/custom",
+          "title": "Custom engine",
+          "heading": "H2",
+          "headerWidth": 736,
+          "contentWidth": 736,
+          "headerHeight": 62.796875,
+          "identityWidth": 736,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": 0,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/connections/engines/new/custom",
+          "title": "Custom engine",
+          "heading": "H2",
+          "headerWidth": 836,
+          "contentWidth": 836,
+          "headerHeight": 62.796875,
+          "identityWidth": 836,
+          "actionsWidth": null,
+          "actionsOnSecondRow": null,
+          "actionHeights": [],
+          "subtitleOverflow": 0,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "integration-editor",
+      "view": "Integration editor",
+      "fixture": "tests/connections-crud.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/connections/tools/filesystem-tools",
+          "title": "Filesystem Tools",
+          "heading": "H3",
+          "headerWidth": 387,
+          "contentWidth": 339,
+          "headerHeight": 133,
+          "identityWidth": 339,
+          "actionsWidth": 339,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44, 44, 44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/connections/tools/filesystem-tools",
+          "title": "Filesystem Tools",
+          "heading": "H3",
+          "headerWidth": 487,
+          "contentWidth": 439,
+          "headerHeight": 133,
+          "identityWidth": 439,
+          "actionsWidth": 339.34375,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44, 44, 44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/connections/tools/filesystem-tools",
+          "title": "Filesystem Tools",
+          "heading": "H3",
+          "headerWidth": 587,
+          "contentWidth": 539,
+          "headerHeight": 133,
+          "identityWidth": 539,
+          "actionsWidth": 339.34375,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44, 44, 44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "plugin-regular",
+      "view": "Installed plugin detail",
+      "fixture": "tests/plugin-rejection-visibility.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/plugins/legacy-plugin",
+          "title": "Legacy Plugin",
+          "heading": "H3",
+          "headerWidth": 387,
+          "contentWidth": 339,
+          "headerHeight": 123.5,
+          "identityWidth": 339,
+          "actionsWidth": 238.6875,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/plugins/legacy-plugin",
+          "title": "Legacy Plugin",
+          "heading": "H3",
+          "headerWidth": 487,
+          "contentWidth": 439,
+          "headerHeight": 123.5,
+          "identityWidth": 439,
+          "actionsWidth": 238.6875,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/plugins/legacy-plugin",
+          "title": "Legacy Plugin",
+          "heading": "H3",
+          "headerWidth": 587,
+          "contentWidth": 539,
+          "headerHeight": 77,
+          "identityWidth": 276.3125,
+          "actionsWidth": 238.6875,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "plugin-rejected",
+      "view": "Rejected plugin detail",
+      "fixture": "tests/plugin-rejection-visibility.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/plugins/rejected%3ALegacy_Plugin",
+          "title": "Legacy_Plugin",
+          "heading": "H3",
+          "headerWidth": 387,
+          "contentWidth": 339,
+          "headerHeight": 165.1875,
+          "identityWidth": 339,
+          "actionsWidth": 122.609375,
+          "actionsOnSecondRow": true,
+          "actionHeights": [44],
+          "subtitleOverflow": 0,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/plugins/rejected%3ALegacy_Plugin",
+          "title": "Legacy_Plugin",
+          "heading": "H3",
+          "headerWidth": 487,
+          "contentWidth": 439,
+          "headerHeight": 97.1875,
+          "identityWidth": 292.390625,
+          "actionsWidth": 122.609375,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44],
+          "subtitleOverflow": 0,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/plugins/rejected%3ALegacy_Plugin",
+          "title": "Legacy_Plugin",
+          "heading": "H3",
+          "headerWidth": 587,
+          "contentWidth": 539,
+          "headerHeight": 78.34375,
+          "identityWidth": 392.390625,
+          "actionsWidth": 122.609375,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44],
+          "subtitleOverflow": 0,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "project-settings",
+      "view": "Project settings",
+      "fixture": "tests/project-forms.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/projects/demo/edit",
+          "title": "Demo Project",
+          "heading": "H2",
+          "headerWidth": 684,
+          "contentWidth": 636,
+          "headerHeight": 77,
+          "identityWidth": 458.6875,
+          "actionsWidth": 153.3125,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/projects/demo/edit",
+          "title": "Demo Project",
+          "heading": "H2",
+          "headerWidth": 784,
+          "contentWidth": 736,
+          "headerHeight": 77,
+          "identityWidth": 558.6875,
+          "actionsWidth": 153.3125,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/projects/demo/edit",
+          "title": "Demo Project",
+          "heading": "H2",
+          "headerWidth": 884,
+          "contentWidth": 836,
+          "headerHeight": 77,
+          "identityWidth": 658.6875,
+          "actionsWidth": 153.3125,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "provider-picker",
+      "view": "Provider type picker",
+      "fixture": "tests/connections-crud.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/connections/models/new",
+          "title": "Add model connection",
+          "heading": "H3",
+          "headerWidth": 460,
+          "contentWidth": 412,
+          "headerHeight": 77,
+          "identityWidth": 311.53125,
+          "actionsWidth": 76.46875,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/connections/models/new",
+          "title": "Add model connection",
+          "heading": "H3",
+          "headerWidth": 460,
+          "contentWidth": 412,
+          "headerHeight": 77,
+          "identityWidth": 311.53125,
+          "actionsWidth": 76.46875,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/connections/models/new",
+          "title": "Add model connection",
+          "heading": "H3",
+          "headerWidth": 460,
+          "contentWidth": 412,
+          "headerHeight": 77,
+          "identityWidth": 311.53125,
+          "actionsWidth": 76.46875,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "provider-settings",
+      "view": "Provider settings",
+      "fixture": "tests/connections-crud.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/connections/models/ollama-local",
+          "title": "Local Ollama",
+          "heading": "H3",
+          "headerWidth": 387,
+          "contentWidth": 339,
+          "headerHeight": 77,
+          "identityWidth": 170.546875,
+          "actionsWidth": 144.453125,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/connections/models/ollama-local",
+          "title": "Local Ollama",
+          "heading": "H3",
+          "headerWidth": 487,
+          "contentWidth": 439,
+          "headerHeight": 77,
+          "identityWidth": 270.546875,
+          "actionsWidth": 144.453125,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/connections/models/ollama-local",
+          "title": "Local Ollama",
+          "heading": "H3",
+          "headerWidth": 587,
+          "contentWidth": 539,
+          "headerHeight": 77,
+          "identityWidth": 370.546875,
+          "actionsWidth": 144.453125,
+          "actionsOnSecondRow": false,
+          "actionHeights": [44, 44],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    },
+    {
+      "id": "skills",
+      "view": "Skill detail",
+      "fixture": "tests/skills.spec.ts",
+      "measurements": [
+        {
+          "width": 900,
+          "path": "/guidance/release-check",
+          "title": "release-check",
+          "heading": "H3",
+          "headerWidth": 323,
+          "contentWidth": 275,
+          "headerHeight": 111.6875,
+          "identityWidth": 275,
+          "actionsWidth": 263.21875,
+          "actionsOnSecondRow": true,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1000,
+          "path": "/guidance/release-check",
+          "title": "release-check",
+          "heading": "H3",
+          "headerWidth": 423,
+          "contentWidth": 375,
+          "headerHeight": 111.6875,
+          "identityWidth": 375,
+          "actionsWidth": 263.21875,
+          "actionsOnSecondRow": true,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        },
+        {
+          "width": 1100,
+          "path": "/guidance/release-check",
+          "title": "release-check",
+          "heading": "H3",
+          "headerWidth": 523,
+          "contentWidth": 475,
+          "headerHeight": 65.1875,
+          "identityWidth": 187.78125,
+          "actionsWidth": 263.21875,
+          "actionsOnSecondRow": false,
+          "actionHeights": [],
+          "subtitleOverflow": null,
+          "overflowing": 0
+        }
+      ]
+    }
+  ]
+}

@@ -44,18 +44,10 @@ export function conversationOpenPhase(
   const resolution = state.conversationOpenState;
   if (state.conversationOpenFailed || resolution?.status === 'unavailable')
     return 'unverified';
-  if (
-    (resolution?.status === 'resolved' ||
-      resolution?.status === 'fork-ready') &&
-    !resolution.canContinue &&
-    resolution.continuationPending
-  )
-    return 'busy';
-  return resolution === undefined ||
-    ((resolution.status === 'resolved' || resolution.status === 'fork-ready') &&
-      resolution.canContinue)
-    ? 'writable'
-    : 'read-only';
+  if (!resolution) return 'writable';
+  if (resolution.status === 'missing-session') return 'read-only';
+  if (resolution.canContinue) return 'writable';
+  return resolution.continuationPending ? 'busy' : 'read-only';
 }
 
 /**
