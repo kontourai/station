@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-18T03:01:15Z | nightly-npm | 0.12.0-nightly.20261118.44226098011 | `e1976d9` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44226098011) |
 | 2026-11-17T23:26:00Z | nightly-desktop | 0.2.0-nightly.20261117.2 | `099dac6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44192161706) |
 | 2026-11-17T23:26:00Z | nightly-android | 0.2.0-nightly.20261117.2 | `099dac6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44192161706) |
 | 2026-11-17T22:47:22Z | nightly-npm | 0.12.0-nightly.20261117.44192161706 | `099dac6` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44192161706) |
@@ -496,6 +497,31 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-18T03:01:15Z · nightly-npm · 0.12.0-nightly.20261118.44226098011
+
+- Ship SHA: `e1976d9e1f8a160fe9a78954c89448920ab7f37e`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261118.44226098011 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `099dac6` ([full sha](https://github.com/kontourai/station/commit/099dac6eb01c18ec70cd9a1066c9d6c62efe238d)):
+
+**Features**
+
+- [#5164](https://github.com/kontourai/station/pull/5164) feat(engines): guide setup from chat through a focused person-owned flow
+
+**Fixes**
+
+- [#5177](https://github.com/kontourai/station/pull/5177) fix(ci): repair nightly contracts and select their hidden inputs
+- [#4755](https://github.com/kontourai/station/pull/4755) fix(server): keep confined Seatbelt TMPDIRs short enough for Unix sockets
+- [#5174](https://github.com/kontourai/station/pull/5174) fix(performance): drive remote apply through current Brief autosave
+- [#5165](https://github.com/kontourai/station/pull/5165) fix(opencode): enable ACP never-ask and reliable steering
+- [#5168](https://github.com/kontourai/station/pull/5168) fix(chat): remove retired Activity destination from task footer
+- [#4739](https://github.com/kontourai/station/pull/4739) fix(server): keep session TMPDIRs short enough for Unix sockets
+- [#5167](https://github.com/kontourai/station/pull/5167) fix(codex): preserve both credentials on adopted Session resume
 
 ## 2026-11-17T23:26:00Z · nightly-desktop · 0.2.0-nightly.20261117.2
 
