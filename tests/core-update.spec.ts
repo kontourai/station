@@ -300,7 +300,7 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
   }, testInfo) => {
     await seedRoutes(page);
     let progress: unknown = { state: 'idle' };
-    await page.route('**/api/system/core-update/service-update', (r) =>
+    await page.route('**/api/system/core-update/service-update?staged=1', (r) =>
       r.fulfill({
         status: 200,
         contentType: 'application/json',

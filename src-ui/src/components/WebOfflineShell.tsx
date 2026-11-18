@@ -36,9 +36,13 @@ export function WebOfflineShell() {
       worker.removeEventListener('controllerchange', changed);
     };
   }, [profile.isTauri]);
-  return updateReady && (
-    <aside className="offline-reading-launcher" role="status">
-      <Button onClick={() => window.location.reload()}>Reload to update</Button>
-    </aside>
+  return (
+    updateReady && (
+      <aside className="offline-reading-launcher" role="status">
+        <Button onClick={() => window.location.reload()}>
+          Reload to update
+        </Button>
+      </aside>
+    )
   );
 }
