@@ -1,0 +1,7 @@
+{
+  "revision": "d8d199b753297a8677f49ffd0b998c9181099c8b",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the Machine relationships link to Connections. The guide still owns setup, identity boundaries and fresh versus saved connection instructions. This change updates only Engine home precedence and model proxy diagnostics within that guide.","inputs":["docs/guides/connections.md"]}
+  ]
+}
