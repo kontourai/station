@@ -19,7 +19,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
-import { FOCUSABLE_SELECTOR } from '../utils/focusable';
+import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../utils/focusable';
 import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 import { type OverlayLayer, OverlayLayerContext } from './overlay-layer';
@@ -410,34 +410,19 @@ export function ResponsiveDialogSurface({
     // unhandled, as it did before Tab containment learned about portals.
     if (!panel?.contains(event.target as Node)) return;
     const controls = Array.from(
-      panelRef.current?.querySelectorAll<HTMLElement>('*') ?? [],
-    ).filter(
-      (element) =>
-        element.matches(FOCUSABLE_SELECTOR) &&
-        !element.hasAttribute('disabled'),
-    );
-    if (controls.length === 0) {
+      panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+    ).filter((element) => !element.hasAttribute('disabled'));
+    if (!controls.length) {
       event.preventDefault();
-      panelRef.current?.focus();
-      return;
-    }
-    const first = controls[0];
-    const last = controls.at(-1)!;
-    const activeControl = controls.find(
-      (control) => control === document.activeElement,
-    );
-    if (
+      panel.focus();
+    } else if (
       document.activeElement === panel ||
       !panel.contains(document.activeElement)
     ) {
       event.preventDefault();
-      (event.shiftKey ? last : first).focus();
-    } else if (event.shiftKey && activeControl === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && activeControl === last) {
-      event.preventDefault();
-      first.focus();
+      (event.shiftKey ? controls.at(-1) : controls[0])?.focus();
+    } else {
+      wrapTabFocus(event, controls);
     }
   };
 
@@ -555,12 +540,8 @@ export function ResponsiveDialogSurface({
           >
             {children}
           </div>
-        ) : role === 'alertdialog' ? (
-          <div {...panelProps} role="alertdialog">
-            {children}
-          </div>
         ) : (
-          <div {...panelProps} role="dialog">
+          <div {...panelProps} role={role}>
             {children}
           </div>
         )}
