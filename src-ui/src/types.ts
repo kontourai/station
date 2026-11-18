@@ -256,6 +256,7 @@ export interface ChatMessage {
     htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
     claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
     stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+    appearanceProposal?: import('@kontourai/station-contracts/custom-appearance').CustomAppearanceProposalReference;
     error?: string;
     errorText?: string;
     state?: string;

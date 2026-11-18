@@ -6859,13 +6859,31 @@ The client barrel exports `getCustomAppearance`, `proposeCustomAppearance`,
 `saveCustomAppearance`, `keepCustomAppearanceProposal`,
 `dismissCustomAppearanceProposal` and `reportCustomAppearanceRender` over
 `/api/me/appearance`. Shapes come from
-`@kontourai/station-contracts/custom-appearance`. Only the proposal is open to
-Station-control tool requests; the others are the person's own steps and
-answer 403 to them. Propose, save and keep take the document's `revision`; a
+`@kontourai/station-contracts/custom-appearance`. Reads and proposals are open to Station-control tool requests; saving, keeping,
+dismissing and reporting are the person's own steps and answer 403 to agents. Propose, save and keep take the document's `revision`; a
 stale one is 409. `useCustomAppearanceQuery(requestScope)` reads the document
 (polling every 15 seconds by default) and `useCustomAppearanceMutation` runs
 the person's steps and updates that cache. See the
 [decision](../decisions/custom-appearance.md).
+
+Appearance studio adds client functions `getCustomAppearanceLibrary`,
+`saveCustomAppearanceLibraryTheme`, `updateCustomAppearanceLibraryTheme` and
+`removeCustomAppearanceLibraryTheme`. Each takes an explicit API base, input
+where applicable and `ClientRequestOptions`. Library hooks
+`useCustomAppearanceLibraryQuery(requestScope)` and
+`useCustomAppearanceLibraryMutation(requestScope)` use a separate library
+revision and authority-partitioned cache. Mutations use `save`, `update` or
+`remove`; they refresh that library cache without applying an appearance.
+A disabled or older host returns 404 and the caller must show that the new
+operation is unavailable. `useFeaturePreviewsQuery(apiBase, config,
+requestScope)` accepts an optional captured authority scope for protected
+cross-surface reads and partitions its cache by that authority.
+
+Portable files use the contracts helpers `createCustomAppearanceThemePack`
+and `parseCustomAppearanceThemePack`: `{format:'station-appearance',version:1,
+appearance}` with no owner or proposal metadata. Import validation never
+applies a theme. Visual settings and image bounds are documented in the
+[appearance API](api.md#custom-appearance).
 
 ## Personal Board authoring
 

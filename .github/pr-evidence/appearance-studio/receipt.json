@@ -1,0 +1,30 @@
+{
+  "sourceRevision": "808264f3f3994f2a6017f809e6b523fc5383ec9d",
+  "renderer": "Playwright Chromium",
+  "widths": [390, 1440],
+  "themes": ["light", "dark"],
+  "method": "Mounted production CustomAppearanceSection and AppearanceProposalCard, SDK query/client, protected preview/controller and real Hono appearance routes/store. Fixed host lease, principal and preview catalog inside a synthetic shell. Before images use the original palette/CSS editor with studio disabled; after images enable studio in the same production component.",
+  "captureTestSha256": "e983367a515d137b4be75f5e69911baf532a0b509ff2f4795f7a870d5780a627",
+  "observed": [
+    "Trusted pointer Keep applied exact proposal and persisted via real route/store",
+    "Canvas upload bundled raster image; repeated saved edits followed new IDs",
+    "Exported pack imported into unapplied draft; active appearance unchanged",
+    "No horizontal overflow at390 and1440 in both themes"
+  ],
+  "limits": [
+    "Not the full App/dock layout or live provider transcript",
+    "Host authority and preview catalog are fixed fixture inputs",
+    "Desktop WKWebView, physical devices, installed and deployed Nightly unverified"
+  ],
+  "screenshots": {
+    "editor-dark-390.jpg": "37192aa5d111bdf924c881e598c7218c5e647077f3f39cc92ecf381c7a3dd5d7",
+    "before-light-1440.jpg": "3304dad76d87eb02912e693311ce471387cc8c959268a2c3f388f6883e278549",
+    "inline-proposed-light-1440.jpg": "aee72c5ccbf40015e1935dd8cd4ebde5b1418bf1abb8af7fda948f6e08312cfc",
+    "library-dark-390.jpg": "38af75b74f11e1dd6a28155b0f1a060b5790f6adfeb13ad3797d8f2f9f7e401f",
+    "library-light-1440.jpg": "fcb025a5e5077fe9288120e6d4512c4629f59d855b4305bd47eab51b6152e978",
+    "inline-proposed-dark-390.jpg": "dd034e9282f387e1b6c6b3afc3e3d2fbe0d6e332f532e2926db0a72ba75df016",
+    "before-dark-390.jpg": "0eb9014df22bf70589519c8caf4d99d426160a49fe7ba0427ded55bd3a6faf27",
+    "editor-light-1440.jpg": "c4d14624251d88ae018f8cae3097b03d50ea8605dad9961f11df0a5bb36f61ae"
+  },
+  "captureQualification": "Production owner source matches this revision; captureTestSha256 identifies the exact harness used. PNG captures were inspected and converted to JPEG for tracked PR evidence."
+}
