@@ -1073,9 +1073,15 @@ function seedActiveChatSession(
     title: string;
     projectSlug?: string;
     projectName?: string;
+    urlScoped?: boolean;
   },
 ) {
   return page.addInitScript((entry) => {
+    if (
+      entry.urlScoped &&
+      new URLSearchParams(location.search).get('chat') !== entry.conversationId
+    )
+      return;
     window.sessionStorage.setItem(
       'activeChats',
       JSON.stringify([
@@ -5117,6 +5123,83 @@ const PROJECT_SETUP_DESKTOP_PAGE = {
   height: 1000,
 } as const;
 
+async function createGalleryProjectFromChat(
+  page: Page,
+  conversationId: string,
+  onCreated: (slug: string) => void,
+) {
+  const title = 'Quarterly research plan';
+  const answer = 'Start by reviewing the customer interviews.';
+  const viewport = page.viewportSize();
+  // The Save to Project action is in the desktop dock menu.
+  await page.setViewportSize(DESKTOP);
+  const restoreSession = await withRoute(
+    page,
+    '**/api/orchestration/sessions/read-model',
+    orchestrationSessionFixture({ threadId: conversationId }),
+  );
+  try {
+    await seedActiveChatSession(page, {
+      conversationId,
+      agentSlug: 'demo-agent',
+      title,
+      urlScoped: true,
+    });
+    await mockRuntimeConversation(page, {
+      id: conversationId,
+      agentSlug: 'demo-agent',
+      title,
+      provider: 'claude',
+      model: 'test-model',
+      canContinue: true,
+      turns: () =>
+        buildLongSessionTurns({
+          threadId: conversationId,
+          provider: 'claude',
+          turnCount: 1,
+          replyText: () => answer,
+        }),
+    });
+    await gotoAppShell(page, `/?dock=open&chat=${conversationId}`);
+    const dock = page.locator('#chat-dock');
+    await expect(dock.getByText(answer, { exact: true })).toBeVisible();
+    await dock.getByRole('button', { name: /^More dock actions/ }).click();
+    await page
+      .getByRole('menuitem', { name: 'Save to Project…', exact: true })
+      .click();
+    const save = page.getByRole('dialog', { name: 'Save to Project' });
+    await save.getByLabel('Project', { exact: true }).selectOption({
+      label: 'New Project…',
+    });
+    await save.getByRole('button', { name: 'Review new Project' }).click();
+
+    const form = page.getByRole('dialog', { name: 'New Project' });
+    const name = form.getByRole('textbox', { name: 'Project name' });
+    await expect(name).toHaveValue(title);
+    await name.fill('Quarterly research');
+    await form.getByRole('radio', { name: /^Blank Project/ }).check();
+    await form.getByText('More options', { exact: true }).click();
+    await form.getByRole('textbox', { name: /^Description/ }).clear();
+
+    const [created] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          new URL(response.url()).pathname === '/api/projects',
+      ),
+      form.getByRole('button', { name: 'Create', exact: true }).click(),
+    ]);
+    expect(created.ok()).toBe(true);
+    const { slug } = (await created.json()).data as { slug: string };
+    onCreated(slug);
+    await expect(page).toHaveURL(/\/projects\/quarterly-research(?:[?#]|$)/);
+    await expect(form).toBeHidden();
+  } finally {
+    await restoreSession();
+    if (viewport) await page.setViewportSize(viewport);
+  }
+}
+
 function projectLibraryScreens(): Screen[] {
   return PROJECT_LIBRARY_SCENES.flatMap((scene) =>
     (['dark', 'light'] as const).flatMap((theme) =>
@@ -5135,12 +5218,13 @@ function projectLibraryScreens(): Screen[] {
             : device === DESKTOP
               ? PROJECT_SETUP_DESKTOP_PAGE
               : PHONE_PAGE;
-        const slug = `gallery-${scene}-${theme}-${device.width}`;
+        const fixtureId = `gallery-${scene}-${theme}-${device.width}`;
+        const slug = scene === 'library' ? fixtureId : 'quarterly-research';
         const previewId =
           scene === 'library' ? 'project-library' : 'continue-in-project';
         let request: ReturnType<typeof createAuthenticatedE2ERequest>;
         let previousEnabled: boolean | undefined;
-        let projectCreated = false;
+        let createdProjectSlug: string | undefined;
         let restoreHandshake: (() => Promise<void>) | undefined;
         const screen: Screen = {
           name: `project-${scene}-${theme}-${width}`,
@@ -5169,14 +5253,14 @@ function projectLibraryScreens(): Screen[] {
               { data: { enabled: true } },
             );
             expect(enabled.ok()).toBe(true);
-            const project = await request.post(
-              `${resolveE2EApiBase()}/api/projects`,
-              { data: { name: 'Quarterly research', slug } },
-            );
-            expect(project.ok()).toBe(true);
-            projectCreated = true;
-            const projectId = (await project.json()).data.id as string;
             if (scene === 'library') {
+              const project = await request.post(
+                `${resolveE2EApiBase()}/api/projects`,
+                { data: { name: 'Quarterly research', slug } },
+              );
+              expect(project.ok()).toBe(true);
+              createdProjectSlug = slug;
+              const projectId = (await project.json()).data.id as string;
               // The Library mounts only when the host advertises it; the
               // gallery's shared handshake advertises nothing by default.
               restoreHandshake = await withRoute(
@@ -5244,21 +5328,9 @@ function projectLibraryScreens(): Screen[] {
                 },
               );
             } else {
-              await page.addInitScript(
-                (savedAt) =>
-                  sessionStorage.setItem(
-                    'station.continue-in-project.pending',
-                    JSON.stringify({
-                      sessionId: 'gallery-session',
-                      turnId: 'gallery-turn',
-                      title: 'Continue: Quarterly research plan',
-                      description:
-                        'Continued from the chat “Quarterly research plan”.',
-                      savedAt,
-                    }),
-                  ),
-                new Date().toISOString(),
-              );
+              await createGalleryProjectFromChat(page, fixtureId, (slug) => {
+                createdProjectSlug = slug;
+              });
             }
           },
           async afterGoto(page) {
@@ -5297,12 +5369,12 @@ function projectLibraryScreens(): Screen[] {
           async cleanup() {
             await restoreHandshake?.();
             restoreHandshake = undefined;
-            if (projectCreated) {
+            if (createdProjectSlug) {
               const removed = await request.delete(
-                `${resolveE2EApiBase()}/api/projects/${slug}`,
+                `${resolveE2EApiBase()}/api/projects/${createdProjectSlug}`,
               );
               expect(removed.ok()).toBe(true);
-              projectCreated = false;
+              createdProjectSlug = undefined;
             }
             if (previousEnabled !== undefined) {
               const restored = await request.put(
