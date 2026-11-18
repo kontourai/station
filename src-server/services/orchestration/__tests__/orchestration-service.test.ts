@@ -1211,6 +1211,82 @@ describe('OrchestrationService', () => {
     });
   });
 
+  test('inherited tool constraints refuse canonical session starts and recorded turns', async () => {
+    const delegation = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'parent',
+      rootAgentSlug: 'root',
+      toolAllowlistConstraints: [['github_*']],
+    };
+    const threadId = 'constrained-native';
+    const start = { threadId, provider: 'claude' as const };
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: { ...start, metadata: { delegation } },
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.startSession).not.toHaveBeenCalled();
+
+    await service.dispatch({ type: 'startSession', input: start });
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+
+    const recordedThreadId = 'recorded-constrained-native';
+    await claude.startSession({ ...start, threadId: recordedThreadId });
+    expect(claude.sessions.has(recordedThreadId)).toBe(true);
+    eventStore.appendEvent({
+      provider: 'claude',
+      threadId: recordedThreadId,
+      eventId: 'constrained-native-record',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      sessionId: recordedThreadId,
+      metadata: { delegation },
+    } as CanonicalRuntimeEvent);
+    expect(
+      service.firstStartedMetadataOfThread(recordedThreadId)?.delegation,
+    ).toEqual(delegation);
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: recordedThreadId, input: 'Continue the work' },
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
+  test('credential recovery refuses a recorded inherited policy before stopping or replaying', async () => {
+    const threadId = 'constrained-credential-recovery';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'claude' },
+    });
+    eventStore.appendEvent({
+      provider: 'claude',
+      threadId,
+      eventId: 'credential-inherited-policy-record',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { delegation: { toolAllowlistConstraints: [[]] } },
+    } as CanonicalRuntimeEvent);
+
+    await expect(
+      service['credentialProfileRecovery'].restartRecoverySession({
+        threadId,
+        input: 'Continue after recovery',
+        recoveryCorrelationId: 'constrained-credential-recovery',
+        credentialProfileRef: 'credential-profile',
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+    expect(claude.stopSession).not.toHaveBeenCalled();
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
     await service.dispatch({
       type: 'startSession',

@@ -1752,6 +1752,25 @@ describe('Station Control canonical Environment + Agent execution', () => {
         String(url) === `${REMOTE_API}/api/orchestration/chat/delegated`,
     );
     expect(bodyOf(call!)).toMatchObject({ delegation });
+
+    fetchMock.mockClear();
+    const restricted = { ...delegation, toolAllowlistConstraints: [[]] };
+    const { delegateTask } = await import('../station-control-delegation.js');
+    await expect(
+      delegateTask({
+        target: savedTarget(),
+        prompt: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Delegated remote work',
+        delegation: restricted,
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('preserves detail-less remote foreground indeterminacy and ambiguous responses', async () => {
