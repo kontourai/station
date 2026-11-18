@@ -1,0 +1,11 @@
+{
+  "revision": "1d01cdd83e9f3e62f3461bfbf8444ebd8bd25ff1",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Verified that the imported reader's optional start receipt uses the same Station authority and exact thread as its session read. It adds display context without changing placement, continuation, or pane relationships.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ImportedConversationPane.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked folded child-work result and summary sources through the transcript owner. Compact previews label lower-confidence or unknown source text inline and expansion still shows the same content once with its recorded source.","inputs":["docs/design/placement.md","src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx","src-ui/src/components/chat/SubagentTranscriptCard.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The reopened conversation shows a reported start surface only from an accepted start receipt for its own delegated session. A later CLI send cannot change its initiation copy. Verified Directory stays separate from Project attribution.","inputs":["docs/user/getting-started.md"]}
+  ]
+}
