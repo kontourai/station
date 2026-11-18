@@ -3185,13 +3185,12 @@ Focused automation:
 
 The connected-agent macro runs the same provider/service/route coverage
 through the existing focused runner, with one worker, no file parallelism,
-and the original 10-second test bound. The high-cardinality EventStore case is
-the first of seven test files and owns a fresh process-exclusive test-file lifecycle.
-EventStore is explicitly process-exclusive
-in the resource manifest; calling raw Vitest would bypass that constraint and
-run its high-cardinality SQLite fixture alongside other suites. This routing
-change neither removes a suite nor increases its timer. The fixed macro accepts
-no CLI overrides; other focused runs retain their existing defaults.
+and a 10-second limit per test. The high-cardinality EventStore projection runs
+to completion in its own Vitest invocation before the other six files start.
+Both phases report in-flight diagnostics. An ordinary test failure in either
+phase makes the command exit nonzero after both phases run. EventStore is
+process-exclusive in the resource manifest, so use the focused runner to retain
+that constraint. The macro accepts no CLI overrides.
 
 ```bash
 npm run test:connected-agents

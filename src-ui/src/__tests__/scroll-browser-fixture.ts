@@ -10,6 +10,7 @@ export async function scrollBrowserFixture(
   plugins: Plugin[] = [],
   /** Page options for a geometry that needs them (a coarse-pointer phone). */
   pageOptions: Parameters<Browser['newPage']>[0] = {},
+  beforeNavigate?: (page: Page) => Promise<void>,
 ) {
   const result = await build({
     stdin: { contents, loader: 'tsx', resolveDir: ROOT },
@@ -70,6 +71,7 @@ export async function scrollBrowserFixture(
       });
     return route.abort();
   });
+  await beforeNavigate?.(page);
   await page.goto('http://station.test/');
   if (css) await page.addStyleTag({ content: css });
   return { browser, page, errors };

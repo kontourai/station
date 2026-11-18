@@ -524,6 +524,17 @@ test.describe('Orchestration Chat Flow', () => {
         .getByRole('log', { name: 'Conversation transcript' })
         .getByText('Repo looks healthy.'),
     ).toBeVisible();
+    // Reload the completed mock event window before expanding the history
+    // row. The live row can be replaced while catch-up is still in progress.
+    await page.reload();
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await expect(
+      page
+        .getByRole('log', { name: 'Conversation transcript' })
+        .getByText('Repo looks healthy.'),
+    ).toBeVisible();
+
     // archive#2652 redesign: the settled activity is a quiet inline row (no
     // "Show N work activities" gate) labelled by its command. Expanding it
     // reveals the exact tool name and the final progress message as the

@@ -1160,35 +1160,17 @@ admission-aware — can complete that path from the dock. A choice: for a NON-pl
 project layout, a launcher bound to the layout's project through
 `resolveLayoutLaunchAgent(…, boundProjectSlug, projectAgentFilter)` would
 have worked, and wiring it remains a legitimate later option this record does
-not close. What was not available to copy is `LayoutView`'s own tail:
-`handleLaunchPrompt` ends `setDockState(true)` — which reveals Chat and
-selects its tab in the region holding it (`syncRegionArrangementFromDock`'s
-`openChat`) — then `setActiveChat(null)`, so nothing selects the session it
-just created (`useChatDockActiveChatSync` returns on a null `activeChat`);
-that is `LayoutView`'s own latent defect, filed as #2194. The canonical
-pattern that DOES select — `createChatSession → setActiveChat(sessionId) →
-setDockState(true)` in `useActiveChatSessionLifecycle.ts`'s `useLaunchChat`
-and `useChatDockActions.ts` — was what a wired launcher would have copied. A
-Board has no project at all, so it could not have been wired either way, and
-one rule now covers both families.
+not close. A Board has no Project context for choosing a launch Agent.
 
-**A flag, not a derivation.** Every host without a launcher is exactly a host
-passing no `onLaunchPrompt`, so `LayoutRenderer` could derive
-`canLaunch = onLaunchPrompt !== undefined` and cover every host with no prop
-and no precedence rule (#2171 review L1). It was weighed and not taken,
-because it would change what two hosts this change leaves alone render:
-`WorkspacePaneRouteView` and `ProjectLayoutRenderer`'s synthetic single-tab
-layouts pass no launcher and carry pane-DESCRIPTOR `actions`, and whether a
-descriptor's `prompt` action should ever be launchable from a route-bound
-pane is an open decision (#2195). The flag is opt-in so that decision is
-made per host, on purpose; #2195 may replace the flag with the derivation,
-and the SDK header keeps its prop either way.
-
-**What this does not reach.** `LayoutView` passes a real launcher and never
-declares `false`. `WorkspacePaneRouteView` and `ProjectLayoutRenderer`'s two
-synthetic single-tab layouts pass nothing and still render a descriptor's
-`prompt` action with a no-op launcher — the same defect, deliberately left to
-#2195 rather than fixed by side effect here.
+**Prompt launches in the route hosts (#2194, #2195).** For an authored
+Project Layout, `LayoutView` selects the new Chat before opening the dock
+and sending the prompt. Plugin Layout actions continue through the live
+contribution checks described above. Direct Workspace Pane routes and the
+Workspace Pane rendered within a Project Layout have navigation and link
+actions. Their descriptor prompts require a host launcher, so these panes
+omit those controls. `LayoutRenderer` derives header availability from the
+effective launcher. An explicit `canLaunchPrompts={false}` also disables
+launching for the header and pane, even if the host supplies a handler.
 
 **Openers.** `openSurfaceInRegion('board:<id>')` from the model, or
 `openLayoutInRegion(model, key)` in `useOpenInRegion.ts`, which mints the

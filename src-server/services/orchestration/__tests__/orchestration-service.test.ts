@@ -1211,6 +1211,96 @@ describe('OrchestrationService', () => {
     });
   });
 
+  test('inherited tool constraints refuse canonical session starts and recorded turns', async () => {
+    const delegation = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'parent',
+      rootAgentSlug: 'root',
+      toolAllowlistConstraints: [['github_*']],
+    };
+    const threadId = 'constrained-native';
+    const start = { threadId, provider: 'claude' as const };
+    await expect(
+      service.dispatch({
+        type: 'startSession',
+        input: { ...start, metadata: { delegation } },
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.startSession).not.toHaveBeenCalled();
+
+    await service.dispatch({ type: 'startSession', input: start });
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+
+    const recordedThreadId = 'recorded-constrained-native';
+    await claude.startSession({ ...start, threadId: recordedThreadId });
+    expect(claude.sessions.has(recordedThreadId)).toBe(true);
+    eventStore.appendEvent({
+      provider: 'claude',
+      threadId: recordedThreadId,
+      eventId: 'constrained-native-record',
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      sessionId: recordedThreadId,
+      metadata: { delegation },
+    } as CanonicalRuntimeEvent);
+    expect(
+      service.firstStartedMetadataOfThread(recordedThreadId)?.delegation,
+    ).toEqual(delegation);
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: recordedThreadId, input: 'Continue the work' },
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
+  test('credential recovery refuses a recorded inherited policy before stopping or replaying', async () => {
+    const adapter = new FakeAdapter('claude');
+    const recoveryService = new RawOrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      const threadId = 'constrained-credential-recovery';
+      await recoveryService.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude' },
+      });
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId,
+        eventId: 'credential-inherited-policy-record',
+        createdAt: new Date().toISOString(),
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { delegation: { toolAllowlistConstraints: [[]] } },
+      } as CanonicalRuntimeEvent);
+
+      await expect(
+        recoveryService['credentialProfileRecovery'].restartRecoverySession({
+          threadId,
+          input: 'Continue after recovery',
+          recoveryCorrelationId: 'constrained-credential-recovery',
+          credentialProfileRef: 'credential-profile',
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toMatchObject({
+        cause: { code: 'delegation_lineage_unavailable' },
+        sessionTouched: false,
+      });
+      expect(adapter.startSession).toHaveBeenCalledTimes(1);
+      expect(adapter.stopSession).not.toHaveBeenCalled();
+      expect(adapter.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      await recoveryService.shutdown();
+    }
+  });
+
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
     await service.dispatch({
       type: 'startSession',
@@ -22456,6 +22546,9 @@ describe('OrchestrationService', () => {
     const affinity = { kind: 'claude-config-home', ref: 'a'.repeat(64) };
     mkdirSync(projectRoot, { recursive: true });
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    service.initialize();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     const aliasThreadId = 'external:claude:source-bound-child';
     eventStore.upsertSession({
       provider: 'claude',
@@ -22486,12 +22579,20 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-07-22T00:00:01.000Z',
     });
 
-    service.initialize();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const readInventory = vi.spyOn(eventStore, 'readSessions');
+    vi.spyOn(eventStore, 'deleteThread').mockImplementationOnce(() => {
+      throw new Error('fixture deletion failed');
+    });
+    await expect(service.listSessionReadModel()).rejects.toThrow(
+      'fixture deletion failed',
+    );
+    expect(eventStore.readSessionByThread(aliasThreadId)).toBeDefined();
 
+    readInventory.mockClear();
     expect(
       (await service.listSessionReadModel()).map((item) => item.threadId),
     ).not.toContain(aliasThreadId);
+    expect(readInventory).toHaveBeenCalledTimes(2);
     expect(
       eventStore.readSessions().map((item) => item.threadId),
     ).not.toContain(aliasThreadId);
@@ -22537,12 +22638,23 @@ describe('OrchestrationService', () => {
     service.initialize();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    const readInventory = vi.spyOn(eventStore, 'readSessions');
     expect(
       (await service.listSessionReadModel()).map((item) => item.threadId),
     ).toContain(aliasThreadId);
-    expect(eventStore.readSessions().map((item) => item.threadId)).toContain(
-      aliasThreadId,
-    );
+    expect(readInventory).toHaveBeenCalledTimes(1);
+
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'new-inventory-run',
+      status: 'ready',
+      createdAt: '2026-07-22T00:00:02.000Z',
+      updatedAt: '2026-07-22T00:00:02.000Z',
+    });
+    readInventory.mockClear();
+    const runs = await service.listAgentRuns();
+    expect(runs.map((run) => run.sessionId)).toContain('new-inventory-run');
+    expect(readInventory).toHaveBeenCalledTimes(1);
   });
 
   // archive#1867: `listSessionReadModel` feeds the SSE `/events` snapshot and
