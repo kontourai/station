@@ -91,29 +91,27 @@ class CodedOrchestrationError extends Error {
 const sendExecutionMessageMock = vi.fn();
 const submitConversationSteerMock = vi.fn();
 const readConversationInboxHeadMock = vi.fn();
-const queueExecutionMessageMock = vi
-  .fn()
-  .mockImplementation(
-    async (
-      _apiBase: string,
-      request: {
-        conversationId: string;
-        clientTurnId: string;
-        message: string;
-      },
-    ) => ({
-      outcome: 'queued',
+const queueExecutionMessageMock = vi.fn().mockImplementation(
+  async (
+    _apiBase: string,
+    request: {
+      conversationId: string;
+      clientTurnId: string;
+      message: string;
+    },
+  ) => ({
+    outcome: 'queued',
+    conversationId: request.conversationId,
+    clientTurnId: request.clientTurnId,
+    entry: {
       conversationId: request.conversationId,
       clientTurnId: request.clientTurnId,
-      entry: {
-        conversationId: request.conversationId,
-        clientTurnId: request.clientTurnId,
-        message: request.message,
-        kind: 'follow-up',
-        state: 'queued',
-      },
-    }),
-  );
+      message: request.message,
+      kind: 'follow-up',
+      state: 'queued',
+    },
+  }),
+);
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   sendExecutionMessage: (...args: unknown[]) =>
