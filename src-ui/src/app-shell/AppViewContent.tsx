@@ -87,24 +87,14 @@ const ProfilePage = lazy(() =>
     default: module.ProfilePage,
   })),
 );
-const ProjectLayoutRenderer = lazy(() =>
-  import('./ProjectLayoutRenderer').then((module) => ({
-    default: module.ProjectLayoutRenderer,
-  })),
-);
 const ProjectPage = lazy(() =>
   import('../views/ProjectPage').then((module) => ({
     default: module.ProjectPage,
   })),
 );
-const WorkspacePaneRouteView = lazy(() =>
-  import('../workspace-panes/WorkspacePaneRouteView').then((module) => ({
-    default: module.WorkspacePaneRouteView,
-  })),
-);
-const WorkspacePaneHostActionsFrame = lazy(() =>
-  import('../workspace-panes/WorkspacePaneHostActions').then((module) => ({
-    default: module.WorkspacePaneHostActionsFrame,
+const WorkspaceProjectRoute = lazy(() =>
+  import('./WorkspaceProjectRoute').then((module) => ({
+    default: module.WorkspaceProjectRoute,
   })),
 );
 const ProjectFlowConsoleView = lazy(() =>
@@ -399,30 +389,11 @@ function AppViewContentBody({
       />
     );
   }
-  if (currentView.type === 'layout') {
-    return (
-      <WorkspacePaneHostActionsFrame projectSlug={currentView.projectSlug}>
-        <ProjectLayoutRenderer
-          projectSlug={currentView.projectSlug}
-          layoutSlug={currentView.layoutSlug}
-        />
-      </WorkspacePaneHostActionsFrame>
-    );
+  if (currentView.type === 'layout' || currentView.type === 'workspace-pane') {
+    return <WorkspaceProjectRoute route={currentView} />;
   }
   if (currentView.type === 'project') {
     return <ProjectPage slug={currentView.slug} />;
-  }
-  if (currentView.type === 'workspace-pane') {
-    return (
-      <WorkspacePaneHostActionsFrame projectSlug={currentView.projectSlug}>
-        <WorkspacePaneRouteView
-          projectSlug={currentView.projectSlug}
-          layoutSlug={currentView.layoutSlug}
-          descriptorId={currentView.descriptorId}
-          instanceId={currentView.instanceId}
-        />
-      </WorkspacePaneHostActionsFrame>
-    );
   }
   if (currentView.type === 'task') {
     return <TaskWorkspaceView taskId={currentView.taskId} />;
