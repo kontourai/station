@@ -10,7 +10,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   parseTenantExecutionContext,
@@ -1312,6 +1315,17 @@ describe('AttachedSessionFollowService', () => {
     });
     const before = persistedAttachment();
     const audit = auditWrites();
+    const refreshes: unknown[] = [];
+    const unsubscribe = eventBus.subscribe((frame) => {
+      if (
+        frame.event !== SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
+      )
+        return;
+      refreshes.push({
+        threadId: frame.data?.threadId,
+        boundary: persistedAttachment().attachedSource?.completedBoundary,
+      });
+    });
     try {
       cursor = {
         offset: 20,
@@ -1357,6 +1371,7 @@ describe('AttachedSessionFollowService', () => {
         turnId: 'native-turn',
         finishReason: 'stop',
       };
+      expect(refreshes).toEqual([]);
       events = [completed];
       await service.pollNow();
       expect(persistedAttachment().attachedSource?.completedBoundary).toEqual({
@@ -1369,7 +1384,18 @@ describe('AttachedSessionFollowService', () => {
       const after = audit.counts();
       await service.pollNow();
       expect(audit.counts()).toEqual(after);
+      expect(refreshes).toEqual([
+        {
+          threadId: session.threadId,
+          boundary: {
+            kind: 'completed-turn',
+            providerTurnId: completed.turnId,
+            observedEventId: completed.eventId,
+          },
+        },
+      ]);
     } finally {
+      unsubscribe();
       audit.close();
     }
   });
