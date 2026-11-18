@@ -22456,6 +22456,9 @@ describe('OrchestrationService', () => {
     const affinity = { kind: 'claude-config-home', ref: 'a'.repeat(64) };
     mkdirSync(projectRoot, { recursive: true });
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    service.initialize();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     const aliasThreadId = 'external:claude:source-bound-child';
     eventStore.upsertSession({
       provider: 'claude',
@@ -22486,12 +22489,20 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-07-22T00:00:01.000Z',
     });
 
-    service.initialize();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    const readInventory = vi.spyOn(eventStore, 'readSessions');
+    vi.spyOn(eventStore, 'deleteThread').mockImplementationOnce(() => {
+      throw new Error('fixture deletion failed');
+    });
+    await expect(service.listSessionReadModel()).rejects.toThrow(
+      'fixture deletion failed',
+    );
+    expect(eventStore.readSessionByThread(aliasThreadId)).toBeDefined();
 
+    readInventory.mockClear();
     expect(
       (await service.listSessionReadModel()).map((item) => item.threadId),
     ).not.toContain(aliasThreadId);
+    expect(readInventory).toHaveBeenCalledTimes(2);
     expect(
       eventStore.readSessions().map((item) => item.threadId),
     ).not.toContain(aliasThreadId);
@@ -22537,12 +22548,23 @@ describe('OrchestrationService', () => {
     service.initialize();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    const readInventory = vi.spyOn(eventStore, 'readSessions');
     expect(
       (await service.listSessionReadModel()).map((item) => item.threadId),
     ).toContain(aliasThreadId);
-    expect(eventStore.readSessions().map((item) => item.threadId)).toContain(
-      aliasThreadId,
-    );
+    expect(readInventory).toHaveBeenCalledTimes(1);
+
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: 'new-inventory-run',
+      status: 'ready',
+      createdAt: '2026-07-22T00:00:02.000Z',
+      updatedAt: '2026-07-22T00:00:02.000Z',
+    });
+    readInventory.mockClear();
+    const runs = await service.listAgentRuns();
+    expect(runs.map((run) => run.sessionId)).toContain('new-inventory-run');
+    expect(readInventory).toHaveBeenCalledTimes(1);
   });
 
   // archive#1867: `listSessionReadModel` feeds the SSE `/events` snapshot and
