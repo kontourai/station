@@ -969,8 +969,9 @@ a foreign Station with the same reported child IDs cannot replace a notice.
 Missing snapshot evidence leaves an outcome unknown.
 
 Expanded result text identifies its recorded source: returned result, provider
-summary, child message or provider error. The compact preview labels an
-alternative or unknown source whenever it shows that text. A later
+summary, child message or provider error. The compact preview labels
+provider summaries, child messages and provider errors when their source
+is recorded. Expansion also discloses unknown provenance on older text. A later
 structured tool return from the same Station and child corrects an existing
 completion notice in place without another announcement. A transcript handle
 alone does not prove a returned result. These rules qualify the dated

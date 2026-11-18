@@ -1,9 +1,6 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import {
-  useOrchestrationCommandReceiptsQuery,
-  useOrchestrationSessionQuery,
-} from '@kontourai/station-sdk';
+import { useOrchestrationSessionQuery } from '@kontourai/station-sdk';
 import {
   useCallback,
   useContext,
@@ -16,11 +13,11 @@ import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useSendMessage } from '../../hooks/useActiveChatSessionMessaging';
+import { useReportedDelegationStart } from '../../hooks/useReportedDelegationStart';
 import {
   attachedContinuationScope,
   discardAttachedContinuationHandoff,
 } from '../../lib/attached-continuation-handoff';
-import { clientOriginSurfaceLabel } from '../../utils/clientOrigin';
 import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
 import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
@@ -74,27 +71,11 @@ export default function ImportedConversationPane({
     cancelWhenInactive: true,
   });
   const sourceSession = source.data?.session;
-  const readStartReceipt =
-    authority.status === 'verified' &&
-    sourceSession?.threadId === threadId &&
-    sourceSession.inputOrigin?.kind === 'delegation';
-  const startReceipts = useOrchestrationCommandReceiptsQuery(threadId, {
-    enabled: readStartReceipt,
-  });
-  const reportedStart = readStartReceipt
-    ? clientOriginSurfaceLabel(
-        startReceipts.data?.find((receipt) => {
-          // The receipt endpoint includes host lifecycle commands beyond the
-          // set a client can submit through the command endpoint.
-          const commandType: string = receipt.commandType;
-          return (
-            receipt.threadId === threadId &&
-            commandType === 'startSession' &&
-            receipt.status === 'accepted'
-          );
-        })?.clientOrigin,
-      )
-    : null;
+  const reportedStart = useReportedDelegationStart(
+    sourceSession?.threadId === threadId && sourceSession.inputOrigin
+      ? threadId
+      : undefined,
+  );
   const [continuedThreadId, setContinuedThreadId] = useState<string | null>(
     null,
   );

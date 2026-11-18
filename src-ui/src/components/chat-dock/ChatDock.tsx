@@ -4193,6 +4193,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             activeOrchestrationSession?.modelRoute?.label
                           }
                           inputOrigin={activeOrchestrationSession?.inputOrigin}
+                          reportedStartThreadId={
+                            hostBound
+                              ? activeOrchestrationSession?.threadId
+                              : undefined
+                          }
                           onClose={removeSession}
                         />
                       ) : null
