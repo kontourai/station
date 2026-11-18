@@ -226,7 +226,7 @@ export function usePushNotifications({
 
   const subscribe = useCallback(() => {
     const owner = scopeRef.current;
-    if (!supported || !enabled || owner.requestScope === null)
+    if (!supported || !owner.enabled || owner.requestScope === null)
       return Promise.resolve();
     const { version } = owner;
     if (enabling.current?.version === version) return enabling.current.promise;
@@ -265,7 +265,7 @@ export function usePushNotifications({
     };
     void promise.then(finished, finished);
     return promise;
-  }, [supported, enabled, apiBase, enqueue, removeSubscription, reportError]);
+  }, [supported, enqueue, reportError]);
 
   const unsubscribe = useCallback(() => {
     const owner = scopeRef.current;
