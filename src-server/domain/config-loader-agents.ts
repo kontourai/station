@@ -74,10 +74,12 @@ async function withAgentPersistenceLock<T>(
   projectHomeDir: string,
   slug: string,
   operation: () => Promise<T>,
+  signal?: AbortSignal,
 ): Promise<T> {
+  signal?.throwIfAborted();
   const lockPath = agentPersistenceLockPath(projectHomeDir, slug);
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
-  const release = await acquireFileMutationLockAsync(lockPath);
+  const release = await acquireFileMutationLockAsync(lockPath, { signal });
   try {
     return await operation();
   } finally {
@@ -447,6 +449,7 @@ export function resolveAgentConfigSlug(spec: AgentSpec): string {
 export async function createAgentConfig(
   projectHomeDir: string,
   spec: AgentSpec,
+  signal?: AbortSignal,
 ): Promise<{ slug: string; spec: AgentSpec }> {
   const slug = resolveAgentConfigSlug(spec);
   const { slug: _ignored, ...cleanSpec } = spec as AgentSpec & {
@@ -467,6 +470,7 @@ export async function createAgentConfig(
       }
       return saveAgentConfigWithOwnedLock(projectHomeDir, slug, cleanSpec);
     },
+    signal,
   );
   return { slug, spec: persisted };
 }
@@ -581,15 +585,21 @@ export async function mutateAgentConfig(
   projectHomeDir: string,
   slug: string,
   updater: (current: AgentSpec) => AgentSpec | null,
+  signal?: AbortSignal,
 ): Promise<AgentSpec | null> {
-  return withAgentPersistenceLock(projectHomeDir, slug, async () => {
-    assertCustomAgentIdentity(slug);
-    assertRegistryIntegrityAtHomeSync(projectHomeDir);
-    const existing = await loadAgentConfigAsStored(projectHomeDir, slug);
-    const next = updater(structuredClone(existing));
-    if (next === null) return null;
-    return saveAgentConfigWithOwnedLock(projectHomeDir, slug, next);
-  });
+  return withAgentPersistenceLock(
+    projectHomeDir,
+    slug,
+    async () => {
+      assertCustomAgentIdentity(slug);
+      assertRegistryIntegrityAtHomeSync(projectHomeDir);
+      const existing = await loadAgentConfigAsStored(projectHomeDir, slug);
+      const next = updater(structuredClone(existing));
+      if (next === null) return null;
+      return saveAgentConfigWithOwnedLock(projectHomeDir, slug, next);
+    },
+    signal,
+  );
 }
 
 export async function deleteAgentConfig(
