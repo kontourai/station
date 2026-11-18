@@ -16,6 +16,9 @@ const initialScope = {
   isCurrent: () => true,
 };
 let scope: typeof initialScope | undefined = initialScope;
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({ navigate: vi.fn() }),
+}));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => scope,
 }));

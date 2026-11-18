@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-sdk/engine-sign-in';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { describeStationFailure } from '../../utils/stationFailure';
@@ -252,6 +253,7 @@ function ScopedEngineSignInPanel({
   onSignedIn?: () => void;
 }) {
   const presentation = useDevicePresentation();
+  const { navigate } = useNavigationActions();
   const view = useEngineSignInQuery(connectionId, scope, true);
   const signInAllowed = view.data?.allowed.signIn === true;
   const attempt = useEngineSignInAttemptQuery(
@@ -340,6 +342,12 @@ function ScopedEngineSignInPanel({
         <small>
           This device is not allowed to sign engines in. The Station's operator
           can allow it from this device's access settings.
+          <Button
+            size="sm"
+            onClick={() => navigate('/settings?view=devices&highlight=pairing')}
+          >
+            Device access
+          </Button>
         </small>
       )}
       {data.termsNotice && <TermsNote notice={data.termsNotice} />}

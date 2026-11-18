@@ -173,6 +173,56 @@ function scanMountedRouteBases(): string[] {
   return bases;
 }
 
+test.each([
+  ['GET', '/acp/setup', 'orchestration:read'],
+  ['GET', '/acp/registry/antigravity/install-terminal', 'orchestration:read'],
+  [
+    'POST',
+    '/acp/registry/antigravity/install-terminal',
+    'orchestration:operate',
+  ],
+  [
+    'DELETE',
+    '/acp/registry/antigravity/install-terminal',
+    'orchestration:operate',
+  ],
+  ['GET', '/acp/connections/antigravity/station-tools', 'orchestration:read'],
+  [
+    'POST',
+    '/acp/connections/antigravity/station-tools',
+    'orchestration:operate',
+  ],
+  [
+    'POST',
+    '/acp/connections/antigravity/recommended-setup',
+    'orchestration:operate',
+  ],
+] as const)(
+  'engine setup %s %s requires its declared scope %s',
+  (method, path, scope) => {
+    expect(matchPairingScopeRule(method, path)).toMatchObject({
+      scope,
+      origin: 'explicit',
+      exact: true,
+    });
+    expect(pairingScopeSatisfiesHttpRoute('', scope, { method, path })).toBe(
+      false,
+    );
+    expect(pairingScopeSatisfiesHttpRoute(scope, scope, { method, path })).toBe(
+      true,
+    );
+    if (scope === 'orchestration:operate') {
+      expect(
+        pairingScopeSatisfiesHttpRoute(
+          'orchestration:read terminal:operate coding:exec',
+          scope,
+          { method, path },
+        ),
+      ).toBe(false);
+    }
+  },
+);
+
 test('terminal socket HTTP classification refuses personal tokens explicitly', () => {
   expect(matchPairingScopeRule('GET', '/api/terminal/socket')).toMatchObject({
     scope: 'terminal:operate',

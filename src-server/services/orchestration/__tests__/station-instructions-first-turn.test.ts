@@ -278,6 +278,25 @@ describe('Station orchestration instructions on the first turn', () => {
     const first = await send(orchestration, adapter, 'thread-guide', 'Hello');
     expect(first?.input).toContain(AUTHORED_PROMPT);
     expect(first?.input).toContain(text);
+    expect(first?.input).toContain(
+      'call `list_engine_setup`; reuse its id/setupPath and saved connection',
+    );
+    expect(first?.input).toContain(
+      'Use `open_engine_setup` for that id; check navigation or give setupPath',
+    );
+    expect(first?.input).toContain(
+      'The person installs/signs in on the Station host',
+    );
+    expect(first?.input).toContain(
+      'Never request OAuth codes/tokens in chat, edit Station home config, or bypass with shell login',
+    );
+    expect(first?.input).toContain(
+      'Handshake, sign-in, chat and Station-tool delivery are separate facts',
+    );
+    expect(first?.input).toContain('chooses Add Station tools if needed');
+    expect(first?.input).toContain(
+      'Read `list_agents` after setup; use its actual Agent id.',
+    );
     expect(first?.input.indexOf(AUTHORED_PROMPT)).toBeLessThan(
       first?.input.indexOf(text) as number,
     );

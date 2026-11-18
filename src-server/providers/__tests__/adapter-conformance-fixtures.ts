@@ -491,6 +491,7 @@ function createOpenCodeNativeEngine(
     start: async () => {
       const session = await adapter.startSession({
         ...startInput,
+        modelId: 'mock/mock-1',
         provider: 'opencode',
         metadata: { connectionId: OPENCODE_CONNECTION.id },
       });

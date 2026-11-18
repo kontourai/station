@@ -685,6 +685,13 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   ),
 
   // Integrations and plugins
+  list_engine_setup: listed('Engine setup'),
+  open_engine_setup: entry(
+    'Requested',
+    'Requesting',
+    'Request',
+    () => 'engine setup',
+  ),
   list_integrations: listed('Integrations'),
   get_integration: read(named('Integration', 'id', 'an Integration')),
   create_integration: entry(

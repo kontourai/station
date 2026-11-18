@@ -51,6 +51,10 @@ const unregistered = [
   },
 ];
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../hooks/useACPConnections', () => ({
   useACPConnections: () => ({
     data: [],

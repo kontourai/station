@@ -858,3 +858,20 @@ verification, and fault injection.
   marker appears exactly once. Stopping the supervisor ends the shell. The
   journey does not boot the whole core server or its authenticated
   terminal routes.
+
+## Bounded setup commands (protocol 1.4)
+
+A reviewed engine installer is a server-owned terminal workload with a finite
+`maxRuntimeMs`. `SupervisorShellHost` asks the workload host's `capabilities`
+operation before starting it; an older supervisor or host refuses before the
+installer command is invoked. The process-owning host enforces the deadline
+while a core is absent, so a core restart does not reset the installation's
+lifetime. Existing interactive terminals without that field retain their prior
+behavior. `TerminalSessions` persists the attempt's operation id and lifetime;
+response-loss retries attach to that record instead of starting a duplicate.
+
+The real-PTY supervisor-shell-host regression detaches the core and requires
+the bounded workload to end with no core attached, then reopens its saved
+outcome. A separate negative control requires an unsupported host to receive
+only capability negotiation, never spawn. This is one-host process evidence,
+not a vendor-installer or native-device qualification.

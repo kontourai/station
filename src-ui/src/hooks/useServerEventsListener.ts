@@ -202,6 +202,7 @@ function refreshEngineReadiness(queryClient: QueryClient): void {
     'acp-connections',
     'acp-unregistered-connections',
     'acp-connection-registry',
+    'engine-setup',
   ]) {
     queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' });
   }

@@ -711,9 +711,8 @@ type SessionExecutionActivity = SessionExecutionSummary & {
 /**
  * Whether a running turn can take more user input on the engine's live
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
- * Only native steering fidelity permits this action. Emulated steering can
- * cancel and reprompt, so it cannot promise an additive live input channel.
- * Station-owned placement is held for an observed boundary.
+ * Native placement joins the live channel. Engine-defined emulation cancels
+ * and continues; Station-owned placement waits for an observed boundary.
  */
 export function sessionSteeringPlacement(profile?: ProviderDurabilityProfile) {
   return (profile ?? UNKNOWN_ENGINE_DURABILITY).steerPlacement;
@@ -724,7 +723,10 @@ export function sessionAdapterSupportsSteering(
 ): boolean {
   const placement = sessionSteeringPlacement(profile);
   return (
-    placement.state === 'native' || placement.boundary === 'station-observed'
+    placement.state === 'native' ||
+    (placement.state === 'emulated' &&
+      (placement.boundary === 'station-observed' ||
+        placement.boundary === 'engine-defined'))
   );
 }
 

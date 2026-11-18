@@ -1,9 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ACPConnectionInfo,
   ACPConnectionRegistryEntry,
 } from '../../hooks/useACPConnections';
-import { useACPConnectionRegistry } from '../../hooks/useACPConnections';
+import {
+  recheckACPConnectionRegistry,
+  useACPConnectionRegistry,
+} from '../../hooks/useACPConnections';
+import { EngineInstallTerminal } from '../engine-install/EngineInstallTerminal';
 import { registryEntryDiscovery } from '../engine-install/registryEntryDiscovery';
 import {
   ACPConnectionConfirmStage,
@@ -12,6 +16,7 @@ import {
   ACPConnectionSetupHeader,
   ACPConnectionSetupStatus,
 } from './ACPConnectionSetupStages';
+import { EngineStationTools } from './EngineStationTools';
 import type { ACPConnectionDraft } from './types';
 import {
   type InstallRegistryEntry,
@@ -32,7 +37,7 @@ export interface ACPConnectionSetupPanelProps {
   onInstallRegistryEntry?: InstallRegistryEntry;
   onRefreshConnections?: () => unknown;
   /** Leaves the setup (Done, Cancel, Close). */
-  onDone: () => void;
+  onDone: (connectionId?: string) => void;
   /** Back to the catalogue the flow was opened from. */
   onBack?: () => void;
   /** Live probe status; the owner polls it while a first start runs. */
@@ -60,9 +65,8 @@ export interface ACPConnectionSetupPanelProps {
 
 /**
  * One engine's setup, in place: a catalogue choice's confirm step or the
- * custom form, then Checking and the readiness result. It renders inside the
- * Engines page's detail pane, so the catalogue it came from stays the one
- * context; there is no second catalogue here.
+ * custom form, then Checking and the readiness result. Used by the focused
+ * Add engine flow and by saved engines that need another connection check.
  */
 export function ACPConnectionSetupPanel({
   entry,
@@ -87,6 +91,7 @@ export function ACPConnectionSetupPanel({
   onStartChat,
   startChatPending = false,
 }: ACPConnectionSetupPanelProps) {
+  const [installerRunning, setInstallerRunning] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   // The choice that opened this setup is gone from the page, so focus moves
   // to the setup itself rather than dropping to the document.
@@ -135,7 +140,9 @@ export function ACPConnectionSetupPanel({
   }, [recheck, editConnection]);
   // The confirm step follows the live lookup, so Check again in its install
   // hint offers Connect as soon as Station finds the engine.
-  const { data: registryEntries } = useACPConnectionRegistry();
+  const { data: registryEntries, refetch: refetchRegistry } =
+    useACPConnectionRegistry();
+  const [detectionNotice, setDetectionNotice] = useState<string | null>(null);
   const liveEntry = state.selectedEntry
     ? (registryEntries?.find((item) => item.id === state.selectedEntry?.id) ??
       state.selectedEntry)
@@ -166,6 +173,11 @@ export function ACPConnectionSetupPanel({
         engineName={state.selectedEntry?.name}
       />
       <div className="agent-editor__section">
+        {detectionNotice ? (
+          <p className="editor-help" role="status">
+            {detectionNotice}
+          </p>
+        ) : null}
         {state.stage === 'confirm' && liveEntry && (
           <ACPConnectionConfirmStage entry={liveEntry} installed={installed} />
         )}
@@ -181,6 +193,32 @@ export function ACPConnectionSetupPanel({
             onAdvancedChange={(open) => dispatch({ type: 'advanced', open })}
           />
         )}
+        {state.selectedEntry?.source === 'core' ? (
+          <EngineInstallTerminal
+            id={state.selectedEntry.id}
+            installNeeded={!installed}
+            onRunningChange={setInstallerRunning}
+            onFinished={() => {
+              setDetectionNotice(null);
+              void recheckACPConnectionRegistry()
+                .catch(() =>
+                  setDetectionNotice(
+                    'Choose Check again to refresh engine detection.',
+                  ),
+                )
+                .then(() => refetchRegistry())
+                .then((result) => {
+                  if (result?.isError)
+                    setDetectionNotice(
+                      'Choose Check again to refresh engine detection.',
+                    );
+                })
+                .finally(() => {
+                  void onRefreshConnections?.();
+                });
+            }}
+          />
+        ) : null}
         <ACPConnectionSetupStatus
           stage={state.stage}
           connectionId={resultConnection?.id}
@@ -191,12 +229,18 @@ export function ACPConnectionSetupPanel({
           firstContact={awaitingFirstContact}
           attempt={state.attempt}
           engineName={engineName}
+          onSignedIn={() => void retryCheck()}
         />
+        {state.stage === 'result' &&
+        resultConnection &&
+        readiness?.statusLabel === 'Ready' ? (
+          <EngineStationTools connectionId={resultConnection.id} />
+        ) : null}
         <ACPConnectionSetupActions
           stage={state.stage}
           isCustom={isCustom}
           canSubmit={Boolean(state.draft.name && state.draft.command)}
-          canConfirm={installed}
+          canConfirm={installed && !installerRunning}
           ready={readiness?.statusLabel === 'Ready'}
           firstContact={awaitingFirstContact}
           canRetryCheck={
@@ -213,7 +257,13 @@ export function ACPConnectionSetupPanel({
           onRetryCheck={() => void retryCheck()}
           onRetryRefresh={() => void retryRefresh()}
           onEditSetup={() => dispatch({ type: 'custom' })}
-          onDone={onDone}
+          onDone={() =>
+            onDone(
+              readiness?.statusLabel === 'Ready'
+                ? resultConnection?.id
+                : undefined,
+            )
+          }
           onStartChat={
             onStartChat && resultConnection
               ? () => onStartChat(resultConnection)
