@@ -23,6 +23,7 @@ import {
   PRINCIPAL_UNRESOLVED_CODE,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { runCli } from '../../../../packages/cli/src/cli.js';
@@ -277,6 +278,7 @@ test('Personal Boards CLI reads through the caller-owned layout routes', async (
   } finally {
     output.mockRestore();
     vi.unstubAllGlobals();
+    setClientCredentialResolver(undefined);
   }
 });
 

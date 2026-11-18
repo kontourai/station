@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { runCli } from '../../../packages/cli/src/cli.js';
@@ -94,6 +95,9 @@ test('Board CLI arranges owned widgets and preserves route refusals', async () =
     await expect(
       run(['unpin', ...ref, 'one'], 'foreign'),
     ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      run(['move', ...ref, 'missing', '--after=two']),
+    ).rejects.toMatchObject({ status: 404, code: 'board_widget_not_found' });
     expect(await run(['read', ...ref])).toMatchObject({
       widgets: [
         { name: 'two', position: 0, block: { body: 'second' } },
@@ -114,6 +118,7 @@ test('Board CLI arranges owned widgets and preserves route refusals', async () =
   } finally {
     output.mockRestore();
     vi.unstubAllGlobals();
+    setClientCredentialResolver(undefined);
   }
 });
 
