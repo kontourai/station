@@ -277,6 +277,34 @@ function mountChoice(client: QueryClient, advance = vi.fn(), dialog = false) {
 const calls = (suffix: string) =>
   bridge.request.mock.calls.filter(([url]) => String(url).endsWith(suffix));
 
+test('first run offers anonymous counts and Off when Kontour has a Lite-only receiver', async () => {
+  build.endpoint = 'https://telemetry.kontourai.io/v1/lite/station';
+  const { client, loader, service } = await publisherFixture();
+  const advance = vi.fn();
+  const view = mountChoice(client, advance);
+  try {
+    const save = await screen.findByRole('button', { name: 'Save choice' });
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.full }),
+    ).toHaveProperty('disabled', true);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.off }),
+    ).toHaveProperty('disabled', false);
+    expect(
+      screen.getByRole('radio', { name: SHARING_LABELS.lite }),
+    ).toHaveProperty('checked', true);
+    fireEvent.click(save);
+    await waitFor(() => expect(advance).toHaveBeenCalledOnce());
+    expect((await loader.loadAppConfig()).telemetryTier?.kontour).toBe('lite');
+    expect(calls('/acknowledgements')).toHaveLength(0);
+  } finally {
+    view.unmount();
+    client.clear();
+    await service.shutdown();
+  }
+});
+
 test.each(['off', 'lite', 'full'] as const)(
   'the shared choice saves %s through real routes; detailed consent precedes activation',
   async (tier) => {
