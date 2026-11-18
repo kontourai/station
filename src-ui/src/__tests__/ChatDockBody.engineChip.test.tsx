@@ -251,7 +251,7 @@ async function engineChip() {
   const button = await screen.findByRole('button', {
     name: /^Engine & model:/,
   });
-  const caption = button.querySelector('.chat-input__chip-caption');
+  const panel = button.closest('.composer-run-panel');
   // The caption's own text node is the engine, its span the move hint; the
   // short hint is the Run setup trigger's, shown while the panel is closed.
   const describedBy = trigger.getAttribute('aria-describedby');
@@ -259,9 +259,12 @@ async function engineChip() {
     button,
     trigger,
     engine:
-      caption?.firstChild?.textContent?.replace(/^This session: /, '') ?? '',
+      panel
+        ?.querySelector('.chat-input__chip-caption-engine')
+        ?.textContent?.replace(/^(Current engine: |Previous engine: )/, '') ??
+      'Engine & model',
     hint:
-      caption?.querySelector('.chat-input__engine-moved')?.textContent ?? null,
+      panel?.querySelector('.chat-input__engine-moved')?.textContent ?? null,
     shortHint:
       trigger.querySelector('.composer-run-control__notice')?.textContent ??
       null,
@@ -302,8 +305,10 @@ describe('ChatDockBody composer engine chip', () => {
       await engineChip();
     expect(engine).toBe('Codex');
     expect(
-      button.querySelector('.chat-input__chip-caption-engine')?.textContent,
-    ).toBe('This session: Codex');
+      button
+        .closest('.composer-run-panel')
+        ?.querySelector('.chat-input__chip-caption-engine')?.textContent,
+    ).toBe('Current engine: Codex');
     // The repoint is stated as a fact about the Agent, never as the engine.
     expect(hint).toBe('Agent default: OpenCode');
     expect(shortHint).toBe('· Default differs');
@@ -618,7 +623,7 @@ describe('ChatDockBody composer engine chip', () => {
       const header =
         document
           .querySelector('.chat-dock__active-identity-engine')
-          ?.textContent?.replace(/^This session: /, '') ?? null;
+          ?.textContent?.replace(/^Session: /, '') ?? null;
       return { engine, header };
     }
 

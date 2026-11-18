@@ -262,6 +262,7 @@ describe('ChatInputArea: Agent chip identity', () => {
     expect(chip.getAttribute('aria-label')).toBe(
       'Agent: Codex. Connection: model-proxy (home-server · Claude + Codex). Change Agent',
     );
+    expect(chip.querySelector('.composer-choice__icon svg')).toBeTruthy();
     const name = chip.querySelector('.chat-input__agent-name');
     expect(name?.firstChild?.textContent).toBe('Codex');
     expect(chip.querySelector('.chat-input__agent-route')?.textContent).toBe(

@@ -1295,7 +1295,7 @@ describe('ChatInputArea', () => {
     ).toBe('Big Pickle');
     expect(
       modelButton.querySelector('.chat-input__chip-caption')?.textContent,
-    ).toBe('Engine & model');
+    ).toBe('Model');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
@@ -1661,7 +1661,7 @@ describe('ChatInputArea', () => {
 
     // Start an escalation on session A — opens the mode sheet and picks full
     // access, which must land on the confirm step rather than applying.
-    if (!screen.queryByRole('dialog', { name: 'Run setup' }))
+    if (!screen.queryByRole('dialog', { name: 'Agent & model' }))
       fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
     // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
@@ -2535,7 +2535,7 @@ test('on a phone, choosing another engine closes Run setup; another model of the
       onModelSelect,
     });
     fireEvent.click(screen.getByTestId('run-setup-trigger'));
-    expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
     fireEvent.click(
       await screen.findByRole(
         'button',
@@ -2543,12 +2543,12 @@ test('on a phone, choosing another engine closes Run setup; another model of the
         { timeout: 5_000 },
       ),
     );
-    expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Agent & model' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^GPT Six/ }));
     expect(onModelSelect).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: 'gpt-6' }),
     );
-    expect(screen.queryByRole('dialog', { name: 'Run setup' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Agent & model' })).toBeNull();
   } finally {
     vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
       ...mobile(query),

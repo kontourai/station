@@ -3091,7 +3091,10 @@ test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
       });
       await trigger.click();
       await expect(
-        page.getByRole('dialog', { name: 'Run setup', exact: true }),
+        page.getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        }),
       ).toBeVisible();
       await closeRunSetup(page);
       await expect(textarea).toHaveValue('Landscape draft');
@@ -3135,7 +3138,10 @@ test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
       });
       await trigger.click();
       await expect(
-        page.getByRole('dialog', { name: 'Run setup', exact: true }),
+        page.getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        }),
       ).toBeVisible();
       await closeRunSetup(page);
       await expect(textarea).toHaveValue(
@@ -3261,7 +3267,7 @@ for (const viewport of [
     );
     await expect(page.locator('.chat-dock__counter')).toBeHidden();
     await expect(
-      page.locator('.chat-dock__header').getByTitle('Chat settings'),
+      page.locator('.chat-dock__header').getByTitle('Agent & model'),
     ).toBeHidden();
     // The dock's tab-action row is desktop-only now; its mobile equivalents are
     // the one-row header's own controls. Same guarantee as before: every session
@@ -3291,7 +3297,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of ['New chat', 'Inbox', 'Chat settings']) {
+    for (const name of ['New chat', 'Inbox', 'Agent & model']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -3311,13 +3317,13 @@ for (const viewport of [
     );
     await moreActions.click();
     await mobileActions
-      .getByRole('menuitem', { name: 'Chat settings' })
+      .getByRole('menuitem', { name: 'Agent & model' })
       .click();
     await expect(
-      page.getByText('Chat settings', { exact: true }),
+      page.getByText('Agent & model', { exact: true }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByText('Chat settings', { exact: true })).toBeHidden();
+    await expect(page.getByText('Agent & model', { exact: true })).toBeHidden();
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     const selectedModel = await runSetupControl(page, (panel) =>
@@ -3596,7 +3602,10 @@ for (const viewport of [
     const composerBox = await page.locator('.chat-input').boundingBox();
     await closeRunSetup(page);
     await expect(
-      page.getByRole('dialog', { name: 'Run setup', exact: true }),
+      page.getByRole('dialog', {
+        name: 'Agent & model',
+        exact: true,
+      }),
     ).toBeHidden();
     const railControlBox = await page
       .locator('.chat-input')
@@ -4528,7 +4537,7 @@ for (const width of [320, 390, 600]) {
     );
     await expect(controls).toHaveCount(3);
     const railBox = await page
-      .getByRole('dialog', { name: 'Run setup', exact: true })
+      .getByRole('dialog', { name: 'Agent & model', exact: true })
       .boundingBox();
     expect(railBox).not.toBeNull();
     for (const control of await controls.all()) {
@@ -4643,7 +4652,10 @@ for (const width of [320, 390, 1280]) {
         /^Engine & model: Claude Selected Test Model/,
       );
       const bounds = (await page
-        .getByRole('dialog', { name: 'Run setup', exact: true })
+        .getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        })
         .boundingBox())!;
       const approval = await runSetupControl(page, (panel) =>
         panel.getByRole('button', { name: /^Approval mode:/ }),

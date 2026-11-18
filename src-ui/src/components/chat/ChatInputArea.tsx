@@ -53,7 +53,9 @@ import {
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
-import { ArrowDownGlyph } from '../icons/Glyph';
+import { BrandIcon } from '../icons/BrandIcon';
+import { AgentGlyph, ArrowDownGlyph, EngineGlyph } from '../icons/Glyph';
+import { ModelIcon } from '../icons/ModelIcon';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
 import { ComposerIconAction } from './ComposerIconAction';
@@ -671,7 +673,7 @@ export function ChatInputArea({
     setSendAfterUploads(false);
   }, [sessionId]);
   const { chatReturnBehavior } = useDeviceSettings();
-  const { coarsePointer } = useDockSlotDevice();
+  const { coarsePointer, viewportWidth } = useDockSlotDevice();
   const returnSends =
     chatReturnBehavior === 'send' ||
     (chatReturnBehavior === 'auto' && !coarsePointer);
@@ -772,10 +774,14 @@ export function ChatInputArea({
     mentionRequestScope?.apiBase,
     mentionRequestScope?.authorityKey,
   ]);
+  const engineId = parseEngineId(acpApproval?.engineId ?? executionEngineId);
+  const sessionEngineId =
+    executionEngineId === 'acp' ? engineId : parseEngineId(executionEngineId);
   const isOverride = currentModelSource === 'session override';
   const effectiveModelId = currentModel || agentDefaultModel;
   const effectiveModelInfo = availableModels.find(
-    (model) => model.id === effectiveModelId,
+    (model) =>
+      model.id === effectiveModelId || model.originalId === effectiveModelId,
   );
   // archive#1012: an alias/default entry hides which model the engine actually runs
   // ("Default (recommended)" told the owner nothing while an outdated host
@@ -1851,9 +1857,7 @@ export function ChatInputArea({
                 .join(' · ')}
               effort={effortLabel}
               icon={agentIcon}
-              engineId={parseEngineId(
-                acpApproval?.engineId ?? executionEngineId,
-              )}
+              engineId={engineId}
               // The move shows on the closed trigger at every width; a
               // next-turn move has its own notice above the draft instead.
               notice={
@@ -1863,38 +1867,127 @@ export function ChatInputArea({
               }
               description={agentEngineMoveSentence}
             >
-              {onOpenAgentHandoff && (
-                <ComposerChoice
-                  ref={agentHandoffTriggerRef}
-                  // On a phone the handoff dialog replaces Run setup rather
-                  // than stacking over it.
-                  closesRunSetup={isMobile}
-                  className="chat-input__agent-btn"
-                  onClick={
-                    agentHandoffDisabled ? undefined : onOpenAgentHandoff
-                  }
-                  aria-disabled={agentHandoffDisabled}
-                  aria-haspopup="dialog"
-                  aria-label={agentAccessibleLabel}
-                  title={agentAccessibleLabel}
-                  caption="Agent"
-                  icon={agentIcon}
-                  valueClassName="chat-input__agent-name"
-                  value={
-                    <>
-                      {setupAgentLabel ?? 'Current Agent'}
-                      {agentRoute && (
-                        <span className="chat-input__agent-route">
-                          {' · Connection: '}
-                          {agentRoute}
+              {(onOpenAgentHandoff ||
+                executionEngineLabel ||
+                agentEngineMove) && (
+                <div className="composer-run-panel__agent">
+                  <ComposerChoice
+                    ref={agentHandoffTriggerRef}
+                    // On a phone the handoff dialog replaces Run setup rather
+                    // than stacking over it.
+                    closesRunSetup={isMobile}
+                    className="chat-input__agent-btn"
+                    onClick={
+                      agentHandoffDisabled ? undefined : onOpenAgentHandoff
+                    }
+                    aria-disabled={!onOpenAgentHandoff || agentHandoffDisabled}
+                    aria-haspopup={onOpenAgentHandoff ? 'dialog' : undefined}
+                    aria-label={
+                      onOpenAgentHandoff
+                        ? agentAccessibleLabel
+                        : `Agent: ${setupAgentLabel ?? 'Current Agent'}`
+                    }
+                    title={
+                      onOpenAgentHandoff ? agentAccessibleLabel : undefined
+                    }
+                    caption="Agent"
+                    icon={
+                      executionEngineLabel || agentEngineMove
+                        ? undefined
+                        : agentIcon || <AgentGlyph />
+                    }
+                    valueClassName="chat-input__agent-name"
+                    value={
+                      <>
+                        <span className="composer-run-panel__identity-name">
+                          {setupAgentLabel ?? 'Current Agent'}
                         </span>
-                      )}
-                    </>
-                  }
-                />
+                        {viewportWidth > 360 &&
+                          agentEngineMove &&
+                          !agentEngineMove.nextTurn && (
+                            <span className="composer-run-panel__engine-status">
+                              Engine differs
+                            </span>
+                          )}
+                        {agentRoute &&
+                          !executionEngineLabel &&
+                          !agentEngineMove && (
+                            <span className="chat-input__agent-route">
+                              {' · Connection: '}
+                              {agentRoute}
+                            </span>
+                          )}
+                      </>
+                    }
+                  />
+                  {(executionEngineLabel || agentEngineMove) && (
+                    <details className="composer-run-panel__engine-details">
+                      <summary
+                        aria-label={
+                          agentEngineMove && !agentEngineMove.nextTurn
+                            ? 'Engine details. Engine differs from Agent default'
+                            : 'Engine details'
+                        }
+                      >
+                        <span
+                          className="composer-run-panel__engine-agent"
+                          aria-hidden="true"
+                        >
+                          {agentIcon || <AgentGlyph />}
+                        </span>
+                        <span
+                          className="composer-run-panel__engine-mark"
+                          aria-hidden="true"
+                        >
+                          <BrandIcon
+                            name=""
+                            engineId={sessionEngineId ?? undefined}
+                            size={16}
+                            fallback={<EngineGlyph />}
+                          />
+                        </span>
+                        {agentEngineMove && !agentEngineMove.nextTurn && (
+                          <span
+                            className="composer-run-panel__engine-dot"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </summary>
+                      <div className="composer-run-panel__routing">
+                        {executionEngineLabel && (
+                          <span className="chat-input__chip-caption-engine">
+                            {agentEngineMove?.nextTurn
+                              ? 'Previous engine: '
+                              : 'Current engine: '}
+                            {executionEngineLabel}
+                          </span>
+                        )}
+                        {agentRoute && <span>Connection: {agentRoute}</span>}
+                        {agentEngineMove && (
+                          <span className="chat-input__engine-moved">
+                            {agentEngineMove.nextTurn
+                              ? `Next turn on ${agentEngineMove.to}`
+                              : `Agent default: ${agentEngineMove.to}`}
+                          </span>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                </div>
               )}
               <ComposerChoice
                 ref={modelButtonRef}
+                icon={
+                  effectiveModelInfo ? (
+                    <ModelIcon model={effectiveModelInfo} />
+                  ) : (
+                    <BrandIcon
+                      name="Model"
+                      engineId={sessionEngineId ?? undefined}
+                      fallback={<EngineGlyph />}
+                    />
+                  )
+                }
                 changedForConversation={Boolean(
                   currentExecutionAgentId || isOverride,
                 )}
@@ -1909,28 +2002,26 @@ export function ChatInputArea({
                 title={modelAccessibleLabel}
                 caption={
                   <>
-                    <span className="chat-input__chip-caption-engine">
-                      {agentEngineMove && executionEngineLabel && (
-                        <span>This session: </span>
-                      )}
-                      {executionEngineLabel ?? 'Engine & model'}
-                    </span>
-                    {agentEngineMove && (
-                      <span className="chat-input__engine-moved">
-                        {agentEngineMove.nextTurn
-                          ? `Next turn on ${agentEngineMove.to}`
-                          : `Agent default: ${agentEngineMove.to}`}
-                      </span>
+                    Model
+                    {!agentEngineMove && executionEngineLabel && (
+                      <>
+                        {' · '}
+                        <span className="chat-input__chip-caption-engine">
+                          {executionEngineLabel}
+                        </span>
+                      </>
                     )}
-                    {currentExecutionAgentId ? (
-                      <span className="chat-input__chip-caption-engine">
-                        {' · Conversation override'}
-                      </span>
-                    ) : null}
                   </>
                 }
                 value={
-                  effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
+                  <>
+                    <span className="composer-run-panel__identity-name">
+                      {modelLabel}
+                    </span>
+                    {effortLabel && (
+                      <span className="composer-run-panel__effort">{` · ${effortLabel}`}</span>
+                    )}
+                  </>
                 }
                 valueClassName="chat-input__model-name"
               />

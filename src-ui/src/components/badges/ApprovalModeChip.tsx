@@ -26,6 +26,7 @@ import {
   ConversationManagedPolicyProvider,
   useOptionalConversationConnection,
 } from '../conversation/ConversationConnectionContext';
+import { ShieldGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -337,6 +338,7 @@ function ApprovalModeChipContent({
         title={`Approval: ${selectedLabel}.${policyBoundary}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Approval"
+        icon={<ShieldGlyph />}
         value={chipText}
         valueClassName="chat-input__approval-chip-label"
       />

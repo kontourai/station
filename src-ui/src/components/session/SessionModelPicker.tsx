@@ -416,6 +416,15 @@ export function SessionModelPicker({
           Connection: {connectionLabel}
         </p>
       )}
+      {selectedModel &&
+        (selectedModel.originalId ?? selectedModel.id).includes('/') && (
+          <details className="session-model-picker__binding">
+            <summary>Model ID</summary>
+            <code style={{ overflowWrap: 'anywhere' }}>
+              {selectedModel.originalId ?? selectedModel.id}
+            </code>
+          </details>
+        )}
       {catalogNotice && (
         <p className="session-model-picker__binding" role="alert">
           {catalogNotice}

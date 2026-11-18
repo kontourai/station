@@ -130,8 +130,9 @@ test('a phone composer shows the next-turn destination in full above its Run set
         document.querySelectorAll(
           '.chat-input__settings > .composer-run-control',
         ).length === 1 &&
-        document.querySelectorAll('.composer-run-panel__choices > *').length >=
-          4,
+        document.querySelectorAll(
+          '.composer-run-panel__choices .composer-choice',
+        ).length >= 4,
     );
     const destination = await page.evaluate(
       unclipped,
@@ -167,7 +168,8 @@ async function mounted(source: string) {
     () =>
       document.querySelectorAll('.chat-input__settings > .composer-run-control')
         .length === 1 &&
-      document.querySelectorAll('.composer-run-panel__choices > *').length >= 4,
+      document.querySelectorAll('.composer-run-panel__choices .composer-choice')
+        .length >= 4,
   );
   return fixture;
 }
@@ -278,7 +280,9 @@ test('a phone composer\'s Run setup trigger keeps "Default differs" whole while 
     // Opened, the sheet holds the four real controls and names where the
     // Default differs, with nothing wider than the sheet and nothing clipped.
     await trigger.click();
-    const sheet = page.getByRole('dialog', { name: 'Run setup' });
+    const sheet = page.getByRole('dialog', {
+      name: 'Agent & model',
+    });
     await sheet.waitFor();
     for (const name of [
       /^Agent: /,
@@ -287,8 +291,12 @@ test('a phone composer\'s Run setup trigger keeps "Default differs" whole while 
       /^Approval: /,
     ])
       expect(await sheet.getByRole('button', { name }).isVisible()).toBe(true);
+    await sheet.getByLabel(/^Engine details/).click();
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
+      expect(
+        await sheet.getByText('Engine differs', { exact: true }).isVisible(),
+      ).toBe(width > 360);
       const move = await page.evaluate(
         unclipped,
         '.composer-run-panel .chat-input__engine-moved',
@@ -305,6 +313,12 @@ test('a phone composer\'s Run setup trigger keeps "Default differs" whole while 
         separator: false,
       });
       expect(await page.evaluate(sheetFaults), `${width}px`).toEqual([]);
+      const labelLefts = await sheet
+        .locator('.chat-input__chip-stack')
+        .evaluateAll((labels) =>
+          labels.map((label) => Math.round(label.getBoundingClientRect().left)),
+        );
+      expect(new Set(labelLefts).size, `${width}px`).toBe(1);
     }
     expect(errors).toEqual([]);
   } finally {
@@ -319,7 +333,8 @@ test('the Run setup sheet puts even a short move on its own line', async () => {
   );
   try {
     await page.getByTestId('run-setup-trigger').click();
-    await page.getByRole('dialog', { name: 'Run setup' }).waitFor();
+    await page.getByRole('dialog', { name: 'Agent & model' }).waitFor();
+    await page.getByLabel(/^Engine details/).click();
     expect(
       await page
         .locator('.composer-run-panel .chat-input__engine-moved')
@@ -340,7 +355,7 @@ test('the Run setup sheet puts even a short move on its own line', async () => {
  * painted text (a generated `::before` included) opens with a separator. */
 function moveLine() {
   const caption = document.querySelector(
-    '.composer-run-panel .chat-input__chip-caption:has(.chat-input__engine-moved)',
+    '.composer-run-panel .composer-run-panel__routing',
   )!;
   const engine = caption.querySelector('.chat-input__chip-caption-engine')!;
   const moved = caption.querySelector('.chat-input__engine-moved')!;

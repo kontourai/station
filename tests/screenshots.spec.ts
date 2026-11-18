@@ -7513,7 +7513,10 @@ const SCREENS: Screen[] = [
             ).toHaveCount(1);
             await expect(trigger).toBeInViewport();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup', exact: true }),
+              page.getByRole('dialog', {
+                name: 'Agent & model',
+                exact: true,
+              }),
             ).toBeHidden();
           },
           true,
@@ -7545,7 +7548,7 @@ const SCREENS: Screen[] = [
             expect(bounds!.width).toBeLessThan(viewport.width);
             await trigger.click();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup' }),
+              page.getByRole('dialog', { name: 'Agent & model' }),
             ).toBeVisible();
             await expect(
               page.getByRole('button', { name: /^Agent:/ }),
@@ -7580,7 +7583,7 @@ const SCREENS: Screen[] = [
             expect(bounds!.width).toBeLessThan(viewport.width);
             await trigger.click();
             await expect(
-              page.getByRole('dialog', { name: 'Run setup' }),
+              page.getByRole('dialog', { name: 'Agent & model' }),
             ).toBeVisible();
             await expect(
               page.getByRole('button', { name: /^Agent:/ }),
@@ -7589,7 +7592,10 @@ const SCREENS: Screen[] = [
               page.getByRole('button', { name: /^Model:/ }),
             ).toBeVisible();
             await page
-              .getByRole('dialog', { name: 'Run setup', exact: true })
+              .getByRole('dialog', {
+                name: 'Agent & model',
+                exact: true,
+              })
               .getByRole('button', { name: /^Model:/ })
               .click();
             const picker = page.getByRole('dialog', {
