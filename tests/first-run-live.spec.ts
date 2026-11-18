@@ -3,10 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from './helpers/authenticated-request';
 import { LAZY_CHUNK_ALLOWANCE_MS } from './helpers/lazy-chunk-allowance';
-import {
-  countVisibleLazyBoundaryErrors,
-  waitForLazySurface,
-} from './helpers/lazy-surface-readiness';
+import { waitForLazySurface } from './helpers/lazy-surface-readiness';
 import { waitForLocalUiAccessReadiness } from './helpers/local-ui-access-readiness';
 import {
   closeFixtureServer,
@@ -506,25 +503,9 @@ test('phone first run recovers from no provider to a real streamed reply', async
       exact: true,
     });
     await expect(chatActions).toBeVisible();
-    // Counted BEFORE the click: `LazyBoundary`'s failure text is the same constant
-    // everywhere, so only a failure that APPEARS across this interaction can be
-    // attributed to this sheet. The dock's own prewarmed boundary rejects exactly
-    // when the host is unreachable, and it sorts before these portaled sheets.
-    const boundaryErrorsBeforeChatActions =
-      await countVisibleLazyBoundaryErrors(page);
     await chatActions.click();
     const chatActionsMenu = page.getByRole('menu', { name: 'Chat actions' });
-    // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`,
-    // kept out of the entry bundle), so its FIRST open is a module fetch that
-    // renders nothing while it is in flight. Playwright's 5s expect default is
-    // not a budget for that on a loaded host — observed pending at 5s with the
-    // trigger already `aria-expanded`.
-    //
-    // #1642: 15 s did not settle it either, and a bare wait on the menu cannot
-    // say why — a chunk that REJECTS looks exactly like a chunk that is slow.
-    // Watch the boundary's failure state alongside the menu so the two are
-    // different reports, and hand the wait the trigger's `aria-expanded` so its
-    // timeout can at least say whether the click was taken.
+    // Report a rejected Chat actions boundary separately from a delayed open.
     await waitForLazySurface(
       page,
       {
@@ -533,7 +514,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
         openIndicator: page.locator(
           'button[aria-label="Chat actions"][aria-expanded="true"]',
         ),
-        baselineUnavailableCount: boundaryErrorsBeforeChatActions,
+        surfaceId: 'chat-actions',
       },
       LAZY_CHUNK_ALLOWANCE_MS,
     );
@@ -561,16 +542,13 @@ test('phone first run recovers from no provider to a real streamed reply', async
     const taskDialog = page.getByRole('region', { name: 'Inbox', exact: true });
     // Await the inbox's lazy boundary before acting on its rows.
     const openTaskSwitcher = async (occasion: string) => {
-      // Counted before each click, for the same reason as the sheet above: only a
-      // boundary failure that appears across THIS interaction is this sheet's.
-      const boundaryErrorsBefore = await countVisibleLazyBoundaryErrors(page);
       await taskSwitcher.click();
       await waitForLazySurface(
         page,
         {
           surfaceName: `The Inbox (${occasion})`,
           surface: taskDialog,
-          baselineUnavailableCount: boundaryErrorsBefore,
+          surfaceId: 'mobile-inbox',
         },
         LAZY_CHUNK_ALLOWANCE_MS,
       );
