@@ -120,7 +120,7 @@ function check(
     profiles = profile === 'seatbelt-kernel'
       ? CAPTURED_SEATBELT_PROFILE
       : PROFILES,
-  } = {},
+  }: { profile?: string; profiles?: string } = {},
 ) {
   return runCheck([
     '--profile-name',
@@ -440,6 +440,8 @@ describe('an unusable report fails closed', () => {
         'seatbelt-kernel',
         '--report',
         MACOS_REPORT,
+        '--profiles-file',
+        CAPTURED_SEATBELT_PROFILE,
         '--root',
         '/station',
       ]),
@@ -457,6 +459,8 @@ describe('an unusable report fails closed', () => {
         join(FIXTURES, 'does-not-exist.report.json'),
         '--report',
         MACOS_REPORT,
+        '--profiles-file',
+        CAPTURED_SEATBELT_PROFILE,
         '--root',
         '/station',
       ],
@@ -470,6 +474,8 @@ describe('an unusable report fails closed', () => {
         'seatbelt-kernel',
         '--report',
         MACOS_REPORT,
+        '--profiles-file',
+        CAPTURED_SEATBELT_PROFILE,
         '--root',
         '/station',
       ],
