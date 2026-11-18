@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
+import { e2eOperatorAuthorizationHeaders } from './helpers/e2e-operator-credential';
 import { test } from './helpers/fixture-audit';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
@@ -18,7 +19,7 @@ const STATUS_READY = JSON.stringify({
   },
 });
 
-async function seedConnection(page: Page, withRecovered = false) {
+async function seedConnection(page: Page, recovered: boolean | string = false) {
   const credential = process.env.STATION_E2E_HOST_CREDENTIAL;
   if (!credential) {
     throw new Error('Reconnect coverage requires the runner host credential');
@@ -75,7 +76,12 @@ async function seedConnection(page: Page, withRecovered = false) {
     },
     {
       hostCredential: credential,
-      recoveredUrl: withRecovered ? RECOVERED_URL : undefined,
+      recoveredUrl:
+        typeof recovered === 'string'
+          ? recovered
+          : recovered
+            ? RECOVERED_URL
+            : undefined,
     },
   );
 }
@@ -384,598 +390,924 @@ test.describe('compatibility-aware reconnect', () => {
     });
 
     for (const identityMismatch of [false, true]) {
-      test(`Connections navigation, setup and Station controls work ${identityMismatch ? 'with' : 'without'} a Station notice`, async ({
-        page,
-      }) => {
-        await seedConnection(page);
-        await installTransport(page, {
-          healthy: true,
-          bootId: 'connections-mobile-boot',
-          inFlight: 0,
-          maxInFlight: 0,
-        });
-        if (identityMismatch) {
-          await page.route('**/.well-known/station/v1', (route) =>
-            route.fulfill({
-              json: {
-                schemaVersion: 1,
-                authentication: { scheme: 'bearer', protocolVersion: 1 },
-                transports: { http: 1, sse: 1, websocket: 1 },
-                compatibility: E2E_STATION_COMPATIBILITY,
-              },
-            }),
-          );
-        }
-
-        const savedModel = {
-          id: 'phone-model',
-          kind: 'model',
-          type: 'openai-compat',
-          name: 'Phone model',
-          enabled: true,
-          capabilities: ['llm'],
-          config: { baseUrl: 'https://provider.example.test/v1', apiKey: '' },
-          status: 'ready',
-          prerequisites: [],
-          lastCheckedAt: null,
-        };
-        await page.route(/\/api\/connections(?:\/models)?$/, async (route) => {
-          if (route.request().method() !== 'GET') {
-            await route.fallback();
-            return;
-          }
-          await route.fulfill({ json: { success: true, data: [savedModel] } });
-        });
-        await page.route(
-          '**/api/connections/phone-model/test',
-          async (route) => {
-            expect(route.request().method()).toBe('POST');
-            await route.fulfill({
-              json: {
-                success: true,
-                data: {
-                  healthy: false,
-                  reason: 'The fixture provider rejected the API key.',
-                },
-              },
+      test.describe(
+        identityMismatch ? 'with a Station notice' : 'without a Station notice',
+        () => {
+          test.beforeEach(async ({ page, baseURL }) => {
+            if (!baseURL)
+              throw new Error(
+                'The Connections matrix requires an isolated Station URL',
+              );
+            const secondStation = new URL(baseURL);
+            secondStation.hostname =
+              secondStation.hostname === 'localhost'
+                ? '127.0.0.1'
+                : 'localhost';
+            await seedConnection(page, secondStation.origin);
+            await installTransport(page, {
+              healthy: true,
+              bootId: 'connections-mobile-boot',
+              inFlight: 0,
+              maxInFlight: 0,
             });
-          },
-        );
-        const toolServer = {
-          id: 'phone-tool-server',
-          kind: 'mcp',
-          transport: 'stdio',
-          command: 'fixture-tool-server',
-          displayName: 'Phone tool server',
-          enabled: true,
-        };
-        await page.route(
-          /\/integrations(?:\/phone-tool-server)?$/,
-          async (route) => {
-            if (route.request().method() !== 'GET') {
-              await route.fallback();
-              return;
+            if (identityMismatch) {
+              await page.route(`${baseURL}/.well-known/station/v1`, (route) =>
+                route.fulfill({
+                  json: {
+                    schemaVersion: 1,
+                    authentication: { scheme: 'bearer', protocolVersion: 1 },
+                    transports: { http: 1, sse: 1, websocket: 1 },
+                    compatibility: E2E_STATION_COMPATIBILITY,
+                  },
+                }),
+              );
             }
-            const detail = new URL(route.request().url()).pathname.endsWith(
-              '/phone-tool-server',
+          });
+
+          test('Connections navigation, setup and writable details', async ({
+            page,
+            baseURL,
+          }) => {
+            if (!baseURL)
+              throw new Error(
+                'The Connections matrix requires the isolated Station URL',
+              );
+            const headers = e2eOperatorAuthorizationHeaders(
+              process.env.STATION_E2E_HOST_CREDENTIAL,
             );
-            await route.fulfill({
-              json: { success: true, data: detail ? toolServer : [toolServer] },
-            });
-          },
-        );
-
-        await page.goto('/connections/computers');
-        const toolbar = page.getByTestId('app-toolbar-connection');
-        await expect(toolbar).toHaveAttribute(
-          'aria-label',
-          identityMismatch ? /Needs re-pairing/ : /Choose Station — Connected/,
-        );
-        await toolbar.tap();
-        await page.getByRole('menuitem', { name: /^Station details/ }).tap();
-        const details = page.getByRole('dialog', { name: 'Station details' });
-        if (identityMismatch) {
-          await expect(
-            details.getByText(/isn't the one this device paired with/),
-          ).toBeVisible();
-        } else {
-          await expect(
-            details.getByText('No additional Station notices.'),
-          ).toBeVisible();
-        }
-        await details
-          .getByRole('button', { name: 'Close Station details' })
-          .tap();
-        await expect(details).toBeHidden();
-
-        const sections = [
-          {
-            title: 'Models',
-            path: '/connections/models',
-            add: 'Add model connection',
-            target: '/connections/models/new',
-          },
-          {
-            title: 'Engines',
-            path: '/connections/engines',
-            add: 'Add engine',
-            target: '/connections/engines/new',
-          },
-          {
-            title: 'Tools',
-            path: '/connections/tools',
-            add: 'Add tool server',
-            target: '/connections/tools/new',
-          },
-          {
-            title: 'Knowledge',
-            path: '/connections/knowledge',
-            add: 'Add knowledge source',
-            target: '/settings?view=knowledge',
-          },
-          {
-            title: 'Computers',
-            path: '/connections/computers',
-            add: 'Add computer',
-          },
-        ];
-        for (const section of sections) {
-          await test.step(section.title, async () => {
-            const tabs = page.getByRole('tablist', {
-              name: 'Connection sections',
-            });
-            await tabs
-              .getByRole('tab', { name: new RegExp(`^${section.title}\\b`) })
+            const suffix = identityMismatch ? 'notice' : 'healthy';
+            const toolId = `phone-tool-${suffix}`;
+            await page.goto('/connections/computers');
+            const toolbar = page.getByTestId('app-toolbar-connection');
+            await expect(toolbar).toHaveAttribute(
+              'aria-label',
+              identityMismatch
+                ? /Needs re-pairing/
+                : /Choose Station — Connected/,
+            );
+            await toolbar.tap();
+            await page
+              .getByRole('menuitem', { name: /^Station details/ })
               .tap();
-            await expect(page).toHaveURL(
-              (url) => url.pathname === section.path,
-            );
-            await expect(
-              page.getByRole('heading', {
-                name: section.title,
-                level: 1,
-                exact: true,
-              }),
-            ).toBeVisible();
+            const details = page.getByRole('dialog', {
+              name: 'Station details',
+            });
             if (identityMismatch) {
               await expect(
-                toolbar.getByRole('img', { name: /Station notices/ }),
+                details.getByText(/isn't the one this device paired with/),
+              ).toBeVisible();
+            } else {
+              await expect(
+                details.getByText('No additional Station notices.'),
               ).toBeVisible();
             }
-            await page
-              .getByRole('button', { name: section.add, exact: true })
+            await details
+              .getByRole('button', { name: 'Close Station details' })
               .tap();
-            if (section.target) {
+            await expect(details).toBeHidden();
+
+            const sections = [
+              {
+                title: 'Models',
+                path: '/connections/models',
+                add: 'Add model connection',
+                target: '/connections/models/new',
+              },
+              {
+                title: 'Engines',
+                path: '/connections/engines',
+                add: 'Add engine',
+                target: '/connections/engines/new',
+              },
+              {
+                title: 'Tools',
+                path: '/connections/tools',
+                add: 'Add tool server',
+                target: '/connections/tools/new',
+              },
+              {
+                title: 'Knowledge',
+                path: '/connections/knowledge',
+                add: 'Add knowledge source',
+                target: '/settings?view=knowledge',
+              },
+              {
+                title: 'Computers',
+                path: '/connections/computers',
+                add: 'Add computer',
+              },
+            ];
+            for (const section of sections) {
+              await test.step(section.title, async () => {
+                const tabs = page.getByRole('tablist', {
+                  name: 'Connection sections',
+                });
+                await tabs
+                  .getByRole('tab', {
+                    name: new RegExp(`^${section.title}\\b`),
+                  })
+                  .tap();
+                await expect(page).toHaveURL(
+                  (url) => url.pathname === section.path,
+                );
+                await expect(
+                  page.getByRole('heading', {
+                    name: section.title,
+                    level: 1,
+                    exact: true,
+                  }),
+                ).toBeVisible();
+                if (identityMismatch) {
+                  await expect(
+                    toolbar.getByRole('img', { name: /Station notices/ }),
+                  ).toBeVisible();
+                }
+                await page
+                  .getByRole('button', { name: section.add, exact: true })
+                  .tap();
+                if (section.target) {
+                  await expect(page).toHaveURL(
+                    (url) => url.pathname + url.search === section.target,
+                  );
+                  await page.goBack();
+                  await expect(page).toHaveURL(
+                    (url) => url.pathname === section.path,
+                  );
+                } else {
+                  const chooser = page.getByRole('dialog', {
+                    name: 'What do you want to do?',
+                  });
+                  await expect(chooser).toBeVisible();
+                  await chooser
+                    .getByRole('button', { name: 'Close add a computer' })
+                    .tap();
+                  await expect(chooser).toBeHidden();
+                }
+              });
+            }
+
+            await test.step('Saved model and tool details', async () => {
+              const tabs = page.getByRole('tablist', {
+                name: 'Connection sections',
+              });
+              await tabs.getByRole('tab', { name: /^Models/ }).tap();
+              await page
+                .getByRole('button', {
+                  name: 'Add model connection',
+                  exact: true,
+                })
+                .tap();
+              await page
+                .getByRole('button', { name: /^OpenAI-Compatible/ })
+                .tap();
+              await page
+                .getByRole('textbox', { name: 'Name', exact: true })
+                .fill(`Phone model ${suffix}`);
+              await page
+                .getByRole('textbox', { name: 'Server URL', exact: true })
+                .fill(new URL(`/__e2e_phone/model-${suffix}/v1`, baseURL).href);
+              await page
+                .getByRole('textbox', { name: 'Default model', exact: true })
+                .fill('fixture-model');
+              const createModel = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'POST' &&
+                  new URL(response.url()).pathname === '/api/connections',
+              );
+              await page
+                .getByRole('button', { name: 'Create', exact: true })
+                .tap();
+              const created = await createModel;
+              expect(created.ok()).toBe(true);
+              const {
+                data: { id: modelId },
+              } = (await created.json()) as { data: { id: string } };
               await expect(page).toHaveURL(
-                (url) => url.pathname + url.search === section.target,
+                (url) => url.pathname === `/connections/models/${modelId}`,
+              );
+
+              await page.route(
+                `**/api/connections/${modelId}/test`,
+                async (route) => {
+                  expect(route.request().method()).toBe('POST');
+                  await route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        healthy: false,
+                        reason: 'The fixture provider rejected the API key.',
+                      },
+                    },
+                  });
+                },
+              );
+              const modelPath = `/api/connections/${modelId}`;
+              const updatedModel = page.getByRole('button', {
+                name: new RegExp(`^Renamed model ${suffix}`),
+              });
+              await page
+                .getByRole('button', { name: 'Test connection', exact: true })
+                .tap();
+              await expect(
+                page.getByText('The fixture provider rejected the API key.'),
+              ).toBeVisible();
+              await page
+                .getByRole('button', { name: 'Delete', exact: true })
+                .tap();
+              const deleteModel = page.getByRole('alertdialog');
+              await expect(deleteModel).toContainText(`Phone model ${suffix}`);
+              await deleteModel.getByRole('button', { name: 'Cancel' }).tap();
+              await page
+                .getByRole('textbox', { name: 'Name', exact: true })
+                .fill(`Renamed model ${suffix}`);
+              const modelSaved = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'PUT' &&
+                  new URL(response.url()).pathname === modelPath,
+              );
+              await page
+                .getByRole('button', { name: 'Save', exact: true })
+                .tap();
+              expect((await modelSaved).ok()).toBe(true);
+              const savedModel = await page.request.get(modelPath, { headers });
+              expect(await savedModel.json()).toMatchObject({
+                data: { name: `Renamed model ${suffix}` },
+              });
+              await page.getByRole('button', { name: '← Back to list' }).tap();
+              await updatedModel.tap();
+              await page
+                .getByRole('button', { name: 'Delete', exact: true })
+                .tap();
+              const modelDeleted = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'DELETE' &&
+                  new URL(response.url()).pathname === modelPath,
+              );
+              await deleteModel
+                .getByRole('button', { name: 'Delete', exact: true })
+                .tap();
+              expect((await modelDeleted).ok()).toBe(true);
+              expect(
+                (await page.request.get(modelPath, { headers })).status(),
+              ).toBe(404);
+              await expect(page).toHaveURL(/\/connections\/models$/);
+              await expect(updatedModel).toHaveCount(0);
+
+              await tabs.getByRole('tab', { name: /^Tools/ }).tap();
+              await expect(
+                page.getByRole('button', { name: /^Station Docs\b/ }),
+              ).toBeVisible();
+              await page
+                .getByRole('button', { name: 'Add tool server', exact: true })
+                .tap();
+              await page
+                .getByRole('textbox', { name: 'ID', exact: true })
+                .fill(toolId);
+              await page
+                .getByRole('textbox', { name: 'Display Name', exact: true })
+                .fill(`Phone tool server ${suffix}`);
+              await page
+                .getByRole('combobox', { name: 'Connection type', exact: true })
+                .selectOption('streamable-http');
+              await page
+                .getByRole('textbox', { name: 'Endpoint URL', exact: true })
+                .fill(new URL(`/__e2e_phone/${toolId}/mcp`, baseURL).href);
+              const createTool = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'POST' &&
+                  new URL(response.url()).pathname === '/integrations',
+              );
+              await page
+                .getByRole('button', { name: 'Create', exact: true })
+                .tap();
+              expect((await createTool).ok()).toBe(true);
+              const toolPath = `/integrations/${toolId}`;
+              const updatedTool = page.getByRole('button', {
+                name: new RegExp(`^Renamed tool server ${suffix}`),
+              });
+              await expect(page).toHaveURL(
+                (url) => url.pathname === `/connections/tools/${toolId}`,
+              );
+              await page
+                .getByRole('button', { name: 'Delete', exact: true })
+                .tap();
+              const deleteTool = page.getByRole('alertdialog', {
+                name: 'Delete tool server',
+              });
+              await deleteTool.getByRole('button', { name: 'Cancel' }).tap();
+              await page
+                .getByRole('textbox', { name: 'Display Name', exact: true })
+                .fill(`Renamed tool server ${suffix}`);
+              const toolSaved = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'PUT' &&
+                  new URL(response.url()).pathname === toolPath,
+              );
+              await page
+                .getByRole('button', { name: 'Save', exact: true })
+                .tap();
+              expect((await toolSaved).ok()).toBe(true);
+              const savedTool = await page.request.get(toolPath, { headers });
+              expect(await savedTool.json()).toMatchObject({
+                data: { displayName: `Renamed tool server ${suffix}` },
+              });
+              await page.getByRole('button', { name: '← Back to list' }).tap();
+              await updatedTool.tap();
+              for (const enabled of [true, false]) {
+                const lifecycle = page.waitForResponse(
+                  (response) =>
+                    response.request().method() === 'POST' &&
+                    new URL(response.url()).pathname === `${toolPath}/enabled`,
+                );
+                await page
+                  .getByRole('button', {
+                    name: enabled ? 'Enable' : 'Disable',
+                    exact: true,
+                  })
+                  .tap();
+                expect((await lifecycle).ok()).toBe(true);
+                const state = await page.request.get(toolPath, { headers });
+                expect(await state.json()).toMatchObject({ data: { enabled } });
+                await expect(
+                  page.getByRole('button', {
+                    name: enabled ? 'Disable' : 'Enable',
+                    exact: true,
+                  }),
+                ).toBeVisible();
+              }
+
+              await page
+                .getByRole('button', { name: 'Delete', exact: true })
+                .tap();
+              const toolDeleted = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'DELETE' &&
+                  new URL(response.url()).pathname === toolPath,
+              );
+              await deleteTool
+                .getByRole('button', { name: 'Delete', exact: true })
+                .tap();
+              expect((await toolDeleted).ok()).toBe(true);
+              expect(
+                (await page.request.get(toolPath, { headers })).status(),
+              ).toBe(404);
+              await expect(page).toHaveURL(/\/connections\/tools$/);
+              await expect(updatedTool).toHaveCount(0);
+              await tabs.getByRole('tab', { name: /^Computers/ }).tap();
+            });
+
+            await test.step('Engine setup and Knowledge navigation', async () => {
+              const tabs = page.getByRole('tablist', {
+                name: 'Connection sections',
+              });
+              await tabs.getByRole('tab', { name: /^Engines/ }).tap();
+              await page
+                .getByRole('button', { name: 'Add engine', exact: true })
+                .tap();
+              const custom = page.getByRole('button', {
+                name: 'Set up custom engine',
+              });
+              await custom.tap();
+              const engineSetup = page.getByRole('region', {
+                name: 'Engine setup',
+              });
+              await expect(
+                engineSetup.getByRole('heading', { name: 'Custom engine' }),
+              ).toBeVisible();
+              await expect(
+                engineSetup.getByRole('button', { name: 'Check engine' }),
+              ).toBeDisabled();
+              await engineSetup
+                .getByRole('button', { name: 'Back', exact: true })
+                .tap();
+              await expect(custom).toBeVisible();
+              await page.route('**/acp/connections', (route) =>
+                route.request().method() === 'POST'
+                  ? route.fulfill({
+                      json: {
+                        success: false,
+                        error: 'The fixture engine command is unavailable.',
+                      },
+                    })
+                  : route.fallback(),
+              );
+              await custom.tap();
+              await engineSetup
+                .getByLabel('Name', { exact: true })
+                .fill('Phone fixture engine');
+              await engineSetup
+                .getByRole('textbox', { name: 'Command', exact: true })
+                .fill('station-e2e-unavailable');
+              await engineSetup
+                .getByRole('button', { name: 'Check engine', exact: true })
+                .tap();
+              await expect(engineSetup.getByRole('alert')).toContainText(
+                'Unavailable',
+              );
+              const retry = page.waitForRequest(
+                (request) =>
+                  request.method() === 'POST' &&
+                  new URL(request.url()).pathname === '/acp/connections',
+              );
+              await engineSetup
+                .getByRole('button', { name: 'Retry', exact: true })
+                .tap();
+              await retry;
+              await expect(engineSetup.getByRole('alert')).toContainText(
+                'Unavailable',
+              );
+              await engineSetup
+                .getByRole('button', { name: 'Edit setup', exact: true })
+                .tap();
+              await expect(
+                engineSetup.getByRole('textbox', {
+                  name: 'Command',
+                  exact: true,
+                }),
+              ).toHaveValue('station-e2e-unavailable');
+              await engineSetup
+                .getByRole('button', { name: 'Back', exact: true })
+                .tap();
+              await expect(custom).toBeVisible();
+
+              await page.goBack();
+              await expect(page).toHaveURL(/\/connections\/engines$/);
+
+              await tabs.getByRole('tab', { name: /^Knowledge/ }).tap();
+              const sections = page.getByRole('navigation', {
+                name: 'Knowledge sections',
+              });
+              for (const [label, section] of [
+                ['Embedding model', 'embedding-model'],
+                ['Vector database', 'vector-database'],
+              ]) {
+                await sections.getByRole('link', { name: label }).tap();
+                await expect(page).toHaveURL(
+                  (url) => url.searchParams.get('section') === section,
+                );
+                await expect(
+                  page.getByRole('heading', { name: label, exact: true }),
+                ).toBeVisible();
+              }
+
+              await page
+                .getByRole('button', {
+                  name: 'Open Settings → My knowledge store',
+                })
+                .tap();
+              await expect(page).toHaveURL(
+                (url) =>
+                  url.pathname === '/settings' &&
+                  url.searchParams.get('view') === 'knowledge',
               );
               await page.goBack();
               await expect(page).toHaveURL(
-                (url) => url.pathname === section.path,
+                (url) => url.pathname === '/connections/knowledge',
               );
-            } else {
+              await tabs.getByRole('tab', { name: /^Computers/ }).tap();
+            });
+
+            await test.step('Computer chooser branches', async () => {
+              const add = page.getByRole('button', {
+                name: 'Add computer',
+                exact: true,
+              });
               const chooser = page.getByRole('dialog', {
                 name: 'What do you want to do?',
               });
-              await expect(chooser).toBeVisible();
+              await add.tap();
               await chooser
-                .getByRole('button', { name: 'Close add a computer' })
+                .getByRole('button', { name: /^Connect a Station/ })
+                .tap();
+              const setup = page.getByRole('dialog', {
+                name: 'Connect a Station',
+                exact: true,
+              });
+              await expect(chooser).toBeHidden();
+              await expect(
+                setup.getByRole('button', { name: 'Continue' }),
+              ).toBeDisabled();
+              await setup
+                .getByRole('button', { name: 'Pairing code', exact: true })
+                .tap();
+              await expect(
+                setup.getByRole('textbox', {
+                  name: 'Pairing code',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await setup
+                .getByRole('button', { name: 'Scan QR', exact: true })
+                .tap();
+              await setup
+                .getByRole('button', { name: 'Cancel', exact: true })
+                .tap();
+              await expect(
+                setup.getByRole('textbox', {
+                  name: 'Station address',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await setup
+                .getByRole('button', { name: 'Station address', exact: true })
+                .tap();
+              await expect(
+                setup.getByRole('button', {
+                  name: 'Station address',
+                  exact: true,
+                }),
+              ).toHaveAttribute('aria-pressed', 'true');
+              await setup
+                .getByRole('button', { name: 'Done', exact: true })
+                .tap();
+              await expect(setup).toBeHidden();
+
+              await add.tap();
+              await chooser
+                .getByRole('button', {
+                  name: /^Run work on another computer over SSH/,
+                })
+                .tap();
+              const ssh = page.getByRole('dialog', {
+                name: 'Run work on another computer over SSH',
+              });
+              await expect(
+                ssh.getByRole('button', { name: 'Save computer' }),
+              ).toBeDisabled();
+              await expect(
+                ssh.getByRole('button', { name: 'Test connection' }),
+              ).toBeDisabled();
+              await ssh
+                .getByRole('button', { name: 'Close SSH computer setup' })
+                .tap();
+              await expect(ssh).toBeHidden();
+
+              await add.tap();
+              const guide = chooser.getByRole('link', {
+                name: 'How device pairing and remote computers differ',
+              });
+              await expect(guide).toHaveAttribute(
+                'href',
+                /machine-relationships\.md$/,
+              );
+              await chooser
+                .getByRole('button', {
+                  name: /^Control this Station from another device/,
+                })
+                .tap();
+              await expect(
+                page.getByRole('heading', {
+                  name: 'Pair a Device',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await page
+                .getByRole('button', { name: 'Close Station manager' })
                 .tap();
               await expect(chooser).toBeHidden();
+            });
+          });
+
+          test('Station manager actions and writable profiles', async ({
+            page,
+          }) => {
+            await page.goto('/connections/computers');
+            const toolbar = page.getByTestId('app-toolbar-connection');
+            const details = page.getByRole('dialog', {
+              name: 'Station details',
+            });
+            await expect(toolbar).toHaveAttribute(
+              'aria-label',
+              identityMismatch
+                ? /Needs re-pairing/
+                : /Choose Station — Connected/,
+            );
+            await toolbar.tap();
+            await page
+              .getByRole('menuitem', { name: /^Station details/ })
+              .tap();
+            if (identityMismatch) {
+              const remove = details.getByRole('button', {
+                name: 'Remove connection',
+                exact: true,
+              });
+              await remove.tap();
+              await expect(
+                details.getByRole('button', {
+                  name: 'Confirm removing this connection',
+                }),
+              ).toBeVisible();
+              await details
+                .getByRole('button', { name: 'Cancel', exact: true })
+                .tap();
+              await expect(remove).toBeVisible();
+            }
+            await details
+              .getByRole('button', {
+                name: identityMismatch ? 'Pair again' : 'Manage Stations',
+              })
+              .tap();
+            await expect(details).toBeHidden();
+            const managerClose = page.getByRole('button', {
+              name: 'Close Station manager',
+            });
+            await expect(managerClose).toBeVisible();
+            if (identityMismatch) {
+              await expect(
+                page.getByRole('button', {
+                  name: 'Request access',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              const access = page.getByRole('dialog', {
+                name: 'Request Access',
+                exact: true,
+              });
+              await page.route(
+                '**/.well-known/station/v1/pairing/access-request',
+                (route) => route.abort('connectionrefused'),
+              );
+              const request = page.waitForRequest(
+                (request) =>
+                  request.method() === 'POST' &&
+                  new URL(request.url()).pathname.endsWith(
+                    '/pairing/access-request',
+                  ),
+              );
+              await access
+                .getByRole('button', { name: 'Request access', exact: true })
+                .tap();
+              await request;
+              await expect(
+                access.getByText(
+                  'Could not reach the Station at that address. Check that it is running and that this device can reach it.',
+                ),
+              ).toBeVisible();
+              const retry = page.waitForRequest(
+                (request) =>
+                  request.method() === 'POST' &&
+                  new URL(request.url()).pathname.endsWith(
+                    '/pairing/access-request',
+                  ),
+              );
+              await access
+                .getByRole('button', { name: 'Retry', exact: true })
+                .tap();
+              await retry;
+              await expect(access.getByRole('alert')).toContainText(
+                'Connection request failed',
+              );
+              await access
+                .getByRole('button', { name: 'Back', exact: true })
+                .tap();
+            }
+            const stations = page.getByRole('dialog', {
+              name: 'Stations',
+              exact: true,
+            });
+            await expect(stations).toBeVisible();
+
+            await test.step('Saved Station controls', async () => {
+              const disclosure = stations.getByRole('button', {
+                name: 'View details for Dev Server',
+              });
+              await disclosure.tap();
+              await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+              await expect(
+                stations.getByRole('button', { name: 'Switch to Dev Server' }),
+              ).toBeDisabled();
+              const rowActions = stations.getByRole('button', {
+                name: 'More actions for Dev Server',
+              });
+              await rowActions.tap();
+              const reachability = page.waitForRequest(
+                (request) =>
+                  new URL(request.url()).pathname === '/.well-known/station/v1',
+              );
+              await stations
+                .getByRole('menuitem', { name: 'Check reachability' })
+                .tap();
+              await reachability;
+              await expect(rowActions).toHaveAttribute(
+                'aria-expanded',
+                'false',
+              );
+
+              await rowActions.tap();
+              await stations
+                .getByRole('menuitem', { name: 'Copy address' })
+                .tap();
+              await expect(
+                stations.getByText(
+                  'Could not copy. The full address is shown above.',
+                  { exact: true },
+                ),
+              ).toBeVisible();
+
+              await rowActions.tap();
+              await stations
+                .getByRole('menuitem', { name: 'Edit Station' })
+                .tap();
+              const name = stations.getByRole('textbox', {
+                name: 'Station name',
+                exact: true,
+              });
+              await expect(name).toHaveValue('Dev Server');
+              await name.fill('Mobile Station');
+              await stations
+                .getByRole('button', { name: 'Cancel', exact: true })
+                .tap();
+              await expect(
+                stations.getByRole('button', {
+                  name: 'View details for Dev Server',
+                }),
+              ).toBeVisible();
+
+              await rowActions.tap();
+              await stations
+                .getByRole('menuitem', { name: 'Forget Station' })
+                .tap();
+              await expect(
+                stations.getByRole('button', {
+                  name: 'Confirm forgetting Dev Server',
+                }),
+              ).toBeVisible();
+              await stations
+                .getByRole('button', { name: 'Cancel', exact: true })
+                .tap();
+              await expect(rowActions).toBeVisible();
+
+              await rowActions.tap();
+              await stations
+                .getByRole('menuitem', { name: 'Reconnect', exact: true })
+                .tap();
+              const reconnect = page.getByRole('dialog', {
+                name: 'Request Access',
+              });
+              await expect(reconnect).toBeVisible();
+              await reconnect
+                .getByRole('button', { name: 'Back', exact: true })
+                .tap();
+              await expect(stations).toBeVisible();
+            });
+
+            await test.step('Renaming and forgetting the other saved Station', async () => {
+              const label = 'Recovered Station';
+              const renamed = 'Renamed recovery Station';
+              const row = stations.getByRole('button', {
+                name: `View details for ${label}`,
+              });
+              await row.tap();
+              const rowDetails = stations
+                .locator('.station-connect-row')
+                .filter({
+                  has: page.getByRole('button', {
+                    name: `View details for ${label}`,
+                  }),
+                });
+              await rowDetails
+                .getByRole('button', { name: 'Edit Station', exact: true })
+                .tap();
+              await stations
+                .getByRole('textbox', { name: 'Station name', exact: true })
+                .fill(renamed);
+              await stations
+                .getByRole('button', { name: 'Save', exact: true })
+                .tap();
+              const updated = stations.getByRole('button', {
+                name: `View details for ${renamed}`,
+              });
+              await expect(updated).toBeVisible();
+
+              const persisted = () =>
+                page.evaluate(() => {
+                  const records = JSON.parse(
+                    localStorage.getItem('station-connect-connections') ?? '[]',
+                  ) as { id: string; name: string }[];
+                  return (
+                    records.find((record) => record.id === 'c2')?.name ?? null
+                  );
+                });
+              await expect.poll(persisted).toBe(renamed);
+              await stations
+                .getByRole('button', { name: `More actions for ${renamed}` })
+                .tap();
+              await stations
+                .getByRole('menuitem', { name: 'Forget Station' })
+                .tap();
+              await stations
+                .getByRole('button', { name: `Confirm forgetting ${renamed}` })
+                .tap();
+              await expect(updated).toHaveCount(0);
+              await expect.poll(persisted).toBeNull();
+            });
+
+            await test.step('Station manager pairing entry points', async () => {
+              await stations
+                .getByRole('button', {
+                  name: 'Enter a pairing code',
+                  exact: true,
+                })
+                .tap();
+              const enter = page.getByRole('dialog', {
+                name: 'Enter a pairing code',
+              });
+              await expect(
+                enter.getByRole('button', { name: 'Enter manually' }),
+              ).toHaveAttribute('aria-pressed', 'true');
+              await enter
+                .getByRole('button', { name: 'Back', exact: true })
+                .tap();
+
+              await stations
+                .getByRole('button', { name: 'Scan a QR code', exact: true })
+                .tap();
+              const scan = page.getByRole('dialog', {
+                name: 'Scan a pairing code',
+              });
+              await expect(
+                scan.getByRole('button', { name: 'Scan code', exact: true }),
+              ).toHaveAttribute('aria-pressed', 'true');
+              await scan
+                .getByRole('button', { name: 'Enter manually', exact: true })
+                .tap();
+              await scan
+                .getByRole('button', { name: 'Back', exact: true })
+                .tap();
+
+              await stations
+                .getByRole('button', { name: 'Paired devices', exact: true })
+                .tap();
+              const devices = page.getByRole('dialog', {
+                name: 'Paired Devices',
+              });
+              await expect(devices).toBeVisible();
+              await devices
+                .getByRole('button', { name: 'Back', exact: true })
+                .tap();
+
+              await stations
+                .getByRole('button', {
+                  name: 'Connect another device',
+                  exact: true,
+                })
+                .tap();
+              const invite = page.getByRole('dialog', {
+                name: 'Pair a Device',
+              });
+              await expect(invite).toBeVisible();
+              await invite
+                .getByRole('button', { name: 'Back', exact: true })
+                .tap();
+
+              await stations
+                .getByRole('button', { name: 'Connect a Station', exact: true })
+                .tap();
+              const setup = page.getByRole('dialog', {
+                name: 'Connect a Station',
+                exact: true,
+              });
+              await expect(setup).toBeVisible();
+              await setup
+                .getByRole('button', {
+                  name: 'Close Station setup',
+                  exact: true,
+                })
+                .tap();
+              await expect(setup).toBeHidden();
+              await expect(managerClose).toBeHidden();
+            });
+
+            if (identityMismatch) {
+              await toolbar.tap();
+              await page
+                .getByRole('menuitem', { name: /^Station details/ })
+                .tap();
+              await page.clock.install();
+              await details
+                .getByRole('button', { name: 'Remove connection', exact: true })
+                .tap();
+              await page.clock.runFor(350);
+              await details
+                .getByRole('button', {
+                  name: 'Confirm removing this connection',
+                })
+                .tap();
+              await expect
+                .poll(() =>
+                  page.evaluate(() => {
+                    const records = JSON.parse(
+                      localStorage.getItem('station-connect-connections') ??
+                        '[]',
+                    ) as { id: string }[];
+                    return records.some((record) => record.id === 'c1');
+                  }),
+                )
+                .toBe(false);
             }
           });
-        }
-
-        await test.step('Saved model and tool details', async () => {
-          const tabs = page.getByRole('tablist', {
-            name: 'Connection sections',
-          });
-          await tabs.getByRole('tab', { name: /^Models/ }).tap();
-          const modelRow = page.getByRole('button', { name: /^Phone model/ });
-          await modelRow.tap();
-          await expect(page).toHaveURL(/\/connections\/models\/phone-model$/);
-          await page
-            .getByRole('button', { name: 'Test connection', exact: true })
-            .tap();
-          await expect(
-            page.getByText('The fixture provider rejected the API key.'),
-          ).toBeVisible();
-          await page.getByRole('button', { name: 'Delete', exact: true }).tap();
-          const deleteModel = page.getByRole('alertdialog');
-          await expect(deleteModel).toContainText('Phone model');
-          await deleteModel.getByRole('button', { name: 'Cancel' }).tap();
-          await expect(deleteModel).toBeHidden();
-          await page.getByRole('button', { name: '← Back to list' }).tap();
-          await expect(modelRow).toBeVisible();
-
-          await tabs.getByRole('tab', { name: /^Tools/ }).tap();
-          const toolRow = page.getByRole('button', {
-            name: /^Phone tool server/,
-          });
-          await toolRow.tap();
-          await expect(page).toHaveURL(
-            /\/connections\/tools\/phone-tool-server$/,
-          );
-          await page.getByRole('button', { name: 'Delete', exact: true }).tap();
-          const deleteTool = page.getByRole('alertdialog', {
-            name: 'Delete tool server',
-          });
-          await expect(deleteTool).toBeVisible();
-          await deleteTool.getByRole('button', { name: 'Cancel' }).tap();
-          await expect(deleteTool).toBeHidden();
-          await page.getByRole('button', { name: '← Back to list' }).tap();
-          await expect(toolRow).toBeVisible();
-          await tabs.getByRole('tab', { name: /^Computers/ }).tap();
-        });
-
-        await test.step('Engine setup and Knowledge navigation', async () => {
-          const tabs = page.getByRole('tablist', {
-            name: 'Connection sections',
-          });
-          await tabs.getByRole('tab', { name: /^Engines/ }).tap();
-          await page
-            .getByRole('button', { name: 'Add engine', exact: true })
-            .tap();
-          const custom = page.getByRole('button', {
-            name: 'Set up custom engine',
-          });
-          await custom.tap();
-          const engineSetup = page.getByRole('region', {
-            name: 'Engine setup',
-          });
-          await expect(
-            engineSetup.getByRole('heading', { name: 'Custom engine' }),
-          ).toBeVisible();
-          await expect(
-            engineSetup.getByRole('button', { name: 'Check engine' }),
-          ).toBeDisabled();
-          await engineSetup
-            .getByRole('button', { name: 'Back', exact: true })
-            .tap();
-          await expect(custom).toBeVisible();
-          await page.goBack();
-          await expect(page).toHaveURL(/\/connections\/engines$/);
-
-          await tabs.getByRole('tab', { name: /^Knowledge/ }).tap();
-          const sections = page.getByRole('navigation', {
-            name: 'Knowledge sections',
-          });
-          for (const [label, section] of [
-            ['Embedding model', 'embedding-model'],
-            ['Vector database', 'vector-database'],
-          ]) {
-            await sections.getByRole('link', { name: label }).tap();
-            await expect(page).toHaveURL(
-              (url) => url.searchParams.get('section') === section,
-            );
-            await expect(
-              page.getByRole('heading', { name: label, exact: true }),
-            ).toBeVisible();
-          }
-
-          await page
-            .getByRole('button', { name: 'Open Settings → My knowledge store' })
-            .tap();
-          await expect(page).toHaveURL(
-            (url) =>
-              url.pathname === '/settings' &&
-              url.searchParams.get('view') === 'knowledge',
-          );
-          await page.goBack();
-          await expect(page).toHaveURL(
-            (url) => url.pathname === '/connections/knowledge',
-          );
-          await tabs.getByRole('tab', { name: /^Computers/ }).tap();
-        });
-
-        await test.step('Computer chooser branches', async () => {
-          const add = page.getByRole('button', {
-            name: 'Add computer',
-            exact: true,
-          });
-          const chooser = page.getByRole('dialog', {
-            name: 'What do you want to do?',
-          });
-          await add.tap();
-          await chooser
-            .getByRole('button', { name: /^Connect a Station/ })
-            .tap();
-          const setup = page.getByRole('dialog', {
-            name: 'Connect a Station',
-            exact: true,
-          });
-          await expect(chooser).toBeHidden();
-          await expect(
-            setup.getByRole('button', { name: 'Continue' }),
-          ).toBeDisabled();
-          await setup
-            .getByRole('button', { name: 'Pairing code', exact: true })
-            .tap();
-          await expect(
-            setup.getByRole('textbox', { name: 'Pairing code', exact: true }),
-          ).toBeVisible();
-          await setup
-            .getByRole('button', { name: 'Scan QR', exact: true })
-            .tap();
-          await setup
-            .getByRole('button', { name: 'Cancel', exact: true })
-            .tap();
-          await expect(
-            setup.getByRole('textbox', {
-              name: 'Station address',
-              exact: true,
-            }),
-          ).toBeVisible();
-          await setup
-            .getByRole('button', { name: 'Station address', exact: true })
-            .tap();
-          await expect(
-            setup.getByRole('button', { name: 'Station address', exact: true }),
-          ).toHaveAttribute('aria-pressed', 'true');
-          await setup.getByRole('button', { name: 'Done', exact: true }).tap();
-          await expect(setup).toBeHidden();
-
-          await add.tap();
-          await chooser
-            .getByRole('button', {
-              name: /^Run work on another computer over SSH/,
-            })
-            .tap();
-          const ssh = page.getByRole('dialog', {
-            name: 'Run work on another computer over SSH',
-          });
-          await expect(
-            ssh.getByRole('button', { name: 'Save computer' }),
-          ).toBeDisabled();
-          await expect(
-            ssh.getByRole('button', { name: 'Test connection' }),
-          ).toBeDisabled();
-          await ssh
-            .getByRole('button', { name: 'Close SSH computer setup' })
-            .tap();
-          await expect(ssh).toBeHidden();
-
-          await add.tap();
-          const guide = chooser.getByRole('link', {
-            name: 'How device pairing and remote computers differ',
-          });
-          await expect(guide).toHaveAttribute(
-            'href',
-            /machine-relationships\.md$/,
-          );
-          await chooser
-            .getByRole('button', {
-              name: /^Control this Station from another device/,
-            })
-            .tap();
-          await expect(
-            page.getByRole('heading', { name: 'Pair a Device', exact: true }),
-          ).toBeVisible();
-          await page
-            .getByRole('button', { name: 'Close Station manager' })
-            .tap();
-          await expect(chooser).toBeHidden();
-        });
-
-        await expect(toolbar).toHaveAttribute(
-          'aria-label',
-          identityMismatch ? /Needs re-pairing/ : /Choose Station — Connected/,
-        );
-        await toolbar.tap();
-        await page.getByRole('menuitem', { name: /^Station details/ }).tap();
-        if (identityMismatch) {
-          const remove = details.getByRole('button', {
-            name: 'Remove connection',
-            exact: true,
-          });
-          await remove.tap();
-          await expect(
-            details.getByRole('button', {
-              name: 'Confirm removing this connection',
-            }),
-          ).toBeVisible();
-          await details
-            .getByRole('button', { name: 'Cancel', exact: true })
-            .tap();
-          await expect(remove).toBeVisible();
-        }
-        await details
-          .getByRole('button', {
-            name: identityMismatch ? 'Pair again' : 'Manage Stations',
-          })
-          .tap();
-        await expect(details).toBeHidden();
-        const managerClose = page.getByRole('button', {
-          name: 'Close Station manager',
-        });
-        await expect(managerClose).toBeVisible();
-        if (identityMismatch) {
-          await expect(
-            page.getByRole('button', { name: 'Request access', exact: true }),
-          ).toBeVisible();
-          const access = page.getByRole('dialog', {
-            name: 'Request Access',
-            exact: true,
-          });
-          await page.route(
-            '**/.well-known/station/v1/pairing/access-request',
-            (route) => route.abort('connectionrefused'),
-          );
-          const request = page.waitForRequest(
-            (request) =>
-              request.method() === 'POST' &&
-              new URL(request.url()).pathname.endsWith(
-                '/pairing/access-request',
-              ),
-          );
-          await access
-            .getByRole('button', { name: 'Request access', exact: true })
-            .tap();
-          await request;
-          await expect(
-            access.getByText(
-              'Could not reach the Station at that address. Check that it is running and that this device can reach it.',
-            ),
-          ).toBeVisible();
-          const retry = page.waitForRequest(
-            (request) =>
-              request.method() === 'POST' &&
-              new URL(request.url()).pathname.endsWith(
-                '/pairing/access-request',
-              ),
-          );
-          await access
-            .getByRole('button', { name: 'Retry', exact: true })
-            .tap();
-          await retry;
-          await expect(access.getByRole('alert')).toContainText(
-            'Connection request failed',
-          );
-          await access.getByRole('button', { name: 'Back', exact: true }).tap();
-        }
-        const stations = page.getByRole('dialog', {
-          name: 'Stations',
-          exact: true,
-        });
-        await expect(stations).toBeVisible();
-
-        await test.step('Saved Station controls', async () => {
-          const disclosure = stations.getByRole('button', {
-            name: 'View details for Dev Server',
-          });
-          await disclosure.tap();
-          await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
-          await expect(
-            stations.getByRole('button', { name: 'Switch to Dev Server' }),
-          ).toBeDisabled();
-          const rowActions = stations.getByRole('button', {
-            name: 'More actions for Dev Server',
-          });
-          await rowActions.tap();
-          const reachability = page.waitForRequest(
-            (request) =>
-              new URL(request.url()).pathname === '/.well-known/station/v1',
-          );
-          await stations
-            .getByRole('menuitem', { name: 'Check reachability' })
-            .tap();
-          await reachability;
-          await expect(rowActions).toHaveAttribute('aria-expanded', 'false');
-
-          await rowActions.tap();
-          await stations.getByRole('menuitem', { name: 'Copy address' }).tap();
-          await expect(
-            stations.getByText(
-              'Could not copy. The full address is shown above.',
-              { exact: true },
-            ),
-          ).toBeVisible();
-
-          await rowActions.tap();
-          await stations.getByRole('menuitem', { name: 'Edit Station' }).tap();
-          const name = stations.getByRole('textbox', {
-            name: 'Station name',
-            exact: true,
-          });
-          await expect(name).toHaveValue('Dev Server');
-          await name.fill('Mobile Station');
-          await stations
-            .getByRole('button', { name: 'Cancel', exact: true })
-            .tap();
-          await expect(
-            stations.getByRole('button', {
-              name: 'View details for Dev Server',
-            }),
-          ).toBeVisible();
-
-          await rowActions.tap();
-          await stations
-            .getByRole('menuitem', { name: 'Forget Station' })
-            .tap();
-          await expect(
-            stations.getByRole('button', {
-              name: 'Confirm forgetting Dev Server',
-            }),
-          ).toBeVisible();
-          await stations
-            .getByRole('button', { name: 'Cancel', exact: true })
-            .tap();
-          await expect(rowActions).toBeVisible();
-
-          await rowActions.tap();
-          await stations
-            .getByRole('menuitem', { name: 'Reconnect', exact: true })
-            .tap();
-          const reconnect = page.getByRole('dialog', {
-            name: 'Request Access',
-          });
-          await expect(reconnect).toBeVisible();
-          await reconnect
-            .getByRole('button', { name: 'Back', exact: true })
-            .tap();
-          await expect(stations).toBeVisible();
-        });
-
-        await test.step('Station manager pairing entry points', async () => {
-          await stations
-            .getByRole('button', { name: 'Enter a pairing code', exact: true })
-            .tap();
-          const enter = page.getByRole('dialog', {
-            name: 'Enter a pairing code',
-          });
-          await expect(
-            enter.getByRole('button', { name: 'Enter manually' }),
-          ).toHaveAttribute('aria-pressed', 'true');
-          await enter.getByRole('button', { name: 'Back', exact: true }).tap();
-
-          await stations
-            .getByRole('button', { name: 'Scan a QR code', exact: true })
-            .tap();
-          const scan = page.getByRole('dialog', {
-            name: 'Scan a pairing code',
-          });
-          await expect(
-            scan.getByRole('button', { name: 'Scan code', exact: true }),
-          ).toHaveAttribute('aria-pressed', 'true');
-          await scan
-            .getByRole('button', { name: 'Enter manually', exact: true })
-            .tap();
-          await scan.getByRole('button', { name: 'Back', exact: true }).tap();
-
-          await stations
-            .getByRole('button', { name: 'Paired devices', exact: true })
-            .tap();
-          const devices = page.getByRole('dialog', { name: 'Paired Devices' });
-          await expect(devices).toBeVisible();
-          await devices
-            .getByRole('button', { name: 'Back', exact: true })
-            .tap();
-
-          await stations
-            .getByRole('button', {
-              name: 'Connect another device',
-              exact: true,
-            })
-            .tap();
-          const invite = page.getByRole('dialog', { name: 'Pair a Device' });
-          await expect(invite).toBeVisible();
-          await invite.getByRole('button', { name: 'Back', exact: true }).tap();
-
-          await stations
-            .getByRole('button', { name: 'Connect a Station', exact: true })
-            .tap();
-          const setup = page.getByRole('dialog', {
-            name: 'Connect a Station',
-            exact: true,
-          });
-          await expect(setup).toBeVisible();
-          await setup
-            .getByRole('button', { name: 'Close Station setup', exact: true })
-            .tap();
-          await expect(setup).toBeHidden();
-          await expect(managerClose).toBeHidden();
-        });
-      });
+        },
+      );
     }
   });
 });
