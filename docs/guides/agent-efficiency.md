@@ -11,8 +11,8 @@ additional tool permission.
 
 In **Project settings → Sources → Working configuration**, discover the
 repository guidance, then choose **Review defaults** to select instruction
-files and validation commands. Expand an instruction to edit its excerpt.
-Use **Advanced defaults** for completion criteria, checkpoints and evidence
+files and validation commands. **Advanced defaults** opens source previews,
+editable instruction excerpts, completion criteria, checkpoints and evidence
 pointers.
 Only the operator in person can discover or change this host-filesystem
 configuration. Applying it saves defaults; it runs no setup, installation,

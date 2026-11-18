@@ -80,15 +80,13 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
   fireEvent.click(
     await screen.findByRole('button', { name: 'Review defaults' }),
   );
-  const advanced = screen.getByText('Advanced defaults', { exact: true });
-  expect(advanced.parentElement?.hasAttribute('open')).toBe(false);
+  const advanced = screen.getByRole('button', { name: 'Advanced defaults' });
+  expect(advanced.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(advanced);
   fireEvent.change(screen.getByLabelText('Completion criteria'), {
     target: { value: 'Independent review and evidence.' },
   });
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Apply defaults' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Apply defaults' }));
   await screen.findByText('Reviewed revision 1');
   expect(
     (await service.discover('work', () => true)).current?.draft
@@ -109,9 +107,7 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
     screen.getByLabelText<HTMLTextAreaElement>('Completion criteria').value,
   ).toBe('Independent review and evidence.');
   allowed = false;
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Apply defaults' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Apply defaults' }));
   await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
   expect((await service.discover('work', () => true)).current?.revision).toBe(
     1,
