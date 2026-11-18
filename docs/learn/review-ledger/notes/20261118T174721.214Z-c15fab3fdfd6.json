@@ -1,0 +1,395 @@
+{
+  "revision": "768044e86b1d3b950e594625cb7ca26fb1c4a245",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked preview enablement, source Session and engine preconditions, model and attachment admission, current-Station authority, bounded transcript seed, and same-key replay against the route and scripted Session tests. Live providers remain unqualified.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/execution-target/execution-target-execution.ts","src-server/services/execution-target/execution-target-resolver.ts","src-server/services/orchestration/conversation-lineage.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the new staged Send leaf at the shared handoff handler. It enforces the same directory-workspace grant and orchestration operate scope. Focused route and pairing tests passed.","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the preview definition, default-off behavior, typed disabled response, and first-Send cost description. The compact composer integration and browser evidence remain pending.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the stagedHandoff option at the published client entry, request serialization, encoded Conversation ID, accepted receipt requirement, and 404 without a legacy fallback. Focused SDK tests passed.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/client-execution.test.ts","packages/sdk/src/client/execution.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/execution-target/execution-target-resolver.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked preview enablement, source Session and engine preconditions, model and attachment admission, current-Station authority, bounded transcript seed, and same-key replay against the route and scripted Session tests. Live providers remain unqualified.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the new staged Send leaf and its shared handoff handler. It requires the expected engine and policy and retains approval, workspace, and actor checks. Ordinary foreground, inbox, provider-event, delegation, and public read routes follow their existing handlers.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed the staged handoff policy and preview descriptor additions. Existing receipt, provider event, answerability and lifecycle shapes retain their meanings.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the staged handoff policy and preview descriptor additions. Existing receipt, provider event, answerability and lifecycle shapes retain their meanings.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the staged handoff policy and preview descriptor additions. Existing receipt, provider event, answerability and lifecycle shapes retain their meanings.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the staged handoff policy and preview descriptor additions. Existing receipt, provider event, answerability and lifecycle shapes retain their meanings.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the staged handoff policy and preview descriptor additions. Existing receipt, provider event, answerability and lifecycle shapes retain their meanings.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the lineage forwarding type and shared attachment validation. Existing turn validation errors, approval and dispatch policy, event delivery and captured request inspection retain their prior behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed the composition delta. It binds the default-off staged Agent changes preview and supplies its per-request selector to the orchestration router. Browser, Project, operator enrollment, native relay, capture and other route registrations follow their existing composition.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked staged target resolution, exact policy in the request digest, and attachment capability validation before a new handoff reservation. Ordinary continuation, delegated dispatch, persisted workspace and legacy handoff execution retain their paths.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked staged target resolution, exact policy in the request digest, and attachment capability validation before a new handoff reservation. Ordinary continuation, delegated dispatch, persisted workspace and legacy handoff execution retain their paths.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked staged target resolution, exact policy in the request digest, and attachment capability validation before a new handoff reservation. Ordinary continuation, delegated dispatch, persisted workspace and legacy handoff execution retain their paths.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Checked staged target resolution, exact policy in the request digest, and attachment capability validation before a new handoff reservation. Ordinary continuation, delegated dispatch, persisted workspace and legacy handoff execution retain their paths.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked staged target resolution, exact policy in the request digest, and attachment capability validation before a new handoff reservation. Ordinary continuation, delegated dispatch, persisted workspace and legacy handoff execution retain their paths.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Checked the exact staged Send POST leaf at orchestration operate, alongside the other local handoff leaves. Receipt reads retain orchestration read. The new leaf leaves the credentials, relay policies and other family scopes in place.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the staged-only dedicated Agent override refusal. Receiver-owned engine defaults with a bound connection select a different Agent to switch engines. General-purpose compatibility validation and other execution-target callers keep the original resolution policy.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the staged policy against current Session, active and possible effect checks, pending context boundaries, fresh transcript seed and exact predecessor replay. The immediate handoff path retains the existing native-return branch.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the staged policy against current Session, active and possible effect checks, pending context boundaries, fresh transcript seed and exact predecessor replay. The immediate handoff path retains the existing native-return branch.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the staged policy against current Session, active and possible effect checks, pending context boundaries, fresh transcript seed and exact predecessor replay. The immediate handoff path retains the existing native-return branch.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the staged policy against current Session, active and possible effect checks, pending context boundaries, fresh transcript seed and exact predecessor replay. The immediate handoff path retains the existing native-return branch.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked the staged policy against current Session, active and possible effect checks, pending context boundaries, fresh transcript seed and exact predecessor replay. The immediate handoff path retains the existing native-return branch.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked the queued or unconfirmed follow-up refusal in the durable handoff reservation before lineage writes and after exact-key replay. The qualification test failed with the guard removed and passed after restoration. Other ledger writers and history projections retain their paths.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the reused waiting-follow-up predicate and transaction-aware read. Queued, placing and unconfirmed entries retain their previous meaning. The inbox and route qualification suites passed.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the reused waiting-follow-up predicate and transaction-aware read. Queued, placing and unconfirmed entries retain their previous meaning. The inbox and route qualification suites passed.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the reused waiting-follow-up predicate and transaction-aware read. Queued, placing and unconfirmed entries retain their previous meaning. The inbox and route qualification suites passed.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the branded staged input forwarding from the existing current-Environment handoff entry. Station Control delegation, remote workspace preparation and owner-attribution surfaces retain their current policy.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the staged scripted-provider proof of preview and target refusals, attachment refusal before reservation, queue fencing, selected model, context, and same-key reconnect replay. The suite does not establish live provider, browser or device behavior.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the staged scripted-provider proof of preview and target refusals, attachment refusal before reservation, queue fencing, selected model, context, and same-key reconnect replay. The suite does not establish live provider, browser or device behavior.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the added runtime leaf and its scoped request classification. The original handoff and receipt paths remain in the same focused check.","inputs":["src-server/security/__tests__/pairing-route-scopes.test.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the new staged Send leaf at the shared handoff handler. It enforces the same directory-workspace grant and orchestration operate scope. Focused route and pairing tests passed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the new staged Send leaf at the shared handoff handler. It enforces the same directory-workspace grant and orchestration operate scope. Focused route and pairing tests passed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Reviewed the optional staged request and fresh route selection. Existing foreground and legacy explicit handoff paths retain their routes and receipt handling. The older receiver case is covered in the SDK suite.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the optional staged request and fresh route selection. Existing foreground and legacy explicit handoff paths retain their routes and receipt handling. The older receiver case is covered in the SDK suite.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the optional staged request and fresh route selection. Existing foreground and legacy explicit handoff paths retain their routes and receipt handling. The older receiver case is covered in the SDK suite.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the optional staged request and fresh route selection. Existing foreground and legacy explicit handoff paths retain their routes and receipt handling. The older receiver case is covered in the SDK suite.","inputs":["packages/sdk/src/client/execution.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the preview definition, default-off behavior, typed disabled response, and first-Send cost description. The compact composer integration and browser evidence remain pending.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the preview definition, default-off behavior, typed disabled response, and first-Send cost description. The compact composer integration and browser evidence remain pending.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the stagedHandoff option at the published client entry, request serialization, encoded Conversation ID, accepted receipt requirement, and 404 without a legacy fallback. Focused SDK tests passed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked the stagedHandoff option at the published client entry, request serialization, encoded Conversation ID, accepted receipt requirement, and 404 without a legacy fallback. Focused SDK tests passed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the SDK proof of compatibility: one request to the staged route on an older receiver, with no immediate handoff fallback.","inputs":["packages/sdk/src/__tests__/client-execution.test.ts"]}
+  ]
+}
