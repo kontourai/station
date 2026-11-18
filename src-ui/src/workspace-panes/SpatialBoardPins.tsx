@@ -252,12 +252,7 @@ export function SpatialPin({
           Remove
         </Button>
       </footer>
-      {replace.error || remove.error ? (
-        <p className="spatial-board__mutation-error" role="alert">
-          The Board change could not be confirmed. Refresh the Board before
-          deciding whether to try again.
-        </p>
-      ) : null}
+      <BoardMutationError error={replace.error || remove.error} />
     </article>
   );
 }

@@ -1814,11 +1814,12 @@ conflict, 404 for a missing pin, 413 for capacity, and a redacted 503 for unavai
 storage. Successful results use `{success: true, data}`. PUT also requires the
 body pin ID to match the path.
 
-Cleanup accepts full references that the caller observed as missing. The store
-checks they belong to the board and removes matching pins; it does not rerun
-owner resolution inside that write. Undo swaps one prior bounded snapshot and
-advances revision; it is not an unbounded edit history. Hosted mode does not
-mount these personal-storage routes.
+Cleanup accepts full references that the caller observed as missing. The route
+checks the revision and pin identities, then resolves only those references
+using the caller's request. It returns 409 if any selected reference is no
+longer confirmed missing. The store checks the revision again before removing
+pins. Owners can change after the observation. Undo swaps one prior bounded
+snapshot and advances the revision. These routes are mounted in personal mode.
 
 ## Agent Management
 

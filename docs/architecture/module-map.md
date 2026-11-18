@@ -6670,12 +6670,13 @@ execution and persists it in the Station home. Session/run resolution uses the
 request's principal; the Board is not a separate grant to read its references.
 The [Pane](../../src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx)
 uses the public SDK and only displays resolutions matching its loaded Board
-revision. That check does not prove a newly loaded owner observation: queries
-can retain cached data on return, and conflicting writes require manual refresh.
-Cleanup checks Board revision and pinned identities but trusts the supplied
-missing-reference selection rather than rereading each owner. It removes pins,
-not underlying work. [#2736](https://github.com/kontourai/station/issues/2736)
-records the proposed freshness/cleanup policy.
+revision. Both queries refetch when the Pane mounts and may display cached data
+while fetching. A conflict invalidates both observations without replaying the
+write. Cleanup checks the Board revision and resolves only the exact pinned
+references named by the request using the same request-bound owner resolver.
+It refuses the whole selection if any result is other than missing. The
+store checks the revision again before removing pins. Linked work remains
+owned by its source, so it can change after the cleanup observation.
 
 **Follow the evidence.** The [user guide](../user/work-board.md) describes
 controls and recovery. [SDK mutations](../../packages/sdk/src/spatial-board.ts),

@@ -371,7 +371,21 @@ describe('spatial board routes', () => {
     });
   });
 
-  test('exposes bounded title, camera, cleanup, remove, and undo operations', async () => {
+  test('reobserves the exact pin at cleanup, refuses restored and unreadable work, and retains Undo', async () => {
+    const store = new SpatialBoardStore(
+      join(
+        await mkdtemp(join(tmpdir(), 'spatial-board-cleanup-')),
+        'spatial-board.json',
+      ),
+    );
+    let state: 'missing' | 'current' | 'unavailable' = 'missing';
+    const resolver = new SpatialBoardResolver({
+      session: {
+        resolve: async (references) =>
+          references.map((reference) => ({ reference, state })),
+      },
+    });
+    app = createSpatialBoardRoutes(store, resolver);
     const pin = {
       id: 'pin-1',
       reference: { kind: 'session', id: 'session-1' },
@@ -401,15 +415,31 @@ describe('spatial board routes', () => {
       }),
     });
     expect(camera.status).toBe(200);
-    const cleanup = await app.request('/cleanup', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        expectedRevision: 3,
-        missingReferences: [{ kind: 'session', id: 'session-1' }],
-      }),
+    await expect(
+      (await app.request('/resolved')).json(),
+    ).resolves.toMatchObject({
+      data: { revision: 3, pins: [{ state: 'missing' }] },
     });
-    expect(cleanup.status).toBe(200);
+    const cleanup = () =>
+      app.request('/cleanup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          expectedRevision: 3,
+          missingReferences: [pin.reference],
+        }),
+      });
+    for (const refusal of ['current', 'unavailable'] as const) {
+      state = refusal;
+      expect((await cleanup()).status).toBe(409);
+      expect(await store.read()).toMatchObject({ revision: 3, pins: [pin] });
+    }
+    state = 'missing';
+    const removed = await cleanup();
+    expect(removed.status).toBe(200);
+    await expect((await app.request('/')).json()).resolves.toMatchObject({
+      data: { revision: 4, pins: [] },
+    });
     const undone = await app.request('/undo', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
