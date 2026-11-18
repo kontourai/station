@@ -94,6 +94,11 @@ import {
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
+import {
+  ACP_UNKNOWN_FAILURE_GUIDANCE,
+  delegatedRuntimeFailureGuidance,
+  nativeUsageLimitReason,
+} from '../providers/delegated-runtime-failure.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../providers/finish-reason-authority.js';
 import {
   formatProviderQuotaEventText,
@@ -1394,9 +1399,8 @@ export function delegatedTaskReason(
   // on its own (honest bounded behavior, documented on
   // `delegatedTurnSupervision`). A successful continuation or a newer
   // failure therefore never revives a previous turn's reason.
-  const newestStartTurnId = reversed.find(
-    (event) => event.method === 'turn.started',
-  )?.turnId;
+  const newestStart = reversed.find((event) => event.method === 'turn.started');
+  const newestStartTurnId = newestStart?.turnId;
   const terminalScopedToLatestTurn =
     typeof newestStartTurnId !== 'string' ||
     typeof terminal.turnId !== 'string' ||
@@ -1405,7 +1409,20 @@ export function delegatedTaskReason(
     return terminalScopedToLatestTurn
       ? { code: acpFailure.code, detail: acpFailure.message }
       : undefined;
-  const startupGuidance = engineStartupFailureGuidance(terminalCode);
+  const usageLimit = nativeUsageLimitReason(terminal);
+  if (usageLimit) {
+    if (
+      !terminalScopedToLatestTurn ||
+      (typeof newestStart?.invocationId === 'string' &&
+        typeof terminal.invocationId === 'string' &&
+        newestStart.invocationId !== terminal.invocationId)
+    )
+      return undefined;
+    return usageLimit;
+  }
+  const startupGuidance =
+    engineStartupFailureGuidance(terminalCode) ??
+    delegatedRuntimeFailureGuidance(terminalCode);
   if (startupGuidance && terminalCode) {
     if (!terminalScopedToLatestTurn) return undefined;
     return { code: terminalCode, detail: startupGuidance };
@@ -1445,6 +1462,10 @@ export function delegatedTaskReason(
       ? attribution.kind
       : undefined;
   if (!kind) return undefined;
+  if (kind === 'runtime_error' && terminal.provider === 'acp') {
+    if (!terminalScopedToLatestTurn) return undefined;
+    return { code: 'runtime_error', detail: ACP_UNKNOWN_FAILURE_GUIDANCE };
+  }
   if (kind === 'runtime_error') return { code: 'runtime_error' };
   if (kind === 'exit') {
     const exitCode = [...events]
@@ -4388,7 +4409,11 @@ export function projectDelegatedTaskEvent(
           : {}),
       };
     case 'runtime.error': {
-      const startupGuidance = engineStartupFailureGuidance(event.code);
+      const usageLimit = nativeUsageLimitReason(event);
+      const startupGuidance =
+        usageLimit?.detail ??
+        engineStartupFailureGuidance(event.code) ??
+        delegatedRuntimeFailureGuidance(event.code);
       if (startupGuidance)
         return {
           ...common,
@@ -4427,7 +4452,10 @@ export function projectDelegatedTaskEvent(
         ...common,
         kind: 'runtime',
         severity: 'error',
-        text: 'The delegated runtime reported an error.',
+        text:
+          event.provider === 'acp'
+            ? ACP_UNKNOWN_FAILURE_GUIDANCE
+            : 'The delegated runtime reported an error.',
         ...(typeof event.retriable === 'boolean'
           ? { retriable: event.retriable }
           : {}),
@@ -6554,7 +6582,9 @@ export async function delegateTask(
         if (started.status !== 'accepted') {
           if (input.stagedFiles)
             throw new DelegationFileRefusal('delegation_files_start_refused');
-          const startupGuidance = engineStartupFailureGuidance(started.code);
+          const startupGuidance =
+            engineStartupFailureGuidance(started.code) ??
+            delegatedRuntimeFailureGuidance(started.code);
           if (startupGuidance && started.code)
             throw new Error(startupGuidance, {
               cause: new LocalStationRefusal(started.code, startupGuidance),

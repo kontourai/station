@@ -2227,6 +2227,13 @@ station connections profile-import <id> <profile-ref> [--include-credentials] [-
 station connections profile-apply <id> <profile-ref> --confirm [--timeout-ms=<ms>] [--api-base=<url>]
 ```
 
+`station connections models` lists the catalog the Station currently knows.
+A listed model may still be rejected when the provider runs a turn. An
+accepted delegation acknowledges dispatch. Check `station delegate status`
+or `station delegate events` for the outcome and any classified reason.
+An unclassified ACP failure leaves the cause unknown. Check the engine and
+model access before explicitly continuing the task.
+
 `profile-env` replaces a credential profile's non-secret env overlay
 (`{"env":{}}` clears it). Credential-shaped names and values are refused by a
 heuristic (names such as `*_KEY`, `*_TOKEN`, `*_AUTH`, `*_HEADERS`, `*_PAT`;

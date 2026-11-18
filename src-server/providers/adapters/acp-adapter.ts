@@ -207,6 +207,10 @@ import {
   findCliBinaryAsync,
 } from '../auth/cli-auth.js';
 import {
+  ACP_TRANSPORT_CLOSED_CODE,
+  ACP_TRANSPORT_CLOSED_GUIDANCE,
+} from '../delegated-runtime-failure.js';
+import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
@@ -6498,6 +6502,24 @@ export class AcpAdapter implements ProviderAdapterShape {
             severity: 'error',
             code: ENGINE_SIGN_IN_REQUIRED_CODE,
             message: `${record.engineName} needs you to sign in before it can answer. ${errorMessage(error)}`,
+          } satisfies ProviderRuntimeErrorEvent);
+        } else if (
+          error instanceof Error &&
+          !(error instanceof RequestError) &&
+          error.message === 'ACP connection closed'
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            ...this.turnOrigin(record, turnId),
+            method: 'runtime.error',
+            ...providerFailure('unavailable'),
+            severity: 'error',
+            code: ACP_TRANSPORT_CLOSED_CODE,
+            message: ACP_TRANSPORT_CLOSED_GUIDANCE,
           } satisfies ProviderRuntimeErrorEvent);
         } else {
           const baseMessage = acpFailureMessage(error);
