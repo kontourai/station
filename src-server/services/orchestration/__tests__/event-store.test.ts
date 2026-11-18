@@ -6031,7 +6031,7 @@ describe('EventStore', () => {
       }
 
       const assertHistory = () => {
-        const stored = new DatabaseSync(databasePath, { readOnly: true });
+        const stored = new DatabaseSync(databasePath);
         try {
           expect(
             stored

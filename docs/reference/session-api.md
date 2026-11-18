@@ -1403,8 +1403,8 @@ On cold follow, Station reads at most 64 recent configuration events to find
 the attachment's prior Project attribution. A full window without a claim
 leaves that attribution unknown. A new Project observation can record a
 recovery tied to the newest configuration in the window. An unattributed
-observation alone leaves a possibly older Project label in place. Publishing
-the new attribution requires a committed configuration event.
+observation alone leaves a possibly older Project label in place. The follower
+advances its remembered attribution only after the configuration event commits.
 
 A read-only attached session's summary carries `attachedSourceActivity`
 (`{ state: 'active' | 'quiet' | 'idle', lastWriteAt? }`), derived at read time
