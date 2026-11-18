@@ -296,9 +296,10 @@ has exercised it yet.
 
 ### Public configuration and runtime enforcement must agree
 
-The Agent contract exposes `guardrails.maxSteps`, but the file schema rejects
-it; Strands also does not apply the configured step cap. [#2846](https://github.com/kontourai/station/issues/2846)
-tracks a single admitted shape and engine-specific enforcement evidence.
+At the audit baseline, the Agent contract exposed `guardrails.maxSteps` while
+the file schema rejected it. [#2846](https://github.com/kontourai/station/issues/2846)
+records the alignment on top-level `maxSteps` for VoltAgent. The engine matrix
+states that Strands and external engines use their own limits.
 Retained quick prompts have no current UI consumer ([#2847](https://github.com/kontourai/station/issues/2847)),
 and invalid date/time format JSON can reach prompt expansion before failing
 ([#2848](https://github.com/kontourai/station/issues/2848)). The

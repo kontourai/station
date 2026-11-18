@@ -19,32 +19,15 @@ export const ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD = 1000;
 /** Maximum serialized replay payload before reconnect switches to a snapshot. */
 export const ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES = 96_000;
 
-/**
- * Default agentic-loop step cap when none is configured. Set high enough to
- * impose no artificial limit — VoltAgent's own default is a stingy 10, so
- * Station overrides it with this everywhere (chat, the engine adapter, and the
- * one-shot invoke routes). `maxSteps` is validated as a positive integer, so
- * "unlimited" is expressed as this high cap, not 0.
- */
+/** VoltAgent's finite fallback for authored Agent runs with no configured cap. */
 export const DEFAULT_MAX_STEPS = 200;
 
-/**
- * Resolve the agentic-loop step cap from the configured precedence
- * (agent guardrails > agent spec > app config), falling back to the
- * no-artificial-limit {@link DEFAULT_MAX_STEPS}. A `0` or missing value at any
- * level falls through to the next, since `maxSteps` is always a positive cap.
- */
+/** An authored Agent cap wins over the configured fallback. */
 export function resolveMaxSteps(opts: {
-  guardrailsMaxSteps?: number;
-  specMaxSteps?: number;
+  specMaxSteps?: number | null;
   defaultMaxTurns?: number;
 }): number {
-  return (
-    opts.guardrailsMaxSteps ||
-    opts.specMaxSteps ||
-    opts.defaultMaxTurns ||
-    DEFAULT_MAX_STEPS
-  );
+  return opts.specMaxSteps || opts.defaultMaxTurns || DEFAULT_MAX_STEPS;
 }
 
 /** Default Ollama server base URL. */

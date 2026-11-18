@@ -373,6 +373,10 @@ export async function bootstrapRuntimeDefaultAgent(
       ),
     model: defaultModel,
     tools: defaultTools,
+    maxSteps:
+      context.appConfig.runtime === 'strands'
+        ? undefined
+        : context.appConfig.defaultMaxTurns || undefined,
     memoryAdapter: defaultMemoryAdapter,
     hooks: defaultHooks,
     durable,

@@ -778,9 +778,13 @@ async function launchPersistedAgentWithOverride({
       },
       model,
       tools: [],
-      maxSteps: resolveMaxSteps({
-        defaultMaxTurns: appConfig.defaultMaxTurns,
-      }),
+      maxSteps:
+        appConfig.runtime === 'strands'
+          ? undefined
+          : resolveMaxSteps({
+              specMaxSteps: spec.maxSteps,
+              defaultMaxTurns: appConfig.defaultMaxTurns,
+            }),
       memoryAdapter,
     });
     requireCurrentRuntimeConfiguration(ctx, configurationLease);
