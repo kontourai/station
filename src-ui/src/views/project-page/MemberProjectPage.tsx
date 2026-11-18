@@ -2,13 +2,14 @@ import type { MemberProjectView } from '@kontourai/station-contracts/project';
 import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { StatusBadge } from '@kontourai/ui/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import {
   projectTaskHistory,
   SharedTaskHistoryList,
 } from '../../components/conversation/SharedTaskHistoryList';
 import { displayableProjectIcon } from '../../components/icons/ProjectIcon';
+import { ProjectConversationList } from '../../components/project-conversations/ProjectConversationList';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import {
@@ -21,6 +22,7 @@ import { AccessSection } from '../project-settings/AccessSection';
 import { ProjectAgentsPanel } from '../project-settings/ProjectAgentsPanel';
 import { ProjectNavigation, useProjectDestination } from './ProjectNavigation';
 import { ProjectRoom } from './ProjectRoom';
+import { useListScrollMemory } from './useListScrollMemory';
 import '../ProjectPage.css';
 import { MemberProjectHeader } from './ProjectPageHeader';
 import '../project-page-frame.css';
@@ -37,10 +39,25 @@ export function MemberProjectPage({
   requestScope: NonNullable<RequestScope>;
   accessWriteDisabledReason?: string;
 }) {
-  const { destination, room, openRoom, openThread, leaveRoom } =
-    useProjectDestination(project.slug);
+  const {
+    destination,
+    selectDestination,
+    room,
+    openRoom,
+    openThread,
+    leaveRoom,
+  } = useProjectDestination(project.slug);
   // #4795: a channel is its own full screen on a phone.
-  const roomScreen = useIsMobile() && destination === 'room';
+  const phone = useIsMobile();
+  const roomScreen = phone && destination === 'room';
+  const listShown = phone && destination === 'overview';
+  const pageRef = useRef<HTMLDivElement>(null);
+  const { openFromList } = useListScrollMemory(
+    JSON.stringify([requestScope.authorityKey, project.slug]),
+    pageRef,
+    listShown,
+    roomScreen,
+  );
   const overview = destination === 'overview' || destination === 'sources';
   const [selectedShareId, setSelectedShareId] = useState<string | null>(null);
   const [toolsProjectId, setToolsProjectId] = useState<string>();
@@ -54,6 +71,7 @@ export function MemberProjectPage({
 
   return (
     <div
+      ref={pageRef}
       className={`project-page project-page--space${roomScreen ? ' project-page--room-screen' : ''}`}
     >
       <div className="project-page__inner project-page__space">
@@ -73,7 +91,31 @@ export function MemberProjectPage({
         <div className="section-nav-rail project-page__layout">
           {!roomScreen && <ProjectNavigation slug={project.slug} member />}
           <section className="section-nav-rail__body project-page__content">
-            <div hidden={!overview && destination !== 'room'}>
+            {listShown && (
+              <ProjectConversationList
+                variant="page"
+                project={project}
+                requestScope={requestScope}
+                member={{
+                  tasks: sharedWork,
+                  isCurrent: requestScope.isCurrent,
+                }}
+                onOpenChannel={(id) => openFromList(() => openRoom(id))}
+                onOpenTask={(id) => {
+                  if (!requestScope.isCurrent() || sharedWork.isError) return;
+                  const publication = sharedWork.data?.find(
+                    (item) => item.task.id === id,
+                  );
+                  if (!publication) return;
+                  openFromList(() => {
+                    setSelectedShareId(publication.shareId);
+                    selectDestination('tasks');
+                  });
+                }}
+                onMoreTasks={() => selectDestination('tasks')}
+              />
+            )}
+            <div hidden={(!overview || listShown) && destination !== 'room'}>
               <ProjectRoom
                 slug={project.slug}
                 projectId={project.id}
