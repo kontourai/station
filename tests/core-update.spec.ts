@@ -347,10 +347,13 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
       exact: true,
     });
     await expect(apply).toBeVisible({ timeout: 10000 });
-    // The offer's resting background, compared against its hovered one below.
-    const offerBackground = await apply.evaluate(
-      (el) => getComputedStyle(el).backgroundColor,
-    );
+    await apply.hover();
+    const hoveredOfferBackground = await apply.evaluate(async (button) => {
+      await Promise.all(
+        button.getAnimations().map((animation) => animation.finished),
+      );
+      return getComputedStyle(button).backgroundColor;
+    });
     // The header carries the comparison: one badge, "current → latest".
     await expect(serverCard.getByRole('status')).toHaveText('Update available');
     await expect(serverCard.locator('.status-summary__version')).toHaveText(
@@ -404,10 +407,9 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
       exact: true,
     });
     await expect(offers).toBeEnabled({ timeout: 10000 });
-    // The pointer still rests where it clicked: the hovered offer keeps its
-    // accent, not the global button hover's dark background.
+    // The recovered offer uses the same hover treatment as the original.
     await offers.hover();
-    await expect(offers).toHaveCSS('background-color', offerBackground);
+    await expect(offers).toHaveCSS('background-color', hoveredOfferBackground);
     await serverCard.screenshot({
       path: testInfo.outputPath('archive-update-rolled-back.png'),
     });
