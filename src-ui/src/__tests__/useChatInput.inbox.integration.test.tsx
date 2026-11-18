@@ -420,8 +420,10 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     let holdInboxReads = false;
     let refuseInboxReads = false;
     let heldRead: Request | undefined;
-    const { promise: readsReleased, resolve: releaseReads } =
-      Promise.withResolvers<void>();
+    let releaseReads!: () => void;
+    const readsReleased = new Promise<void>((resolve) => {
+      releaseReads = resolve;
+    });
     vi.stubGlobal(
       'fetch',
       async (input: RequestInfo | URL, init?: RequestInit) => {

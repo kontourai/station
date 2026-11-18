@@ -153,7 +153,9 @@ export function useConversationInboxSnapshot(
     gcTime: 0,
   });
   const receipts = useInboxReceipts(queryKey);
-  return scope?.isCurrent() && !query.isError && !query.isPaused
+  const current =
+    connection?.isCurrent() ?? (target?.requestScope ?? hostScope)?.isCurrent();
+  return connection !== null && current && !query.isError && !query.isPaused
     ? visibleInboxEntries(withInboxReceipts(query.data, receipts))
     : [];
 }
