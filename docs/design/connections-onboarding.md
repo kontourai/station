@@ -163,8 +163,9 @@ are wired to a live spawn path (archive#896 wave 2 wires Codex, mirroring wave 1
 `ClaudeAdapterOptions.getAppHomeEnv`, threaded through `startSession` → `buildOptions`, and
 `CodexAdapterOptions.getAppHomeEnv`, threaded through `startReservedSession` →
 `processFactory` (`spawnCodexProcess`) — each applied only when that connection's
-`config.useAppHome` is `true` — absent/false is the default, same "never silent" hygiene
-rule as `provideSkills`. Both adapters report `appHome: 'profile'|'global'` on
+`config.useAppHome` is `true` and a valid explicit `configHome` is absent.
+An explicitly selected credential profile takes precedence over both for a
+fresh session. Both adapters report `appHome: 'profile'|'global'` on
 `session.configured` and record the `station.providers.app_home_sessions` counter
 (attrs: `provider`, `applied`). A legacy base-profile lookup failure (or an absent `getAppHomeEnv`) degrades to
 `undefined` — global config — on both adapters, never blocking session start. Adoption
@@ -290,9 +291,11 @@ that refuses if ANY component from the station home down to the profile dir is i
 symlink — the resolved-path check alone cannot catch a symlinked app-homes ROOT, since both
 sides of that comparison resolve through it consistently and still report "contained." The
 clear route 409s with `Turn off "Run sessions in a Station-managed app home" for this
-connection before clearing its app home.` while the connection's SAVED `useAppHome` is still
-`true` — a proxy for "no session should currently be relying on this profile," not a
-live-session check (Ambiguity F, accepted gap below). That 409 check is also not atomic with
+connection before clearing its app home.` while the saved connection still
+opts in and has no valid explicit `configHome`. The same precedence controls
+availability in **Advanced → App home**, where a configured home disables the
+toggle and snapshot import. The server guard checks the saved settings. Active
+sessions can still exist (Ambiguity F, accepted gap below). That 409 check is also not atomic with
 a concurrent connection save (security review 1a028fde MED, accepted — no serialization
 built): the window self-heals, since `getAppHomeEnv` recreates the profile lazily at the
 next session start, and the only actor able to race it is the user's own UI acting on their

@@ -31,7 +31,6 @@ import {
   isDockOwnedViewType,
   isMobileDockFullscreen as isMobileDockFullscreenState,
 } from './components/chat-dock/mobile-chrome';
-import { StationRouteLearning } from './components/connections/useStationRoutes';
 import { DialogHistoryHostBoundary } from './components/DialogHistoryHost';
 import { Header } from './components/header/Header';
 import { LazyBoundary } from './components/LazyBoundary';
@@ -62,6 +61,7 @@ import { PushNotificationsProvider } from './contexts/PushNotificationsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
+import { useDeveloperFeatures } from './hooks/useDeveloperFeatures';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
 import { isMainDesktopWindow } from './platform/native/mainWindow';
 import { foldedDockRegion } from './regions/region-model';
@@ -111,6 +111,11 @@ const loadCoreUpdateLaunchCheck = () =>
 const loadServerOlderLaunchCheck = () =>
   import('./components/ServerOlderLaunchCheck').then((module) => ({
     default: module.ServerOlderLaunchCheck,
+  }));
+
+const loadStationRouteLearning = () =>
+  import('./components/connections/useStationRoutes').then((module) => ({
+    default: module.StationRouteLearning,
   }));
 
 const loadOutboundQueueFlushMount = () =>
@@ -251,6 +256,7 @@ function App({
   } = useScopedProjectsQuery();
   const appConfig = useConfig();
   const { settings: featureSettings } = useFeatureSettings();
+  const { stationRoutes } = useDeveloperFeatures();
   const pushNotifications = usePushNotifications({
     enabled: featureSettings.pushNotificationsEnabled,
     apiBase: API_BASE,
@@ -776,7 +782,13 @@ function App({
                   />
                 )}
                 <ConnectionBannerSource />
-                <StationRouteLearning />
+                {stationRoutes && (
+                  <LazyBoundary
+                    load={loadStationRouteLearning}
+                    componentProps={{}}
+                    pending={null}
+                  />
+                )}
                 <StationDetailsHost />
 
                 {showShortcutsCheatsheet && (

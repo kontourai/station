@@ -3711,6 +3711,34 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
     expect(unbudgeted.timeouts).toEqual([60_000]);
   });
 
+  test('a timed-out discovery with unsettled ownership cannot plan retained tests', async () => {
+    const run = vi.fn(async () => ({
+      status: null,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      timedOut: true,
+      error: new Error(
+        'Related Vitest discovery left an owned process tree alive',
+      ),
+      launch: { attempted: true, started: true },
+      cleanup: { status: 'failed', survivingOwnedChildren: 1 },
+    }));
+    await expect(
+      planChangedVerificationShards('HEAD', {
+        root: process.cwd(),
+        run,
+        headSha: 'c'.repeat(40),
+        changedPathsFn: () => ({
+          mergeBase: 'HEAD',
+          paths: ['src-ui/src/components/modals/NewChatModal.tsx'],
+        }),
+        assertDependencyProvenance: () => ({}),
+      }),
+    ).rejects.toThrow('left an owned process tree alive');
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   test('the fast-checks plan hands its deadline to discovery', async () => {
     const deadline = Date.now() + 300_000;
     const { run, timeouts } = timedDiscovery(90_000);
