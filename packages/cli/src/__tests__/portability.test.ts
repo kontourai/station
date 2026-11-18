@@ -534,7 +534,7 @@ ${JSON.stringify(
     ).toBe(false);
   });
 
-  test('keeps uncertain import progress and retries the same artifact without replaying an applied target', async () => {
+  test('requires acknowledgment before retrying an uncertain target and recovers a single completion receipt', async () => {
     const seed = join(cwd, 'seed.json');
     writeFileSync(
       seed,
@@ -551,7 +551,10 @@ ${JSON.stringify(
       JSON.stringify({
         mcpServers: {
           first: { command: 'generated-imported' },
-          later: { command: 'generated-later' },
+          later: {
+            command: 'generated-later',
+            env: { FIXTURE_TOKEN: 'import-fixture' },
+          },
         },
       }),
     );
@@ -559,6 +562,10 @@ ${JSON.stringify(
       '../commands/import.js'
     );
     const { writeIntegration } = await import('../commands/portability-io.js');
+    const { ToolServerCredentialStore } = await import(
+      '@kontourai/station-shared/tool-server-credential-store'
+    );
+    const credentials = new ToolServerCredentialStore(home);
     await importConfig(seed, { projectHome: home });
     const manifest = (id: string) =>
       join(home, 'integrations', id, 'integration.json');
@@ -581,8 +588,9 @@ ${JSON.stringify(
       'generated-imported',
     );
     expect(existsSync(interrupted.ledgerPath)).toBe(false);
-    await expect(importConfig(seed, { projectHome: home })).rejects.toThrow(
-      'A different Station import is incomplete',
+    const resumeOptions = { projectHome: home, resumeId: interrupted.id };
+    await expect(importConfig(seed, resumeOptions)).rejects.toThrow(
+      'The file does not match the original Station import',
     );
     expect(readConfigImportStatus(home)).toEqual(interrupted);
 
@@ -592,7 +600,28 @@ ${JSON.stringify(
       home,
     );
     rmSync(manifest('later'), { recursive: true });
-    const completed = await importConfig(source, { projectHome: home });
+    await writeIntegration(
+      'later',
+      {
+        id: 'later',
+        kind: 'mcp',
+        command: 'generated-operator',
+        env: {
+          FIXTURE_TOKEN: 'operator-fixture',
+          OPERATOR_ONLY: 'untouched-fixture',
+        },
+      },
+      home,
+    );
+    const interveningManifest = readFileSync(manifest('later'));
+    await expect(importConfig(source, { projectHome: home })).rejects.toThrow(
+      `--resume=${interrupted.id}`,
+    );
+    expect(readFileSync(manifest('later'))).toEqual(interveningManifest);
+    expect(credentials.get('later', 'FIXTURE_TOKEN')).toBe('operator-fixture');
+    expect(readConfigImportStatus(home)).toEqual(interrupted);
+
+    const completed = await importConfig(source, resumeOptions);
     expect(completed.ledgerPath).toBe(interrupted.ledgerPath);
     expect(readConfigImportStatus(home)).toMatchObject({
       id: interrupted.id,
@@ -604,16 +633,24 @@ ${JSON.stringify(
     expect(JSON.parse(readFileSync(manifest('later'), 'utf8')).command).toBe(
       'generated-later',
     );
+    expect(credentials.get('later', 'FIXTURE_TOKEN')).toBe('import-fixture');
+    expect(credentials.get('later', 'OPERATOR_ONLY')).toBe('untouched-fixture');
     expect(readFileSync(manifest('unrelated'))).toEqual(unrelatedBefore);
+
+    const completedBytes = readFileSync(completed.ledgerPath);
+    await expect(importConfig(source, resumeOptions)).resolves.toEqual(
+      completed,
+    );
+    expect(readFileSync(completed.ledgerPath)).toEqual(completedBytes);
 
     rmSync(completed.ledgerPath);
     expect(readConfigImportStatus(home)).toMatchObject({
       id: interrupted.id,
       phase: 'publishing',
     });
-    await expect(
-      importConfig(source, { projectHome: home }),
-    ).resolves.toMatchObject({ ledgerPath: completed.ledgerPath });
+    await expect(importConfig(source, resumeOptions)).resolves.toMatchObject({
+      ledgerPath: completed.ledgerPath,
+    });
     expect(JSON.parse(readFileSync(manifest('first'), 'utf8')).command).toBe(
       'generated-newer',
     );

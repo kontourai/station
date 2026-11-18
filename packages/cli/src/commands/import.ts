@@ -27,6 +27,7 @@ import {
 
 export interface ImportCommandOptions {
   projectHome?: string;
+  resumeId?: string;
 }
 
 export interface ImportCommandResult {
@@ -147,8 +148,22 @@ export async function importConfig(
     );
     try {
       const previous = readImportProgress(projectHome);
+      if (options.resumeId !== undefined && previous?.id !== options.resumeId) {
+        throw new Error(
+          'No matching Station import. Inspect the last operation with station import --status.',
+        );
+      }
+      if (
+        previous &&
+        previous.phase !== 'complete' &&
+        options.resumeId === undefined
+      ) {
+        throw new Error(
+          `A Station import is incomplete. Inspect it with station import --status, then retry the original file with --resume=${previous.id}. Resuming may replace changes to unfinished targets.`,
+        );
+      }
       const progress: ImportProgress =
-        previous && previous.phase !== 'complete'
+        previous && options.resumeId !== undefined
           ? previous
           : {
               version: 1,
@@ -172,8 +187,24 @@ export async function importConfig(
         )
       ) {
         throw new Error(
-          'A different Station import is incomplete. Inspect it with station import --status and retry with the original file bytes.',
+          'The file does not match the original Station import. Use the original file bytes and format.',
         );
+      }
+      const { appConfigUpdated, agentSlugs, integrationIds } =
+        plan.receipt.applied;
+      const ledgerPath = completedImportLedgerPath(projectHome, progress.id);
+      const result = {
+        appConfigUpdated,
+        agentCount: agentSlugs.length,
+        integrationCount: integrationIds.length,
+        ledgerPath,
+        notesPath: plan.notes
+          ? ledgerPath.replace(/\.json$/, '.notes.md')
+          : undefined,
+      };
+      if (progress.phase === 'complete') {
+        console.log(`  ✓ import already complete: ${ledgerPath}`);
+        return result;
       }
       try {
         await writeImportProgress(projectHome, progress);
@@ -188,7 +219,7 @@ export async function importConfig(
         }
         progress.phase = 'publishing';
         await writeImportProgress(projectHome, progress);
-        const { ledgerPath, notesPath } = await writeImportLedger(
+        await writeImportLedger(
           {
             ...plan.receipt,
             id: progress.id,
@@ -200,21 +231,13 @@ export async function importConfig(
         );
         progress.phase = 'complete';
         await writeImportProgress(projectHome, progress);
-        const { appConfigUpdated, agentSlugs, integrationIds } =
-          plan.receipt.applied;
         console.log(
           `  ✓ imported ${basename(sourcePath)} (${agentSlugs.length} agents, ${integrationIds.length} integrations)`,
         );
-        return {
-          appConfigUpdated,
-          agentCount: agentSlugs.length,
-          integrationCount: integrationIds.length,
-          ledgerPath,
-          notesPath,
-        };
+        return result;
       } catch (cause) {
         throw new Error(
-          'Station import did not finish. Inspect its progress with station import --status and retry with the same file.',
+          `Station import did not finish. Inspect it with station import --status before retrying the same file with --resume=${progress.id}.`,
           { cause },
         );
       }

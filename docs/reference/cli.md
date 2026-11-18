@@ -1024,12 +1024,18 @@ An import records its progress locally before applying guidance, Agents, or
 integrations. Each target is pending, applied, or uncertain. An error or
 interruption can leave part of an uncertain target applied. Use
 `station import --status` to inspect the last operation, its target states,
-and its expected receipt path. Retry an incomplete import with the original
-file bytes. Station resumes uncertain and pending targets, keeping the same
-receipt identity and leaving recorded applied targets as they are. A lost
-completion receipt can be republished from the original file. An
-uncertain integration may already have published credentials before its
-manifest write failed.
+and its expected receipt path. Review any changes made to unfinished targets
+since the attempt. Retry with the original file bytes and
+`--resume=<operation-id>` to acknowledge possible replacements at uncertain or
+pending targets. Station retains the same receipt identity and skips targets
+recorded as applied. An uncertain integration may already have published
+credentials before its manifest write failed.
+
+After a lost client response, `--status` locates the last operation and its
+receipt. Resuming a completed operation returns that receipt without replaying
+its writes. A missing completion receipt can be republished from the original
+file with the same resume command. A plain file import after completion starts
+a new operation, even if the file is identical.
 
 A completed import writes a ledger recording the source path, format, what
 was applied, and fields that could not be represented. The status output shows
@@ -1042,6 +1048,7 @@ you need to undo the import or cannot recover its source. See the
 
 ```
 station import <file>
+station import <file> --resume=<operation-id>
 station import --status
 ```
 

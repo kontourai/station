@@ -829,7 +829,17 @@ function buildProgram(
       console.log(JSON.stringify(readConfigImportStatus(), null, 2));
       return;
     }
-    await importConfig(rawArgs[0]);
+    const [file, resume, ...extra] = rawArgs;
+    const resumePrefix = '--resume=';
+    if (
+      extra.length > 0 ||
+      (resume !== undefined &&
+        (!resume.startsWith(resumePrefix) ||
+          resume.length === resumePrefix.length))
+    ) {
+      throw new Error('Usage: station import <file> [--resume=<operation-id>]');
+    }
+    await importConfig(file, { resumeId: resume?.slice(resumePrefix.length) });
   });
   register('stations', async (rawArgs) => {
     await runStationsCommand(rawArgs);
