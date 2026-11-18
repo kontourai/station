@@ -1,0 +1,7 @@
+{
+  "revision": "a34181910b646f99086d7bfe4ff120f01c00cdb7",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed model picker selection at the shared group and its handoff and start-composer callers. Typed exact Models lookups preserve available-route visibility, the unavailable-route negative control, and choice application and dismissal. UI and user instructions are unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/__tests__/SessionModelPicker.test.tsx","src-ui/src/components/chat-start/__tests__/StartModelPicker.test.tsx"]}
+  ]
+}

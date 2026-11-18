@@ -13,8 +13,8 @@
  *   runtime-injected field (e.g. `managedChatOrchestration`) or a registered
  *   field with nothing stored whose declared `envFallback` is set — in both
  *   cases the env var is where the effective value comes from.
- * - `source: 'default'` -> a subtle "Default" chip, tone `neutral`.
- * - `source: 'file'` (the common case: a real, editable stored value) -> no badge.
+ * - Stored values and built-in defaults do not get a badge. Rows with
+ *   inheritance details disclose those sources there.
  * - No provenance entry at all -> no badge.
  *
  * **archive#1557 — there is no "Overridden by {var}" chip and no disabled
@@ -37,27 +37,16 @@ interface ProvenanceBadgeProps {
 }
 
 export function ProvenanceBadge({ provenance }: ProvenanceBadgeProps) {
-  if (!provenance) return null;
-
-  if (provenance.source === 'env') {
-    return (
-      <Badge
-        value={
-          provenance.envVar
-            ? `Set by operator: ${provenance.envVar}`
-            : 'Set by operator'
-        }
-        tone="neutral"
-        className="provenance-badge"
-      />
-    );
-  }
-
-  if (provenance.source === 'default') {
-    return (
-      <Badge value="Default" tone="neutral" className="provenance-badge" />
-    );
-  }
-
-  return null;
+  if (provenance?.source !== 'env') return null;
+  return (
+    <Badge
+      value={
+        provenance.envVar
+          ? `Set by operator: ${provenance.envVar}`
+          : 'Set by operator'
+      }
+      tone="neutral"
+      className="provenance-badge"
+    />
+  );
 }

@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
@@ -98,9 +99,11 @@ export function CommandLauncher({
     closeAndRestoreFocus();
   }, [closeAndRestoreFocus, isSubmitting, onConfirm, preview.intent]);
 
-  return (
+  return createPortal(
     <div
       className="command-launcher__overlay responsive-surface-overlay"
+      data-responsive-layer="dialog"
+      data-no-dock-drag=""
       style={visualViewport.style}
     >
       <button
@@ -221,6 +224,7 @@ export function CommandLauncher({
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

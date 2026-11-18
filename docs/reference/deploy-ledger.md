@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-18T10:03:25Z | nightly-desktop | 0.2.0-nightly.20261118.2 | `3ac758d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44270806577) |
+| 2026-11-18T10:03:25Z | nightly-android | 0.2.0-nightly.20261118.2 | `3ac758d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44270806577) |
+| 2026-11-18T09:01:50Z | nightly-npm | 0.12.0-nightly.20261118.44270806577 | `3ac758d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44270806577) |
 | 2026-11-18T05:42:00Z | nightly-npm | 0.12.0-nightly.20261118.44244686750 | `c583700` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44244686750) |
 | 2026-11-18T03:01:15Z | nightly-npm | 0.12.0-nightly.20261118.44226098011 | `e1976d9` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44226098011) |
 | 2026-11-17T23:26:00Z | nightly-desktop | 0.2.0-nightly.20261117.2 | `099dac6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44192161706) |
@@ -498,6 +501,112 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-18T10:03:25Z · nightly-desktop · 0.2.0-nightly.20261118.2
+
+- Ship SHA: `3ac758dfc053a5a9709def3d386286ab4bb5cdfc`
+- Artifact built at: `2026-11-18T09:08:55.852Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 44270806577)
+
+### Changelog
+
+Commits since `099dac6` ([full sha](https://github.com/kontourai/station/commit/099dac6eb01c18ec70cd9a1066c9d6c62efe238d)):
+
+**Features**
+
+- [#5176](https://github.com/kontourai/station/pull/5176) feat(appearance): add portable visual themes and inline chat proposals
+- [#5185](https://github.com/kontourai/station/pull/5185) feat(orchestration): add dormant CLI Session group owner
+- [#5173](https://github.com/kontourai/station/pull/5173) feat: report paired multi-turn request overhead
+- [#5164](https://github.com/kontourai/station/pull/5164) feat(engines): guide setup from chat through a focused person-owned flow
+
+**Fixes**
+
+- [#5188](https://github.com/kontourai/station/pull/5188) fix(telemetry): match Kontour sharing to its release receiver
+- [#5193](https://github.com/kontourai/station/pull/5193) fix(layouts): show available prompt actions and select the new chat
+- [#5192](https://github.com/kontourai/station/pull/5192) fix(nightly): align manual and recovery admission with cadence
+- [#5186](https://github.com/kontourai/station/pull/5186) fix: preserve inherited delegation tool restrictions
+- [#5184](https://github.com/kontourai/station/pull/5184) fix(scripts): sequence connected-agent projection and retain diagnostics
+- [#5169](https://github.com/kontourai/station/pull/5169) fix(orchestration): derive owned child activity from shared lifecycle
+- [#5183](https://github.com/kontourai/station/pull/5183) fix(tasks): capture launch intent before target discovery
+- [#5177](https://github.com/kontourai/station/pull/5177) fix(ci): repair nightly contracts and select their hidden inputs
+- [#4755](https://github.com/kontourai/station/pull/4755) fix(server): keep confined Seatbelt TMPDIRs short enough for Unix sockets
+- [#5174](https://github.com/kontourai/station/pull/5174) fix(performance): drive remote apply through current Brief autosave
+- [#5165](https://github.com/kontourai/station/pull/5165) fix(opencode): enable ACP never-ask and reliable steering
+- [#5168](https://github.com/kontourai/station/pull/5168) fix(chat): remove retired Activity destination from task footer
+- [#4739](https://github.com/kontourai/station/pull/4739) fix(server): keep session TMPDIRs short enough for Unix sockets
+- [#5167](https://github.com/kontourai/station/pull/5167) fix(codex): preserve both credentials on adopted Session resume
+
+**Other**
+
+- [#5190](https://github.com/kontourai/station/pull/5190) perf(docs): bound release history replay time
+- [#5187](https://github.com/kontourai/station/pull/5187) perf(orchestration): avoid duplicate session inventory scans
+- [#5171](https://github.com/kontourai/station/pull/5171) perf(sessions): bound repeated transcript prefix reads
+- [#5166](https://github.com/kontourai/station/pull/5166) perf(auth): defer bundled WebAuthn initialization until first use
+
+## 2026-11-18T10:03:25Z · nightly-android · 0.2.0-nightly.20261118.2
+
+- Ship SHA: `3ac758dfc053a5a9709def3d386286ab4bb5cdfc`
+- Artifact built at: `2026-11-18T09:04:52.291Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 44270806577)
+
+### Changelog
+
+Commits since `099dac6` ([full sha](https://github.com/kontourai/station/commit/099dac6eb01c18ec70cd9a1066c9d6c62efe238d)):
+
+**Features**
+
+- [#5176](https://github.com/kontourai/station/pull/5176) feat(appearance): add portable visual themes and inline chat proposals
+- [#5185](https://github.com/kontourai/station/pull/5185) feat(orchestration): add dormant CLI Session group owner
+- [#5173](https://github.com/kontourai/station/pull/5173) feat: report paired multi-turn request overhead
+- [#5164](https://github.com/kontourai/station/pull/5164) feat(engines): guide setup from chat through a focused person-owned flow
+
+**Fixes**
+
+- [#5188](https://github.com/kontourai/station/pull/5188) fix(telemetry): match Kontour sharing to its release receiver
+- [#5193](https://github.com/kontourai/station/pull/5193) fix(layouts): show available prompt actions and select the new chat
+- [#5192](https://github.com/kontourai/station/pull/5192) fix(nightly): align manual and recovery admission with cadence
+- [#5186](https://github.com/kontourai/station/pull/5186) fix: preserve inherited delegation tool restrictions
+- [#5184](https://github.com/kontourai/station/pull/5184) fix(scripts): sequence connected-agent projection and retain diagnostics
+- [#5169](https://github.com/kontourai/station/pull/5169) fix(orchestration): derive owned child activity from shared lifecycle
+- [#5183](https://github.com/kontourai/station/pull/5183) fix(tasks): capture launch intent before target discovery
+- [#5177](https://github.com/kontourai/station/pull/5177) fix(ci): repair nightly contracts and select their hidden inputs
+- [#4755](https://github.com/kontourai/station/pull/4755) fix(server): keep confined Seatbelt TMPDIRs short enough for Unix sockets
+- [#5174](https://github.com/kontourai/station/pull/5174) fix(performance): drive remote apply through current Brief autosave
+- [#5165](https://github.com/kontourai/station/pull/5165) fix(opencode): enable ACP never-ask and reliable steering
+- [#5168](https://github.com/kontourai/station/pull/5168) fix(chat): remove retired Activity destination from task footer
+- [#4739](https://github.com/kontourai/station/pull/4739) fix(server): keep session TMPDIRs short enough for Unix sockets
+- [#5167](https://github.com/kontourai/station/pull/5167) fix(codex): preserve both credentials on adopted Session resume
+
+**Other**
+
+- [#5190](https://github.com/kontourai/station/pull/5190) perf(docs): bound release history replay time
+- [#5187](https://github.com/kontourai/station/pull/5187) perf(orchestration): avoid duplicate session inventory scans
+- [#5171](https://github.com/kontourai/station/pull/5171) perf(sessions): bound repeated transcript prefix reads
+- [#5166](https://github.com/kontourai/station/pull/5166) perf(auth): defer bundled WebAuthn initialization until first use
+
+## 2026-11-18T09:01:50Z · nightly-npm · 0.12.0-nightly.20261118.44270806577
+
+- Ship SHA: `3ac758dfc053a5a9709def3d386286ab4bb5cdfc`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261118.44270806577 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `c583700` ([full sha](https://github.com/kontourai/station/commit/c5837006326ca67e716f433f15180cd7da5922a7)):
+
+**Features**
+
+- [#5176](https://github.com/kontourai/station/pull/5176) feat(appearance): add portable visual themes and inline chat proposals
+
+**Fixes**
+
+- [#5188](https://github.com/kontourai/station/pull/5188) fix(telemetry): match Kontour sharing to its release receiver
+- [#5193](https://github.com/kontourai/station/pull/5193) fix(layouts): show available prompt actions and select the new chat
+- [#5192](https://github.com/kontourai/station/pull/5192) fix(nightly): align manual and recovery admission with cadence
+- [#5186](https://github.com/kontourai/station/pull/5186) fix: preserve inherited delegation tool restrictions
 
 ## 2026-11-18T05:42:00Z · nightly-npm · 0.12.0-nightly.20261118.44244686750
 

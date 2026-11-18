@@ -96,6 +96,12 @@ Station also retains the older per-Project document/namespace API through
 providers. It is not the same interface as the store/index routes described
 here; the migration section explains how their data is related.
 
+The [Enterprise Notes example](../../examples/enterprise-layout/README.md#knowledge-namespaces)
+uses the older document API. Applying its layout registers `enterprise-notes`, the
+same namespace its SDK calls use. An earlier `notes` registration remains a
+separate Project namespace with its existing documents. Unscoped document
+search considers registered RAG namespaces with indexed content.
+
 For a concrete example, [browse Station's repository graph](repository-knowledge-graph.md)
 or see [the captured Knowledge Library](../learn/walkthroughs.md#explore-repository-knowledge).
 That journey uses canonical records and links without an embedding service.
@@ -115,6 +121,7 @@ flowchart LR
   Roots --> Resolve
   Resolve --> Result["Current title/category; excerpt still in the record"]
   Legacy["Older document / namespace API"] --> Service["KnowledgeService"]
+  Namespaces["Registered Project RAG namespaces"] -->|unscoped document search| Service
   Service --> Providers["Configured embedding and vector providers"]
   OldFiles["Older document and vector files"] -->|"explicit migration"| Roots
 ```
@@ -497,12 +504,14 @@ Station user actually gets a knowledge store in the first place, without reading
 
 ### Settings: My knowledge store
 
-Settings has a **My knowledge store** section that displays the first personal
-root returned by the server, skipping private memory roots and the read-only
-`root:conversations` root. A personal root is available outside a particular
-Project; whether an Agent can read or write it depends on its tools, engine,
-authority, and the adapter (conversation history is read-only). Knowledge is
-optional: Station does not show a global setup prompt or create/import a store automatically.
+**My knowledge store** in Settings is an operator-managed personal store on
+the connected Station. Settings search and the published registry identify
+this row as personal. The card displays the first ordinary personal root
+returned by the server. It skips author-private memory roots and the read-only
+`root:conversations` root. The registry permits multiple personal roots, and
+the card keeps using the first eligible one. Agent access still depends on
+the caller's authority, tools, engine, and adapter. Store setup and imports
+start only when the operator chooses them.
 The same section holds **Past conversations in Knowledge**, the
 [`root:conversations`](#rootconversations-past-conversations-as-a-knowledge-root) setting.
 
