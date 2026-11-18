@@ -1500,7 +1500,7 @@ test('message files: a full quota recovers from deleted messages and old unsent 
   const deleted = await f.send([gone]);
   const [recent] = (await f.upload(png('recent.png'))) as { id: string }[];
   // Fill the binding to its 1280 files with uploads no message names.
-  const bytes = new RoomAttachments(f.root, 'room', { retention: false });
+  const bytes = new RoomAttachments(f.root, 'room');
   const unsent = Array.from(
     { length: 1280 - 3 },
     () =>
