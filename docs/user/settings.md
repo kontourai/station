@@ -14,6 +14,11 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+In **Notifications**, browser Web Push reflects the selected Station’s
+registration. Turning it off removes the local subscription. Station
+reports failed registration cleanup separately.
+[Web Push notifications](../guides/web-push-notifications.md)
+
 ## Project settings
 
 Open a Project's settings to change its defaults, sources and access. Desktop

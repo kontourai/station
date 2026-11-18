@@ -235,7 +235,7 @@ export function NotificationsSection() {
               {settingsRow('push-notifications').title}
             </div>
             <div className="settings__toggle-desc" id="notif-desc">
-              Browser notifications for approvals and high-priority alerts
+              Turn off to unsubscribe this browser from Web Push.
             </div>
           </div>
         </SettingsToggle>

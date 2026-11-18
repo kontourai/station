@@ -40,6 +40,7 @@ import {
   parsePairingScope,
   type TailscaleServeRequester,
   type WebPushSubscription,
+  webPushRegistrationFingerprintInput,
 } from '@kontourai/station-contracts';
 import {
   deviceRequestedExtraScopes,
@@ -1230,6 +1231,9 @@ function isSameReplacementDomain(
 
 export class DevicePairingService {
   readonly #registryPath: string;
+  // Only in-flight sends in this process hold these identities. Legacy
+  // subscriptions loaded from disk start without a generation.
+  readonly #pushSubscriptionGenerations = new Map<string, symbol>();
   #environmentId: string;
   readonly #now: () => number;
   readonly #offerTtlMs: number;
@@ -2980,42 +2984,77 @@ export class DevicePairingService {
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
-    if (device.pendingEnrollmentId !== undefined)
+    if (
+      device.pendingEnrollmentId !== undefined ||
+      device.revokedAt !== null ||
+      this.#signedOutByPolicy(device)
+    )
       throw new DevicePairingError('device_not_found');
-    device.pushSubscription = subscription;
-    // Persist before exposing (archive#3324): a subscription live in memory but
-    // absent on disk stops receiving pushes at the next restart, with no
-    // signal to the device that registered it.
+    device.pushSubscription = {
+      endpoint: subscription.endpoint,
+      ...(subscription.expirationTime !== undefined
+        ? { expirationTime: subscription.expirationTime }
+        : {}),
+      keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
+    };
     this.#persistRegistry(nextRegistry);
     this.#registry = nextRegistry;
+    this.#pushSubscriptionGenerations.set(deviceId, Symbol());
     return publicDevice(device);
   }
 
-  /** Idempotent: clearing an already-cleared subscription is a no-op write. */
-  clearPushSubscription(deviceId: string): PairedDevice {
-    const nextRegistry = cloneRegistry(this.#registry);
-    const device = nextRegistry.devices.find((item) => item.id === deviceId);
-    if (!device) throw new DevicePairingError('device_not_found');
-    if (device.pendingEnrollmentId !== undefined)
+  /** An observed endpoint or in-flight delivery generation may clear only itself. */
+  clearPushSubscription(
+    deviceId: string,
+    observed?: { endpoint: string } | { generation: symbol | undefined },
+  ): PairedDevice {
+    const current = this.#registry.devices.find((item) => item.id === deviceId);
+    if (!current || current.pendingEnrollmentId !== undefined)
       throw new DevicePairingError('device_not_found');
-    if (device.pushSubscription === null) return publicDevice(device);
+    if (
+      !current.pushSubscription ||
+      (observed &&
+        (current.revokedAt !== null ||
+          this.#signedOutByPolicy(current) ||
+          ('endpoint' in observed
+            ? current.pushSubscription.endpoint !== observed.endpoint
+            : this.#pushSubscriptionGenerations.get(deviceId) !==
+              observed.generation)))
+    )
+      return publicDevice(current);
+    const nextRegistry = cloneRegistry(this.#registry);
+    const device = nextRegistry.devices.find((item) => item.id === deviceId)!;
     device.pushSubscription = null;
-    // Persist before exposing (archive#3324). This direction is the one revocation
-    // depends on — "a subscription must never survive its device record" is
-    // only as durable as this write.
     this.#persistRegistry(nextRegistry);
     this.#registry = nextRegistry;
+    this.#pushSubscriptionGenerations.delete(deviceId);
     return publicDevice(device);
+  }
+
+  readPushSubscriptionFingerprint(deviceId: string): string | null {
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    if (
+      !device?.pushSubscription ||
+      device.revokedAt !== null ||
+      device.pendingEnrollmentId !== undefined ||
+      this.#signedOutByPolicy(device)
+    )
+      return null;
+    return createHash('sha256')
+      .update(webPushRegistrationFingerprintInput(device.pushSubscription))
+      .digest('hex');
   }
 
   /** Fan-out source for the Web Push sender — active devices only. */
   listPushSubscriptions(): Array<{
     deviceId: string;
     subscription: WebPushSubscription;
+    generation?: symbol;
   }> {
     const results: Array<{
       deviceId: string;
       subscription: WebPushSubscription;
+      generation?: symbol;
     }> = [];
     for (const device of this.#registry.devices) {
       if (
@@ -3027,6 +3066,7 @@ export class DevicePairingService {
         results.push({
           deviceId: device.id,
           subscription: device.pushSubscription,
+          generation: this.#pushSubscriptionGenerations.get(device.id),
         });
       }
     }

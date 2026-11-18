@@ -698,6 +698,7 @@ export {
   fetchUsageStats,
   fetchVapidPublicKey,
   fetchVoicePort,
+  fetchWebPushRegistration,
   fetchWorkspaceHomeRoleCandidates,
   fetchWorkspaceHomeRoleRequest,
   fetchWorkspaceHomeRoleStatus,

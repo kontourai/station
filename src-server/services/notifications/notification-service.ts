@@ -1353,39 +1353,46 @@ export class NotificationService {
     };
   }
 
+  private armNotificationWakeup(
+    id: string,
+    deadline: number,
+    operation: 'scheduled-delivery' | 'notification-expiry',
+    due: (timer: ReturnType<typeof setTimeout>) => Promise<void>,
+  ): void {
+    if (!this.acceptingAsyncDispatch) return;
+    this.clearTimer(id);
+    const remaining = deadline - Date.now();
+    // Node clamps larger delays to 1ms. Wake in bounded steps and retain
+    // the original deadline, including when the wall clock moves backwards.
+    const timer = setTimeout(
+      () => {
+        if (this.timers.get(id) !== timer) return;
+        if (Date.now() < deadline)
+          this.armNotificationWakeup(id, deadline, operation, due);
+        else this.dispatch(operation, () => due(timer));
+      },
+      Math.min(2_147_483_647, Math.max(0, remaining)),
+    );
+    this.timers.set(id, timer);
+  }
+
   private scheduleTimer(n: StoredNotification): void {
-    if (!this.acceptingAsyncDispatch || !n.scheduledAt) return;
-    const delay = Math.max(0, new Date(n.scheduledAt).getTime() - Date.now());
-    this.timers.set(
+    const scheduledAt = n.scheduledAt;
+    if (!scheduledAt) return;
+    this.armNotificationWakeup(
       n.id,
-      setTimeout(
-        () =>
-          this.dispatch('scheduled-delivery', () =>
-            this.deliver(n.id, n.revision, n.scheduledAt!),
-          ),
-        delay,
-      ),
+      Date.parse(scheduledAt),
+      'scheduled-delivery',
+      (timer) => this.deliver(n.id, n.revision, scheduledAt, timer),
     );
   }
 
   private scheduleExpiryTimer(n: StoredNotification): void {
-    if (!this.acceptingAsyncDispatch || !n.ttl || n.ttl <= 0 || !n.deliveredAt)
-      return;
-    // Deadline is measured from the ORIGINAL `deliveredAt`, never
-    // `updatedAt` — see the dedupe-update ttl re-derivation comment above
-    // (`schedule()`) for the documented consequence when a category-changing
-    // update shortens the ttl after delivery.
-    const deadline = new Date(n.deliveredAt).getTime() + n.ttl;
-    const delay = Math.max(0, deadline - Date.now());
-    this.timers.set(
-      n.id,
-      setTimeout(
-        () =>
-          this.dispatch('notification-expiry', () =>
-            this.expire(n.id, n.revision, deadline),
-          ),
-        delay,
-      ),
+    if (!n.ttl || n.ttl <= 0 || !n.deliveredAt) return;
+    // TTL is measured from the original delivery, including after dedupe.
+    const deadline = Date.parse(n.deliveredAt) + n.ttl;
+    this.armNotificationWakeup(n.id, deadline, 'notification-expiry', (timer) =>
+      this.expire(n.id, n.revision, deadline, timer),
     );
   }
 
@@ -1393,16 +1400,20 @@ export class NotificationService {
     id: string,
     revision: number,
     scheduledAt: string,
+    timer: ReturnType<typeof setTimeout>,
   ): Promise<void> {
-    this.clearTimer(id);
     const n = await this.mutate((all) => {
       const notification = all.find((candidate) => candidate.id === id);
       if (
+        this.timers.get(id) !== timer ||
         notification?.status !== 'pending' ||
         notification.revision !== revision ||
-        notification.scheduledAt !== scheduledAt ||
-        Date.now() < new Date(scheduledAt).getTime()
-      ) {
+        notification.scheduledAt !== scheduledAt
+      )
+        return { result: undefined };
+      // The clock may have changed while this mutation waited for its turn.
+      if (Date.now() < Date.parse(scheduledAt)) {
+        this.scheduleTimer(notification);
         return { result: undefined };
       }
       notification.status = 'delivered';
@@ -1411,31 +1422,38 @@ export class NotificationService {
       notification.revision += 1;
       return { result: notification, next: all };
     });
-    if (!n) return;
-    notificationOps.add(1, { op: 'deliver' });
-    this.eventBus.emit(
-      SERVER_EVENTS.NOTIFICATION_DELIVERED,
-      toPublicNotification(n) as unknown as Record<string, unknown>,
-    );
-    this.scheduleExpiryTimer(n);
+    if (n) {
+      notificationOps.add(1, { op: 'deliver' });
+      this.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_DELIVERED,
+        toPublicNotification(n) as unknown as Record<string, unknown>,
+      );
+    }
+    if (this.timers.get(id) === timer) {
+      this.clearTimer(id);
+      if (n) this.scheduleExpiryTimer(n);
+    }
   }
 
   private async expire(
     id: string,
     revision: number,
     deadline: number,
+    timer: ReturnType<typeof setTimeout>,
   ): Promise<void> {
     const expired = await this.mutate((all) => {
       const notification = all.find((candidate) => candidate.id === id);
       if (
+        this.timers.get(id) !== timer ||
         notification?.status !== 'delivered' ||
         notification.revision !== revision ||
         !notification.deliveredAt ||
         !notification.ttl ||
-        new Date(notification.deliveredAt).getTime() + notification.ttl !==
-          deadline ||
-        Date.now() < deadline
-      ) {
+        Date.parse(notification.deliveredAt) + notification.ttl !== deadline
+      )
+        return { result: undefined };
+      if (Date.now() < deadline) {
+        this.scheduleExpiryTimer(notification);
         return { result: undefined };
       }
       notification.status = 'expired';
@@ -1443,12 +1461,12 @@ export class NotificationService {
       notification.revision += 1;
       return { result: notification, next: all };
     });
-    if (!expired) return;
-    this.clearTimer(id);
-    this.eventBus.emit(
-      SERVER_EVENTS.NOTIFICATION_UPDATED,
-      toPublicNotification(expired) as unknown as Record<string, unknown>,
-    );
+    if (this.timers.get(id) === timer) this.clearTimer(id);
+    if (expired)
+      this.eventBus.emit(
+        SERVER_EVENTS.NOTIFICATION_UPDATED,
+        toPublicNotification(expired) as unknown as Record<string, unknown>,
+      );
   }
 
   private partitionClear(

@@ -65,6 +65,92 @@ describe('NotificationService', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('long schedules and TTLs pass only supported delays to native Node timers', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-01T00:00:00.000Z'));
+    const native = vi.spyOn(globalThis, 'setTimeout');
+    try {
+      const limit = 2_147_483_647;
+      const pending = await svc.schedule('test', {
+        title: 'Long schedule',
+        category: 'test',
+        scheduledAt: new Date(Date.now() + limit + 1000).toISOString(),
+      });
+      await svc.schedule('test', {
+        title: 'Long TTL',
+        category: 'test',
+        ttl: limit + 1000,
+      });
+      expect(
+        native.mock.calls
+          .map(([, delay]) => delay)
+          .filter((delay) => Number(delay) >= limit),
+      ).toEqual([limit, limit]);
+      expect(
+        (await svc.list()).find((item) => item.id === pending.id)?.status,
+      ).toBe('pending');
+    } finally {
+      native.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  test('bounded wakeups retain a rescheduled deadline through restart and backward clock movement', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      const limit = 2_147_483_647;
+      const epoch = Date.parse('2026-10-01T00:00:00.000Z');
+      vi.setSystemTime(epoch);
+      const early = await svc.schedule('scheduler', {
+        title: 'Old deadline',
+        category: 'test',
+        dedupeTag: 'long-wakeup',
+        scheduledAt: new Date(epoch + limit).toISOString(),
+      });
+      const latest = await svc.schedule('scheduler', {
+        title: 'New deadline',
+        category: 'test',
+        dedupeTag: 'long-wakeup',
+        scheduledAt: new Date(epoch + limit + 5_000).toISOString(),
+        ttl: limit + 20,
+      });
+      expect(latest.id).toBe(early.id);
+      await svc.shutdown();
+      svc = new NotificationService(bus, dir, 999_999);
+      await svc.start();
+
+      vi.setSystemTime(epoch - 100);
+      await vi.advanceTimersByTimeAsync(limit);
+      await vi.advanceTimersByTimeAsync(5_099);
+      expect(
+        (await svc.list()).find((row) => row.id === latest.id)?.status,
+      ).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1);
+      await new Promise<void>((resolve) => {
+        svc.dispatch('wait-for-delivery', async () => resolve());
+      });
+      expect(
+        (await svc.list()).find((row) => row.id === latest.id)?.status,
+      ).toBe('delivered');
+
+      await vi.advanceTimersByTimeAsync(limit);
+      await vi.advanceTimersByTimeAsync(19);
+      expect(
+        (await svc.list()).find((row) => row.id === latest.id)?.status,
+      ).toBe('delivered');
+      await vi.advanceTimersByTimeAsync(1);
+      await new Promise<void>((resolve) => {
+        svc.dispatch('wait-for-expiry', async () => resolve());
+      });
+      expect(
+        (await svc.list()).find((row) => row.id === latest.id)?.status,
+      ).toBe('expired');
+    } finally {
+      await svc.shutdown();
+      vi.useRealTimers();
+    }
+  });
+
   test('schedule creates an immediately delivered notification', async () => {
     const n = await svc.schedule('test', {
       title: 'Hello',

@@ -257,6 +257,7 @@ export {
   fetchTerminalProcesses,
   fetchVapidPublicKey,
   fetchVoicePort,
+  fetchWebPushRegistration,
   forkConversation,
   type InterruptOrchestrationDelegatedTaskInput,
   inspectOrchestrationSteerInput,
