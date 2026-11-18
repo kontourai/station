@@ -11,13 +11,12 @@ import { createSpatialBoardRoutes } from '../spatial-board.js';
 
 describe('spatial board routes', () => {
   let app: ReturnType<typeof createSpatialBoardRoutes>;
+  let store: SpatialBoardStore;
 
   beforeEach(async () => {
     const root = await mkdtemp(join(tmpdir(), 'spatial-board-routes-'));
-    app = createSpatialBoardRoutes(
-      new SpatialBoardStore(join(root, 'spatial-board.json')),
-      new SpatialBoardResolver({}),
-    );
+    store = new SpatialBoardStore(join(root, 'spatial-board.json'));
+    app = createSpatialBoardRoutes(store, new SpatialBoardResolver({}));
   });
 
   test('reads and revision-checks an exact Task pin', async () => {
@@ -372,12 +371,6 @@ describe('spatial board routes', () => {
   });
 
   test('reobserves the exact pin at cleanup, refuses restored and unreadable work, and retains Undo', async () => {
-    const store = new SpatialBoardStore(
-      join(
-        await mkdtemp(join(tmpdir(), 'spatial-board-cleanup-')),
-        'spatial-board.json',
-      ),
-    );
     let state: 'missing' | 'current' | 'unavailable' = 'missing';
     const resolver = new SpatialBoardResolver({
       session: {
