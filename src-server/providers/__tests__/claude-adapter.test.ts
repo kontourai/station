@@ -1724,6 +1724,83 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  describe('Claude API client-version refusal', () => {
+    const versionError =
+      '400 {"error":{"type":"invalid_request_error","message":"claude-cli does not support this model; version 2.1.251 or newer is required. Run claude update."}}';
+    const endpoint = 'https://proxy.example.invalid/private-route';
+
+    test.each([
+      {
+        label: 'configured proxy',
+        baseUrl: endpoint,
+        text: versionError,
+        explain: true,
+      },
+      {
+        label: 'direct connection',
+        baseUrl: undefined,
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'default endpoint',
+        baseUrl: 'https://api.anthropic.com/',
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'malformed endpoint',
+        baseUrl: 'not a URL',
+        text: versionError,
+        explain: false,
+      },
+      {
+        label: 'unrelated API error',
+        baseUrl: endpoint,
+        text: '400 invalid_request_error: Extra inputs are not permitted',
+        explain: false,
+      },
+    ])('$label', async ({ baseUrl, text, explain }) => {
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () =>
+          baseUrl === undefined ? undefined : { ANTHROPIC_BASE_URL: baseUrl },
+      });
+      const events: Array<{ method: string }> = [];
+      void (async () => {
+        for await (const event of adapter.streamEvents()) events.push(event);
+      })();
+      const threadId = 'claude-client-version-refusal';
+      mockQuery.mockReturnValue(
+        createMockQuery([
+          {
+            type: 'result',
+            subtype: 'error_during_execution',
+            is_error: true,
+            errors: [text],
+            num_turns: 1,
+            session_id: threadId,
+            uuid: 'version-refusal-result',
+          },
+        ]),
+      );
+      await adapter.startSession({ provider: 'claude', threadId });
+      try {
+        await vi.waitFor(() => {
+          expect(
+            events.find((event) => event.method === 'runtime.error'),
+          ).toMatchObject({
+            code: 'engine-turn-failed',
+            message: explain
+              ? 'Claude reported a client version requirement. If the connection uses a model proxy, check the proxy’s upstream client version.'
+              : text,
+          });
+        });
+      } finally {
+        await adapter.stopSession(threadId);
+      }
+    });
+  });
+
   describe('#2324 a send while the engine runs a turn it opened itself', () => {
     const replyFrame = (sessionId: string) => ({
       type: 'stream_event',
