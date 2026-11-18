@@ -92,6 +92,14 @@ const SHAPES: Array<[string, Shape, boolean]> = [
     { clientOrigin: childResult, authoredBy: 'person' },
     false,
   ],
+  [
+    'a marked turn with an explicitly null persisted sender',
+    {
+      clientOrigin: JSON.parse(JSON.stringify({ ...person, sender: null })),
+      authoredBy: 'person',
+    },
+    false,
+  ],
   ['a turn recorded before the mark', {}, false],
 ];
 

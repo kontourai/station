@@ -6159,7 +6159,11 @@ export class OrchestrationService {
     threadId: string;
     turnId: string;
     clientInputId: string;
-    payload: { message: string; clientOrigin?: ClientOrigin };
+    payload: {
+      message: string;
+      clientOrigin?: ClientOrigin;
+      authoredBy?: 'person';
+    };
   }): void {
     const store = this.options.eventStore;
     const session =
@@ -6179,6 +6183,9 @@ export class OrchestrationService {
         createdAt: new Date().toISOString(),
         prompt: input.payload.message,
         inputKind: 'steer',
+        ...(input.payload.authoredBy === 'person'
+          ? { authoredBy: input.payload.authoredBy }
+          : {}),
         ...(input.payload.clientOrigin
           ? { clientOrigin: input.payload.clientOrigin }
           : {}),
