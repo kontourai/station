@@ -102,7 +102,10 @@ import {
   createStationControlAuthorityGuard,
   STATION_CONTROL_GUARD_CARVE_OUTS,
 } from '../station-control-authority-guard.js';
-import { stationControlRequestAuthority } from '../station-control-request-authority.js';
+import {
+  type StationControlRequestAuthority,
+  stationControlRequestAuthority,
+} from '../station-control-request-authority.js';
 import {
   __resetStationServerSelfAttestationForTests,
   INTERNAL_SERVER_SELF_HEADER,
@@ -146,6 +149,12 @@ const peerReceived: Array<{ path: string; body: any }> = [];
 const dispatchBodies: Array<Record<string, any>> = [];
 let securityNow = Date.now();
 const hits: string[] = [];
+let boundaryProbe:
+  | {
+      leaf: string;
+      reached: Array<StationControlRequestAuthority | undefined>;
+    }
+  | undefined;
 /** The headers each stub route last received, by its label. */
 const lastHeaders = new Map<string, Headers>();
 /**
@@ -262,6 +271,14 @@ beforeAll(async () => {
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
+  // The matrix stops at the authority boundary. A 204 with this probe's
+  // record proves the guard forwarded the exact leaf to its next handler.
+  // Other tests still exercise the representative route handlers below.
+  app.use('*', async (c, next) => {
+    if (boundaryProbe?.leaf !== `${c.req.method} ${c.req.path}`) return next();
+    boundaryProbe.reached.push(stationControlRequestAuthority(c.req.raw));
+    return c.body(null, 204);
+  });
   let resolvePort!: (value: number) => void;
   const listening = new Promise<number>((resolve) => {
     resolvePort = resolve;
@@ -1697,91 +1714,86 @@ function refusesUnknownWakeUp(
   );
 }
 
+function expectedBoundaryOutcome(
+  channel: Channel,
+  method: string,
+  owners: readonly StationControlToolPolicy[],
+) {
+  if (owners.every((owner) => owner.personOnly === 'always')) {
+    return 'station_control_person_only';
+  }
+  if (channel === 'pooled') return 'station_control_caller_required';
+
+  // These requests act for the recorded operator. At a shared leaf either
+  // owner can admit the request. The route itself handles route-owned scope.
+  const admitsCaller = owners.some(
+    (owner) =>
+      owner.personOnly !== 'always' &&
+      (owner.enforcedBy === 'route' ||
+        channel === 'bound' ||
+        owner.assurance === 'any' ||
+        (channel === 'delegated-custody' &&
+          owner.assurance === 'delegated-custody')),
+  );
+  if (!admitsCaller) return 'station_control_assurance_insufficient';
+  if (refusesUnknownWakeUp(method, owners)) {
+    return 'station_control_out_of_scope';
+  }
+  return 'allowed';
+}
+
 describe('every tool route, table-driven through the real boundary', () => {
-  test('the raw internal token: every leaf refuses, reads of nobody’s data and route-enforced leaves included', async () => {
-    const outcomes: Record<string, string> = {};
-    const expected: Record<string, string> = {};
-    for (const { method, path, owners } of everyToolRoute()) {
-      const key = `${method} ${path}`;
-      // Independent of the evaluator: the rule as decision 4 states it once
-      // Station's own engine has a session caller (slice D): a caller-less
-      // request acts for no one and may do nothing. A person's step still
-      // says so first.
-      expected[key] = owners.every((owner) => owner.personOnly === 'always')
-        ? 'station_control_person_only'
-        : 'station_control_caller_required';
-      const response = await rest(
-        method,
-        path,
-        internalHeaders(),
-        method === 'GET' ? undefined : {},
+  test.each([
+    'bound',
+    'delegated-custody',
+    'bearer-exposed',
+    'pooled',
+  ] as const)(
+    '%s caller reaches exactly the leaves its authority allows',
+    async (channel) => {
+      const sessionId = nextSession('op-');
+      const caller = forwardedCaller(channel, sessionId);
+      const headers = internalHeaders(
+        caller ? { [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller } : {},
       );
-      outcomes[key] =
-        response.status === 403 && response.code?.startsWith('station_control_')
-          ? response.code
-          : 'passed';
-    }
-    expect(outcomes).toEqual(expected);
-  });
-
-  test('a bound operator caller passes every leaf except a person’s step', async () => {
-    const caller = mintStationControlMcpToken(
-      'op-table',
-      'sdk-in-process',
-    ).token;
-    const outcomes: Record<string, string> = {};
-    const expected: Record<string, string> = {};
-    for (const { method, path, owners } of everyToolRoute()) {
-      const key = `${method} ${path}`;
-      expected[key] = owners.every((owner) => owner.personOnly === 'always')
-        ? 'station_control_person_only'
-        : refusesUnknownWakeUp(method, owners)
-          ? 'station_control_out_of_scope'
-          : 'passed';
-      const response = await rest(
-        method,
-        path,
-        internalHeaders({ [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller }),
-        method === 'GET' ? undefined : {},
-      );
-      outcomes[key] =
-        response.status === 403 && response.code?.startsWith('station_control_')
-          ? response.code
-          : 'passed';
-    }
-    expect(outcomes).toEqual(expected);
-  });
-
-  test('a bearer-exposed operator caller passes only leaves some tool opens to any caller', async () => {
-    const caller = mintStationControlMcpToken('op-bearer', 'url-token').token;
-    const outcomes: Record<string, string> = {};
-    const expected: Record<string, string> = {};
-    for (const { method, path, owners } of everyToolRoute()) {
-      const key = `${method} ${path}`;
-      expected[key] = owners.some(
-        (owner) =>
-          owner.enforcedBy === 'route' ||
-          (owner.assurance === 'any' && owner.personOnly !== 'always'),
-      )
-        ? refusesUnknownWakeUp(method, owners)
-          ? 'station_control_out_of_scope'
-          : 'passed'
-        : owners.every((owner) => owner.personOnly === 'always')
-          ? 'station_control_person_only'
-          : 'station_control_assurance_insufficient';
-      const response = await rest(
-        method,
-        path,
-        internalHeaders({ [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller }),
-        method === 'GET' ? undefined : {},
-      );
-      outcomes[key] =
-        response.status === 403 && response.code?.startsWith('station_control_')
-          ? response.code
-          : 'passed';
-    }
-    expect(outcomes).toEqual(expected);
-  });
+      for (const { method, path, owners } of everyToolRoute()) {
+        const leaf = `${method} ${path}`;
+        const outcome = expectedBoundaryOutcome(channel, method, owners);
+        const probe = { leaf, reached: [] };
+        boundaryProbe = probe;
+        try {
+          const response = await rest(
+            method,
+            path,
+            headers,
+            method === 'GET' ? undefined : {},
+          );
+          if (outcome === 'allowed') {
+            expect(response, leaf).toEqual({ status: 204 });
+            expect(probe.reached, leaf).toEqual([
+              expect.objectContaining({
+                kind: 'caller',
+                boundOperator: channel === 'bound',
+                caller: expect.objectContaining({
+                  sessionId,
+                  assurance: channel,
+                  principal: expect.objectContaining({
+                    id: LOCAL_OPERATOR_PRINCIPAL_ID,
+                    source: 'session-owner',
+                  }),
+                }),
+              }),
+            ]);
+          } else {
+            expect(response, leaf).toEqual({ status: 403, code: outcome });
+            expect(probe.reached, leaf).toEqual([]);
+          }
+        } finally {
+          boundaryProbe = undefined;
+        }
+      }
+    },
+  );
 });
 
 describe('a tool’s call to a saved Environment (#2377 slice C2b)', () => {
