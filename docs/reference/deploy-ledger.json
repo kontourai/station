@@ -1,5 +1,135 @@
 [
   {
+    "timestampUtc": "2026-11-17T23:26:00Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261117.2",
+    "sha": "099dac6eb01c18ec70cd9a1066c9d6c62efe238d",
+    "artifactBuiltAt": "2026-11-17T22:50:54.438Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44192161706",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44192161706)"
+    ],
+    "changelog": {
+      "previousSha": "0f7819fd62bd4c548658564a2d8e70434136c85f",
+      "groups": {
+        "feat": [
+          "[#5134](https://github.com/kontourai/station/pull/5134) feat(projects): group a Project's Tasks by next action and add per-Project notification settings",
+          "[#5130](https://github.com/kontourai/station/pull/5130) feat(projects): Project Library, Continue in Project, and Setup recommendations (Feature Previews)",
+          "[#5159](https://github.com/kontourai/station/pull/5159) feat(pull-request-feedback): independent review on each new pull request head",
+          "[#5132](https://github.com/kontourai/station/pull/5132) feat(projects): Project brief and memory on every engine, and Project usage and models",
+          "[#5131](https://github.com/kontourai/station/pull/5131) feat(chat): continue a conversation on a paired Station",
+          "[#5129](https://github.com/kontourai/station/pull/5129) feat(tasks): Task-owned pull requests watch CI and review, budget fixes, refuse merges",
+          "[#5149](https://github.com/kontourai/station/pull/5149) feat(chat): fast, honest thread opens: loading stage, single-read /open, reopen cache",
+          "[#5145](https://github.com/kontourai/station/pull/5145) feat(codex): admit header-token Sessions to Station tool families behind a preview",
+          "[#5150](https://github.com/kontourai/station/pull/5150) feat(workload): tell the engine about memory pressure and in-scope OOM kills during its turn",
+          "[#5128](https://github.com/kontourai/station/pull/5128) feat(inbox): Hide third-party sessions per person and a 7-day Settled window",
+          "[#5133](https://github.com/kontourai/station/pull/5133) feat(sessions): warn before continuing an external session that is still running",
+          "[#5138](https://github.com/kontourai/station/pull/5138) feat(pull-request-feedback): Project defaults and automatic feedback for a Task's own pull requests",
+          "[#5136](https://github.com/kontourai/station/pull/5136) feat(station-control): every call has a verified caller — Station's engine, invoke, voice and jobs (#2377 slice D)",
+          "[#5112](https://github.com/kontourai/station/pull/5112) feat(workload): report scope OOM kills live, warn near the cap, protect the engine"
+        ],
+        "fix": [
+          "[#5163](https://github.com/kontourai/station/pull/5163) fix(ui): share the kit ease-out and reject ease-in",
+          "[#5148](https://github.com/kontourai/station/pull/5148) fix(scripts): bound fallow's memory and analyse base and head in turn",
+          "[#5146](https://github.com/kontourai/station/pull/5146) fix(scripts): resolve a moving readiness --changed-from ref to its merge base",
+          "[#5158](https://github.com/kontourai/station/pull/5158) fix(gallery): clear the setup Details touch target and the reply composer draft race",
+          "[#5154](https://github.com/kontourai/station/pull/5154) fix(projects): run Project schedules as the job's creator (#5126)",
+          "[#5151](https://github.com/kontourai/station/pull/5151) fix(opencode): accept the chat's model and keep the reply after reasoning on the native engine",
+          "[#5147](https://github.com/kontourai/station/pull/5147) fix(scripts): restore blocking stdio before a slot holder execs Biome",
+          "[#5143](https://github.com/kontourai/station/pull/5143) fix(preview): render HTML replies on Chrome 158 without giving up frame isolation",
+          "[#5135](https://github.com/kontourai/station/pull/5135) fix(memory): recheck brief authority after delivery guard",
+          "[#5137](https://github.com/kontourai/station/pull/5137) fix(home): keep the setup card off Home when nothing can start"
+        ],
+        "ci": [
+          "[#5144](https://github.com/kontourai/station/pull/5144) ci(pr): run heavy pull-request checks when armed, behind STATION_PR_HEAVY_CHECKS",
+          "[#5125](https://github.com/kontourai/station/pull/5125) ci: remove four workflows that do nothing"
+        ],
+        "docs": [],
+        "other": [
+          "[#5157](https://github.com/kontourai/station/pull/5157) perf(analytics): fold lifetime usage incrementally from a durable watermark",
+          "[#5142](https://github.com/kontourai/station/pull/5142) perf(voltagent): load VoltAgent's OTLP exporters only when VoltOps exports",
+          "[#5140](https://github.com/kontourai/station/pull/5140) test(contracts): include held Project provider refusal"
+        ]
+      },
+      "note": null,
+      "commitCount": 29
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T23:26:00Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261117.2",
+    "sha": "099dac6eb01c18ec70cd9a1066c9d6c62efe238d",
+    "artifactBuiltAt": "2026-11-17T22:45:56.466Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44192161706",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 44192161706)"
+    ],
+    "changelog": {
+      "previousSha": "7c54e900af188ea29392adf5f7499400217fec3b",
+      "groups": {
+        "feat": [
+          "[#5134](https://github.com/kontourai/station/pull/5134) feat(projects): group a Project's Tasks by next action and add per-Project notification settings",
+          "[#5130](https://github.com/kontourai/station/pull/5130) feat(projects): Project Library, Continue in Project, and Setup recommendations (Feature Previews)",
+          "[#5159](https://github.com/kontourai/station/pull/5159) feat(pull-request-feedback): independent review on each new pull request head"
+        ],
+        "fix": [
+          "[#5163](https://github.com/kontourai/station/pull/5163) fix(ui): share the kit ease-out and reject ease-in"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5157](https://github.com/kontourai/station/pull/5157) perf(analytics): fold lifetime usage incrementally from a durable watermark"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T22:47:22Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261117.44192161706",
+    "sha": "099dac6eb01c18ec70cd9a1066c9d6c62efe238d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44192161706",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261117.44192161706 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "7c54e900af188ea29392adf5f7499400217fec3b",
+      "groups": {
+        "feat": [
+          "[#5134](https://github.com/kontourai/station/pull/5134) feat(projects): group a Project's Tasks by next action and add per-Project notification settings",
+          "[#5130](https://github.com/kontourai/station/pull/5130) feat(projects): Project Library, Continue in Project, and Setup recommendations (Feature Previews)",
+          "[#5159](https://github.com/kontourai/station/pull/5159) feat(pull-request-feedback): independent review on each new pull request head"
+        ],
+        "fix": [
+          "[#5163](https://github.com/kontourai/station/pull/5163) fix(ui): share the kit ease-out and reject ease-in"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5157](https://github.com/kontourai/station/pull/5157) perf(analytics): fold lifetime usage incrementally from a durable watermark"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-11-17T15:10:24Z",
     "channel": "nightly-android",
     "version": "0.2.0-nightly.20261117.1",
