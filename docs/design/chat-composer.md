@@ -1264,6 +1264,10 @@ runs in a Station-managed chat folder. Station holds that follow-up for the
 Session and folder it observed at admission. If a different Session takes
 over before placement, the held message is refused. A request that names an
 explicit directory or Project still has to match the conversation's binding.
+While an automatic turn prepares a successor in the same conversation, Queue
+can use the existing binding for that ordinary continuation. The held
+follow-up waits for startup and the earlier turn. A handoff or a fresh-context
+reservation must establish its own binding before this path can admit a message.
 
 The pending-message section starts collapsed, showing only its
 count and a Needs review (or Not sent) indicator; a live region outside the
