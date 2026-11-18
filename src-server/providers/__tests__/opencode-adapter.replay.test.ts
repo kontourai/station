@@ -13,6 +13,7 @@ import {
 } from '@kontourai/station-contracts/managed-policy';
 import { ACP_APPROVAL_TAKEOVER_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import type { PreToolPolicyDecision } from '../../runtime/agents/pre-tool-policy.js';
@@ -22,6 +23,8 @@ import {
   evaluateOpenCodeRules,
   type OpenCodeNativeRule,
 } from '../../services/acp/opencode-approval-native.js';
+import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
+import { resolveTurnCompletionOutcome } from '../../services/orchestration/turn-completion-notifications.js';
 import {
   ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
@@ -2609,6 +2612,48 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     const completed = await h.waitFor(completedFor(turnId), 10_000);
     expect(turnText(h.events, turnId)).toBe(finalAssistantText('reconnect'));
     expect(completed).toMatchObject({ finishReason: 'stop' });
+  });
+
+  test('a native execution displaced during a feed gap keeps its observed completion', async () => {
+    const h = await setup({ scenario: 'basic' });
+    await h.start();
+    const session = (await h.adapter.listSessions())[0]!;
+    const native = Reflect.get(h.adapter, 'native').get(
+      session.threadId,
+    ).native;
+    // Arrange the two live slots at the reconnect boundary. The production
+    // reconciliation and emitter below supply the actual terminal identity.
+    const createTurn = Reflect.get(native, 'createTurn').bind(native);
+    Reflect.set(native, 'turn', createTurn('older-execution', 'provider'));
+    Reflect.set(native, 'pendingStart', {
+      ...createTurn('delivered-prompt', 'station'),
+      messageId: 'delivered-message',
+    });
+    try {
+      Reflect.get(native, 'adoptStartedDuringGap').call(native, [
+        { id: 'delivered-message' },
+      ]);
+      const terminal = await h.waitFor(completedFor('older-execution'));
+      expect(terminal).toMatchObject({
+        provider: 'opencode',
+        finishReason: 'other',
+      });
+      expect(terminal).not.toHaveProperty('stopReason');
+      expect(
+        projectSessionLifecycle({ session, events: h.events }),
+      ).toMatchObject({ lifecycleState: 'idle' });
+      expect(resolveTurnCompletionOutcome(terminal)).toBe('done');
+      expect(
+        projectRuntimeEventsToMessages(h.events).flatMap((row) => row.parts),
+      ).not.toContainEqual(
+        expect.objectContaining({
+          text: expect.stringContaining('Result unconfirmed'),
+        }),
+      );
+      expect(native.activeTurnId).toBe('delivered-prompt');
+    } finally {
+      Reflect.set(native, 'turn', undefined);
+    }
   });
 
   test('past 50 messages, a prompt whose execution started in a feed gap is adopted', async () => {

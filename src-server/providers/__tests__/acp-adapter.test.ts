@@ -135,6 +135,7 @@ function createConnections(
 
 function createAdapter(
   options: {
+    provider?: AcpAdapterOptions['provider'];
     imageCapability?: boolean;
     loadSessionCapability?: boolean;
     /** Advertise `sessionCapabilities.resume` (`{}`) at initialize. */
@@ -171,6 +172,7 @@ function createAdapter(
 } {
   const processes: FakeAcpProcess[] = [];
   const adapter = new AcpAdapter({
+    provider: options.provider,
     getConnections: async () =>
       createConnections(options.connectionOverrides ?? []),
     logger: options.logger ?? {
@@ -4477,6 +4479,33 @@ describe('AcpAdapter', () => {
       code: 'acp-turn-request-limit',
       retryable: false,
       details: { stopReason: 'max_turn_requests' },
+    });
+    await adapter.stopAll();
+  });
+
+  test('OpenCode over ACP reports an unconfirmed result when its actual prompt reply omits the reason', async () => {
+    const { adapter, processes } = createAdapter({ provider: 'opencode' });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'opencode',
+      threadId: 'thread-stop',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-stop', input: 'work' });
+    await nextEvent(iterator, 'turn.started');
+
+    // Exercise a protocol reply from an implementation that omitted stopReason.
+    processes[0].resolvePrompt(
+      undefined as unknown as Parameters<FakeAcpProcess['resolvePrompt']>[0],
+    );
+    expect(await nextEvent(iterator, 'runtime.error')).toMatchObject({
+      provider: 'opencode',
+      method: 'runtime.error',
+      code: 'acp-turn-outcome-unknown',
+      retryable: false,
     });
     await adapter.stopAll();
   });

@@ -10631,7 +10631,7 @@ export class EventStore {
       completion.payload.finishReason === 'cancelled' &&
       isAcpFamilyEngine(completion.provider)
         ? readCompletion(
-            "json_extract(payload, '$.finishReason') = 'other'",
+            "json_extract(payload, '$.finishReason') = 'other' AND (provider = 'acp' OR length(json_extract(payload, '$.stopReason')) > 0)",
             0,
             [],
           )

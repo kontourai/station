@@ -1021,9 +1021,9 @@ const ACP_STOP_FAILURE_CODES = [
   'acp-turn-outcome-unknown',
 ] as const;
 const ACP_STOP_FAILURE_MESSAGES = [
-  'The engine declined the request.',
-  'The engine reached its request limit.',
-  'The engine did not confirm a result.',
+  'Request declined.',
+  'Request limit reached.',
+  'Result unconfirmed.',
 ] as const;
 
 type AcpCompletionEvidence = {
@@ -1032,24 +1032,29 @@ type AcpCompletionEvidence = {
   stopReason?: unknown;
 };
 
-function acpCompletionFailureIndex(
-  event: AcpCompletionEvidence,
-): 0 | 1 | 2 | undefined {
-  if (event.finishReason !== 'other' || !isAcpFamilyEngine(event.provider))
-    return undefined;
-  return event.stopReason === 'refusal'
+function acpStopReasonIndex(stopReason: unknown): 0 | 1 | 2 {
+  return stopReason === 'refusal'
     ? 0
-    : event.stopReason === 'max_turn_requests'
+    : stopReason === 'max_turn_requests'
       ? 1
       : 2;
+}
+
+function isHistoricalAcpStop(event: AcpCompletionEvidence): boolean {
+  // Native OpenCode shares the id but does not supply an ACP stop reason.
+  return (
+    event.finishReason === 'other' &&
+    (event.provider === 'acp' ||
+      (event.provider === 'opencode' && Boolean(event.stopReason)))
+  );
 }
 
 /** Fixed transcript copy for an inconclusive historical ACP completion. */
 export function acpCompletionFailureMessage(
   event: AcpCompletionEvidence,
 ): string | undefined {
-  const index = acpCompletionFailureIndex(event);
-  return index === undefined ? undefined : ACP_STOP_FAILURE_MESSAGES[index];
+  if (isHistoricalAcpStop(event))
+    return ACP_STOP_FAILURE_MESSAGES[acpStopReasonIndex(event.stopReason)];
 }
 
 /** Display-safe explanation for both wire shapes at the delegation and notice seams. */
@@ -1063,7 +1068,8 @@ export function describeAcpTurnStopFailure(event: {
   if (typeof event.provider !== 'string') return undefined;
   let index: number | undefined;
   if (event.method === 'turn.completed') {
-    index = acpCompletionFailureIndex({ ...event, provider: event.provider });
+    if (isHistoricalAcpStop({ ...event, provider: event.provider }))
+      index = acpStopReasonIndex(event.stopReason);
   } else if (
     event.method === 'runtime.error' &&
     isAcpFamilyEngine(event.provider)
@@ -1083,9 +1089,15 @@ export function describeAcpTurnStopFailure(event: {
  */
 export function interpretAcpTurnStop(
   event: TurnCompletedEvent,
+  source?: 'acp-transport',
 ): TurnCompletedEvent | ProviderRuntimeErrorEvent {
-  const index = acpCompletionFailureIndex(event);
-  if (index === undefined) return event;
+  if (
+    source === 'acp-transport'
+      ? event.finishReason !== 'other'
+      : !isHistoricalAcpStop(event)
+  )
+    return event;
+  const index = acpStopReasonIndex(event.stopReason);
   const {
     finishReason: _finishReason,
     stopReason,

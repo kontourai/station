@@ -3843,29 +3843,28 @@ describe('EventStore', () => {
   );
 
   test.each([
-    ['refusal', 'acp-turn-refused', 'The engine declined the request.'],
+    ['acp', 'refusal', 'acp-turn-refused', 'Request declined.'],
+    ['opencode', 'refusal', 'acp-turn-refused', 'Request declined.'],
     [
+      'acp',
       'max_turn_requests',
       'acp-turn-request-limit',
-      'The engine reached its request limit.',
+      'Request limit reached.',
     ],
     [
+      'acp',
       'new_engine_stop',
       'acp-turn-outcome-unknown',
-      'The engine did not confirm a result.',
+      'Result unconfirmed.',
     ],
-    [
-      undefined,
-      'acp-turn-outcome-unknown',
-      'The engine did not confirm a result.',
-    ],
+    ['acp', undefined, 'acp-turn-outcome-unknown', 'Result unconfirmed.'],
   ] as const)(
-    'reads a persisted ACP completion with %s without rewriting evidence',
-    (stopReason, code, message) => {
+    'reads a persisted %s ACP completion with %s without rewriting evidence',
+    (provider, stopReason, code, message) => {
       const threadId = 'historical-acp-stop';
       const createdAt = '2026-11-18T00:00:00.000Z';
       const base = {
-        provider: 'acp',
+        provider,
         threadId,
         turnId: 'turn-1',
         createdAt,
@@ -3887,7 +3886,7 @@ describe('EventStore', () => {
       });
       store.appendEvent(completion);
       const persisted: ProviderSession = {
-        provider: 'acp',
+        provider,
         threadId,
         status: 'ready',
         createdAt,

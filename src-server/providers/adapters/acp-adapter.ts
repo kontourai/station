@@ -6238,11 +6238,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       record.session.status = 'ready';
     } else {
       this.publish(
-        interpretAcpTurnStop({
-          ...base,
-          method: 'turn.completed',
-          ...mapAcpStopReasonToTurnCompletion(stopReason),
-        }),
+        interpretAcpTurnStop(
+          {
+            ...base,
+            method: 'turn.completed',
+            ...mapAcpStopReasonToTurnCompletion(stopReason),
+          },
+          'acp-transport',
+        ),
       );
       record.session.status = 'ready';
     }
@@ -6432,16 +6435,19 @@ export class AcpAdapter implements ProviderAdapterShape {
           response.stopReason === 'cancelled' ? 'cancelled' : 'unresolved',
         );
         this.publish(
-          interpretAcpTurnStop({
-            eventId: crypto.randomUUID(),
-            provider: this.provider,
-            threadId,
-            createdAt: new Date().toISOString(),
-            turnId,
-            ...this.turnOrigin(record, turnId),
-            method: 'turn.completed',
-            ...mapAcpStopReasonToTurnCompletion(response.stopReason),
-          }),
+          interpretAcpTurnStop(
+            {
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId,
+              createdAt: new Date().toISOString(),
+              turnId,
+              ...this.turnOrigin(record, turnId),
+              method: 'turn.completed',
+              ...mapAcpStopReasonToTurnCompletion(response.stopReason),
+            },
+            'acp-transport',
+          ),
         );
         record.session.status = 'ready';
         record.session.updatedAt = new Date().toISOString();

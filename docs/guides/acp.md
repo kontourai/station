@@ -1291,7 +1291,9 @@ bounded provider reason when the engine supplied one, and these outcomes carry
 no automatic retry authority. A person can send a new turn in the same
 attached chat. History with an older ACP `other` completion is interpreted
 using its stored reason at read time. When that reason is absent, the result
-remains unconfirmed.
+remains unconfirmed. OpenCode shares a provider ID across ACP and native
+Serve, so its older completions require a retained ACP stop reason before
+Station applies this interpretation.
 
 ### File System and Terminal Tools (Station → Runtime)
 

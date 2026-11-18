@@ -1603,7 +1603,7 @@ export function projectRuntimeEventsToMessages(
         }
         if (failure) {
           flushText();
-          parts = appendRuntimeErrorPart(parts, failure);
+          parts.push(runtimeErrorPart(failure));
         }
         emitAssistantTurn(true, failure ? undefined : 'completed');
         break;
