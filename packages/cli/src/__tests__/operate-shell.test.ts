@@ -306,16 +306,23 @@ describe('station operate shell — SSE lifecycle, keypress wiring, teardown (#1
 
     const shellPromise = runOperateShell({ apiBase, stdin, stdout });
 
-    await waitFor(() =>
-      stdout.writes.some((chunk) => chunk.includes('thread-a')),
-    );
-    expect(
-      stdout.writes.some((chunk) => chunk.includes('provider=codex')),
-    ).toBe(true);
-    expect(streamAuthorization).toBe('Bearer synthetic-operate-credential');
-
-    pressKey(stdin, 'q');
-    await shellPromise;
+    try {
+      await Promise.race([
+        waitFor(() =>
+          stdout.writes.some((chunk) => chunk.includes('thread-a')),
+        ),
+        shellPromise.then(() => {
+          throw new Error('Operate quit before displaying the snapshot');
+        }),
+      ]);
+      expect(
+        stdout.writes.some((chunk) => chunk.includes('provider=codex')),
+      ).toBe(true);
+      expect(streamAuthorization).toBe('Bearer synthetic-operate-credential');
+    } finally {
+      pressKey(stdin, 'q');
+      await shellPromise;
+    }
     await waitForEventsClose();
   }, 5000);
 
