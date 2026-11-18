@@ -407,6 +407,64 @@ test.describe('compatibility-aware reconnect', () => {
           );
         }
 
+        const savedModel = {
+          id: 'phone-model',
+          kind: 'model',
+          type: 'openai-compat',
+          name: 'Phone model',
+          enabled: true,
+          capabilities: ['llm'],
+          config: { baseUrl: 'https://provider.example.test/v1', apiKey: '' },
+          status: 'ready',
+          prerequisites: [],
+          lastCheckedAt: null,
+        };
+        await page.route(/\/api\/connections(?:\/models)?$/, async (route) => {
+          if (route.request().method() !== 'GET') {
+            await route.fallback();
+            return;
+          }
+          await route.fulfill({ json: { success: true, data: [savedModel] } });
+        });
+        await page.route(
+          '**/api/connections/phone-model/test',
+          async (route) => {
+            expect(route.request().method()).toBe('POST');
+            await route.fulfill({
+              json: {
+                success: true,
+                data: {
+                  healthy: false,
+                  reason: 'The fixture provider rejected the API key.',
+                },
+              },
+            });
+          },
+        );
+        const toolServer = {
+          id: 'phone-tool-server',
+          kind: 'mcp',
+          transport: 'stdio',
+          command: 'fixture-tool-server',
+          displayName: 'Phone tool server',
+          enabled: true,
+        };
+        await page.route(
+          /\/integrations(?:\/phone-tool-server)?$/,
+          async (route) => {
+            if (route.request().method() !== 'GET') {
+              await route.fallback();
+              return;
+            }
+            const detail = new URL(route.request().url()).pathname.endsWith(
+              '/phone-tool-server',
+            );
+            await route.fulfill({
+              json: { success: true, data: detail ? toolServer : [toolServer] },
+            });
+          },
+        );
+
         await page.goto('/connections/computers');
         const toolbar = page.getByTestId('app-toolbar-connection');
         await expect(toolbar).toHaveAttribute(
@@ -479,6 +537,11 @@ test.describe('compatibility-aware reconnect', () => {
                 exact: true,
               }),
             ).toBeVisible();
+            if (identityMismatch) {
+              await expect(
+                toolbar.getByRole('img', { name: /Station notices/ }),
+              ).toBeVisible();
+            }
             await page
               .getByRole('button', { name: section.add, exact: true })
               .tap();
@@ -502,6 +565,108 @@ test.describe('compatibility-aware reconnect', () => {
             }
           });
         }
+
+        await test.step('Saved model and tool details', async () => {
+          const tabs = page.getByRole('tablist', {
+            name: 'Connection sections',
+          });
+          await tabs.getByRole('tab', { name: /^Models/ }).tap();
+          const modelRow = page.getByRole('button', { name: /^Phone model/ });
+          await modelRow.tap();
+          await expect(page).toHaveURL(/\/connections\/models\/phone-model$/);
+          await page
+            .getByRole('button', { name: 'Test connection', exact: true })
+            .tap();
+          await expect(
+            page.getByText('The fixture provider rejected the API key.'),
+          ).toBeVisible();
+          await page.getByRole('button', { name: 'Delete', exact: true }).tap();
+          const deleteModel = page.getByRole('alertdialog');
+          await expect(deleteModel).toContainText('Phone model');
+          await deleteModel.getByRole('button', { name: 'Cancel' }).tap();
+          await expect(deleteModel).toBeHidden();
+          await page.getByRole('button', { name: '← Back to list' }).tap();
+          await expect(modelRow).toBeVisible();
+
+          await tabs.getByRole('tab', { name: /^Tools/ }).tap();
+          const toolRow = page.getByRole('button', {
+            name: /^Phone tool server/,
+          });
+          await toolRow.tap();
+          await expect(page).toHaveURL(
+            /\/connections\/tools\/phone-tool-server$/,
+          );
+          await page.getByRole('button', { name: 'Delete', exact: true }).tap();
+          const deleteTool = page.getByRole('alertdialog', {
+            name: 'Delete tool server',
+          });
+          await expect(deleteTool).toBeVisible();
+          await deleteTool.getByRole('button', { name: 'Cancel' }).tap();
+          await expect(deleteTool).toBeHidden();
+          await page.getByRole('button', { name: '← Back to list' }).tap();
+          await expect(toolRow).toBeVisible();
+          await tabs.getByRole('tab', { name: /^Computers/ }).tap();
+        });
+
+        await test.step('Engine setup and Knowledge navigation', async () => {
+          const tabs = page.getByRole('tablist', {
+            name: 'Connection sections',
+          });
+          await tabs.getByRole('tab', { name: /^Engines/ }).tap();
+          await page
+            .getByRole('button', { name: 'Add engine', exact: true })
+            .tap();
+          const custom = page.getByRole('button', {
+            name: 'Set up custom engine',
+          });
+          await custom.tap();
+          const engineSetup = page.getByRole('region', {
+            name: 'Engine setup',
+          });
+          await expect(
+            engineSetup.getByRole('heading', { name: 'Custom engine' }),
+          ).toBeVisible();
+          await expect(
+            engineSetup.getByRole('button', { name: 'Check engine' }),
+          ).toBeDisabled();
+          await engineSetup
+            .getByRole('button', { name: 'Back', exact: true })
+            .tap();
+          await expect(custom).toBeVisible();
+          await page.goBack();
+          await expect(page).toHaveURL(/\/connections\/engines$/);
+
+          await tabs.getByRole('tab', { name: /^Knowledge/ }).tap();
+          const sections = page.getByRole('navigation', {
+            name: 'Knowledge sections',
+          });
+          for (const [label, section] of [
+            ['Embedding model', 'embedding-model'],
+            ['Vector database', 'vector-database'],
+          ]) {
+            await sections.getByRole('link', { name: label }).tap();
+            await expect(page).toHaveURL(
+              (url) => url.searchParams.get('section') === section,
+            );
+            await expect(
+              page.getByRole('heading', { name: label, exact: true }),
+            ).toBeVisible();
+          }
+
+          await page
+            .getByRole('button', { name: 'Open Settings → My knowledge store' })
+            .tap();
+          await expect(page).toHaveURL(
+            (url) =>
+              url.pathname === '/settings' &&
+              url.searchParams.get('view') === 'knowledge',
+          );
+          await page.goBack();
+          await expect(page).toHaveURL(
+            (url) => url.pathname === '/connections/knowledge',
+          );
+          await tabs.getByRole('tab', { name: /^Computers/ }).tap();
+        });
 
         await test.step('Computer chooser branches', async () => {
           const add = page.getByRole('button', {
@@ -561,6 +726,9 @@ test.describe('compatibility-aware reconnect', () => {
           });
           await expect(
             ssh.getByRole('button', { name: 'Save computer' }),
+          ).toBeDisabled();
+          await expect(
+            ssh.getByRole('button', { name: 'Test connection' }),
           ).toBeDisabled();
           await ssh
             .getByRole('button', { name: 'Close SSH computer setup' })
