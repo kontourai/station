@@ -1502,7 +1502,10 @@ describe('SkillService', () => {
 
     expect(existsSync(pluginOnly)).toBe(true);
     expect(result.success).toBe(false);
-    expect(result.message).toContain('is not a skills root Station writes');
+    expect(result).toMatchObject({
+      reason: 'not-owned',
+      writeRefusal: { reason: 'outside-writable-root' },
+    });
   });
 
   // The most serious past defect here. `removeSkillIfRevision` once
@@ -1639,7 +1642,10 @@ describe('SkillService', () => {
     const refused = await service.removeSkill('served', testDir);
     expect(existsSync(pluginSkillDir), 'a plugin root was deleted').toBe(true);
     expect(refused.success).toBe(false);
-    expect(refused.message).toContain('is not a skills root Station writes');
+    expect(refused).toMatchObject({
+      reason: 'not-owned',
+      writeRefusal: { packageDirectory: pluginSkillDir },
+    });
 
     const removed = await service.removeSkill('removable', testDir);
     expect(existsSync(projectDir)).toBe(false);
@@ -1674,8 +1680,12 @@ describe('SkillService', () => {
       'Plugin body',
     );
     expect(result.success).toBe(false);
-    expect(result.message).toContain(pluginSkillDir);
-    expect(result.message).toContain('is not a skills root Station writes');
+    expect(result.message).not.toContain(pluginSkillDir);
+    expect(result.writeRefusal?.packageDirectory).toBe(pluginSkillDir);
+    expect(result).toMatchObject({
+      reason: 'not-owned',
+      writeRefusal: { reason: 'outside-writable-root' },
+    });
   });
 
   // The shape that made the machine root dangerous in the first place: a
