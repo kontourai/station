@@ -113,25 +113,13 @@ export function shouldRouteScopedChatProject(input: {
   );
 }
 
-export type DockChrome = {
+type DockChrome = {
   isMobile: boolean;
   dockMode: string;
   isFullscreenPlacement: boolean;
 };
 
-/**
- * Whether the dock's inbox panel can mount in this chrome AT ALL — independent
- * of whether the user has it open (`inboxOpen`).
- *
- * kontourai/station#3314 review SF-1: the sidebar's "N more" promised the
- * inbox panel from every chrome, but the panel mounts only on desktop, and
- * there only in bottom mode or a fullscreen placement. On mobile the drawer
- * closed and the dock snapped to half, showing the CURRENT chat and no list;
- * in an edge placement nothing appeared at all. This predicate is shared by
- * the panel's own mount condition and by the `openCollection` routing that
- * has to reach it, so a caller cannot route to a surface this chrome does not
- * render.
- */
+/** Side docks keep the transcript's width. Mobile uses its own Inbox. */
 export function inboxPanelMounts({
   isMobile,
   dockMode,
@@ -266,31 +254,4 @@ export function resolveNewChatModalDefaultProjectSlug(input: {
   if (input.forkProjectSlug) return input.forkProjectSlug;
   if (input.hasImmutableProjectScope) return input.immutableProjectSlug;
   return input.dockChromeProjectSlug ?? undefined;
-}
-
-type OpenChatsCollectionRoute =
-  | { surface: 'mobile-inbox' }
-  | {
-      surface: 'inbox-panel';
-      /** The panel does not mount here yet; move the dock first. */
-      switchToBottomMode: boolean;
-      snapHalf: boolean;
-    };
-
-/**
- * Where "show me every open chat" has to go in this chrome, and what has to
- * change first for that destination to exist (#3314 review SF-1).
- *
- * Pure so the guarantee is testable: for EVERY chrome, applying this route
- * lands on a surface that actually mounts. The dock owns the effects.
- */
-export function routeToOpenChatsCollection(
-  chrome: DockChrome,
-): OpenChatsCollectionRoute {
-  if (chrome.isMobile) return { surface: 'mobile-inbox' };
-  return {
-    surface: 'inbox-panel',
-    switchToBottomMode: !inboxPanelMounts(chrome),
-    snapHalf: !chrome.isFullscreenPlacement,
-  };
 }

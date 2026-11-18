@@ -573,7 +573,6 @@ describe('CommandPalette', () => {
       const focus = vi.fn();
       const unregister = openChatsStore.registerNavigation({
         focus,
-        openCollection: vi.fn(),
       });
       fireEvent.click(chatRow!);
       expect(focus).toHaveBeenCalledWith({ sessionId: 'session-alpha' });
@@ -697,7 +696,6 @@ describe('CommandPalette', () => {
     const unregister = openChatsStore.registerNavigation({
       focus: focusLocal,
       focusRemote,
-      openCollection: vi.fn(),
     });
     await renderCommandPalette();
     open();
