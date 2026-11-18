@@ -75,6 +75,7 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  isAcpFamilyEngine,
   type ProviderSession,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -92,6 +93,7 @@ import {
 } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
   TURN_DISPATCH_ORIGINS,
@@ -10147,6 +10149,19 @@ export class EventStore {
       latestCompletion.sequence > latestTurnStarted.sequence
         ? latestCompletion
         : undefined;
+    const latestTurnTerminal = latestTurnStarted?.turnId
+      ? this.latestTerminalEventForTurn(
+          threadId,
+          latestTurnStarted.turnId,
+          bounded,
+          latestTurnStarted.payload.invocationId,
+        )
+      : undefined;
+    const currentError = this.latestCurrentTurnRuntimeErrorEvent(
+      threadId,
+      bounded,
+      latestTurnStarted,
+    );
     // The verified selected open request supplies pending-review evidence;
     // another request's later resolution must not erase it.
     const unresolvedRequests =
@@ -10233,19 +10248,14 @@ export class EventStore {
       // archive#3557/#3558 fix-round review BLOCK 1: scoped to the turn
       // `latestTurnStarted` names, not the thread's latest terminal — see
       // {@link EventStore.latestTerminalEventForTurn}'s docblock for why.
-      latestTurnStarted?.turnId
-        ? this.latestTerminalEventForTurn(
-            threadId,
-            latestTurnStarted.turnId,
-            bounded,
-            latestTurnStarted.payload.invocationId,
-          )
-        : undefined,
+      latestTurnTerminal,
       this.latestEventByMethods(threadId, LIFECYCLE_METHODS, bounded, hydrate),
-      this.latestCurrentTurnRuntimeErrorEvent(
-        threadId,
+      currentError,
+      ...this.displacedTurnOutcomeFacts(
+        latestTurnTerminal,
+        currentTurnCompletion,
+        currentError,
         bounded,
-        latestTurnStarted,
       ),
       ...this.listSessionProjectionFactEvents(threadId, bounded, hydrate),
       ...unresolvedRequests,
@@ -10574,6 +10584,86 @@ export class EventStore {
         ...(invocationId === undefined ? [] : [invocationId]),
       ) as any;
     return row ? this.mapEventRow(row) : undefined;
+  }
+
+  /**
+   * A late cancellation can evict both a legacy ACP failure and an earlier
+   * proven recovery from the latest-terminal slots. Only probe that exact
+   * turn when those slots show a weak terminal, using its indexed history.
+   */
+  private displacedTurnOutcomeFacts(
+    terminal: PersistedRuntimeEvent | undefined,
+    completion: PersistedRuntimeEvent | undefined,
+    error: PersistedRuntimeEvent | undefined,
+    bounded = false,
+  ): PersistedRuntimeEvent[] {
+    if (!terminal?.turnId) return [];
+    if (
+      terminal.payload.method === 'turn.completed' &&
+      PROVIDER_PROVEN_FINISH_REASONS.has(terminal.payload.finishReason ?? '')
+    )
+      return [];
+    const readCompletion = (
+      filter: string,
+      after: number,
+      parameters: string[],
+    ) => {
+      const row = this.readStatement(
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, observed_at, sequence, global_sequence
+          FROM orchestration_events
+          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.completed'
+          AND sequence > ? AND sequence < ?
+          AND json_extract(payload, '$.invocationId') IS ?
+          AND ${filter}
+          ORDER BY sequence DESC LIMIT 1`,
+      ).get(
+        terminal.threadId,
+        terminal.turnId,
+        after,
+        terminal.sequence,
+        terminal.payload.invocationId ?? null,
+        ...parameters,
+      );
+      return row ? this.mapEventRow(row) : undefined;
+    };
+    const legacyFailure =
+      completion?.payload.method === 'turn.completed' &&
+      completion.payload.finishReason === 'cancelled' &&
+      isAcpFamilyEngine(completion.provider)
+        ? readCompletion(
+            "json_extract(payload, '$.finishReason') = 'other' AND (provider = 'acp' OR length(json_extract(payload, '$.stopReason')) > 0)",
+            0,
+            [],
+          )
+        : undefined;
+    const recordedFailure =
+      error?.payload.method === 'runtime.error' &&
+      error.turnId === terminal.turnId &&
+      error.payload.invocationId === terminal.payload.invocationId &&
+      !isDeferredRetriableTurnError(error.payload)
+        ? error
+        : undefined;
+    const failureSequence = Math.max(
+      legacyFailure?.sequence ?? 0,
+      recordedFailure?.sequence ?? 0,
+    );
+    const reasons = [...PROVIDER_PROVEN_FINISH_REASONS];
+    const recovery =
+      failureSequence > 0 &&
+      failureSequence < terminal.sequence &&
+      !(
+        completion?.payload.method === 'turn.completed' &&
+        PROVIDER_PROVEN_FINISH_REASONS.has(
+          completion.payload.finishReason ?? '',
+        )
+      )
+        ? readCompletion(
+            `json_extract(payload, '$.finishReason') IN (${reasons.map(() => '?').join(', ')})`,
+            failureSequence,
+            reasons,
+          )
+        : undefined;
+    return [legacyFailure, recovery].filter((row) => row !== undefined);
   }
 
   /**
@@ -11099,6 +11189,15 @@ export class EventStore {
           : latest;
       }, undefined);
 
+      const latestTurnTerminal = latestTurnStarted?.turnId
+        ? terminalByPair.get(
+            pairKey(
+              threadId,
+              latestTurnStarted.turnId,
+              latestTurnStarted.payload.invocationId,
+            ),
+          )
+        : undefined;
       const facts = [
         latestAnyEventByThread.get(threadId),
         methodFacts?.get('flow.run-attached')?.latest,
@@ -11111,17 +11210,14 @@ export class EventStore {
         latestObservedStart,
         positiveStart,
         latestTurnStarted,
-        latestTurnStarted?.turnId
-          ? terminalByPair.get(
-              pairKey(
-                threadId,
-                latestTurnStarted.turnId,
-                latestTurnStarted.payload.invocationId,
-              ),
-            )
-          : undefined,
+        latestTurnTerminal,
         latestLifecycleEvent,
         latestCurrentTurnRuntimeError,
+        ...this.displacedTurnOutcomeFacts(
+          latestTurnTerminal,
+          currentTurnCompletion,
+          latestCurrentTurnRuntimeError,
+        ),
         ...(projectionFactsByThread.get(threadId) ?? []),
         ...(unresolvedRequestsByThread.get(threadId) ?? []),
         // #3071: per-thread reads, but only for a thread that holds an

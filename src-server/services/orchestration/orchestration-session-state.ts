@@ -84,6 +84,7 @@ import {
   activeTurnIdForEvents,
   isUnattributedRuntimeError,
   nextTurnIdentityAnchor,
+  projectReadTurnOutcomes,
   projectSessionLifecycle,
   type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
@@ -2266,7 +2267,7 @@ function deriveAgentRunStatus(options: {
   // life (MEDIUM 3) — so this variable's name understates it slightly:
   // "the identity anchor", not merely "the preceding turn's id".
   let turnIdentityAnchor: TurnIdentityAnchor | undefined;
-  for (const event of options.events) {
+  for (const event of projectReadTurnOutcomes(options.events)) {
     switch (event.method) {
       case 'session.started':
         // Attach fact, not progress: adapters publish this on every
@@ -2527,8 +2528,15 @@ function findTerminalFailureEvent(
   let lastFailure:
     | Extract<CanonicalRuntimeEvent, { method: 'runtime.error' }>
     | undefined;
-  for (const event of events) {
-    if (event.method === 'runtime.error') {
+  for (const event of projectReadTurnOutcomes(events)) {
+    const nextAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
+    if (
+      event.method === 'turn.started' &&
+      lastFailure?.turnId !== undefined &&
+      !acceptsTurnTerminalEvent(lastFailure, nextAnchor)
+    ) {
+      lastFailure = undefined;
+    } else if (event.method === 'runtime.error') {
       if (
         typeof turnIdentityAnchor === 'object' &&
         (event.turnId !== undefined || event.invocationId !== undefined) &&
@@ -2542,7 +2550,7 @@ function findTerminalFailureEvent(
     ) {
       lastFailure = undefined;
     }
-    turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
+    turnIdentityAnchor = nextAnchor;
   }
   return lastFailure;
 }

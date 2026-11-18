@@ -3186,9 +3186,12 @@ provider-name reconciliation, or read-time identity aliases.
 `providers/finish-reason-authority.ts` owns `PROVIDER_PROVEN_FINISH_REASONS`: the
 allowlist of `turn.completed` finish reasons that positively prove a provider ran a
 whole turn — the single decision point for every "does this completion clear a recorded
-failure" question. Two consumers: runtime auth-health clearing
-(`runtime-auth-health-monitor.ts`) and session-scoped `runtime.error` supersession in
-both event-store projection folds (station#3485). Membership is typed against the
+failure" question. Runtime auth-health clearing (`runtime-auth-health-monitor.ts`),
+session-scoped supersession in the event store, and same-turn failure
+supersession in the session and run projections all use it. The bounded
+projection retains displaced decisive facts for a turn when a late cancellation
+occupies its latest-terminal slot. The full event log retains every observation.
+A different turn determines its own outcome. Membership is typed against the
 contracts `finishReason` union, and each consumer pins its own stake with tests, so
 widening the set is a decision made once, visibly, for all of them. **Do not
 reintroduce:** a per-consumer copy of the set, an exclusion-list ("everything except

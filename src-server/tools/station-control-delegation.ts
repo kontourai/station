@@ -57,6 +57,7 @@ import { engineStartupFailureGuidance } from '@kontourai/station-contracts/provi
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEventBase,
+  describeAcpTurnStopFailure,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
@@ -93,6 +94,7 @@ import {
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
+import { PROVIDER_PROVEN_FINISH_REASONS } from '../providers/finish-reason-authority.js';
 import {
   formatProviderQuotaEventText,
   formatProviderQuotaReasonDetail,
@@ -1363,10 +1365,21 @@ export function delegatedTaskReason(
   // The CURRENT outcome is the newest terminal event, not the newest budget
   // code anywhere in history: a prior budget failure followed by a newer
   // turn's terminal (or a still-running turn) must not reuse the old code.
-  const terminal = reversed.find(isDelegationTerminalEvent);
+  const terminal = reversed.find((event) => {
+    if (!isDelegationTerminalEvent(event)) return false;
+    if (session.lifecycleState !== 'failed') return true;
+    if (event.method === 'turn.aborted') return false;
+    return (
+      event.method !== 'turn.completed' ||
+      Boolean(describeAcpTurnStopFailure(event)) ||
+      (typeof event.finishReason === 'string' &&
+        PROVIDER_PROVEN_FINISH_REASONS.has(event.finishReason))
+    );
+  });
   if (!terminal) return undefined;
   // A clean completion ends the story even when older errors linger.
-  if (terminal.method === 'turn.completed') return undefined;
+  const acpFailure = describeAcpTurnStopFailure(terminal);
+  if (terminal.method === 'turn.completed' && !acpFailure) return undefined;
   const terminalCode =
     (terminal.method === 'runtime.error' ||
       terminal.method === 'runtime_error') &&
@@ -1388,6 +1401,10 @@ export function delegatedTaskReason(
     typeof newestStartTurnId !== 'string' ||
     typeof terminal.turnId !== 'string' ||
     newestStartTurnId === terminal.turnId;
+  if (acpFailure)
+    return terminalScopedToLatestTurn
+      ? { code: acpFailure.code, detail: acpFailure.message }
+      : undefined;
   const startupGuidance = engineStartupFailureGuidance(terminalCode);
   if (startupGuidance && terminalCode) {
     if (!terminalScopedToLatestTurn) return undefined;
@@ -4282,6 +4299,15 @@ export function projectDelegatedTaskEvent(
 ): DelegatedTaskEvent {
   const event = record(rawEvent);
   const common = commonTaskEvent(sequence, event);
+  const acpFailure = describeAcpTurnStopFailure(event);
+  if (acpFailure)
+    return {
+      ...common,
+      kind: 'runtime',
+      severity: 'error',
+      text: acpFailure.message,
+      retriable: false,
+    };
   switch (event.method) {
     case 'content.text-delta':
       return { ...common, kind: 'message', ...visibleText(event.delta) };
