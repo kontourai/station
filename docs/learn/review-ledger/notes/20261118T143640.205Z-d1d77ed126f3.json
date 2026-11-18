@@ -1,7 +1,0 @@
-{
-  "revision": "14020ef4464d377aee20e2838a2edd174a777fb0",
-
-  "notes": [
-    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked both 390px notice states against the Connections route and isolated Station. Model and tool Create, Save and Delete use real Station writes and independent reads. Tool enable/disable and rename and forget for a saved Station are also checked. Engine and provider refusal responses are controlled fixtures, while physical pairing and provider operation are outside these browser receipts.","inputs":["tests/connect-reconnect-banner.spec.ts"]}
-  ]
-}
