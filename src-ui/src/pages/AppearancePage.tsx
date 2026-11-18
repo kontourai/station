@@ -10,11 +10,13 @@ import { CheckGlyph } from '../components/icons/Glyph';
 import { PageCallout } from '../components/PageCallout';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../contexts/DeviceSettingsContext';
 import { useShortcutRegistry } from '../contexts/KeyboardShortcutsContext';
+import { useAppearanceStudioEnabled } from '../hooks/useAppearanceStudioEnabled';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
@@ -323,6 +325,8 @@ export function AppearancePage() {
   const settings = useDeviceSettings();
   const { setDeviceSetting, setDeviceSettings } = useDeviceSettingsActions();
   const { locale } = useLocale();
+  const appearanceScope = useHostRequestAuthorityScope();
+  const studioEnabled = useAppearanceStudioEnabled(appearanceScope);
   // The mode on screen (System resolves against the device) drives the
   // gallery; the preference drives the Mode choice (#4407).
   const mode: ColorThemeMode = useResolvedThemeMode();
@@ -641,7 +645,7 @@ export function AppearancePage() {
           <AccentColorPicker description="Buttons, links and focus. A custom color also applies on other themes until you choose one of their accents." />
         )}
       </PageSection>
-      <CustomAppearanceSection />
+      <CustomAppearanceSection studioEnabled={studioEnabled} />
     </div>
   );
 }

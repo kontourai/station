@@ -37,6 +37,7 @@ import { ResponsiveSurfaceActions } from './ResponsiveDialogSurface';
 import {
   canChooseTelemetryTier,
   detailedConfirmation,
+  kontourReceivesOnlyLite,
   type SharingDisclosure,
   TelemetryChoiceLimit,
   UsageSharingChoices,
@@ -76,7 +77,14 @@ export function UsageSharingPrompt({
       ? 'lite'
       : status.data?.publishers[id]?.tier) ??
     'lite';
-  const kontourChoice = savedChoice('kontour');
+  const kontourLiteOnly = kontourReceivesOnlyLite(
+    status.data?.publishers.kontour,
+  );
+  const savedKontourChoice = savedChoice('kontour');
+  const kontourChoice =
+    kontourLiteOnly && savedKontourChoice === 'full'
+      ? 'lite'
+      : savedKontourChoice;
   const additionalChoice = savedChoice('operator');
   const initialChoice =
     kontourChoice === additionalChoice ? kontourChoice : undefined;
@@ -86,6 +94,7 @@ export function UsageSharingPrompt({
     data.inventoryRevision,
     data.authorDisclosure?.destination,
     dnt,
+    kontourLiteOnly,
     kontourChoice,
     additionalChoice,
   ]);
@@ -244,6 +253,7 @@ export function UsageSharingPrompt({
         dnt={dnt}
         host={host}
         data={data}
+        kontourLiteOnly={kontourLiteOnly}
         counts={status.data?.liteInventory}
         selectable={(tier) =>
           canChooseTelemetryTier(

@@ -878,7 +878,15 @@
 
     "packages/sdk/src/query-domains/taskCodeReview.ts",
 
-    "packages/sdk/src/__tests__/task-code-review-hooks.test.tsx"
+    "packages/sdk/src/__tests__/task-code-review-hooks.test.tsx",
+
+    "packages/sdk/src/client/custom-appearance-library.ts",
+
+    "packages/sdk/src/client/custom-appearance-mutations.ts",
+
+    "packages/sdk/src/query-domains/customAppearanceLibrary.ts",
+
+    "packages/sdk/src/query-domains/customAppearanceMutation.ts"
   ],
 
   "checks": [

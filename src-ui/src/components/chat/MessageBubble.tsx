@@ -1294,6 +1294,7 @@ function MessageBubbleComponent({
           ) : null}
           <HostImagesContext.Provider value={settledHostImages(msg.hostImages)}>
             <MessageContent
+              sessionId={answerSessionId}
               contentParts={
                 taskProposal
                   ? msg.contentParts?.map((part) =>

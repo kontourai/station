@@ -38,7 +38,14 @@ const { sdkAdapterMock } = vi.hoisted(() => ({
   sdkAdapterMock: vi.fn(),
 }));
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('../../../../packages/sdk/src/hooks', async (original) => ({
+  ...(await original<typeof import('../../../../packages/sdk/src/hooks')>()),
+  useNavigation: () => ({ navigate: vi.fn() }),
+}));
+
+vi.mock('@kontourai/station-sdk', async (original) => ({
+  LayoutHeader: (await original<typeof import('@kontourai/station-sdk')>())
+    .LayoutHeader,
   LayoutNavigationProvider: ({ children }: { children: React.ReactNode }) =>
     children,
   useProjectLayoutQuery: (
@@ -141,33 +148,36 @@ vi.mock('../builtinWorkspacePaneRegistry', () => ({
       : null,
 }));
 
-vi.mock('../../layouts', () => ({
-  LayoutRenderer: ({
-    componentId,
-    onMcpUiResolution,
-  }: {
-    componentId: { kind: string; ref?: string };
-    onMcpUiResolution?: (resolution: {
-      ref: string;
-      status: 'missing_resource' | 'render_revoked';
-    }) => void;
-  }) => (
-    <button
-      type="button"
-      data-testid="contributed-pane"
-      onClick={() =>
-        componentId.kind === 'mcp-tool-ui' && componentId.ref
-          ? onMcpUiResolution?.({
+vi.mock('../../layouts', async (original) => {
+  const { LayoutRenderer } = await original<typeof import('../../layouts')>();
+  return {
+    LayoutRenderer: (props: React.ComponentProps<typeof LayoutRenderer>) => {
+      const { componentId, onMcpUiResolution, trustedPluginLayout } = props;
+      if (trustedPluginLayout && props.activeTab?.actions?.length) {
+        return <LayoutRenderer {...props} />;
+      }
+      return (
+        <button
+          type="button"
+          data-testid="contributed-pane"
+          onClick={() => {
+            if (
+              typeof componentId !== 'object' ||
+              componentId.kind !== 'mcp-tool-ui'
+            )
+              return;
+            onMcpUiResolution?.({
               ref: componentId.ref,
               status: 'missing_resource',
-            })
-          : undefined
-      }
-    >
-      {componentId.kind}
-    </button>
-  ),
-}));
+            });
+          }}
+        >
+          {typeof componentId === 'object' ? componentId.kind : componentId}
+        </button>
+      );
+    },
+  };
+});
 
 vi.mock('../workspacePaneRendererSelection', async (importOriginal) => ({
   ...(await importOriginal<
@@ -454,15 +464,25 @@ describe('WorkspacePaneRouteView', () => {
     expect(screen.queryByText('Couldn’t refresh panes')).toBeNull();
   });
 
-  test('mounts the catalog-selected contributed renderer without branching on contributor identity', () => {
+  test('mounts the selected contributed renderer and keeps link actions usable without a prompt launcher', () => {
     sdkAdapterMock.mockClear();
-    resolveClientTrustedPluginLayoutMock.mockReturnValue(() => null);
+    resolveClientTrustedPluginLayoutMock.mockReturnValue(() => (
+      <div>Contributed review pane</div>
+    ));
     catalogMock.entries = [
       {
         descriptor: {
           id: 'pane:plugin%3Athird-party:review:issues',
           name: 'Third-party issues',
           description: 'Read-only review projection.',
+          actions: [
+            { type: 'prompt', label: 'Summarize issues', data: 'summarize' },
+            {
+              type: 'external',
+              label: 'Issue guide',
+              data: 'https://example.com/issues',
+            },
+          ],
           renderer: { kind: 'mcp-tool-ui', ref: 'third-party-mcp/issues' },
           provenance: {
             origin: 'plugin',
@@ -514,9 +534,11 @@ describe('WorkspacePaneRouteView', () => {
       />,
     );
 
-    expect(screen.getByTestId('contributed-pane').textContent).toBe(
-      'plugin-component',
-    );
+    expect(screen.getByText('Contributed review pane')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Issue guide' })).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Summarize issues' }),
+    ).toBeNull();
     expect(screen.queryByTestId('mounted-pane')).toBeNull();
     expect(resolveClientTrustedPluginLayoutMock).toHaveBeenCalledWith(
       expect.objectContaining({

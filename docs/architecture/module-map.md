@@ -2394,6 +2394,14 @@ ownership, or an implicit change to completed-session behavior.
 
 ## SessionCommandModule
 
+The dormant [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
+captures create inputs before acquiring the storage lock and reserves each
+member start durably before calling its host adapter. Flow supplies dependency
+readiness and claims. A missing Session receipt leaves the reservation occupied.
+A zero dispatch allowance closes admission at creation. The allowance counts
+reserved member starts. Dollar, token, and physical-attempt caps are unavailable.
+Issue #91 tracks production composition with Station Session authority.
+
 Starting a Session crosses two boundaries: an engine may start, and Station must record the command’s result. The [command owner](../../src-server/services/orchestration/session-command-module.ts) reports those facts separately; losing a receipt must not invite a second engine start.
 
 **Interface.** `execute({ type: 'start-session', input }, context)` is the closed caller Interface. It always returns one of `accepted`, `rejected`, `failed`, or `indeterminate`, together with a receipt and `receiptStatus: persisted|unavailable`. `accepted` has a persisted accepted receipt and a session. `rejected` and `failed` report whether their terminal receipt is durable. `indeterminate` covers uncertain provider creation as well as missing accepted-receipt durability; a Session is included only when one is known. The server-only `executeInternal` also carries recovery, Task dispatch, owned-workspace, and portable-execution admission capabilities. Those options are not accepted from public command JSON.
@@ -3666,8 +3674,11 @@ built-in default-file and Obsidian adapters implement the checked-in Kit record
 contract; the conversation adapter is a read-only projection of Session history.
 Personal and Project are scope tags, not a universal uniqueness or authorization proof:
 the registry can allocate suffixed personal IDs, and the conversation root also has
-personal scope. The Settings card currently selects the first personal root. Root
-removal clears the cached adapter. File storage registers newly allocated root IDs
+personal scope. The Settings card shows the first ordinary personal root the
+operator can read, excluding author-private memory and read-only conversation
+history. The Settings catalog calls this row `personal`; it uses the
+operator-owned root registry through the Knowledge API. Root removal clears
+the cached adapter. File storage registers newly allocated root IDs
 with create-only conflict checks; concurrent providers cannot overwrite a registered
 root. Exact disconnect compares the observed root inside the registry mutation and
 refuses a changed incarnation. Neither removal form deletes source files. There is
@@ -3989,9 +4000,9 @@ any unknown record or unreadable or linked `bindings/` level refuses it with
 only: with every Station process stopped, fix or remove the damaged record
 under `bindings/`. A non-empty, linked or unreadable `repair/` (an earlier
 build's inbox) blocks uploads and releases and is never applied or deleted. The store never
-evicts by age or size. Task rooms keep age and size retention (#4947) and
-share only the whole-record write. Persisted records are validated
-against their row identities before use. History reads use a deferred transaction;
+evicts by age or size. Task rooms share the file lock and whole-record write
+and reclaim only blobs a complete scan proves are unbound. Persisted records
+are validated against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 
 The [access adapter](../../src-server/runtime/routes/project-room-access.ts)
@@ -4159,7 +4170,10 @@ serves both room and thread composers. The
 [Task asset store](../../src-server/services/projects/task-room-attachments.ts)
 binds descriptors to the Project, Task and creation time and keeps bytes in a
 separate content-addressed store. Upload and provider resolution require current
-message-write authority; downloads require history-read authority. Room messages
+message-write authority; downloads require history-read authority. Upload
+rechecks the binding under the store-wide lock, which also covers capacity
+admission and publication. Reclamation requires a complete binding scan.
+New unique bytes must fit the budget after reclamation. Room messages
 and request journals retain descriptors, while dispatch passes resolved bytes to
 the provider attachment contract. Attachment-bearing history advances to at least
 v4; member records advance to v5, with permanent old-writer fences. The private request journal advances to v4;
@@ -5504,7 +5518,15 @@ are the creator's, so the Session's station-control caller, Project role and
 scope follow from them. The run first checks that the creator holds `execute`
 in the Project (`createProjectPrincipalPermission`, the dispatch scope's
 membership rule) and refuses before creating a Task otherwise; an ownerless
-Project job starts nothing and its view carries `ownerNeeded`. The
+Project job starts nothing and its view carries `ownerNeeded`.
+[Agent schedule composition](../../src-server/runtime/routes/agent-schedule-composition.ts)
+supplies the Project existence and creator `execute` checks for creation,
+edits, enablement and manual runs. Disabling and deleting use the existing
+owner or person-operator admission even after the creator loses `execute`.
+The built-in ledger verifies the admitted job ID on update, removal and manual
+claim, so a replacement with the same name does not inherit admission.
+Schedule composition uses Project `view` or person-operator authority for job and run reads,
+with the run's recorded destination or legacy owner rule still applied.
 [ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
 composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
 is an orchestration turn admission (a paused or archived Project's chats admit
@@ -6607,6 +6629,16 @@ adopts the palette and the [sanitized](../../src-ui/src/lib/custom-appearance/sa
 CSS, suspends the CSS while a [decision surface](../../src-ui/src/lib/custom-appearance/decision-surfaces.ts)
 is mounted and caches it for pre-paint; [previews](../../src-ui/src/lib/custom-appearance/preview.ts)
 run under the [keep bar](../../src-ui/src/lib/custom-appearance/keep-bar.ts).
+The Appearance studio preview adds typed visual settings through
+[visual-css.ts](../../src-ui/src/lib/custom-appearance/visual-css.ts), bounded
+embedded raster backgrounds, person-owned saved themes and versioned portable
+JSON packs. The store shares one atomic owner lock while library revisions
+remain independent. The [studio editor](../../src-ui/src/pages/AppearanceStudio.tsx)
+uses scoped SDK queries and protected previews. The
+[inline card](../../src-ui/src/components/chat/AppearanceProposalCard.tsx)
+reuses those previews with exact proposal/Session/Station checks; bounded
+proposal references are retained through EventStore excerpts/spill and the
+canonical transcript projection. Visual styling pauses with CSS on decisions.
 Evidence: [route tests](../../src-server/routes/me/__tests__/custom-appearance.routes.test.ts)
 and the [Chromium suite](../../src-ui/src/__tests__/custom-appearance.browser.test.ts).
 

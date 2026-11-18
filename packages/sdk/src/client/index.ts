@@ -45,6 +45,8 @@ export * from './cloud-move';
 export * from './conversationStationHandoff';
 export * from './conversations';
 export * from './custom-appearance';
+export * from './custom-appearance-library';
+export * from './custom-appearance-mutations';
 export * from './delegations';
 export * from './execution';
 export * from './fleet-routing';

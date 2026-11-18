@@ -2403,10 +2403,13 @@ describe('Scheduler Routes', () => {
     expect(await jobNamed('del-route')).toBeUndefined();
   });
 
-  test('DELETE /jobs/:target returns 500 for missing job', async () => {
+  test('DELETE /jobs/:target returns 404 for a missing job', async () => {
     const res = await app.request('/jobs/nonexistent', { method: 'DELETE' });
-    expect(res.status).toBe(500);
-    expect((await json(res)).success).toBe(false);
+    expect(res.status).toBe(404);
+    expect(await json(res)).toEqual({
+      success: false,
+      error: 'Job not found',
+    });
   });
 
   test('PUT /jobs/:target/enable enables a job', async () => {
@@ -2491,8 +2494,12 @@ describe('Scheduler Routes', () => {
     ]);
   });
 
-  test('POST /jobs/:target/run returns 500 for missing job', async () => {
+  test('POST /jobs/:target/run returns 404 for a missing job', async () => {
     const res = await app.request('/jobs/ghost/run', { method: 'POST' });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(404);
+    expect(await json(res)).toEqual({
+      success: false,
+      error: 'Job not found',
+    });
   });
 });

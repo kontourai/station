@@ -4280,7 +4280,10 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
   const providerRail = picker.getByRole('navigation', {
     name: 'Model collections',
   });
-  const firstModel = picker.getByRole('option').first();
+  const firstModel = picker
+    .getByRole('group', { name: 'Models', exact: true })
+    .getByRole('button')
+    .first();
   await expect(providerRail).toBeVisible();
   await expect(firstModel).toBeVisible();
 
