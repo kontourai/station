@@ -188,7 +188,8 @@ roles. Those actions need no operator session. A Project admin or owner never
 gains operator authority from that role.
 
 Group changes and operator-managed personal-token API actions also require per-action
-step-up. The passkey session cannot read `GET /api/pairing/people`, so **Settings →
+step-up. The group review names Devices whose stored grants would gain full
+access. If that list changes before confirmation, open a fresh review. The passkey session cannot read `GET /api/pairing/people`, so **Settings →
 People** and its token controls are unavailable to that session today. The Desktop
 can list People through its independent home-possession grant, but that grant
 cannot change groups or manage other people's tokens; signing in does not elevate

@@ -373,6 +373,7 @@ import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import {
+  capScopeToGroup,
   isStationGroup,
   type StationGroup,
   type StationGroupAssignment,
@@ -16738,11 +16739,8 @@ export function configureDevicePairingHostRoutes(
     if (!currentOperator(c, request) && !operatorSession(request))
       return operatorRequired(c, 'operator_credential_required');
     const nextGroup = body.group;
-    const apply = async (
-      expectedGroup?: typeof nextGroup,
-      assertCurrent?: () => void,
-    ) => {
-      const tied = pairing
+    const personDevices = () =>
+      pairing
         .listDevices()
         .filter(
           (device) =>
@@ -16752,6 +16750,11 @@ export function configureDevicePairingHostRoutes(
             principalForDeviceBinding(device.principalBinding).id ===
               principalId,
         );
+    const apply = async (
+      expectedGroup?: typeof nextGroup,
+      assertCurrent?: () => void,
+    ) => {
+      const tied = personDevices();
       const heldFullAccess = new Set(
         tied
           .filter((device) =>
@@ -16812,26 +16815,42 @@ export function configureDevicePairingHostRoutes(
       return c.json({ person, revocations });
     };
     if (operatorSession(request)) {
-      const expectedGroup = options.groups.groupOf(principalId);
-      const target = {
-        kind: 'person-group-change',
-        subject: principalId,
-        fingerprint: JSON.stringify({ principalId, expectedGroup, nextGroup }),
-      };
-      return stepUp(
-        c,
-        target,
-        `Change Station group for ${principalId} from ${expectedGroup} to ${nextGroup}.`,
-        () => ({
-          ...target,
+      const groupReview = () => {
+        const expectedGroup = options.groups!.groupOf(principalId);
+        const fullAccessDevices = personDevices()
+          .filter(
+            (device) =>
+              !pairingScopeIncludes(
+                capScopeToGroup(device.scope, expectedGroup),
+                'approval:full-access',
+              ) &&
+              pairingScopeIncludes(
+                capScopeToGroup(device.scope, nextGroup),
+                'approval:full-access',
+              ),
+          )
+          .map(({ id, name }) => ({ id, name }))
+          .sort((left, right) => left.id.localeCompare(right.id));
+        const target: ConsentTargetSnapshot = {
+          kind: 'person-group-change',
+          subject: principalId,
           fingerprint: JSON.stringify({
             principalId,
-            expectedGroup: options.groups!.groupOf(principalId),
+            expectedGroup,
             nextGroup,
+            fullAccessDevices,
           }),
-        }),
+        };
+        return { expectedGroup, fullAccessDevices, target };
+      };
+      const reviewed = groupReview();
+      return stepUp(
+        c,
+        reviewed.target,
+        `Change Station group for ${principalId} from ${reviewed.expectedGroup} to ${nextGroup}.`,
+        () => groupReview().target,
         async (_passkeyId, _sessionId, assertCurrent) => {
-          const response = await apply(expectedGroup, assertCurrent);
+          const response = await apply(reviewed.expectedGroup, assertCurrent);
           if (!response.ok)
             throw new ConsentCommitRefusedError(
               'The group change was refused.',
@@ -16839,6 +16858,11 @@ export function configureDevicePairingHostRoutes(
             );
           return (await response.json()) as Record<string, unknown>;
         },
+        undefined,
+        [],
+        reviewed.fullAccessDevices.length > 0
+          ? `Full access will become effective on ${reviewed.fullAccessDevices.map(({ name }) => name).join(', ')}. Full access allows unrestricted agent execution.`
+          : undefined,
       );
     }
     return apply();
