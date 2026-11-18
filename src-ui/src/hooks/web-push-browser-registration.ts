@@ -118,7 +118,12 @@ export async function removeBrowserPushSubscription(
   owners: Map<string, ConfirmedWebPushOwner>,
   attemptedOwner?: WebPushOwner,
 ): Promise<void> {
-  await subscription.unsubscribe();
+  if (!(await subscription.unsubscribe())) {
+    const worker = await navigator.serviceWorker.getRegistration('/sw.js');
+    const current = await worker?.pushManager.getSubscription();
+    if (current?.endpoint === subscription.endpoint)
+      throw pushStateError('Could not turn off browser push.');
+  }
 
   const matching = new Map(
     Array.from(owners).filter(
@@ -136,16 +141,20 @@ export async function removeBrowserPushSubscription(
     candidate.requestScope !== null &&
     candidate.requestScope?.isCurrent?.() !== false
   ) {
-    const current = await readWebPushOwner(candidate);
-    if (
-      current.fingerprint &&
-      current.fingerprint ===
-        (await browserRegistrationFingerprint(subscription))
-    ) {
-      matching.set(candidate.apiBase, {
-        ...candidate,
-        endpoint: subscription.endpoint,
-      });
+    try {
+      const current = await readWebPushOwner(candidate);
+      if (
+        current.fingerprint &&
+        current.fingerprint ===
+          (await browserRegistrationFingerprint(subscription))
+      ) {
+        matching.set(candidate.apiBase, {
+          ...candidate,
+          endpoint: subscription.endpoint,
+        });
+      }
+    } catch {
+      throw new PushRegistrationCleanupError();
     }
   }
   const results = await Promise.allSettled(

@@ -1,5 +1,6 @@
 ---
 "@kontourai/station-sdk": minor
+"@kontourai/station-contracts": patch
 ---
 
 Read a paired browser's current Web Push registration with

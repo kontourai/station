@@ -313,6 +313,20 @@ describe('usePushNotifications', () => {
     },
   );
 
+  test('a failed browser unsubscribe leaves the Station registration alone', async () => {
+    const subscription = browserSubscription('still-local');
+    subscription.unsubscribe.mockResolvedValue(false);
+    getSubscription.mockResolvedValue(subscription);
+    mocks.fetchWebPushRegistration.mockResolvedValue(
+      readRegistration(subscription.fingerprint),
+    );
+    const { result } = mount();
+    await waitFor(() => expect(result.current.subscribed).toBe(true));
+    await act(async () => result.current.unsubscribe());
+    expect(mocks.unsubscribePushNotifications).not.toHaveBeenCalled();
+    expect(result.current.error).toMatch(/Could not turn off browser push/);
+  });
+
   test('explicit unsubscribe reports failed Station cleanup after local revocation', async () => {
     const subscription = browserSubscription('confirmed');
     getSubscription.mockResolvedValue(subscription);
