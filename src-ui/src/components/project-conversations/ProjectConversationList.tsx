@@ -10,7 +10,10 @@ import {
   type ConversationUnread,
   TASK_ROOMS_SHOWN,
 } from './projectConversationIndex';
-import { useProjectConversationIndex } from './useProjectConversationIndex';
+import {
+  type MemberConversationIndexSource,
+  useProjectConversationIndex,
+} from './useProjectConversationIndex';
 import './ProjectConversationList.css';
 
 /**
@@ -33,7 +36,8 @@ export interface ProjectConversationListProps {
   onOpenChannel(channelId: string | undefined): void;
   onOpenTask(taskId: string): void;
   onMoreTasks(): void;
-  onNewChannel(): void;
+  onNewChannel?(): void;
+  member?: MemberConversationIndexSource;
 }
 
 interface Row {
@@ -78,8 +82,14 @@ export function ProjectConversationList({
   onOpenTask,
   onMoreTasks,
   onNewChannel,
+  member,
 }: ProjectConversationListProps) {
-  const index = useProjectConversationIndex(project, requestScope, enabled);
+  const index = useProjectConversationIndex(
+    project,
+    requestScope,
+    enabled,
+    member,
+  );
   const touch = useIsMobile();
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const [focusKey, setFocusKey] = useState<string>();
@@ -90,6 +100,7 @@ export function ProjectConversationList({
   // Before a room is opened, or on a host without channels, the Project has
   // one channel: its default room, reached the same way.
   const placeholder =
+    !member &&
     !index.channels.isPending &&
     !index.channels.isError &&
     !index.channels.projectMissing &&
@@ -200,15 +211,17 @@ export function ProjectConversationList({
       <div className="conversation-list__section">
         <div className="conversation-list__heading">
           <Heading id={headingId('channels')}>Channels</Heading>
-          <button
-            type="button"
-            className="conversation-list__add"
-            aria-label={`New channel in ${project.name}`}
-            title="New channel"
-            onClick={onNewChannel}
-          >
-            <PlusGlyph />
-          </button>
+          {onNewChannel && (
+            <button
+              type="button"
+              className="conversation-list__add"
+              aria-label={`New channel in ${project.name}`}
+              title="New channel"
+              onClick={onNewChannel}
+            >
+              <PlusGlyph />
+            </button>
+          )}
         </div>
         {index.channels.isPending ? (
           <SkeletonBlock count={2} label="Loading channels" />
@@ -229,12 +242,19 @@ export function ProjectConversationList({
           />
         ) : (
           <>
-            <ul
-              className="conversation-list__rows"
-              aria-labelledby={headingId('channels')}
-            >
-              {channelRows.map(renderRow)}
-            </ul>
+            {channelRows.length > 0 ? (
+              <ul
+                className="conversation-list__rows"
+                aria-labelledby={headingId('channels')}
+              >
+                {channelRows.map(renderRow)}
+              </ul>
+            ) : (
+              <Empty
+                variant="compact"
+                label="This Project has no channels available to you."
+              />
+            )}
             {index.channels.unreadError && (
               <ErrorState
                 variant="compact"

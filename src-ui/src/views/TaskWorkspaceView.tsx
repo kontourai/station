@@ -246,7 +246,10 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   const requestedView = useNavigation(() =>
     new URLSearchParams(window.location.search).get('taskView'),
   );
-  const { updateParams } = useNavigationActions();
+  const threadId = useNavigation(() =>
+    new URLSearchParams(window.location.search).get('thread'),
+  );
+  const { navigate, updateParams } = useNavigationActions();
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
   const setTab = useCallback(
     (tab: string) => {
@@ -320,6 +323,14 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
           chatAppsEnabled={chatAppsEnabled}
           tab={tab}
           setTab={setTab}
+          threadAddress={{
+            id: tab === 'Conversation' ? (threadId ?? undefined) : undefined,
+            open: (id) =>
+              navigate(window.location.pathname, {
+                taskView: 'conversation',
+                thread: id ?? null,
+              }),
+          }}
         />
       </ProjectTaskRoomProvider>
     </>
@@ -456,6 +467,7 @@ function TaskWorkspaceContent({
   chatAppsEnabled,
   tab,
   setTab,
+  threadAddress,
 }: {
   taskId: string;
   graph: TaskGraph;
@@ -466,6 +478,7 @@ function TaskWorkspaceContent({
   chatAppsEnabled: boolean;
   tab: string;
   setTab: (tab: string) => void;
+  threadAddress: { id: string | undefined; open(id: string | undefined): void };
 }) {
   const supervisionAuthority = useHostRequestAuthorityScope();
   const { updateParams } = useNavigationActions();
@@ -662,6 +675,7 @@ function TaskWorkspaceContent({
           taskId={taskId}
           projectSlug={projectSlug}
           taskCreatedAt={graph.task.createdAt}
+          threadAddress={threadAddress}
         />
       </div>
       <div
