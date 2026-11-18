@@ -148,6 +148,24 @@ async function storeConversation(page: Page, awaitingApproval = false) {
           )
         : rejectUnexpectedFixtureRequest(route),
   );
+  await mockRuntimeConversation(page, {
+    id: THREAD_ID,
+    agentSlug: 'station',
+    title: TITLE,
+    provider: 'bedrock',
+    model: 'model-selected',
+    projectSlug: 'default',
+    canContinue: true,
+    turns: () =>
+      buildLongSessionTurns({
+        threadId: THREAD_ID,
+        turnCount: 1,
+        replyText: () => ANSWER,
+      }),
+  });
+}
+
+async function mockStoredTurnDirectory(page: Page) {
   await page.route(
     (url) =>
       url.pathname ===
@@ -180,51 +198,7 @@ async function storeConversation(page: Page, awaitingApproval = false) {
           )
         : rejectUnexpectedFixtureRequest(route),
   );
-  await mockRuntimeConversation(page, {
-    id: THREAD_ID,
-    agentSlug: 'station',
-    title: TITLE,
-    provider: 'bedrock',
-    model: 'model-selected',
-    projectSlug: 'default',
-    canContinue: true,
-    turns: () =>
-      buildLongSessionTurns({
-        threadId: THREAD_ID,
-        turnCount: 1,
-        replyText: () => ANSWER,
-      }),
-  });
 }
-
-// #4814: opening a stored conversation binds a new dock chat to its inbox
-// row, which sets the row's `chatSessionId`. The selection must still be
-// current after that bind, or the open is cancelled and nothing appears.
-test('an inbox row for a stored conversation with no open chat opens its transcript', async ({
-  page,
-}) => {
-  test.setTimeout(60_000);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await mockChatShell(page);
-  await installMockOrchestrationSse(page);
-  await storeConversation(page);
-
-  await page.goto('/?dock=open&maximize=true');
-  await dismissSetupLauncher(page);
-  // With no chat open, the phone dock opens on its Inbox.
-  const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
-  await expect(inbox).toBeVisible();
-  // The Station's session row; no chat for it is open in this browser.
-  await inbox
-    .getByRole('button', { name: 'Station session, default', exact: true })
-    .click();
-
-  await expect(page.getByText(ANSWER, { exact: true })).toBeVisible();
-  await expect(page.getByText('No chat open', { exact: true })).toHaveCount(0);
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get('chat'))
-    .not.toBeNull();
-});
 
 const APPROVAL_REFERENCE = {
   threadId: THREAD_ID,
@@ -249,6 +223,7 @@ for (const [mode, width, theme, decision] of [
     await mockChatShell(page);
     await installMockOrchestrationSse(page);
     await storeConversation(page, true);
+    await mockStoredTurnDirectory(page);
     await page.route('**/api/attention', (route) =>
       route.fulfill(
         json({
@@ -364,3 +339,33 @@ for (const [mode, width, theme, decision] of [
     expect(attempted).toBe(1);
   });
 }
+
+// #4814: opening a stored conversation binds a new dock chat to its inbox
+// row, which sets the row's `chatSessionId`. The selection must still be
+// current after that bind, or the open is cancelled and nothing appears.
+test('an inbox row for a stored conversation with no open chat opens its transcript', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockChatShell(page);
+  await installMockOrchestrationSse(page);
+  await storeConversation(page);
+  await mockStoredTurnDirectory(page);
+
+  await page.goto('/?dock=open&maximize=true');
+  await dismissSetupLauncher(page);
+  // With no chat open, the phone dock opens on its Inbox.
+  const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
+  await expect(inbox).toBeVisible();
+  // The Station's session row; no chat for it is open in this browser.
+  await inbox
+    .getByRole('button', { name: 'Station session, default', exact: true })
+    .click();
+
+  await expect(page.getByText(ANSWER, { exact: true })).toBeVisible();
+  await expect(page.getByText('No chat open', { exact: true })).toHaveCount(0);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('chat'))
+    .not.toBeNull();
+});
