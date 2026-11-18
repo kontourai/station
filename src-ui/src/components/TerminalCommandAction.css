@@ -1,0 +1,39 @@
+.terminal-command {
+  min-inline-size: 0;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+.terminal-command__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+}
+
+.terminal-command__header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.terminal-command__header .button {
+  min-block-size: 44px;
+}
+
+.terminal-command pre,
+.terminal-command p {
+  margin: 0;
+  padding: var(--k-space-3);
+}
+
+.terminal-command pre {
+  overflow-x: auto;
+  color: var(--k-text);
+}

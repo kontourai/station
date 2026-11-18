@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { PlusGlyph } from '../../components/icons/Glyph';
 import { PageSection } from '../../components/PageSection';
-import { OpenStationTerminalButton } from '../../components/TerminalCommandAction';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
@@ -164,13 +163,10 @@ export function ProjectRepositoriesSection({
       aria-label="Project repositories"
     >
       <div className="project-sources__repo-toolbar">
-        <OpenStationTerminalButton
-          authority={authority}
-          expectedProject={slug}
-        />
         <details className="project-sources__diagnostics project-sources__repo-add">
           <summary>
-            <PlusGlyph /> Add a repository
+            <PlusGlyph />{' '}
+            {onManageSources ? 'Add repository' : 'Add a repository'}
           </summary>
           <ProjectRepositoryAttachment
             slug={slug}

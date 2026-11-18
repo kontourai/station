@@ -78,16 +78,18 @@ export function ProjectRepositorySources({
     >
       <div className="project-repositories__heading">
         <h3>Repositories</h3>
-        <Button
-          variant="secondary"
-          disabled={identity.isFetching || resolution.isFetching}
-          onClick={() => {
-            void identity.refetch();
-            void resolution.refetch();
-          }}
-        >
-          Refresh sources
-        </Button>
+        {!compact && (
+          <Button
+            variant="secondary"
+            disabled={identity.isFetching || resolution.isFetching}
+            onClick={() => {
+              void identity.refetch();
+              void resolution.refetch();
+            }}
+          >
+            Refresh sources
+          </Button>
+        )}
       </div>
       {identity.isError && (
         <ErrorState
@@ -175,11 +177,11 @@ function RepositorySourceCard({
       : undefined;
   return (
     <li className="project-repositories__card">
-      <div className="project-repositories__heading">
+      <div className="project-repositories__heading project-repositories__row-heading">
         <RepositorySourceIdentity repo={repo} />
         {startingDirectory !== undefined && (
           <span className="project-repositories__usage">
-            Used for new chats
+            {compact ? 'Default' : 'Used for new chats'}
           </span>
         )}
       </div>

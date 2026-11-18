@@ -7,21 +7,21 @@ import { useDockProject } from '../workspace-panes/useDockProject';
 import { ActionRow } from './ActionRow';
 import { Button } from './Button';
 import { requestProjectShell } from './coding-layout/terminalShellRequest';
-import { TerminalGlyph } from './icons/Glyph';
+import { CopyGlyph, TerminalGlyph } from './icons/Glyph';
+import './TerminalCommandAction.css';
 
-export function OpenStationTerminalButton({
+function OpenStationTerminalButton({
   authority,
-  expectedProject,
+  onOpen,
 }: {
   authority: ApiRequestScope;
-  expectedProject?: string;
+  onOpen: () => void;
 }) {
   const host = useHostRequestAuthorityScope();
   const { projectSlug } = useDockProject();
   const show = useShowSurface();
   if (
     !projectSlug ||
-    (expectedProject && projectSlug !== expectedProject) ||
     host?.apiBase !== authority.apiBase ||
     host.authorityKey !== authority.authorityKey ||
     !host.isCurrent()
@@ -29,14 +29,15 @@ export function OpenStationTerminalButton({
     return null;
   return (
     <Button
-      variant="secondary"
+      variant="ghost"
       onClick={() => {
         if (!host.isCurrent()) return;
+        onOpen();
         requestProjectShell(projectSlug);
         show('coding:terminal', undefined, { region: 'bottom' });
       }}
     >
-      <TerminalGlyph /> Open terminal
+      <TerminalGlyph /> Copy and open terminal
     </Button>
   );
 }
@@ -52,26 +53,38 @@ export function TerminalCommandAction({
 }) {
   const [copyStatus, setCopyStatus] = useState<'copied' | 'failed'>();
 
+  const copy = async () => {
+    setCopyStatus((await copyToClipboard(command)) ? 'copied' : 'failed');
+  };
   return (
-    <div className="content-stack">
-      <p>Run on {stationName}:</p>
-      <code>{command}</code>
-      <ActionRow
-        overflowLabel="More terminal actions"
-        secondary={
-          <Button
-            variant="secondary"
-            onClick={async () => {
-              setCopyStatus(
-                (await copyToClipboard(command)) ? 'copied' : 'failed',
-              );
-            }}
-          >
-            Copy command
-          </Button>
-        }
-        primary={<OpenStationTerminalButton authority={authority} />}
-      />
+    <section className="terminal-command" aria-label="Terminal command">
+      <div className="terminal-command__header">
+        <span>
+          <TerminalGlyph /> {stationName}
+        </span>
+        <ActionRow
+          overflowLabel="More command actions"
+          secondary={
+            <Button
+              variant="ghost"
+              aria-label="Copy command"
+              title="Copy command"
+              onClick={() => void copy()}
+            >
+              <CopyGlyph />
+            </Button>
+          }
+          primary={
+            <OpenStationTerminalButton
+              authority={authority}
+              onOpen={() => void copy()}
+            />
+          }
+        />
+      </div>
+      <pre>
+        <code>{command}</code>
+      </pre>
       {copyStatus && (
         <p role="status">
           {copyStatus === 'copied'
@@ -79,6 +92,6 @@ export function TerminalCommandAction({
             : 'Select and copy the command above.'}
         </p>
       )}
-    </div>
+    </section>
   );
 }
