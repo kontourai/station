@@ -405,7 +405,7 @@ test.each([390, 1440])(
 );
 
 test('skill metadata stays searchable while the browser uses the body title and outline', async () => {
-  const page = await pageAt(1280);
+  const page = await pageAt(1440);
   await page.getByRole('searchbox').fill('name: deslop');
   await page
     .getByRole('navigation', { name: 'Search results' })
