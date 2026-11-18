@@ -1,0 +1,29 @@
+{
+  "sourceRevision": "d3110a55e7cdd680923f5924a9c32e272fe3afb2",
+  "renderer": "Playwright Chromium",
+  "widths": [390, 1440],
+  "themes": ["light", "dark"],
+  "method": "Mounted production CustomAppearanceSection and AppearanceProposalCard, SDK query/client, protected preview/controller and real Hono appearance routes/store. Fixed host lease, principal and preview catalog inside a synthetic shell. Before images use the original palette/CSS editor with studio disabled; after images enable studio in the same production component.",
+  "captureTestSha256": "e983367a515d137b4be75f5e69911baf532a0b509ff2f4795f7a870d5780a627",
+  "observed": [
+    "Trusted pointer Keep applied exact proposal and persisted via real route/store",
+    "Canvas upload bundled raster image; repeated saved edits followed new IDs",
+    "Exported pack imported into unapplied draft; active appearance unchanged",
+    "No horizontal overflow at390 and1440 in both themes"
+  ],
+  "limits": [
+    "Not the full App/dock layout or live provider transcript",
+    "Host authority and preview catalog are fixed fixture inputs",
+    "Desktop WKWebView, physical devices, installed and deployed Nightly unverified"
+  ],
+  "screenshots": {
+    "before-dark-390.png": "4021cd7ec29f6c8ec782e0e4a3e2d85cdbd632eb4cd2e2cd1a02a221eb295563",
+    "before-light-1440.png": "4527057a35b80aa5c97e9859de341430d270f08628971a40e40eacae437dac12",
+    "editor-dark-390.png": "f14186a0de7105dab6cf0a277eef7639282fe9357f0de7d5935b9dcb2c6376b4",
+    "editor-light-1440.png": "3fd0edf9a391d7ed8a5fd807c089f1350ea9da71336a192d1a1577ee685b78ef",
+    "inline-proposed-dark-390.png": "4fa4f82a9f691f28aec3d380d90a1bece57a85c8c48185ceb86d0878166b4656",
+    "inline-proposed-light-1440.png": "4ff912a6e36ff254de0d849cff7125d03c1d4714981172a3ff849c42ef3089c4",
+    "library-dark-390.png": "74f722bf3fe092ebb6ffa29156daade3c8e7ab8feebccc413015da952ecec2a2",
+    "library-light-1440.png": "d88ee1c1fbb6a208d07cadf9a33a0c53aa35e818e6929e76bbc6701bed044e60"
+  }
+}

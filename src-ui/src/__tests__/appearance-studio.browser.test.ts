@@ -29,9 +29,10 @@ const scope = {apiBase:'http://station.test',authorityKey:'appearance-fixture',i
 setClientCredentialResolver(()=>({origin:scope.apiBase,credential:'fixture',requestAuthority:scope}));
 const client = new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0,staleTime:0}}});
 function Bridge(){const query=useCustomAppearanceQuery(scope);React.useEffect(()=>{if(query.data)setActiveCustomAppearance(query.data.active);},[query.data]);return null;}
-function App(){const [proposal,setProposal]=React.useState(null);React.useEffect(()=>{fetch('/fixture-proposal').then(r=>r.json()).then(setProposal)},[]);return <QueryClientProvider client={client}><Bridge/><main className="main-content fixture-main"><h1>Appearance</h1><p>Make this Station feel like yours.</p><div className="fixture-layout"><div aria-label="Appearance settings"><CustomAppearanceSection studioEnabled/></div><section aria-label="Conversation" className="fixture-chat"><h2>Design conversation</h2><p data-surface="message" data-message-role="user">A warm paper workspace with an illustrated background.</p>{proposal && <ConversationConnectionProvider value={{apiBase:scope.apiBase,requestScope:scope}}><AppearanceProposalCard proposal={proposal} sessionId="appearance-session"/></ConversationConnectionProvider>}<div data-surface="composer">Message your agent…</div></section></div></main></QueryClientProvider>}
+let chooseStudio;
+function App(){const [studio,setStudio]=React.useState(false);chooseStudio=setStudio;const [proposal,setProposal]=React.useState(null);React.useEffect(()=>{fetch('/fixture-proposal').then(r=>r.json()).then(setProposal)},[]);return <QueryClientProvider client={client}><Bridge/><main className="main-content fixture-main"><h1>Appearance</h1><p>Make this Station feel like yours.</p><div className="fixture-layout"><div aria-label="Appearance settings"><CustomAppearanceSection key={studio ? "studio" : "legacy"} studioEnabled={studio}/></div><section aria-label="Conversation" className="fixture-chat"><h2>Design conversation</h2><p data-surface="message" data-message-role="user">A warm paper workspace with an illustrated background.</p>{studio && proposal && <ConversationConnectionProvider value={{apiBase:scope.apiBase,requestScope:scope}}><AppearanceProposalCard proposal={proposal} sessionId="appearance-session"/></ConversationConnectionProvider>}<div data-surface="composer">Message your agent…</div></section></div></main></QueryClientProvider>}
 createRoot(document.getElementById('root')).render(<App/>);
-window.appearanceFixture={snapshot:getCustomAppearanceSnapshot,bar:()=>{const bar=customAppearancePreviewBar();if(!bar)return null;const r=bar.keepRect();return {blocked:bar.keepBlockedReason(),x:r.x+r.width/2,y:r.y+r.height/2};}};
+window.appearanceFixture={studio:(value)=>chooseStudio(value),snapshot:getCustomAppearanceSnapshot,bar:()=>{const bar=customAppearancePreviewBar();if(!bar)return null;const r=bar.keepRect();return {blocked:bar.keepBlockedReason(),x:r.x+r.width/2,y:r.y+r.height/2};}};
 `;
 
 async function clickKeep(page: Page) {
@@ -189,6 +190,28 @@ test('real editor upload, portable file roundtrip, scoped library and inline tru
     await page.addStyleTag({
       content: `.fixture-main{padding:24px;overflow:auto;display:block}.fixture-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:24px;align-items:start}.fixture-chat{position:sticky;top:0;padding:16px;border:1px solid var(--k-line);border-radius:var(--k-radius-panel);background:var(--k-panel)}@media(max-width:700px){.fixture-main{padding:12px}.fixture-layout{grid-template-columns:minmax(0,1fr)}.fixture-chat{position:static}}`,
     });
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    for (const width of [390, 1440])
+      for (const mode of ['light', 'dark']) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.evaluate(
+          (theme) => (document.documentElement.dataset.theme = theme),
+          mode,
+        );
+        await page.locator('.fixture-main').evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        await page.screenshot({
+          path: join(screenshotDir, `before-${mode}-${width}.png`),
+        });
+      }
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          appearanceFixture: { studio(value: boolean): void };
+        }
+      ).appearanceFixture.studio(true),
+    );
     const conversation = page.getByRole('region', { name: 'Conversation' });
     await conversation
       .getByRole('button', { name: 'Preview', exact: true })
