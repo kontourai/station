@@ -119,6 +119,28 @@ in the panel that reported the error.
 | **This Screen is unavailable. Capture it again.** | Make another capture from the Project's Browser or Device session. |
 | **This item is unavailable. Refresh and try again.** | Refresh the Review panel before retrying the action. |
 
+#### Sharing and changes to work
+
+| Message | Next step |
+| --- | --- |
+| **Shared work is unavailable** | Select **Retry** in **Shared work**. If your access changed, ask the Project owner what is still shared with you. |
+| **Publication is unavailable for this account.** | Choose **Refresh publication status** to check the shared Task with the current account. |
+| **Shared document is unavailable.** | Check **Refresh publication status** first. If the Task is still published, reopen it to check the document. There is no separate retry on this document message. |
+| **Could not change watching** | Read the error, check the current watching mode, then choose the intended action again if it is still needed. |
+| **Write-back history unavailable** | Check the Task connection, then select **Retry** under **Written to the issue**. This reloads the history. |
+| **Could not create store** | Read the error and inspect the Project's store list before choosing **Create store** again. |
+| **Couldn't save project rules** | Check the error and your draft, then choose **Save Rules** if the change is still needed. |
+| **Couldn’t keep “TITLE” as an output:** or **Couldn’t delete “TITLE”:** | Reopen the Task's outputs and check whether the file is present before attempting the change again. The message includes the actual title. |
+| **Output content is unavailable:** | Check the error and reopen the output. Keep the existing output while checking access and content availability. |
+| **Feedback could not be confirmed. Retry the same statement.** | Use **Retry same statement** to resend the same review text. |
+| **Couldn’t load capture sessions.** or **Some capture sessions could not be loaded.** | Select **Refresh sessions** in the capture dialog. |
+| **Still couldn’t link it. Your task is safe; try again later and it won’t create a second task.** | Use **Link it now** later on that Task. |
+
+For more on recovery and access boundaries, see
+[sharing setup](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md),
+[Project knowledge](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md),
+and [Task-owned pull requests](https://github.com/kontourai/station/blob/main/docs/decisions/task-owned-pull-requests.md).
+
 ## Station And Device
 
 - A **Station** is the host you connect to and work on.
