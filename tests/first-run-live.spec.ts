@@ -1,7 +1,13 @@
 import type { Server } from 'node:http';
+import { loadavg } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from './helpers/authenticated-request';
+import type { Page } from '@playwright/test';
+import {
+  type AuthenticatedE2ERequest,
+  expect,
+  test,
+} from './helpers/authenticated-request';
 import { LAZY_CHUNK_ALLOWANCE_MS } from './helpers/lazy-chunk-allowance';
 import {
   countVisibleLazyBoundaryErrors,
@@ -21,10 +27,143 @@ import {
   SETTLED_ERROR_STATE_SELECTOR,
   waitForRouteViewTarget,
 } from './helpers/route-view-readiness';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MODEL = 'station-dogfood:latest';
 const REPLY = 'First live Station chat works on mobile.';
+
+// Preserve the existing ceilings until repeated measurements cover the slow hosts.
+const SETUP_LAUNCHER_TIMEOUT_MS = 20_000;
+const UNCONFIGURED_COMPOSER_TIMEOUT_MS = 20_000;
+const STATION_AGENT_PICKER_TIMEOUT_MS = 20_000;
+
+async function recordSurfaceTiming(
+  page: Page,
+  name: string,
+  observe: () => Promise<void>,
+): Promise<void> {
+  const start = await page.evaluate(() => ({
+    timeOrigin: performance.timeOrigin,
+    at: performance.now(),
+  }));
+  const wallStart = performance.now();
+  const startLoad = loadavg()[0];
+  let settled = false;
+  try {
+    await observe();
+    settled = true;
+  } finally {
+    const elapsedMs = performance.now() - wallStart;
+    const browser = await page
+      .evaluate((start) => {
+        const sameDocument = performance.timeOrigin === start.timeOrigin;
+        const at = sameDocument ? start.at : 0;
+        const resources = (
+          performance.getEntriesByType(
+            'resource',
+          ) as PerformanceResourceTiming[]
+        ).flatMap((entry) => {
+          const url = new URL(entry.name);
+          return url.origin === location.origin && url.pathname.endsWith('.js')
+            ? [
+                {
+                  asset: url.pathname,
+                  startMs: entry.startTime - at,
+                  durationMs: entry.duration,
+                  responseEndMs: entry.responseEnd - at,
+                  transferBytes: entry.transferSize,
+                },
+              ]
+            : [];
+        });
+        return {
+          documentChanged: !sameDocument,
+          elapsedMs: performance.now() - at,
+          resources,
+        };
+      }, start)
+      .catch(() => null);
+    const timing = {
+      surface: name,
+      settled,
+      elapsedMs,
+      hostLoadOneMinuteStart: startLoad,
+      hostLoadOneMinuteEnd: loadavg()[0],
+      browser,
+    };
+    // The suite runner removes successful Playwright reports. Keep a compact
+    // sample in its log, with the full observation attached when retained.
+    const resources = browser?.resources ?? [];
+    console.log(
+      '[first-run-surface-timing]',
+      JSON.stringify({
+        ...timing,
+        browser: browser && {
+          ...browser,
+          freshScriptCount: resources.filter(
+            (resource) => resource.startMs >= 0,
+          ).length,
+          resources: resources.filter((resource) =>
+            /ConnectionsSectionFrame|ProviderSettings|ChatDockMobileOverflowSheet|MobileTaskSwitcher|ChatDockInbox|AgentPicker/.test(
+              resource.asset,
+            ),
+          ),
+        },
+      }),
+    );
+    await test.info().attach(`first-run-${name}-timing`, {
+      body: JSON.stringify(timing),
+      contentType: 'application/json',
+    });
+  }
+}
+
+async function openPendingSetup(
+  page: Page,
+  authenticatedRequest: AuthenticatedE2ERequest,
+) {
+  // The source CLI runner records current Lite notices at startup. Require
+  // the server's recorded decision before asserting the no-disclosure path.
+  const response = await authenticatedRequest.get(
+    '/api/usage-telemetry/status',
+  );
+  expect(response.ok()).toBe(true);
+  const { data } = (await response.json()) as {
+    data: {
+      publishers: Record<
+        string,
+        { tier: string; reason?: string; userChoice?: string }
+      >;
+      liteInventoryRevision: string;
+      liteNotices?: Record<string, { inventoryRevision: string }>;
+    };
+  };
+  for (const id of ['kontour', 'operator']) {
+    const publisher = data.publishers[id];
+    expect(publisher).toBeDefined();
+    expect(['off', 'lite']).toContain(publisher?.tier);
+    expect(publisher?.reason).not.toBe('DNT');
+    expect(publisher?.userChoice).not.toBe('full');
+    if (publisher?.tier === 'lite')
+      expect(data.liteNotices?.[id]?.inventoryRevision).toBe(
+        data.liteInventoryRevision,
+      );
+  }
+  await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
+  await expect(
+    page.getByTestId('usage-telemetry-disclosure-modal'),
+  ).toHaveCount(0);
+
+  const chapter = page.getByTestId('first-run-engines');
+  await expect(chapter).toHaveCount(0);
+  await page
+    .getByTestId('first-run-home-card')
+    .getByRole('button', { name: 'Open setup' })
+    .click();
+  await expect(chapter).toBeVisible();
+  return chapter;
+}
 
 /**
  * How long the streamed reply may take to appear.
@@ -72,6 +211,12 @@ const CHAT_REQUEST_RECORDED_TIMEOUT_MS = STREAMED_REPLY_TIMEOUT_MS;
 
 test.use({ actionTimeout: 15_000 });
 
+test.beforeEach(async ({ page }) => {
+  // The startup resource graph can fill Chromium's default buffer before
+  // these interactions run. Keep the entries on both sides of each wait.
+  await page.addInitScript(() => performance.setResourceTimingBufferSize(1500));
+});
+
 // archive#1628: a short, dedicated desktop check that a fresh temp-home server
 // boots to Home's zero-project empty state with no dead end — deliberately
 // not a full chat round-trip (no ollama fixture) so the 'first-run' bucket's
@@ -88,20 +233,33 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
 }) => {
   const consoleErrors: string[] = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+    if (message.type() !== 'error') return;
+    const url = message.location().url;
+    // The normal first-run browser has no remote runner inventory grant.
+    // Keep any other response or script error in the assertion below.
+    if (
+      baseURL &&
+      url === new URL('/api/environments/ssh/sessions', baseURL).href &&
+      message.text() ===
+        'Failed to load resource: the server responded with a status of 403 (Forbidden)'
+    )
+      return;
+    consoleErrors.push(message.text());
   });
 
   if (!baseURL) throw new Error('First-run suite requires a UI base URL');
 
-  await page.goto(baseURL);
-  // The launcher is reachable on the FIRST click now. The usage-telemetry
-  // disclosure used to render over it — `OnboardingGate` mounts it after its
-  // children, so it lands on top of whatever else is up — and this spec had to
-  // find and answer it before it could touch anything. On a `pending` home
-  // that modal is not mounted at all; the disclosure is a step of the run,
-  // below.
-  await expect(page.getByTestId('setup-launcher')).toBeVisible({
-    timeout: 20_000,
+  await recordSurfaceTiming(page, 'desktop-setup-launcher', async () => {
+    await page.goto(baseURL);
+    // The launcher is reachable on the FIRST click now. The usage-telemetry
+    // disclosure used to render over it — `OnboardingGate` mounts it after its
+    // children, so it lands on top of whatever else is up — and this spec had to
+    // find and answer it before it could touch anything. On a `pending` home
+    // that modal is not mounted at all; the disclosure is a step of the run,
+    // below.
+    await expect(page.getByTestId('setup-launcher')).toBeVisible({
+      timeout: SETUP_LAUNCHER_TIMEOUT_MS,
+    });
   });
   await expect(
     page.getByTestId('usage-telemetry-disclosure-modal'),
@@ -113,34 +271,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
 
   await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
 
-  // UX audit RT-02, live and un-intercepted: this home was created by this
-  // run, so its `config/app.json` genuinely carries `firstRun: {status:
-  // 'pending'}` and the guided chapter opens on Home — the exact case the old
-  // `sawSetupLauncher` rule failed, twice, on a machine with a CLI installed.
-  // Nothing here patches a route; the only reason the chapter is on screen is
-  // what the server wrote when it made this home.
-  // STEP ONE IS THE DISCLOSURE, and it is the only thing on screen — the real
-  // server's real inventory, in the chapter's own dialog, with no second modal
-  // over it. Acknowledging goes to the real
-  // `/api/usage-telemetry/disclosure/acknowledgements` on this home.
-  const disclosure = page.getByTestId('first-run-disclosure');
-  await expect(disclosure).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Step 1 of 1')).toBeVisible();
-  await expect(
-    page.getByTestId('usage-telemetry-disclosure-modal'),
-  ).toHaveCount(0);
-  await expect(page.locator('.responsive-surface-overlay')).toHaveCount(1);
-  await disclosure
-    .getByRole('button', { name: 'Keep usage telemetry on' })
-    .click();
-
-  const chapter = page.getByTestId('first-run-engines');
-  await expect(chapter).toHaveCount(0);
-  await page
-    .getByTestId('first-run-home-card')
-    .getByRole('button', { name: 'Open setup' })
-    .click();
-  await expect(chapter).toBeVisible({ timeout: 20_000 });
+  const chapter = await openPendingSetup(page, authenticatedRequest);
   await expect(page.getByText('Step 1 of 3')).toBeVisible();
   await expect(page.getByRole('dialog').filter({ has: chapter })).toBeVisible();
 
@@ -170,10 +301,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
     timeout: 20_000,
   });
   await expect(chapter).toHaveCount(0);
-  // This home is no longer `pending`, so the standalone modal is mounted again
-  // — and stays silent, because the receipt written above is what stops it
-  // coming back. Placement decides WHERE the disclosure is made; the receipt
-  // still decides whether it is made at all.
+  // The saved first-run decision leaves the setup card available after reload.
   await expect(
     page.getByTestId('usage-telemetry-disclosure-modal'),
   ).toHaveCount(0);
@@ -188,9 +316,9 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   await expect(startAgent).toBeDisabled();
   await goal.fill('Help me get started');
   await expect(startAgent).toBeEnabled();
-  const openLocalProject = page.getByRole('button', {
-    name: /Open local project/i,
-  });
+  const openLocalProject = page
+    .getByRole('region', { name: 'Work actions' })
+    .getByRole('button', { name: /New Project/ });
   await expect(openLocalProject).toBeVisible();
   await expect(openLocalProject).toBeEnabled();
 
@@ -276,9 +404,11 @@ test('phone first run recovers from no provider to a real streamed reply', async
     ollamaServer = ollama.server;
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(baseURL);
-    await expect(page.getByTestId('setup-launcher')).toBeVisible({
-      timeout: 20_000,
+    await recordSurfaceTiming(page, 'phone-setup-launcher', async () => {
+      await page.goto(baseURL);
+      await expect(page.getByTestId('setup-launcher')).toBeVisible({
+        timeout: SETUP_LAUNCHER_TIMEOUT_MS,
+      });
     });
     await expect(
       page.getByText('Choose what powers Station', { exact: true }),
@@ -301,17 +431,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await authenticatedRequest.get('/config/app')
     ).json()) as { data?: { firstRun?: { status?: string } } };
     if (firstRunStatus.data?.firstRun?.status === 'pending') {
-      const disclosure = page.getByTestId('first-run-disclosure');
-      await expect(disclosure).toBeVisible();
-      await disclosure
-        .getByRole('button', { name: 'Keep usage telemetry on' })
-        .click();
-      await expect(chapter).toHaveCount(0);
-      await page
-        .getByTestId('first-run-home-card')
-        .getByRole('button', { name: 'Open setup' })
-        .click();
-      await expect(chapter).toBeVisible();
+      await openPendingSetup(page, authenticatedRequest);
       await chapter.getByRole('button', { name: 'Not now' }).click();
       await expect
         .poll(
@@ -328,7 +448,10 @@ test('phone first run recovers from no provider to a real streamed reply', async
       expect(firstRunStatus.data?.firstRun?.status).toBe('skipped');
       await expect(chapter).toHaveCount(0);
     }
-    await page.getByRole('button', { name: /Open local project/i }).click();
+    await page
+      .getByRole('region', { name: 'Work actions' })
+      .getByRole('button', { name: /New Project/ })
+      .click();
 
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
@@ -344,7 +467,9 @@ test('phone first run recovers from no provider to a real streamed reply', async
       'true',
     );
     await page.getByRole('button', { name: 'Create', exact: true }).click();
-    await expect(page).toHaveURL(/\/projects\/mobile-dogfood$/);
+    await expect(page).toHaveURL(
+      /\/projects\/mobile-dogfood\/layouts\/coding$/,
+    );
 
     await page.evaluate(() => {
       sessionStorage.setItem(
@@ -392,52 +517,58 @@ test('phone first run recovers from no provider to a real streamed reply', async
       PROJECT_LAYOUT_READINESS_TIMEOUT_MS,
     );
     const emptyState = chatDock.getByTestId('chat-empty-state-unconfigured');
-    await expect(emptyState).toBeVisible({ timeout: 20_000 });
+    await recordSurfaceTiming(page, 'unconfigured-composer', async () => {
+      await expect(emptyState).toBeVisible({
+        timeout: UNCONFIGURED_COMPOSER_TIMEOUT_MS,
+      });
+    });
     await expect(page.getByText(/^Error:/)).toHaveCount(0);
     // Dismissing first-run is durable. Recovery remains available where it is
     // relevant without covering the project workspace with the launcher again.
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
-    await emptyState.getByRole('button', { name: 'Open Connections' }).click();
-    await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
+    const addModelConnection = page.getByRole('button', {
+      name: 'Add model connection',
+      exact: true,
+    });
+    await recordSurfaceTiming(page, 'connections-models', async () => {
+      await emptyState
+        .getByRole('button', { name: 'Open Connections' })
+        .click();
+      await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
 
-    // archive#3733 gave every Connections section ONE add action, named for what it
-    // adds; the picker it opens is a route now, not a dialog (archive#3877 —
-    // same structural staleness, a different shipped change).
-    //
-    // #1642: this is the site with real evidence, and the evidence says it was
-    // never a missing control. Three independently retained failure captures show
-    // the same page — `heading "Connections"` beside `status "Loading view"` — for
-    // the whole 15 s action timeout, twice with the shell header reading "Can't
-    // connect". The view had not mounted. The route needs TWO lazy chunks under
-    // one Suspense boundary (`ConnectionsSectionFrame` and `ProviderSettingsView`,
-    // both in `AppViewContent`), so a slow second chunk withholds the first one's
-    // action too — and the URL and the "Connections" heading both settle OUTSIDE
-    // that boundary, which is why every signal this step had was already green.
-    //
-    // Scoped to `.page__actions` with an exact name, as the other Connections
-    // specs do: the picker route this click opens has a HEADING of the same name,
-    // and an unscoped substring match is one product change away from ambiguity.
-    const addModelConnection = page
-      .locator('.page__actions')
-      .getByRole('button', { name: 'Add model connection', exact: true });
-    await waitForRouteViewTarget(
-      {
-        viewName: 'The Connections → Models view',
-        target: addModelConnection,
-        failures: [
-          // `RouteViewBoundary`'s three settled failures — a rejected chunk, a
-          // refused read, a broken view — all render `ErrorState`.
-          page.locator(SETTLED_ERROR_STATE_SELECTOR),
-          // A code-split surface failing INSIDE the mounted view is a different
-          // finding from the route failing, and says so.
-          page.locator(LAZY_BOUNDARY_ERROR_SELECTOR),
-        ],
-        pending: [
-          page.getByRole('status', { name: ROUTE_PENDING_STATUS_NAME }),
-        ],
-      },
-      LAZY_CHUNK_ALLOWANCE_MS,
-    );
+      // archive#3733 gave every Connections section ONE add action, named for what it
+      // adds; the picker it opens is a route now, not a dialog (archive#3877 —
+      // same structural staleness, a different shipped change).
+      //
+      // #1642: this is the site with real evidence, and the evidence says it was
+      // never a missing control. Three independently retained failure captures show
+      // the same page — `heading "Connections"` beside `status "Loading view"` — for
+      // the whole 15 s action timeout, twice with the shell header reading "Can't
+      // connect". The view had not mounted. The route needs TWO lazy chunks under
+      // one Suspense boundary (`ConnectionsSectionFrame` and `ProviderSettingsView`,
+      // both in `AppViewContent`), so a slow second chunk withholds the first one's
+      // action too — and the URL and the "Connections" heading both settle OUTSIDE
+      // that boundary, which is why every signal this step had was already green.
+      //
+      await waitForRouteViewTarget(
+        {
+          viewName: 'The Connections → Models view',
+          target: addModelConnection,
+          failures: [
+            // `RouteViewBoundary`'s three settled failures — a rejected chunk, a
+            // refused read, a broken view — all render `ErrorState`.
+            page.locator(SETTLED_ERROR_STATE_SELECTOR),
+            // A code-split surface failing INSIDE the mounted view is a different
+            // finding from the route failing, and says so.
+            page.locator(LAZY_BOUNDARY_ERROR_SELECTOR),
+          ],
+          pending: [
+            page.getByRole('status', { name: ROUTE_PENDING_STATUS_NAME }),
+          ],
+        },
+        LAZY_CHUNK_ALLOWANCE_MS,
+      );
+    });
     await addModelConnection.click();
     await expect(page).toHaveURL(/\/connections\/models\/new(?:\?|$)/);
     // Scope inside the picker — the background stack overview also renders an
@@ -467,28 +598,6 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await page.goto(
       `${baseURL}/projects/mobile-dogfood/layouts/coding?dock=open`,
     );
-    // archive#3309 pulled New chat out of the "Chat actions" overflow to a
-    // pinned far-right header icon; #1512 deleted that icon from
-    // `ChatDockMobileHeader` and handed `onNewChat` to the sheet again, so on a
-    // phone the sheet is where the affordance now is (#1606).
-    // Assert it there, then open the selection surface via the deterministic
-    // event — clicking the item takes the one-click direct path whenever
-    // exactly one runtime is chat-ready, which is this fixture once the Ollama
-    // connection above is healthy, and this live spec must land on the picker
-    // to choose `station` by id (same pattern as
-    // new-chat-mobile-context-sheet.spec.ts's openNewChat).
-    // #1642: this goto re-mounts the dock, so it passes through the same layout
-    // gate as the first one and gets the same wait. Waiting for the region before
-    // the header control inside it also puts the two in the order they can
-    // actually arrive — a control cannot appear before the region hosting it.
-    //
-    // This is the ONE bound this change lowers, and deliberately: the trigger
-    // below carried 20 s, which was really covering the layout resolution that
-    // now has its own wait above. Once the region is up the mobile header renders
-    // with it — `isMobile` is a synchronous `matchMedia` read, and no query sits
-    // between them — so what is left for the trigger is a render, which the
-    // runner's default covers. A budget kept here would be funding the same wait
-    // twice and would hide which of the two actually ran long.
     await waitForRouteViewTarget(
       {
         viewName: 'The Coding layout view, reopened',
@@ -501,60 +610,75 @@ test('phone first run recovers from no provider to a real streamed reply', async
       },
       PROJECT_LAYOUT_READINESS_TIMEOUT_MS,
     );
-    const chatActions = page.getByRole('button', {
+    const draft = chatDock.getByRole('region', {
+      name: 'New chat',
+      exact: true,
+    });
+    await recordSurfaceTiming(page, 'new-chat-draft', async () => {
+      await chatDock
+        .getByRole('button', { name: 'New chat', exact: true })
+        .click();
+      await expect(draft).toBeVisible();
+    });
+    const form = draft.getByRole('form', { name: 'Start work' });
+    const agentList = page.getByRole('dialog', { name: 'Choose agent' });
+    await recordSurfaceTiming(page, 'station-agent-picker', async () => {
+      await (
+        await runSetupControl(form, (panel) =>
+          panel.getByRole('button', { name: /^Agent:/ }),
+        )
+      ).click();
+      await expect(agentList).toBeVisible({
+        timeout: STATION_AGENT_PICKER_TIMEOUT_MS,
+      });
+    });
+    await agentList
+      .getByRole('button', { name: /^Station Assistant(?: |$)/ })
+      .first()
+      .click();
+    await closeRunSetup(form);
+    const composer = form.getByRole('textbox');
+    await composer.fill('Confirm the live first-run path');
+    await expect(composer).toHaveValue('Confirm the live first-run path');
+    await form.getByRole('button', { name: 'Start', exact: true }).click();
+    await expect
+      .poll(() => chatRequests.length, {
+        timeout: CHAT_REQUEST_RECORDED_TIMEOUT_MS,
+      })
+      .toBe(1);
+    await expect(page.getByText(REPLY, { exact: true })).toBeVisible({
+      timeout: STREAMED_REPLY_TIMEOUT_MS,
+    });
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('chat'))
+      .toBeTruthy();
+    const currentChat = new URL(page.url()).searchParams.get('chat');
+
+    const chatActions = chatDock.getByRole('button', {
       name: 'Chat actions',
       exact: true,
     });
     await expect(chatActions).toBeVisible();
-    // Counted BEFORE the click: `LazyBoundary`'s failure text is the same constant
-    // everywhere, so only a failure that APPEARS across this interaction can be
-    // attributed to this sheet. The dock's own prewarmed boundary rejects exactly
-    // when the host is unreachable, and it sorts before these portaled sheets.
-    const boundaryErrorsBeforeChatActions =
-      await countVisibleLazyBoundaryErrors(page);
-    await chatActions.click();
     const chatActionsMenu = page.getByRole('menu', { name: 'Chat actions' });
-    // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`,
-    // kept out of the entry bundle), so its FIRST open is a module fetch that
-    // renders nothing while it is in flight. Playwright's 5s expect default is
-    // not a budget for that on a loaded host — observed pending at 5s with the
-    // trigger already `aria-expanded`.
-    //
-    // #1642: 15 s did not settle it either, and a bare wait on the menu cannot
-    // say why — a chunk that REJECTS looks exactly like a chunk that is slow.
-    // Watch the boundary's failure state alongside the menu so the two are
-    // different reports, and hand the wait the trigger's `aria-expanded` so its
-    // timeout can at least say whether the click was taken.
-    await waitForLazySurface(
-      page,
-      {
-        surfaceName: 'The Chat actions sheet',
-        surface: chatActionsMenu,
-        openIndicator: page.locator(
-          'button[aria-label="Chat actions"][aria-expanded="true"]',
-        ),
-        baselineUnavailableCount: boundaryErrorsBeforeChatActions,
-      },
-      LAZY_CHUNK_ALLOWANCE_MS,
-    );
+    const previousErrors = await countVisibleLazyBoundaryErrors(page);
+    await recordSurfaceTiming(page, 'chat-actions', async () => {
+      await chatActions.click();
+      await waitForLazySurface(
+        page,
+        {
+          surfaceName: 'The Chat actions sheet',
+          surface: chatActionsMenu,
+          baselineUnavailableCount: previousErrors,
+        },
+        LAZY_CHUNK_ALLOWANCE_MS,
+      );
+    });
     await expect(
       chatActionsMenu.getByRole('menuitem', { name: 'New chat', exact: true }),
     ).toBeVisible();
     await page.keyboard.press('Escape');
-    // The picker must open over a closed sheet, not under its overlay.
     await expect(chatActionsMenu).toHaveCount(0);
-    await page.evaluate(() =>
-      window.dispatchEvent(new Event('station:open-new-chat')),
-    );
-    // The row also contains an engine chip, so rendered text is not a unique
-    // identity. Select the stable agent id exposed by the picker instead.
-    const stationAgent = page.locator(
-      '.new-chat-modal__agent[data-agent-slug="station"]',
-    );
-    await expect(stationAgent).toBeVisible({ timeout: 20_000 });
-    await stationAgent.click();
-    const currentChat = new URL(page.url()).searchParams.get('chat');
-    expect(currentChat).toBeTruthy();
+
     const taskSwitcher = page.getByRole('button', {
       name: /^(Inbox|Back to chat)$/,
     });
@@ -564,16 +688,18 @@ test('phone first run recovers from no provider to a real streamed reply', async
       // Counted before each click, for the same reason as the sheet above: only a
       // boundary failure that appears across THIS interaction is this sheet's.
       const boundaryErrorsBefore = await countVisibleLazyBoundaryErrors(page);
-      await taskSwitcher.click();
-      await waitForLazySurface(
-        page,
-        {
-          surfaceName: `The Inbox (${occasion})`,
-          surface: taskDialog,
-          baselineUnavailableCount: boundaryErrorsBefore,
-        },
-        LAZY_CHUNK_ALLOWANCE_MS,
-      );
+      await recordSurfaceTiming(page, `inbox-${occasion}`, async () => {
+        await taskSwitcher.click();
+        await waitForLazySurface(
+          page,
+          {
+            surfaceName: `The Inbox (${occasion})`,
+            surface: taskDialog,
+            baselineUnavailableCount: boundaryErrorsBefore,
+          },
+          LAZY_CHUNK_ALLOWANCE_MS,
+        );
+      });
     };
     await openTaskSwitcher('first open');
     const taskRows = taskDialog.locator('.chat-dock-inbox__item');
@@ -612,19 +738,6 @@ test('phone first run recovers from no provider to a real streamed reply', async
       .getByRole('button', { name: 'Back to chat', exact: true })
       .click();
 
-    const composer = page.locator('textarea[placeholder*="Type a message"]');
-    await expect(composer).toBeVisible();
-    await composer.fill('Confirm the live first-run path');
-    await expect(composer).toHaveValue('Confirm the live first-run path');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await expect
-      .poll(() => chatRequests.length, {
-        timeout: CHAT_REQUEST_RECORDED_TIMEOUT_MS,
-      })
-      .toBe(1);
-    await expect(page.getByText(REPLY, { exact: true })).toBeVisible({
-      timeout: STREAMED_REPLY_TIMEOUT_MS,
-    });
     expect(chatRequests).toHaveLength(1);
     expect(chatRequests[0]).toMatchObject({
       model: MODEL,
