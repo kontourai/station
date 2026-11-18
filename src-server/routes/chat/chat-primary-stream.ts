@@ -37,7 +37,7 @@ import {
   runtimeConfigurationLeaseIsCurrent,
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import { InjectableStream } from '../../runtime/streaming/InjectableStream.js';
-import type { RuntimeContext } from '../../runtime/types.js';
+import type { IStreamResult, RuntimeContext } from '../../runtime/types.js';
 import { assertInheritedDelegationToolPolicy } from '../../services/orchestration/delegation-tool-policy.js';
 import { chatTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
 import {
@@ -329,10 +329,11 @@ export function streamPrimaryAgentChat({
     // R2's persistence-gap fix). Left undefined on every non-error path, so
     // a successful turn never persists a marker.
     let turnFailureText: string | undefined;
-    // biome-ignore lint: agent framework types inferred from Map
-    let result;
+    let result: IStreamResult | undefined;
     let memory = null;
-    let memoryAdapter = null;
+    let memoryAdapter: Parameters<
+      typeof finalizeChatRequest
+    >[0]['memoryAdapter'];
     // archive#1566: hoisted so the `finally` block (where
     // `finalizeChatRequest` runs) can pass the same handle through for the
     // auto-title write. Declared here rather than as a `const` inside the

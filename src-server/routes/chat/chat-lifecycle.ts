@@ -123,7 +123,7 @@ export async function finalizeChatRequest({
   accumulatedText: string;
   reasoningText: string;
   artifacts: Array<{ type: string; name?: string; content?: unknown }>;
-  result: {
+  result?: {
     usage?: Promise<{
       promptTokens?: number;
       completionTokens?: number;
@@ -314,7 +314,7 @@ export async function finalizeChatRequest({
       }
     | undefined;
   try {
-    usage = await result.usage;
+    usage = await result?.usage;
   } catch {
     usage = undefined;
   }
