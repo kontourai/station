@@ -1351,6 +1351,8 @@ describe('pairing-route-scopes: table-driven lookups', () => {
 
   test('classifies local conversation handoff mutation and read leaves at the orchestration family split', () => {
     const handoff = '/api/orchestration/conversations/:conversationId/handoff';
+    const stagedHandoff =
+      '/api/orchestration/conversations/:conversationId/staged-handoff';
     const handoffReceipt =
       '/api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey';
     const eventWindow =
@@ -1358,6 +1360,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
 
     for (const [method, path, scope] of [
       ['POST', handoff, 'orchestration:operate'],
+      ['POST', stagedHandoff, 'orchestration:operate'],
       ['GET', handoffReceipt, 'orchestration:read'],
       ['GET', eventWindow, 'orchestration:read'],
     ] as const) {
@@ -1380,11 +1383,12 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     const handoffLeaves = leaves.filter((leaf) =>
       [
         'POST /api/orchestration/conversations/:conversationId/handoff',
+        'POST /api/orchestration/conversations/:conversationId/staged-handoff',
         'GET /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey',
         'GET /api/orchestration/conversations/:conversationId/event-window',
       ].includes(`${leaf.method} ${leaf.path}`),
     );
-    expect(handoffLeaves).toHaveLength(3);
+    expect(handoffLeaves).toHaveLength(4);
     expect(
       handoffLeaves.filter(
         (leaf) => !isLeafScopeDeclared(leaf.method, leaf.path),

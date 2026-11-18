@@ -3620,159 +3620,160 @@ export function createOrchestrationRoutes(
     return await handleForegroundMessage(c);
   });
 
-  app.on(
-    'POST',
-    [
-      '/conversations/:conversationId/handoff',
-      '/conversations/:conversationId/staged-handoff',
-    ],
-    validateFiles(conversationHandoffSchema),
-    async (c) => {
-      const staged = c.req.path.endsWith('/staged-handoff');
-      if (staged && !deps.stagedHandoffEnabled?.()) {
-        const { id, label } = STAGED_CONVERSATION_HANDOFF_PREVIEW;
-        return c.json(new FeaturePreviewDisabledError(id, label).refusal, 404);
-      }
-      if (!deps.handoffConversation) {
-        return c.json(
-          { success: false, error: 'Agent/engine handoff is unavailable' },
-          503,
-        );
-      }
-      try {
-        const body = getBody(c);
-        if (staged !== Boolean(body.stagedHandoff)) {
-          return c.json(
-            {
-              success: false,
-              error: 'The handoff route and context policy do not match.',
-            },
-            400,
-          );
-        }
-        // #2377 slice C3b: no station-control tool reaches this route today;
-        // if one ever does, it hands off without an approval posture.
-        const postureRefused = refuseCarriedPosture(c, [
-          {
-            path: 'setApprovalMode',
-            value: (body as { setApprovalMode?: unknown }).setApprovalMode,
-            kind: 'pick',
-          },
-          {
-            path: 'personalApprovalDefault',
-            value: (body as { personalApprovalDefault?: unknown })
-              .personalApprovalDefault,
-            kind: 'pick',
-          },
-          {
-            path: 'target.model.options',
-            value: body.target.model?.options,
-            kind: 'options',
-          },
-        ]);
-        if (postureRefused) return postureRefused;
-        // #4518: as on `/chat`, a pick above the managed ceiling is refused.
-        const ceilingRefused = refuseAboveManagedCeiling(c, [
-          (body as { setApprovalMode?: unknown }).setApprovalMode,
-        ]);
-        if (ceilingRefused) return ceilingRefused;
-        const fullAccessRefused =
-          refuseUngrantedFullAccess(c, [
-            (body as { setApprovalMode?: unknown }).setApprovalMode,
-          ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
-        if (fullAccessRefused) return fullAccessRefused;
-        const directoryRefused = refuseUngrantedDirectoryWorkspace(
-          c,
-          body.target,
-        );
-        if (directoryRefused) return directoryRefused;
-        const { principal, userId, ownerAttribution, fullAccessGrant } =
-          resolveDispatchActor(deps, c);
-        const conversationId = param(c, 'conversationId');
-        const data = await deps.handoffConversation({
-          ...body,
-          target: normalizeExecutionTarget(body.target),
-          ...(body.attachments
-            ? { attachments: body.attachments as ChatAttachmentInput[] }
-            : {}),
-          conversationId,
-          userId,
-          // archive#4075 stage 2 review round 1 (F1): dropped here originally
-          // — threaded exactly like /chat above, through
-          // executeForegroundMessage/executeExecutionTargetMessage's existing
-          // `input.principal` seam, so an explicit engine/Agent handoff's
-          // turn.started is attributed at emit time too.
-          principal,
-          ownerAttribution,
-          fullAccessGrant,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-        });
-        if (!isCreateRequestHandle(data)) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error:
-                'Agent/engine handoff may have started but did not return a provider turn id',
-              code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-              outcome: 'indeterminate',
-            },
-            409,
-          );
-        }
-        return c.json({ success: true, data });
-      } catch (error) {
-        const fullAccessRefused = fullAccessRefusalFor(c, error);
-        if (fullAccessRefused) return fullAccessRefused;
-        if (error instanceof ForegroundMessageIndeterminateError) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
-              code: error.code,
-              outcome: error.outcome,
-              receipt: error.detail.receipt,
-              receiptStatus: error.detail.receiptStatus,
-              session: error.detail.session,
-            },
-            409,
-          );
-        }
-        if (
-          error instanceof ForegroundMessageTurnIdentityUnavailableError ||
-          isForegroundIndeterminateShape(error)
-        ) {
-          return c.json(
-            {
-              ...providerFailure('indeterminate', 'indeterminate'),
-              success: false,
-              error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
-              code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-              outcome: 'indeterminate',
-            },
-            409,
-          );
-        }
+  const handleConversationHandoff = async (c: Context, staged: boolean) => {
+    if (staged && !deps.stagedHandoffEnabled?.()) {
+      const { id, label } = STAGED_CONVERSATION_HANDOFF_PREVIEW;
+      return c.json(new FeaturePreviewDisabledError(id, label).refusal, 404);
+    }
+    if (!deps.handoffConversation) {
+      return c.json(
+        { success: false, error: 'Agent/engine handoff is unavailable' },
+        503,
+      );
+    }
+    try {
+      const body = getBody(c);
+      if (staged !== Boolean(body.stagedHandoff)) {
         return c.json(
           {
             success: false,
-            error: errorMessage(error),
-            ...(errorCode(error) ? { code: errorCode(error) } : {}),
-            ...(error instanceof OrchestrationCommandDispatchError &&
-            error.kind !== undefined
-              ? {
-                  kind: error.kind,
-                  retryable: error.retryable,
-                  failurePhase: error.failurePhase,
-                }
-              : {}),
+            error: 'The handoff route and context policy do not match.',
           },
-          // #4520: the managed policy does not allow the engine.
-          errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE ? 403 : 409,
+          400,
         );
       }
-    },
+      // #2377 slice C3b: no station-control tool reaches this route today;
+      // if one ever does, it hands off without an approval posture.
+      const postureRefused = refuseCarriedPosture(c, [
+        {
+          path: 'setApprovalMode',
+          value: (body as { setApprovalMode?: unknown }).setApprovalMode,
+          kind: 'pick',
+        },
+        {
+          path: 'personalApprovalDefault',
+          value: (body as { personalApprovalDefault?: unknown })
+            .personalApprovalDefault,
+          kind: 'pick',
+        },
+        {
+          path: 'target.model.options',
+          value: body.target.model?.options,
+          kind: 'options',
+        },
+      ]);
+      if (postureRefused) return postureRefused;
+      // #4518: as on `/chat`, a pick above the managed ceiling is refused.
+      const ceilingRefused = refuseAboveManagedCeiling(c, [
+        (body as { setApprovalMode?: unknown }).setApprovalMode,
+      ]);
+      if (ceilingRefused) return ceilingRefused;
+      const fullAccessRefused =
+        refuseUngrantedFullAccess(c, [
+          (body as { setApprovalMode?: unknown }).setApprovalMode,
+        ]) ?? refuseUngrantedCarriedFullAccess(c, body.target.model?.options);
+      if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
+      const { principal, userId, ownerAttribution, fullAccessGrant } =
+        resolveDispatchActor(deps, c);
+      const conversationId = param(c, 'conversationId');
+      const data = await deps.handoffConversation({
+        ...body,
+        target: normalizeExecutionTarget(body.target),
+        ...(body.attachments
+          ? { attachments: body.attachments as ChatAttachmentInput[] }
+          : {}),
+        conversationId,
+        userId,
+        // archive#4075 stage 2 review round 1 (F1): dropped here originally
+        // — threaded exactly like /chat above, through
+        // executeForegroundMessage/executeExecutionTargetMessage's existing
+        // `input.principal` seam, so an explicit engine/Agent handoff's
+        // turn.started is attributed at emit time too.
+        principal,
+        ownerAttribution,
+        fullAccessGrant,
+        clientOrigin: resolveClientOriginForRequest(c.req.raw),
+      });
+      if (!isCreateRequestHandle(data)) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error:
+              'Agent/engine handoff may have started but did not return a provider turn id',
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+          },
+          409,
+        );
+      }
+      return c.json({ success: true, data });
+    } catch (error) {
+      const fullAccessRefused = fullAccessRefusalFor(c, error);
+      if (fullAccessRefused) return fullAccessRefused;
+      if (error instanceof ForegroundMessageIndeterminateError) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
+            code: error.code,
+            outcome: error.outcome,
+            receipt: error.detail.receipt,
+            receiptStatus: error.detail.receiptStatus,
+            session: error.detail.session,
+          },
+          409,
+        );
+      }
+      if (
+        error instanceof ForegroundMessageTurnIdentityUnavailableError ||
+        isForegroundIndeterminateShape(error)
+      ) {
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error: FOREGROUND_MESSAGE_INDETERMINATE_ERROR,
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+          },
+          409,
+        );
+      }
+      return c.json(
+        {
+          success: false,
+          error: errorMessage(error),
+          ...(errorCode(error) ? { code: errorCode(error) } : {}),
+          ...(error instanceof OrchestrationCommandDispatchError &&
+          error.kind !== undefined
+            ? {
+                kind: error.kind,
+                retryable: error.retryable,
+                failurePhase: error.failurePhase,
+              }
+            : {}),
+        },
+        // #4520: the managed policy does not allow the engine.
+        errorCode(error) === MANAGED_POLICY_ENGINE_REFUSED_CODE ? 403 : 409,
+      );
+    }
+  };
+  app.post(
+    '/conversations/:conversationId/handoff',
+    validateFiles(conversationHandoffSchema),
+    (c) => handleConversationHandoff(c, false),
+  );
+  app.post(
+    '/conversations/:conversationId/staged-handoff',
+    validateFiles(conversationHandoffSchema),
+    (c) => handleConversationHandoff(c, true),
   );
 
   /**

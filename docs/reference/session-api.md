@@ -345,7 +345,8 @@ the operator's `coding:exec` grant to name one (one of the owner's own devices
 with owner-device standing counts as the operator in person); without it the route answers
 `403` with `code: "working-directory-not-granted"` and starts nothing. This
 applies to `/chat`, `/chat/delegated`, `/chat/background`,
-`/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;
+`/conversations/:conversationId/handoff`, `/conversations/:conversationId/staged-handoff`
+and `POST /api/orchestration/delegations`;
 the other routes the rule covers are listed in the [API reference](api.md#choosing-a-working-folder).
 The operator credential is unaffected, and so is the roundtrip script at the end
 of this page when it runs with the operator credential (a paired device's
