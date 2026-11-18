@@ -117,7 +117,10 @@ function AgentPickerRow({
         ref={selectedRef}
         data-agent-slug={agent.slug}
         className={`new-chat-modal__agent ${isSelected ? 'new-chat-modal__agent--selected' : ''}`}
-        onMouseEnter={onHover}
+        onMouseMove={(event) => {
+          // Opening the picker can place a row under a stationary cursor.
+          if (!isSelected && (event.movementX || event.movementY)) onHover();
+        }}
         onClick={onSelect}
         disabled={interactionDisabled || (!selectionOnly && !runnable)}
         aria-describedby={
