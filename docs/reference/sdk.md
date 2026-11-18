@@ -4254,9 +4254,10 @@ publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 Stores per-tab strings in browser `sessionStorage` under
 `layout-<layoutSlug>-tab-<tabId>` and updates the page hash for the active tab.
-Use a stable, distinct layout identity. Stored state may be restored on mount
-when the hash is empty, and on tab switches. This is browser UI state, not
-durable Project state; storage failures are not caught here.
+Use a stable, distinct layout identity. On mount, an empty hash is restored
+from the active tab's saved state before child plugins render. An incoming
+hash takes precedence. A tab switch restores the selected tab's saved state.
+This browser UI state lives in session storage for the current browser session.
 
 ```tsx
 <LayoutNavigationProvider layoutSlug="my-layout" activeTabId={activeTab}>

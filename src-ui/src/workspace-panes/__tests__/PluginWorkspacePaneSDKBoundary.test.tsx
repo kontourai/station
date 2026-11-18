@@ -105,9 +105,17 @@ test('clearing a tab cancels its delayed restoration and survives switches and r
   expect(window.location.hash).toBe('');
 
   view.unmount();
-  render(pane('first'));
+  const remounted = render(pane('first'));
   expect(window.location.hash).toBe('');
   expect(sessionStorage.getItem('layout-pane-tab-second')).toBe('view=other');
   click('Clear second');
   expect(sessionStorage.getItem('layout-pane-tab-second')).toBeNull();
+
+  click('Save first');
+  act(() => vi.advanceTimersToNextFrame());
+  remounted.unmount();
+  window.history.replaceState(null, '', '/');
+  act(() => vi.runAllTimers());
+  expect(window.location.hash).toBe('');
+  expect(sessionStorage.getItem('layout-pane-tab-first')).toBe('view=old');
 });

@@ -138,18 +138,24 @@ export function LayoutNavigationProvider({
     pendingRestore.current = null;
   }, []);
 
+  const activeKey =
+    activeTabId && layoutSlug
+      ? `layout-${layoutSlug}-tab-${activeTabId}`
+      : null;
+  // Plugins can initialize state from the URL when their first render runs.
+  if (activeKey && typeof window !== 'undefined' && !window.location.hash) {
+    const retained = sessionStorage.getItem(activeKey);
+    if (retained) window.location.hash = retained;
+  }
+
   useLayoutEffect(() => {
-    if (!activeTabId || !layoutSlug) return cancelRestore;
-    const key = `layout-${layoutSlug}-tab-${activeTabId}`;
-    if (
-      !window.location.hash ||
-      (previousKey.current && previousKey.current !== key)
-    ) {
-      window.location.hash = sessionStorage.getItem(key) ?? '';
+    if (!activeKey) return cancelRestore;
+    if (previousKey.current && previousKey.current !== activeKey) {
+      window.location.hash = sessionStorage.getItem(activeKey) ?? '';
     }
-    previousKey.current = key;
+    previousKey.current = activeKey;
     return cancelRestore;
-  }, [activeTabId, layoutSlug, cancelRestore]);
+  }, [activeKey, cancelRestore]);
 
   const getTabState = useCallback(
     (tabId: string): string => {
