@@ -161,6 +161,11 @@ Before adding markup or CSS for a surface, check the shared primitive and
 recipe owners below. Reuse a matching pattern and keep domain-state derivation
 with its feature. A new rule should have real consumers and one style owner.
 
+- On framed routes, `PageFrame` supplies the outer gutter. For settings-like
+  content, compose [PageSection](../../src-ui/src/components/PageSection.tsx)
+  and [PageRow](../../src-ui/src/components/PageRow.tsx). The row owns its
+  label, density-sensitive description and internal spacing. Compare the
+  description at both densities before adding a feature override.
 - `StatusSummary` (`src-ui/src/components/StatusSummary.tsx`) groups a resource
   name, version, status badge, and subdued check time. Desktop and server
   updates use it in both Updates and System settings. Pass the badge from

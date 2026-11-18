@@ -68,7 +68,7 @@ Applies to `src-ui` and the pane packages (`packages/basis-pane`, `packages/boar
 | Disclosure | `DisclosureToggle` for a folded list section | No published primitive; a native `button` with `aria-expanded` |
 | Key/value, table | No primitive; semantic `dl`/`table` with `--k-*` tokens | Same |
 
-`lint:component-style` rejects a new `role="alert"` element that holds its own button; use `ErrorState`.
+`npm run lint:component-style` points to newly added literal font sizes, padding and gaps in CSS and direct JSX styles. Check the shared owner at each reported line. The same command rejects a new `role="alert"` element that holds its own button; use `ErrorState`.
 
 Layout, touch targets and dialogs: [responsive UI](../docs/guides/responsive-ui.md). Data ownership, tones and styling: [frontend patterns](../docs/patterns/frontend.md).
 

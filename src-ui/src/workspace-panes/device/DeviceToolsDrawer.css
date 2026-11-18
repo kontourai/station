@@ -34,13 +34,13 @@
   border-bottom: 1px solid var(--border-primary);
   display: flex;
   flex: 0 0 auto;
-  gap: var(--space-2, 8px);
-  padding: var(--space-2, 8px);
+  gap: var(--k-space-2);
+  padding: var(--k-space-2);
 }
 
 .device-tools__title {
   flex: 1 1 auto;
-  font-size: 0.875rem;
+  font-size: var(--k-text-md);
   margin: 0;
 }
 
@@ -54,16 +54,16 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--space-3, 12px);
+  gap: var(--k-space-3);
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-2, 8px) var(--space-3, 12px) var(--space-4, 16px);
+  padding: var(--k-space-2) var(--k-space-3) var(--k-space-4);
 }
 
 .device-tools__section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
+  gap: var(--k-space-2);
 }
 
 .device-tools__logs {
@@ -75,7 +75,7 @@
 }
 
 .device-tools__section-title {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   letter-spacing: 0.02em;
   margin: 0;
   opacity: 0.75;
@@ -92,17 +92,17 @@
 .device-tools__row {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--k-space-1);
   min-width: 0;
 }
 
 .device-tools__label {
-  font-size: 0.75rem;
+  font-size: var(--k-text-sm);
   opacity: 0.75;
 }
 
 .device-tools__value {
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -110,7 +110,7 @@
 .device-tools__muted,
 .device-tools__notice,
 .device-tools__error {
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   margin: 0;
 }
 
@@ -125,13 +125,13 @@
 .device-tools__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2, 8px);
+  gap: var(--k-space-2);
 }
 
 .device-tools__field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--k-space-1);
   min-width: 0;
 }
 
@@ -143,10 +143,10 @@
   border-radius: var(--radius-md, 6px);
   color: var(--text-primary);
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   min-height: 44px;
   min-width: 0;
-  padding: var(--space-1, 4px) var(--space-2, 8px);
+  padding: var(--k-space-1) var(--k-space-2);
 }
 
 .device-tools__field textarea {
@@ -156,14 +156,14 @@
 
 .device-tools__coordinates {
   display: grid;
-  gap: var(--space-2, 8px);
+  gap: var(--k-space-2);
   grid-template-columns: 1fr 1fr;
 }
 
 .device-tools__list {
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   margin: 0;
-  padding-left: var(--space-4, 16px);
+  padding-left: var(--k-space-4);
 }
 
 /* The overlay's frames: drawn over the device screen, never interactive. */

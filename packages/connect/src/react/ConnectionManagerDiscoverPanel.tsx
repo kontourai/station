@@ -1,22 +1,13 @@
-import React from 'react';
 import type { ConnectionCandidateProviderResult } from '../core/connectionCandidates';
 import type {
   ConnectionCandidate,
   ConnectionCandidateSource,
 } from '../core/types';
-import { secondaryBtnStyle } from './connection-manager-modal/styles';
-
-const primaryBtnStyle: React.CSSProperties = {
-  padding: '8px 14px',
-  minHeight: 44,
-  fontSize: 13,
-  fontWeight: 600,
-  borderRadius: 8,
-  border: 'none',
-  cursor: 'pointer',
-  background: 'var(--accent-primary, #3b82f6)',
-  color: 'var(--text-on-accent, white)',
-};
+import {
+  compactPrimaryBtnStyle,
+  secondaryBtnStyle,
+} from './connection-manager-modal/styles';
+import './ConnectionManagerModal.css';
 
 const SOURCE_LABEL: Record<ConnectionCandidateSource, string> = {
   'lan-dns-sd': 'Local network',
@@ -62,50 +53,19 @@ export function ConnectionManagerDiscoverPanel({
   );
   const failed = providers.some((provider) => provider.status === 'failed');
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <p
-        style={{
-          margin: 0,
-          fontSize: 13,
-          lineHeight: 1.5,
-          color: 'var(--text-secondary, #999)',
-        }}
-      >
+    <div className="station-connect-discovery">
+      <p className="station-connect-discovery__intro">
         Choose your computer. You’ll still need to approve access there.
       </p>
 
       {providerCount === 0 ? (
-        <div
-          role="status"
-          style={{
-            border: '1px solid var(--border-primary, #333)',
-            borderRadius: 8,
-            padding: 14,
-            fontSize: 13,
-            lineHeight: 1.5,
-            color: 'var(--text-secondary, #999)',
-          }}
-        >
+        <div role="status" className="station-connect-discovery__empty">
           Nearby discovery is not available here. Scan a QR code, enter a
           pairing code, or use a Station address instead.
         </div>
       ) : (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            flexWrap: 'wrap',
-          }}
-        >
-          <span
-            role="status"
-            style={{
-              flex: '1 1 180px',
-              fontSize: 13,
-              color: 'var(--text-secondary, #999)',
-            }}
-          >
+        <div className="station-connect-discovery__toolbar">
+          <span role="status" className="station-connect-discovery__status">
             {discovering
               ? 'Looking for nearby Stations…'
               : candidates.length > 0
@@ -136,35 +96,19 @@ export function ConnectionManagerDiscoverPanel({
       )}
 
       {candidates.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="station-connect-discovery__candidates">
           {candidates.map((candidate) => {
             const alreadyAdded = existingUrls.has(candidate.url);
             return (
               <div
                 key={candidate.id}
-                style={{
-                  background: 'var(--bg-primary, #0a0a0a)',
-                  border: '1px solid var(--border-primary, #333)',
-                  borderRadius: 8,
-                  padding: 12,
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  gap: 10,
-                }}
+                className="station-connect-discovery__candidate"
               >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>
+                <div className="station-connect-discovery__candidate-details">
+                  <div className="station-connect-discovery__candidate-name">
                     {candidate.name}
                   </div>
-                  <div
-                    style={{
-                      marginTop: 2,
-                      fontSize: 11,
-                      color: 'var(--text-secondary, #999)',
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
+                  <div className="station-connect-discovery__candidate-meta">
                     {SOURCE_LABEL[candidate.source]} · Unverified · Access not
                     granted
                     <br />
@@ -176,12 +120,7 @@ export function ConnectionManagerDiscoverPanel({
                   </div>
                 </div>
                 {alreadyAdded ? (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: 'var(--text-secondary, #999)',
-                    }}
-                  >
+                  <span className="station-connect-discovery__saved">
                     Saved
                   </span>
                 ) : (
@@ -189,7 +128,7 @@ export function ConnectionManagerDiscoverPanel({
                     type="button"
                     aria-label={`Request access to ${candidate.name}`}
                     onClick={() => onSelect(candidate)}
-                    style={primaryBtnStyle}
+                    style={compactPrimaryBtnStyle}
                   >
                     Request access
                   </button>

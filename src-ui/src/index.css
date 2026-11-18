@@ -1,21 +1,8 @@
 @import url("./fonts.css");
 @import url("./tokens.css");
 @import url("@kontourai/station-sdk/action-control.css");
-/* Console Kit token contract (roadmap), now consumed from the
-   published @kontourai/ui@1.1.0 package (was the local console-kit mirror).
-   Decision: token *definitions* load globally (the published tokens/index.css
-   targets :root and [data-theme="light"]; scoping them under a wrapper class
-   would mean forking the vendor file, which the @kontourai/ui consumer guide
-   forbids), but `--k-*` *consumption* is scoped to the Kontour-facing
-   surfaces — trust panel, readiness panel, flow run console, gate verdict
-   cards. Station's base chrome stays on its own --bg-… and --text-… tokens
-   until the S4 suite-coherence pass. The two namespaces don't overlap, and
-   @kontourai/ui's dark default + [data-theme="light"] skin key off the same
-   documentElement data-theme attribute ThemeToggle already manages, so both
-   token systems flip together. fonts.css supplies the --k-font-* faces
-   (self-hosted woff2, same vendored pattern as Station's own fonts.css
-   import above — #2648). react/styles.css carries
-   the shared primitive class contract (was imported via the deleted mirror). */
+/* Load the kit fonts and tokens before the shared component styles. Station
+   sets the density-sensitive --k-text-sm value in tokens.css. */
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 @import url("@kontourai/ui/react/styles.css");

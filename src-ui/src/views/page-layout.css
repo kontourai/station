@@ -155,18 +155,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--k-space-4);
   min-height: 44px;
-  padding: 0.875rem 0;
+  padding-block: var(--k-space-4);
   border-bottom: 1px solid var(--border-primary);
 }
 
 .page-row:first-child {
-  padding-top: 0;
+  padding-block-start: 0;
 }
 
 .page-row:last-child {
-  padding-bottom: 0;
+  padding-block-end: 0;
   border-bottom: 0;
 }
 
@@ -176,15 +176,15 @@
 
 .page-row__label {
   color: var(--text-primary);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: var(--k-text-md);
+  font-weight: 500;
 }
 
 .page-row__description {
-  margin-top: 0.25rem;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  line-height: 1.45;
+  margin-top: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
 }
 
 /* Whatever a row adds under its label (buttons, lists, disclosures) gets one
