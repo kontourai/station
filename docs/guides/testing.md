@@ -3089,6 +3089,16 @@ Only an observed timing entry contributes to a resource conclusion. An
 unavailable observation names the stage and failure class. Keep the existing
 20-second allowances until a slow-host sample establishes the tail.
 
+A clean run at `cbfd9227ce19297fb1ba090e2463c579ff5e154d` with one-minute host
+load 7.1–7.9 observed both setup launchers at 168–169 ms, the unconfigured
+composer at 4 ms, the Connections Models action at 338 ms, the Station Agent
+row at 1.08 s, and Chat actions at 812 ms. Inbox opened in 40–51 ms. The
+browser returned resource durations of 5.0 ms for the Connections frame,
+4.2 ms for the provider view, and 3.6 ms for the Chat actions sheet. Each
+had a zero transfer size. The Agent picker row's recorded script request
+preceded the timed picker interaction, and the Inbox recorded no new
+same-origin script entries during those opens.
+
 `tests/mobile-chat-composer.spec.ts` owns the mobile task-switcher journey:
 at 320px and 390px it covers the header trigger, visual-viewport sheet
 containment, dismissal/focus return, chat restore, and delegated Sessions
