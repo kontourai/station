@@ -205,9 +205,13 @@ SDK-backed requests give up after 30 seconds. Override with
 orchestration and approval events and live monitoring — have no overall
 deadline. Chat sends a bounded JSON acceptance request, then observes the turn
 on a separate event stream. Knowledge reindexing and migration also opt out of
-the request deadline. The current Operate event-stream path bypasses the shared
-credential client and cannot authenticate to a protected Station; see the
-reference.
+the request deadline. Operate uses the selected Station’s credential for its
+session reads and live event stream.
+
+Use `station checkpoints restore --thread=<id> --turn=<id> --station=<name>`
+to inspect the affected paths. To restore, repeat the target and IDs and add
+`--confirm`, `--preview-id=<id>`, and `--expected-current-tree-sha=<sha>` from
+that preview. Both calls use the shared Station credential and request deadline.
 
 ## What this CLI does not do
 
