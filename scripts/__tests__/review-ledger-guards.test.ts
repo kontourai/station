@@ -1139,26 +1139,37 @@ describe('note archives (#3394)', () => {
       (file) =>
         file.startsWith(`${NOTES}/`) && !file.startsWith(`${ARCHIVE_DIR}/`),
     );
-    // A real store has hundreds of notes; the split needs at least three.
-    expect(loose.length).toBeGreaterThan(100);
     const compacted = new Map(files);
-    // Two archives and a loose remainder, as after two advances.
-    const cut = [
-      Math.floor(loose.length / 3),
-      Math.floor((2 * loose.length) / 3),
-    ];
-    const groups = [loose.slice(0, cut[0]), loose.slice(cut[0], cut[1])];
-    groups.forEach((group, index) => {
-      for (const file of group) compacted.delete(file);
-      const archive = noteArchiveFile(String(index + 1).repeat(40));
-      const text = serializeNoteArchive(
-        new Map(group.map((file) => [file, files.get(file) as string])),
+    const archiveGroup = (group: string[], index: number) => {
+      const archive = noteArchiveFile(String(index).repeat(40));
+      expect(compacted.has(archive)).toBe(false);
+      const expected = new Map(
+        group.map((file) => [file, compacted.get(file) as string]),
       );
+      const text = serializeNoteArchive(expected);
+      expect(parseNoteArchive(archive, text)).toEqual(expected);
+      for (const file of group) compacted.delete(file);
       compacted.set(archive, text);
-      // Exact bytes survive the round trip.
-      for (const [file, archived] of parseNoteArchive(archive, text))
-        expect(archived).toBe(files.get(file));
-    });
+    };
+    // Prepare a supported state with a small loose remainder. If the real
+    // store already has fewer than three loose notes, reuse archived members.
+    for (const [archive, text] of files) {
+      if (loose.length >= 3) break;
+      if (!archive.startsWith(`${ARCHIVE_DIR}/`)) continue;
+      const entries = parseNoteArchive(archive, text);
+      for (const [file, bytes] of entries) {
+        compacted.set(file, bytes);
+        entries.delete(file);
+        loose.push(file);
+        if (loose.length === 3) break;
+      }
+      if (entries.size) compacted.set(archive, serializeNoteArchive(entries));
+      else compacted.delete(archive);
+    }
+    if (loose.length > 3) archiveGroup(loose.splice(3), 3);
+    expect(loose).toHaveLength(3);
+    archiveGroup([loose[0]], 1);
+    archiveGroup([loose[1]], 2);
     const compile = (input: Map<string, string>) =>
       JSON.stringify(
         compileReviewState(parseReviewLedgerFiles(input), manifest),
