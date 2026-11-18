@@ -1,6 +1,5 @@
 import { useOrchestrationCommandReceiptsQuery } from '@kontourai/station-sdk';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
-import { clientOriginSurfaceLabel } from '../utils/clientOrigin';
 
 export function useReportedDelegationStart(threadId: string | undefined) {
   const authority = useAuthorityPersistence();
@@ -17,5 +16,7 @@ export function useReportedDelegationStart(threadId: string | undefined) {
       receipt.status === 'accepted'
     );
   });
-  return clientOriginSurfaceLabel(start?.clientOrigin);
+  return start?.clientOrigin?.reported.surface === 'cli'
+    ? 'CLI (reported)'
+    : null;
 }
