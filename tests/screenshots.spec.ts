@@ -3119,6 +3119,18 @@ function pullRequestWatchScreens(): Screen[] {
           await expect(
             page.getByRole('heading', { name: 'Other Task pull requests' }),
           ).toBeVisible();
+          const groupHeading = page.getByRole('heading', {
+            name: 'Other Task pull requests',
+          });
+          const headingBox = await groupHeading.boundingBox();
+          expect(headingBox).not.toBeNull();
+          const rowBottom = await page
+            .getByRole('combobox', { name: 'Fix attempts' })
+            .evaluate(
+              (element) =>
+                element.closest('.page-row')!.getBoundingClientRect().bottom,
+            );
+          expect(headingBox!.y - rowBottom).toBeGreaterThanOrEqual(16);
           await expect(
             page.getByRole('switch', { name: 'Review each new head' }),
           ).toBeChecked();
@@ -3147,7 +3159,55 @@ function pullRequestWatchScreens(): Screen[] {
           }
         },
       };
-      return [taskScreen, projectScreen];
+      const noRepositorySlug = `gallery-pr-no-repo-${theme}-${viewport.width}`;
+      let noRepositoryFixture: ReturnType<typeof preview> | undefined;
+      let noRepositoryCreated = false;
+      const noRepositoryScreen: Screen = {
+        name: `project-pull-requests-no-repository-${theme}-${form}`,
+        title: `Project pull requests setup — ${theme}, ${viewport.width}px`,
+        path: `/projects/${noRepositorySlug}/edit?section=pull-requests`,
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          noRepositoryFixture = preview(page);
+          await noRepositoryFixture.enable();
+          const created = await noRepositoryFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Design notes', slug: noRepositorySlug } },
+          );
+          expect(created.ok(), await created.text()).toBe(true);
+          noRepositoryCreated = true;
+        },
+        async afterGoto(page) {
+          await expect(
+            page.getByText('Add a GitHub repository to use pull requests'),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('button', { name: 'Open Sources' }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('switch', { name: 'Watch Task pull requests' }),
+          ).toHaveCount(0);
+          await expect(
+            page.getByRole('button', { name: 'Save', exact: true }),
+          ).toHaveCount(0);
+        },
+        async cleanup() {
+          try {
+            if (noRepositoryCreated)
+              expect(
+                (
+                  await noRepositoryFixture!.request.delete(
+                    `${resolveE2EApiBase()}/api/projects/${noRepositorySlug}`,
+                  )
+                ).ok(),
+              ).toBe(true);
+          } finally {
+            await noRepositoryFixture?.restore();
+          }
+        },
+      };
+      return [taskScreen, projectScreen, noRepositoryScreen];
     }),
   );
 }
