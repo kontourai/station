@@ -112,7 +112,6 @@ vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => {
     installStationEnvelopeMarker: actual.installStationEnvelopeMarker,
     parseDeviceSessionCookie: actual.parseDeviceSessionCookie,
     LOOPBACK_DEVICE_SESSION_COOKIE: actual.LOOPBACK_DEVICE_SESSION_COOKIE,
-    SECURE_DEVICE_SESSION_COOKIE: actual.SECURE_DEVICE_SESSION_COOKIE,
   };
 });
 
