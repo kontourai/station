@@ -1,0 +1,23 @@
+{
+  "revision": "71b99302011d6c11fc1299af235d5cb5fbec24e5",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Memory and Sources select the same bounded list layout. Read the branch in ProjectSettingsView and the browser regression. Header identity, navigation, dirty-state guard and saving remain with their existing owners. A real 390px phone capture and keyboard and pointer checks verified reaching the final note actions.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Memory and Sources select the same bounded list layout. Read the branch in ProjectSettingsView and the browser regression. Header identity, navigation, dirty-state guard and saving remain with their existing owners. A real 390px phone capture and keyboard and pointer checks verified reaching the final note actions.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Memory and Sources select the same bounded list layout. Read the branch in ProjectSettingsView and the browser regression. Header identity, navigation, dirty-state guard and saving remain with their existing owners. A real 390px phone capture and keyboard and pointer checks verified reaching the final note actions.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The existing Sources scrollport rules now also apply to Memory with the same specificity and declarations. In both mobile gallery themes the inner list ended above the dock and accepted wheel scrolling without moving the header. Focus and pointer hits reached both final actions. The guide’s dock and responsive action ownership remain accurate.","inputs":["src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"docs/user/settings.md","note":"The existing Sources scrollport rules now also apply to Memory with the same specificity and declarations. In both mobile gallery themes the inner list ended above the dock and accepted wheel scrolling without moving the header. Focus and pointer hits reached both final actions. The guide’s dock and responsive action ownership remain accurate.","inputs":["src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"docs/learn/media/project-invitation-after-1440-dark.png","note":"The added regression mounts the real Project settings component and checks wheel travel, header stability, tab focus and hit testing of both final note actions. Removing just Memory from the bounded list made the new assertion fail. The existing historical invitation capture fixtures and captions retain their original scope.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-after-390-light.png","note":"The added regression mounts the real Project settings component and checks wheel travel, header stability, tab focus and hit testing of both final note actions. Removing just Memory from the bounded list made the new assertion fail. The existing historical invitation capture fixtures and captions retain their original scope.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-1440-dark.png","note":"The added regression mounts the real Project settings component and checks wheel travel, header stability, tab focus and hit testing of both final note actions. Removing just Memory from the bounded list made the new assertion fail. The existing historical invitation capture fixtures and captions retain their original scope.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-390-light.png","note":"The added regression mounts the real Project settings component and checks wheel travel, header stability, tab focus and hit testing of both final note actions. Removing just Memory from the bounded list made the new assertion fail. The existing historical invitation capture fixtures and captions retain their original scope.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]}
+  ]
+}
