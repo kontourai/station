@@ -107,7 +107,7 @@ export async function dispatchSlashCommand(
     const refuse = (reason: string) => {
       addEphemeralMessage(sessionId, {
         role: 'system',
-        content: `/${cmd}: ${reason} — nothing was sent`,
+        content: `/${cmd} didn’t run. ${reason}`,
       });
       cleanup();
       return true;

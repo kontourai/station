@@ -47,8 +47,8 @@ function Harness({
         onFocus={() => setShortcutContext('composerFocused', true)}
         onBlur={() => setShortcutContext('composerFocused', false)}
       />
-      <div
-        tabIndex={0}
+      <button
+        type="button"
         aria-label="Terminal"
         onFocus={() => setShortcutContext('terminalFocused', true)}
         onBlur={() => setShortcutContext('terminalFocused', false)}

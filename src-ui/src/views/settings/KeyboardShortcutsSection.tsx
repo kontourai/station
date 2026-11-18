@@ -176,7 +176,7 @@ export function KeyboardShortcutsSection() {
                       {condition ? (
                         <code>{JSON.stringify(condition)}</code>
                       ) : (
-                        <span>No registered rule</span>
+                        <span>Condition unset</span>
                       )}
                       <span>
                         Open dialogs pause shortcuts. A focused control may own
@@ -242,7 +242,7 @@ export function KeyboardShortcutsSection() {
           {filtered.length === 0 && (
             <Empty
               variant="compact"
-              label="No registered commands match your search."
+              label="Try a different search or open the view that registers the command."
             />
           )}
         </div>
