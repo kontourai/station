@@ -78,6 +78,9 @@ beforeEach(() => {
 });
 
 const createProjectMock = vi.fn();
+const createContinuationTask = vi.fn();
+const createContinuationReference = vi.fn();
+const continuationFlags = new Set<string>();
 const applyProjectLayoutMock = vi.fn();
 const validateDirectoryMock = vi.fn();
 const setProjectMock = vi.fn();
@@ -240,6 +243,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     mutateAsync: createProjectMock,
   }),
   useProjectsQuery: () => projectsQueryState,
+  useTasksQuery: () => ({ isSuccess: true, data: [] }),
+  useCreateTaskMutation: () => ({ mutateAsync: createContinuationTask }),
+  useCreateTaskReferenceMutation: () => ({
+    mutateAsync: createContinuationReference,
+  }),
+  useUpdateProjectMutation: () => ({ mutateAsync: vi.fn() }),
   useReposQuery: () => reposQueryState,
   useFileSystemBrowseQuery: () => ({ refetch: validateDirectoryMock }),
   useSshEnvironmentsQuery: () => ({ data: [], isLoading: false }),
@@ -265,6 +274,18 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
       isCurrent: () => authorityState.key === key,
     };
   },
+}));
+
+vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useProjects: () => ({
+    projects: projectsQueryState.data,
+    isConfirmedLoaded: projectsQueryState.isSuccess,
+  }),
+}));
+
+vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => continuationFlags,
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
@@ -308,9 +329,279 @@ vi.mock('../components/PathAutocomplete', async (importOriginal) => {
   };
 });
 
+import { ContinueInProjectDialog } from '../components/chat-dock/ContinueInProjectDialog';
 import { NewProjectModal } from '../components/modals/NewProjectModal';
+import { stageProjectContinuation } from '../lib/continue-in-project';
+import { SetupRecommendationsCard } from '../views/project-page/SetupRecommendationsCard';
 
 describe('NewProjectModal starter layout picker', () => {
+  test('an unsubmitted chat draft stays off other Projects and follows the created Project after renaming', async () => {
+    continuationFlags.add('continue-in-project');
+    const source = {
+      sessionId: 'chat-session',
+      latestTurnId: 'completed-turn',
+      title: 'Quarterly review',
+      workingDirectory: '/private/review',
+    };
+    const created = {
+      id: 'created-project',
+      slug: 'quarterly-plan',
+      name: 'Quarterly plan',
+      description: 'Project brief',
+    };
+    const showRecommendation = (
+      project: typeof created,
+      recoveryKey = authorityState.recoveryKey,
+    ) => (
+      <SetupRecommendationsCard
+        project={project}
+        hasRepository={false}
+        requestScope={{
+          apiBase: 'http://localhost:3000',
+          authorityKey: authorityState.key,
+          draftRecoveryKey: recoveryKey,
+          isCurrent: () => true,
+        }}
+      />
+    );
+    try {
+      const content = () => (
+        <ContinueInProjectDialog conversation={source} onClose={onCloseMock} />
+      );
+      const dialog = render(content());
+      const chooser = screen.getByRole('combobox', { name: 'Project' });
+      expect((chooser as HTMLSelectElement).selectedOptions[0]?.text).toBe(
+        'New Project…',
+      );
+      projectsQueryState.data = [
+        { slug: 'existing-project', name: 'Existing Project' },
+      ];
+      dialog.rerender(content());
+      expect((chooser as HTMLSelectElement).selectedOptions[0]?.text).toBe(
+        'Choose a Project',
+      );
+      expect(screen.queryByRole('button', { name: 'Create Task' })).toBeNull();
+      const newProjectOption = screen.getByRole('option', {
+        name: 'New Project…',
+      });
+      fireEvent.change(chooser, {
+        target: { value: (newProjectOption as HTMLOptionElement).value },
+      });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Review new Project' }),
+      );
+      dialog.unmount();
+      await waitFor(() =>
+        expect(window.history.state?.__stationDialog).toBeUndefined(),
+      );
+      const [pathname, params] = navigateMock.mock.calls[0]!;
+      expect(params).toEqual({ continuation: expect.any(String) });
+      const formUrl = `${pathname}?${new URLSearchParams(params)}`;
+
+      const projectPage = render(
+        showRecommendation({ ...created, id: 'unrelated-project' }),
+      );
+      expect(
+        screen.queryByText('New Task: Continue: Quarterly review'),
+      ).toBeNull();
+      projectPage.unmount();
+
+      window.history.replaceState(null, '', formUrl);
+      createProjectMock.mockResolvedValueOnce(created);
+      const form = render(<NewProjectModal isOpen onClose={onCloseMock} />);
+      expect(screen.getByPlaceholderText('My Project')).toHaveProperty(
+        'value',
+        'Quarterly review',
+      );
+      expect(screen.getByLabelText(/Project folder/)).toHaveProperty(
+        'value',
+        '/private/review',
+      );
+      expect(screen.getByLabelText(/Description/)).toHaveProperty(
+        'value',
+        expect.stringContaining('Quarterly review'),
+      );
+      const creatingAccount = authorityState.recoveryKey;
+      authorityState.key = 'different-account-activation';
+      authorityState.recoveryKey = 'different-account';
+      form.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+      expect(screen.getByPlaceholderText('My Project')).toHaveProperty(
+        'value',
+        '',
+      );
+      expect(screen.getByLabelText(/Project folder/)).toHaveProperty(
+        'value',
+        '',
+      );
+      expect(screen.getByLabelText(/Description/)).toHaveProperty('value', '');
+      authorityState.key = 'creating-account-fresh-activation';
+      authorityState.recoveryKey = creatingAccount;
+      form.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+      expect(screen.getByPlaceholderText('My Project')).toHaveProperty(
+        'value',
+        'Quarterly review',
+      );
+      fireEvent.change(screen.getByPlaceholderText('My Project'), {
+        target: { value: 'Quarterly plan' },
+      });
+      fireEvent.click(screen.getByRole('radio', { name: /Blank Project/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await waitFor(() =>
+        expect(setProjectMock).toHaveBeenCalledWith(created.slug),
+      );
+      form.unmount();
+
+      const room = render(
+        showRecommendation({ ...created, id: 'unrelated-project' }),
+      );
+      expect(
+        screen.queryByText('New Task: Continue: Quarterly review'),
+      ).toBeNull();
+      room.rerender(showRecommendation(created, 'different-account'));
+      expect(
+        screen.queryByText('New Task: Continue: Quarterly review'),
+      ).toBeNull();
+      room.rerender(showRecommendation(created));
+      expect(
+        screen.getByText('New Task: Continue: Quarterly review'),
+      ).toBeTruthy();
+    } finally {
+      continuationFlags.clear();
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
+  test('a Project-bound answer can only be saved with its link in its originating Project', async () => {
+    projectsQueryState.data = [
+      { slug: 'another-project', name: 'Another Project' },
+      { slug: 'source-project', name: 'Source Project' },
+    ];
+    createContinuationTask.mockReset().mockResolvedValue({
+      id: 'bound-task',
+      title: 'Continue: Completed work',
+    });
+    createContinuationReference.mockReset().mockResolvedValue({});
+    render(
+      <ContinueInProjectDialog
+        conversation={{
+          sessionId: 'answer-session',
+          latestTurnId: 'answer-turn',
+          title: 'Completed work',
+        }}
+        sourceProjectSlug="source-project"
+        onClose={onCloseMock}
+      />,
+    );
+    const picker = screen.getByRole('combobox', { name: 'Project' });
+    expect(picker).toHaveProperty('value', 'source-project');
+    expect(
+      within(picker)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['Source Project']);
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith('/tasks/bound-task'),
+    );
+    expect(createContinuationTask).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'source-project' }),
+    );
+    expect(createContinuationReference).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: 'bound-task',
+        sessionId: 'answer-session',
+        turnId: 'answer-turn',
+      }),
+    );
+  });
+
+  test('finishes a failed citation on the Project where the Task was created', async () => {
+    projectsQueryState.data = [
+      { slug: 'first-project', name: 'First Project' },
+      { slug: 'second-project', name: 'Second Project' },
+    ];
+    createContinuationTask.mockReset().mockResolvedValue({
+      id: 'first-task',
+      title: 'Saved Task title',
+    });
+    createContinuationReference
+      .mockReset()
+      .mockRejectedValueOnce(new Error('Citation temporarily unavailable'))
+      .mockImplementationOnce(async () => {
+        // The citation landed as the selected Station authority changed.
+        authorityState.key = 'second-switch';
+        return {};
+      });
+    const dialog = () => (
+      <ContinueInProjectDialog
+        conversation={{
+          sessionId: 'chat-session',
+          latestTurnId: 'completed-turn',
+          title: 'Quarterly review',
+        }}
+        onClose={onCloseMock}
+      />
+    );
+    const { rerender } = render(dialog());
+    const projectSelect = screen.getByRole('combobox', { name: 'Project' });
+    fireEvent.change(projectSelect, { target: { value: 'first-project' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task' }), {
+      target: { value: 'An edited Task title' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+    await screen.findByText('Chat link wasn’t added');
+
+    expect(screen.getByText('Saved Task title')).toBeTruthy();
+    expect(screen.getByText('First Project')).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'Project' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Task' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+
+    const creatingAccount = authorityState.recoveryKey;
+    authorityState.key = 'another-station-authority';
+    authorityState.recoveryKey = 'another-station-account';
+    rerender(dialog());
+    expect(
+      screen.getByText('Return to the original Station to continue.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Saved Task title')).toBeNull();
+    expect(screen.queryByText('First Project')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Link chat to Task' }),
+    ).toBeNull();
+    expect(createContinuationReference).toHaveBeenCalledTimes(1);
+    expect(navigateMock).not.toHaveBeenCalled();
+
+    authorityState.key = 'original-account-fresh-activation';
+    authorityState.recoveryKey = creatingAccount;
+    rerender(dialog());
+    fireEvent.click(screen.getByRole('button', { name: 'Link chat to Task' }));
+    const openTask = await screen.findByRole('button', { name: 'Open Task' });
+    expect(navigateMock).not.toHaveBeenCalled();
+
+    authorityState.key = 'original-account-next-activation';
+    rerender(dialog());
+    fireEvent.click(openTask);
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith('/tasks/first-task'),
+    );
+    expect(createContinuationTask).toHaveBeenCalledTimes(1);
+    expect(createContinuationTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'first-project',
+        title: 'An edited Task title',
+      }),
+    );
+    expect(createContinuationReference).toHaveBeenCalledTimes(2);
+    expect(createContinuationReference).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        taskId: 'first-task',
+        turnId: 'completed-turn',
+      }),
+    );
+  });
+
   test('real path mounting keeps initial name focus and preserves focus on the selected intent', () => {
     savedCreationFixture.realPath = true;
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
@@ -1047,6 +1338,24 @@ describe('NewProjectModal starter layout picker', () => {
     projectsQueryState.data = [
       { slug: 'saved-project', name: 'Saved project' },
     ];
+    const requestScope = {
+      apiBase: 'http://localhost:3000',
+      authorityKey: authorityState.key,
+      draftRecoveryKey: authorityState.recoveryKey,
+      isCurrent: () => true,
+    };
+    const stage = (title: string) =>
+      stageProjectContinuation(requestScope, {
+        sessionId: 'chat-session',
+        title,
+        description: 'Chat brief',
+        savedAt: new Date().toISOString(),
+        projectDraft: { name: title, description: 'Project brief' },
+      });
+    const retainedToken = stage('Continue: Saved chat');
+    const liveToken = stage('Continue: New chat');
+    expect(retainedToken).toBeDefined();
+    expect(liveToken).toBeDefined();
     localStorage.setItem(
       JSON.stringify([
         'project-creation',
@@ -1063,53 +1372,80 @@ describe('NewProjectModal starter layout picker', () => {
           workingDirectory: '/saved/repository',
         },
         starterLayoutId: 'plugin:review',
+        continuationId: retainedToken,
       }),
     );
-    render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    await screen.findByText(
-      'Saved setup: Saved project. Station checks the same request before continuing.',
+    continuationFlags.add('continue-in-project');
+    window.history.replaceState(
+      null,
+      '',
+      `/projects/new?continuation=${liveToken}`,
     );
-    await waitFor(() =>
+    try {
+      const form = render(<NewProjectModal isOpen onClose={onCloseMock} />);
+      await screen.findByText(
+        'Saved setup: Saved project. Station checks the same request before continuing.',
+      );
+      await waitFor(() =>
+        expect(
+          (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+        ).toBe('Saved project'),
+      );
       expect(
-        (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
-      ).toBe('Saved project'),
-    );
-    expect(
-      (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
-    ).toBe('/saved/repository');
-    fireEvent.click(
-      screen.getByRole('button', { name: /^Choose project icon/ }),
-    );
-    expect(
-      screen
-        .getByRole('button', { name: 'No icon' })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
-    expect(screen.getByText('Starter: Review')).toBeTruthy();
-    expect(screen.queryByText(/may already exist/)).toBeNull();
-    await screen.findByText(
-      'Project created. Retry the selected starter layout to finish setup.',
-    );
-    await waitFor(() =>
+        (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
+      ).toBe('/saved/repository');
+      fireEvent.click(
+        screen.getByRole('button', { name: /^Choose project icon/ }),
+      );
       expect(
         screen
-          .getByRole('button', { name: 'Retry layout' })
-          .matches(':disabled'),
-      ).toBe(false),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Retry layout' }));
-    await waitFor(() =>
-      expect(applyProjectLayoutMock).toHaveBeenCalledWith(
-        'http://localhost:3000',
-        'saved-project',
-        'plugin:review',
-        expect.objectContaining({
-          creationRequestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
-        }),
-      ),
-    );
-    expect(createProjectMock).not.toHaveBeenCalled();
-    await waitFor(() => expect(onCloseMock).toHaveBeenCalled());
+          .getByRole('button', { name: 'No icon' })
+          .getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(screen.getByText('Starter: Review')).toBeTruthy();
+      expect(screen.queryByText(/may already exist/)).toBeNull();
+      await screen.findByText(
+        'Project created. Retry the selected starter layout to finish setup.',
+      );
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole('button', { name: 'Retry layout' })
+            .matches(':disabled'),
+        ).toBe(false),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Retry layout' }));
+      await waitFor(() =>
+        expect(applyProjectLayoutMock).toHaveBeenCalledWith(
+          'http://localhost:3000',
+          'saved-project',
+          'plugin:review',
+          expect.objectContaining({
+            creationRequestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+          }),
+        ),
+      );
+      expect(createProjectMock).not.toHaveBeenCalled();
+      await waitFor(() => expect(onCloseMock).toHaveBeenCalled());
+      form.unmount();
+      render(
+        <SetupRecommendationsCard
+          requestScope={requestScope}
+          project={{
+            id: 'reserved-project',
+            slug: 'saved-project',
+            name: 'Saved project',
+            description: 'Retained description',
+          }}
+          hasRepository={false}
+        />,
+      );
+      expect(screen.getByText('New Task: Continue: Saved chat')).toBeTruthy();
+      expect(screen.queryByText('New Task: Continue: New chat')).toBeNull();
+    } finally {
+      continuationFlags.clear();
+      window.history.replaceState(null, '', '/');
+    }
   });
 
   test('restored private fields and starter remain confined when the live modal changes accounts', async () => {

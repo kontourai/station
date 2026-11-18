@@ -1,0 +1,165 @@
+{
+  "revision": "d4927a13987e4adcaa201f285c4721085fee658e",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Checked the personal-chat destination picker and the preselected source Project for a Project-bound answer. The guide describes the Task, how the original answer is linked, and what the person can do after a partial save.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked the cited storage and replay claims against the indexed conversation Project reader. The Task reference check distinguishes a persisted unbound row from a missing row. Existing slug callers keep the same return values and the schema is unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"The personal answer-reference route now supplies the EventStore Project lookup to the binding owner. The lookup rechecks the source at commit. The request tuple, response contract, route authentication and other mounted services retain the documented behavior.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the Task reference route and its existing commit witness. It passes the captured destination Project to the answer binding owner. Kept answers still require the authorized completed turn and a current Task, caller and Session at publication.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the Task reference route and its existing commit witness. It passes the captured destination Project to the answer binding owner. Kept answers still require the authorized completed turn and a current Task, caller and Session at publication.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the Task reference route and its existing commit witness. It passes the captured destination Project to the answer binding owner. Kept answers still require the authorized completed turn and a current Task, caller and Session at publication.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the Task reference route and its existing commit witness. It passes the captured destination Project to the answer binding owner. Kept answers still require the authorized completed turn and a current Task, caller and Session at publication.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Checked the Task reference route and its existing commit witness. It passes the captured destination Project to the answer binding owner. Kept answers still require the authorized completed turn and a current Task, caller and Session at publication.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the Task reference route and its existing commit witness. It passes the captured destination Project to the answer binding owner. Kept answers still require the authorized completed turn and a current Task, caller and Session at publication.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked the Task reference route and its existing commit witness. It passes the captured destination Project to the answer binding owner. Kept answers still require the authorized completed turn and a current Task, caller and Session at publication.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"The Save to Project menu action now reads the transcript displayed by the matching chat and Station and selects eligible destinations. The dock still owns the action, and saving opens the Project dialog without sending an agent turn.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The content area carries the current chat transcript reference to its dock host for Save to Project. It still mounts the same live conversation body.","inputs":["src-ui/src/components/chat-dock/ChatDockContentArea.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The live conversation body lends its current, settled displayed messages to Save to Project and clears that reference when ownership changes. The transcript still comes from the existing controller, with the same rendering, replay and access boundaries.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The live conversation body lends its current, settled displayed messages to Save to Project and clears that reference when ownership changes. The transcript still comes from the existing controller, with the same rendering, replay and access boundaries.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"The live conversation body lends its current, settled displayed messages to Save to Project and clears that reference when ownership changes. The transcript still comes from the existing controller, with the same rendering, replay and access boundaries.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"The live conversation body lends its current, settled displayed messages to Save to Project and clears that reference when ownership changes. The transcript still comes from the existing controller, with the same rendering, replay and access boundaries.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The live conversation body lends its current, settled displayed messages to Save to Project and clears that reference when ownership changes. The transcript still comes from the existing controller, with the same rendering, replay and access boundaries.","inputs":["src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

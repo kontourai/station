@@ -101,6 +101,44 @@ function owner() {
 }
 
 describe('AnswerNarrativeBindingModule', () => {
+  test('refuses to pin an active narrative when the source Project is missing', async () => {
+    let sourceProject: string | undefined = answer.projectSlug;
+    const module = new AnswerNarrativeBindingModule(
+      home(),
+      {
+        read: async () => ({ ...answer, projectSlug: sourceProject }),
+        readProjectScope: () => ({ projectSlug: sourceProject ?? null }),
+      },
+      owner(),
+    );
+    await module.publish(
+      binding.sessionId,
+      binding.turnId,
+      publication('publish-a', 0),
+      authority,
+      () => true,
+    );
+    let commits = 0;
+    const pin = () =>
+      module.withTaskReferencePin({
+        sessionId: binding.sessionId,
+        turnId: binding.turnId,
+        authority,
+        taskProjectId: answer.projectSlug,
+        current: () => true,
+        commit: async (witness) => {
+          commits += 1;
+          expect(witness.isCurrent()).toBe(true);
+          return witness.associationRevision;
+        },
+      });
+    await expect(pin()).resolves.toBe(1);
+
+    sourceProject = undefined;
+    await expect(pin()).rejects.toBeInstanceOf(AnswerNarrativeNotFoundError);
+    expect(commits).toBe(1);
+  });
+
   test('uses the exact durable answer seam and classifies unavailable state', async () => {
     const module = new AnswerNarrativeBindingModule(
       home(),

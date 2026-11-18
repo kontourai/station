@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
+  bindProjectContinuation,
   continuedConversationFromChat,
   draftProjectFromConversation,
   draftTaskFromConversation,
-  newProjectHref,
-  readPendingContinuation,
-  rememberPendingContinuation,
+  readProjectContinuation,
+  stageProjectContinuation,
 } from '../continue-in-project';
 
 const NOW = new Date('2026-11-16T12:00:00.000Z');
@@ -13,6 +13,10 @@ const NOW = new Date('2026-11-16T12:00:00.000Z');
 function memoryStorage() {
   const values = new Map<string, string>();
   return {
+    get length() {
+      return values.size;
+    },
+    key: (index: number) => [...values.keys()][index] ?? null,
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => void values.set(key, value),
     removeItem: (key: string) => void values.delete(key),
@@ -37,6 +41,12 @@ const chat = {
     { role: 'user', content: 'And APAC?' },
     // Still streaming: never cited.
     { role: 'assistant', content: 'APAC is…', turnId: 'turn-2' },
+    {
+      role: 'assistant',
+      content: 'An answer without an execution Session',
+      turnId: 'unbound-turn',
+      answerEligible: true,
+    },
     { role: 'system', content: 'Reconnected', ephemeral: true },
   ],
 };
@@ -77,9 +87,6 @@ describe('Continue in Project drafts', () => {
       'Continued from the chat “Quarterly revenue analysis” with Analyst on 2026-11-16 (chat conversation-9).',
     );
     expect(draft.description).toContain('Asked: Compare Q3 revenue by region.');
-    const href = new URL(newProjectHref(draft), 'http://station.test');
-    expect(href.pathname).toBe('/projects/new');
-    expect(href.searchParams.get('description')).toBe(draft.description);
   });
 
   test('an untitled chat is named from its first request', () => {
@@ -94,9 +101,14 @@ describe('Continue in Project drafts', () => {
     expect(draft.title).toBe('Continue: Draft the onboarding email');
   });
 
-  test('a pending continuation is offered once, within the hour', () => {
+  test('a bound continuation expires an hour after the draft was staged', () => {
     const storage = memoryStorage();
-    rememberPendingContinuation(
+    const scope = {
+      apiBase: 'https://station.test',
+      authorityKey: 'account-1',
+    };
+    const draftId = stageProjectContinuation(
+      scope,
       {
         sessionId: 'session-1',
         turnId: 'turn-1',
@@ -106,9 +118,18 @@ describe('Continue in Project drafts', () => {
       },
       storage,
     );
-    expect(readPendingContinuation(NOW, storage)?.turnId).toBe('turn-1');
+    expect(draftId).toBeDefined();
+    bindProjectContinuation(scope, draftId!, 'project-1', NOW, storage);
     expect(
-      readPendingContinuation(new Date(NOW.getTime() + 61 * 60_000), storage),
+      readProjectContinuation(scope, 'project-1', NOW, storage)?.turnId,
+    ).toBe('turn-1');
+    expect(
+      readProjectContinuation(
+        scope,
+        'project-1',
+        new Date(NOW.getTime() + 61 * 60_000),
+        storage,
+      ),
     ).toBeUndefined();
   });
 });
