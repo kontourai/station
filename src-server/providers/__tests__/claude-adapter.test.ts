@@ -10636,7 +10636,9 @@ describe('ClaudeAdapter', () => {
       vi.stubEnv('USERPROFILE', home);
       vi.stubEnv('ANTHROPIC_API_KEY', undefined);
       vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined);
       vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+      vi.stubEnv('CLAUDE_SECURESTORAGE_CONFIG_DIR', undefined);
     });
 
     afterEach(() => {
@@ -10716,7 +10718,9 @@ describe('ClaudeAdapter', () => {
       vi.stubEnv('HOME', makeTempDir('station-claude-keychain-home-'));
       vi.stubEnv('ANTHROPIC_API_KEY', undefined);
       vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined);
       vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+      vi.stubEnv('CLAUDE_SECURESTORAGE_CONFIG_DIR', undefined);
       // An existing config dir with no credentials file: the Keychain case.
       configHome = makeTempDir('station-claude-keychain-config-');
     });
