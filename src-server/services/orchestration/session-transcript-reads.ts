@@ -776,6 +776,9 @@ export function usageReceiptsForEventRow(
   if (event.payload.method !== 'token-usage.updated') return [];
   const usage = event.payload;
   const common = {
+    ...(usage.servedModelObservation
+      ? { servedModelObservation: usage.servedModelObservation }
+      : {}),
     ...(accountKey !== undefined ? { accountKey } : {}),
     ...(connectionId !== undefined ? { connectionId } : {}),
     ...(modelConnectionId !== undefined ? { modelConnectionId } : {}),
