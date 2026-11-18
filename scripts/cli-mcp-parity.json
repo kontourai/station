@@ -96,6 +96,24 @@
       "exempt": "person-only",
       "reason": "Operator-only observation history; the Automation ledger has no Project or agent audience binding."
     },
+    "board move": {
+      "tools": ["board_move"]
+    },
+    "board pin": {
+      "tools": ["board_pin"]
+    },
+    "board read": {
+      "tools": ["board_read"]
+    },
+    "board unpin": {
+      "tools": ["board_unpin"]
+    },
+    "boards get": {
+      "tools": ["get_personal_board"]
+    },
+    "boards list": {
+      "tools": ["list_personal_boards"]
+    },
     "branding get": {
       "exempt": "presentation",
       "reason": "Whitelabel branding for UI chrome (/api/branding)."
@@ -109,16 +127,16 @@
       "note": "`chat --session` is the person's own send (POST /api/orchestration/chat); send_to_session uses the agent-only session-control leaf."
     },
     "checkpoints history": {
-      "missing": 4281,
-      "want": "a tool for the restore history the server serves at GET /api/orchestration/sessions/:threadId/checkpoint-restores"
+      "exempt": "local-host",
+      "reason": "Reads the local Station home audit for one thread. The authenticated application history route remains scoped to a readable Session and has no agent tool."
     },
     "checkpoints prune": {
       "exempt": "local-host",
       "reason": "Reads or prunes git checkpoint refs in this Station home on disk."
     },
     "checkpoints restore": {
-      "missing": 4281,
-      "want": "a tool that previews and restores a turn checkpoint"
+      "exempt": "person-only",
+      "reason": "Restoration replaces workspace files. The authenticated person owns the approval and restoration audit, so there is no agent tool."
     },
     "checkpoints retention": {
       "exempt": "local-host",
@@ -1078,20 +1096,16 @@
       "want": "Knowledge records add"
     },
     "board_move": {
-      "missing": 4282,
-      "want": "Board move"
+      "cli": ["board move"]
     },
     "board_pin": {
-      "missing": 4282,
-      "want": "Board pin"
+      "cli": ["board pin"]
     },
     "board_read": {
-      "missing": 4282,
-      "want": "Board read"
+      "cli": ["board read"]
     },
     "board_unpin": {
-      "missing": 4282,
-      "want": "Board unpin"
+      "cli": ["board unpin"]
     },
     "browser_capture_to_task": {
       "exempt": "agent-self",
@@ -1339,8 +1353,7 @@
       "want": "Knowledge records get"
     },
     "get_personal_board": {
-      "missing": 4282,
-      "want": "Boards get"
+      "cli": ["boards get"]
     },
     "get_project": {
       "cli": ["projects get"]
@@ -1465,8 +1478,7 @@
       "note": "Different route: MCP GET /api/models, CLI GET /api/connections/models."
     },
     "list_personal_boards": {
-      "missing": 4282,
-      "want": "Boards list"
+      "cli": ["boards list"]
     },
     "list_plugins": {
       "cli": ["plugin list"]

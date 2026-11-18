@@ -1349,6 +1349,12 @@ export async function runCoreCommand(
     return;
   }
 
+  if (command === 'board' || command === 'boards') {
+    const { runBoardCommand } = await import('./board.js');
+    await runBoardCommand(command, apiBase, parsed);
+    return;
+  }
+
   if (command === 'conversation') {
     const { runConversationCommand } = await import('./conversation.js');
     await runConversationCommand(apiBase, parsed);

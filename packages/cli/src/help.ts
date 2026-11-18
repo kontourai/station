@@ -797,6 +797,30 @@ const VERBS: Record<string, VerbSpec> = {
       'Needs the Session reads from the station CLI Feature Preview.',
     ],
   },
+  board: {
+    group: 'Core Workspace',
+    summary: 'Read or arrange widgets on a Session or Task Board',
+    targets: true,
+    usage: [
+      'station board read <session|task> <id> [--project=<slug>]',
+      'station board pin <session|task> <id> <name> [--project=<slug>] [--data=<block-json>|--file=<path>] [--tab=<id>] [--tab-title=<title>] [--size=<sm|md|lg|full>] [--after=<name>]',
+      'station board unpin <session|task> <id> <name> [--project=<slug>]',
+      'station board move <session|task> <id> <name> [--project=<slug>] [--tab=<id>] [--after=<name>]',
+    ],
+    actions: ['read', 'pin', 'unpin', 'move'],
+    detail: [
+      'Task references require --project. Session references use the Session ID alone.',
+      'Pin also reads block JSON from stdin. Data claims require source references.',
+      '--after places a widget after another widget by its stable name.',
+    ],
+  },
+  boards: {
+    group: 'Core Workspace',
+    summary: 'Read your saved Personal Boards',
+    targets: true,
+    usage: ['station boards list', 'station boards get <slug>'],
+    actions: ['list', 'get'],
+  },
   conversation: {
     group: 'Core Workspace',
     summary: 'Export, fork, settle or reopen a conversation',

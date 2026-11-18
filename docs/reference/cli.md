@@ -1418,6 +1418,27 @@ Project, title, worktree branch or folder, and any active work claims.
 Sessions on another Station or SSH Environment are never listed. It needs the
 same `session-cli-reads` Feature Preview as `sessions wait`.
 
+### `board` and `boards`
+
+Read or arrange widgets on a Session or Task Board. Task Boards require the
+owning Project slug. Pin reads one block as JSON from `--data`, `--file`, or
+piped stdin. Station checks the caller's access to the Board and requires
+source references when the block claims data. `--after` uses an existing
+widget's stable name.
+
+```bash
+station board read session "$SESSION_ID"
+station board read task "$TASK_ID" --project="$PROJECT_SLUG"
+station board pin session "$SESSION_ID" summary --file=summary.json
+station board move session "$SESSION_ID" summary --after=status
+station board unpin session "$SESSION_ID" summary
+station boards list
+station boards get "$BOARD_SLUG"
+```
+
+`boards list` and `boards get` read the authenticated person's saved Personal
+Boards. All six commands return JSON.
+
 ### `conversation`
 
 Export a conversation as a portable thread, or in a provider-native format,
