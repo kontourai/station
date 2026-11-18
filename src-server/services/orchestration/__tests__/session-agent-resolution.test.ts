@@ -1201,7 +1201,7 @@ describe('createSessionAgentResolver', () => {
   test("resolves a real agent's authored non-empty prompt into input.agent.systemPrompt for a claude session (delivered report, source agent)", async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>
-        agentSpec({ prompt: 'You are a specialized writing assistant.' }),
+        agentSpec({ prompt: 'You are a writing assistant for {{project}}.' }),
       resolveToolServer: async () => null,
       resolveSkillDir: async () => null,
     });
@@ -1209,7 +1209,7 @@ describe('createSessionAgentResolver', () => {
     const result = await resolver(baseInput({ provider: 'claude' }));
 
     expect(result.agent?.systemPrompt).toBe(
-      'You are a specialized writing assistant.',
+      'You are a writing assistant for {{project}}.',
     );
     const report = result.metadata?.[
       SESSION_CAPABILITY_DELIVERY_METADATA_KEY

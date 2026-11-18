@@ -359,7 +359,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const replay = isReplayThread(session.id);
   const replayHistory = useReplayHistory(session.id);
   const enabled = Boolean(
-    session.orchestrationSessionStarted &&
+    (session.orchestrationSessionStarted ||
+      session.conversationOpenState?.status === 'fresh-context-ready') &&
       (!replay || replayHistory) &&
       !unavailable &&
       !resolving,

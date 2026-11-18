@@ -240,44 +240,54 @@ async function scanWorkspaceRepos(
   projectRoot: string,
   workspace: string,
   worktrees: ProjectRepositoryReadOptions['registeredWorktrees'],
+  projectScoped: boolean,
 ) {
+  const readBranch = (folder: string) =>
+    readProjectRepository(
+      projectRoot,
+      folder,
+      { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
+      (repository) =>
+        execGit([...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+          cwd: repository.top,
+          encoding: 'utf-8',
+          timeout: GIT_QUICK_TIMEOUT_MS,
+        }).then(
+          ({ stdout }) => stdout.trim(),
+          () => '',
+        ),
+    );
+  const describeRepo = (root: string, branch: string) => ({
+    root,
+    name: basename(root),
+    relativePath: relative(workspace, root) || '.',
+    branch,
+  });
+
   const roots = await discoverRepos(workspace);
+  const workspaceHasMarker = roots.includes(workspace);
+  // Only an admitted Project read can name the enclosing repository. The
+  // same confined reader supplies both its identity and its branch.
+  const enclosingRead =
+    projectScoped && !workspaceHasMarker ? await readBranch(workspace) : null;
+  const enclosing =
+    enclosingRead?.ok && isCanonicalPathWithin(enclosingRead.top, workspace)
+      ? describeRepo(enclosingRead.top, enclosingRead.value)
+      : undefined;
+
   const repos = await mapWithConcurrency(
-    roots,
+    roots.slice(0, DISCOVER_MAX_ROOTS - (enclosing ? 1 : 0)),
     ENRICH_CONCURRENCY,
     async (root) => {
-      // A root whose `.git` is not the Project's own still lists (its
-      // status then says why it is not read), but its branch is another
-      // repository's, so it stays ''.
-      const read = await readProjectRepository(
-        projectRoot,
-        root,
-        { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
-        (repository) =>
-          execGit(
-            [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
-            {
-              cwd: repository.top,
-              encoding: 'utf-8',
-              timeout: GIT_QUICK_TIMEOUT_MS,
-            },
-          ).then(
-            ({ stdout }) => stdout.trim(),
-            // Detached HEAD / mid-rebase repos still list; branch stays ''.
-            () => '',
-          ),
-      );
-      return {
-        root,
-        name: basename(root),
-        relativePath: relative(workspace, root) || '.',
-        branch: read.ok ? read.value : '',
-      };
+      const read = await readBranch(root);
+      // Unreadable roots still list so their own status can explain why.
+      return describeRepo(root, read.ok ? read.value : '');
     },
   );
+  if (enclosing) repos.unshift(enclosing);
   return {
     workspace,
-    workspaceIsRepo: existsSync(join(workspace, '.git')),
+    workspaceIsRepo: workspaceHasMarker || !!enclosing,
     repos,
   };
 }
@@ -1103,11 +1113,14 @@ export function createCodingRoutes(
       const scanKey = `${slug ?? '\u0000form'}\u0000${projectRoot}\u0000${workspace}`;
       let scan = inFlightRepoScans.get(scanKey);
       if (!scan) {
-        scan = scanWorkspaceRepos(projectRoot, workspace, worktrees).finally(
-          () => {
-            inFlightRepoScans.delete(scanKey);
-          },
-        );
+        scan = scanWorkspaceRepos(
+          projectRoot,
+          workspace,
+          worktrees,
+          !!slug,
+        ).finally(() => {
+          inFlightRepoScans.delete(scanKey);
+        });
         inFlightRepoScans.set(scanKey, scan);
       }
       // A rejected shared scan reaches every waiter here, inside the

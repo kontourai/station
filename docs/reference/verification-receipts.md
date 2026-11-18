@@ -613,9 +613,13 @@ pending phase and the stop reason. The summary keeps this distinct from
 checkpoints remain available under the same request. A terminal publication
 still requires the output ownership fence.
 
-The bounded summary's `firstCausalExcerpt` (station#1871/#2591/#3189) names the
-single most actionable diagnostic line found in the captured output, scoped to
-the step that actually failed. Station#4249 adds `causalExcerpts` alongside
+The bounded summary's `firstCausalExcerpt` (station#1871/#2591/#3189) carries
+failure-shaped output from the failing step, or stderr evidence with its
+attribution limit. When the failure scan finds only warnings or informational
+lines, `diagnosticExcerpts` keeps those lines as context, including from earlier
+steps. The completion summary labels that context separately and presents it
+as warning annotations. These fields live in the bounded summary and retain
+the existing canonical receipt schema. Station#4249 adds `causalExcerpts` alongside
 it: every distinct failure-shaped excerpt genuinely observed in that same
 captured, attributed region — not only the first — so a completion-mode run
 (the un-chained `typecheck` and `docs:truth:gate` aggregate runners, or any

@@ -42,7 +42,7 @@ export interface EnrichedAgentProjection {
   model?: string;
   region?: string;
   guardrails?: AgentGuardrails;
-  maxSteps?: number;
+  maxSteps?: AgentSpec['maxSteps'];
   icon?: string;
   updatedAt?: string;
   commands?: Record<string, SlashCommand>;

@@ -4541,6 +4541,10 @@ not SSE**. Its body uses `prompt`, optional `model`, `tools`, `maxSteps`, and
 { "prompt": "Summarize the supplied text: ...", "tools": [], "maxSteps": 5 }
 ```
 
+For VoltAgent, an authored Agent cap bounds this invocation even when the
+request gives a higher `maxSteps`. An omitted request cap uses the Agent or
+Station fallback. Strands uses its own limits.
+
 With an explicit tools array, it builds a temporary Agent with the selected
 loaded tools. With a schema on that branch, it asks for JSON and parses the
 text; this is not JSON Schema validation. Without a tools array it calls the
@@ -6560,6 +6564,13 @@ credential by the same boundary gate ingress applies, against
 A read-only paired device reads `{continue: false, startChat: false}`. The field
 is omitted when the request has no authenticated principal; clients treat that
 as unknown.
+
+`fresh-context-ready` names an authorized, unstarted empty-context reservation.
+The result carries the predecessor and reserved Session IDs and the earlier
+transcript remains readable through the Conversation history. A successful
+continuation starts the reserved Session and sends the new message with fresh
+engine context. The open result carries neither a current Session nor an
+execution binding.
 
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,

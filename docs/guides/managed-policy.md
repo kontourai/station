@@ -106,7 +106,7 @@ use limits: for approvals, [`limits.maxApprovalMode`](#approval-mode-ceiling) is
 | `defaultLLMProvider` | An Agent's own model connection and the connection a person picks for a chat still apply. |
 | `invokeModel` | An invoke request that names its own model still uses it. |
 | `structureModel` | `approvalGuardian`'s own model, `reviewGuideModel` for review guides, and an invoke request that names a structure model still apply first. |
-| `defaultMaxTurns` | An Agent's own step limit (`maxSteps` or `guardrails.maxSteps`) still applies first. |
+| `defaultMaxTurns` | On VoltAgent, an Agent's own `maxSteps` still applies first. |
 | `defaultMaxOutputTokens` | An Agent's own `guardrails.maxTokens` still applies first. |
 | `defaultWorkspaceIsolation` | Task runs, Station delegations and adopted attached sessions always use the shared checkout, and a continued conversation keeps the isolation it started in. |
 | `defaultChatFontSize` | A person's own Chat font size (an account setting) still applies first. |

@@ -58,7 +58,6 @@ export interface AgentGuardrails {
    * Do not treat it as a working safety control until an adapter wires it.
    */
   stopSequences?: string[];
-  maxSteps?: number;
 }
 
 /** Default agent guardrails applied when an agent doesn't specify its own. */
@@ -410,7 +409,8 @@ export interface AgentSpec {
   execution?: AgentExecutionConfig;
   delegation?: AgentDelegationPolicy;
   region?: string;
-  maxSteps?: number;
+  /** VoltAgent model steps per turn (1–100). Null or absent uses the fallback. */
+  maxSteps?: number | null;
   guardrails?: AgentGuardrails;
   /**
    * @deprecated Nothing reads this block. It stays declared because the
