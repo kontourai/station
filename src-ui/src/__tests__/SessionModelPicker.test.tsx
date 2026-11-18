@@ -642,7 +642,7 @@ describe('SessionModelPicker', () => {
       currentModel: id,
     });
     expect(
-      screen.getByRole('button', { name: /GLM-5.3-Flash.*Z.ai/ }),
+      screen.getByRole('button', { name: /^GLM-5\.3-Flash.*Z\.ai/ }),
     ).toBeTruthy();
     const modelId = screen.getByText('Model ID', { selector: 'summary' });
     fireEvent.click(modelId);
