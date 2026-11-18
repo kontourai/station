@@ -4088,6 +4088,36 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
 }) => {
   await page.setViewportSize({ width: 390, height: 540 });
   await mockChatShell(page);
+  const rememberedModel = {
+    favorites: [],
+    recents: ['bedrock-prod\u001fsonnet'],
+    hidden: [],
+    order: [],
+  };
+  let preferences: AccountPreferencesView = {
+    schemaVersion: 1,
+    values: {},
+    revision: 'mobile-model-before',
+  };
+  await page.route('**/api/me/preferences', (route) => {
+    const request = route.request();
+    if (request.method() === 'PATCH') {
+      if (request.headers()['if-match'] !== preferences.revision) {
+        return route.fulfill({
+          ...json({ error: { code: 'account_preferences_changed' } }),
+          status: 409,
+        });
+      }
+      preferences = {
+        schemaVersion: 1,
+        values: { modelPickerPreferences: rememberedModel },
+        revision: 'mobile-model-after',
+      };
+    } else if (request.method() !== 'GET') {
+      return rejectUnexpectedFixtureRequest(route);
+    }
+    return route.fulfill(json({ success: true, data: preferences }));
+  });
   await page.route('**/api/connections/models', (route) =>
     route.fulfill(
       json({
@@ -4189,7 +4219,17 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
   await providerRail
     .getByRole('button', { name: 'Bedrock Production', exact: true })
     .click();
+  const remembered = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/me/preferences' &&
+      response.request().method() === 'PATCH',
+  );
   await picker.getByRole('option', { name: /^Claude Sonnet/ }).click();
+  const preferenceReply = await remembered;
+  expect(preferenceReply.status()).toBe(200);
+  expect(preferenceReply.request().postDataJSON()).toEqual({
+    modelPickerPreferences: rememberedModel,
+  });
   await expect(picker).toBeHidden();
   await closeRunSetup(page);
   await expect(
@@ -5642,7 +5682,9 @@ for (const viewport of [
 
     // Another window still running: its send is under way, with no Check.
     const running = row('Sent from a window that is still open');
-    const sending = running.locator('.message-delivery__glyph[role="img"]');
+    const sending = running.locator(
+      '.message-delivery__glyph[data-glyph="sending"]',
+    );
     await expect(sending).toHaveAccessibleName(
       'Sending. Kept on this device if the app closes.',
     );
