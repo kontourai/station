@@ -202,17 +202,16 @@ export const APP_SETTINGS_REGISTRY = [
     // (views/settings/AgentDefaultsSection.tsx) — the registry was carrying a
     // second, divergent name for one setting.
     label: 'Default agent instructions',
-    help: 'Every agent starts its context with these instructions, ahead of its own.',
-    description: 'Global instructions prepended to every agent.',
+    help: 'Station prepends these to prompts it builds, uses them in place of its built-in prompt, and omits them for external engines.',
+    description: 'Instructions for prompts built by Station.',
   }),
   defineSetting({
     key: 'templateVariables',
     scope: 'defaults',
     descriptor: { kind: 'composite' },
     label: 'Template variables',
-    help: 'Agent instructions can reference these values as {{key}} instead of repeating them.',
-    description:
-      'Custom template variables available as {{key}} in agent instructions.',
+    help: 'Station expands {{key}} in prompts it builds, while external engines receive the authored placeholders.',
+    description: 'Custom values for Station-built prompts.',
   }),
 
   // --- scope: station (controls for this Station instance) ---
@@ -611,10 +610,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
-    // #4402: the runtime framework's name is not product vocabulary.
-    help: 'Set the fallback step limit for runs on Station’s own engine; Claude Code, Codex and other engines do not apply this setting.',
+    help: 'Set the fallback step limit for supported runs on Station’s own engine, while external engines use their own limits.',
     description:
-      'Fallback step limit for runs on Station’s own engine when the Agent sets no step limit of its own. Claude Code, Codex and other engines do not apply this setting.',
+      'Fallback step limit for supported runs on Station’s own engine.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
     // `defaultMaxTurns || DEFAULT_MAX_STEPS` — the code's real absent-value
     // behavior is 200, not the file schema's stale documented "default": 10
