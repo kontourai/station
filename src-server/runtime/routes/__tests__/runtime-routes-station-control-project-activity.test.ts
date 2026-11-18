@@ -34,6 +34,7 @@ import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { createConversationForkContext } from '../../../services/orchestration/conversation-fork-context.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -148,7 +149,11 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
   });
 
   async function setup(
-    options: { filler?: number; nativeSearch?: boolean } = {},
+    options: {
+      filler?: number;
+      nativeSearch?: boolean;
+      operatorCurrent?: () => boolean;
+    } = {},
   ) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-project-activity-');
@@ -582,7 +587,8 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>
-          credential === OPERATOR_CREDENTIAL,
+          credential === OPERATOR_CREDENTIAL &&
+          (options.operatorCurrent?.() ?? true),
         verifyOperatorCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         resolveGrantedScope: (credential: string) =>
@@ -742,6 +748,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
 
     return {
       base,
+      home,
       personRequest,
       store,
       memory: context.memoryAdapters.get('default')!,
@@ -1048,6 +1055,152 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         output.mockRestore();
       }
     });
+
+    test('CLI owned delete refuses authority lost during an asynchronous ownership read', async () => {
+      let current = true;
+      const { base, memory } = await setup({ operatorCurrent: () => current });
+      await memory.createConversation({
+        id: 'revoke-during-read',
+        userId: A,
+        resourceId: 'default',
+        title: 'Keep this conversation',
+        metadata: {},
+      });
+      const get = memory.getConversation.bind(memory);
+      const expected = await get('revoke-during-read');
+      let reads = 0;
+      const lookup = vi
+        .spyOn(memory, 'getConversation')
+        .mockImplementation(async (id) => {
+          const stored = await get(id);
+          if (id === 'revoke-during-read' && ++reads === 2) current = false;
+          return stored;
+        });
+      try {
+        await expect(
+          runCli([
+            'conversation',
+            'delete',
+            'station',
+            'revoke-during-read',
+            '--confirm',
+            `--api-base=${base}`,
+            `--credential=${OPERATOR_CREDENTIAL}`,
+          ]),
+        ).rejects.toMatchObject({
+          status: 404,
+          code: 'owned_conversation_not_found',
+        });
+        expect(reads).toBe(2);
+        await expect(get('revoke-during-read')).resolves.toEqual(expected);
+      } finally {
+        lookup.mockRestore();
+      }
+    });
+
+    test('CLI owned delete refuses a different owner recorded after the adapter cached the conversation', async () => {
+      const { base, home, memory } = await setup();
+      const row = {
+        id: 'owner-changed',
+        resourceId: 'default',
+        title: 'Saved',
+        metadata: {},
+      };
+      await memory.createConversation({ ...row, userId: A });
+      const writer = new FileMemoryAdapter({ projectHomeDir: home });
+      await writer.createConversation({ ...row, userId: CAROL });
+      await expect(memory.getConversation(row.id)).resolves.toMatchObject({
+        userId: A,
+      });
+
+      await expect(
+        runCli([
+          'conversation',
+          'delete',
+          'station',
+          row.id,
+          '--confirm',
+          `--api-base=${base}`,
+          `--credential=${OPERATOR_CREDENTIAL}`,
+        ]),
+      ).rejects.toMatchObject({
+        status: 404,
+        code: 'owned_conversation_not_found',
+      });
+      const fresh = new FileMemoryAdapter({ projectHomeDir: home });
+      await expect(fresh.getConversation(row.id)).resolves.toMatchObject({
+        userId: CAROL,
+      });
+    });
+
+    test.each([false, true])(
+      'CLI owned fork delete reports the actual retirement boundary (already committed: %s)',
+      async (afterRetirement) => {
+        let current = true;
+        const { base, memory, store, orchestration, at } = await setup({
+          operatorCurrent: () => current,
+        });
+        const id = 'revoke-fork';
+        const snapshot = createConversationForkContext({
+          forkEventId: 'revoke-fork-event',
+          sourceConversationId: 'a-anchor',
+          sourceSessionId: 'a-anchor',
+          sourceAgent: 'codex-agent',
+          targetConversationId: id,
+          targetAgent: 'station',
+          ownerUserId: A,
+          branchPointTurnId: 'revoke-fork-turn',
+          sourceTitle: 'Source',
+          createdAt: at(),
+          messages: [],
+        });
+        store.reserveConversationForkContext(snapshot);
+        await memory.createConversation({
+          id,
+          userId: A,
+          resourceId: 'default',
+          title: snapshot.title,
+          metadata: {},
+        });
+        const before = await memory.getConversation(id);
+        const retire =
+          orchestration.deleteUnstartedConversationForkContext.bind(
+            orchestration,
+          );
+        const boundary = vi
+          .spyOn(orchestration, 'deleteUnstartedConversationForkContext')
+          .mockImplementationOnce(async (...args) => {
+            if (!afterRetirement) current = false;
+            const result = await retire(...args);
+            if (afterRetirement) current = false;
+            return result;
+          });
+        try {
+          await expect(
+            runCli([
+              'conversation',
+              'delete',
+              'station',
+              id,
+              '--confirm',
+              `--api-base=${base}`,
+              `--credential=${OPERATOR_CREDENTIAL}`,
+            ]),
+          ).rejects.toMatchObject(
+            afterRetirement
+              ? { status: 409, code: 'owned_conversation_deletion_incomplete' }
+              : { status: 404, code: 'owned_conversation_not_found' },
+          );
+          expect(boundary).toHaveBeenCalledOnce();
+          expect(store.conversationForkContextReference(id)?.state).toBe(
+            afterRetirement ? 'deleted' : 'prepared',
+          );
+          await expect(memory.getConversation(id)).resolves.toEqual(before);
+        } finally {
+          boundary.mockRestore();
+        }
+      },
+    );
 
     test('searches title and content, misses, filters agent/project, bounds results and preserves read authorization', async () => {
       const { tool, asTool, startSession, p1, memory } = await setup();

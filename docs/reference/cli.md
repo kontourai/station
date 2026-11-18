@@ -1462,6 +1462,8 @@ Delete requires confirmation and matches both the named Agent and your
 recorded owner identity. It applies to saved file conversations on personal
 Stations. Runtime-managed history and old rows with ambiguous ownership are
 refused.
+If a fork was retired before its file cleanup could finish, the CLI reports
+the incomplete deletion.
 
 `export`:
 

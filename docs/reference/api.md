@@ -2906,7 +2906,10 @@ A caller-scoped Station Control deletion additionally checks the stored owner.
 deletion lifecycle for an authenticated person on a personal Station. The
 stored file owner and the Agent must both match. Missing, foreign, and
 ambiguous legacy records all return 404 with `owned_conversation_not_found`.
-Runtime-managed records remain read-only (409).
+Runtime-managed records remain read-only (409). The request's owner authority is
+checked again at fork retirement and before deleting the saved files. An
+already retired fork whose cleanup does not finish returns 409 with
+`owned_conversation_deletion_incomplete`.
 
 ### Search Saved Conversations
 

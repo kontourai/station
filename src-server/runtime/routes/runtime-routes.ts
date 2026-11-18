@@ -12696,17 +12696,22 @@ export function configureRuntimeRoutes(
       },
     }),
   );
-  const isCurrentConversationPerson = (c: Context) => {
+  const isCurrentConversationPerson = (c: Context, expectedUserId?: string) => {
     const request = c.req.raw;
     const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
-    return (
-      !!authenticated &&
-      authenticated.kind !== 'internal' &&
-      isRequestPrincipalCurrent(request) &&
+    if (
+      !authenticated ||
+      authenticated.kind === 'internal' ||
+      !isRequestPrincipalCurrent(request) ||
       resolveInboundDeviceKindForRequest(request, (credential) =>
         context.environmentSecurityService.identifyDevice(credential),
-      ) !== 'delegation' &&
-      resolveOrchestrationRequestPrincipal(c).kind === 'human'
+      ) === 'delegation'
+    )
+      return false;
+    const principal = resolveOrchestrationRequestPrincipal(c);
+    return (
+      principal.kind === 'human' &&
+      (expectedUserId === undefined || principal.id === expectedUserId)
     );
   };
   // Bind the SAME domain as the constructor's verifier to the real final-Request
