@@ -1064,27 +1064,21 @@ export function wireTurnCompletionNotifications(
   // `turn.aborted`. Retain that one exact turn identity long enough to join
   // the two events without changing the notification system into a reader of
   // the event store's durable projection.
-  const settledStopTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const settledStops = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; reported: boolean }
+  >();
   const stopKey = (threadId: string, turnId: string) => `${threadId}:${turnId}`;
 
   const rememberSettledStop = (threadId: string, turnId: string): void => {
     const key = stopKey(threadId, turnId);
-    const existing = settledStopTimers.get(key);
-    if (existing) clearTimeout(existing);
+    const existing = settledStops.get(key);
+    if (existing) clearTimeout(existing.timer);
     const timer = setTimeout(() => {
-      settledStopTimers.delete(key);
+      settledStops.delete(key);
     }, SETTLED_STOP_NOTIFICATION_RETENTION_MS);
     timer.unref?.();
-    settledStopTimers.set(key, timer);
-  };
-
-  const consumeSettledStop = (threadId: string, turnId: string): boolean => {
-    const key = stopKey(threadId, turnId);
-    const timer = settledStopTimers.get(key);
-    if (!timer) return false;
-    clearTimeout(timer);
-    settledStopTimers.delete(key);
-    return true;
+    settledStops.set(key, { timer, reported: existing?.reported ?? false });
   };
 
   const touchTurnIdentityAnchorEviction = (threadId: string): void => {
@@ -1243,6 +1237,12 @@ export function wireTurnCompletionNotifications(
             return;
           }
 
+          const settledStop =
+            event.method === 'turn.completed' || event.method === 'turn.aborted'
+              ? settledStops.get(stopKey(event.threadId, event.turnId))
+              : undefined;
+          if (settledStop?.reported) return;
+
           // The terminal is accepted: the turn a held episode was waiting
           // on has ended, whatever it is about to be reported as.
           const episode = heldFinishes.get(event.threadId);
@@ -1252,11 +1252,10 @@ export function wireTurnCompletionNotifications(
           // finishReason:'cancelled'; the settled-stop fact is the proof that
           // this particular completion was a stop, while an unaccompanied
           // cancelled completion keeps its existing done mapping.
-          if (
-            (event.method === 'turn.completed' ||
-              event.method === 'turn.aborted') &&
-            consumeSettledStop(event.threadId, event.turnId)
-          ) {
+          if (settledStop) {
+            // Keep the exact Stop until its normal expiry. A legacy
+            // duplicate terminal must not turn it into a finished alert.
+            settledStop.reported = true;
             // #2324 (D1): a provider turn is never reported "stopped" — the
             // Stop was the user's own act on a reply they did not ask for.
             if (providerTurn) {
@@ -1489,8 +1488,8 @@ export function wireTurnCompletionNotifications(
     }
     turnIdentityAnchorEvictionTimers.clear();
     turnIdentityAnchors.clear();
-    for (const timer of settledStopTimers.values()) clearTimeout(timer);
-    settledStopTimers.clear();
+    for (const { timer } of settledStops.values()) clearTimeout(timer);
+    settledStops.clear();
     for (const episode of heldFinishes.values()) episode.cancelConfirm?.();
     for (const writing of writingFinishes.values()) writing.cancelRetry?.();
     // Unwiring is not settling: the saved episodes stay for the next start.
