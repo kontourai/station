@@ -6,13 +6,10 @@ meeting**, and the modal listens through a registered speech-to-text provider.
 Sending requests chat with Station's own Agent, since this plugin contributes
 none; it is not a confirmed model response or a persisted Knowledge record.
 
-**Source-build gap:** the public plugin builder currently refuses the Pane's
-runtime import of `@kontourai/station-contracts/agent-identity`: that source is
-outside the allowed plugin/SDK build roots. The SDK exports the identity types,
-but not the `agentId`/`STATION_AGENT_ID` runtime helpers used here. Component
-tests do not establish an installable bundle. Resolve that public SDK packaging
-boundary before treating this source example as a working installed plugin;
-do not disable the builder's containment check.
+Build the example with `../../station plugin build` from this directory. The
+Pane gets the canonical Station Agent ID and its validator through
+`@kontourai/station-sdk/agent`. Installed bundles use the host's SDK. A host
+that predates this identity export shows an update message when opening the Pane.
 
 Station has no plugin toolbar actions. This example used to declare one
 (`toolbarActions`), along with `clientBundle` and `providerTypes`; no runtime
