@@ -558,9 +558,8 @@ export function SessionModelPicker({
                             </Button>
                           )}
                       </div>
-                      <div
+                      <fieldset
                         className="session-model-picker__models"
-                        role="group"
                         aria-label="Models"
                       >
                         {modelSections.map((section) =>
@@ -593,7 +592,7 @@ export function SessionModelPicker({
                             }
                           />
                         )}
-                      </div>
+                      </fieldset>
                     </div>
                   </>
                 )}

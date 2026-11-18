@@ -927,7 +927,8 @@ describe('SessionModelPicker', () => {
         { id: 'gpt-5.5', name: 'GPT-5.5' },
       ],
     });
-    const options = modelChoices();
+    const results = screen.getByRole('group', { name: 'Models', exact: true });
+    const options = modelChoices(results);
     expect(options.map((option) => option.textContent)).toEqual([
       expect.stringContaining('GPT-5.6'),
       expect.stringContaining('Claude Sonnet 4.5'),
@@ -937,7 +938,7 @@ describe('SessionModelPicker', () => {
     // The boundary must actually exist: the middle two sit inside the group,
     // the outer two do not. Without this the test passes on a flat list.
     expect(
-      options.map((option) => option.closest('fieldset') !== null),
+      options.map((option) => option.closest('fieldset') !== results),
     ).toEqual([false, true, true, false]);
     options[0]!.focus();
     fireEvent.keyDown(options[0]!, { key: 'ArrowDown' });
