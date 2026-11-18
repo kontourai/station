@@ -499,6 +499,14 @@ async function awaitRouteConfiguration(
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 // archive#1019: these cases cold-boot a real StationRuntime (route services, servers,
 // terminal/voice seams) — under parallel vitest workers or a sibling agent
 // session on the same host, real spawns starve the 5s default budget and this
@@ -762,9 +770,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       ].Authorization.replace('Bearer ', '');
       return { config: thread.params.config, token };
     };
-    // Sessions stop inside the case, even when it fails: a stop after the
-    // runtime's teardown emits session.exited, whose deferred worktree
-    // retry would land in a later case.
+    // The fixture owns these adapter Sessions, so stop them before returning.
     const stopAll = async () => {
       for (const id of ['families-preview-off', 'families-preview-on'])
         await adapter.stopSession(id).catch(() => undefined);
@@ -867,9 +873,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
   it('joins session finalization before stopping orchestration and claim updates before closing the home', async () => {
     home = await createSchemaHome('station-task-writer-shutdown-');
-    const finalization = Promise.withResolvers<null>();
-    const release = Promise.withResolvers<void>();
-    const reconcile = Promise.withResolvers<{ releasedSubjects: string[] }>();
+    const finalization = deferred<null>();
+    const release = deferred<void>();
+    const reconcile = deferred<{ releasedSubjects: string[] }>();
     const releaseClaim = vi
       .spyOn(TaskGraphService.prototype, 'releaseClaimForSession')
       .mockReturnValue(release.promise);
@@ -936,8 +942,8 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
   it('retains the live EventStore and home lease when startup claim reconciliation exceeds the drain deadline', async () => {
     home = await createSchemaHome('station-task-writer-timeout-');
-    const reconcile = Promise.withResolvers<{ releasedSubjects: string[] }>();
-    const sweep = Promise.withResolvers<void>();
+    const reconcile = deferred<{ releasedSubjects: string[] }>();
+    const sweep = deferred<void>();
     const reconcileClaims = vi
       .spyOn(TaskGraphService.prototype, 'reconcileStaleAssignmentClaims')
       .mockReturnValue(reconcile.promise);
