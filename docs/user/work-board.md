@@ -17,7 +17,8 @@ the typed identity you entered and never tries to repair a mismatched owner.
 Each card keeps its linked title separate from its **Drag** handle, so opening
 work never starts a move. Drag that handle to move a pin, and use the small
 corner grip to resize it. Arrow keys move the focused handle; Shift+Arrow
-resizes it. The ordered list is always available for keyboard use. In a narrow
+resizes it. A card stays in front while you tab through its controls. The
+ordered list is always available for keyboard use. In a narrow
 Pane or on a touch device, it comes first and the canvas stays hidden until you
 choose **Open canvas**; this avoids duplicate canvas controls in the compact
 focus path.
