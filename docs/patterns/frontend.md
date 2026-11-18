@@ -99,10 +99,6 @@ prove a provider completed an external effect. The
 
 ## Cache, freshness and failure
 
-Use `PageSectionGroup` for a named group inside a settings section. It owns the
-space above the group, the heading size and the gap before its controls. Avoid
-bare headings with browser-default margins or a second card inside a settings card.
-
 [query-core.ts](../../packages/sdk/src/query-core.ts) provides defaults, but
 individual hooks can override them or use React Query directly. Its ordinary
 `useApiQuery` default is five minutes stale time and ten minutes garbage
@@ -164,6 +160,10 @@ that do not navigate may use the guard explicitly. See
 Before adding markup or CSS for a surface, check the shared primitive and
 recipe owners below. Reuse a matching pattern and keep domain-state derivation
 with its feature. A new rule should have real consumers and one style owner.
+
+Use `PageSectionGroup` for a named group inside a settings section. It owns the
+space above the group, the heading size and the gap before its controls. Avoid
+bare headings with browser-default margins or a second card inside a settings card.
 
 - `StatusSummary` (`src-ui/src/components/StatusSummary.tsx`) groups a resource
   name, version, status badge, and subdued check time. Desktop and server
