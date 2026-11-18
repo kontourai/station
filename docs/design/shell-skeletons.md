@@ -52,6 +52,10 @@ these two — there is no third shape.
   `page` token must be present).
 - **Header component:** `src-ui/src/components/DetailHeader.tsx` (sticky header: title left,
   action buttons right; optional `subtitle`, `badge`, `statusDot`, `icon` props).
+  The identity and actions share a row while their contents fit the available
+  region. A tablet keeps its 44px action targets when the cluster moves to
+  another row. The subtitle wraps within the identity, including long
+  unbroken references.
 - **Proven reference instances:**
   - `src-ui/src/views/SkillsView.tsx` — root is literally `<div className="page page--full">`
     (verified) and imports/renders `DetailHeader` for its detail-pane header.
