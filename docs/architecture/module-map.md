@@ -300,7 +300,9 @@ the host half is the [operator-only route set](../../src-server/routes/operator-
 behind `station environment operator passkeys`. The
 [session service](../../src-server/services/identity/operator-sessions.ts) verifies
 single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
-and stores hashed, device-bound sessions in that same private registry. The HTTP
+and stores hashed, device-bound sessions in that same private registry. WebAuthn
+initialization waits for the first ceremony; its code remains in the server bundle.
+The HTTP
 boundary admits exact session read leaves, including pending pairing requests,
 and per-action access-change requests.
 Those writes return 202 without mutation. The
@@ -2599,8 +2601,12 @@ children are excluded from fresh stop targets; pending stops still redeliver.
 Completing root stop delivery releases its temporary root fence while child fences remain.
 Ownership candidate and activity reads use one SQLite snapshot. Inventory and conversation-history reads batch owned activity per request. Session
 summaries report `running` while verified owned descendants run or stop
-obligations remain pending, retaining the own fold in `ownedWork`. Turn
-coordination continues to describe the parent's own turn.
+obligations remain pending, retaining the own fold in `ownedWork`.
+Descendant work activity uses the same event-based lifecycle projection as
+the descendant's own summary. An attached adapter or stale provider status
+does not keep a finished child running. Pending starts, unresolved provider
+invocations and stop obligations still keep the parent busy.
+Turn coordination continues to describe the parent's own turn.
 `ownedWork.pendingStops` exposes grouped custody, reason and count;
 `ownedWork.state` distinguishes `running`, `stopping`, `waiting-on-peer` and
 `unknown`. The shared status ladder carries custody through its existing fact
