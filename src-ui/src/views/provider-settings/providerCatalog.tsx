@@ -684,8 +684,7 @@ export function resolveProviderPresentation(
         brand,
         readiness: 'Saved — not verified',
         tone: 'warn',
-        detail:
-          'Settings are saved. Nothing has asked this connection yet — test it to be sure.',
+        detail: evidence.summary,
         actionLabel: 'Test connection',
       };
     }
