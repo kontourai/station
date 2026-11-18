@@ -75,6 +75,33 @@ const dependencyReasons = (result: ReturnType<typeof select>) =>
       /dependency .*\(#3149\)|import this changed dependency/.test(reason),
     );
 
+describe('Nightly regressions outside the import graph', () => {
+  test.each([
+    [
+      'src-ui/src/views/project-settings/OverviewNotificationsSection.tsx',
+      'src-ui/src/__tests__/project-settings.browser.test.tsx',
+    ],
+    [
+      'src-ui/src/views/ProjectSettingsView.tsx',
+      'src-ui/src/__tests__/project-settings.browser.test.tsx',
+    ],
+    [
+      'docs/reference/play-data-safety.md',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'docs/privacy-policy.md',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+  ])('%s selects its executable contract %s', (path, suite) => {
+    expect(executed(select([path], head, true))).toContain(suite);
+  });
+});
+
 describe('#3200: a sibling dependency bump selects the suites importing it', () => {
   const FLOW_AGENTS = '@kontourai/flow-agents';
   const AGENT_POLICY =
