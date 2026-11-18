@@ -1,6 +1,9 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import { useOrchestrationSessionQuery } from '@kontourai/station-sdk';
+import {
+  useOrchestrationCommandReceiptsQuery,
+  useOrchestrationSessionQuery,
+} from '@kontourai/station-sdk';
 import {
   useCallback,
   useContext,
@@ -17,6 +20,7 @@ import {
   attachedContinuationScope,
   discardAttachedContinuationHandoff,
 } from '../../lib/attached-continuation-handoff';
+import { clientOriginSurfaceLabel } from '../../utils/clientOrigin';
 import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
 import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
@@ -69,6 +73,28 @@ export default function ImportedConversationPane({
     retry: false,
     cancelWhenInactive: true,
   });
+  const sourceSession = source.data?.session;
+  const readStartReceipt =
+    authority.status === 'verified' &&
+    sourceSession?.threadId === threadId &&
+    sourceSession.inputOrigin?.kind === 'delegation';
+  const startReceipts = useOrchestrationCommandReceiptsQuery(threadId, {
+    enabled: readStartReceipt,
+  });
+  const reportedStart = readStartReceipt
+    ? clientOriginSurfaceLabel(
+        startReceipts.data?.find((receipt) => {
+          // The receipt endpoint includes host lifecycle commands beyond the
+          // set a client can submit through the command endpoint.
+          const commandType: string = receipt.commandType;
+          return (
+            receipt.threadId === threadId &&
+            commandType === 'startSession' &&
+            receipt.status === 'accepted'
+          );
+        })?.clientOrigin,
+      )
+    : null;
   const [continuedThreadId, setContinuedThreadId] = useState<string | null>(
     null,
   );
@@ -191,10 +217,10 @@ export default function ImportedConversationPane({
   }, [continued.data, continuedThreadId, openContinued]);
   return (
     <section className="imported-conversation-pane" aria-label="Conversation">
-      {showOrigin && (
+      {(showOrigin || reportedStart) && (
         <div className="imported-conversation-pane__origin">
           <span className="imported-conversation-pane__origin-label">
-            {source.data && (
+            {showOrigin && source.data && (
               <AgentIcon
                 agent={{
                   name: displayProvider(source.data.session),
@@ -203,13 +229,15 @@ export default function ImportedConversationPane({
                 size={18}
               />
             )}
-            {originLabel}
+            {reportedStart ? `Started from ${reportedStart}` : originLabel}
           </span>
-          <span
-            className="imported-conversation-pane__origin-action"
-            ref={setOriginActionSlot}
-          />
-          {onDetails && (
+          {showOrigin && (
+            <span
+              className="imported-conversation-pane__origin-action"
+              ref={setOriginActionSlot}
+            />
+          )}
+          {showOrigin && onDetails && (
             <Button size="sm" variant="secondary" onClick={onDetails}>
               Details
             </Button>
