@@ -3611,7 +3611,9 @@ Installs a plugin from a source URL. Invalidates plugins, layouts, and agents ca
 
 For verified registry acquisitions, carry the preview's optional
 `registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
-paths forward it; it is an opaque precondition, not caller-supplied verification.
+paths forward it as an opaque precondition. A preview dependency's
+`registryTrust` is the host's display receipt for that dependency.
+Put its pin in consent and keep the display receipt out of the decision.
 `listPlugins` rows carry the persisted `registryTrust` receipt and fail closed
 when its shape does not match `isPluginRegistryTrust` from
 `@kontourai/station-contracts/registry-trust`.
@@ -3701,8 +3703,8 @@ The preview carries the exact installation, retained content digest, opaque
 `recoveryRevision`, current `grantRevision`, optional `registryTrustRevision`, permission review, skipped components,
 and dependency installation/consent rows. A signed retained package reuses its
 original journal-bound verification under the same applied policy, without
-contacting its registry/source; ready retained children carry their own trust
-revision. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
+contacting its registry/source. Ready retained children carry their own trust
+revision and display receipt. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
 `usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
 recovery consent requires the fresh grant revision, including each dependency
 approval. Never derive approval merely from a cached preview or retry an old

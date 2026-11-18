@@ -5342,7 +5342,11 @@ cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
 matching `registryTrust` (the verified receipt and pin, or `{state: "none"}`,
 in the shape `GET /api/plugins` uses), the observed `installationRevision`, `existingDataScope`, and permission/dependency
-consent information. The optional top-level `hasBundle` reports whether the staged
+consent information. Each inspected dependency can carry `registryTrust`
+alongside its `consent.registryTrustRevision`. This displays its own receipt
+and pin. Recovery previews include the same per-dependency projection from
+retained verification. Older hosts can omit the receipt.
+The optional top-level `hasBundle` reports whether the staged
 source already contains `dist/bundle.js`. It is not a manifest field or runtime
 readiness. Installation can build client code from `manifest.entrypoint` even
 when `hasBundle` is false. Where native loading consent is required and remains
