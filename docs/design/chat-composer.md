@@ -1247,6 +1247,8 @@ proven closed (its Web Lock is gone; liveness that cannot be read is not
 closed). A failed send marks it **Not sent** instead. A copy another open
 window holds reads **Queued in another window.** (that window sends it), one
 from a closed window **From a closed window. Not sent.**; both offer **Send**.
+When a held outbox message restores an unopened chat, Home and Inbox use the
+conversation title and Agent from Station’s inventory and catalog when available.
 Send on a closed window's copy releases its original durable outbox key for
 server handoff. It never moves into a new per-tab automatic queue. Restored
 sessionStorage input has no originating Station/authority and is held for
