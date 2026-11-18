@@ -10238,9 +10238,25 @@ export function configureRuntimeRoutes(
   // The person's own custom appearance. Station-control requests resolve to
   // the session's recorded owner, so an agent proposes into its person's
   // document; the route refuses agents every step but read and propose.
+  const appearanceStudioPreview = context.featurePreviews.bind({
+    id: 'appearance-studio',
+    label: 'Appearance studio',
+    description:
+      'Customize backgrounds and styling, save and share theme files, and preview agent proposals in chat. Images stay in the theme file; accepted appearances remain when this is turned off.',
+  });
   context.app.route(
     '/api/me',
     createCustomAppearanceRoutes({
+      studioEnabled: () =>
+        appearanceStudioPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
+      resolveProposalSourceSessionId: (c) =>
+        resolveStationControlCallerForRequest(
+          c.req.raw,
+          resolveStationControlCallerRecord,
+        )?.sessionId,
       store: new CustomAppearanceStore(
         context.configLoader.getProjectHomeDir(),
       ),

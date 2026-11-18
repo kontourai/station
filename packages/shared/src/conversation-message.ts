@@ -72,6 +72,7 @@ export interface MessagePart {
   progressMessage?: string;
   /** A station-control refusal, whole (see `ToolCompletedEvent`). */
   stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+  appearanceProposal?: import('@kontourai/station-contracts/custom-appearance').CustomAppearanceProposalReference;
   /** When the call's `tool.started` was created (ISO); a running row's elapsed time. */
   startedAt?: string;
   /** Engine output was deliberately narrowed before publication. */

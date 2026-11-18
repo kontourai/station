@@ -6618,6 +6618,16 @@ adopts the palette and the [sanitized](../../src-ui/src/lib/custom-appearance/sa
 CSS, suspends the CSS while a [decision surface](../../src-ui/src/lib/custom-appearance/decision-surfaces.ts)
 is mounted and caches it for pre-paint; [previews](../../src-ui/src/lib/custom-appearance/preview.ts)
 run under the [keep bar](../../src-ui/src/lib/custom-appearance/keep-bar.ts).
+The Appearance studio preview adds typed visual settings through
+[visual-css.ts](../../src-ui/src/lib/custom-appearance/visual-css.ts), bounded
+embedded raster backgrounds, person-owned saved themes and versioned portable
+JSON packs. The store shares one atomic owner lock while library revisions
+remain independent. The [studio editor](../../src-ui/src/pages/AppearanceStudio.tsx)
+uses scoped SDK queries and protected previews. The
+[inline card](../../src-ui/src/components/chat/AppearanceProposalCard.tsx)
+reuses those previews with exact proposal/Session/Station checks; bounded
+proposal references are retained through EventStore excerpts/spill and the
+canonical transcript projection. Visual styling pauses with CSS on decisions.
 Evidence: [route tests](../../src-server/routes/me/__tests__/custom-appearance.routes.test.ts)
 and the [Chromium suite](../../src-ui/src/__tests__/custom-appearance.browser.test.ts).
 

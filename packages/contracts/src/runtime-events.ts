@@ -3,6 +3,7 @@ import type { ChatHostImageSource } from './chat-host-images.js';
 import type { ChildWorkDelta } from './child-work.js';
 import type { ClaudeArtifactLink } from './claude-artifact.js';
 import type { ClientOrigin } from './client-origin.js';
+import type { CustomAppearanceProposalReference } from './custom-appearance.js';
 import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
 import {
@@ -797,6 +798,8 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * see `station-control-refusal.ts`.
    */
   stationControlRefusal?: StationControlRefusalView;
+  /** Exact appearance proposal identity retained before output excerpts or spill. */
+  appearanceProposal?: CustomAppearanceProposalReference;
   method: 'tool.completed';
   /** Station stamps this from an already-open tool definition, never from result metadata. */
   mcpAppResourceUri?: string;
