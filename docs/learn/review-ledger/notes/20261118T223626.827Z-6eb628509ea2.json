@@ -1,0 +1,7 @@
+{
+  "revision": "faadfc998fcee4258d1596e54e27054e33cee356",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the onboarding test reference and the mounted recovery composition it now cites. Onboarding remains in its recovery query boundary alongside the protected authority boundary, and both sit inside one Station-scoped toast provider. The existing first-run, pairing and credential behavior assertions remain applicable.","inputs":["src-ui/src/__tests__/OnboardingGate.test.tsx"]}
+  ]
+}
