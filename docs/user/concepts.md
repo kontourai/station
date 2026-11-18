@@ -123,21 +123,20 @@ inline and offers **Download** for the rest.
 A Project schedule runs each run as a Task in the Project, so a file that run
 keeps appears in the Library with a link to its Task.
 
-### Continue in Project and Setup recommendations
+### Save to Project and Setup recommendations
 
-Turn on **Continue in Project** in Settings → Advanced → Feature previews.
+Turn on **Save to Project** in Settings → Advanced → Feature previews.
 
-**Continue in Project…** in a chat's More menu moves its work into a Project.
-The chat itself is unchanged; nothing is sent into it.
+When a chat produces a next step you want to keep, open its More menu and
+choose **Save to Project…**. Pick a destination:
 
-- **A new Project** opens New project with a name, folder and brief drafted
-  from the chat. The brief names the chat it came from. Edit anything, then
-  create it. Only the Project created from that form offers the chat as a
-  starter Task.
-- **An existing Project** creates a Task there, with a title and brief drafted
-  from the chat, that cites the chat's latest completed answer. If the Task
-  is created but the citation fails, **Retry citation** adds the reference
-  to that same Task.
+- Choose a Project, edit the Task title and brief, then select **Create
+  Task**. If the chat has a completed answer, the Task links back to it.
+  If the Task was created and the link failed, **Link chat to Task** finishes
+  that step on the same Task.
+- Choose **New Project…**, then **Review new Project** to edit the name,
+  folder and brief before creating it. That Project can then offer the chat
+  as a starter Task.
 
 A new Project with no Tasks shows **Setup recommendations**: a brief draft
 when it has none, a read-only **Explore and propose next steps** Task when a

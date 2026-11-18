@@ -278,7 +278,10 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
 
 vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  useProjects: () => ({ projects: projectsQueryState.data }),
+  useProjects: () => ({
+    projects: projectsQueryState.data,
+    isConfirmedLoaded: projectsQueryState.isSuccess,
+  }),
 }));
 
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
@@ -362,9 +365,28 @@ describe('NewProjectModal starter layout picker', () => {
       />
     );
     try {
-      const dialog = render(
-        <ContinueInProjectDialog conversation={source} onClose={onCloseMock} />,
+      const content = () => (
+        <ContinueInProjectDialog conversation={source} onClose={onCloseMock} />
       );
+      const dialog = render(content());
+      const chooser = screen.getByRole('combobox', { name: 'Project' });
+      expect((chooser as HTMLSelectElement).selectedOptions[0]?.text).toBe(
+        'New Project…',
+      );
+      projectsQueryState.data = [
+        { slug: 'existing-project', name: 'Existing Project' },
+      ];
+      dialog.rerender(content());
+      expect((chooser as HTMLSelectElement).selectedOptions[0]?.text).toBe(
+        'Choose a Project',
+      );
+      expect(screen.queryByRole('button', { name: 'Create Task' })).toBeNull();
+      const newProjectOption = screen.getByRole('option', {
+        name: 'New Project…',
+      });
+      fireEvent.change(chooser, {
+        target: { value: (newProjectOption as HTMLOptionElement).value },
+      });
       fireEvent.click(
         screen.getByRole('button', { name: 'Review new Project' }),
       );
@@ -454,7 +476,10 @@ describe('NewProjectModal starter layout picker', () => {
       { slug: 'first-project', name: 'First Project' },
       { slug: 'second-project', name: 'Second Project' },
     ];
-    createContinuationTask.mockReset().mockResolvedValue({ id: 'first-task' });
+    createContinuationTask.mockReset().mockResolvedValue({
+      id: 'first-task',
+      title: 'Saved Task title',
+    });
     createContinuationReference
       .mockReset()
       .mockRejectedValueOnce(new Error('Citation temporarily unavailable'))
@@ -474,36 +499,42 @@ describe('NewProjectModal starter layout picker', () => {
       />
     );
     const { rerender } = render(dialog());
-    fireEvent.click(screen.getByRole('radio', { name: /An existing Project/ }));
     const projectSelect = screen.getByRole('combobox', { name: 'Project' });
     fireEvent.change(projectSelect, { target: { value: 'first-project' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Task' }), {
       target: { value: 'An edited Task title' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
-    await screen.findByText(/doesn’t cite this chat yet/);
+    await screen.findByText('Chat link wasn’t added');
 
-    expect(projectSelect).toHaveProperty('disabled', true);
-    expect(projectSelect).toHaveProperty('value', 'first-project');
-    expect(screen.getByRole('textbox', { name: 'Task' })).toHaveProperty(
-      'value',
-      'An edited Task title',
-    );
+    expect(screen.getByText('Saved Task title')).toBeTruthy();
+    expect(screen.getByText('First Project')).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'Project' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Task' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Close', exact: true }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+
     const creatingAccount = authorityState.recoveryKey;
     authorityState.key = 'another-station-authority';
     authorityState.recoveryKey = 'another-station-account';
     rerender(dialog());
-    fireEvent.click(screen.getByRole('button', { name: 'Retry citation' }));
-    await screen.findByText(
-      'Station access changed. Return to the original Station to continue.',
-    );
+    expect(
+      screen.getByText('Return to the original Station to continue.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Saved Task title')).toBeNull();
+    expect(screen.queryByText('First Project')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Link chat to Task' }),
+    ).toBeNull();
     expect(createContinuationReference).toHaveBeenCalledTimes(1);
     expect(navigateMock).not.toHaveBeenCalled();
 
     authorityState.key = 'original-account-fresh-activation';
     authorityState.recoveryKey = creatingAccount;
     rerender(dialog());
-    fireEvent.click(screen.getByRole('button', { name: 'Retry citation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link chat to Task' }));
     const openTask = await screen.findByRole('button', { name: 'Open Task' });
     expect(navigateMock).not.toHaveBeenCalled();
 

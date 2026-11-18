@@ -24,16 +24,10 @@ import { Dialog } from '../Dialog';
 import { ErrorState } from '../state';
 import './ContinueInProjectDialog.css';
 
-type Destination = 'new' | 'existing';
+const NEW_PROJECT = '/projects/new';
 const STATION_CHANGED =
   'Station access changed. Return to the original Station to continue.';
 
-/**
- * #5071: Continue in Project… from the chat's More menu. A new Project opens
- * the New project form with a name, folder and brief drafted from the chat;
- * an existing Project gets a Task that cites the chat's latest answer. The
- * chat is left exactly as it was.
- */
 export function ContinueInProjectDialog({
   conversation,
   onClose,
@@ -48,38 +42,44 @@ export function ContinueInProjectDialog({
   const [ownerKey] = useState(() =>
     authority ? projectCreationRecoveryIdentity(authority) : undefined,
   );
-  const { projects } = useProjects();
+  const ownerMatches =
+    authority !== undefined &&
+    projectCreationRecoveryIdentity(authority) === ownerKey;
+  const ownerCurrent = ownerMatches && authority.isCurrent();
+  const { projects, isConfirmedLoaded } = useProjects();
   const queryClient = useQueryClient();
   const createTask = useCreateTaskMutation();
   const createReference = useCreateTaskReferenceMutation();
-  const [destination, setDestination] = useState<Destination>('new');
+  const [chosenProject, setChosenProject] = useState<string>();
+  const projectChoice =
+    chosenProject ??
+    (isConfirmedLoaded && projects.length === 0 ? NEW_PROJECT : '');
+  const newProject = projectChoice === NEW_PROJECT;
+  const selectedProject = projects.find(({ slug }) => slug === projectChoice);
+  const projectSlug = selectedProject?.slug ?? '';
   const [taskDraft] = useState(() =>
     draftTaskFromConversation(conversation, now()),
   );
-  const [projectSlug, setProjectSlug] = useState('');
   const [title, setTitle] = useState(taskDraft.title);
   const [description, setDescription] = useState(taskDraft.description);
   const [failure, setFailure] = useState<string>();
   const [createdTask, setCreatedTask] = useState<{
     id: string;
     projectSlug: string;
+    projectName: string;
+    title: string;
     citationAdded: boolean;
   }>();
   const [pending, setPending] = useState(false);
-  const draftLocked = pending || Boolean(createdTask);
   const needsCitation = Boolean(
     createdTask && conversation.latestTurnId && !createdTask.citationAdded,
   );
-  const groupName = useId();
   const projectId = useId();
   const titleId = useId();
   const descriptionId = useId();
 
   function captureOwner() {
-    if (
-      !authority?.isCurrent() ||
-      projectCreationRecoveryIdentity(authority) !== ownerKey
-    )
+    if (!ownerMatches || !authority.isCurrent())
       throw new StationUiError(STATION_CHANGED);
     return authority;
   }
@@ -111,11 +111,11 @@ export function ContinueInProjectDialog({
       return;
     }
     onClose();
-    navigate('/projects/new', { [PROJECT_CONTINUATION_PARAM]: continuationId });
+    navigate(NEW_PROJECT, { [PROJECT_CONTINUATION_PARAM]: continuationId });
   }
 
   async function continueInExistingProject() {
-    if (pending || !projectSlug || !title.trim()) return;
+    if (pending || (!createdTask && (!projectSlug || !title.trim()))) return;
     setFailure(undefined);
     setPending(true);
     try {
@@ -123,20 +123,25 @@ export function ContinueInProjectDialog({
       const requireCurrentOwner = () => {
         if (!owner.isCurrent()) throw new StationUiError(STATION_CHANGED);
       };
-      const task = createdTask ?? {
-        id: (
-          await createTask.mutateAsync({
-            requestScope: owner,
-            projectId: projectSlug,
-            title: title.trim(),
-            description: description.trim(),
-            createdBy: 'user',
-          })
-        ).id,
-        projectSlug,
-        citationAdded: false,
-      };
-      setCreatedTask(task);
+      let task = createdTask;
+      if (!task) {
+        const projectName = selectedProject?.name || projectSlug;
+        const record = await createTask.mutateAsync({
+          requestScope: owner,
+          projectId: projectSlug,
+          title: title.trim(),
+          description: description.trim(),
+          createdBy: 'user',
+        });
+        task = {
+          id: record.id,
+          title: record.title,
+          projectSlug,
+          projectName,
+          citationAdded: false,
+        };
+        setCreatedTask(task);
+      }
       requireCurrentOwner();
       if (conversation.latestTurnId && !task.citationAdded) {
         await createReference.mutateAsync({
@@ -165,31 +170,32 @@ export function ContinueInProjectDialog({
 
   return (
     <Dialog
-      title="Continue in Project"
+      title="Save to Project"
       subtitle="This chat stays as it is."
-      closeLabel="Close Continue in Project"
+      closeLabel="Close Save to Project"
       onClose={() => {
         if (!pending) onClose();
       }}
       footer={
         <>
           <Button onClick={onClose} disabled={pending}>
-            Cancel
+            {createdTask || !ownerCurrent ? 'Close' : 'Cancel'}
           </Button>
-          {destination === 'new' ? (
+          {ownerCurrent && newProject && (
             <Button variant="primary" onClick={continueInNewProject}>
               Review new Project
             </Button>
-          ) : (
+          )}
+          {ownerCurrent && (createdTask || selectedProject) && (
             <Button
               variant="primary"
-              disabled={pending || !projectSlug || !title.trim()}
+              disabled={pending || (!createdTask && !title.trim())}
               onClick={() => void continueInExistingProject()}
             >
               {needsCitation
                 ? pending
-                  ? 'Adding citation…'
-                  : 'Retry citation'
+                  ? 'Linking…'
+                  : 'Link chat to Task'
                 : createdTask
                   ? 'Open Task'
                   : pending
@@ -200,84 +206,99 @@ export function ContinueInProjectDialog({
         </>
       }
     >
-      <fieldset className="continue-in-project" disabled={draftLocked}>
-        <legend className="continue-in-project__legend">Continue in</legend>
-        <label className="continue-in-project__choice">
-          <input
-            type="radio"
-            name={groupName}
-            checked={destination === 'new'}
-            onChange={() => setDestination('new')}
-          />
-          <span>
-            <strong>A new Project</strong>
-            <small>Name, folder and brief are drafted from this chat.</small>
-          </span>
-        </label>
-        <label className="continue-in-project__choice">
-          <input
-            type="radio"
-            name={groupName}
-            checked={destination === 'existing'}
-            disabled={projects.length === 0}
-            onChange={() => setDestination('existing')}
-          />
-          <span>
-            <strong>An existing Project</strong>
-            <small>Adds a Task that cites this chat.</small>
-          </span>
-        </label>
-      </fieldset>
-      {destination === 'existing' && (
-        <div className="continue-in-project__fields">
-          <label htmlFor={projectId}>Project</label>
-          <Select
-            id={projectId}
-            value={projectSlug}
-            disabled={draftLocked}
-            onChange={(event) => setProjectSlug(event.currentTarget.value)}
-          >
-            <option value="">Choose a Project</option>
-            {projects.map((project) => (
-              <option key={project.slug} value={project.slug}>
-                {project.name || project.slug}
-              </option>
-            ))}
-          </Select>
-          <label htmlFor={titleId}>Task</label>
-          <input
-            id={titleId}
-            className="continue-in-project__input"
-            value={title}
-            disabled={draftLocked}
-            maxLength={240}
-            onChange={(event) => setTitle(event.currentTarget.value)}
-          />
-          <label htmlFor={descriptionId}>Brief</label>
-          <textarea
-            id={descriptionId}
-            className="continue-in-project__input"
-            rows={5}
-            value={description}
-            disabled={draftLocked}
-            onChange={(event) => setDescription(event.currentTarget.value)}
-          />
-        </div>
-      )}
-      {failure && (
+      {!ownerCurrent ? (
         <ErrorState
           variant="compact"
-          title={
-            needsCitation
-              ? 'The Task was created but doesn’t cite this chat yet'
-              : createdTask
-                ? 'The Task was created'
-                : destination === 'new'
+          title="Station access changed"
+          description="Return to the original Station to continue."
+        />
+      ) : createdTask ? (
+        <div className="content-stack">
+          <p className="continue-in-project__result" role="status">
+            <strong>{createdTask.title}</strong> was created in{' '}
+            <strong>{createdTask.projectName}</strong>.
+          </p>
+          {failure && (
+            <ErrorState
+              variant="compact"
+              title={
+                needsCitation
+                  ? 'Chat link wasn’t added'
+                  : 'Couldn’t open the Task'
+              }
+            />
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="continue-in-project__fields">
+            <label htmlFor={projectId}>Project</label>
+            <Select
+              id={projectId}
+              value={newProject ? NEW_PROJECT : projectSlug}
+              disabled={pending}
+              onChange={(event) => {
+                setChosenProject(event.currentTarget.value);
+                setFailure(undefined);
+              }}
+            >
+              <option value="" disabled>
+                Choose a Project
+              </option>
+              {projects.map((project) => (
+                <option key={project.slug} value={project.slug}>
+                  {project.name || project.slug}
+                </option>
+              ))}
+              <option value={NEW_PROJECT}>New Project…</option>
+            </Select>
+            {newProject && (
+              <small className="continue-in-project__description">
+                The chat provides a draft Project name and brief.
+              </small>
+            )}
+            {selectedProject && (
+              <>
+                {conversation.latestTurnId && (
+                  <small className="continue-in-project__description">
+                    The Task will link to the chat’s latest completed answer.
+                  </small>
+                )}
+                <label htmlFor={titleId}>Task</label>
+                <input
+                  id={titleId}
+                  className="continue-in-project__input"
+                  value={title}
+                  disabled={pending}
+                  maxLength={240}
+                  onChange={(event) => setTitle(event.currentTarget.value)}
+                />
+                <label htmlFor={descriptionId}>Brief</label>
+                <textarea
+                  id={descriptionId}
+                  className="continue-in-project__input"
+                  rows={5}
+                  value={description}
+                  disabled={pending}
+                  onChange={(event) =>
+                    setDescription(event.currentTarget.value)
+                  }
+                />
+              </>
+            )}
+          </div>
+          {failure && (
+            <ErrorState
+              variant="compact"
+              title={
+                newProject
                   ? "Couldn't open the Project draft"
                   : "Couldn't create the Task"
-          }
-          description={failure}
-        />
+              }
+              description={failure}
+            />
+          )}
+        </>
       )}
     </Dialog>
   );

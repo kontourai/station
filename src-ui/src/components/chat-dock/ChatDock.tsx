@@ -2013,7 +2013,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * never shown session-specific facts and navigating out of it is not this
    * row's business. Dropping either one silently changes what the row opens.
    */
-  // #5071: Continue in Project… drafts from this chat; it never sends into it.
+  // #5071: Save to Project drafts from this chat without sending a turn.
   const [continueInProject, setContinueInProject] =
     useState<ContinuedConversation | null>(null);
   const continueInProjectEnabled = useSurfaceVisibilityFlags().has(
@@ -2081,7 +2081,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           {
             key: 'continue-in-project',
             group: 'chat' as const,
-            label: 'Continue in Project…',
+            label: 'Save to Project…',
             onSelect: () => {
               if (activeSession)
                 setContinueInProject(
