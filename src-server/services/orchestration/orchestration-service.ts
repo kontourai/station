@@ -11903,6 +11903,7 @@ export class OrchestrationService {
             return { receipt, result };
           }
           this.inFlightSteers.add(command.threadId);
+          let providerInvoked = false;
           try {
             try {
               let steerInvocationId: string | undefined;
@@ -11947,6 +11948,7 @@ export class OrchestrationService {
                     steerInvocationId,
                   );
                 try {
+                  providerInvoked = true;
                   await adapter.steerTurn!(
                     command.threadId,
                     command.input,
@@ -11987,6 +11989,11 @@ export class OrchestrationService {
                 this.projectAndPublishEvent(legacySteerEvent);
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
+              if (
+                !providerInvoked &&
+                error instanceof ClientTurnInputConflictError
+              )
+                throw error;
               if (steerInput) {
                 const result: SteerTurnResult = {
                   outcome: 'indeterminate',

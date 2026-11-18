@@ -1243,6 +1243,15 @@ export class ThreadInboxDelivery {
           onUnconfirmed,
           text: payload.message,
           canDispatch: () => stillClaimed() && targetIsCurrent(),
+          onNotDispatched: () => {
+            if (stillClaimed())
+              this.ports.store.settle(
+                claimed.entry,
+                'refused',
+                STEER_TURN_ENDED,
+                this.now(),
+              );
+          },
           onDispatched: async (persistMemory) => {
             if (!stillClaimed()) return;
             try {

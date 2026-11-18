@@ -712,6 +712,7 @@ describe('thread inbox (#3568)', () => {
     'policy-throw',
     'dispatch-error',
     'turn-end',
+    'ended-before-model',
     'compacted',
     'duplicate',
     'crash-replay',
@@ -724,10 +725,12 @@ describe('thread inbox (#3568)', () => {
       const refused = mode === 'policy-throw';
       const requestFailed = mode === 'dispatch-error';
       const ended = mode === 'turn-end';
+      const endedBeforeModel = mode === 'ended-before-model';
       const file = path();
       let receiptReads = 0;
       const world = boot(file, {
         steerFidelity: () => 'emulated',
+        ...(endedBeforeModel ? { subscribe: () => () => {} } : {}),
         ...(mode === 'hold' ? { postToolMaySteer: () => false } : {}),
         ...(refused
           ? {
@@ -931,6 +934,13 @@ describe('thread inbox (#3568)', () => {
               conversationId: THREAD,
               userId: OWNER,
               prepareStep: (async (step) => {
+                if (endedBeforeModel) {
+                  nestedPreparation ??= createInboxStepPreparation();
+                  const prepared = await nestedPreparation(step);
+                  if (step.stepNumber === 1)
+                    await replaceRunningTurn(world, owner, 'turn-1');
+                  return prepared;
+                }
                 if (
                   ['duplicate', 'crash-replay', 'stream-restart'].includes(mode)
                 ) {
@@ -987,6 +997,14 @@ describe('thread inbox (#3568)', () => {
           },
         );
       const run = lease ? runWithAgentTurn(lease, invoke) : invoke();
+      if (endedBeforeModel) {
+        await run;
+        expect(calls).toBe(1);
+        expect(world.inbox.list(THREAD)).toMatchObject([
+          { state: 'refused', reasonCode: 'steer_turn_ended' },
+        ]);
+        return;
+      }
       if (ended) {
         await requestEntered;
         try {
@@ -1358,12 +1376,17 @@ describe('thread inbox (#3568)', () => {
   });
 
   test.each([
-    { boundary: 'engine profile', turnId: 'turn-2' },
-    { boundary: 'engine profile', turnId: 'turn-1' },
-    { boundary: 'adapter resolution', turnId: 'turn-1' },
+    { boundary: 'engine profile', turnId: 'turn-2', newInput: undefined },
+    { boundary: 'engine profile', turnId: 'turn-1', newInput: undefined },
+    { boundary: 'adapter resolution', turnId: 'turn-1', newInput: undefined },
+    {
+      boundary: 'adapter resolution',
+      turnId: 'turn-1',
+      newInput: 'other input under the same key',
+    },
   ])(
-    'a steer awaiting $boundary cannot enter a successor named $turnId',
-    async ({ boundary, turnId }) => {
+    'a steer awaiting $boundary keeps its accepted target and key for $turnId ($newInput)',
+    async ({ boundary, turnId, newInput }) => {
       let release!: () => void;
       const held = new Promise<void>((resolve) => {
         release = resolve;
@@ -1422,22 +1445,41 @@ describe('thread inbox (#3568)', () => {
       try {
         expect(accepted.outcome).toBe('queued');
         await waiting;
-        await replaceRunningTurn(world, original, turnId);
+        if (newInput) {
+          const competing = await world.service.dispatchWithReceipt({
+            type: 'steerTurn',
+            threadId: THREAD,
+            turnId,
+            clientInputId: 'old-turn-steer',
+            input: newInput,
+          });
+          expect(competing.result).toMatchObject({ outcome: 'steered' });
+        } else {
+          await replaceRunningTurn(world, original, turnId);
+        }
       } finally {
         release();
       }
       await settle(world);
-      expect(world.adapter.steers).toEqual([]);
-      expect(
-        world.store.readSteerInput({
-          threadId: THREAD,
-          clientInputId: 'old-turn-steer',
-          input: payload.message,
-          turnId: 'turn-1',
-        }),
-      ).toBeUndefined();
+      expect(world.adapter.steers).toEqual(newInput ? [newInput] : []);
+      if (!newInput) {
+        expect(
+          world.store.readSteerInput({
+            threadId: THREAD,
+            clientInputId: 'old-turn-steer',
+            input: payload.message,
+            turnId: 'turn-1',
+          }),
+        ).toBeUndefined();
+      }
       expect(world.inbox.list(THREAD)).toMatchObject([
-        { state: 'refused', kind: 'steer', reasonCode: 'steer_turn_ended' },
+        {
+          state: 'refused',
+          kind: 'steer',
+          reasonCode: newInput
+            ? 'client_turn_input_conflict'
+            : 'steer_turn_ended',
+        },
       ]);
     },
   );
@@ -1448,6 +1490,7 @@ describe('thread inbox (#3568)', () => {
       subscribe: () => () => {},
     });
     const original = await runningFirstTurn(world);
+    const record = vi.spyOn(world.service, 'recordPostToolSteer');
     expect(
       world.inbox.submitSteer({
         conversationId: THREAD,
@@ -1479,6 +1522,7 @@ describe('thread inbox (#3568)', () => {
     expect(world.inbox.list(THREAD)).toMatchObject([
       { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
     ]);
+    expect(record).not.toHaveBeenCalled();
     expect(
       world.store.listEventPayloads(THREAD, ['turn.started']),
     ).not.toContainEqual(
