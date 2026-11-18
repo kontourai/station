@@ -2426,7 +2426,9 @@ Creates a new project. Invalidates `['projects']` on success.
 
 ### `useUpdateProjectMutation()`
 
-Updates a project. Invalidates `['projects']` on success.
+Updates a Project. Pass the host-captured `requestScope` in the mutation
+variables to bind the update and its cache refresh to the selected Station
+and account. Calls without a scope invalidate `['projects']` on success.
 
 ### `useDeleteProjectMutation()`
 
@@ -4917,6 +4919,10 @@ content, while retaining the observed HTTP status (usually 200).
   claims nothing about pull requests. `useMergePullRequestMutation`
   invalidates every Project's facts query, so a merge through Station moves
   its card on the next read.
+- `createTask` and `createTaskReference` accept an optional `requestScope`
+  in their input, including when called through `useCreateTaskMutation` or
+  `useCreateTaskReferenceMutation`. Pass the same captured scope to both
+  steps when creating a Task and adding its first reference.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.

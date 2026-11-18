@@ -1036,21 +1036,47 @@ export function useUpdateProjectMutation(
   return useMutation({
     mutationFn: async ({
       slug,
+      requestScope,
       ...data
     }: {
       slug: string;
+      requestScope?: ApiRequestScope;
       [key: string]: any;
     }) => {
-      const apiBase = await _getApiBase();
-      return updateProjectRaw(apiBase, slug, data);
+      const apiBase = requestScope?.apiBase ?? (await _getApiBase());
+      return updateProjectRaw(
+        apiBase,
+        slug,
+        data,
+        requestScope === undefined ? undefined : { requestScope },
+      );
     },
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      queryClient.invalidateQueries({ queryKey: ['projects', variables.slug] });
-      // The selections it returns are the Project's own fields.
-      queryClient.invalidateQueries({
-        queryKey: [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX],
-      });
+      const scope = variables.requestScope;
+      if (scope) {
+        queryClient.invalidateQueries({
+          queryKey: ['projects'],
+          predicate: ({ queryKey }) =>
+            (queryKey.at(-2) === scope.apiBase &&
+              queryKey.at(-1) === scope.authorityKey) ||
+            (queryKey[1] === scope.apiBase &&
+              queryKey[2] === scope.authorityKey),
+        });
+        queryClient.invalidateQueries({
+          queryKey: projectChatDefaultsQueryKey(
+            scope,
+            undefined,
+            variables.slug,
+          ),
+          exact: true,
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+        // The selections it returns are the Project's own fields.
+        queryClient.invalidateQueries({
+          queryKey: [PROJECT_CHAT_DEFAULTS_QUERY_KEY_PREFIX],
+        });
+      }
       options?.onSuccess?.(data, variables);
     },
     onError: (error, variables) => {

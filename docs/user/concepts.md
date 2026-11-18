@@ -132,9 +132,12 @@ The chat itself is unchanged; nothing is sent into it.
 
 - **A new Project** opens New project with a name, folder and brief drafted
   from the chat. The brief names the chat it came from. Edit anything, then
-  create it.
+  create it. Only the Project created from that form offers the chat as a
+  starter Task.
 - **An existing Project** creates a Task there, with a title and brief drafted
-  from the chat, that cites the chat's latest completed answer.
+  from the chat, that cites the chat's latest completed answer. If the Task
+  is created but the citation fails, **Retry citation** adds the reference
+  to that same Task.
 
 A new Project with no Tasks shows **Setup recommendations**: a brief draft
 when it has none, a read-only **Explore and propose next steps** Task when a

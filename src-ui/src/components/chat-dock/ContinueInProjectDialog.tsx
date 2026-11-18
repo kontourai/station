@@ -6,21 +6,27 @@ import {
 } from '@kontourai/station-sdk';
 import { Select } from '@kontourai/ui/react';
 import { useId, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useProjects } from '../../contexts/ProjectsContext';
 import {
   type ContinuedConversation,
   draftProjectFromConversation,
   draftTaskFromConversation,
-  rememberPendingContinuation,
+  PROJECT_CONTINUATION_PARAM,
+  stageProjectContinuation,
 } from '../../lib/continue-in-project';
+import { projectCreationRecoveryIdentity } from '../../lib/project-onboarding-recovery';
 import { errorText } from '../../utils/errorText';
+import { StationUiError } from '../../utils/StationUiError';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { ErrorState } from '../state';
 import './ContinueInProjectDialog.css';
 
 type Destination = 'new' | 'existing';
+const STATION_CHANGED =
+  'Station access changed. Return to the original Station to continue.';
 
 /**
  * #5071: Continue in Project… from the chat's More menu. A new Project opens
@@ -38,6 +44,10 @@ export function ContinueInProjectDialog({
   now?: () => Date;
 }) {
   const { navigate } = useNavigation();
+  const authority = useHostRequestAuthorityScope();
+  const [ownerKey] = useState(() =>
+    authority ? projectCreationRecoveryIdentity(authority) : undefined,
+  );
   const { projects } = useProjects();
   const queryClient = useQueryClient();
   const createTask = useCreateTaskMutation();
@@ -50,17 +60,42 @@ export function ContinueInProjectDialog({
   const [title, setTitle] = useState(taskDraft.title);
   const [description, setDescription] = useState(taskDraft.description);
   const [failure, setFailure] = useState<string>();
-  const [createdTaskId, setCreatedTaskId] = useState<string>();
-  const pending = createTask.isPending || createReference.isPending;
+  const [createdTask, setCreatedTask] = useState<{
+    id: string;
+    projectSlug: string;
+    citationAdded: boolean;
+  }>();
+  const [pending, setPending] = useState(false);
+  const draftLocked = pending || Boolean(createdTask);
+  const needsCitation = Boolean(
+    createdTask && conversation.latestTurnId && !createdTask.citationAdded,
+  );
   const groupName = useId();
   const projectId = useId();
   const titleId = useId();
   const descriptionId = useId();
 
+  function captureOwner() {
+    if (
+      !authority?.isCurrent() ||
+      projectCreationRecoveryIdentity(authority) !== ownerKey
+    )
+      throw new StationUiError(STATION_CHANGED);
+    return authority;
+  }
+
   function continueInNewProject() {
+    let owner: ReturnType<typeof captureOwner>;
+    try {
+      owner = captureOwner();
+    } catch (error) {
+      setFailure(errorText(error));
+      return;
+    }
     const at = now();
     const draft = draftProjectFromConversation(conversation, at);
-    rememberPendingContinuation({
+    const continuationId = stageProjectContinuation(owner, {
+      projectDraft: draft,
       sessionId: conversation.sessionId,
       ...(conversation.latestTurnId
         ? { turnId: conversation.latestTurnId }
@@ -69,45 +104,62 @@ export function ContinueInProjectDialog({
       description: taskDraft.description,
       savedAt: at.toISOString(),
     });
+    if (!continuationId) {
+      setFailure(
+        'Couldn’t save the draft in this tab. Try again or choose an existing Project.',
+      );
+      return;
+    }
     onClose();
-    navigate('/projects/new', {
-      name: draft.name,
-      description: draft.description,
-      ...(draft.directory ? { directory: draft.directory } : {}),
-    });
+    navigate('/projects/new', { [PROJECT_CONTINUATION_PARAM]: continuationId });
   }
 
   async function continueInExistingProject() {
-    if (!projectSlug || !title.trim()) return;
+    if (pending || !projectSlug || !title.trim()) return;
     setFailure(undefined);
+    setPending(true);
     try {
-      // A retry after a failed reference reuses the Task already created.
-      const taskId =
-        createdTaskId ??
-        (
+      const owner = captureOwner();
+      const requireCurrentOwner = () => {
+        if (!owner.isCurrent()) throw new StationUiError(STATION_CHANGED);
+      };
+      const task = createdTask ?? {
+        id: (
           await createTask.mutateAsync({
+            requestScope: owner,
             projectId: projectSlug,
             title: title.trim(),
             description: description.trim(),
             createdBy: 'user',
           })
-        ).id;
-      setCreatedTaskId(taskId);
-      if (conversation.latestTurnId)
+        ).id,
+        projectSlug,
+        citationAdded: false,
+      };
+      setCreatedTask(task);
+      requireCurrentOwner();
+      if (conversation.latestTurnId && !task.citationAdded) {
         await createReference.mutateAsync({
-          taskId,
+          requestScope: owner,
+          taskId: task.id,
           kind: 'turn',
           sessionId: conversation.sessionId,
           turnId: conversation.latestTurnId,
           sourceSurface: 'chat',
         });
+        setCreatedTask({ ...task, citationAdded: true });
+      }
+      requireCurrentOwner();
       await queryClient.invalidateQueries({
-        queryKey: taskQueries.list(projectSlug).queryKey,
+        queryKey: taskQueries.list(task.projectSlug, owner).queryKey,
       });
+      requireCurrentOwner();
       onClose();
-      navigate(`/tasks/${encodeURIComponent(taskId)}`);
+      navigate(`/tasks/${encodeURIComponent(task.id)}`);
     } catch (error) {
       setFailure(errorText(error));
+    } finally {
+      setPending(false);
     }
   }
 
@@ -116,7 +168,9 @@ export function ContinueInProjectDialog({
       title="Continue in Project"
       subtitle="This chat stays as it is."
       closeLabel="Close Continue in Project"
-      onClose={onClose}
+      onClose={() => {
+        if (!pending) onClose();
+      }}
       footer={
         <>
           <Button onClick={onClose} disabled={pending}>
@@ -132,13 +186,21 @@ export function ContinueInProjectDialog({
               disabled={pending || !projectSlug || !title.trim()}
               onClick={() => void continueInExistingProject()}
             >
-              {pending ? 'Creating…' : 'Create Task'}
+              {needsCitation
+                ? pending
+                  ? 'Adding citation…'
+                  : 'Retry citation'
+                : createdTask
+                  ? 'Open Task'
+                  : pending
+                    ? 'Creating…'
+                    : 'Create Task'}
             </Button>
           )}
         </>
       }
     >
-      <fieldset className="continue-in-project">
+      <fieldset className="continue-in-project" disabled={draftLocked}>
         <legend className="continue-in-project__legend">Continue in</legend>
         <label className="continue-in-project__choice">
           <input
@@ -172,6 +234,7 @@ export function ContinueInProjectDialog({
           <Select
             id={projectId}
             value={projectSlug}
+            disabled={draftLocked}
             onChange={(event) => setProjectSlug(event.currentTarget.value)}
           >
             <option value="">Choose a Project</option>
@@ -186,6 +249,7 @@ export function ContinueInProjectDialog({
             id={titleId}
             className="continue-in-project__input"
             value={title}
+            disabled={draftLocked}
             maxLength={240}
             onChange={(event) => setTitle(event.currentTarget.value)}
           />
@@ -195,6 +259,7 @@ export function ContinueInProjectDialog({
             className="continue-in-project__input"
             rows={5}
             value={description}
+            disabled={draftLocked}
             onChange={(event) => setDescription(event.currentTarget.value)}
           />
         </div>
@@ -203,11 +268,15 @@ export function ContinueInProjectDialog({
         <ErrorState
           variant="compact"
           title={
-            createdTaskId
+            needsCitation
               ? 'The Task was created but doesn’t cite this chat yet'
-              : "Couldn't create the Task"
+              : createdTask
+                ? 'The Task was created'
+                : destination === 'new'
+                  ? "Couldn't open the Project draft"
+                  : "Couldn't create the Task"
           }
-          description={`${failure} Try Create Task again.`}
+          description={failure}
         />
       )}
     </Dialog>
