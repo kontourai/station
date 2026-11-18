@@ -828,7 +828,7 @@ describe('HomeView', () => {
     const row = within(
       screen.getByRole('region', { name: 'Recent work' }),
     ).getByRole('button', {
-      name: 'Lives in Coding, station',
+      name: /^Lives in Coding\b/,
     });
     row.focus();
     fireEvent.click(row);
@@ -880,7 +880,7 @@ describe('HomeView', () => {
     fireEvent.click(
       within(screen.getByRole('region', { name: 'Recent work' })).getByRole(
         'button',
-        { name: 'Stays in the dock, station' },
+        { name: /^Stays in the dock\b/ },
       ),
     );
     expect(focus).toHaveBeenCalledTimes(1);
