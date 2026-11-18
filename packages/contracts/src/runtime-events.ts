@@ -921,6 +921,8 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   blocking?: boolean;
   requestType: 'approval' | 'permission' | 'confirmation' | 'input';
   title: string;
+  /** Bounded quotation stamped by Station's approval guardian policy. */
+  guardianReason?: string;
   description?: SpillableText;
   payload?: Record<string, unknown>;
   purpose?: string;

@@ -1665,6 +1665,12 @@ async function evaluateClaudePreToolPolicy(
     toolName: string,
     toolInput: unknown,
   ) => void,
+  onGuardianAsk: (
+    toolUseId: string,
+    toolName: string,
+    toolInput: unknown,
+    reason: string,
+  ) => void,
   /** The engine runs at `bypassPermissions` for this call. */
   fullAccess = false,
 ) {
@@ -1701,6 +1707,14 @@ async function evaluateClaudePreToolPolicy(
     ]);
     if (decision.behavior === 'allow' && !decision.toolGrant) {
       onPolicyAllow(input.tool_use_id, input.tool_name, input.tool_input);
+    }
+    if (decision.behavior === 'ask' && decision.guardianReason) {
+      onGuardianAsk(
+        input.tool_use_id,
+        input.tool_name,
+        input.tool_input,
+        decision.guardianReason,
+      );
     }
     return preToolPolicyHookOutput(decision);
   } catch (error) {
@@ -4810,6 +4824,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? 'allowed'
         : 'changed';
     };
+    const guardianAsks = new Map<
+      string,
+      { toolName: string; inputDigest?: string; reason: string }
+    >();
+    const rememberGuardianAsk = (
+      toolUseId: string,
+      toolName: string,
+      toolInput: unknown,
+      reason: string,
+    ) => {
+      if (!toolUseId) return;
+      guardianAsks.delete(toolUseId);
+      guardianAsks.set(toolUseId, {
+        toolName,
+        inputDigest: toolInputDigest(toolInput),
+        reason,
+      });
+      if (guardianAsks.size > MAX_PENDING_POLICY_ALLOWS) {
+        const oldest = guardianAsks.keys().next();
+        if (!oldest.done) guardianAsks.delete(oldest.value);
+      }
+    };
     const disallowedTools = [
       ...(input.agent?.toolServers?.some(
         (server) =>
@@ -5043,7 +5079,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           input.agent?.askBeforeUse,
           sourceApproval.key,
         );
+        const guardianAsk = options.toolUseID
+          ? guardianAsks.get(options.toolUseID)
+          : undefined;
+        if (options.toolUseID) guardianAsks.delete(options.toolUseID);
+        const guardianReason =
+          guardianAsk?.toolName === toolName &&
+          guardianAsk.inputDigest !== undefined &&
+          guardianAsk.inputDigest === toolInputDigest(toolInput)
+            ? guardianAsk.reason
+            : undefined;
         const explicitAsk =
+          guardianAsk !== undefined ||
           authoredApproval === 'ask' ||
           (sourceApproval.ambiguous && !!input.agent?.askBeforeUse?.length);
         // Fix (external autoApprove parity): match Station's own
@@ -5189,6 +5236,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               claudeSandboxNetworkTitle(toolName, toolInput) ??
               `Allow ${toolName}`),
           description: claudeRequestDisplayText(options.description),
+          ...(guardianReason ? { guardianReason } : {}),
           payload: {
             ...(inputRequest ? { inputRequest } : {}),
             toolName,
@@ -5408,6 +5456,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                         rememberPolicyAllow,
+                        rememberGuardianAsk,
                         // Read per call: a mid-chat switch changes it.
                         this.sessions.get(input.threadId)
                           ?.currentPermissionMode === 'bypassPermissions',

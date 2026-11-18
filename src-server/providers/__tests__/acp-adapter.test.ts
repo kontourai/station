@@ -1404,7 +1404,11 @@ describe('AcpAdapter', () => {
       const evaluator = vi
         .fn()
         .mockResolvedValueOnce({ behavior: 'defer' })
-        .mockResolvedValueOnce({ behavior: 'ask', required: true });
+        .mockResolvedValueOnce({
+          behavior: 'ask',
+          required: true,
+          guardianReason: 'The only-if-asked rule requires a person.',
+        });
       const { adapter, processes } = createAdapter({
         resolvePreToolPolicy: async () => evaluator,
       });
@@ -1437,7 +1441,10 @@ describe('AcpAdapter', () => {
         'mcp__tools__write',
       );
       const required = await nextEvent(iterator, 'required request.opened');
-      expect(required.method).toBe('request.opened');
+      expect(required).toMatchObject({
+        method: 'request.opened',
+        guardianReason: 'The only-if-asked rule requires a person.',
+      });
       await adapter.respondToRequest(
         'required-ask',
         String(required.requestId),
@@ -1664,7 +1671,7 @@ describe('AcpAdapter', () => {
        * guardian whose verdict the test sets. Only the guardian's model call
        * is replaced.
        */
-      function guardianPolicy(decision: 'allow' | 'deny') {
+      function guardianPolicy(decision: 'allow' | 'deny' | 'defer') {
         const reviewToolCall = vi.fn(async () => ({
           decision,
           reason: `guardian says ${decision}`,
@@ -1685,7 +1692,7 @@ describe('AcpAdapter', () => {
       }
       async function start(
         threadId: string,
-        decision: 'allow' | 'deny',
+        decision: 'allow' | 'deny' | 'defer',
         metadata: Record<string, unknown> = {},
       ) {
         const { evaluator, reviewToolCall } = guardianPolicy(decision);
@@ -1712,6 +1719,20 @@ describe('AcpAdapter', () => {
           reviewToolCall,
         };
       }
+      test('an unattended enforce guardian defer declines the ACP request immediately', async () => {
+        const { adapter, client, reviewToolCall } = await start(
+          'thread-guardian-defer',
+          'defer',
+        );
+        await expect(
+          requestPermission(client, 'deferred', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        expect(reviewToolCall).toHaveBeenCalledOnce();
+        await adapter.stopAll();
+      });
+
       const planExits = [
         ['switch', { name: 'mcp__tools__exit', kind: 'switch_mode' }],
         ['exit-plan', { name: 'ExitPlanMode' }],
