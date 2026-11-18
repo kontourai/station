@@ -99,12 +99,12 @@ export function NewChatDefaultsSection({
   return (
     <PageSection
       id="section-new-chat"
-      className="project-settings__section project-settings__section--choices"
+      className="project-settings__section page-section--choice-rows"
       title="New chats"
       description="Start from project defaults or your last chat. Agent approval settings take precedence; composer choices override defaults."
     >
       <PageRow
-        className="project-settings__choice-row"
+        className="page-row--choice"
         label={
           <label htmlFor="project-default-model-selection">
             Starting model
@@ -133,7 +133,7 @@ export function NewChatDefaultsSection({
         }
       />
       <PageRow
-        className="project-settings__choice-row"
+        className="page-row--choice"
         label={
           <label htmlFor="project-default-approval-selection">
             Starting approval mode
@@ -162,7 +162,7 @@ export function NewChatDefaultsSection({
         }
       />
       <PageRow
-        className="project-settings__choice-row"
+        className="page-row--choice"
         label={
           <label htmlFor="project-default-approval-mode">
             Set approval mode

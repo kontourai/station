@@ -30,12 +30,14 @@
 }
 
 .device-tools__header {
+  --icon-button-size: 44px;
+
   align-items: center;
   border-bottom: 1px solid var(--border-primary);
   display: flex;
   flex: 0 0 auto;
-  gap: var(--k-space-2);
-  padding: var(--k-space-2);
+  gap: var(--k-space-1);
+  padding: var(--k-space-2) var(--k-space-3);
 }
 
 .device-tools__title {
@@ -44,7 +46,6 @@
   margin: 0;
 }
 
-.device-tools__header .button,
 .device-tools__actions .button {
   min-height: 44px;
   min-width: 44px;
@@ -137,6 +138,10 @@
   gap: var(--k-space-2);
 }
 
+.device-tools__location-actions {
+  justify-content: flex-end;
+}
+
 .device-tools__field {
   display: flex;
   flex-direction: column;
@@ -206,5 +211,9 @@
   border: 0;
   margin: 0;
   min-width: 0;
+  padding: 0;
+}
+
+.device-tools__fieldset > legend {
   padding: 0;
 }

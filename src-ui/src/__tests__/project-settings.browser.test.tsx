@@ -21,8 +21,12 @@ const fixtures: Plugin = {
           useKnowledgeSaveMutation=mutation,useKnowledgeScanMutation=mutation,
           useMigratePreIndexKnowledgeMutation=mutation,useApplyProjectLayoutMutation=mutation,
           useDeleteProjectLayoutMutation=mutation,useProjectLifecycleMutation=mutation,
-          useSetProjectPullRequestWatchMutation=mutation,
-          usePatchNotificationPreferencesMutation=mutation;
+          useSetProjectPullRequestWatchMutation=mutation;
+        export const usePatchNotificationPreferencesMutation=()=>({
+          ...mutation(),mutateAsync:async({perProject})=>{
+            document.documentElement.dataset.fixtureNotification=perProject['demo-id'];
+          },
+        });
         export const useNotificationPreferencesQuery=()=>query({perProject:{}});
         export const useProjectDeletionPreviewQuery=()=>query(undefined);
         export const useProjectIconCandidatesQuery=()=>query([]),useModelConnectionsQuery=()=>query([]),
@@ -210,7 +214,16 @@ test('project settings remain usable above the dock at phone and desktop widths 
           false,
         );
         const name = page.getByRole('textbox', { name: 'Name *' });
+        const save = page.getByRole('button', {
+          name: 'Save changes',
+          exact: true,
+        });
+        const header = page.locator('.detail-header');
+        const cleanHeader = await header.boundingBox();
+        expect(await save.isVisible()).toBe(false);
         await name.fill('Unsaved project title');
+        await save.waitFor();
+        expect((await header.boundingBox())?.height).toBe(cleanHeader?.height);
         const icon = await page
           .getByRole('button', { name: 'Choose project icon' })
           .boundingBox();
@@ -223,6 +236,31 @@ test('project settings remain usable above the dock at phone and desktop widths 
         else
           await page.getByRole('link', { name: 'Agents', exact: true }).click();
         expect(await name.isVisible()).toBe(false);
+        if (width <= 768)
+          await page
+            .getByLabel('Project settings section', { exact: true })
+            .selectOption('overview');
+        else
+          await page
+            .getByRole('link', {
+              name: 'Overview and notifications',
+              exact: true,
+            })
+            .click();
+        await page
+          .getByRole('combobox', { name: 'Notify me', exact: true })
+          .selectOption('all');
+        expect(
+          await page.locator('html').getAttribute('data-fixture-notification'),
+        ).toBe('all');
+        expect(await save.isVisible()).toBe(true);
+        await page.getByRole('button', { name: 'Back to project' }).click();
+        const discardDraft = page.getByRole('alertdialog', {
+          name: 'Unsaved Changes',
+        });
+        await discardDraft.getByRole('button', { name: 'Cancel' }).click();
+        expect(await save.isVisible()).toBe(true);
+
         if (width <= 768)
           await page
             .getByLabel('Project settings section', { exact: true })
@@ -244,7 +282,13 @@ test('project settings remain usable above the dock at phone and desktop widths 
         await page.locator('label[for="project-agent-builder"]').click();
         expect(await agent.isChecked()).toBe(false);
         await page.locator('label[for="project-agent-builder"]').click();
-        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        await save.press('Enter');
+        await save.waitFor({ state: 'hidden' });
+        expect(
+          await page
+            .getByRole('button', { name: 'Back to project' })
+            .evaluate((element) => element === document.activeElement),
+        ).toBe(true);
         await page.screenshot({ path: `${out}/agents-${width}-${theme}.png` });
         for (const [key, sectionName, labels] of [
           [

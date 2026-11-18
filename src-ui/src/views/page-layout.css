@@ -229,6 +229,31 @@
   }
 }
 
+/* Choice rows reserve room for option text and stack when their section narrows. */
+.page-section--choice-rows {
+  container: page-choice-rows / inline-size;
+}
+
+.page-row--choice .page-row__aside {
+  inline-size: min(22rem, 100%);
+}
+
+.page-row--choice .page-row__control {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+@container page-choice-rows (max-width: 38rem) {
+  .page-row--choice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-row--choice .page-row__aside {
+    inline-size: 100%;
+  }
+}
+
 .page__search-row {
   display: flex;
   align-items: center;

@@ -10,7 +10,7 @@
 }
 
 .device-setup__steps {
-  border-block-end: 1px solid var(--border-primary);
+  border-block-end: 1px solid var(--k-line);
   display: flex;
   flex-wrap: wrap;
   gap: var(--k-space-1) var(--k-space-3);
@@ -27,7 +27,7 @@
 }
 
 .device-setup__step-label--current {
-  border-block-end-color: var(--accent-primary);
+  border-block-end-color: var(--k-action);
   color: var(--k-text);
   font-weight: 600;
 }
@@ -36,6 +36,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--k-space-2);
+}
+
+.device-setup__step > .button {
+  align-self: flex-start;
 }
 
 .device-setup__step-title {

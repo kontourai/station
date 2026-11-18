@@ -21,9 +21,11 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
-import { CloseGlyph } from '../../components/icons/Glyph';
+import { IconButton } from '../../components/IconButton';
+import { CloseGlyph, RefreshGlyph } from '../../components/icons/Glyph';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { DeviceReproductionPicker } from './DeviceReproductionPicker';
 import {
@@ -306,24 +308,20 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
         <h3 className="device-tools__title" id={headingId}>
           {VIEW_TITLE[view]}
         </h3>
-        <Button
+        <IconButton
           aria-label="Refresh device values"
           onClick={() => void snapshot.refetch()}
           pending={snapshot.isFetching}
-          pendingLabel="Reading…"
-          size="sm"
+          pendingLabel={null}
         >
-          Refresh
-        </Button>
-        <Button
+          <RefreshGlyph />
+        </IconButton>
+        <IconButton
           aria-label={`Close ${VIEW_TITLE[view].toLowerCase()}`}
-          className="device-tools__close"
           onClick={props.onClose}
-          size="sm"
-          variant="ghost"
         >
           <CloseGlyph />
-        </Button>
+        </IconButton>
       </div>
       <div className="device-tools__body">
         {action.isError ? (
@@ -978,20 +976,20 @@ function LocationSection({
   return (
     <Section title="Location">
       <LocationReadback location={location} />
-      <fieldset
-        aria-label="Location presets"
-        className="device-tools__actions device-tools__fieldset"
-      >
-        {LOCATION_PRESETS.map((preset) => (
-          <Button
-            disabled={busy}
-            key={preset.label}
-            onClick={() => onSet(preset.latitude, preset.longitude)}
-            size="sm"
-          >
-            {preset.label}
-          </Button>
-        ))}
+      <fieldset className="device-tools__fieldset">
+        <legend className="device-tools__label">Set to a preset</legend>
+        <div className="device-tools__actions">
+          {LOCATION_PRESETS.map((preset) => (
+            <Button
+              disabled={busy}
+              key={preset.label}
+              onClick={() => onSet(preset.latitude, preset.longitude)}
+              size="sm"
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </div>
       </fieldset>
       <div className="device-tools__coordinates">
         <label className="device-tools__field" htmlFor={latId}>
@@ -1019,23 +1017,29 @@ function LocationSection({
           example 51.5074 and -0.1278 (a decimal comma works too).
         </p>
       ) : null}
-      <div className="device-tools__actions">
-        <Button
-          disabled={!valid || (busy && !pending)}
-          onClick={() => valid && onSet(lat, lon)}
-          pending={pending}
-          pendingLabel="Setting…"
-          size="sm"
-          variant="primary"
-        >
-          Set location
-        </Button>
-        {canClear ? (
-          <Button disabled={busy} onClick={onClear} size="sm">
-            Clear
+      <ActionRow
+        className="device-tools__actions device-tools__location-actions"
+        overflowLabel="More location actions"
+        secondary={
+          canClear ? (
+            <Button disabled={busy} onClick={onClear} size="sm" variant="ghost">
+              Clear location
+            </Button>
+          ) : null
+        }
+        primary={
+          <Button
+            disabled={!valid || (busy && !pending)}
+            onClick={() => valid && onSet(lat, lon)}
+            pending={pending}
+            pendingLabel="Setting…"
+            size="sm"
+            variant="primary"
+          >
+            Set location
           </Button>
-        ) : null}
-      </div>
+        }
+      />
     </Section>
   );
 }

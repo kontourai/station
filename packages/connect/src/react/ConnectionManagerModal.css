@@ -37,7 +37,8 @@
   color: var(--text-primary, #e5e5e5);
 }
 
-.station-connect-modal-panel :focus-visible {
+.station-connect-modal-panel :focus-visible,
+.station-connect-btn:focus-visible {
   outline: 2px solid var(--accent-primary, #3b82f6);
   outline-offset: 2px;
 }
@@ -67,7 +68,8 @@
 /* Mirrors src-ui's .responsive-dialog-close contract (PR #575): 44px target,
    SVG glyph, radius-md, border/hover treatment. Duplicated here because this
    package ships independently and must not import src-ui. */
-.station-connect-modal-close {
+.station-connect-modal-close,
+.station-connect-modal-back {
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
@@ -87,7 +89,26 @@
     border-color var(--motion-fast, 0.15s) ease;
 }
 
-.station-connect-modal-close svg {
+.station-connect-modal-back {
+  border-color: transparent;
+  background: transparent;
+}
+
+.station-connect-modal-back:hover {
+  color: var(--text-primary, #e5e5e5);
+  background: var(--bg-hover, #252525);
+}
+
+.station-connect-modal-back svg {
+  transform: scaleX(var(--station-connect-back-direction, 1));
+}
+
+.station-connect-modal-back:dir(rtl) {
+  --station-connect-back-direction: -1;
+}
+
+.station-connect-modal-close svg,
+.station-connect-modal-back svg {
   width: 18px;
   height: 18px;
   fill: none;
@@ -147,7 +168,11 @@
 }
 
 .station-connect-discovery__status {
-  flex: 1 1 180px;
+  flex: 1 1 8rem;
+}
+
+.station-connect-discovery__back {
+  align-self: flex-start;
 }
 
 .station-connect-discovery__candidates {
@@ -572,7 +597,7 @@
 .station-connect-btn--primary {
   border: none;
   background: var(--accent-primary, #3b82f6);
-  color: var(--text-on-accent);
+  color: var(--text-on-accent, white);
 }
 
 .station-connect-btn--primary:hover:not(:disabled) {
@@ -598,7 +623,21 @@
   background: color-mix(in srgb, var(--text-primary, #e5e5e5) 5%, transparent);
 }
 
-.station-connect-btn--secondary:disabled {
+.station-connect-btn--quiet {
+  min-width: 44px;
+  padding-inline: var(--k-space-3, 12px);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary, #bbb);
+}
+
+.station-connect-btn--quiet:hover:not([aria-disabled="true"]) {
+  color: var(--text-primary, #e5e5e5);
+  background: var(--bg-hover, #252525);
+}
+
+.station-connect-btn--secondary:disabled,
+.station-connect-btn--quiet[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }

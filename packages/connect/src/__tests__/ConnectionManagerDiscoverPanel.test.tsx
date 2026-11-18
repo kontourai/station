@@ -24,6 +24,28 @@ describe('connection candidate panel', () => {
     expect(screen.queryByRole('button', { name: /scan/i })).toBeNull();
   });
 
+  test('keeps the busy retry control focused and ignores activation until ready', () => {
+    const onRefresh = vi.fn();
+    const props = {
+      candidates: [],
+      providers: [],
+      providerCount: 1,
+      existingUrls: new Set<string>(),
+      onRefresh,
+      onSelect: vi.fn(),
+    };
+    const view = render(
+      <ConnectionManagerDiscoverPanel {...props} discovering={false} />,
+    );
+    screen.getByRole('button', { name: 'Check again' }).focus();
+    view.rerender(<ConnectionManagerDiscoverPanel {...props} discovering />);
+    const check = screen.getByRole('button', { name: 'Checking…' });
+    expect(check.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(check);
+    fireEvent.click(check);
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
   test.each([
     ['permission-required', /After returning to Station, choose Check again/],
     ['permission-denied', /permission is denied/],

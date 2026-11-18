@@ -164,6 +164,10 @@ export function ConnectionManagerModalContent({
         ? 'list'
         : initialPanel,
   );
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const discoveryBackRef = useRef<HTMLButtonElement>(null);
+  const discoverTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreDiscoveryFocusRef = useRef(false);
   const pairingCodeTriggerRef = useRef<HTMLButtonElement>(null);
   const restorePairingCodeFocusRef = useRef(false);
   const [newName, setNewName] = useState('');
@@ -225,6 +229,16 @@ export function ConnectionManagerModalContent({
     refresh: refreshCandidates,
     cancel: cancelCandidates,
   } = useConnectionCandidates();
+  useLayoutEffect(() => {
+    if (panel === 'discover') {
+      discoveryBackRef.current?.focus();
+    } else if (panel === 'list' && restoreDiscoveryFocusRef.current) {
+      restoreDiscoveryFocusRef.current = false;
+      (discoverTriggerRef.current ?? dialogRef.current)?.focus();
+    } else if (panel === 'request-access' && candidateTarget) {
+      titleRef.current?.focus();
+    }
+  }, [candidateTarget, panel]);
   useEffect(() => {
     if (panel !== 'discover') return;
     refreshCandidates();
@@ -809,8 +823,28 @@ export function ConnectionManagerModalContent({
         aria-labelledby="station-connect-modal-title"
       >
         <div className="station-connect-modal-header">
+          {panel === 'discover' && (
+            <button
+              ref={discoveryBackRef}
+              type="button"
+              className="station-connect-modal-back"
+              aria-label="Back to Stations"
+              onClick={() => {
+                restoreDiscoveryFocusRef.current = true;
+                setPanel('list');
+              }}
+            >
+              <svg aria-hidden="true" viewBox="0 0 20 20" focusable="false">
+                <path d="M12 5l-5 5 5 5" />
+              </svg>
+            </button>
+          )}
           <div className="station-connect-modal-heading">
             <h2
+              ref={titleRef}
+              tabIndex={
+                panel === 'request-access' && candidateTarget ? -1 : undefined
+              }
               id="station-connect-modal-title"
               className="station-connect-modal-title"
             >
@@ -993,9 +1027,8 @@ export function ConnectionManagerModalContent({
             onViewDevices={() => setPanel('devices')}
             discoveryAvailable={providerCount > 0}
             hasLocalStation={hasLocalStation}
-            onDiscover={() => {
-              setPanel('discover');
-            }}
+            discoverTriggerRef={discoverTriggerRef}
+            onDiscover={() => setPanel('discover')}
           />
         )}
 
@@ -1179,10 +1212,6 @@ export function ConnectionManagerModalContent({
               setRequestAccessTarget(null);
               setCandidateTarget({ url: candidate.url, name: candidate.name });
               setPanel('request-access');
-            }}
-            onBack={() => {
-              cancelCandidates();
-              setPanel('list');
             }}
           />
         )}

@@ -19,10 +19,11 @@
  * depends on it — are in `tests/dialog-return-focus.spec.ts` against Chromium.
  * Neither suite alone covers the behaviour.
  */
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
+import { registerConnectionCandidateProvider } from '../core/connectionCandidates';
 import type { StorageAdapter } from '../core/types';
 import { ConnectionManagerModalContent } from '../react/ConnectionManagerModalContent';
 import { ConnectionsProvider } from '../react/ConnectionsContext';
@@ -74,6 +75,38 @@ function mountModal(returnFocusTarget?: HTMLElement | null) {
 }
 
 describe('Connection Manager return focus (station#1245)', () => {
+  test('moves focus into discovery and returns it to the Stations trigger', async () => {
+    const unregister = registerConnectionCandidateProvider({
+      id: 'fixture.empty',
+      discover: async () => [],
+    });
+    const view = mountModal();
+    try {
+      const opener = screen.getByRole('button', {
+        name: 'Find nearby Stations',
+      });
+      opener.focus();
+      fireEvent.click(opener);
+      await screen.findByText(/No Stations found/);
+      const back = screen.getByRole('button', { name: 'Back to Stations' });
+      expect(document.activeElement).toBe(back);
+      expect(
+        screen.queryByRole('button', { name: 'Back', exact: true }),
+      ).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Close Station manager' }),
+      ).toBeTruthy();
+
+      fireEvent.click(back);
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Find nearby Stations' }),
+      );
+    } finally {
+      view.unmount();
+      unregister();
+    }
+  });
+
   test('restores to an explicit parent-owned trigger when the chooser trigger was replaced', () => {
     const addComputer = document.createElement('button');
     const replacedChooserOption = document.createElement('button');

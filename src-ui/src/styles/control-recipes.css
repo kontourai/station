@@ -27,8 +27,7 @@
 }
 
 /* Published controls honor the shell's shared mobile target floor. */
-.control--input,
-.control--select {
+.control--input {
   min-height: max(
     var(--touch-target-min, 0px),
     calc(var(--k-space-6) + var(--k-space-2))
@@ -36,6 +35,11 @@
 }
 
 .control--select {
+  min-height: max(
+    var(--form-touch-target-min, 0px),
+    var(--touch-target-min, 0px),
+    calc(var(--k-space-6) + var(--k-space-2))
+  );
   padding-inline: var(--k-space-3) var(--k-space-6);
 }
 
@@ -44,26 +48,19 @@
   inset-inline-end: var(--k-space-3);
 }
 
-@media (max-width: 768px), (pointer: coarse) {
-  .control--select,
-  .content-stack .control--select,
-  .settings__field .select .control--select {
-    min-height: max(44px, var(--touch-target-min, 0px));
-  }
+.content-stack .control--select,
+.settings__field .select .control--select {
+  min-height: max(
+    var(--form-touch-target-min, 0px),
+    var(--touch-target-min, 0px),
+    calc(var(--k-space-6) + var(--k-space-3))
+  );
 }
 
-@media (forced-colors: active) {
-  .control--select {
-    appearance: auto;
-    padding-inline-end: var(--k-space-3);
-  }
-
-  .control--select:focus-visible {
-    outline: var(--k-focus-ring-width) solid Highlight;
-    outline-offset: var(--k-focus-ring-offset);
-  }
-
-  .select__chevron {
-    display: none;
-  }
+/* Forced colors repaint the chevron's border and this outline in system
+   colors. The transparent outline leaves the kit's focus ring visible in
+   standard colors. */
+.control--select:focus-visible {
+  outline: var(--k-focus-ring-width) solid transparent;
+  outline-offset: var(--k-focus-ring-offset);
 }

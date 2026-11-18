@@ -362,31 +362,6 @@
   font-size: var(--text-base);
 }
 
-/* Choice rows stack when the settings pane narrows, even in a wide window. */
-.project-settings__section--choices {
-  container: project-settings-choices / inline-size;
-}
-
-.project-settings__choice-row .page-row__aside {
-  inline-size: min(22rem, 100%);
-}
-
-.project-settings__choice-row .page-row__control {
-  inline-size: 100%;
-  min-inline-size: 0;
-}
-
-@container project-settings-choices (max-width: 38rem) {
-  .project-settings__choice-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .project-settings__choice-row .page-row__aside {
-    inline-size: 100%;
-  }
-}
-
 @media (max-width: 640px) {
   .project-settings__body {
     padding: var(--k-space-3);

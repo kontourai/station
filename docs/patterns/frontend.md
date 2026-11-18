@@ -176,8 +176,11 @@ with its feature. A new rule should have real consumers and one style owner.
   paragraphs, lists, and field groups semantic instead of spacing each child
   with feature-specific margins. This recipe is opt-in; it does not reset
   unrelated pages or long-form prose.
-- `ActionRow` owns primary/secondary action order, wrapping, and gaps. App and
-  server update controls use the same row instead of custom button-row CSS.
+- `ActionRow` owns action order, wrapping and gaps. Give the main action
+  the filled `Button` treatment. Keep navigation beside the title or in the
+  dialog header. Use secondary or ghost variants for other actions, choosing
+  an outline when a text-only choice could be mistaken for a label. Group
+  related controls at one size. Desktop and server updates share this row.
 - Search fields use `Input` from `@kontourai/ui/react`, or its global
   `control control--input` classes when the caller needs a native input ref.
   `filter-toolbar` places an ordinary control beside compact actions and lets

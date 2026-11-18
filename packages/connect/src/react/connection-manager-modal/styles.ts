@@ -23,12 +23,6 @@ export const primaryBtnStyle: CSSProperties = {
   minHeight: 44,
 };
 
-export const compactPrimaryBtnStyle: CSSProperties = {
-  ...primaryBtnStyle,
-  padding: '8px 14px',
-  fontWeight: 600,
-};
-
 export const secondaryBtnStyle: CSSProperties = {
   padding: '10px 20px',
   fontSize: 13,

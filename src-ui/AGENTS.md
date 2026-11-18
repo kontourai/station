@@ -37,7 +37,7 @@ For performance and test cleanup, use the [journey profiling and mutation route]
 
 Reuse `.choice-trigger`, `.choice-caret` and `ArrowDownGlyph` for compact pickers. Keep picker behavior in its owner. `ResponsiveDialogSurface` supplies behavior and geometry. Consumers own overlay, background and foreground styles. Preserve visible keyboard focus and 44px mobile targets. Check every affected caller at narrow widths and in both themes.
 
-Before writing feature CSS, find a shipped caller and review `@kontourai/ui/react` and the [shared presentation recipes](../docs/patterns/frontend.md#styling-and-responsive-behavior). Use `ActionRow` for command groups, `Field`/`Select` for form choices, `StatusSummary` for identity, status and check metadata, and `content-stack` for semantic flow.
+Before writing feature CSS, find a shipped caller and review `@kontourai/ui/react` and the [shared presentation recipes](../docs/patterns/frontend.md#styling-and-responsive-behavior). Use `ActionRow` for commands with one primary, `Field`/`Select` for form choices, `StatusSummary` for identity, status and check metadata, and `content-stack` for semantic flow.
 
 In framed shell routes, `PageFrame` owns gutters, `PageSection` owns titled sections, and `PageRow` owns label/description/control rows. Parents own child gaps. Controls own type, padding and states. Keep feature geometry local. Change the common owner and remove matching overrides together.
 

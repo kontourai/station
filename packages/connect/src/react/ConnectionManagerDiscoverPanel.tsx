@@ -7,10 +7,6 @@ import type {
   ConnectionCandidate,
   ConnectionCandidateSource,
 } from '../core/types';
-import {
-  compactPrimaryBtnStyle,
-  secondaryBtnStyle,
-} from './connection-manager-modal/styles';
 import './ConnectionManagerModal.css';
 
 const SOURCE_LABEL: Record<ConnectionCandidateSource, string> = {
@@ -27,7 +23,7 @@ interface ConnectionManagerDiscoverPanelProps {
   existingUrls: Set<string>;
   onRefresh: () => void;
   onSelect: (candidate: ConnectionCandidate) => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 export function ConnectionManagerDiscoverPanel({
@@ -90,9 +86,11 @@ export function ConnectionManagerDiscoverPanel({
           </span>
           <button
             type="button"
-            onClick={onRefresh}
-            disabled={discovering}
-            style={secondaryBtnStyle}
+            onClick={() => {
+              if (!discovering) onRefresh();
+            }}
+            aria-disabled={discovering || undefined}
+            className="station-connect-btn station-connect-btn--quiet"
           >
             {discovering ? 'Checking…' : 'Check again'}
           </button>
@@ -148,7 +146,7 @@ export function ConnectionManagerDiscoverPanel({
                       type="button"
                       aria-label={`Request access to ${candidate.name}`}
                       onClick={() => onSelect(candidate)}
-                      style={compactPrimaryBtnStyle}
+                      className="station-connect-btn station-connect-btn--primary"
                     >
                       Request access
                     </button>
@@ -160,9 +158,15 @@ export function ConnectionManagerDiscoverPanel({
         </div>
       )}
 
-      <button type="button" onClick={onBack} style={secondaryBtnStyle}>
-        Back
-      </button>
+      {onBack && (
+        <button
+          type="button"
+          className="station-connect-btn station-connect-btn--quiet station-connect-discovery__back"
+          onClick={onBack}
+        >
+          Back
+        </button>
+      )}
     </div>
   );
 }

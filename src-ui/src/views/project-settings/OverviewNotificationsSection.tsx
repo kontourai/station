@@ -98,12 +98,12 @@ export function OverviewNotificationsSection({
   return (
     <PageSection
       id="section-overview"
-      className="project-settings__section project-settings__section--choices"
+      className="project-settings__section page-section--choice-rows"
       title="Overview and notifications"
       description="How this Project files finished work and when it interrupts you."
     >
       <PageRow
-        className="project-settings__choice-row"
+        className="page-row--choice"
         label={
           <label htmlFor="project-overview-auto-resolve">
             Resolve idle Tasks
@@ -139,7 +139,7 @@ export function OverviewNotificationsSection({
         />
       ) : (
         <PageRow
-          className="project-settings__choice-row"
+          className="page-row--choice"
           label={<label htmlFor="project-notification-level">Notify me</label>}
           description={
             <span id="project-notification-level-hint">{`${NOTIFICATION_DESCRIPTIONS[level]} Nothing is sent to a device while it shows this Project.`}</span>

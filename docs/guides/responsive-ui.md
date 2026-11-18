@@ -362,6 +362,13 @@ A header, toolbar or action row shows at most two labelled actions. Further
 actions go into an overflow menu; an icon-only button with an accessible name
 does not count.
 
+Check action placement in the clean, edited and pending states. In Project
+settings, Back stays beside the Project name and Save changes appears at the
+trailing edge for a pending draft, including while viewing an autosaving
+section. In a wizard, keep Continue in the same place across steps. Verify
+the actual clickable area of adjacent compact actions and the keyboard focus
+destination after an action disappears.
+
 Write a row with [`ActionRow`](../../src-ui/src/components/ActionRow.tsx). It
 takes a `primary` action, a `secondary` action and `overflow` items, so there
 is no slot for a third labelled button. `overflowLabel` names the `⋯` trigger
