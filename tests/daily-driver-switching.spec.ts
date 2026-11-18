@@ -260,7 +260,10 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
         panel.getByRole('button', { name: /^(?:Model:|Engine & model:)/ }),
       ),
       'the composer must name the model the next turn will ask for',
-    ).toHaveAccessibleName(/^Claude Haiku Mid Switch/, { timeout: 5_000 });
+    ).toHaveAccessibleName(
+      /^(?:Model:|Engine & model:).*Claude Haiku Mid Switch.*session override/i,
+      { timeout: 5_000 },
+    );
 
     // Turn 2 in the SAME conversation must dispatch the new model, and the
     // switched turn's provenance card must report it.
