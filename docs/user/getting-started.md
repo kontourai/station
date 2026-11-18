@@ -26,8 +26,9 @@ without adding a model API key:
    Project**. Documents opens Files & connections after creation; connected tools opens
    the Project's Tools section. Neither asks for a folder or repository.
    Blank also permits an optional installed layout. For a repository, open
-   **Start from a Git repository**, paste its HTTPS/SSH URL or choose **GitHub** or **GitLab**
-   under **Repository provider**, using an account signed in on the Station host. Choose
+   **Start from a Git repository**. Choose **Git URL** to paste an HTTPS or SSH URL,
+   or select the **GitHub** or **GitLab** tile to browse with an account signed
+   in on the Station host. Choose
    **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
    that working copy and retains its source and exact commit. Acquisition currently
    requires the Station operator and uses that host's Git credentials.
