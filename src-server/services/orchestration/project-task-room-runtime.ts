@@ -1866,12 +1866,14 @@ export class ProjectTaskRoomRuntime {
       input.taskCreatedAt,
     );
     if (!grant || !this.#deps.attachments) return undefined;
-    const admission = await this.#resolveGrant(grant, 'message-write');
-    if (admission.kind !== 'granted') return undefined;
-    return this.#deps.attachments.store(
-      { ...admission.receipt.scope, taskCreatedAt: input.taskCreatedAt },
-      input.attachments,
-    );
+    return this.#deps.attachments.store(async () => {
+      const admission = await this.#resolveGrant(grant, 'message-write');
+      if (admission.kind === 'granted')
+        return {
+          ...admission.receipt.scope,
+          taskCreatedAt: input.taskCreatedAt,
+        };
+    }, input.attachments);
   }
   async resolveAttachments(input: {
     taskId: string;

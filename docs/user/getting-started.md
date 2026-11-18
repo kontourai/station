@@ -1192,9 +1192,10 @@ message waits and goes once the upload finishes; a failed upload offers Retry.
 The existing Task room, Project channels and agent-thread replies accept
 images the same way, including messages with only an image; their room composer also retains **Paste image** on supported touch devices. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
-does not restore them. In chats and the Task room, an older image in history may
-become unavailable after the server's attachment retention expires; a Project
-channel keeps a file for as long as its message stands. If a Project channel
+does not restore them. An older chat image may become unavailable after the
+server's attachment retention expires. The Task room keeps bytes for bound
+attachments and can refuse new files if its store is full. A Project channel
+keeps a file for as long as its message stands. If a Project channel
 pauses attachments while its file store is repaired, it says so; remove the
 files and your text still sends.
 
