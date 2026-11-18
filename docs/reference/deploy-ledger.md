@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-18T05:42:00Z | nightly-npm | 0.12.0-nightly.20261118.44244686750 | `c583700` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44244686750) |
 | 2026-11-18T03:01:15Z | nightly-npm | 0.12.0-nightly.20261118.44226098011 | `e1976d9` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44226098011) |
 | 2026-11-17T23:26:00Z | nightly-desktop | 0.2.0-nightly.20261117.2 | `099dac6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44192161706) |
 | 2026-11-17T23:26:00Z | nightly-android | 0.2.0-nightly.20261117.2 | `099dac6` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44192161706) |
@@ -497,6 +498,35 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-18T05:42:00Z · nightly-npm · 0.12.0-nightly.20261118.44244686750
+
+- Ship SHA: `c5837006326ca67e716f433f15180cd7da5922a7`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261118.44244686750 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `e1976d9` ([full sha](https://github.com/kontourai/station/commit/e1976d9e1f8a160fe9a78954c89448920ab7f37e)):
+
+**Features**
+
+- [#5185](https://github.com/kontourai/station/pull/5185) feat(orchestration): add dormant CLI Session group owner
+- [#5173](https://github.com/kontourai/station/pull/5173) feat: report paired multi-turn request overhead
+
+**Fixes**
+
+- [#5184](https://github.com/kontourai/station/pull/5184) fix(scripts): sequence connected-agent projection and retain diagnostics
+- [#5169](https://github.com/kontourai/station/pull/5169) fix(orchestration): derive owned child activity from shared lifecycle
+- [#5183](https://github.com/kontourai/station/pull/5183) fix(tasks): capture launch intent before target discovery
+
+**Other**
+
+- [#5190](https://github.com/kontourai/station/pull/5190) perf(docs): bound release history replay time
+- [#5187](https://github.com/kontourai/station/pull/5187) perf(orchestration): avoid duplicate session inventory scans
+- [#5171](https://github.com/kontourai/station/pull/5171) perf(sessions): bound repeated transcript prefix reads
+- [#5166](https://github.com/kontourai/station/pull/5166) perf(auth): defer bundled WebAuthn initialization until first use
 
 ## 2026-11-18T03:01:15Z · nightly-npm · 0.12.0-nightly.20261118.44226098011
 
