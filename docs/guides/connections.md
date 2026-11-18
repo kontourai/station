@@ -1338,7 +1338,9 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
 - `configHome` — an explicit engine config home (`~` allowed), applied as
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
-  profile still wins over both.
+  profile still wins over both. In **Advanced → App home**, a configured
+  home disables the Station-managed toggle and snapshot import. You can
+  still clear a leftover Station-managed home.
 
 On a machine whose [managed policy](managed-policy.md#pinned-launch-fields)
 locks the engine's environment, `env`, `configHome` and **Connect through** are
@@ -1539,7 +1541,9 @@ that require a newer client — with an error telling you to update your local
 engine, which is already current — or have newer request fields rejected as
 unknown. If a proxied connection fails with a client-version error, update
 the proxy first; Station cannot rewrite what the proxy sends upstream, and
-unproxied connections are unaffected.
+unproxied connections are unaffected. If Claude reports this client-version
+requirement while using an explicitly configured nondefault Anthropic API
+endpoint, the chat error points you to the proxy’s upstream client version.
 
 ### Give a credential profile its own routing
 
