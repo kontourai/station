@@ -563,6 +563,10 @@ test.describe('Settings', () => {
     expect((await picker.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await picker.selectOption({ label: 'Notifications & voice' });
     await expect(page).toHaveURL(/view=alerts/);
+    await page
+      .locator('summary')
+      .filter({ hasText: /^Notification sounds$/ })
+      .click();
     for (const name of ['Agent notifications', 'Approval requests sound']) {
       expect(
         (await page.getByRole('combobox', { name }).boundingBox())!.height,
@@ -852,9 +856,11 @@ test.describe('Settings discovery and preferences', () => {
           name: new RegExp(`Settings: ${destination.title}`),
         })
         .click();
-      await expect(page).toHaveURL(
-        (url) => url.searchParams.get('highlight') === destination.id,
-      );
+      await expect(
+        page.getByText(`${destination.title} revealed in Settings.`, {
+          exact: true,
+        }),
+      ).toBeVisible();
       await expect(target).toBeInViewport();
 
       if (destination.id === 'usage-disclosure') {
