@@ -329,10 +329,20 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
     facts.push(`- Failing step: \`${plainText(summary.failingStep)}\``);
   if (typeof summary.inFlightStep === 'string')
     facts.push(`- In-flight step: \`${plainText(summary.inFlightStep)}\``);
+  if (typeof summary.phaseAdmission === 'string')
+    facts.push(`- Phase admission: ${plainText(summary.phaseAdmission)}`);
   if (summary.indeterminate === true) facts.push('- Indeterminate: `true`');
   if (document.truncated === true)
     facts.push(
       '- The captured verdict document was truncated by its own byte cap.',
+    );
+  if (Array.isArray(document.omittedDetails))
+    facts.push(
+      `- Omitted from stdout: ${document.omittedDetails.map(plainText).join(', ')}.`,
+    );
+  if (typeof document.canonicalReceipt === 'string')
+    facts.push(
+      `- Canonical receipt: \`${plainText(document.canonicalReceipt)}\``,
     );
   if (facts.length) lines.push(...facts, '');
   const counts = countsTable(summary.counts);
@@ -444,6 +454,10 @@ export function annotationsFor(document) {
   if (!document) return [];
   const summary = document.summary ?? {};
   if (verdictOf(summary) !== false) return [];
+  if (typeof summary.phaseAdmission === 'string')
+    return [
+      `::error title=full-regression::${annotationMessage(summary.phaseAdmission)}`,
+    ];
   const excerpts = causalExcerptsOf(summary);
   if (excerpts.length)
     return excerpts.map(
