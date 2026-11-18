@@ -1,5 +1,6 @@
 import type {
   MouseEvent as ReactMouseEvent,
+  ReactNode,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
@@ -130,6 +131,7 @@ interface ChatDockMobileHeaderProps {
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
+  reportedStart?: ReactNode;
   routeLabel?: string;
   stationName?: string;
   sessionProjectMismatchLabel?: string | null;
@@ -155,6 +157,7 @@ export function ChatDockMobileHeader({
   showDrawerToggle,
   showConnection,
   sessionTitle,
+  reportedStart,
   routeLabel,
   stationName,
   sessionProjectMismatchLabel,
@@ -287,6 +290,7 @@ export function ChatDockMobileHeader({
           {!inboxActive && agentIdentity && ' '}
           {!inboxActive && (agentIdentity || stationName) && (
             <span className="chat-dock__mobile-eyebrow">
+              {!childTrail && reportedStart}
               {stationName && `Via ${stationName}`}
               {stationName && agentIdentity && ' · '}
               {agentIdentity?.name}

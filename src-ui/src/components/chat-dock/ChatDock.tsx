@@ -204,6 +204,7 @@ import {
 import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
 import {
   ChatDockActiveIdentity,
+  DelegationStart,
   delegatedTaskLabel,
 } from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
@@ -1571,9 +1572,28 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const executionProfile = agents.find(
     (entry) => entry.slug === activeSessionForHook?.agentSlug,
   );
-  const executionRoutes = executionProfile
+  const profileExecutionRoutes = executionProfile
     ? executionSelection.executionModelsForAgent(executionProfile)
     : effectiveModels;
+  const currentExecutionAgentId = activeSessionForHook?.executionAgentId;
+  // A direct Station runtime may leave the saved Agent's execution unset.
+  // The open chat's Station binding owns its model routes in that case too.
+  const executionRoutes =
+    activeSessionForHook?.executionMode === EXECUTION_MODE.STATION
+      ? [
+          ...effectiveModels.map((model) => ({
+            ...model,
+            executionAgentId: currentExecutionAgentId,
+            engineId: 'station' as const,
+            engineName: 'Station',
+          })),
+          ...profileExecutionRoutes.filter(
+            (route) =>
+              route.executionAgentId !== undefined &&
+              route.executionAgentId !== currentExecutionAgentId,
+          ),
+        ]
+      : profileExecutionRoutes;
   // Chat input hook - encapsulates autocomplete, history, and input handling
   const chatInput = useChatInput({
     apiBase: conversationConnection?.targetApiBase ?? apiBase,
@@ -3930,6 +3950,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           }
                         : null
                     }
+                    reportedStart={
+                      hostBound &&
+                      !showNewChatModal &&
+                      !showOpeningIdentity &&
+                      !importedSessionId &&
+                      activeOrchestrationSession?.inputOrigin ? (
+                        <DelegationStart
+                          threadId={activeOrchestrationSession.threadId}
+                          compact
+                        />
+                      ) : undefined
+                    }
                     sessionProjectMismatchLabel={
                       showNewChatModal || showOpeningIdentity
                         ? undefined
@@ -4160,6 +4192,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             activeOrchestrationSession?.modelRoute?.label
                           }
                           inputOrigin={activeOrchestrationSession?.inputOrigin}
+                          reportedStartThreadId={
+                            hostBound
+                              ? activeOrchestrationSession?.threadId
+                              : undefined
+                          }
                           onClose={removeSession}
                         />
                       ) : null
