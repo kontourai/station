@@ -65,8 +65,15 @@ export function delegatedTaskLabel(origin: OrchestrationInputOrigin): string {
     : 'Driven from a delegated task';
 }
 
-function DelegationStart({ threadId }: { threadId: string }) {
+export function DelegationStart({
+  threadId,
+  compact = false,
+}: {
+  threadId: string;
+  compact?: boolean;
+}) {
   const reported = useReportedDelegationStart(threadId);
+  if (compact) return reported ? `${reported} · ` : null;
   return reported ? `Started from ${reported}` : 'Driven from delegation';
 }
 

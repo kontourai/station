@@ -204,6 +204,7 @@ import {
 import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
 import {
   ChatDockActiveIdentity,
+  DelegationStart,
   delegatedTaskLabel,
 } from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
@@ -3962,6 +3963,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             icon: activeChatAgent?.icon,
                           }
                         : null
+                    }
+                    reportedStart={
+                      hostBound &&
+                      !showNewChatModal &&
+                      !showOpeningIdentity &&
+                      !importedSessionId &&
+                      activeOrchestrationSession?.inputOrigin ? (
+                        <DelegationStart
+                          threadId={activeOrchestrationSession.threadId}
+                          compact
+                        />
+                      ) : undefined
                     }
                     sessionProjectMismatchLabel={
                       showNewChatModal || showOpeningIdentity
