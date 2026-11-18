@@ -534,6 +534,91 @@ ${JSON.stringify(
     ).toBe(false);
   });
 
+  test('keeps uncertain import progress and retries the same artifact without replaying an applied target', async () => {
+    const seed = join(cwd, 'seed.json');
+    writeFileSync(
+      seed,
+      JSON.stringify({
+        mcpServers: {
+          first: { command: 'generated-previous' },
+          unrelated: { command: 'generated-unrelated' },
+        },
+      }),
+    );
+    const source = join(cwd, 'retry.json');
+    writeFileSync(
+      source,
+      JSON.stringify({
+        mcpServers: {
+          first: { command: 'generated-imported' },
+          later: { command: 'generated-later' },
+        },
+      }),
+    );
+    const { importConfig, readConfigImportStatus } = await import(
+      '../commands/import.js'
+    );
+    const { writeIntegration } = await import('../commands/portability-io.js');
+    await importConfig(seed, { projectHome: home });
+    const manifest = (id: string) =>
+      join(home, 'integrations', id, 'integration.json');
+    const unrelatedBefore = readFileSync(manifest('unrelated'));
+    mkdirSync(manifest('later'), { recursive: true });
+
+    await expect(importConfig(source, { projectHome: home })).rejects.toThrow(
+      'Station import did not finish',
+    );
+    const interrupted = readConfigImportStatus(home);
+    if (!interrupted) throw new Error('Expected persisted import progress');
+    expect(interrupted).toMatchObject({
+      phase: 'applying',
+      effects: [
+        { target: 'integrations/first', status: 'applied' },
+        { target: 'integrations/later', status: 'uncertain' },
+      ],
+    });
+    expect(JSON.parse(readFileSync(manifest('first'), 'utf8')).command).toBe(
+      'generated-imported',
+    );
+    expect(existsSync(interrupted.ledgerPath)).toBe(false);
+    await expect(importConfig(seed, { projectHome: home })).rejects.toThrow(
+      'A different Station import is incomplete',
+    );
+    expect(readConfigImportStatus(home)).toEqual(interrupted);
+
+    await writeIntegration(
+      'first',
+      { id: 'first', kind: 'mcp', command: 'generated-newer' },
+      home,
+    );
+    rmSync(manifest('later'), { recursive: true });
+    const completed = await importConfig(source, { projectHome: home });
+    expect(completed.ledgerPath).toBe(interrupted.ledgerPath);
+    expect(readConfigImportStatus(home)).toMatchObject({
+      id: interrupted.id,
+      phase: 'complete',
+    });
+    expect(JSON.parse(readFileSync(manifest('first'), 'utf8')).command).toBe(
+      'generated-newer',
+    );
+    expect(JSON.parse(readFileSync(manifest('later'), 'utf8')).command).toBe(
+      'generated-later',
+    );
+    expect(readFileSync(manifest('unrelated'))).toEqual(unrelatedBefore);
+
+    rmSync(completed.ledgerPath);
+    expect(readConfigImportStatus(home)).toMatchObject({
+      id: interrupted.id,
+      phase: 'publishing',
+    });
+    await expect(
+      importConfig(source, { projectHome: home }),
+    ).resolves.toMatchObject({ ledgerPath: completed.ledgerPath });
+    expect(JSON.parse(readFileSync(manifest('first'), 'utf8')).command).toBe(
+      'generated-newer',
+    );
+  });
+
   test('CLI import preserves stored env names omitted by a partial artifact', async () => {
     const first = join(cwd, 'first.json');
     const second = join(cwd, 'second.json');

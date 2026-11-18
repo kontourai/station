@@ -6144,9 +6144,18 @@ function assertStationHomeInactive(
   // only handle a reader has for stopping the thing, and findRunning discards
   // it (station#3064 made this population include supervised services, whose
   // remedy is a different command).
-  const registryPathExists =
-    operation !== 'reset' &&
-    existsSync(resolveInstanceRegistryPath(projectHome));
+  const registryPath = resolveInstanceRegistryPath(projectHome);
+  let registryPathExists = true;
+  try {
+    if (!lstatSync(registryPath).isFile()) {
+      throw new Error(
+        `Station instance registry is not a regular file: ${registryPath}`,
+      );
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    registryPathExists = false;
+  }
   const homeInstances = registryPathExists
     ? findRunningHomeInstances(projectHome)
     : [];

@@ -73,7 +73,7 @@ import {
   PROJECT_HOME,
   resolveLifecycleHomeTarget,
 } from './commands/helpers.js';
-import { importConfig } from './commands/import.js';
+import { importConfig, readConfigImportStatus } from './commands/import.js';
 import { createPlugin, init } from './commands/init.js';
 import {
   info,
@@ -825,6 +825,10 @@ function buildProgram(
     shortcut();
   });
   register('import', async (rawArgs) => {
+    if (rawArgs.length === 1 && rawArgs[0] === '--status') {
+      console.log(JSON.stringify(readConfigImportStatus(), null, 2));
+      return;
+    }
     await importConfig(rawArgs[0]);
   });
   register('stations', async (rawArgs) => {

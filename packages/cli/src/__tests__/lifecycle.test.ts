@@ -4517,8 +4517,13 @@ describe('homeReset (station#1913)', () => {
 
   it('--if-incompatible still archives an incompatible home when confirmed (the deploy path)', async () => {
     ensureDir(TEST_CWD);
-    ensureDir(TEST_ALT_HOME);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
     ensureDir(join(TEST_ALT_HOME, 'agents'));
+    upsertInstance(
+      'past-service',
+      { port: 38142, type: 'service' },
+      TEST_ALT_HOME,
+    );
 
     const { lifecycle } = await loadLifecycleModule();
 
@@ -4532,6 +4537,49 @@ describe('homeReset (station#1913)', () => {
     expect(result.archived).toBe(true);
     expect(existsSync(TEST_ALT_HOME)).toBe(false);
     expect(existsSync(result.archivePath!)).toBe(true);
+    expect(existsSync(join(result.archivePath!, 'instances.json'))).toBe(true);
+  });
+
+  it('refuses a live supervised instance recorded only in the home registry', async () => {
+    ensureDir(TEST_CWD);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+    upsertInstance(
+      'active-service',
+      { port: 38142, type: 'service', pid: process.pid },
+      TEST_ALT_HOME,
+    );
+    const registryPath = join(TEST_ALT_HOME, 'instances.json');
+    const registryBytes = readFileSync(registryPath);
+    const { lifecycle } = await loadLifecycleModule();
+
+    expect(() =>
+      lifecycle.homeReset({
+        confirm: true,
+        projectHome: TEST_ALT_HOME,
+        homeSource: '--base',
+      }),
+    ).toThrow(
+      /active-service \(service\).*station service stop --instance=active-service/s,
+    );
+    expect(readFileSync(registryPath)).toEqual(registryBytes);
+  });
+
+  it('keeps a home whose instance registry cannot establish inactivity', async () => {
+    ensureDir(TEST_CWD);
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+    const registryPath = join(TEST_ALT_HOME, 'instances.json');
+    const unreadable = '{broken registry';
+    writeFileSync(registryPath, unreadable, { mode: 0o600 });
+    const { lifecycle } = await loadLifecycleModule();
+
+    expect(() =>
+      lifecycle.homeReset({
+        confirm: true,
+        projectHome: TEST_ALT_HOME,
+        homeSource: '--base',
+      }),
+    ).toThrow(/instance registry is corrupt or not owner-controlled/i);
+    expect(readFileSync(registryPath, 'utf8')).toBe(unreadable);
   });
 
   it('is a harmless no-op when the target home does not exist at all', async () => {
