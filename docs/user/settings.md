@@ -14,6 +14,10 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+Use **Keyboard shortcuts** to inspect focus conditions and change bindings
+on this device. On small screens the list is read-only. See the
+[keyboard shortcut guide](../guides/keyboard-shortcuts.md).
+
 ## Project settings
 
 Open a Project's settings to change its defaults, sources and access. Desktop

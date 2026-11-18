@@ -23,7 +23,8 @@ Station, Defaults, and This-device scopes up front; provider, developer-service,
 and computer setup has one canonical home in Connections; host detection is
 clearly labeled as describing the Station host; Agent defaults remain behind
 progressive disclosure; and keyboard shortcuts use the versioned device-settings
-record. Slice 3 (epic #1269) then shipped the full scope-driven section rewrite
+record. The [keyboard shortcuts editor](../guides/keyboard-shortcuts.md) explains
+registered conditions and shares key normalization with dispatch. Slice 3 (epic #1269) then shipped the full scope-driven section rewrite
 described below: `/settings` is now three registry-driven scope sections
 (Station / Defaults / This device) with a persistence-tier caption each; the
 previously hidden Station fields (`approvalGuardian`, `defaultMaxTurns`,

@@ -207,20 +207,15 @@ the expanded bytes. [Argument validation #2764](https://github.com/kontourai/sta
 [literal values #2763](https://github.com/kontourai/station/issues/2763),
 [command guide](../guides/commands.md)
 
-### Shortcut hints are separate from dispatch rules
+### Shortcut explanations come from registered rules
 
-The keyboard editor derives context hints from command IDs, while dispatch
-uses registered conditions plus modal/input ownership checks.
-[#2767](https://github.com/kontourai/station/issues/2767) tracks a shared source
-for the visible explanation and actual availability rule. The
-[shortcut guide](../guides/keyboard-shortcuts.md) now names that distinction and
-the current local settings store. This is a source-confirmed explanation gap,
-not a physical keyboard or native-shell failure.
-
-A separate mounted-editor probe found that a captured Space binding is saved
-under a different key spelling from the standard dispatched event.
-[#2771](https://github.com/kontourai/station/issues/2771) tracks normalization
-across capture, storage and dispatch, including existing saved bindings.
+The original audit found that settings derived hints from command IDs and
+that saving Space used a different spelling from the standard event key.
+Settings now displays the registered rule, and capture and dispatch share
+Space key normalization. A Chromium fixture exercises capture, reload,
+focus eligibility and modal suppression. [Rule explanations #2767](https://github.com/kontourai/station/issues/2767),
+[Space bindings #2771](https://github.com/kontourai/station/issues/2771),
+[shortcut guide](../guides/keyboard-shortcuts.md)
 
 ### One HTTP origin does not expose every realtime listener
 
