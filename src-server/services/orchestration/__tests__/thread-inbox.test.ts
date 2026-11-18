@@ -730,7 +730,9 @@ describe('thread inbox (#3568)', () => {
       let receiptReads = 0;
       const world = boot(file, {
         steerFidelity: () => 'emulated',
-        ...(endedBeforeModel ? { subscribe: () => () => {} } : {}),
+        ...(endedBeforeModel
+          ? { subscribe: () => () => {}, retryDelaysMs: [60_000] }
+          : {}),
         ...(mode === 'hold' ? { postToolMaySteer: () => false } : {}),
         ...(refused
           ? {
@@ -1488,6 +1490,7 @@ describe('thread inbox (#3568)', () => {
     const world = boot(path(), {
       steerFidelity: () => 'emulated',
       subscribe: () => () => {},
+      retryDelaysMs: [60_000],
     });
     const original = await runningFirstTurn(world);
     const record = vi.spyOn(world.service, 'recordPostToolSteer');
@@ -1514,6 +1517,7 @@ describe('thread inbox (#3568)', () => {
     try {
       expect(writeMemory).toHaveBeenCalledOnce();
       await replaceRunningTurn(world, original, 'turn-1');
+      expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sending' }]);
       expect(input.canDispatch()).toBe(false);
     } finally {
       releaseMemory();
