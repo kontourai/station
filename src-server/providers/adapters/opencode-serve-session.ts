@@ -2504,7 +2504,7 @@ export class OpenCodeNativeSession {
     const cwd = this.askDirectory(ask.sessionId);
     const configNeedsPerson = () =>
       openCodeNativeAskNeedsPerson(request, cwd, this.deps.configEnv);
-    const answer = (personOnly: boolean) => {
+    const answer = (personOnly: boolean, guardianReason?: string) => {
       const decided = personOnly
         ? 'person'
         : openCodeNativeAskAnswer({
@@ -2516,7 +2516,7 @@ export class OpenCodeNativeSession {
             ),
             configNeedsPerson,
           });
-      if (decided === 'person') this.toPerson(ask);
+      if (decided === 'person') this.toPerson(ask, { guardianReason });
       else this.answerAutomatically(ask, decided);
     };
     const policy = this.deps.preToolPolicy;
@@ -2574,6 +2574,7 @@ export class OpenCodeNativeSession {
         answer(
           needsPerson ||
             (decision.behavior === 'ask' && decision.required === true),
+          decision.behavior === 'ask' ? decision.guardianReason : undefined,
         );
       });
   }
@@ -2980,7 +2981,7 @@ export class OpenCodeNativeSession {
    */
   private toPerson(
     ask: NativeAsk,
-    note: { autoAnswerFailed?: string } = {},
+    note: { autoAnswerFailed?: string; guardianReason?: string } = {},
   ): void {
     if (this.deps.denyApprovals) {
       const reason = delegatedApprovalDenial(
@@ -2996,7 +2997,7 @@ export class OpenCodeNativeSession {
   /** Show an ask to the person as an approval request. */
   private openPermission(
     ask: NativeAsk,
-    note: { autoAnswerFailed?: string } = {},
+    note: { autoAnswerFailed?: string; guardianReason?: string } = {},
   ): void {
     const { nativeId, sessionId, action, resources, save } = ask;
     const own = sessionId === this.sessionId;
@@ -3029,6 +3030,7 @@ export class OpenCodeNativeSession {
         method: 'request.opened',
         requestType: 'approval',
         title: `Allow ${action}`,
+        ...(note.guardianReason ? { guardianReason: note.guardianReason } : {}),
         ...(description ? { description } : {}),
         payload: {
           toolName: action,
