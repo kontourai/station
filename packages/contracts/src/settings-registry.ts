@@ -610,8 +610,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'number', min: 1, integer: true },
     label: 'Default max turns',
-    help: 'VoltAgent applies this fallback model-step cap, while Strands and external engines use their own limits.',
-    description: 'VoltAgent model steps per turn when the Agent has no cap.',
+    help: 'Set the fallback step limit for supported runs on Station’s own engine, while external engines use their own limits.',
+    description:
+      'Fallback step limit for supported runs on Station’s own engine.',
     // `resolveMaxSteps` (src-server/constants.ts) falls through
     // `defaultMaxTurns || DEFAULT_MAX_STEPS` — the code's real absent-value
     // behavior is 200, not the file schema's stale documented "default": 10

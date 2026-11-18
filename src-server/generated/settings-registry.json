@@ -471,7 +471,7 @@
     {
       "id": "default-max-turns",
       "label": "Default max turns",
-      "help": "VoltAgent applies this fallback model-step cap, while Strands and external engines use their own limits.",
+      "help": "Set the fallback step limit for supported runs on Station’s own engine, while external engines use their own limits.",
       "scope": "station",
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=default-max-turns",
