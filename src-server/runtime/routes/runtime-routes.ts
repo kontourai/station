@@ -15619,6 +15619,37 @@ export function configureDevicePairingHostRoutes(
       ? principal.operatorSession
       : null;
   };
+  const operatorRequired = (
+    c: Context,
+    code: 'operator_credential_required' | 'operator_session_required',
+  ) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    let currentDevice = false;
+    try {
+      // An expired operator session or changed scope can leave the Device
+      // valid. This checks credential liveness only to classify a refusal.
+      currentDevice =
+        (principal?.authority === 'device-credential' ||
+          principal?.authority === 'operator-session') &&
+        pairing.verifyCredential(principal.credential);
+    } catch {
+      return c.json({ error: { code: 'credential_status_unavailable' } }, 503);
+    }
+    if (!currentDevice)
+      return c.json({ error: 'authentication_required' }, 401);
+    return c.json(
+      {
+        error: { code },
+        ...(code === 'operator_credential_required'
+          ? {
+              message:
+                'Sign in with an operator passkey or use the Station host CLI to change groups and tokens.',
+            }
+          : { signInUrl: options.operatorSessions?.signInUrl ?? null }),
+      },
+      403,
+    );
+  };
   const stepUp = (
     c: Context,
     target: ConsentTargetSnapshot,
@@ -15636,7 +15667,7 @@ export function configureDevicePairingHostRoutes(
   ) => {
     const session = operatorSession(c.req.raw);
     const channel = options.consentChannel;
-    if (!session) return c.json({ error: 'authentication_required' }, 401);
+    if (!session) return operatorRequired(c, 'operator_session_required');
     if (!channel?.trustedOrigin || channel.state().status !== 'listening')
       return c.json({ error: 'step_up_unavailable' }, 503);
     const assertSessionCurrent = () => {
@@ -15875,7 +15906,7 @@ export function configureDevicePairingHostRoutes(
       : undefined;
     const session = operatorSession(c.req.raw);
     if (!currentOperator(c, c.req.raw) && !session)
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_session_required');
     if (
       transaction?.ceremony !== 'webauthn' ||
       (!currentOperator(c, c.req.raw) &&
@@ -16716,7 +16747,7 @@ export function configureDevicePairingHostRoutes(
     if (!options.groups) return c.json({ error: 'not_found' }, 404);
     const request = c.req.raw;
     if (!currentOperator(c, request) && !operatorSession(request))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     const body = (await request.json().catch(() => null)) as {
       group?: unknown;
     } | null;
@@ -16725,7 +16756,7 @@ export function configureDevicePairingHostRoutes(
     const principalId = c.req.param('principalId');
     // Reading the body yielded: the decision stays the operator's.
     if (!currentOperator(c, request) && !operatorSession(request))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     const nextGroup = body.group;
     const apply = async (
       expectedGroup?: typeof nextGroup,
@@ -16838,7 +16869,7 @@ export function configureDevicePairingHostRoutes(
   app.post('/api/pairing/people/:principalId/tokens', async (c) => {
     const request = c.req.raw;
     if (!currentOperator(c, request) && !operatorSession(request))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     const principalId = c.req.param('principalId');
     const body = (await request.json().catch(() => null)) as {
       name?: unknown;
@@ -16846,7 +16877,7 @@ export function configureDevicePairingHostRoutes(
       expiresInDays?: unknown;
     } | null;
     if (!currentOperator(c, request) && !operatorSession(request))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     observeOperatorCredentialUse(
       c,
       'POST /api/pairing/people/:principalId/tokens',
@@ -17044,7 +17075,7 @@ export function configureDevicePairingHostRoutes(
       );
     }
     if (!currentOperator(c, c.req.raw))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     observeOperatorCredentialUse(
       c,
       'DELETE /api/pairing/people/:principalId/tokens/:tokenId',

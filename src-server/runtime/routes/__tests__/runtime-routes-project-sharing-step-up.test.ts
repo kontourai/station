@@ -30,6 +30,7 @@ import { LazyOperatorPasskeyRegistry } from '../../../services/identity/operator
 import {
   OPERATOR_SESSION_IDLE_MS,
   OperatorSessionService,
+  parseOperatorSessionCookie,
 } from '../../../services/identity/operator-sessions.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
@@ -200,23 +201,37 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       membership.close();
     });
 
-    const pair = (name: string, scope = PHONE_SCOPE) => {
+    const pair = (
+      name: string,
+      scope = PHONE_SCOPE,
+      homePossession = false,
+    ) => {
       const pairing = security.devicePairing;
-      const offer = pairing.createOffer({ endpoint: APP, scope });
+      const offer = pairing.createOffer({
+        endpoint: APP,
+        scope,
+        ...(homePossession ? { homePossession: true } : {}),
+      });
       const pending = pairing.requestPairing({
         offerId: offer.offerId,
         proof: offer.challenge,
         deviceName: name,
         requesterPosition: 'unproven',
-        source: 'pairing-code',
+        source: homePossession ? 'same-origin' : 'pairing-code',
       });
       pairing.confirmRequest(pending.requestId, {
-        kind: 'presented-credential',
+        kind: homePossession ? 'local-grant' : 'presented-credential',
       });
       return pairing.exchange({
         offerId: offer.offerId,
         proof: offer.challenge,
         requestId: pending.requestId,
+        ...(homePossession
+          ? {
+              locality: 'home-possession',
+              mintKind: 'local-grant',
+            }
+          : {}),
       });
     };
     const phone = pair('Owner phone');
@@ -425,6 +440,134 @@ describe('remote Project sharing enable with operator passkey step-up (#4306)', 
       shared,
     };
   }
+
+  test('real Desktop credentials retain read access when People writes require an operator', async () => {
+    const h = await setup();
+    const desktop = h.pair('Fixture Desktop', 'access:manage', true);
+    expect(
+      h.security.devicePairing.isLocalGrantMintedCredential(desktop.credential),
+    ).toBe(true);
+
+    const person = 'human:device:fixture-person';
+    const base = `/api/pairing/people/${encodeURIComponent(person)}`;
+    const callAsDevice = (credential: string, path: string, method = 'GET') =>
+      h.app.request(`${APP}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${credential}`, origin: APP },
+      });
+    expect(
+      (await callAsDevice(desktop.credential, '/api/pairing/people')).status,
+    ).toBe(200);
+    for (const [method, path] of [
+      ['PUT', `${base}/group`],
+      ['POST', `${base}/tokens`],
+      ['DELETE', `${base}/tokens/fixture-token`],
+    ]) {
+      const response = await callAsDevice(desktop.credential, path, method);
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'operator_credential_required' },
+      });
+    }
+
+    const poll = await callAsDevice(
+      desktop.credential,
+      '/api/pairing/device-access-transactions/unavailable',
+    );
+    expect(poll.status).toBe(403);
+    expect(await poll.json()).toMatchObject({
+      error: { code: 'operator_session_required' },
+    });
+    expect(
+      (await callAsDevice(desktop.credential, '/api/pairing/people')).status,
+    ).toBe(200);
+
+    h.security.devicePairing.revokeDevice(
+      desktop.device.id,
+      'operator-credential',
+    );
+    const revoked = await callAsDevice(
+      desktop.credential,
+      `${base}/group`,
+      'PUT',
+    );
+    expect(revoked.status).toBe(401);
+  });
+
+  test.each(['after-verification', 'before-commit'] as const)(
+    'operator session lost %s settles as ended before applying a change',
+    async (when) => {
+      const h = await setup();
+      const signed = await h.signIn();
+      const target = h.pair('Device to revoke');
+      const secret = parseOperatorSessionCookie(signed.cookie);
+      if (!secret)
+        throw new Error('The fixture did not mint an operator session');
+      const endSession = () => {
+        expect(h.sessions.signOut(secret, h.phone.credential)).toBe(true);
+        h.security.devicePairing.setDeviceScope(
+          target.device.id,
+          ['orchestration:read'],
+          { kind: 'presented-credential' },
+        );
+      };
+      if (when === 'after-verification') {
+        const verify = h.sessions.verifyStepUp.bind(h.sessions);
+        vi.spyOn(h.sessions, 'verifyStepUp').mockImplementationOnce(
+          async (...args) => {
+            const passkey = await verify(...args);
+            endSession();
+            return passkey;
+          },
+        );
+      } else {
+        const create = h.channel.store.create.bind(h.channel.store);
+        vi.spyOn(h.channel.store, 'create').mockImplementationOnce((input) =>
+          create({
+            ...input,
+            revalidateTarget: async () => {
+              const target = await input.revalidateTarget();
+              endSession();
+              return target;
+            },
+          }),
+        );
+      }
+      const write = vi.spyOn(h.security.devicePairing, 'revokeDevice');
+      const pending = await h.call(
+        `/api/pairing/devices/${target.device.id}`,
+        signed.cookie,
+        { method: 'DELETE' },
+      );
+      expect(pending.status, await pending.clone().text()).toBe(202);
+      const { transaction } = (await pending.json()) as {
+        transaction: { id: string };
+      };
+      const rendered = await h.review(signed, transaction.id);
+      const response = await h.decide(signed, transaction.id, rendered);
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(await response.json()).toMatchObject({ error: 'session_ended' });
+      expect(
+        h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+      ).toBe('session_ended');
+      expect(write).not.toHaveBeenCalled();
+      expect(
+        h.security.devicePairing.identifyDevice(target.credential),
+      ).toMatchObject({
+        scope: 'orchestration:read',
+        revokedAt: null,
+      });
+
+      const poll = await h.call(
+        `/api/pairing/device-access-transactions/${transaction.id}`,
+        signed.cookie,
+      );
+      expect(poll.status, await poll.clone().text()).toBe(403);
+      expect(await poll.json()).toMatchObject({
+        error: { code: 'operator_session_required' },
+      });
+    },
+  );
 
   test('sharing refusal discloses only to a current admitted operator session', async () => {
     const h = await setup();

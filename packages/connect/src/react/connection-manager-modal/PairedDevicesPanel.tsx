@@ -183,10 +183,19 @@ export function PairedDevicesPanel({
               headers: { 'X-Station-Background-Refresh': '1' },
             },
           );
-          if (!response.ok)
+          if (!response.ok) {
+            const body = await response.json().catch(() => null);
+            if (
+              response.status === 403 &&
+              body?.error?.code === 'operator_session_required'
+            )
+              throw new Error(
+                'Your operator session ended. Sign in again, then check device access.',
+              );
             throw new Error(
               'The step-up status is unavailable. Check device access before starting another request.',
             );
+          }
           const transaction = await response.json();
           if (transaction.status === 'approved') {
             pendingTransactions.current.delete(id);

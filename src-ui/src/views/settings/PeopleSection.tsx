@@ -48,9 +48,8 @@ import { useDecisionSurface } from '../../lib/custom-appearance/decision-surface
  * Operator-only, gated by the SERVER like plugin visibility: the read is
  * admitted for the operator credential and the desktop's local grant, and
  * anything the route refuses (or a Station without the route) renders
- * nothing. Changes need the operator credential itself, so the local grant
- * can list but its changes come back 401 — answered with what to do, not a
- * dead control.
+ * nothing. Changes require the host operator credential or an operator
+ * passkey session with step-up. A valid local grant can list People.
  */
 
 /** A refused group change, said as what to do next. */

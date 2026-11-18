@@ -141,11 +141,35 @@ describe('Station people and token refusals (#3557)', () => {
     expect(isOperatorCredentialRequired(failure)).toBe(false);
   });
 
+  it('requires operator authority only for the typed People write refusal', async () => {
+    authenticatedFetchMock.mockResolvedValueOnce(
+      Response.json(
+        { error: { code: 'operator_credential_required' } },
+        { status: 403 },
+      ),
+    );
+    const failure = await setStationPersonGroup(
+      'person',
+      'member',
+      'https://station.example.test',
+    ).catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      status: 403,
+      code: 'operator_credential_required',
+    });
+    expect(isOperatorCredentialRequired(failure)).toBe(true);
+    expect(
+      isOperatorCredentialRequired(
+        new StationAccessError(403, 'insufficient_scope'),
+      ),
+    ).toBe(false);
+  });
+
   it('a server failure is not mistaken for "not for you"', () => {
     expect(isStationAccessUnavailable(new StationAccessError(500))).toBe(false);
     expect(isStationAccessUnavailable(new Error('offline'))).toBe(false);
     expect(isOperatorCredentialRequired(new StationAccessError(401))).toBe(
-      true,
+      false,
     );
   });
 });

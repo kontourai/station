@@ -145,8 +145,9 @@ configured HTTPS consent origin, use the host CLI's `--bind-account` path.
    is committed closes the transaction as `target_changed`, including changes
    detected while acquiring the mutation lock. Nothing is applied. The panel says
    **This changed since you asked. Nothing was applied; open a new request.**
-   If the operator session ended mid-commit, the terminal status is `session_ended`
-   and the message is **Your operator session ended; sign in again. Nothing was applied.**
+   A verified refusal during commit records `session_ended`. If the panel loses
+   permission to read the review, it asks you to sign in again and check device
+   access before starting another request.
    Restoring the old state does not reopen a refused transaction: open a new
    request against the current state. An expired session, revoked bound Device or
    revoked signing passkey cannot confirm; sign in again as needed. Do not blindly
