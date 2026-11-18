@@ -331,4 +331,3 @@ follows the selected app theme so platform option menus use the same light or
 dark mode. Editors keep the native arrow; compact custom pickers continue to
 use `.choice-trigger`, `.choice-caret` and `ArrowDownGlyph`. Keep native select
 labels and keyboard behavior when applying page-specific sizing.
-
