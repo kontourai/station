@@ -1,5 +1,8 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import type { ConversationInboxQueuedReceipt } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationInboxEntry,
+  ConversationInboxQueuedReceipt,
+} from '@kontourai/station-contracts/orchestration';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   type ApprovalPickCarry,
@@ -8,6 +11,12 @@ import {
   sendExecutionMessage,
 } from '@kontourai/station-sdk/client';
 import { skillExperienceAttachmentInputs } from '@kontourai/station-shared/skill-experience-values';
+import type { QueryClient } from '@tanstack/react-query';
+import {
+  type InboxScope,
+  inboxQueryKey,
+  inboxReceiptsKey,
+} from '../hooks/useConversationInboxSnapshot';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import { resolveTurnModel } from './turnModel';
 
@@ -315,4 +324,28 @@ export async function dispatchQueuedForeground(input: ForegroundInput) {
   if (result.outcome === 'queued' && !matchesQueuedReceipt(input, result))
     throw new TypeError('Station did not confirm this message identity.');
   return result;
+}
+
+export function publishConversationInboxReceipt(
+  client: QueryClient,
+  scope: InboxScope | undefined,
+  apiBase: string,
+  receipt: ConversationInboxQueuedReceipt,
+) {
+  if (!scope?.isCurrent() || scope.apiBase !== apiBase) return;
+  const { entry, conversationId, clientTurnId } = receipt;
+
+  const queryKey = inboxQueryKey(scope, conversationId, apiBase);
+  const receiptsKey = inboxReceiptsKey(queryKey);
+  if (client.getQueryState(receiptsKey)) {
+    client.setQueryData<ConversationInboxEntry[]>(receiptsKey, (previous) => [
+      ...(previous ?? []).filter((item) => item.clientTurnId !== clientTurnId),
+      // The receipt confirms custody. The list read owns queue order.
+      { ...entry, position: undefined },
+    ]);
+  }
+  void client.invalidateQueries(
+    { queryKey, exact: true },
+    { cancelRefetch: false },
+  );
 }

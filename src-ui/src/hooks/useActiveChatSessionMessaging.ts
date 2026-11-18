@@ -85,7 +85,6 @@ import { withDeliveryCheck } from '../utils/messageDeliveryState';
 import { describeStationFailure } from '../utils/stationFailure';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
-import { publishConversationInboxReceipt } from './useConversationInboxSnapshot';
 import { useStreamingMessage } from './useStreamingMessage';
 
 interface SendTransaction {
@@ -1184,6 +1183,7 @@ export function useSendMessage(
           dispatchForeground,
           dispatchPossiblyQueuedForeground,
           dispatchQueuedForeground,
+          publishConversationInboxReceipt,
         } = await import('../lib/foregroundMessageDispatch');
         // #2436: the server applies the conversation's recorded posture to
         // this turn. The only posture this send carries is a pick the server

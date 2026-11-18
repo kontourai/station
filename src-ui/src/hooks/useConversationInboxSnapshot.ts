@@ -1,13 +1,12 @@
-import type {
-  ConversationInboxEntry,
-  ConversationInboxQueuedReceipt,
-} from '@kontourai/station-contracts/orchestration';
-import { type QueryClient, skipToken, useQuery } from '@tanstack/react-query';
+import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
 import type { StationConnection } from '../connections/station-connection';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 
-type InboxScope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
+export type InboxScope = NonNullable<
+  ReturnType<typeof useHostRequestAuthorityScope>
+>;
 
 /** Entries a reader still needs to see: not sent, not withdrawn. */
 export function visibleInboxEntries(
@@ -50,30 +49,6 @@ export function withInboxReceipts(
         !entries?.some((entry) => entry.clientTurnId === receipt.clientTurnId),
     ),
   ];
-}
-
-export function publishConversationInboxReceipt(
-  client: QueryClient,
-  scope: InboxScope | undefined,
-  apiBase: string,
-  receipt: ConversationInboxQueuedReceipt,
-) {
-  if (!scope?.isCurrent() || scope.apiBase !== apiBase) return;
-  const { entry, conversationId, clientTurnId } = receipt;
-
-  const queryKey = inboxQueryKey(scope, conversationId, apiBase);
-  const receiptsKey = inboxReceiptsKey(queryKey);
-  if (client.getQueryState(receiptsKey)) {
-    client.setQueryData<ConversationInboxEntry[]>(receiptsKey, (previous) => [
-      ...(previous ?? []).filter((item) => item.clientTurnId !== clientTurnId),
-      // The receipt confirms custody. The list read owns queue order.
-      { ...entry, position: undefined },
-    ]);
-  }
-  void client.invalidateQueries(
-    { queryKey, exact: true },
-    { cancelRefetch: false },
-  );
 }
 
 /**
