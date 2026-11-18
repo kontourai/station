@@ -376,9 +376,10 @@ test.describe('compatibility-aware reconnect', () => {
     await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
     expect(recoveredStatusRequests).toBeGreaterThanOrEqual(2);
   });
-  test('identity repair in Station details opens the access-request flow', async ({
+  test('a live identity notice opens access repair at 390px', async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await seedConnection(page);
     const state = {
       healthy: true,
@@ -407,7 +408,11 @@ test.describe('compatibility-aware reconnect', () => {
     await expect(
       details.getByRole('button', { name: 'Remove connection' }),
     ).toBeVisible();
-    await details.getByRole('button', { name: 'Pair again' }).click();
+    const liveNotice = details.locator('.station-condition').filter({
+      hasText: /isn't the one this device paired with/,
+    });
+    await expect(liveNotice).toBeVisible();
+    await liveNotice.getByRole('button', { name: 'Pair again' }).click();
     await expect(details).toBeHidden();
     await expect(
       page.getByRole('button', { name: 'Close Station manager' }),
