@@ -1,0 +1,39 @@
+{
+  "revision": "0bb37af7597688f29f957f569bd18d20acdc03ee",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Source-reviewed the selected Station capability query, mounted voice consumer and identity-checked disposer. The paragraph distinguishes browser-side capability placeholders from the existing live voice transport and receipts.","inputs":["docs/architecture.md","src-ui/src/hooks/useServerCapabilities.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Followed trusted plugin workspace pane through its SDK composition into the mounted LayoutNavigationProvider. Its active tab clear removes storage and cancels restoration. The local-tab LayoutWorkspacePane remains a distinct host.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the layout tab persistence and clear path against the real provider and default plugin host. Reviewed voice capability observation, mounted provider selection and replacement-safe disposal against the existing registry.","inputs":["docs/reference/sdk.md","packages/sdk/src/providers.tsx","src-ui/src/hooks/useServerCapabilities.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Voice settings reads available and active values from VoiceProviderContext. Empty or failed capability data releases only owned stubs, so the control reflects the real remaining provider or an empty list. Existing local speech preview instructions still apply.","inputs":["docs/user/settings.md","src-ui/src/contexts/VoiceProviderContext.tsx","src-ui/src/hooks/useServerCapabilities.ts"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"The mounted Calendar hook uses the SDK tab state to round-trip its filters and selection. The added guidance identifies the SDK clear method for callers that want to erase the entire tab state.","inputs":["examples/enterprise-layout/README.md","examples/enterprise-layout/src/useCalendarNavigation.ts","packages/sdk/src/providers.tsx"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"The Voice guidance describes visible provider choices, independent of the existing Station-wide feature-preview and isolated-repair settings.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"The Voice guidance describes visible provider choices, independent of the existing Station-wide feature-preview and isolated-repair settings.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Updated the SDK descriptions of tab state and voice observation ownership. Existing integration and SDK scope guidance stays attached to the canonical reference.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Updated the SDK descriptions of tab state and voice observation ownership. Existing integration and SDK scope guidance stays attached to the canonical reference.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The tab navigation provider still satisfies SDK placement and the layout README's set/get examples. Its active-tab clear now removes the same scoped storage entry and cancels owned deferred restoration.","inputs":["packages/sdk/src/providers.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"The tab navigation provider still satisfies SDK placement and the layout README's set/get examples. Its active-tab clear now removes the same scoped storage entry and cancels owned deferred restoration.","inputs":["packages/sdk/src/providers.tsx"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"The tab navigation provider still satisfies SDK placement and the layout README's set/get examples. Its active-tab clear now removes the same scoped storage entry and cancels owned deferred restoration.","inputs":["packages/sdk/src/providers.tsx"]},
+
+    {"path":"packages/sdk/README.md","note":"The tab navigation provider still satisfies SDK placement and the layout README's set/get examples. Its active-tab clear now removes the same scoped storage entry and cancels owned deferred restoration.","inputs":["packages/sdk/src/providers.tsx"]},
+
+    {"path":"docs/architecture.md","note":"The mounted voice hook releases owned placeholders after scope replacement, empty or failed observation, and unmount. The meeting-transcription example continues to use the active speech provider through the same context.","inputs":["src-ui/src/hooks/useServerCapabilities.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The mounted voice hook releases owned placeholders after scope replacement, empty or failed observation, and unmount. The meeting-transcription example continues to use the active speech provider through the same context.","inputs":["src-ui/src/hooks/useServerCapabilities.ts"]},
+
+    {"path":"docs/user/settings.md","note":"The mounted voice hook releases owned placeholders after scope replacement, empty or failed observation, and unmount. The meeting-transcription example continues to use the active speech provider through the same context.","inputs":["src-ui/src/hooks/useServerCapabilities.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"The mounted voice hook releases owned placeholders after scope replacement, empty or failed observation, and unmount. The meeting-transcription example continues to use the active speech provider through the same context.","inputs":["src-ui/src/hooks/useServerCapabilities.ts"]}
+  ]
+}

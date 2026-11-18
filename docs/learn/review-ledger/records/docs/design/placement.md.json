@@ -208,7 +208,9 @@
 
     "src-ui/src/workspace-panes/agents/childWorkSelectors.ts",
 
-    "src-ui/src/workspace-panes/agents/AgentsWorkspacePane.css"
+    "src-ui/src/workspace-panes/agents/AgentsWorkspacePane.css",
+
+    "src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx"
   ],
 
   "checks": [
