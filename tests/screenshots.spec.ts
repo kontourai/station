@@ -68,6 +68,7 @@ import {
   emulateKeyboard,
   installKeyboardEmulation,
 } from './helpers/keyboard-emulation';
+import { memberProjectChannelScreens } from './helpers/member-project-channel-gallery';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
   GALLERY_DESIGN_ROOM_ID,
@@ -5984,6 +5985,7 @@ const SCREENS: Screen[] = [
   ...personMentionScreens(),
   ...channelNavigationScreens(),
   ...projectLibraryScreens(),
+  ...memberProjectChannelScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),

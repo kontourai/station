@@ -8,6 +8,14 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "member-project-channels-light": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/MemberProjectPage.tsx"
+    ],
+    "member-project-channels-dark": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/MemberProjectPage.tsx"
+    ],
     "project-brief-dark-desktop": [
       "src-ui/src/views/project-settings/BriefSection.tsx",
       "src-ui/src/views/ProjectSettingsView.tsx",
