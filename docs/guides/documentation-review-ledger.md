@@ -52,8 +52,13 @@ not establish a new semantic review. Do not advance it just to hide gaps.
 The scoped PR check reads only the change's own range and never replays the
 coverage baseline. Main-history reader state uses one first-parent
 `git log --name-status` stream and one batched read of relevant notes, record
-changes and JSON values. Git process count is constant as commits increase;
-bytes read and replay work grow with the range. Replay uses HEAD's source lists
+changes and JSON values. The release-versioning check also batches pending
+note blobs and reads ordinary note introductions from one full-diff history
+stream per release unit. Ambiguous additions, renames and merge histories retain
+Git's per-file `--follow` lookup; shallow clones still refuse unresolved note
+provenance. Core replay's Git process count is constant as commits increase;
+release units and ambiguous note histories add work. Bytes read and replay work
+grow with the range. Replay uses HEAD's source lists
 for old commits: removed citations stop tracking older changes, and newly
 added citations can expose older changes that now need review.
 

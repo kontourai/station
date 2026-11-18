@@ -512,6 +512,76 @@ export function releaseVersioningOutputs({
   return { manifests, changelogs };
 }
 
+/** Unique plain additions need one history stream; ambiguous paths keep --follow. */
+function plainNoteAdditions(root, before, files) {
+  const wanted = new Set(files.filter(isPendingChangesetNote));
+  const additions = new Map();
+  const ambiguous = new Set();
+  const tokens = execFileSyncBounded(
+    'git',
+    [
+      'log',
+      '--full-history',
+      '--full-diff',
+      '--diff-merges=separate',
+      '--format=%x00COMMIT:%H:%P',
+      '--name-status',
+      '-z',
+      before,
+      '--',
+      CHANGESET_DIR,
+    ],
+    { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  ).split('\0');
+  let revision;
+  let parents = [];
+  let changes = [];
+  const flush = () => {
+    // Full diffs retain renames across the .changeset boundary. A deletion
+    // can hide a rename when Git's rename limit is reached, so keep --follow
+    // for additions in that commit too. Merge diffs retain the same fallback.
+    const uncertain =
+      parents.length > 1 ||
+      changes.some((change) => change.status !== 'A' && change.status !== 'M');
+    for (const { status, paths } of changes) {
+      for (const file of paths.filter((file) => wanted.has(file))) {
+        if (
+          uncertain ||
+          (status !== 'A' && status !== 'M') ||
+          (status === 'A' && additions.has(file))
+        ) {
+          ambiguous.add(file);
+        } else if (status === 'A') {
+          additions.set(file, { revision, root: parents.length === 0 });
+        }
+      }
+    }
+  };
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index].trim();
+    if (!token) continue;
+    if (token.startsWith('COMMIT:')) {
+      flush();
+      const match = /^COMMIT:([a-f0-9]{40,64}):(.*)$/.exec(token);
+      if (!match) throw new Error('Invalid changeset history commit');
+      revision = match[1];
+      parents = match[2] ? match[2].split(' ') : [];
+      changes = [];
+      continue;
+    }
+    if (!revision || !/^[ACDMRTUXB][0-9]*$/.test(token))
+      throw new Error('Invalid changeset history status');
+    const paths = [tokens[++index]];
+    if (/^[RC]/.test(token)) paths.push(tokens[++index]);
+    if (paths.some((file) => !file))
+      throw new Error('Missing changeset history path');
+    changes.push({ status: token[0], paths });
+  }
+  flush();
+  for (const file of ambiguous) additions.delete(file);
+  return additions;
+}
+
 /** {@link releaseVersioningOutputs} for the change between two Git revisions. */
 export function releaseVersioningOutputsBetween(root, before, after, changes) {
   if (
@@ -526,14 +596,24 @@ export function releaseVersioningOutputsBetween(root, before, after, changes) {
     if (!cache.has(spec)) cache.set(spec, readGitObjects(root, [spec])[0]);
     return cache.get(spec);
   };
-  const listBefore = (dir) =>
-    execFileSyncBounded(
+  let additions;
+  const listBefore = (dir) => {
+    const files = execFileSyncBounded(
       'git',
       ['ls-tree', '-r', '-z', '--name-only', before, '--', dir],
       { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
     )
       .split('\0')
       .filter(Boolean);
+    additions = plainNoteAdditions(root, before, files);
+    const specs = files
+      .filter(isPendingChangesetNote)
+      .map((file) => `${before}:${file}`);
+    readGitObjects(root, specs).forEach((bytes, index) =>
+      cache.set(specs[index], bytes),
+    );
+    return files;
+  };
   const git = (args) =>
     execFileSyncBounded('git', args, {
       cwd: root,
@@ -545,6 +625,8 @@ export function releaseVersioningOutputsBetween(root, before, after, changes) {
   const shallow =
     git(['rev-parse', '--is-shallow-repository']).trim() === 'true';
   const addedBy = (file) => {
+    const plain = additions?.get(file);
+    if (plain) return plain.root && shallow ? null : plain.revision;
     const [commit, parent] = git([
       'log',
       '--diff-filter=AC',

@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import changelog from '../changeset-changelog.mjs';
-import { releaseVersioningOutputs } from '../lib/release-versioning-review.mjs';
+import {
+  releaseVersioningOutputs,
+  releaseVersioningOutputsBetween,
+} from '../lib/release-versioning-review.mjs';
 import {
   recordFile,
   serializeRecordFile,
@@ -764,6 +768,130 @@ describe('release versioning in the documentation freshness gate', () => {
   }
   const blockingPaths = (root: string, env: Record<string, string>) =>
     entryPaths(check(root, env).blocking).sort();
+
+  it('recognises a many-note release without one Git history process per note', () => {
+    const f = releaseFixture();
+    for (let index = 0; index < 20; index++)
+      f.write(`.changeset/additional-${index}.md`, NOTE_DEP);
+    const before = commit(f.root, 'add many release notes');
+    f.release();
+    const after = commit(f.root, 'chore: version packages');
+    const tokens = git(f.root, [
+      'diff',
+      '--name-status',
+      '-z',
+      before,
+      after,
+    ]).split('\0');
+    const changes = [];
+    for (let index = 0; index + 1 < tokens.length; index += 2)
+      changes.push({ status: tokens[index], file: tokens[index + 1] });
+    const trace = join(f.root, 'git-trace.jsonl');
+    vi.stubEnv('GIT_TRACE2_EVENT', trace);
+    const result = releaseVersioningOutputsBetween(
+      f.root,
+      before,
+      after,
+      changes,
+    );
+    expect([...result.manifests].sort()).toEqual(ALL.manifests);
+    expect([...result.changelogs].sort()).toEqual(ALL.changelogs);
+    const starts = readFileSync(trace, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .filter((event) => event.event === 'start');
+    expect(
+      starts.filter((event) => event.argv[1] === 'log').length,
+    ).toBeLessThanOrEqual(2);
+    expect(
+      starts.filter((event) => event.argv[1] === 'cat-file').length,
+    ).toBeLessThanOrEqual(16);
+  });
+
+  it.each([
+    'rename within notes',
+    'rename across the boundary',
+    'copy',
+    'delete and readd',
+    'merge',
+  ])('preserves Changesets commit provenance after %s', (scenario) => {
+    const f = releaseFixture();
+    if (scenario === 'rename within notes') {
+      git(f.root, ['mv', '.changeset/one.md', '.changeset/renamed.md']);
+      commit(f.root, 'rename the note');
+    } else if (scenario === 'rename across the boundary') {
+      git(f.root, ['mv', '.changeset/one.md', 'outside.md']);
+      commit(f.root, 'move note outside the directory');
+      git(f.root, ['mv', 'outside.md', '.changeset/returned.md']);
+      commit(f.root, 'return the renamed note');
+    } else if (scenario === 'copy') {
+      f.write('.changeset/copied.md', NOTE_DEP);
+      commit(f.root, 'copy a note');
+    } else if (scenario === 'delete and readd') {
+      git(f.root, ['rm', '.changeset/one.md']);
+      commit(f.root, 'delete the note');
+      f.write('.changeset/one.md', NOTE_PKG);
+      commit(f.root, 'reintroduce the note');
+    } else {
+      git(f.root, ['switch', '-qc', 'note-child']);
+      f.write('.changeset/child.md', NOTE_DEP);
+      commit(f.root, 'child note');
+      git(f.root, ['switch', '-q', 'release']);
+      f.write('unrelated.md', 'Other work.\n');
+      commit(f.root, 'diverge from the child');
+      git(f.root, [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        'merge',
+        '--no-ff',
+        '-qm',
+        'merge child',
+        'note-child',
+      ]);
+    }
+    const before = git(f.root, ['rev-parse', 'HEAD']);
+    f.release();
+    const after = commit(f.root, 'chore: version packages');
+    const tokens = git(f.root, [
+      'diff',
+      '--name-status',
+      '-z',
+      before,
+      after,
+    ]).split('\0');
+    const changes = [];
+    for (let index = 0; index + 1 < tokens.length; index += 2)
+      changes.push({ status: tokens[index], file: tokens[index + 1] });
+    const result = releaseVersioningOutputsBetween(
+      f.root,
+      before,
+      after,
+      changes,
+    );
+    expect([...result.manifests].sort()).toEqual(ALL.manifests);
+    expect([...result.changelogs].sort()).toEqual(ALL.changelogs);
+    git(f.root, [
+      'clone',
+      '-q',
+      '--no-local',
+      '--depth',
+      '2',
+      f.root,
+      'shallow',
+    ]);
+    const shallow = releaseVersioningOutputsBetween(
+      join(f.root, 'shallow'),
+      before,
+      after,
+      changes,
+    );
+    expect([...shallow.manifests]).toEqual([]);
+    expect([...shallow.changelogs]).toEqual([]);
+    expect(shallow.refused).toContain('adding commit cannot be resolved');
+  });
 
   it('needs no note for real `changeset version` output but still blocks a record that cites the version value', () => {
     const f = releaseFixture();
