@@ -1,0 +1,13 @@
+{
+  "revision": "aa72747c7f09967b37d24c29462d9bec0ad9469b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Verified structured route labels still use the server's observed live and cached catalogs and the ACP advertised list. The generic configured-model fallback reads its existing ID and option fields. Selection IDs and routing retain their existing semantics. The production bundle passes the existing limit.","inputs":["src-ui/src/utils/execution.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified structured route labels still use the server's observed live and cached catalogs and the ACP advertised list. The generic configured-model fallback reads its existing ID and option fields. Selection IDs and routing retain their existing semantics. The production bundle passes the existing limit.","inputs":["src-ui/src/utils/execution.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified structured route labels still use the server's observed live and cached catalogs and the ACP advertised list. The generic configured-model fallback reads its existing ID and option fields. Selection IDs and routing retain their existing semantics. The production bundle passes the existing limit.","inputs":["src-ui/src/utils/execution.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified structured route labels still use the server's observed live and cached catalogs and the ACP advertised list. The generic configured-model fallback reads its existing ID and option fields. Selection IDs and routing retain their existing semantics. The production bundle passes the existing limit.","inputs":["src-ui/src/utils/execution.ts"]}
+  ]
+}
