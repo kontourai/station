@@ -558,7 +558,6 @@ function invalidateTaskLists(
   client.invalidateQueries({
     queryKey: ['tasks'],
     predicate: ({ queryKey }) => queryKey.length === 2,
-    refetchType: 'none',
   });
 }
 

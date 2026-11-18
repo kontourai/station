@@ -337,3 +337,54 @@ test.each([
     }
   },
 );
+
+test('scoped Task creation refreshes the Project list that is already open', async () => {
+  setClientCredentialResolver(() => ({
+    origin: creatingAccount.apiBase,
+    requestAuthority: { ...creatingAccount, isCurrent: () => true },
+  }));
+  const task = { id: 'task-created', title: 'Continuation' };
+  const tasks: (typeof task)[] = [];
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname !== '/api/tasks')
+      throw new Error(`Unexpected Task request: ${url}`);
+    if (init?.method === 'POST') {
+      tasks.push(task);
+      return Response.json({ success: true, data: task });
+    }
+    expect(url.searchParams.get('projectId')).toBe('alpha');
+    return Response.json({ success: true, data: tasks });
+  });
+  vi.stubGlobal('fetch', fetch);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchOnMount: false } },
+  });
+  const view = renderHook(
+    () => ({
+      list: useTasksQuery('alpha'),
+      mutation: useCreateTaskMutation(),
+    }),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
+  );
+  try {
+    await waitFor(() => expect(view.result.current.list.data).toEqual([]));
+    await act(async () => {
+      await expect(
+        view.result.current.mutation.mutateAsync({
+          requestScope: creatingAccount,
+          projectId: 'alpha',
+          title: task.title,
+        }),
+      ).resolves.toEqual(task);
+    });
+    await waitFor(() => expect(view.result.current.list.data).toEqual([task]));
+  } finally {
+    view.unmount();
+    client.clear();
+  }
+});

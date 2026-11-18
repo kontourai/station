@@ -1057,8 +1057,8 @@ export function useUpdateProjectMutation(
         queryClient.invalidateQueries({
           queryKey: ['projects'],
           predicate: ({ queryKey }) =>
-            (queryKey.at(-2) === scope.apiBase &&
-              queryKey.at(-1) === scope.authorityKey) ||
+            (queryKey[queryKey.length - 2] === scope.apiBase &&
+              queryKey[queryKey.length - 1] === scope.authorityKey) ||
             (queryKey[1] === scope.apiBase &&
               queryKey[2] === scope.authorityKey),
         });
