@@ -1,5 +1,7 @@
 # Task watch and head review: visual evidence
 
+> Historical capture evidence for this change, retained with its source revisions.
+
 These local Gallery captures compare the Task watch panel before this change
 at `60a0f52b1ad444b028dcc4d343708e40186479db` and after it at
 `aafa10eaa9506be3986bfc39c28081c4432e7ea0`.
