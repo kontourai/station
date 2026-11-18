@@ -703,6 +703,11 @@ function assertToolbarPreconditions(
  */
 function assertReachability(measurement: ToolbarMeasurement): void {
   const context = renderInventory(measurement);
+  const centers = measurement.controls.map((control) => control.centre.y);
+  expect(
+    Math.max(...centers) - Math.min(...centers),
+    `toolbar controls must stay in one row\n${context}`,
+  ).toBeLessThanOrEqual(1);
   const unreachable = measurement.controls.filter(
     (control) => !control.reachable,
   );

@@ -6202,6 +6202,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-wrap: nowrap;
   }
 
+  /* The action cluster shares the toolbar's single row. */
+  .app-toolbar__actions {
+    flex-wrap: nowrap;
+  }
+
   /* Phone connection chrome is a touchable status dot, with the Station's
      short name beside it when healthy. Its full accessible name and
      long-press hint are owned by HeaderActions; chat.css sizes it. */
