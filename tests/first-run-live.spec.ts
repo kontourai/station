@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import type { Server } from 'node:http';
 import { loadavg } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -30,6 +31,21 @@ import {
 import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: REPO_ROOT,
+  encoding: 'utf8',
+  windowsHide: true,
+}).trim();
+const trackedFilesDirty = !!execFileSync(
+  'git',
+  ['status', '--porcelain', '-uno'],
+  {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    windowsHide: true,
+  },
+).trim();
+
 const MODEL = 'station-dogfood:latest';
 const REPLY = 'First live Station chat works on mobile.';
 
@@ -38,15 +54,37 @@ const SETUP_LAUNCHER_TIMEOUT_MS = 20_000;
 const UNCONFIGURED_COMPOSER_TIMEOUT_MS = 20_000;
 const STATION_AGENT_PICKER_TIMEOUT_MS = 20_000;
 
+async function readBrowserTiming<T>(
+  page: Page,
+  stage: 'start' | 'end',
+  read: () => Promise<T>,
+) {
+  try {
+    return { state: 'observed' as const, value: await read() };
+  } catch (error) {
+    return {
+      state: 'unavailable' as const,
+      stage,
+      failure: page.isClosed()
+        ? 'page-closed'
+        : error instanceof Error && error.name === 'TimeoutError'
+          ? 'timeout'
+          : 'evaluation-error',
+    };
+  }
+}
+
 async function recordSurfaceTiming(
   page: Page,
   name: string,
   observe: () => Promise<void>,
 ): Promise<void> {
-  const start = await page.evaluate(() => ({
-    timeOrigin: performance.timeOrigin,
-    at: performance.now(),
-  }));
+  const start = await readBrowserTiming(page, 'start', () =>
+    page.evaluate(() => ({
+      timeOrigin: performance.timeOrigin,
+      at: performance.now(),
+    })),
+  );
   const wallStart = performance.now();
   const startLoad = loadavg()[0];
   let settled = false;
@@ -55,37 +93,43 @@ async function recordSurfaceTiming(
     settled = true;
   } finally {
     const elapsedMs = performance.now() - wallStart;
-    const browser = await page
-      .evaluate((start) => {
-        const sameDocument = performance.timeOrigin === start.timeOrigin;
-        const at = sameDocument ? start.at : 0;
-        const resources = (
-          performance.getEntriesByType(
-            'resource',
-          ) as PerformanceResourceTiming[]
-        ).flatMap((entry) => {
-          const url = new URL(entry.name);
-          return url.origin === location.origin && url.pathname.endsWith('.js')
-            ? [
-                {
-                  asset: url.pathname,
-                  startMs: entry.startTime - at,
-                  durationMs: entry.duration,
-                  responseEndMs: entry.responseEnd - at,
-                  transferBytes: entry.transferSize,
-                },
-              ]
-            : [];
-        });
-        return {
-          documentChanged: !sameDocument,
-          elapsedMs: performance.now() - at,
-          resources,
-        };
-      }, start)
-      .catch(() => null);
+    const browser =
+      start.state === 'observed'
+        ? await readBrowserTiming(page, 'end', () =>
+            page.evaluate((start) => {
+              const sameDocument = performance.timeOrigin === start.timeOrigin;
+              const at = sameDocument ? start.at : 0;
+              const resources = (
+                performance.getEntriesByType(
+                  'resource',
+                ) as PerformanceResourceTiming[]
+              ).flatMap((entry) => {
+                const url = new URL(entry.name);
+                return url.origin === location.origin &&
+                  url.pathname.endsWith('.js')
+                  ? [
+                      {
+                        asset: url.pathname,
+                        startMs: entry.startTime - at,
+                        durationMs: entry.duration,
+                        responseEndMs: entry.responseEnd - at,
+                        transferBytes: entry.transferSize,
+                      },
+                    ]
+                  : [];
+              });
+              return {
+                documentChanged: !sameDocument,
+                elapsedMs: performance.now() - at,
+                resources,
+              };
+            }, start.value),
+          )
+        : start;
     const timing = {
       surface: name,
+      sourceRevision,
+      trackedFilesDirty,
       settled,
       elapsedMs,
       hostLoadOneMinuteStart: startLoad,
@@ -94,28 +138,38 @@ async function recordSurfaceTiming(
     };
     // The suite runner removes successful Playwright reports. Keep a compact
     // sample in its log, with the full observation attached when retained.
-    const resources = browser?.resources ?? [];
+    const observed = browser.state === 'observed' ? browser.value : undefined;
     console.log(
       '[first-run-surface-timing]',
       JSON.stringify({
         ...timing,
-        browser: browser && {
-          ...browser,
-          freshScriptCount: resources.filter(
-            (resource) => resource.startMs >= 0,
-          ).length,
-          resources: resources.filter((resource) =>
-            /ConnectionsSectionFrame|ProviderSettings|ChatDockMobileOverflowSheet|MobileTaskSwitcher|ChatDockInbox|AgentPicker/.test(
-              resource.asset,
-            ),
-          ),
-        },
+        browser: observed
+          ? {
+              state: 'observed',
+              ...observed,
+              freshScriptCount: observed.resources.filter(
+                (resource) => resource.startMs >= 0,
+              ).length,
+              resources: observed.resources.filter((resource) =>
+                /ConnectionsSectionFrame|ProviderSettings|ChatDockMobileOverflowSheet|MobileTaskSwitcher|ChatDockInbox|AgentPicker/.test(
+                  resource.asset,
+                ),
+              ),
+            }
+          : browser,
       }),
     );
-    await test.info().attach(`first-run-${name}-timing`, {
-      body: JSON.stringify(timing),
-      contentType: 'application/json',
-    });
+    await test
+      .info()
+      .attach(`first-run-${name}-timing`, {
+        body: JSON.stringify(timing),
+        contentType: 'application/json',
+      })
+      .catch(() => {
+        // The log retains the receipt even when the reporter cannot attach it.
+        // An attachment error must not replace the interaction's assertion.
+        console.log('[first-run-surface-timing-attachment-unavailable]', name);
+      });
   }
 }
 
