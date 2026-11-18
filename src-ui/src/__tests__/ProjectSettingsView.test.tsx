@@ -997,9 +997,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         .getAttribute('aria-current'),
     ).toBe('location');
     expect(screen.queryByRole('textbox', { name: 'Name *' })).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Save' }),
-    ).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      false,
+    );
     expect(
       screen.queryByRole('textbox', { name: 'Working Directory' }),
     ).toBeNull();
