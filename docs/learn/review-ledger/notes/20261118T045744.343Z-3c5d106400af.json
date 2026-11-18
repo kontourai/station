@@ -1,0 +1,27 @@
+{
+  "revision": "05c9c7059856a0e27ef4eb4cbf16737afe32dd55",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Reviewed the historical decision and current-scope note against ordinary and author-private roots. The Settings regression now pins existing first-root selection across several registrations. The original store/index decision is untouched.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reconciled the Settings metadata finding with the actual operator registration and root-read policy. The catalog names the personal domain while the UI still selects the first eligible registration.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed KnowledgeStoreProvider root registration, runtime root authorization and the actual Settings selection and catalog path. Ordinary personal storage remains operator-managed. Conversation and private memory rules retain their separate owners.","inputs":["docs/architecture/module-map.md","src-ui/src/components/CommandPalette.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed scope and provenance from the catalog, configuration response and real row renderers. Ordinary defaults stay available in inheritance details and the environment badge continues to report the effective source.","inputs":["docs/design/settings-architecture.md","docs/reference/settings-deep-links.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Reviewed documented Settings default and scope decisions. The change affects source disclosure and one catalog row, with the retained default controls, operator runtime boundaries and preview requirements unchanged.","inputs":["docs/design/settings-launch-triage.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Traced My knowledge store and palette through the SDK roots query and the runtime operator-managed registration path. The empty, conversation-only, author-private and multiple-root cases establish the scope of the existing card selection.","inputs":["docs/guides/knowledge.md","src-ui/src/__tests__/KnowledgeStoreSection.test.tsx"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed its Settings and Knowledge scope and browser acceptance ownership. The change stays in row metadata and default provenance presentation. The campaign still owns its broader workflows and qualification.","inputs":["docs/plans/whole-app-ux-campaign.md","src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the command-palette caller and public shortcut/Settings deep-link guidance. Same command identity and route. The separate generated Settings registry adds a domain scope string, with no SDK change.","inputs":["docs/reference/sdk.md","src-ui/src/components/CommandPalette.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed stable palette routing and the generated HTTP registry. Personal Knowledge is operator-managed and separate from the account preferences fallback. The scope is metadata, with the existing routes retaining authority.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated MCP architecture topic delta. Only KnowledgeStoreProvider's existing Settings selection and operator-managed personal scope explanation changed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed Settings search and command-palette deep-link claims against the actual Search or jump entry and local catalog. The personal Knowledge row keeps its existing identity and route.","inputs":["docs/user/settings.md","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}
