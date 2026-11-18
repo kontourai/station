@@ -7,7 +7,12 @@ import {
   type ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
 import { z } from 'zod/v3';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  fetchSSE,
+  getJson,
+  mutateJson,
+} from './http';
 import { unwrapProjectResponse } from './project-response';
 
 const id = z.string().min(1).max(256);
@@ -246,3 +251,32 @@ export const readProjectSharedTaskDocument = (
     document,
     options,
   );
+
+/** Watch for content-free invalidations of one publication’s human messages. */
+export function watchProjectSharedTaskHistory(
+  apiBase: string,
+  shared: ProjectSharedTaskSummary,
+  changed: () => void,
+  options: ClientRequestOptions,
+) {
+  const project = encodeURIComponent(shared.project.localProjectSlug);
+  const task = encodeURIComponent(shared.task.id);
+  const stream = fetchSSE(
+    `${apiBase}/api/projects/${project}/shared-work/${task}/history?share=${encodeURIComponent(shared.shareId)}`,
+    {
+      ...options,
+      onOpen: (response) => {
+        if (
+          !response.headers.get('content-type')?.startsWith('text/event-stream')
+        )
+          stream.close();
+      },
+      onMessage: (frame) => {
+        if (frame.event === 'changed') changed();
+        return true;
+      },
+      onError: changed,
+    },
+  );
+  return stream;
+}

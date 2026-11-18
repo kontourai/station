@@ -8,6 +8,7 @@ import {
   listProjectSharedTasks,
   readProjectSharedTaskDocument,
   readProjectSharedTaskHistory,
+  watchProjectSharedTaskHistory,
 } from '@kontourai/station-sdk/project-shared-tasks';
 import {
   useInfiniteQuery,
@@ -187,17 +188,27 @@ export function GuestSharedTaskView({
         return value;
       });
     },
-    // Keep the latest conversation current. Reading earlier pages stays at the reader's position.
-    refetchInterval: (query) =>
-      tab === 'Chat' &&
-      query.state.status === 'success' &&
-      query.state.data?.pages.length === 1
-        ? 8000
-        : false,
     enabled: !!selected,
     retry: false,
     gcTime: 0,
   });
+  const refreshHistory = historyPages.refetch;
+  useEffect(() => {
+    if (!selected || tab !== 'Chat' || !historyPages.isSuccess) return;
+    const controller = new AbortController();
+    const stream = watchProjectSharedTaskHistory(
+      apiBase,
+      selected,
+      () => {
+        if (!controller.signal.aborted) void refreshHistory();
+      },
+      requestOptions(controller.signal),
+    );
+    return () => {
+      controller.abort();
+      stream.close();
+    };
+  }, [apiBase, selected, tab, refreshHistory, historyPages.isSuccess]);
   const history = historyPages;
   const historyProjection = projectTaskHistory(history.data?.pages ?? []);
   const document = useQuery({
