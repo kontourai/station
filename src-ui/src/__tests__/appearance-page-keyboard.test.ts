@@ -91,8 +91,19 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       loader: { '.svg': 'dataurl', '.png': 'dataurl' },
       plugins: [
         {
+          name: 'connect-from-source',
+          setup(builder) {
+            builder.onResolve(
+              { filter: /^@kontourai\/station-connect$/ },
+              () => ({
+                path: resolve(REPO_ROOT, 'packages/connect/src/index.ts'),
+              }),
+            );
+          },
+        },
+        {
           // The Custom section reads the person's server document through the
-          // Station connection, which this page-only harness does not mount.
+          // Station connection, which this page-only harness does not seed.
           name: 'stub-custom-appearance-section',
           setup(builder) {
             builder.onResolve({ filter: /CustomAppearanceSection$/ }, () => ({
