@@ -1,0 +1,23 @@
+{
+  "revision": "3f8025d3aa10fe488b5899f34e256ce68069bb1c",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Reviewed the hosted failures and mounted dismissal cases. The stable row title finds the same row across changing statuses. Dismiss, Undo, wake and per-device assertions remain in place and passed.","inputs":["src-ui/src/__tests__/inbox-dismissal.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the hosted failures and mounted dismissal cases. The stable row title finds the same row across changing statuses. Dismiss, Undo, wake and per-device assertions remain in place and passed.","inputs":["src-ui/src/__tests__/inbox-dismissal.test.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The restored Home click paths identify each fixture's visible row title while retaining the actual project placement, routing and conversation focus assertions. The affected Home cases passed.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"The restored Home click paths identify each fixture's visible row title while retaining the actual project placement, routing and conversation focus assertions. The affected Home cases passed.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"The restored Home click paths identify each fixture's visible row title while retaining the actual project placement, routing and conversation focus assertions. The affected Home cases passed.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The saved-chat and later-chat controls are found by their own visible title. The routed tests still verify open failure, newer selection protection, and the ordinary phone Inbox.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"The saved-chat and later-chat controls are found by their own visible title. The routed tests still verify open failure, newer selection protection, and the ordinary phone Inbox.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The mounted desktop and phone resolution keepers use the row's visible title. The same Settle action, Details dismissal and focus restoration assertions passed.","inputs":["src-ui/src/__tests__/conversation-resolution.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The real Chromium swipe journeys identify the row by its title as its rendered metadata changes. Gesture, named actions, reaching focus and undo assertions remain in place.","inputs":["src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}
