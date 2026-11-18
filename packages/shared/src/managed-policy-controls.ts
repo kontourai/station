@@ -171,17 +171,6 @@ const REMOTE_TASK_VALUE_NAMES: Readonly<Record<RemoteTaskVendorId, string>> = {
   cursor: 'RemoteTaskCursor',
 };
 
-/**
- * The checkbox value for each remote task engine vendor
- * (docs/decisions/remote-task-engines.md). Keyed by `RemoteTaskVendorId`, so
- * a new vendor without a checkbox does not compile.
- */
-const REMOTE_TASK_VALUE_NAMES: Readonly<Record<RemoteTaskVendorId, string>> = {
-  devin: 'RemoteTaskDevin',
-  'github-copilot': 'RemoteTaskGitHubCopilot',
-  cursor: 'RemoteTaskCursor',
-};
-
 const NOT_A_SANDBOX =
   'Every user on the machine can read this policy, so do not put credentials in it.';
 
