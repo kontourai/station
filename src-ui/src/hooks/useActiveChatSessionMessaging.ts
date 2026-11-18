@@ -1327,13 +1327,11 @@ export function useSendMessage(
             : undefined;
         if (queuedResult?.outcome === 'queued') {
           stopDeliveryWatch?.();
-          await publishConversationInboxReceipt(
+          publishConversationInboxReceipt(
             queryClient,
             requestScope,
             apiBase,
             queuedResult,
-            sentConversationId,
-            resolvedTurnId,
           );
           await live?.accepted();
           if (requestScope && !requestScope.isCurrent()) return true;
@@ -1357,7 +1355,6 @@ export function useSendMessage(
                 }
               : {}),
           });
-          invalidate(['conversation-inbox']);
           options?.onAdmission?.('accepted');
           return options?.dispatch
             ? ({ kind: 'queued' } satisfies OutboundDispatchTransportResult)

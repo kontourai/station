@@ -1229,8 +1229,9 @@ A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before
 queuing. The browser shows a matching held receipt in the open inbox before
-retiring its in-flight outbox row, then fetches the latest list. A started-turn
-receipt also retires the outbox row.
+retiring its in-flight outbox row. The receipt confirms custody while the
+inbox read determines queue order. A started-turn receipt also retires the
+outbox row.
 If the answer is lost, it retains the original key for delivery inspection.
 This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another

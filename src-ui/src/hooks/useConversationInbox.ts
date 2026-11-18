@@ -77,40 +77,54 @@ function inboxQueryKey(
   return ['conversation-inbox', apiBase, scope?.authorityKey, conversationId];
 }
 
-export async function publishConversationInboxReceipt(
+function inboxReceiptsKey(queryKey: readonly unknown[]) {
+  return [...queryKey, 'receipts'];
+}
+
+function useInboxReceipts(queryKey: readonly unknown[]) {
+  return useQuery<ConversationInboxEntry[]>({
+    queryKey: inboxReceiptsKey(queryKey),
+    queryFn: skipToken,
+    gcTime: 0,
+  }).data;
+}
+
+function withInboxReceipts(
+  entries: ConversationInboxEntry[] | undefined,
+  receipts: ConversationInboxEntry[] | undefined,
+) {
+  if (!receipts?.length) return entries;
+  return [
+    ...(entries ?? []),
+    ...receipts.filter(
+      (receipt) =>
+        !entries?.some((entry) => entry.clientTurnId === receipt.clientTurnId),
+    ),
+  ];
+}
+
+export function publishConversationInboxReceipt(
   client: QueryClient,
   scope: InboxScope | undefined,
   apiBase: string,
   receipt: ConversationInboxQueuedReceipt,
-  conversationId: string,
-  clientTurnId: string,
 ) {
-  const { entry } = receipt;
-  if (
-    !scope?.isCurrent() ||
-    scope.apiBase !== apiBase ||
-    receipt.conversationId !== conversationId ||
-    receipt.clientTurnId !== clientTurnId ||
-    entry.conversationId !== conversationId ||
-    entry.clientTurnId !== clientTurnId
-  )
-    return;
+  if (!scope?.isCurrent() || scope.apiBase !== apiBase) return;
+  const { entry, conversationId, clientTurnId } = receipt;
 
   const queryKey = inboxQueryKey(scope, conversationId, apiBase);
-  const query = client.getQueryState<ConversationInboxEntry[]>(queryKey);
-  if (!query || query.status === 'error' || query.fetchStatus === 'paused')
-    return;
-
-  // A read begun before admission can still answer with the old queue.
-  await client.cancelQueries({ queryKey, exact: true });
-  if (!scope.isCurrent()) return;
-  client.setQueryData<ConversationInboxEntry[]>(queryKey, (previous) => {
-    const current = previous?.find(
-      (item) => item.clientTurnId === clientTurnId,
-    );
-    if (current && current.updatedAt >= entry.updatedAt) return previous;
-    return [...(previous ?? []).filter((item) => item !== current), entry];
-  });
+  const receiptsKey = inboxReceiptsKey(queryKey);
+  if (client.getQueryState(receiptsKey)) {
+    client.setQueryData<ConversationInboxEntry[]>(receiptsKey, (previous) => [
+      ...(previous ?? []).filter((item) => item.clientTurnId !== clientTurnId),
+      // The receipt confirms custody. The list read owns queue order.
+      { ...entry, position: undefined },
+    ]);
+  }
+  void client.invalidateQueries(
+    { queryKey, exact: true },
+    { cancelRefetch: false },
+  );
 }
 
 /**
@@ -132,13 +146,15 @@ export function useConversationInboxSnapshot(
     connection === null
       ? undefined
       : (connection?.targetApiBase ?? target?.apiBase ?? scope?.apiBase);
+  const queryKey = inboxQueryKey(scope, conversationId, apiBase);
   const query = useQuery<ConversationInboxEntry[]>({
-    queryKey: inboxQueryKey(scope, conversationId, apiBase),
+    queryKey,
     queryFn: skipToken,
     gcTime: 0,
   });
-  return query.status === 'success' && query.fetchStatus !== 'paused'
-    ? visibleInboxEntries(query.data)
+  const receipts = useInboxReceipts(queryKey);
+  return scope?.isCurrent() && !query.isError && !query.isPaused
+    ? visibleInboxEntries(withInboxReceipts(query.data, receipts))
     : [];
 }
 
@@ -180,6 +196,9 @@ export function useConversationInbox(
     queryFn: async ({ signal }): Promise<ConversationInboxEntry[]> => {
       if (!scope?.isCurrent())
         throw new Error('The Station connection changed.');
+      const receiptsKey = inboxReceiptsKey(queryKey);
+      const confirmedByThisRead =
+        client.getQueryData<ConversationInboxEntry[]>(receiptsKey);
       const entries = await listConversationInbox(apiBase!, conversationId, {
         requestScope: scope,
         requireCredential: scope.requiresEnrolledCredential !== false,
@@ -192,9 +211,15 @@ export function useConversationInbox(
       });
       if (!scope.isCurrent())
         throw new Error('The Station connection changed.');
+      if (!signal.aborted && confirmedByThisRead?.length) {
+        client.setQueryData<ConversationInboxEntry[]>(receiptsKey, (current) =>
+          current?.filter((entry) => !confirmedByThisRead.includes(entry)),
+        );
+      }
       return entries;
     },
   });
+  const receipts = useInboxReceipts(queryKey);
   useEffect(() => {
     if (!scope || !conversationId) return;
     const subscription = subscribeSharedOrchestrationStream(apiBase!, {
@@ -236,7 +261,10 @@ export function useConversationInbox(
       : query.isSuccess
         ? 'available'
         : 'loading';
-  const entries = availability === 'available' ? query.data : undefined;
+  const entries =
+    availability === 'unavailable'
+      ? undefined
+      : withInboxReceipts(query.data, receipts);
   // A failed read keeps TanStack's last successful data; it is not shown (it
   // may be stale), but it says whether there was anything to lose sight of.
   const lostSightOfEntries =

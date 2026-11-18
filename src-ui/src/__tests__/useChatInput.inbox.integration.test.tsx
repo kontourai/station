@@ -337,7 +337,7 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     client.clear();
   });
 
-  test('ordinary busy send queues through the dock when native steering is unavailable', async () => {
+  test('ordinary Send queues if a native turn starts while the draft is being prepared', async () => {
     vi.stubGlobal(
       'Uint8Array',
       Object.getPrototypeOf(Buffer.prototype).constructor,
@@ -354,10 +354,10 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       conversationId: CONVERSATION,
     });
     activeChatsStore.updateChat(sessionId, {
-      status: 'sending',
-      orchestrationProvider: 'acp',
+      status: 'idle',
+      orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       currentSessionId: 'fixture-execution',
-      openTurnId: 'fixture-turn',
       messages: [],
       input: 'ordinary follow-up',
     });
@@ -373,13 +373,24 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
         </SDKProvider>
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+    const send = await screen.findByRole('button', { name: 'Send' });
+    expect(
+      screen.queryByRole('button', { name: 'Stop the current turn' }),
+    ).toBeNull();
+    act(() => {
+      fireEvent.click(send);
+      activeChatsStore.updateChat(sessionId, {
+        status: 'sending',
+        openTurnId: 'fixture-turn',
+      });
+    });
     await waitFor(() =>
       expect(world.inbox.list(CONVERSATION)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             message: 'ordinary follow-up',
             state: 'queued',
+            kind: 'follow-up',
           }),
         ]),
       ),
@@ -407,22 +418,23 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     const world = station();
     await world.busy();
     let holdInboxReads = false;
-    let heldReads = 0;
+    let heldRead: Request | undefined;
     const { promise: readsReleased, resolve: releaseReads } =
       Promise.withResolvers<void>();
     vi.stubGlobal(
       'fetch',
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const request = new Request(input, init);
+        const response = await world.app.request(request);
         if (
           holdInboxReads &&
           request.method === 'GET' &&
           new URL(request.url).pathname.endsWith('/inbox')
         ) {
-          heldReads += 1;
+          heldRead = request;
           await readsReleased;
         }
-        return world.app.request(request);
+        return response;
       },
     );
     activeChatsStore.initChat(sessionId, {
@@ -463,18 +475,22 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       ).toEqual([]),
     );
     holdInboxReads = true;
+    const refresh = client.refetchQueries({ queryKey: ['conversation-inbox'] });
     try {
+      await waitFor(() => expect(heldRead).toBeDefined());
       fireEvent.keyDown(textbox, { key: 'Enter', ctrlKey: true });
-      await waitFor(() => expect(heldReads).toBeGreaterThan(0));
       fireEvent.click(
         await screen.findByRole('button', { name: '1 pending message' }),
       );
       expect(screen.getByText('then summarize')).toBeTruthy();
       expect(textbox).toHaveProperty('value', '');
+      expect(heldRead?.signal.aborted).toBe(false);
     } finally {
       holdInboxReads = false;
       releaseReads();
     }
+    await act(async () => await refresh);
+    expect(screen.getByText('then summarize')).toBeTruthy();
     await waitFor(async () => {
       const response = await world.listInbox(READER);
       const body = await response.json();

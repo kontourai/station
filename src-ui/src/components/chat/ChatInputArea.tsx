@@ -291,7 +291,7 @@ interface ChatInputAreaProps {
   slashCommands: SlashCommand[];
   // Handlers
   onInputChange: (value: string) => void;
-  onSend: () => Promise<void>;
+  onSend: (intent?: 'steer') => Promise<void>;
   onCancel: () => void;
   onClearInput: () => void;
   selectAttachmentFiles?: (files: File[]) => Promise<void>;
@@ -684,11 +684,9 @@ export function ChatInputArea({
     submitPending.current = true;
     setSubmitting(true);
     try {
-      if (
-        turnInFlight &&
-        (sendMode === 'queue' || busyFollowUp !== 'steer') &&
-        onQueueFollowUp
-      ) {
+      if (turnInFlight && sendMode === 'steer' && busyFollowUp === 'steer') {
+        await onSend('steer');
+      } else if (turnInFlight && onQueueFollowUp) {
         await onQueueFollowUp();
       } else {
         await onSend();
