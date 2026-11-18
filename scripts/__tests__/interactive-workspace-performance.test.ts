@@ -1714,8 +1714,21 @@ describe('interactive workspace performance contract', () => {
     let isolatedContexts = 0;
     let closedContexts = 0;
     let bridgeCalls = 0;
+    const brief = {
+      waitFor: async () => {},
+      isEditable: async () => true,
+      getAttribute: async () => 'task-1',
+    };
+    const plan = {
+      getByRole: (role: string) =>
+        role === 'textbox' ? brief : { click: async () => {} },
+    };
     const page = {
       goto: async () => ({ text: async () => html }),
+      url: () => 'http://station.test/tasks/task-1',
+      exposeBinding: async () => {},
+      getByRole: (role: string) =>
+        role === 'tabpanel' ? plan : { click: async () => {} },
       locator: () => ({ getAttribute: async () => 'abc1234' }),
       waitForFunction: async () => true,
       evaluate: async (_bridge: unknown, input: unknown) => {
