@@ -120,6 +120,12 @@ test.each(cases)(
         { userId: OWNER },
       ),
     );
+    // The wire fixtures supply an engine and a session. Keep the host CLI
+    // and login probes outside this test, as in the Muse approval fixture.
+    const prerequisites =
+      provider === 'acp'
+        ? undefined
+        : vi.spyOn(engine.adapter, 'getPrerequisites').mockResolvedValue([]);
     let current = runtime(store, engine.adapter);
     const queued = {
       conversationId: THREAD,
@@ -144,6 +150,7 @@ test.each(cases)(
         },
         { userId: OWNER },
       );
+      if (prerequisites) expect(prerequisites).toHaveBeenCalled();
       await expect.poll(() => engine.inputs().length).toBe(1);
       expect(activity()).toEqual({ kind: 'available', active: true });
       const started = turnEvents().find(
@@ -202,6 +209,7 @@ test.each(cases)(
       expect(current.start).not.toHaveBeenCalled();
       expect(engine.inputs()).toHaveLength(2);
     } finally {
+      prerequisites?.mockRestore();
       current.inbox.stop();
       await current.inbox.idle();
       await current.service.shutdown();
