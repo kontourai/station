@@ -186,6 +186,7 @@
 }
 /* The line's own number: a link to the line, drawn as a gutter, not a link. */
 .workspace-file-preview__code a {
+  align-self: start;
   min-width: 3.5em;
   margin-inline-end: 1em;
   color: var(--k-text-muted);

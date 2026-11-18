@@ -26,6 +26,7 @@ const SAMPLE_PATCH = `diff --git a/foo.ts b/foo.ts
  const c = 4;
 `;
 
+const COMMENT_AT = new Date(Date.now() - 2 * 60_000).toISOString();
 const SEEDED_COMMENT = {
   id: 'seed-1',
   projectId: 'dev',
@@ -33,8 +34,8 @@ const SEEDED_COMMENT = {
   side: 'additions' as const,
   lineNumber: 2,
   body: 'Needs a null guard here',
-  createdAt: '2026-06-28T00:00:00.000Z',
-  updatedAt: '2026-06-28T00:00:00.000Z',
+  createdAt: COMMENT_AT,
+  updatedAt: COMMENT_AT,
 };
 
 async function captureDiff(page: Page, testInfo: TestInfo, name: string) {
@@ -121,7 +122,7 @@ async function seedRoutes(page: Page) {
             data: {
               path: 'foo.ts',
               status: 'ready',
-              renderKind: 'source',
+              renderKind: 'text',
               content: `${LONG_LINE}\n`,
             },
           },
@@ -296,47 +297,44 @@ test.describe('Diff review annotations', () => {
         await expect(annotation.locator('time')).toHaveText(/^now$|^\d+[mhd]$/);
         await captureDiff(page, testInfo, `coding-diff-${width}-${theme}`);
 
-        if (width === 390) {
-          await selectCodingPane(page, 'Files');
-          await page.getByText('foo.ts', { exact: true }).click();
-          const source = page.getByRole('region', { name: 'foo.ts source' });
-          await expect(source).toBeVisible();
-          await page.getByRole('button', { name: 'More file actions' }).click();
-          const sourceWrap = page.getByRole('menuitemcheckbox', {
-            name: 'Wrap lines',
-          });
-          if ((await sourceWrap.getAttribute('aria-checked')) === 'false')
-            await sourceWrap.click();
-          else await page.keyboard.press('Escape');
-          await expect
-            .poll(() =>
-              source.locator('[data-line="1"]').evaluate((line) => {
-                const gutter = line.querySelector('a')!;
-                const content = line.querySelector('span')!;
-                const range = document.createRange();
-                range.selectNodeContents(content);
-                const fragments = [...range.getClientRects()];
-                return (
-                  new Set(fragments.map(({ top }) => Math.round(top))).size >
-                    1 &&
-                  fragments.every(
-                    ({ left }) => left >= gutter.getBoundingClientRect().right,
-                  )
-                );
-              }),
-            )
-            .toBe(true);
-          await captureDiff(page, testInfo, `file-source-${width}-${theme}`);
+        await selectCodingPane(page, 'Files');
+        await page.getByText('foo.ts', { exact: true }).click();
+        const source = page.getByRole('region', { name: 'foo.ts source' });
+        await expect(source).toBeVisible();
+        await page.getByRole('button', { name: 'More file actions' }).click();
+        const sourceWrap = page.getByRole('menuitemcheckbox', {
+          name: 'Wrap lines',
+        });
+        if ((await sourceWrap.getAttribute('aria-checked')) === 'false')
+          await sourceWrap.click();
+        else await page.keyboard.press('Escape');
+        await expect
+          .poll(() =>
+            source.locator('[data-line="1"]').evaluate((line) => {
+              const gutter = line.querySelector('a')!;
+              const content = line.querySelector('span')!;
+              const range = document.createRange();
+              range.selectNodeContents(content);
+              const fragments = [...range.getClientRects()];
+              return (
+                new Set(fragments.map(({ top }) => Math.round(top))).size > 1 &&
+                fragments.every(
+                  ({ left }) => left >= gutter.getBoundingClientRect().right,
+                )
+              );
+            }),
+          )
+          .toBe(true);
+        await captureDiff(page, testInfo, `file-source-${width}-${theme}`);
 
-          await page.getByRole('button', { name: /^Changes vs HEAD/ }).click();
-          const changes = page.getByRole('region', {
-            name: 'foo.ts changes against HEAD',
-          });
-          await expect(changes).toBeVisible();
-          await expect(changes.locator('diffs-container')).toBeVisible();
-          await expectPhoneDiffFits(page);
-          await captureDiff(page, testInfo, `file-changes-${width}-${theme}`);
-        }
+        await page.getByRole('button', { name: /^Changes vs HEAD/ }).click();
+        const changes = page.getByRole('region', {
+          name: 'foo.ts changes against HEAD',
+        });
+        await expect(changes).toBeVisible();
+        await expect(changes.locator('diffs-container')).toBeVisible();
+        if (width === 390) await expectPhoneDiffFits(page);
+        await captureDiff(page, testInfo, `file-changes-${width}-${theme}`);
       });
     }
   }
