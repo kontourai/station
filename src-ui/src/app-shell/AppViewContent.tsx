@@ -11,11 +11,9 @@ import './route-transition.css';
 import { APP_DESTINATION_REGISTRY } from './destination-registry';
 import { RouteViewBoundary } from './RouteViewBoundary';
 
-// Project creation is a route-only overlay. Keeping it lazy avoids charging
-// every initial desktop load for its form, icon picker, and path autocomplete.
-const NewProjectModal = lazy(() =>
-  import('../components/modals/NewProjectModal').then((module) => ({
-    default: module.NewProjectModal,
+const ProjectAdminRoute = lazy(() =>
+  import('./ProjectAdminRoute').then((module) => ({
+    default: module.ProjectAdminRoute,
   })),
 );
 
@@ -112,11 +110,6 @@ const WorkspacePaneHostActionsFrame = lazy(() =>
 const ProjectFlowConsoleView = lazy(() =>
   import('../views/ProjectFlowConsoleView').then((module) => ({
     default: module.ProjectFlowConsoleView,
-  })),
-);
-const ProjectSettingsView = lazy(() =>
-  import('../views/ProjectSettingsView').then((module) => ({
-    default: module.ProjectSettingsView,
   })),
 );
 const ProviderSettingsView = lazy(() =>
@@ -391,10 +384,20 @@ function AppViewContentBody({
     if (projectsLoading) {
       return <SkeletonList count={3} label="Loading your projects" />;
     }
-    return <ProjectNewViewGate onReturnToOutlet={onReturnToOutlet} />;
+    return (
+      <ProjectAdminRoute
+        route={currentView}
+        onReturnToOutlet={onReturnToOutlet}
+      />
+    );
   }
   if (currentView.type === 'project-edit') {
-    return <ProjectSettingsView slug={currentView.slug} />;
+    return (
+      <ProjectAdminRoute
+        route={currentView}
+        onReturnToOutlet={onReturnToOutlet}
+      />
+    );
   }
   if (currentView.type === 'layout') {
     return (
@@ -493,23 +496,4 @@ function AppViewContentBody({
   }
 
   return null;
-}
-
-/** A setup reminder is nonblocking; it cannot suppress explicit project creation. */
-function ProjectNewViewGate({
-  onReturnToOutlet,
-}: {
-  /** Closing the modal is a dismissal: back to `/`'s occupant (#1523). */
-  onReturnToOutlet: () => void;
-}) {
-  return (
-    <NewProjectModal
-      isOpen
-      onClose={() => {
-        if (window.location.pathname === '/projects/new') {
-          onReturnToOutlet();
-        }
-      }}
-    />
-  );
 }
