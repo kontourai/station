@@ -9,7 +9,7 @@ import {
   SharedTaskHistoryList,
 } from '../../components/conversation/SharedTaskHistoryList';
 import { displayableProjectIcon } from '../../components/icons/ProjectIcon';
-import { ProjectConversationList } from '../../components/project-conversations/ProjectConversationList';
+import { LazyBoundary } from '../../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import {
@@ -27,6 +27,11 @@ import '../ProjectPage.css';
 import { MemberProjectHeader } from './ProjectPageHeader';
 import '../project-page-frame.css';
 import './MemberProjectPage.css';
+
+const loadMemberConversations = () =>
+  import('../../components/project-conversations/ProjectConversationList').then(
+    (module) => ({ default: module.ProjectConversationList }),
+  );
 
 type RequestScope = ReturnType<typeof useHostRequestAuthorityScope>;
 
@@ -92,27 +97,34 @@ export function MemberProjectPage({
           {!roomScreen && <ProjectNavigation slug={project.slug} member />}
           <section className="section-nav-rail__body project-page__content">
             {listShown && (
-              <ProjectConversationList
-                variant="page"
-                project={project}
-                requestScope={requestScope}
-                member={{
-                  tasks: sharedWork,
-                  isCurrent: requestScope.isCurrent,
+              <LazyBoundary
+                load={loadMemberConversations}
+                pending={
+                  <SkeletonBlock label="Loading project conversations" />
+                }
+                shareAcrossMounts
+                componentProps={{
+                  variant: 'page',
+                  project,
+                  requestScope,
+                  member: {
+                    tasks: sharedWork,
+                    isCurrent: requestScope.isCurrent,
+                  },
+                  onOpenChannel: (id) => openFromList(() => openRoom(id)),
+                  onOpenTask: (id) => {
+                    if (!requestScope.isCurrent() || sharedWork.isError) return;
+                    const publication = sharedWork.data?.find(
+                      (item) => item.task.id === id,
+                    );
+                    if (!publication) return;
+                    openFromList(() => {
+                      setSelectedShareId(publication.shareId);
+                      selectDestination('tasks');
+                    });
+                  },
+                  onMoreTasks: () => selectDestination('tasks'),
                 }}
-                onOpenChannel={(id) => openFromList(() => openRoom(id))}
-                onOpenTask={(id) => {
-                  if (!requestScope.isCurrent() || sharedWork.isError) return;
-                  const publication = sharedWork.data?.find(
-                    (item) => item.task.id === id,
-                  );
-                  if (!publication) return;
-                  openFromList(() => {
-                    setSelectedShareId(publication.shareId);
-                    selectDestination('tasks');
-                  });
-                }}
-                onMoreTasks={() => selectDestination('tasks')}
               />
             )}
             <div hidden={(!overview || listShown) && destination !== 'room'}>

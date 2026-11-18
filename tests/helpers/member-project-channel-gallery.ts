@@ -104,6 +104,50 @@ export function memberProjectChannelScreens() {
         await expect(
           main.getByRole('button', { name: /Draft the release notes/ }),
         ).toHaveCount(0);
+
+        // Resize the phone's work area to make this real list scroll without
+        // adding rows to the captured layout.
+        await page.setViewportSize({ width: 390, height: 440 });
+        const later = main.getByRole('button', {
+          name: 'Fix the login redirect on Safari, Task room, 2 unread',
+        });
+        await later.scrollIntoViewIfNeeded();
+        const design = channels.getByRole('button', {
+          name: 'design',
+          exact: true,
+        });
+        await design.scrollIntoViewIfNeeded();
+        const listScrollTop = () =>
+          main.locator('.project-page').evaluate((pageRoot) => {
+            for (
+              let element: Element | null = pageRoot;
+              element;
+              element = element.parentElement
+            ) {
+              const { overflowY } = getComputedStyle(element);
+              if (
+                (overflowY === 'auto' || overflowY === 'scroll') &&
+                element.scrollHeight > element.clientHeight
+              )
+                return element.scrollTop;
+            }
+            return document.scrollingElement?.scrollTop ?? 0;
+          });
+        const before = await listScrollTop();
+        expect(before).toBeGreaterThan(0);
+        await design.click();
+        await expect(
+          main.getByRole('heading', { name: 'design', exact: true }),
+        ).toBeVisible();
+        await page.goBack();
+        await expect(design).toBeVisible();
+        await expect
+          .poll(async () => Math.abs((await listScrollTop()) - before))
+          .toBeLessThanOrEqual(2);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await main
+          .getByRole('heading', { name: 'Onboarding revamp' })
+          .scrollIntoViewIfNeeded();
       },
       async cleanup() {
         for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
