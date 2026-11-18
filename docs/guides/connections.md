@@ -1827,6 +1827,10 @@ action displays the command, can copy it, and can open the bottom terminal
 when the dock has a Project on the same Station. Paste and run the command
 yourself, complete the provider authorization, then retry the repository list.
 
+The Project overview and Sources show **Add a repository** and opens the source tiles directly.
+Repository names link to their Git host. **Open terminal** opens the bottom
+terminal when the Project is the dock’s current Project on this Station.
+
 **Find existing checkouts** lists up to 20 retained acquisitions matching the
 entered repository identity, requested ref and subdirectory. These are historical
 observations until **Check and reuse** rechecks the checkout's current origin,

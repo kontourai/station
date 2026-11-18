@@ -12,6 +12,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ForgeMark, forgeForHost } from '../../components/icons/ForgeMark';
+import { CheckGlyph, ExternalLinkGlyph } from '../../components/icons/Glyph';
 import { StationPath } from '../../components/StationPath';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { errorText } from '../../utils/errorText';
@@ -39,12 +40,14 @@ export function ProjectRepositorySources({
   authority,
   stationName,
   onRepair,
+  compact = false,
 }: {
   slug: string;
   projectId: string;
   authority: ApiRequestScope;
   stationName: string;
   onRepair?: () => void;
+  compact?: boolean;
 }) {
   const identity = useProjectIdentityQuery(slug, {
     requestScope: authority,
@@ -65,9 +68,16 @@ export function ProjectRepositorySources({
   const view =
     identity.isError || resolution.isError ? undefined : resolution.data;
   return (
-    <section aria-label="Repository sources" className="project-repositories">
+    <section
+      aria-label="Repository sources"
+      className={
+        compact
+          ? 'project-repositories project-repositories--compact'
+          : 'project-repositories'
+      }
+    >
       <div className="project-repositories__heading">
-        <h3>Repositories and folders</h3>
+        <h3>Repositories</h3>
         <Button
           variant="secondary"
           disabled={identity.isFetching || resolution.isFetching}
@@ -127,6 +137,7 @@ export function ProjectRepositorySources({
                   : undefined
               }
               onRepair={onRepair}
+              compact={compact}
             />
           ))}
         </ul>
@@ -143,6 +154,7 @@ type CardProps = {
   primary: boolean;
   startingDirectory: string | undefined;
   onRepair?: () => void;
+  compact: boolean;
 };
 
 function RepositorySourceCard({
@@ -153,6 +165,7 @@ function RepositorySourceCard({
   primary,
   startingDirectory,
   onRepair,
+  compact,
 }: CardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const remote = repo.kind === 'git' ? repo.canonicalRemote : undefined;
@@ -171,7 +184,9 @@ function RepositorySourceCard({
         )}
       </div>
       {resource?.state === 'bound' && (
-        <p className="project-sources__hint">Checkout ready on {stationName}</p>
+        <p className="project-repositories__ready">
+          <CheckGlyph /> Checkout ready on {stationName}
+        </p>
       )}
       {resource && resource.state !== 'bound' && (
         <div className="project-repositories__problem">
@@ -201,49 +216,51 @@ function RepositorySourceCard({
           Station could not read its checkout records. Refresh to try again.
         </p>
       )}
-      <details
-        className="project-sources__diagnostics"
-        open={detailsOpen}
-        onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
-      >
-        <summary>Checkout and access details</summary>
-        <p className="project-sources__hint">
-          Showing {stationName} only. Other Stations and Peers are not listed
-          here.
-        </p>
-        <section
-          aria-label={`Checkout on ${stationName}`}
-          className="project-repositories__checkout"
+      {!compact && (
+        <details
+          className="project-sources__diagnostics"
+          open={detailsOpen}
+          onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
         >
-          <h4>{stationName}</h4>
-          <dl className="project-repositories__details">
-            <ResourceLocation resource={resource} stationName={stationName} />
-            {startingDirectory !== undefined && (
-              <>
-                <dt>New chats start in</dt>
-                <dd>
-                  <code>{startingDirectory}</code> within this checkout
-                </dd>
-              </>
-            )}
-          </dl>
-        </section>
-        {detailsOpen && (
-          <ProjectRepositoryAccess
-            authority={authority}
-            stationName={stationName}
-            github={Boolean(
-              remote && forgeForHost(remote.split('/')[0]) === 'github',
-            )}
+          <summary>Checkout and access details</summary>
+          <p className="project-sources__hint">
+            Showing {stationName} only. Other Stations and Peers are not listed
+            here.
+          </p>
+          <section
+            aria-label={`Checkout on ${stationName}`}
+            className="project-repositories__checkout"
+          >
+            <h4>{stationName}</h4>
+            <dl className="project-repositories__details">
+              <ResourceLocation resource={resource} stationName={stationName} />
+              {startingDirectory !== undefined && (
+                <>
+                  <dt>New chats start in</dt>
+                  <dd>
+                    <code>{startingDirectory}</code> within this checkout
+                  </dd>
+                </>
+              )}
+            </dl>
+          </section>
+          {detailsOpen && (
+            <ProjectRepositoryAccess
+              authority={authority}
+              stationName={stationName}
+              github={Boolean(
+                remote && forgeForHost(remote.split('/')[0]) === 'github',
+              )}
+            />
+          )}
+          <RepositoryDiagnostics
+            repo={repo}
+            resource={resource}
+            primary={primary}
+            view={view}
           />
-        )}
-        <RepositoryDiagnostics
-          repo={repo}
-          resource={resource}
-          primary={primary}
-          view={view}
-        />
-      </details>
+        </details>
+      )}
     </li>
   );
 }
@@ -308,6 +325,7 @@ function RepositorySourceIdentity({ repo }: { repo: ProjectRepoResource }) {
       )}
       <strong>{parts.join('/')}</strong>
       {!forge && <span className="project-sources__hint">{host}</span>}
+      <ExternalLinkGlyph className="project-repositories__external" />
     </a>
   );
 }

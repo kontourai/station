@@ -7,6 +7,39 @@ import { useDockProject } from '../workspace-panes/useDockProject';
 import { ActionRow } from './ActionRow';
 import { Button } from './Button';
 import { requestProjectShell } from './coding-layout/terminalShellRequest';
+import { TerminalGlyph } from './icons/Glyph';
+
+export function OpenStationTerminalButton({
+  authority,
+  expectedProject,
+}: {
+  authority: ApiRequestScope;
+  expectedProject?: string;
+}) {
+  const host = useHostRequestAuthorityScope();
+  const { projectSlug } = useDockProject();
+  const show = useShowSurface();
+  if (
+    !projectSlug ||
+    (expectedProject && projectSlug !== expectedProject) ||
+    host?.apiBase !== authority.apiBase ||
+    host.authorityKey !== authority.authorityKey ||
+    !host.isCurrent()
+  )
+    return null;
+  return (
+    <Button
+      variant="secondary"
+      onClick={() => {
+        if (!host.isCurrent()) return;
+        requestProjectShell(projectSlug);
+        show('coding:terminal', undefined, { region: 'bottom' });
+      }}
+    >
+      <TerminalGlyph /> Open terminal
+    </Button>
+  );
+}
 
 export function TerminalCommandAction({
   command,
@@ -17,15 +50,7 @@ export function TerminalCommandAction({
   authority: ApiRequestScope;
   stationName: string;
 }) {
-  const host = useHostRequestAuthorityScope();
-  const { projectSlug } = useDockProject();
-  const show = useShowSurface();
   const [copyStatus, setCopyStatus] = useState<'copied' | 'failed'>();
-  const canOpen =
-    projectSlug &&
-    host?.apiBase === authority.apiBase &&
-    host.authorityKey === authority.authorityKey &&
-    host.isCurrent();
 
   return (
     <div className="content-stack">
@@ -45,20 +70,7 @@ export function TerminalCommandAction({
             Copy command
           </Button>
         }
-        primary={
-          canOpen ? (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                if (!host.isCurrent()) return;
-                requestProjectShell(projectSlug);
-                show('coding:terminal', undefined, { region: 'bottom' });
-              }}
-            >
-              Open terminal
-            </Button>
-          ) : undefined
-        }
+        primary={<OpenStationTerminalButton authority={authority} />}
       />
       {copyStatus && (
         <p role="status">
