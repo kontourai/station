@@ -210,6 +210,7 @@ export function bubblewrapHiddenPaths(
   const dockerHost = /^unix:\/\/(\/.+)$/.exec(env.DOCKER_HOST?.trim() ?? '');
   const named = [
     ...hiddenSecretPaths(options),
+    ...base.hidden,
     join(home, '.local', 'share', 'keyrings'),
     join(home, '.docker', 'run'),
     join(home, '.Xauthority'),
