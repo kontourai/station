@@ -1187,36 +1187,28 @@ describe('lifecycle instance state', () => {
       ),
       '',
     );
-    const spawn = vi
-      .fn()
-      .mockReturnValueOnce({ pid: 43031, unref: vi.fn() })
-      .mockReturnValueOnce({ pid: 43032, unref: vi.fn() });
-    vi.spyOn(process, 'kill').mockImplementation(((
-      pid: number,
-      signal?: NodeJS.Signals | number,
-    ) => {
-      if (signal === 0 && (pid === 43031 || pid === 43032)) {
-        return true;
-      }
-      throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
-    }) as typeof process.kill);
-    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    const launchCaptured = new Error('supervisor launch captured');
+    const spawn = vi.fn().mockImplementationOnce(() => {
+      throw launchCaptured;
+    });
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       platformOverrides: { sleepSync: vi.fn() },
     });
     const supervisorBirth = vi.fn(() => 'launcher-birth-12345');
 
-    await lifecycle.start({
-      baseDir: TEST_ALT_HOME,
-      instanceName: 'supervised-no-birth',
-      serverPort: 3253,
-      supervisorPid: 12345,
-      supervisorBirth,
-      uiPort: 5283,
-    });
+    await expect(
+      lifecycle.start({
+        baseDir: TEST_ALT_HOME,
+        instanceName: 'supervised-no-birth',
+        serverPort: 3253,
+        supervisorPid: 12345,
+        supervisorBirth,
+        uiPort: 5283,
+      }),
+    ).rejects.toBe(launchCaptured);
 
-    // The supervisor bundle ran, and it discards the birth: never probed.
+    // The attempt chose the supervisor bundle without probing launcher birth.
     expect(String(spawn.mock.calls[0][1][0])).toContain(
       'station-supervisor.js',
     );
