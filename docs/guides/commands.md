@@ -91,13 +91,13 @@ so the selected engine interprets its own command text.
 ## Parameter Expansion
 
 For an **authored Agent command**, arguments fill parameters positionally.
-Each declared `{{name}}` is replaced using that argument, its default, or an
-empty string. An empty argument also falls through to the default. Extra words
-are ignored; they are not joined into the last parameter. The current handler
-does not enforce `required`, so a missing required argument can produce an
-incomplete prompt. Named `key=value` assignment is not supported on this path.
-[#2764](https://github.com/kontourai/station/issues/2764) tracks validation of
-missing required and surplus arguments.
+Quote a value that contains spaces. An omitted argument or an explicit empty
+value (`""`) uses the parameter's default when supplied. Required parameters
+need a nonblank value after defaulting. Optional parameters without a value
+or default expand to an empty string. Each parameter requires a name.
+Descriptions are optional. Station rejects surplus words before sending,
+including arguments to a command with no parameters. Named assignment is
+available for command skills.
 
 For a **command skill**, a word such as `style=technical` assigns a declared
 variable by name. Remaining words fill unassigned variables in declaration
@@ -125,17 +125,14 @@ narrowed to specific tools is not offered that server's prompts by default.
 Station-managed servers (`station-control`, `station-knowledge`,
 `station-docs`) are not asked for prompts.
 
-These are separate implementations. Do not infer the skill's validation
-behavior from the Agent command's `required` field, or vice versa. A recorded
-skill run is attempted after expansion; it does not prove the engine completed
-the resulting prompt.
+Command skills and authored Agent commands preserve supplied values as
+literal text. Dollar patterns such as `$$` and `$&` stay intact, and inserted
+text that looks like another placeholder stays literal. The quoting rules
+above still apply when a slash command line is parsed.
 
-Both substitution paths currently use JavaScript replacement-string semantics:
-for example, `$&` inserts the matched placeholder and `$$` becomes one dollar
-sign. Values containing those patterns are not preserved literally. This is a
-substitution limitation, not shell interpretation.
-[#2763](https://github.com/kontourai/station/issues/2763) tracks literal-value
-preservation in both paths.
+A recorded skill run is attempted after expansion. The run count indicates
+that expansion succeeded and proceeding was attempted. Engine completion
+is reported through the normal conversation lifecycle.
 
 ## Command Composition
 

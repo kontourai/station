@@ -733,13 +733,16 @@ retry returns its retained entry even after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
 
-- **Steer:** text and head are durable before handoff. Native placement is
+- **Steer:** Station records the active Session and the turn's opening event
+  with the text before handoff. If the head has no active turn, admission
+  answers `inbox_stale_head`. If the target ends before placement, the entry
+  is refused with `steer_turn_ended`. Native placement is
   engine-defined and disclosed, including OpenCode and ACP sessions whose
   handshake selects a native channel. Other ACP sessions can interrupt the
   active prompt, wait for its terminal answer, and re-prompt with a continuation
   instruction on the same turn. Where Station owns the loop,
-  input waits for its next observed post-tool boundary; otherwise it waits
-  for the next turn boundary. The current VoltAgent loop observes the boundary
+  input waits for its next observed post-tool boundary in that turn.
+  The current VoltAgent loop observes the boundary
   after the preceding step's tools settle. Prompt injection leaves the entry
   claimed. It becomes sent only after the carrying model request returns and
   its user message and steer event are recorded durably. A crash before that
@@ -1393,6 +1396,18 @@ and `stopSession` (`{ type: 'stopSession', threadId }`).
 
 External transcript observation does not grant control of the original terminal
 process.
+
+When Station builds a conversation index for older events, it picks the newest
+text value for owner, Agent, and Project metadata. Startup can also recover a
+missing Project label in a bounded batch of already-indexed conversations.
+Existing owner and Agent bindings are kept during that Project-label repair.
+
+On cold follow, Station reads at most 64 recent configuration events to find
+the attachment's prior Project attribution. A full window without a claim
+leaves that attribution unknown. A new Project observation can record a
+recovery tied to the newest configuration in the window. An unattributed
+observation alone leaves a possibly older Project label in place. The follower
+advances its remembered attribution only after the configuration event commits.
 
 A read-only attached session's summary carries `attachedSourceActivity`
 (`{ state: 'active' | 'quiet' | 'idle', lastWriteAt? }`), derived at read time

@@ -1076,14 +1076,17 @@ Personal Task rooms expose these authenticated routes:
   It returns `{success: true, data: TaskRoomAttachment[]}`. Limits are five files,
   5 MiB each and 15 MiB decoded total. An image's bytes must start with the
   declared image type's signature (a prefix check, not a full decode). This exact POST has a 22 MiB JSON body
-  ceiling; it retains the standard mutation rate budget.
+  ceiling and the standard mutation rate budget. If the batch's new unique
+  bytes would exceed the Task room store's size budget, the request returns 409
+  before publishing any files in the batch.
 - `GET /api/tasks/:taskId/room/attachments/:attachmentId?taskCreatedAt=...`
   returns authenticated bytes as `application/octet-stream`, with `nosniff`,
   sandbox CSP and `private, no-cache`. Unavailable reads return 404 and `no-store`.
 
 Upload and resolution require current room message-write authority; reads require
-history-read authority. The canonical Project, Task and creation time bind each
-reference. Returned descriptors can be sent as optional `attachments` on room
+history-read authority. Station rechecks upload authority and the current Task
+binding while holding the store-wide lock through publication. The canonical
+Project, Task and creation time bind each reference. Returned descriptors can be sent as optional `attachments` on room
 messages, `taskRoomRequest` on delegation, or `taskRoomReply` on continuation.
 Public requests carry references rather than paths or provider input bytes.
 See [SDK calls](sdk.md#task-room-attachments) and
@@ -5821,8 +5824,11 @@ instruction to execute a job.
 job `name`, provider-neutral schedule information, an automation's `target`
 and `createdBy.userId`, and the derived `consecutiveFailures` and
 `lastSuccessAt`. An agent sees jobs targeting its own conversation; a person
-sees jobs for conversations they can read, plus untargeted jobs. Run-derived
-fields are withheld if the job has unreadable runs. Provider read failures
+sees jobs for conversations they can read, plus untargeted jobs. Project jobs
+require a person with current Project `view` or Station operator access.
+The same gate applies to their run records, including SSE and RunService
+projections. A Project run recorded with `runTarget: null` needs only that
+gate. Older runs without a recorded `runTarget` also require owner access. Run-derived fields are withheld if the job has unreadable runs. Provider read failures
 propagate rather than becoming a fabricated empty schedule.
 
 ### Get Scheduler Stats
@@ -5925,7 +5931,10 @@ at create only. A Station without a Project runner answers 503
 `project_schedule_unavailable`; while the `project-schedules` Feature Preview
 is off, the route answers 404 `feature_preview_disabled`. Clients gate offering
 it on the `projectSchedules` capability flag, which, like `pullRequestFeedback`,
-says the route exists whatever the preview's state.
+says the route exists whatever the preview's state. The Project must exist and
+the recorded creator must hold `execute` there. If either prerequisite is
+missing, the route returns 404 `project_not_found`. The same check applies
+when approving a proposal.
 
 A person approves an agent's job proposal (`propose_job`) by sending this
 route the proposed job with its `proposalId`. The route then creates the job
@@ -6100,9 +6109,8 @@ enabling, disabling or deleting a job with an owner is admitted against that
 owner, for a person and for an agent's `update_job`/`run_job`, as for a
 targeted automation. The operator in person (the operator credential or
 home-possession, never an agent, never an owner device) may also manage any
-owned untargeted job; a run they trigger still acts as the job's owner, and
-its run record stays the owner's, so the operator cannot read it. Admitted
-that way, an edit whose body sets a `target` is refused with 403
+owned untargeted job. A run they trigger still acts as the job's owner.
+Run history uses the read rules above. Admitted that way, an edit whose body sets a `target` is refused with 403
 `automation_target_owner_only`: only the owner points their job at a
 conversation. The jobs the one-time owner migration covers are fixed when
 owner-aware code first opens the ledger (the jobs then stored with no owner).
@@ -6117,11 +6125,19 @@ carries `ownerNeeded` (the reason). Its runs get no Station caller and the model
 is told so; the Station tools are still listed to it, and every call is
 refused. A Project job (`projectId`) runs as a Task that belongs to its
 creator and replays the creator's recorded owner attribution, so its Session's
-Station tools, Project role and scope are the creator's. A run starts only
-while the creator holds `execute` in the Project; otherwise, and for an
+Station tools, Project role and scope are the creator's. After owner admission,
+editing, enabling and manual runs require an existing Project and the creator's
+current `execute`. Failure returns 404 `project_not_found`, including when the
+operator acts for another creator. Disable and delete keep owner admission, including
+the operator override, and do not require Project `execute`. A run starts only
+while the creator holds `execute` in the Project. Without it, or for an
 ownerless Project job (whose view carries `ownerNeeded` with its own reason),
 it creates no Task and fails without invoking anything. The scheduler routes answer
 404 on a hosted Station, so hosted jobs are out of reach here.
+
+Built-in job mutations and manual claims bind to the admitted job's ID. If
+that job is removed and another takes its name before the operation commits,
+the operation returns 404.
 
 For a job that already has a `target`, every edit (any field), `run`,
 `enable`, `disable` and `DELETE` is admitted against the **stored** target
@@ -6535,6 +6551,13 @@ credential by the same boundary gate ingress applies, against
 A read-only paired device reads `{continue: false, startChat: false}`. The field
 is omitted when the request has no authenticated principal; clients treat that
 as unknown.
+
+`fresh-context-ready` names an authorized, unstarted empty-context reservation.
+The result carries the predecessor and reserved Session IDs and the earlier
+transcript remains readable through the Conversation history. A successful
+continuation starts the reserved Session and sends the new message with fresh
+engine context. The open result carries neither a current Session nor an
+execution binding.
 
 `GET /api/conversations/:id/read?limit=&cursor=&aroundMessageId=` returns one
 page of a conversation's transcript: `{conversationId, access, notice,

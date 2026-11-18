@@ -201,7 +201,6 @@ vi.mock('../contexts/open-chats-store', async () => {
       ),
     openChatsStore: {
       focus: vi.fn(),
-      openCollection: vi.fn(),
       registerNavigation: ({ focus }: any) => {
         openChatsStore.focus = focus;
         return vi.fn();
@@ -820,7 +819,6 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
@@ -873,7 +871,6 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
@@ -927,7 +924,6 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const continueButton = continueRow();
@@ -1315,7 +1311,6 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate });
 
@@ -1375,7 +1370,6 @@ describe('HomeView', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate });
 
@@ -2033,7 +2027,6 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     renderHomeView({ continuation: null, onNavigate });
     const recent = screen.getByRole('region', { name: 'Recent work' });

@@ -2,7 +2,11 @@
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import {
+  KeyboardShortcutsProvider,
+  type ShortcutWhen,
+  setShortcutContext,
+} from '../contexts/KeyboardShortcutsContext';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { KeyboardShortcutsSection } from '../views/settings/KeyboardShortcutsSection';
@@ -10,8 +14,25 @@ import { KeyboardShortcutsSection } from '../views/settings/KeyboardShortcutsSec
 const alphaHandler = vi.fn();
 const closeHandler = vi.fn();
 
-function Harness() {
-  useKeyboardShortcut('app.alpha', 'a', ['cmd'], 'Open Alpha', alphaHandler);
+function Harness({
+  when,
+  available = true,
+  modal = false,
+}: {
+  when?: ShortcutWhen;
+  available?: boolean;
+  modal?: boolean;
+}) {
+  useKeyboardShortcut(
+    'app.alpha',
+    'g',
+    ['cmd'],
+    'Open Alpha',
+    alphaHandler,
+    available,
+    0,
+    when,
+  );
   useKeyboardShortcut(
     'app.closeWindow',
     'w',
@@ -19,15 +40,37 @@ function Harness() {
     'Close workspace',
     closeHandler,
   );
-  return <KeyboardShortcutsSection />;
+  return (
+    <>
+      <textarea
+        aria-label="Composer"
+        onFocus={() => setShortcutContext('composerFocused', true)}
+        onBlur={() => setShortcutContext('composerFocused', false)}
+      />
+      <button
+        type="button"
+        aria-label="Terminal"
+        onFocus={() => setShortcutContext('terminalFocused', true)}
+        onBlur={() => setShortcutContext('terminalFocused', false)}
+      />
+      <KeyboardShortcutsSection />
+      {modal && (
+        <div role="dialog" aria-modal="true" aria-label="Modal fixture" />
+      )}
+    </>
+  );
 }
 
-function renderEditor() {
-  return render(
+function Editor(props: React.ComponentProps<typeof Harness>) {
+  return (
     <KeyboardShortcutsProvider>
-      <Harness />
-    </KeyboardShortcutsProvider>,
+      <Harness {...props} />
+    </KeyboardShortcutsProvider>
   );
+}
+
+function renderEditor(props: React.ComponentProps<typeof Harness> = {}) {
+  return render(<Editor {...props} />);
 }
 
 describe('KeyboardShortcutsSection', () => {
@@ -38,6 +81,8 @@ describe('KeyboardShortcutsSection', () => {
     // in-memory snapshot doesn't automatically resync from a test's own
     // `localStorage.clear` — see `reloadFromStorage`'s doc comment.
     deviceSettingsStore.reloadFromStorage();
+    setShortcutContext('composerFocused', false);
+    setShortcutContext('terminalFocused', false);
     alphaHandler.mockReset();
     closeHandler.mockReset();
   });
@@ -45,9 +90,7 @@ describe('KeyboardShortcutsSection', () => {
   test('searches plain-language commands and shows friendly contexts', () => {
     renderEditor();
     expect(screen.getByText('Open Alpha')).toBeTruthy();
-    expect(screen.getAllByText('Anywhere in Station').length).toBeGreaterThan(
-      0,
-    );
+    expect(screen.getAllByText('No extra condition').length).toBeGreaterThan(0);
     fireEvent.change(screen.getByLabelText('Search keyboard shortcuts'), {
       target: { value: 'close workspace' },
     });
@@ -92,6 +135,70 @@ describe('KeyboardShortcutsSection', () => {
     fireEvent.keyDown(window, { key: 'w', ctrlKey: true });
     expect(alphaHandler).toHaveBeenCalledTimes(1);
     expect(closeHandler).not.toHaveBeenCalled();
+  });
+
+  test('the current registration controls conditions, dispatch and whether the editor lists a command', () => {
+    const { rerender } = renderEditor({ when: 'composerFocused' });
+    const alphaRow = screen.getByText('Open Alpha').closest('article')!;
+    const composer = screen.getByRole('textbox', { name: 'Composer' });
+    const terminal = screen.getByLabelText('Terminal');
+    const options = { key: 'g', ctrlKey: true };
+    expect(within(alphaRow).getByText('Composer focused')).toBeTruthy();
+    expect(within(alphaRow).getByText('"composerFocused"')).toBeTruthy();
+    fireEvent.keyDown(window, options);
+    expect(alphaHandler).not.toHaveBeenCalled();
+
+    fireEvent.focus(composer);
+    fireEvent.keyDown(composer, options);
+    expect(alphaHandler).toHaveBeenCalledTimes(1);
+    rerender(<Editor when="terminalFocused" />);
+    expect(within(alphaRow).getByText('Terminal focused')).toBeTruthy();
+    expect(within(alphaRow).getByText('"terminalFocused"')).toBeTruthy();
+    fireEvent.keyDown(composer, options);
+    expect(alphaHandler).toHaveBeenCalledTimes(1);
+
+    fireEvent.blur(composer);
+    fireEvent.focus(terminal);
+    fireEvent.keyDown(terminal, options);
+    expect(alphaHandler).toHaveBeenCalledTimes(2);
+    rerender(<Editor when="terminalFocused" modal />);
+    expect(
+      within(alphaRow).getByText(/Open dialogs pause shortcuts/),
+    ).toBeTruthy();
+    fireEvent.keyDown(terminal, options);
+    expect(alphaHandler).toHaveBeenCalledTimes(2);
+
+    rerender(<Editor when="terminalFocused" />);
+    fireEvent.click(within(alphaRow).getByRole('button', { name: 'Clear' }));
+    expect(within(alphaRow).getByText('Not set')).toBeTruthy();
+    fireEvent.keyDown(terminal, options);
+    expect(alphaHandler).toHaveBeenCalledTimes(2);
+    rerender(<Editor when="terminalFocused" available={false} />);
+    expect(screen.queryByText('Open Alpha')).toBeNull();
+  });
+
+  test('Space takes standard keyboard events while preserving bare-key input ownership', () => {
+    const firstEditor = renderEditor();
+    const alpha = screen.getByRole('button', {
+      name: 'Shortcut for Open Alpha',
+    });
+    fireEvent.click(alpha);
+    fireEvent.keyDown(alpha, { key: ' ', code: 'Space' });
+    expect(alpha.textContent).toBe('Space');
+    firstEditor.unmount();
+    deviceSettingsStore.reloadFromStorage();
+    renderEditor();
+
+    const composer = screen.getByRole('textbox', { name: 'Composer' });
+    const binding = { key: ' ', code: 'Space' };
+    fireEvent.keyDown(composer, binding);
+    fireEvent.keyDown(
+      screen.getByRole('button', { name: 'Shortcut for Open Alpha' }),
+      binding,
+    );
+    expect(alphaHandler).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, binding);
+    expect(alphaHandler).toHaveBeenCalledOnce();
   });
 
   test('clears and restores a shortcut', () => {

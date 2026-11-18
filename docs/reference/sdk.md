@@ -978,12 +978,14 @@ Upload accepts `ChatAttachmentInput[]` and returns `TaskRoomAttachment[]`; fetch
 returns an authenticated binary `Response`. Pass captured request scope through
 `options` as for other room operations. The server checks current Task incarnation
 and message-write authority for uploads, history-read authority for reads.
+Upload returns HTTP 409 if the batch would add unique bytes beyond the Task room
+attachment store's size budget.
 
 Pass returned descriptors as optional `attachments` on human-message append input,
 agent request input, or `taskRoomReply`. Keep these references unchanged alongside
 the original operation/proposal ID for uncertain retries. Image-only callers must
-still supply nonempty message/prompt text. Bytes may expire under retention while
-history descriptors remain. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
+still supply nonempty message/prompt text. Existing bindings protect their bytes
+from age and size reclamation. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
 for limits, persistence and mixed-version behavior.
 
 ### Shared Task agent request negotiation
@@ -2782,11 +2784,14 @@ accept an explicit API base and current request options.
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
-`resolved`, `fork-ready`, `missing-session`, or `unavailable`. Only `resolved`
+`resolved`, `fork-ready`, `fresh-context-ready`, `missing-session`, or `unavailable`. Only `resolved`
 can carry a current Session identity. `fork-ready` identifies an authorized saved
 fork whose copied transcript is available under `transcript.owner: 'fork-context'`;
-it has no provider Session or runtime execution binding until first send. Both
-successful arms carry the server-derived `canContinue` decision. A pending first
+it has no provider Session or runtime execution binding until first send.
+`fresh-context-ready` identifies an authorized empty-context reservation. It
+exposes `predecessorSessionId` and `reservedSessionId` separately from any
+execution, and its earlier messages remain readable in the runtime transcript.
+Successful arms carry the server-derived `canContinue` decision. A pending first
 start may return `canContinue: false` with `continuationPending: true`; clients
 must wait rather than fabricate a Session identity. A current server also says on
 the `resolved` arm whether the next ordinary turn starts a new Session
