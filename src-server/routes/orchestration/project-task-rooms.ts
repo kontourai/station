@@ -611,7 +611,13 @@ export function createProjectTaskRoomRoutes(
             );
       } catch (error) {
         if (error instanceof TaskRoomAttachmentCapacityError)
-          return c.json({ success: false, error: error.message }, 409);
+          return c.json(
+            {
+              success: false,
+              error: 'The Station Task-room attachment store has reached its size limit.',
+            },
+            409,
+          );
         throw error;
       }
     },
