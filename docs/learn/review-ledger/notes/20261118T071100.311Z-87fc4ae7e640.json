@@ -1,0 +1,15 @@
+{
+  "revision": "f62a8b1aa7cdb1f0e21544796a9fa5436d2f335f",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the shared dialog's role, appearance hook, viewport layer, pointer dismissal, initial focus and exit focus. The reachable controls now use the shared selector directly and reuse the existing Tab wrap helper. ResponsiveDialogSurface, dock launcher and context, and controlled Chromium pointer and keyboard coverage passed. No style, token, portal, backdrop, history or package-boundary contract changed.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the shared dialog's role, appearance hook, viewport layer, pointer dismissal, initial focus and exit focus. The reachable controls now use the shared selector directly and reuse the existing Tab wrap helper. ResponsiveDialogSurface, dock launcher and context, and controlled Chromium pointer and keyboard coverage passed. No style, token, portal, backdrop, history or package-boundary contract changed.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the shared dialog's role, appearance hook, viewport layer, pointer dismissal, initial focus and exit focus. The reachable controls now use the shared selector directly and reuse the existing Tab wrap helper. ResponsiveDialogSurface, dock launcher and context, and controlled Chromium pointer and keyboard coverage passed. No style, token, portal, backdrop, history or package-boundary contract changed.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the shared dialog's role, appearance hook, viewport layer, pointer dismissal, initial focus and exit focus. The reachable controls now use the shared selector directly and reuse the existing Tab wrap helper. ResponsiveDialogSurface, dock launcher and context, and controlled Chromium pointer and keyboard coverage passed. No style, token, portal, backdrop, history or package-boundary contract changed.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the shared dialog's role, appearance hook, viewport layer, pointer dismissal, initial focus and exit focus. The reachable controls now use the shared selector directly and reuse the existing Tab wrap helper. ResponsiveDialogSurface, dock launcher and context, and controlled Chromium pointer and keyboard coverage passed. No style, token, portal, backdrop, history or package-boundary contract changed.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]}
+  ]
+}
