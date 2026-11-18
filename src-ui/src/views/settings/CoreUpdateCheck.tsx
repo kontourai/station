@@ -80,6 +80,7 @@ export function CoreUpdateCheck({
   headingId,
   alerts,
   details,
+  downloadPolicy,
   showReleaseNotes = false,
 }: {
   active?: boolean;
@@ -107,6 +108,7 @@ export function CoreUpdateCheck({
   alerts?: ReactNode;
   /** Identity and install facts, folded into Details with the card's own. */
   details?: ReactNode;
+  downloadPolicy?: ReactNode;
   showReleaseNotes?: boolean;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
@@ -580,12 +582,13 @@ export function CoreUpdateCheck({
     !!context &&
     context.reachability !== 'connected' &&
     context.reachability !== 'checking';
-  // The download/restart controls, for the server this view correlated.
-  const showStageApply =
+  const hasStagedUpdateCapability =
     stagedFlow &&
     !!serverUpdateState?.supported &&
     identityMatches &&
-    !comparisonSuperseded &&
+    !comparisonSuperseded;
+  const showStageApply =
+    hasStagedUpdateCapability &&
     !trackedServiceUpdate &&
     !awaitingOutcomeRecheck;
   const badge = serverUpdateBadge({
@@ -871,6 +874,7 @@ export function CoreUpdateCheck({
             }}
           />
         )}
+      {hasStagedUpdateCapability && downloadPolicy}
       {showReleaseNotes &&
         status?.currentVersion &&
         identityMatches &&

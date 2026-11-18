@@ -48,3 +48,22 @@
   );
   inset-block-end: auto;
 }
+:root:has(.app__main--mobile-dock-fullscreen) {
+  .offline-reading-launcher:not([role="status"]) {
+    inset-block-end: calc(
+      var(--chat-visual-viewport-bottom, 0px) +
+      var(--safe-bottom, 0px) +
+      var(--k-space-4)
+    );
+  }
+
+  .offline-reading-launcher[role="status"] {
+    inset-block-start: calc(
+      var(--chat-visual-viewport-top, 0px) +
+      var(--safe-top, 0px) +
+      var(--chat-dock-header-height) +
+      var(--k-space-4)
+    );
+    inset-block-end: auto;
+  }
+}

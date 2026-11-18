@@ -1,5 +1,9 @@
 import { CLEAN_ID_PATTERN } from './agent-identity.js';
 import { type AppConfig, templateVariableFormatError } from './config.js';
+import {
+  DEFAULT_UPDATE_DOWNLOAD_POLICY,
+  UPDATE_DOWNLOAD_POLICIES,
+} from './system-status.js';
 
 /**
  * Station#settings-revamp slice 1 — the declarative settings registry
@@ -230,19 +234,15 @@ export const APP_SETTINGS_REGISTRY = [
   defineSetting({
     key: 'serverUpdateDownloadPolicy',
     scope: 'station',
-    // `SERVER_UPDATE_DOWNLOAD_POLICIES` in system-status.ts, restated as a
-    // literal for the schema-parity test (see defaultApprovalMode below).
     descriptor: {
       kind: 'enum',
-      values: ['never', 'after-24h', 'immediately'],
+      values: UPDATE_DOWNLOAD_POLICIES,
     },
     label: 'Automatic server download',
-    help: 'A Station service downloads an available update by itself on this schedule; it restarts only when someone applies it.',
+    help: 'Choose when the server downloads an update.',
     description:
-      'For a Station service installed from a release archive: download an available server update never, once it has been available for 24 hours, or immediately. Downloading verifies the release and keeps the server running; restarting into it always takes an explicit Restart (or Update when idle).',
-    // Confirmed against ServerUpdateCoordinator's policy read: absent falls
-    // through to DEFAULT_SERVER_UPDATE_DOWNLOAD_POLICY.
-    defaultValue: 'after-24h',
+      'Sets the automatic download schedule for a Station service installed from a release archive. Restart or Update when idle applies the downloaded release.',
+    defaultValue: DEFAULT_UPDATE_DOWNLOAD_POLICY,
   }),
   defineSetting({
     key: 'lanDiscoveryEnabled',

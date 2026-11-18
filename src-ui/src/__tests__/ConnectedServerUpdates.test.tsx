@@ -335,7 +335,9 @@ async function renderHarness({
     <QueryClientProvider client={queryClient}>
       <ApiBaseProvider>
         <CorrelationProbe />
-        <ConnectedServerUpdates />
+        <ConnectedServerUpdates
+          downloadPolicy={<span>Server policy fixture</span>}
+        />
       </ApiBaseProvider>
     </QueryClientProvider>
   );
@@ -639,6 +641,7 @@ describe('ConnectedServerUpdates', () => {
       const { queryClient } = await renderArchive(
         archiveServiceBody({ stagedUpdates: true }),
       );
+      expect(await screen.findByText('Server policy fixture')).toBeTruthy();
       // Download, never the one-click update.
       const download = await screen.findByRole('button', {
         name: 'Download server update',
@@ -854,6 +857,7 @@ describe('ConnectedServerUpdates', () => {
     expect(
       transportCalls.filter((url) => url.includes('/api/system/core-update')),
     ).toHaveLength(0);
+    expect(screen.queryByText('Server policy fixture')).toBeNull();
     expect(rendererCalls.some((url) => url.includes('core-update'))).toBe(
       false,
     );
