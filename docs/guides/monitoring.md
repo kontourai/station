@@ -1072,6 +1072,9 @@ is attribution, never a grant or a claim of personal lifetime totals.
 | ACP, including ACP-backed engines | Reported context occupancy/window, an engine's own context percentage, costs in the engine's own unit, and per-turn tokens from the prompt answer's `usage` for an engine recorded reporting them (Antigravity) | Occupancy is not consumed tokens; a reported cost (an ISO currency or a vendor unit such as credits) is shown in conversation statistics as reported, one total per unit, never converted to USD, and usage receipts do not include it |
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | Canonical relay joins use saved messages as primary; overlapping engine activity is separately disclosed |
 
+OpenCode native step model observations are available on local usage receipts.
+The v1 usage export carries its existing receipt fields.
+
 Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
 persisted cursor. Older aggregation cursors recover identities from a bounded
 look-behind when their active user boundary is still available. A late
