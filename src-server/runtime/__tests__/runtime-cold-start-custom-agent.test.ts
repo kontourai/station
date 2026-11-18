@@ -952,7 +952,8 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   it('settles the real worktree of a terminal Session published during orchestration shutdown', async () => {
     home = await createSchemaHome('station-late-session-exit-');
     const repo = makeTempDir('station-late-session-exit-repo-');
-    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo });
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: repo, windowsHide: true });
     git('init', '-q');
     git(
       '-c',
