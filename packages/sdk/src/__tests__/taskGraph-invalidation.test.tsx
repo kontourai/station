@@ -7,6 +7,7 @@ import {
   StationRequestAuthorityError,
   setClientCredentialResolver,
 } from '../client/http';
+import { useUpdateProjectMutation } from '../index';
 import {
   useCreateTaskMutation,
   useCreateTaskReferenceMutation,
@@ -14,7 +15,6 @@ import {
   useTasksQuery,
   useUpdateTaskStatusMutation,
 } from '../query-domains/taskGraph';
-import { useUpdateProjectMutation } from '../query-domains/workspaceProjects';
 import { taskQueries } from '../queryFactories';
 import { useAttachTaskUserInputReferenceMutation } from '../task-user-input-references';
 
