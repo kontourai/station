@@ -455,7 +455,7 @@ export function AppearanceLibrary({
             favoritesOnly ? (
               <FilteredEmpty
                 query="favorites"
-                title="No favorites yet"
+                title="Favorites will appear here"
                 description="Favorite a saved theme to find it here."
                 onClear={() => setFavoritesOnly(false)}
               />
