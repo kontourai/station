@@ -1315,7 +1315,7 @@ describe('interactive workspace performance contract', () => {
     );
     const output = tempOutput();
     const attempted: string[] = [];
-    const written: string[][] = [];
+    const written: string[] = [];
     const { report, failures } = await sweepReferenceFixtures(selected, {
       expectedRevision: 'a'.repeat(40),
       platformName: 'win32',
@@ -1323,9 +1323,10 @@ describe('interactive workspace performance contract', () => {
         id === 'long-session-bounded-growth'
           ? 'ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN'
           : undefined,
-      retainReport: (retained) => {
-        writeFileSync(output, JSON.stringify(retained));
-        written.push(retained.fixtures.map((fixture) => fixture.status));
+      retainReport: (retained: unknown) => {
+        const serialized = JSON.stringify(retained);
+        writeFileSync(output, serialized);
+        written.push(serialized);
       },
       runFixture: async (fixture: { id: string }) => {
         attempted.push(fixture.id);
@@ -1356,7 +1357,14 @@ describe('interactive workspace performance contract', () => {
       'remote-apply',
       'reconnect-10k-operations',
     ]);
-    expect(written[0]).toEqual(Array(4).fill('NOT_VERIFIED'));
+    expect(JSON.parse(written[0])).toMatchObject({
+      fixtures: [
+        { fixtureId: 'local-input-apply', status: 'NOT_VERIFIED' },
+        { fixtureId: 'remote-apply', status: 'NOT_VERIFIED' },
+        { fixtureId: 'reconnect-10k-operations', status: 'NOT_VERIFIED' },
+        { fixtureId: 'long-session-bounded-growth', status: 'NOT_VERIFIED' },
+      ],
+    });
     expect(report.summary).toMatchObject({ PASS: 1, FAIL: 1, NOT_VERIFIED: 2 });
     expect(failures).toEqual(
       expect.arrayContaining([
