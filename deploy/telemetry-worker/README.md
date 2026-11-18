@@ -7,9 +7,10 @@ needs no home server or database. All state lives in one SQLite-backed Durable
 Object. It also serves the public weekly aggregates page and a private owner
 dashboard.
 
-**Status: source only.** Nothing here is deployed, and no Cloudflare resource,
-secret or sender endpoint is created by merging it. The checked-in
-configuration describes deployment intent, not what a hosted Worker runs.
+The dashboard and API are served at `telemetry.kontourai.io`. Worker
+deployment, Cloudflare Access and sender activation are managed separately
+from source merges. Use the [release acceptance checks](../../docs/guides/release-rings.md#author-telemetry-in-official-builds)
+to verify a specific installed build and receiver.
 
 Like the [push gateway](../push-gateway/README.md), this Worker sits outside
 the pnpm workspace and has no dependencies of its own. It imports the shared

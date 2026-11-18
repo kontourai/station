@@ -978,12 +978,14 @@ Upload accepts `ChatAttachmentInput[]` and returns `TaskRoomAttachment[]`; fetch
 returns an authenticated binary `Response`. Pass captured request scope through
 `options` as for other room operations. The server checks current Task incarnation
 and message-write authority for uploads, history-read authority for reads.
+Upload returns HTTP 409 if the batch would add unique bytes beyond the Task room
+attachment store's size budget.
 
 Pass returned descriptors as optional `attachments` on human-message append input,
 agent request input, or `taskRoomReply`. Keep these references unchanged alongside
 the original operation/proposal ID for uncertain retries. Image-only callers must
-still supply nonempty message/prompt text. Bytes may expire under retention while
-history descriptors remain. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
+still supply nonempty message/prompt text. Existing bindings protect their bytes
+from age and size reclamation. See [Task room images and files](../design/task-room-agent-requests.md#images-and-files)
 for limits, persistence and mixed-version behavior.
 
 ### Shared Task agent request negotiation
@@ -2782,11 +2784,14 @@ accept an explicit API base and current request options.
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
-`resolved`, `fork-ready`, `missing-session`, or `unavailable`. Only `resolved`
+`resolved`, `fork-ready`, `fresh-context-ready`, `missing-session`, or `unavailable`. Only `resolved`
 can carry a current Session identity. `fork-ready` identifies an authorized saved
 fork whose copied transcript is available under `transcript.owner: 'fork-context'`;
-it has no provider Session or runtime execution binding until first send. Both
-successful arms carry the server-derived `canContinue` decision. A pending first
+it has no provider Session or runtime execution binding until first send.
+`fresh-context-ready` identifies an authorized empty-context reservation. It
+exposes `predecessorSessionId` and `reservedSessionId` separately from any
+execution, and its earlier messages remain readable in the runtime transcript.
+Successful arms carry the server-derived `canContinue` decision. A pending first
 start may return `canContinue: false` with `continuationPending: true`; clients
 must wait rather than fabricate a Session identity. A current server also says on
 the `resolved` arm whether the next ordinary turn starts a new Session
@@ -6865,13 +6870,31 @@ The client barrel exports `getCustomAppearance`, `proposeCustomAppearance`,
 `saveCustomAppearance`, `keepCustomAppearanceProposal`,
 `dismissCustomAppearanceProposal` and `reportCustomAppearanceRender` over
 `/api/me/appearance`. Shapes come from
-`@kontourai/station-contracts/custom-appearance`. Only the proposal is open to
-Station-control tool requests; the others are the person's own steps and
-answer 403 to them. Propose, save and keep take the document's `revision`; a
+`@kontourai/station-contracts/custom-appearance`. Reads and proposals are open to Station-control tool requests; saving, keeping,
+dismissing and reporting are the person's own steps and answer 403 to agents. Propose, save and keep take the document's `revision`; a
 stale one is 409. `useCustomAppearanceQuery(requestScope)` reads the document
 (polling every 15 seconds by default) and `useCustomAppearanceMutation` runs
 the person's steps and updates that cache. See the
 [decision](../decisions/custom-appearance.md).
+
+Appearance studio adds client functions `getCustomAppearanceLibrary`,
+`saveCustomAppearanceLibraryTheme`, `updateCustomAppearanceLibraryTheme` and
+`removeCustomAppearanceLibraryTheme`. Each takes an explicit API base, input
+where applicable and `ClientRequestOptions`. Library hooks
+`useCustomAppearanceLibraryQuery(requestScope)` and
+`useCustomAppearanceLibraryMutation(requestScope)` use a separate library
+revision and authority-partitioned cache. Mutations use `save`, `update` or
+`remove`; they refresh that library cache without applying an appearance.
+A disabled or older host returns 404 and the caller must show that the new
+operation is unavailable. `useFeaturePreviewsQuery(apiBase, config,
+requestScope)` accepts an optional captured authority scope for protected
+cross-surface reads and partitions its cache by that authority.
+
+Portable files use the contracts helpers `createCustomAppearanceThemePack`
+and `parseCustomAppearanceThemePack`: `{format:'station-appearance',version:1,
+appearance}` with no owner or proposal metadata. Import validation never
+applies a theme. Visual settings and image bounds are documented in the
+[appearance API](api.md#custom-appearance).
 
 ## Personal Board authoring
 

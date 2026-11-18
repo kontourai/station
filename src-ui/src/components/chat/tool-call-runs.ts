@@ -19,12 +19,15 @@ import { transcriptMcpToolRef } from './mcp-app-tool-ref';
  */
 
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
+import { isAppearanceProposalCall } from './appearance-proposal-result';
 import { claudeArtifactLinkOf } from './claude-artifact-link';
 
 /** A call shown as its own row rather than one line of a collapsed run. */
 function hasOwnCallRow(part: ToolCallLike): boolean {
   return (
-    hasStationControlCallRow(part) || claudeArtifactLinkOf(part) !== undefined
+    hasStationControlCallRow(part) ||
+    isAppearanceProposalCall(part) ||
+    claudeArtifactLinkOf(part) !== undefined
   );
 }
 
@@ -32,7 +35,8 @@ function hasOwnCallRow(part: ToolCallLike): boolean {
 function isArtifactRun(block: { calls: { part: ToolCallLike }[] }): boolean {
   return (
     block.calls.length === 1 &&
-    claudeArtifactLinkOf(block.calls[0]!.part) !== undefined
+    (claudeArtifactLinkOf(block.calls[0]!.part) !== undefined ||
+      isAppearanceProposalCall(block.calls[0]!.part))
   );
 }
 

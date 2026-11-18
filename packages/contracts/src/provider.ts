@@ -1736,6 +1736,11 @@ export interface ProviderSession {
   updatedAt: string;
 }
 
+/** An engine binding in one of these states cannot take a turn. */
+export function providerSessionBindingEnded(status: string): boolean {
+  return status === 'closed' || status === 'dead' || status === 'error';
+}
+
 export interface ProviderTurnStartResult {
   threadId: string;
   turnId: string;

@@ -124,11 +124,17 @@ vi.mock('../../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => new Set(['browser-experience']),
 }));
 
-vi.mock('@kontourai/station-sdk', async () => ({
+vi.mock('../../../../packages/sdk/src/hooks', async (original) => ({
+  ...(await original<typeof import('../../../../packages/sdk/src/hooks')>()),
+  useNavigation: () => ({ navigate: vi.fn() }),
+}));
+
+vi.mock('@kontourai/station-sdk', async (original) => ({
   FullScreenError: ({ description }: { description: string }) => (
     <div>{description}</div>
   ),
-  LayoutHeader: () => null,
+  LayoutHeader: (await original<typeof import('@kontourai/station-sdk')>())
+    .LayoutHeader,
   // The REAL class, because `isLayoutRecordAbsent` discriminates on
   // `instanceof` AND on `status`, and the carve-out cases below build their
   // error with the real layout fetcher (#2708 A-2): a stand-in class would
@@ -1555,6 +1561,18 @@ describe('ProjectLayoutRenderer', () => {
       version: '1.0',
       id: 'pane:plugin%3Aplaced-plugin:main',
       name: 'Placed plugin',
+      actions: [
+        {
+          type: 'inline-prompt',
+          label: 'Review work',
+          data: 'Review this work.',
+        },
+        {
+          type: 'external',
+          label: 'Review guide',
+          data: 'https://example.com/review',
+        },
+      ],
       rendererId: 'renderer:plugin%3Aplaced-plugin:main',
       renderer: { kind: 'plugin-component', name: 'placed-main' },
       placement: { supportedRegions: ['primary'] },
@@ -1997,6 +2015,8 @@ describe('ProjectLayoutRenderer', () => {
     );
     render(hostProps.renderPane(pluginInstance));
     expect(screen.getByText('Placed plugin renderer')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Review guide' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Review work' })).toBeNull();
     expect(pluginBoundaryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         pluginName: 'placed-plugin',

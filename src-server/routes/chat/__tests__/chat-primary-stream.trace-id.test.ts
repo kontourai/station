@@ -67,7 +67,10 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
       ) => operation(),
     }) as any;
 
-  const run = async (streamText: ReturnType<typeof vi.fn>) => {
+  const run = async (
+    streamText: ReturnType<typeof vi.fn>,
+    restOptions: Record<string, unknown> = {},
+  ) => {
     const ctx = buildCtx();
     const app = new Hono();
     app.post('/chat', (c) =>
@@ -77,7 +80,7 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
         slug: 'assistant',
         plugin: '',
         input: 'hello',
-        restOptions: {},
+        restOptions,
         injectContext: null,
         ragContext: null,
         agent: {
@@ -122,6 +125,27 @@ describe('streamPrimaryAgentChat outward stream and completion', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('persisted inherited tool restrictions refuse a chat continuation', async () => {
+    memoryAdapter.getConversation = vi.fn(async () => ({
+      id: 'policy-chat',
+      metadata: { delegation: { toolAllowlistConstraints: [[]] } },
+    }));
+    const streamText = vi.fn(async () => ({
+      fullStream: emptyStream(),
+      text: Promise.resolve(''),
+      usage: Promise.resolve(undefined),
+      finishReason: Promise.resolve('stop'),
+    }));
+    const options = { conversationId: 'policy-chat', userId: 'owner' };
+    const { wire } = await run(streamText, options);
+    expect(wire).toContain('"type":"error"');
+    expect(streamText).not.toHaveBeenCalled();
+
+    memoryAdapter.getConversation = vi.fn(async () => ({ id: 'policy-chat' }));
+    await run(streamText, options);
+    expect(streamText).toHaveBeenCalledTimes(1);
   });
 
   test('step frames exclude provider requests, responses and nested errors while text still streams', async () => {
