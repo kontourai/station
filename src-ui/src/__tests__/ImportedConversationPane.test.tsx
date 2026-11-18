@@ -13,6 +13,7 @@ import {
 } from '../lib/attached-continuation-handoff';
 
 const query = vi.hoisted(() => vi.fn());
+const receiptQuery = vi.hoisted(() => vi.fn().mockReturnValue({ data: [] }));
 const sendMessage = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const updateChat = vi.hoisted(() => vi.fn());
 vi.mock('../hooks/useActiveChatSessionMessaging', () => ({
@@ -30,6 +31,7 @@ vi.mock('../contexts/active-chats-store', () => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionQuery: query,
+  useOrchestrationCommandReceiptsQuery: receiptQuery,
 }));
 vi.mock('../components/session-detail/SessionDetail', () => ({
   SessionDetail: ({
@@ -121,6 +123,58 @@ describe('imported conversation in the dock', () => {
     expect(sendMessage).not.toHaveBeenCalled();
     expect(onContinueInDock).not.toHaveBeenCalled();
   });
+  test.each([
+    ['a CLI-reported start', 'startSession', true],
+    ['a later CLI-reported send', 'sendTurn', false],
+  ])(
+    'only identifies %s when it started the conversation',
+    (_label, commandType, expected) => {
+      query.mockReturnValue({
+        data: {
+          session: {
+            threadId: 'delegated-session',
+            controlMode: 'station-owned',
+            inputOrigin: { kind: 'delegation', taskId: 'delegated-session' },
+          },
+        },
+      });
+      receiptQuery.mockImplementation(
+        (threadId: string, options: { enabled: boolean }) => ({
+          data:
+            threadId === 'delegated-session' && options.enabled
+              ? [
+                  {
+                    threadId,
+                    commandType,
+                    status: 'accepted',
+                    clientOrigin: {
+                      actor: { kind: 'operator' },
+                      reported: { version: 1, surface: 'cli', build: null },
+                    },
+                  },
+                ]
+              : [],
+        }),
+      );
+      try {
+        render(
+          <AuthorityHarness initial={{ station: 'station-a' }}>
+            <ImportedConversationPane
+              apiBase="http://example.test"
+              threadId="delegated-session"
+              onContinueInDock={vi.fn()}
+            />
+          </AuthorityHarness>,
+        );
+        expect(Boolean(screen.queryByText('Started from CLI (reported)'))).toBe(
+          expected,
+        );
+        expect(screen.getByText('Original conversation')).toBeTruthy();
+      } finally {
+        receiptQuery.mockReturnValue({ data: [] });
+      }
+    },
+  );
   test('opens the confirmed durable conversation through the normal dock controller', async () => {
     const view = setup();
     fireEvent.click(
