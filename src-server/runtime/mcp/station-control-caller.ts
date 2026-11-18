@@ -251,6 +251,7 @@ function resolveVerifiedStationControlCaller(
     !verified ||
     (verified.serverId !== 'station-control' &&
       verified.serverId !== 'codex-tools' &&
+      verified.serverId !== 'codex-control' &&
       verified.serverId !== 'station-knowledge' &&
       verified.serverId !== 'coordinator-control' &&
       verified.serverId !== 'coordinator-knowledge')

@@ -630,6 +630,19 @@ describe('CLI surface commands over HTTP', () => {
         });
         return;
       }
+      if (method === 'GET' && url.pathname === '/acp/setup') {
+        sendJson(200, {
+          success: true,
+          data: [
+            {
+              id: 'antigravity',
+              setupPath: '/connections/engines/new/antigravity',
+              httpTools: 'unknown',
+            },
+          ],
+        });
+        return;
+      }
       if (method === 'GET' && url.pathname === '/acp/status') {
         sendJson(200, {
           success: true,
@@ -1022,6 +1035,7 @@ describe('CLI surface commands over HTTP', () => {
     await runCli(['feedback', 'status', `--api-base=${apiBase}`]);
     await runCli(['feedback', 'test', `--api-base=${apiBase}`]);
     await runCli(['insights', 'get', '--days=7', `--api-base=${apiBase}`]);
+    await runCli(['acp', 'setup', `--api-base=${apiBase}`]);
     await runCli(['acp', 'status', `--api-base=${apiBase}`]);
     await runCli(['acp', 'commands', `--api-base=${apiBase}`]);
     await runCli([
@@ -1096,6 +1110,13 @@ describe('CLI surface commands over HTTP', () => {
         !call[0].includes('"name": "review"'),
     );
     expect(filteredCommandOptionsCall).toBeDefined();
+  });
+
+  test('ACP commands refuses an engine id instead of presenting a shared catalog as an engine check', async () => {
+    const { runCli } = await import('../cli.js');
+    await expect(
+      runCli(['acp', 'commands', 'grok', `--api-base=${apiBase}`]),
+    ).rejects.toThrow('takes no engine id');
   });
 
   // station#2844: flag-based engine-connection creation — adding a

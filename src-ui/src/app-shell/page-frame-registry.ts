@@ -52,9 +52,11 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-model-edit': SPLIT_PANE,
   'connections-engines': SPLIT_PANE,
   'connections-engine-edit': SPLIT_PANE,
-  // A deep link into Add engine renders the same split pane as the rest of
-  // the Engines section, so it shares its frame.
-  'connections-engine-new': SPLIT_PANE,
+  'connections-engine-new': {
+    width: 'narrow',
+    body: 'flow',
+    title: 'Add engine',
+  },
   'connections-tools': SPLIT_PANE,
   'connections-tool-edit': SPLIT_PANE,
   'connections-knowledge': {
@@ -202,5 +204,7 @@ const RESOLVED_FRAMES = ((): Record<
 })();
 
 export function resolvePageFrame(view: NavigationView): PageFrameSpec | null {
+  if (view.type === 'connections-engine-edit' && view.id === 'new')
+    return RESOLVED_FRAMES['connections-engine-new'];
   return RESOLVED_FRAMES[view.type];
 }

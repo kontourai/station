@@ -1,5 +1,5 @@
 /**
- * Station supervisor protocol, version 1 (minor 3).
+ * Station supervisor protocol, version 1 (minor 4).
  *
  * Two channels share these definitions:
  *
@@ -29,7 +29,7 @@ import { posix, win32 } from 'node:path';
 /** A core cannot start until an operator repairs its home or machine policy. */
 export const CORE_STARTUP_REFUSED_EXIT_CODE = 78;
 
-export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 3 });
+export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 4 });
 
 export interface ProtocolVersion {
   major: number;
@@ -601,6 +601,8 @@ export interface WorkloadSpawnRequest {
   journal: WorkloadJournalSpec;
   /** `command` only: journaled output beyond this ends the workload. */
   outputCapBytes?: number;
+  /** Protocol 1.4: lifetime enforced by the workload host, independent of a core. */
+  maxRuntimeMs?: number;
 }
 
 /** Signals a workload's process; `terminate` ends its whole tree instead. */
@@ -618,6 +620,7 @@ export type WorkloadRequest =
    */
   | { op: 'terminate'; workloadId: string }
   | { op: 'list' }
+  | { op: 'capabilities' }
   /** The workload's state and last journal sequence. */
   | { op: 'attach'; workloadId: string }
   /** Journal records after `fromSeq`, at most `maxBytes` of output. */

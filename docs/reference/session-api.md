@@ -733,8 +733,11 @@ retry returns its retained entry even after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
 
-- **Steer:** text and head are durable before handoff. Native Claude/Codex/Muse
-  placement is engine-defined and disclosed. Where Station owns the loop,
+- **Steer:** text and head are durable before handoff. Native placement is
+  engine-defined and disclosed, including OpenCode and ACP sessions whose
+  handshake selects a native channel. Other ACP sessions can interrupt the
+  active prompt, wait for its terminal answer, and re-prompt with a continuation
+  instruction on the same turn. Where Station owns the loop,
   input waits for its next observed post-tool boundary; otherwise it waits
   for the next turn boundary. The current VoltAgent loop observes the boundary
   after the preceding step's tools settle. Prompt injection leaves the entry
@@ -823,7 +826,9 @@ execution default on the destination Station. It selects the engine connection
 and its account, never a caller-provided URL or credential. The profile's
 instructions, skills and tool policy must be deliverable; missing delivery is a
 refusal rather than a substituted profile. The optional fingerprint fences the
-loaded authored definition, excluding execution and display provenance. It does
+loaded authored definition, excluding execution and display provenance. The
+reserved built-in names `Station` and `Station Assistant` have one canonical
+fingerprint; genuine name or prompt edits still change it. It does
 not verify installed tool or skill contents. An older string-only receiver
 rejects this object instead of silently ignoring an engine selector.
 
@@ -888,8 +893,9 @@ Station's, the chat runs an agent Station does not govern
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)), or
 the project's OpenCode configuration declares code OpenCode runs at launch
 ([what the modes cannot govern](../guides/acp.md#what-ask-and-auto-cannot-govern-on-opencode)).
-On OpenCode 2 it is also refused when the chat runs over ACP, where Station
-cannot verify OpenCode 2's rules ([OpenCode 2 and OpenCode 1](../guides/acp.md#opencode-2-and-opencode-1)).
+On OpenCode 2 over ACP, confined approval modes are refused because Station
+cannot verify saved approvals; host Never ask is supported without a launch
+overlay ([OpenCode 2 and OpenCode 1](../guides/acp.md#opencode-2-and-opencode-1)).
 On the `opencode` engine's native transport, it is refused when OpenCode has
 saved approvals that would let a governed action run without asking
 ([OpenCode native transport](../decisions/opencode-native-transport.md#governance)).

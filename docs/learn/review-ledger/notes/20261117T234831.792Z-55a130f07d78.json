@@ -1,0 +1,7 @@
+{
+  "revision": "d4bfc5f388bc594e39e6bc1c3d713e0964c344e6",
+
+  "notes": [
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Reviewed the correction against the kernel v1/v2 revision producers and actual isolated browser trace: edit-plan returns an opaque server-issued intent distinct from the caller correlation ID. The observer now binds the subsequent batch to that returned intent/digest and accepted revision/text. Mounted production-editor controls passed 60/60; reinserting the old remote-apply implementation made the primary success control fail, and restoring it passed. First browser control exposed v1-only validation; second exposed the invalid intent equality; both failures were diagnosed before source corrections and are retained. Untimed corrected browser control pending; physical Windows/native/ADEMark and timed reference remain NOT_VERIFIED. No threshold or workload change.","inputs":["docs/reference/interactive-workspace-performance.md","src-ui/src/performance/__tests__/interactive-workspace-performance-bridge.test.ts","src-ui/src/performance/interactive-workspace-performance-bridge.ts"]}
+  ]
+}

@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stationSessionTmpRootName } from '@kontourai/station-shared/temp-dir';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -227,6 +228,45 @@ describe('channel lifecycle homes', () => {
         vi.unstubAllEnvs();
         if (projectHome) rmSync(projectHome, { recursive: true, force: true });
         rmSync(parentHome, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // With a long home, a parent Station hands a session
+  // TMPDIR=<system temp>/stn-<uid>/<pid>-<digest> (session-tmpdir.ts), outside
+  // any Station home, and removes it when the session exits.
+  it.skipIf(process.platform === 'win32')(
+    'mints the temporary home outside a short-root session TMPDIR it inherits',
+    () => {
+      const base = realpathSync(makeTempDir('station-cli-short-root-'));
+      const sessionTmp = join(
+        base,
+        stationSessionTmpRootName(),
+        `${process.pid}-${'a'.repeat(16)}`,
+      );
+      mkdirSync(sessionTmp, { recursive: true });
+      vi.stubEnv('STATION_ROOT', undefined);
+      vi.stubEnv('STATION_HOME', undefined);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', sessionTmp);
+      let projectHome: string | undefined;
+      try {
+        expect(tmpdir()).toBe(sessionTmp);
+        projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${sessionTmp}/`)).toBe(false);
+        expect(projectHome.startsWith(realpathSync('/tmp'))).toBe(true);
+        expect(
+          existsSync(join(sessionTmp, 'station'))
+            ? readdirSync(join(sessionTmp, 'station'))
+            : [],
+        ).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+        rmSync(base, { recursive: true, force: true });
       }
     },
   );

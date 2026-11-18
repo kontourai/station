@@ -418,6 +418,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/skills.spec.ts',
     'tests/registry.spec.ts',
     'tests/connections-crud.spec.ts',
+    'tests/guided-engine-setup.spec.ts',
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
@@ -1391,6 +1392,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'The suite authentication canary against the live instance: the authenticatedRequest fixture credential is accepted on an operator route (GET /api/pairing/requests) and an ordinary Playwright request context with no credential is refused 401. Without it, every spec that seeds through authenticatedRequest would still pass against a server started with authentication off or a fixture that leaked its bearer into the ambient context. API-only by design: the harness server exists only in an E2E run.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/guided-engine-setup.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Guided engine setup at phone and desktop widths in both themes: installer review/cancel, detection refresh, connect and explicit Station tools. Fixture-backed UI; no vendor installation or account qualification.',
     exceptions: [],
   },
   {

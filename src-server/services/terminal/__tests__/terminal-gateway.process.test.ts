@@ -321,32 +321,65 @@ describe('same-origin terminal gateway with real sockets', () => {
       record.terminalId,
       windows
         ? line(print('start-', 'marker'))
-        : "stty -echo; printf 'start-marker\\n'\r",
+        : line('stty -echo', print('start-', 'marker')),
     );
     await journal(record.terminalId, 'start-marker');
-    const start = (await sessions.read('operator', scope, record.terminalId))
+    let start = (await sessions.read('operator', scope, record.terminalId))
       .journal.lastSeq;
-    await sessions.write(
-      'operator',
-      scope,
-      record.terminalId,
-      windows
-        ? line(
-            await nodeProgram(
-              root,
-              'records.js',
-              "const input=require('node:readline').createInterface({input:process.stdin,terminal:false});let i=0;console.log('records-ready');input.on('line',()=>{console.log('credit-'+i+':x');if(++i<160)return;console.log('end-'+'marker');input.close();process.stdin.pause()})",
-            ),
-          )
-        : "i=0; while [ $i -lt 160 ]; do printf x; sleep 0.01; i=$((i+1)); done; printf '\\033]8;;file:///tmp/private\\007'; sleep 0.05; printf 'end-marker\\n'\r",
-    );
     if (windows) {
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        line(
+          await nodeProgram(
+            root,
+            'records.js',
+            "const input=require('node:readline').createInterface({input:process.stdin,terminal:false});let i=0;console.log('records-ready');input.on('line',()=>{console.log('credit-'+i+':x');if(++i<160)return;console.log('end-'+'marker');input.close();process.stdin.pause()})",
+          ),
+        ),
+      );
       await journal(record.terminalId, 'records-ready');
       // ConPTY may coalesce timed writes. Observe each record before producing the next.
       for (let index = 0; index < 160; index += 1) {
         await sessions.write('operator', scope, record.terminalId, '\r');
         await journal(record.terminalId, `credit-${index}:x`);
       }
+    } else {
+      await sessions.write(
+        'operator',
+        scope,
+        record.terminalId,
+        "printf '%s%s\\n' 'producer-' 'ready'; while read -r token; do case $token in p) printf x;; s) printf '\\033]8;;file:///tmp/private\\007';; e) printf '%s%s\\n' 'end-' 'marker'; break;; esac; done\r",
+      );
+      await journal(record.terminalId, 'producer-ready');
+      start = (await sessions.read('operator', scope, record.terminalId))
+        .journal.lastSeq;
+      let producedThrough = start;
+      const produce = async (token: string) => {
+        await sessions.write(
+          'operator',
+          scope,
+          record.terminalId,
+          `${token}\r`,
+        );
+        await expect
+          .poll(
+            async () =>
+              (await sessions.read('operator', scope, record.terminalId))
+                .journal.lastSeq,
+            { interval: 10, timeout: scaleLivenessMs(10_000) },
+          )
+          .toBeGreaterThan(producedThrough);
+        producedThrough = (
+          await sessions.read('operator', scope, record.terminalId)
+        ).journal.lastSeq;
+      };
+      // A PTY may coalesce timed writes. Observe each journal record before
+      // releasing the next byte, including the sanitizer's empty record.
+      for (let i = 0; i < 160; i++) await produce('p');
+      await produce('s');
+      await produce('e');
     }
     await journal(record.terminalId, 'end-marker');
     // ConPTY repaints the prompt, title and cursor after the program ends:
@@ -355,6 +388,17 @@ describe('same-origin terminal gateway with real sockets', () => {
     const end = (await sessions.read('operator', scope, record.terminalId))
       .journal.lastSeq;
     expect(end - start).toBeGreaterThan(140);
+    if (!windows) {
+      const emitted = await sessions.read(
+        'operator',
+        scope,
+        record.terminalId,
+        start,
+      );
+      expect(
+        emitted.journal.records.map((item) => item.data).join(''),
+      ).toContain('x'.repeat(160));
+    }
 
     const client = await connect();
     const attached = await client.attach(record.terminalId, 1, start);

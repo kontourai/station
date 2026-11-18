@@ -113,6 +113,9 @@ describe('supervisor workloads (real processes)', () => {
     });
     const port = supervisor.port;
     expect((await httpJson(port, '/boot')).granted).toEqual(['workloads']);
+    expect(await workload(port, { op: 'capabilities' })).toEqual({
+      maxRuntimeMs: true,
+    });
 
     const spawned = await workload<WorkloadInfo>(
       port,
@@ -158,7 +161,7 @@ describe('supervisor workloads (real processes)', () => {
       WAIT,
     );
     const status = await supervisor.status();
-    expect(status.supervisor.protocol).toEqual({ major: 1, minor: 3 });
+    expect(status.supervisor.protocol).toEqual({ major: 1, minor: 4 });
     // `station doctor` reads the grant and the host from status (#3994).
     expect(status.active?.capabilities).toEqual(['workloads']);
     expect(status.workloadHost).toEqual({ available: true });

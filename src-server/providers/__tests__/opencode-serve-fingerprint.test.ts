@@ -25,12 +25,12 @@ describe('OpenCode serve schema fingerprint', () => {
     // line on purpose, not follow the code.
     expect(OPENCODE_SERVE_VERIFIED_FINGERPRINTS).toEqual({
       '2.3.0':
-        'sha256:8c3af8896582344955576aab199b9d9dcd5921d0cb3f17d081c003cf488cdfd7',
+        'sha256:29aae9835157f4c97f226f4939a340098443c3d4754c0225227b1ec5cd27447e',
     });
     expect(verifyOpenCodeServeSchema('2.3.0', capturedDoc())).toEqual({
       verified: true,
       fingerprint:
-        'sha256:8c3af8896582344955576aab199b9d9dcd5921d0cb3f17d081c003cf488cdfd7',
+        'sha256:29aae9835157f4c97f226f4939a340098443c3d4754c0225227b1ec5cd27447e',
     });
   });
 

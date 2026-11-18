@@ -75,12 +75,16 @@
     "id": "selection-without-delegate",
     "kind": "guard",
     "shape": "no-delegate",
-    "scenario": "The Agent's tool selection removed delegate_task. No orchestration advice may remain.",
-    "expectNamed": ["wait_session"],
+    "scenario": "The Agent's tool selection removed delegate_task. Delegation advice is absent, while engine setup and its Agent lookup remain available.",
+    "expectNamed": [
+      "wait_session",
+      "list_engine_setup",
+      "open_engine_setup",
+      "list_agents"
+    ],
     "mustNotName": [
       "delegate_task",
       "list_delegation_targets",
-      "list_agents",
       "continue_task",
       "interrupt_task"
     ]

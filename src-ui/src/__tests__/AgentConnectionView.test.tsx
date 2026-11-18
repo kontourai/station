@@ -197,6 +197,8 @@ let agentCatalog: unknown[] = DEFAULT_AGENT_CATALOG;
  * exercise the ACP half set this explicitly.
  */
 let acpRegistryEntries: unknown[] = [];
+let acpRegistryPending = false;
+let acpRegistryError: Error | null = null;
 /**
  * The ACP bridge's live connection set — the projection that gates (and the
  * reconnect route 404s against) the detail header's Reconnect action. Empty
@@ -253,7 +255,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: agentConnectionsQueryError,
     refetch: refetchAgentConnections,
   }),
-  useAgentConnectionCatalogQuery: () => ({ data: agentCatalog }),
+  useAgentConnectionCatalogQuery: () => ({
+    data: agentCatalog,
+    refetch: vi.fn(),
+  }),
   useAgentConnectionQuery: (id: unknown, config?: { enabled?: boolean }) => {
     connectionReads.push([id, config?.enabled]);
     return { data: connectionQueryData };
@@ -406,6 +411,8 @@ vi.mock('../hooks/useACPConnections', () => ({
   useACPConnectionProbeStatuses: () => ({ data: undefined }),
   useACPConnectionRegistry: () => ({
     data: acpRegistryEntries,
+    isPending: acpRegistryPending,
+    error: acpRegistryError,
     refetch: refetchRegistry,
     isFetching: false,
   }),
@@ -415,6 +422,8 @@ import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
   beforeEach(() => {
+    acpRegistryPending = false;
+    acpRegistryError = null;
     queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -430,6 +439,8 @@ describe('AgentConnectionView', () => {
           new Response(JSON.stringify(data), {
             headers: { 'Content-Type': 'application/json' },
           });
+        if (path === '/api/feature-previews')
+          return reply({ success: true, data: [] });
         if (path.endsWith('/sign-in/attempt'))
           return reply({ success: true, data: null });
         if (path.endsWith('/sign-in'))
@@ -718,14 +729,16 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Choose an engine' }),
+    ).toBeTruthy();
     expect(screen.getByText('Claude Code')).toBeTruthy();
     // #592 slice 2: the bespoke Detected/Available chip retired in favor of
     // the same ProviderReadiness vocabulary every other picker uses —
     // `setup.state: 'available', detected: true` reads "Found, not
     // connected" everywhere else on Connections.
     expect(screen.getByText('Found, not connected')).toBeTruthy();
-    expect(screen.getByText('Station engine')).toBeTruthy();
+    expect(screen.queryByText('Station engine')).toBeNull();
 
     // #592 slice 2 review M3: bare "Add" is ambiguous with more than one row
     // in the catalogue — the accessible name carries the engine's own name.
@@ -767,7 +780,10 @@ describe('AgentConnectionView', () => {
     // No route jump on the way: the result is in the add pane.
     expect(onNavigate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-engine-edit',
+      id: 'claude',
+    });
   });
 
   // A native row the catalogue labels "Setup required" still adds the engine
@@ -883,13 +899,11 @@ describe('AgentConnectionView', () => {
     // The always-available manual escape hatch.
     expect(screen.getByText('Custom engine')).toBeTruthy();
 
-    // An engine that is not installed is installed first: its row offers
-    // the install hint and Check again, never a way to connect it.
     expect(
-      screen.getByRole('button', { name: 'Check again for OpenCode' }),
+      screen.getByRole('button', { name: 'Set up OpenCode' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Set up OpenCode' }),
+      screen.queryByRole('button', { name: 'Check again for OpenCode' }),
     ).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Connect OpenCode' }),
@@ -914,6 +928,55 @@ describe('AgentConnectionView', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
   });
 
+  test.each([undefined, 'antigravity'])(
+    'engine setup %s waits for discovery and offers retry after a failed read',
+    async (addChoiceId) => {
+      acpRegistryEntries = [];
+      acpRegistryPending = true;
+      const mounted = await render(
+        <AgentConnectionView
+          selectedRuntimeId="new"
+          addChoiceId={addChoiceId}
+          onNavigate={vi.fn()}
+        />,
+      );
+      expect(
+        screen.queryByRole('heading', { name: 'Choose an engine' }),
+      ).toBeNull();
+      expect(screen.queryByText('Engine not found')).toBeNull();
+      acpRegistryPending = false;
+      acpRegistryError = new Error('Discovery failed');
+      mounted.rerender(
+        <AgentConnectionView
+          selectedRuntimeId="new"
+          addChoiceId={addChoiceId}
+          onNavigate={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Couldn't load engine setup")).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(refetchRegistry).toHaveBeenCalled();
+      expect(acpInstall).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a missing engine setup target offers the catalog without substituting a custom command', async () => {
+    acpRegistryEntries = [];
+    agentCatalog = [];
+    const onNavigate = vi.fn();
+    await render(
+      <AgentConnectionView
+        selectedRuntimeId="new"
+        addChoiceId="missing"
+        onNavigate={onNavigate}
+      />,
+    );
+    expect(screen.getByText('Engine not found')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse engines' }));
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+    expect(acpInstall).not.toHaveBeenCalled();
+  });
+
   test('a deep link to one entry opens its confirm step in the same pane', async () => {
     acpRegistryEntries = [
       {
@@ -936,7 +999,9 @@ describe('AgentConnectionView', () => {
       screen.getByRole('heading', { name: 'Connect Kiro CLI' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Choose an engine' }),
+    ).toBeTruthy();
   });
 
   test('an undetected catalogue engine shows its host install recipe and re-checks on demand; a detected one does not', async () => {
@@ -973,6 +1038,8 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    expect(screen.queryByTestId('engine-install-hint')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const hints = screen.getAllByTestId('engine-install-hint');
     expect(hints).toHaveLength(1);
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
@@ -1027,6 +1094,7 @@ describe('AgentConnectionView', () => {
     await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
     fireEvent.click(
       within(goose).getByRole('button', { name: 'Check again for Goose' }),
@@ -1060,6 +1128,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Acme Agent' }));
     const hint = screen.getByRole('group', {
       name: 'How to install Acme Agent',
     });
@@ -1083,6 +1152,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
     expect(
       within(goose).getByText(

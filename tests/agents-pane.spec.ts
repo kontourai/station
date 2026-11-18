@@ -568,64 +568,111 @@ test.describe('Agents pane child work (#2459)', () => {
     }
   });
 
-  /**
-   * #2510: a phone has no side region and no desktop More menu, so the
-   * header's ⋯ sheet carries the Background tasks row, and on a bottom-only
-   * device it opens the Background tasks sheet rather than the Agents pane.
-   */
-  test.describe('on a phone (#2510)', () => {
-    test.use({ viewport: { width: 390, height: 844 } });
-
-    test('the ⋯ sheet opens the Background tasks sheet with the running task', async ({
-      page,
-    }, testInfo) => {
-      await page.goto(
-        `/projects/dev/layouts/code?chat=${encodeURIComponent(CONVERSATION_ID)}`,
-      );
-      await dismissSetupLauncher(page);
-      await waitForMockOrchestrationSse(page);
-
-      await emit(page, {
-        provider: 'claude',
-        threadId: SESSION_ID,
-        method: 'extension.notification',
-        namespace: 'claude-code',
-        type: 'task/registry',
-        payload: {
-          active: [
-            {
-              taskId: 'task-1',
-              description: 'Investigate flaky test',
-              backgrounded: true,
+  /** #2510: the real Chat action opens the retained-work sheet on a
+   * bottom-only device, including a wide coarse-pointer device. */
+  for (const { width, height } of [
+    { width: 390, height: 844 },
+    { width: 1440, height: 900 },
+  ]) {
+    for (const theme of ['dark', 'light'] as const) {
+      test.describe(`background tasks sheet ${width} ${theme}`, () => {
+        test.use({ viewport: { width, height }, hasTouch: true });
+        test('opens the running task with keyboard and returns focus on Escape', async ({
+          page,
+        }, testInfo) => {
+          await page.emulateMedia({ colorScheme: theme });
+          await page.goto(
+            `/projects/dev/layouts/code?chat=${encodeURIComponent(CONVERSATION_ID)}`,
+          );
+          await dismissSetupLauncher(page);
+          await waitForMockOrchestrationSse(page);
+          await expect(page.locator('html')).toHaveAttribute(
+            'data-theme',
+            theme,
+          );
+          expect(
+            await page.evaluate(() => matchMedia('(pointer: coarse)').matches),
+          ).toBe(true);
+          await emit(page, {
+            provider: 'claude',
+            threadId: SESSION_ID,
+            method: 'extension.notification',
+            namespace: 'claude-code',
+            type: 'task/registry',
+            payload: {
+              active: [
+                {
+                  taskId: 'task-1',
+                  description: 'Investigate flaky test',
+                  backgrounded: true,
+                },
+              ],
             },
-          ],
-        },
-      });
+          });
 
-      await page
-        .getByRole('button', { name: 'Chat actions', exact: true })
-        .click();
-      const actions = page.getByRole('menu', { name: 'Chat actions' });
-      await expect(actions).toBeVisible();
-      const row = actions.getByRole('menuitem', {
-        name: 'Background tasks — 1 running',
+          const trigger =
+            width === 390
+              ? page.getByRole('button', { name: 'Chat actions', exact: true })
+              : page.getByRole('button', { name: /^More dock actions/ });
+          await expect(trigger).toBeVisible();
+          await expect(trigger).toBeEnabled();
+          for (
+            let i = 0;
+            i < 80 &&
+            !(await trigger.evaluate((el) => el === document.activeElement));
+            i++
+          ) {
+            await page.keyboard.press('Tab');
+          }
+          await expect(trigger).toBeFocused();
+          await page.keyboard.press('Enter');
+          const row = page.getByRole('menuitem', {
+            name: 'Background tasks — 1 running',
+          });
+          await expect(row).toBeVisible();
+          await expect(row).toBeEnabled();
+          if (width === 390) {
+            const box = await row.boundingBox();
+            expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+          }
+          for (
+            let i = 0;
+            i < 80 &&
+            !(await row.evaluate((el) => el === document.activeElement));
+            i++
+          ) {
+            await page.keyboard.press(width === 390 ? 'Tab' : 'ArrowDown');
+          }
+          await expect(row).toBeFocused();
+          await page.keyboard.press('Enter');
+          await expect(row).toBeHidden();
+          const sheet = page.getByRole('dialog', { name: 'Background tasks' });
+          await expect(sheet).toBeVisible();
+          await expect(sheet.getByText('Investigate flaky test')).toBeVisible();
+          await expect(sheet.locator('footer')).toHaveText(
+            'Recent tasks only.',
+          );
+          await expect(
+            page.getByRole('button', { name: 'This chat', exact: true }),
+          ).toHaveCount(0);
+          await expect(page.locator('html')).toHaveAttribute(
+            'data-theme',
+            theme,
+          );
+          const screenshotName = `background-tasks-${width}-${theme}.png`;
+          await page.screenshot({
+            path: testInfo.outputPath(`background-tasks-${width}-${theme}.png`),
+            animations: 'disabled',
+          });
+          await testInfo.attach(screenshotName, {
+            path: testInfo.outputPath(screenshotName),
+            contentType: 'image/png',
+          });
+          await page.keyboard.press('Escape');
+          await expect(sheet).toBeHidden();
+          await expect(trigger).toBeFocused();
+        });
       });
-      await expect(row).toBeVisible();
-      const box = await row.boundingBox();
-      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
-      await row.click();
-
-      await expect(actions).toBeHidden();
-      const sheet = page.getByRole('dialog', { name: 'Background tasks' });
-      await expect(sheet).toBeVisible();
-      await expect(sheet.getByText('Investigate flaky test')).toBeVisible();
-      // Bottom-only: the sheet, never the Agents pane's scope controls.
-      await expect(
-        page.getByRole('button', { name: 'This chat', exact: true }),
-      ).toHaveCount(0);
-      await page.screenshot({
-        path: testInfo.outputPath('mobile-background-tasks-390.png'),
-      });
-    });
-  });
+    }
+  }
 });

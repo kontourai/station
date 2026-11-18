@@ -1023,10 +1023,13 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. With Claude Code, Codex and Muse, which take native
-steering, **Send** defaults to **Steer**; elsewhere, including a Muse chat that fell back to `muse exec`, it defaults to **Queue**,
-which delivers after the turn finishes. The dropdown switches between them. Other engines hold steering until a safe boundary can be proven;
-currently they wait until the turn finishes. Each pending row shows its mode.
+Keep typing during a turn. With a live native steering channel, **Send**
+defaults to **Steer**; otherwise it defaults to **Queue**, which delivers after
+the turn finishes. The dropdown switches between the available modes. For an
+ACP engine without native steering, choosing **Steer** stops its current step
+and continues the task with your additional instruction once cancellation
+finishes. Station-owned steering waits for the next safe boundary. A Muse chat
+on `muse exec` supports Queue only. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
