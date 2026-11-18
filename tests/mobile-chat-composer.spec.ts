@@ -2451,6 +2451,44 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       JSON.stringify(stored.map((entry) => ({ ...entry, name }))),
     );
   }, longStationName);
+  const taskActionChunk = '**/assets/AttachAnswerToTaskButton-*.js';
+  let releaseTaskAction: () => void = () => undefined;
+  const taskActionMayLoad = new Promise<void>((resolve) => {
+    releaseTaskAction = resolve;
+  });
+  let observeTaskRequest: () => void = () => undefined;
+  const taskActionRequested = new Promise<void>((resolve) => {
+    observeTaskRequest = resolve;
+  });
+  let refuseTaskAction = false;
+  let refusedTaskChunkRequests = 0;
+  await page.context().route(taskActionChunk, async (route) => {
+    if (refuseTaskAction) {
+      refusedTaskChunkRequests += 1;
+      return route.abort('failed');
+    }
+    observeTaskRequest();
+    await taskActionMayLoad;
+    await route.continue();
+  });
+  // The service worker can answer a reload from CacheStorage. Evict only
+  // this chunk so each fault reaches the actual browser import.
+  const evictTaskActionChunk = () =>
+    page.evaluate(async () => {
+      for (const name of await caches.keys()) {
+        const cache = await caches.open(name);
+        for (const request of await cache.keys()) {
+          if (
+            new URL(request.url).pathname.startsWith(
+              '/assets/AttachAnswerToTaskButton-',
+            )
+          ) {
+            await cache.delete(request);
+          }
+        }
+      }
+    });
+  await evictTaskActionChunk();
   await page.reload();
   await dismissSetupLauncher(page);
   await page
@@ -2480,11 +2518,35 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     MAX_SHEET_TAIL_PX,
   );
 
-  // 320px with the thumbs-down reason open: the action group stays anchored
-  // at the end and wraps as a unit. The phone baseline that wraps every
-  // `__actions` row used to strand the ⋯ alone at the start.
-  await page.getByRole('button', { name: 'Close message details' }).click();
+  // Keep the optional Task action's real chunk in flight until the pointer
+  // is down. The anchored close button must stay under the same press when
+  // that row becomes available. Nothing actionable is exposed while it waits.
+  await taskActionRequested;
+  const attachAnswer = answerSheet.getByRole('button', {
+    name: 'Add to Task: answer',
+    exact: true,
+  });
+  await expect(attachAnswer).toHaveCount(0);
+  const close = answerSheet.getByRole('button', {
+    name: 'Close message details',
+  });
+  const closeBox = await close.boundingBox();
+  if (!closeBox)
+    throw new Error('Answer details close control is not rendered');
+  await page.mouse.move(
+    closeBox.x + closeBox.width / 2,
+    closeBox.y + closeBox.height / 2,
+  );
+  await page.mouse.down();
+  try {
+    releaseTaskAction();
+    await expect(attachAnswer).toBeEnabled();
+  } finally {
+    await page.mouse.up();
+  }
   await expect(answerSheet).toBeHidden();
+
+  // At 320px the thumbs-down reason and actions wrap as one group.
   await page.setViewportSize({ width: 320, height: 700 });
   const ratings: string[] = [];
   await page.route('**/api/feedback/rate', (route) => {
@@ -2513,29 +2575,52 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await answerSheet.getByRole('button', { name: 'Bad response' }).click();
   await expect(answerSheet.getByPlaceholder('Why? (optional)')).toBeVisible();
   await expect.poll(() => ratings.length).toBe(1);
-  // Let the reason field finish sliding open (its wrapper animates
-  // max-width) before reading the layout.
-  await expect
-    .poll(() =>
-      answerSheet
-        .locator('.message__rating-expand')
-        .evaluate((expand) => expand.getBoundingClientRect().width),
-    )
-    .toBeGreaterThan(140);
+  // Wait for the width transition to finish before measuring the field.
+  const expandedRating = answerSheet.locator('.message__rating-expand');
+  await expandedRating.evaluate(async (element) => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    await Promise.allSettled(
+      element.getAnimations().map((animation) => animation.finished),
+    );
+  });
+  expect((await expandedRating.boundingBox())!.width).toBeGreaterThan(140);
   const narrow = await answerSheet.evaluate((sheet) => {
     const rect = (node: Element) => node.getBoundingClientRect();
     const rating = rect(sheet.querySelector('.message__rating')!);
     const reason = rect(sheet.querySelector('.message__rating-reason')!);
+    const reportBug = rect(sheet.querySelector('.message__rating-bug')!);
     const summary = rect(sheet.querySelector('.message-details__summary')!);
     return {
       rating: { top: rating.top, right: rating.right },
       reason: { left: reason.left, right: reason.right },
+      reportBug: { left: reportBug.left, right: reportBug.right },
       summary: { left: summary.left, right: summary.right },
     };
   });
   expect(Math.abs(narrow.rating.right - narrow.summary.right)).toBeLessThan(1);
   expect(narrow.reason.left).toBeGreaterThanOrEqual(narrow.summary.left - 1);
   expect(narrow.reason.right).toBeLessThanOrEqual(narrow.summary.right + 1);
+  expect(narrow.reportBug.left).toBeGreaterThanOrEqual(narrow.summary.left - 1);
+  expect(narrow.reportBug.right).toBeLessThanOrEqual(narrow.summary.right + 1);
+
+  // Refuse every attempt to load the optional chunk, including preloads.
+  // The error state must leave the close target available.
+  refuseTaskAction = true;
+  await evictTaskActionChunk();
+  await page.reload();
+  await dismissSetupLauncher(page);
+  await page
+    .getByRole('button', { name: 'Answer details and actions', exact: true })
+    .click();
+  const unavailable = answerSheet.locator('.turn-footer__unavailable-note');
+  await expect(unavailable).toBeVisible();
+  await expect(unavailable).toHaveText('Add to Task is unavailable.');
+  expect(refusedTaskChunkRequests).toBeGreaterThan(0);
+  await expect(attachAnswer).toHaveCount(0);
+  await close.click();
+  await expect(answerSheet).toBeHidden();
 });
 
 /** Below the sheet's last row: its 8px body padding, the panel's 1px border
@@ -4224,7 +4309,10 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
       new URL(response.url()).pathname === '/api/me/preferences' &&
       response.request().method() === 'PATCH',
   );
-  await picker.getByRole('option', { name: /^Claude Sonnet/ }).click();
+  await picker
+    .locator('.session-model-picker__models')
+    .getByText('Claude Sonnet', { exact: true })
+    .click();
   const preferenceReply = await remembered;
   expect(preferenceReply.status()).toBe(200);
   expect(preferenceReply.request().postDataJSON()).toEqual({

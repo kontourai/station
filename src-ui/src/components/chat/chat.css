@@ -2884,6 +2884,9 @@
   opacity: 1;
 }
 .message-details__actions .message__rating {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
   gap: var(--k-space-1);
 }
 /* Items keep their size so a line that cannot hold them breaks, rather than
@@ -3689,25 +3692,40 @@
   text-align: start;
   cursor: pointer;
 }
-/* The answer sheet's Add to Task (#4404 A40) is TaskPicker's own trigger,
-   one wrapper deep; it reads as a row like its siblings. */
-.message-details__menu > .task-picker,
-.message-details__menu > .task-picker > .task-picker__trigger {
+/* Keep the answer sheet's header in place when its optional action loads.
+   Both texts size the same grid cell, so a wrapped label also fits. */
+.message-details__task-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.message-details__task-row > * {
+  grid-area: 1 / 1;
+}
+.message-details__task-row > .task-picker,
+.message-details__task-row > .task-picker > .task-picker__trigger {
   display: flex;
   width: 100%;
 }
-.message-details__menu > .task-picker > .task-picker__trigger {
-  /* Centred like its sibling rows: the Button's label is a flex item, and
-     the default stretch pinned it to the row's top edge. */
+.message-details__task-row > .task-picker > .task-picker__trigger,
+.message-details__task-row
+  > :is(.message-details__task-measure, .turn-footer__unavailable-note) {
+  display: flex;
   align-items: center;
   justify-content: flex-start;
   min-height: 44px;
   padding: 0 var(--k-space-3);
-  border: var(--k-border-thin) solid var(--k-line);
+  border: var(--k-border-thin) solid transparent;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+.message-details__task-row > .task-picker > .task-picker__trigger {
+  border-color: var(--k-line);
   border-radius: var(--k-radius-control);
   background: var(--k-panel-raised);
   color: var(--k-text);
-  font: inherit;
+}
+.message-details__task-measure {
+  visibility: hidden;
 }
 .message-details__menu > .turn-footer__overflow-item--danger {
   color: var(--error-text, var(--k-negative));
