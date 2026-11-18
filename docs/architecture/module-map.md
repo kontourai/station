@@ -6555,9 +6555,9 @@ automatic rollback of commands, conversation history, or external effects.
 [Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) wraps
 restore in `OrchestrationService.runWorkspaceRestore`, which excludes admitted
 turns for the same canonical Git working-tree root. It is not a filesystem
-lease against arbitrary external editors/processes. The chat SDK selects only
-`settle`; the CLI's separate authentication and preview gaps are tracked in
-[#2734](https://github.com/kontourai/station/issues/2734).
+lease against arbitrary external editors/processes. The chat control previews
+`settle`. The CLI uses the same authenticated SDK endpoints to preview either
+phase and requires the reviewed preview ID and tree hash for confirmation.
 
 **Follow the evidence.** Begin with the
 [user journey](../user/workspace-checkpoints.md), then

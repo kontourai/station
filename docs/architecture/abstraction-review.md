@@ -126,7 +126,8 @@ Local launcher and HTTP fixture evidence covers these caller contracts.
 
 [Checkpoint restore](../../packages/cli/src/commands/checkpoints.ts)
 takes its target, credential and deadline from the common client path. It
-still confirms its returned preview without displaying it.
+displays the preview and requires its ID and current-tree hash in a separate
+confirmation.
 [#2734](https://github.com/kontourai/station/issues/2734)
 
 ### A declared namespace and its consumer can name different stores
@@ -307,10 +308,11 @@ and invalid date/time format JSON can reach prompt expansion before failing
 
 ### Shared CLI safeguards need to cover each caller
 
-The Operate shell's event stream bypasses the authenticated SDK transport even
-though its initial Session read uses it. A real caller against a synthetic
-protected HTTP service reproduced the missing credential and HTTP 401;
-[#2845](https://github.com/kontourai/station/issues/2845) tracks the correction.
+The Operate shell's event stream uses the same origin-bound authenticated
+transport as its initial Session read. A real caller against a synthetic
+protected HTTP service exercises credential transmission, cross-origin
+isolation, frame parsing and cancellation.
+[#2845](https://github.com/kontourai/station/issues/2845) recorded the original HTTP 401.
 Home reset now acquires the home maintenance lease, rechecks lifecycle inactivity
 and archives the home while holding that lease. It still does not separately
 consult the home-scoped instance registry
