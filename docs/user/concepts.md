@@ -63,11 +63,13 @@ Keep p95 API latency under 200 ms through the next release.
   Ask before changing the benchmark workload, running a production load test
   or merging a pull request.
 
-### Troubleshoot opening Projects and Tasks
+### Troubleshoot Projects and Tasks
 
-These are the common messages encountered when opening a Project, its Tasks
-list, or a Task workspace. The details under some messages depend on the
-Station response.
+Some messages include details from the Station. Start with the action shown
+next to the message. When a button name starts with **Retry**, use the one
+in the panel that reported the error.
+
+#### Open a Project or Task
 
 | Message | Next step |
 | --- | --- |
@@ -81,6 +83,41 @@ Station response.
 | **Task not found** | Open the Task from its Project's Tasks list to confirm it is still available to you. |
 | **Project deleted** | Use the Task's existing chats and details to recover context for new work. |
 | **Task workspace is unavailable** | Open the Project and check its working folder before starting new work. |
+
+
+#### Project tools, files and rooms
+
+| Message | Next step |
+| --- | --- |
+| **Search unavailable**, **Channels unavailable**, **Room unavailable. Check your connection and Project access.**, **This thread could not be loaded.**, **History could not be loaded.** | Select **Retry** in the search, channel, room or history panel. |
+| **Could not load layouts**, **Couldn't load the Library**, **Couldn't open this file** | Select **Retry** in the affected panel. |
+| **Couldn't load project knowledge**, **Couldn't load project rules**, **Could not load stores**, **Could not load records** | Select **Retry** in the affected knowledge panel. |
+| **Could not load document categories** | Select **Retry categories**. |
+| **Could not load indexing status** | Select **Retry indexing status**. |
+| **Couldn't index the working directory** | Read the reason shown, correct it, then choose **Index Files** again. |
+| **Unable to load document content** | Close the knowledge document and reopen it from the Project. |
+| **Unable to check Task sharing** | Select **Retry** in Task sharing. |
+| **Tool access unavailable** | Select **Retry tool access**. |
+| **Project tools unavailable** | Select **Retry Project tools**. |
+
+#### Task work and results
+
+| Message | Next step |
+| --- | --- |
+| **Unable to load tasks**, **Couldn’t read agent runs.**, **Couldn’t refresh pull requests** | Select **Retry** in the Project's Tasks list or board. |
+| **Subtasks unavailable.**, **Work chats unavailable.**, **Unable to load kept answers**, **Couldn’t read the Task memory**, **Could not load the pull request watch** | Select **Retry** in the Task panel that reported the error. |
+| **Chat selection unavailable.** | Select **Retry selection** to reload the recent chat choices. |
+| **Chat link unavailable. Select a chat and try again.** | Select a chat again before retrying the link. |
+| **Couldn’t load Task outputs:** | Select **Retry outputs**. |
+| **Some results could not be loaded.** | Select **Retry results** in **Ready to review**. |
+| **Couldn’t refresh Timeline.** | Select **Retry Timeline**. |
+| **Some Screens are unavailable.** | Select **Retry unavailable Screens**. |
+| **Couldn’t refresh Review.** | Select **Retry Review**. |
+| **Couldn’t load this Screen.** | Select **Retry Screen** in the Screen detail. |
+| **Couldn’t load this item.** | Select **Retry item**. |
+| **Couldn’t load clips.** or **Couldn’t load this clip.** | Select **Retry clips** for the list or **Retry clip** for the open clip. |
+| **This Screen is unavailable. Capture it again.** | Make another capture from the Project's Browser or Device session. |
+| **This item is unavailable. Refresh and try again.** | Refresh the Review panel before retrying the action. |
 
 ## Station And Device
 
