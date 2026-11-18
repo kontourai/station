@@ -153,11 +153,12 @@ test.each(cases)(
       expect(current.inbox.submit(queued)).toMatchObject({ outcome: 'queued' });
       const reopenedReader = new EventStore(file);
       try {
-        expect(
-          reopenedReader.threadInboxStore().read(THREAD, KEY),
-        ).toMatchObject({
-          state: 'queued',
-          payload: expect.objectContaining({ message: FOLLOW_UP }),
+        const reopenedEntry = reopenedReader
+          .threadInboxStore()
+          .read(THREAD, KEY);
+        expect(reopenedEntry).toMatchObject({ state: 'queued' });
+        expect(JSON.parse(String(reopenedEntry?.payload))).toMatchObject({
+          message: FOLLOW_UP,
         });
       } finally {
         reopenedReader.close();
