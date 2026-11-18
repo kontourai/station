@@ -3733,7 +3733,7 @@ export class CodexAdapter implements ProviderAdapterShape {
   }
 
   private rememberCancelledTurn(record: CodexSessionRecord, turnId: string) {
-    const cancelledTurns = record.cancelledBoundTurns ??= new Set();
+    const cancelledTurns = (record.cancelledBoundTurns ??= new Set());
     cancelledTurns.delete(turnId);
     cancelledTurns.add(turnId);
     for (const oldest of cancelledTurns) {
