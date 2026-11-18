@@ -834,7 +834,7 @@ export function ChatInputArea({
   const agentEngineMoveSentence = agentEngineMove
     ? agentEngineMove.nextTurn
       ? `Next message: ${agentEngineMove.to}.`
-      : `This session: ${executionEngineLabel ?? 'engine unknown'}. Agent default: ${agentEngineMove.to}.`
+      : `Session engine: ${executionEngineLabel ?? 'engine unknown'}. Agent default: ${agentEngineMove.to}.`
     : undefined;
   const modelAccessibleLabel = [
     'Engine & model:',

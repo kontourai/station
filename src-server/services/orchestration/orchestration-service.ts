@@ -8315,22 +8315,23 @@ export class OrchestrationService {
       conversationId,
       authority,
     );
-    // #2424: a continuation reserves its child in the lineage BEFORE starting
-    // it, so a start that fails (a model-validation deadline on a loaded
-    // host) leaves a tail with no Session yet. `readCurrentConversationSession`
-    // already follows exactly that tail to its authorized predecessor; the
-    // open read must describe the same Session, or it reports the whole
-    // conversation "not found" and the client paints it read-only. The next
-    // send reuses the reservation. Only a PLAIN reservation: a handoff tail
-    // waits for its target and a context-boundary tail starts a fresh-context
-    // child, so describing either by its predecessor would claim a
-    // continuation the send path does not perform. Those keep reading the
-    // tail itself, as before.
+    // Read an unstarted reservation through its authorized predecessor.
+    // A fresh-context tail reports the reservation separately from execution.
+    const freshContextPredecessor =
+      detail &&
+      !this.sessionReadModel.has(currentSessionId) &&
+      this.conversationLineage.freshContextReservationPredecessor(
+        conversationId,
+        currentSessionId,
+      ) === detail.session.threadId
+        ? detail.session.threadId
+        : undefined;
     const subjectSessionId =
       detail &&
       detail.session.threadId !== currentSessionId &&
-      detail.session.threadId ===
-        this.conversationLineage.plainReservationPredecessor(conversationId)
+      (freshContextPredecessor ||
+        detail.session.threadId ===
+          this.conversationLineage.plainReservationPredecessor(conversationId))
         ? detail.session.threadId
         : currentSessionId;
     // One whole-history read per open: the conversation query and the
@@ -8368,14 +8369,47 @@ export class OrchestrationService {
       messageCount: query.conversation.messageCount,
       mutable: false,
       answerability: detail?.session.answerability ?? { answerable: true },
-      ...(query.conversation.model ? { model: query.conversation.model } : {}),
-      ...(query.conversation.acceptedModel
+      ...(!freshContextPredecessor && query.conversation.model
+        ? { model: query.conversation.model }
+        : {}),
+      ...(!freshContextPredecessor && query.conversation.acceptedModel
         ? { acceptedModel: query.conversation.acceptedModel }
         : {}),
       ...(query.conversation.environmentId
         ? { environmentId: query.conversation.environmentId }
         : {}),
     };
+    if (freshContextPredecessor && described) {
+      const messageCount =
+        this.forkContexts.copiedForSession(subjectSessionId, authority).length +
+        query.messages.length;
+      // The authority-bound history read above may have yielded while the tail
+      // started, was cancelled, or was replaced.
+      if (
+        this.sessionReadModel.has(currentSessionId) ||
+        this.conversationLineage.freshContextReservationPredecessor(
+          conversationId,
+          currentSessionId,
+        ) !== freshContextPredecessor
+      )
+        return null;
+      const starting = this.startsUnderway.has(currentSessionId);
+      return {
+        status: 'fresh-context-ready',
+        conversation,
+        predecessorSessionId: freshContextPredecessor,
+        reservedSessionId: currentSessionId,
+        transcript: { available: true, owner: 'runtime', messageCount },
+        canContinue:
+          !starting &&
+          described.session.controlMode === 'station-owned' &&
+          described.session.hasActiveTurn !== true &&
+          described.session.pendingReview !== true,
+        ...(starting ? { continuationPending: true } : {}),
+        answerability: described.session.answerability,
+        recoveryActions: [],
+      };
+    }
     return this.conversationOpenResolver.resolve({
       conversation,
       authority,
