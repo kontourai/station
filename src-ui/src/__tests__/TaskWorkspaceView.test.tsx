@@ -70,6 +70,8 @@ let projectsResult: {
   error?: Error;
   refetch: ReturnType<typeof vi.fn>;
 };
+let roomHistoryPages: import('@kontourai/station-contracts/project-task-room-browser').ProjectTaskRoomBrowserHistory[] =
+  [];
 let roomDiscoveryResult: {
   data: any;
   isLoading: boolean;
@@ -322,7 +324,7 @@ vi.mock(
     useProjectTaskRoomDiscoveryQuery: () => roomDiscoveryResult,
     useProjectTaskRoomDocumentQuery: () => roomDocumentResult,
     useProjectTaskRoomHistoryQuery: () => ({
-      data: { pages: [] },
+      data: { pages: roomHistoryPages },
       isError: false,
     }),
     useProjectTaskRoomStream: () => vi.fn(),
@@ -609,6 +611,7 @@ describe('TaskWorkspaceView', () => {
     featurePreviews = [];
     navigationStore.navigate('/projects/project-alpha/tasks/task-alpha', {
       taskView: null,
+      thread: null,
       starter: null,
       starterLink: null,
     });
@@ -652,6 +655,7 @@ describe('TaskWorkspaceView', () => {
     appendOutputFeedback.mockReset();
     vi.stubGlobal('crypto', webcrypto);
     pluginsResult.data = [];
+    roomHistoryPages = [];
     roomDiscoveryResult = {
       data: { kind: 'unavailable' },
       isLoading: false,
@@ -662,6 +666,75 @@ describe('TaskWorkspaceView', () => {
       isFetching: false,
       refetch: vi.fn(),
     };
+  });
+
+  test('a Task thread opens at its own history address and reloads there', async () => {
+    roomDiscoveryResult = {
+      data: {
+        kind: 'existing',
+        scope: { taskId: 'task-alpha' },
+        capabilities: { historyRead: true },
+      },
+      isLoading: false,
+    };
+    roomHistoryPages = [
+      {
+        kind: 'available',
+        checkpoint: {
+          throughSeq: 1,
+          checkpointDigest: 'b'.repeat(64),
+          retainedAnchorSeq: 0,
+          retainedAnchorDigest: 'c'.repeat(64),
+        },
+        hasMore: false,
+        integrity: 'L0',
+        records: [
+          {
+            actor: { kind: 'agent', label: 'Researcher' },
+            sequence: 1,
+            body: { kind: 'human-message', text: 'An answer in the Task' },
+            occurredAt: '2026-10-15T10:04:00.000Z',
+            digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+            integrity: 'L0',
+            execution: { sessionId: 'research-run', turnId: 'turn-1' },
+          },
+        ],
+      },
+    ];
+    act(() =>
+      navigationStore.navigate('/tasks/task-alpha', {
+        taskView: 'conversation',
+      }),
+    );
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    const historyLength = window.history.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+
+    expect(new URLSearchParams(window.location.search).get('thread')).toBe(
+      'research-run',
+    );
+    expect(window.history.length).toBe(historyLength + 1);
+    expect(
+      within(screen.getByRole('region', { name: 'Agent thread' })).getByText(
+        'An answer in the Task',
+      ),
+    ).toBeTruthy();
+    view.unmount();
+    render(<TaskWorkspaceView taskId="task-alpha" />, { openDetails: false });
+    expect(screen.getByRole('region', { name: 'Agent thread' })).toBeTruthy();
+
+    await act(async () => window.history.back());
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Agent thread' })).toBeNull(),
+    );
+    expect(new URLSearchParams(window.location.search).get('taskView')).toBe(
+      'conversation',
+    );
+    expect(new URLSearchParams(window.location.search).has('thread')).toBe(
+      false,
+    );
   });
 
   describe('linked work item header (#4003)', () => {
