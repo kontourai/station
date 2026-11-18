@@ -1,0 +1,7 @@
+{
+  "revision": "4f6108199b2531b61012e793c3f87b88f29c9a50",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Reviewed the release-versioning producer and its scoped freshness/history consumers. Ordinary unique note additions use one full-diff Git history stream; ambiguous additions, rename/type/deletion histories and merge diffs retain the existing per-file --follow authority. Pending note blobs are batched without skipping parser or exact-output checks. Real Changesets release fixtures preserve commit prefixes through rename, copy, readdition and merge; shallow provenance remains refused. The many-note test measures real Git Trace2 process starts, was baseline-red at 22 history processes, and is fixed-green. Committed controls reject wrong provenance and 33 per-note blob reads, then restore green. Full real capture/history probe held the local host slot and passed in 12.26 seconds at the unchanged 30-second bound. This is local evidence, not hosted qualification.","inputs":["docs/guides/documentation-review-ledger.md","scripts/lib/release-versioning-review.mjs"]}
+  ]
+}

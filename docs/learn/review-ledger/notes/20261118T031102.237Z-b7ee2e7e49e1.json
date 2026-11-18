@@ -1,0 +1,7 @@
+{
+  "revision": "4f6108199b2531b61012e793c3f87b88f29c9a50",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the bounded history-performance explanation delta against the port and its two production callers. The maintenance guide still accurately routes impact/catch-up/freshness, source-reviewed notes and generated-output exceptions to this owner. Batch lookup does not change append-only review authority, source-drop/value bindings, baseline coverage or exact Changesets output admission. Other references remain valid links to that unchanged contract. Local producer and sibling tests plus real scheduled-history probe passed; hosted proof remains pending.","inputs":["docs/guides/documentation-review-ledger.md"]}
+  ]
+}
