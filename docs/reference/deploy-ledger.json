@@ -1,5 +1,42 @@
 [
   {
+    "timestampUtc": "2026-11-18T03:01:15Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261118.44226098011",
+    "sha": "e1976d9e1f8a160fe9a78954c89448920ab7f37e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44226098011",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261118.44226098011 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "099dac6eb01c18ec70cd9a1066c9d6c62efe238d",
+      "groups": {
+        "feat": [
+          "[#5164](https://github.com/kontourai/station/pull/5164) feat(engines): guide setup from chat through a focused person-owned flow"
+        ],
+        "fix": [
+          "[#5177](https://github.com/kontourai/station/pull/5177) fix(ci): repair nightly contracts and select their hidden inputs",
+          "[#4755](https://github.com/kontourai/station/pull/4755) fix(server): keep confined Seatbelt TMPDIRs short enough for Unix sockets",
+          "[#5174](https://github.com/kontourai/station/pull/5174) fix(performance): drive remote apply through current Brief autosave",
+          "[#5165](https://github.com/kontourai/station/pull/5165) fix(opencode): enable ACP never-ask and reliable steering",
+          "[#5168](https://github.com/kontourai/station/pull/5168) fix(chat): remove retired Activity destination from task footer",
+          "[#4739](https://github.com/kontourai/station/pull/4739) fix(server): keep session TMPDIRs short enough for Unix sockets",
+          "[#5167](https://github.com/kontourai/station/pull/5167) fix(codex): preserve both credentials on adopted Session resume"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-11-17T23:26:00Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261117.2",
