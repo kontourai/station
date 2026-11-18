@@ -1136,34 +1136,24 @@ station agents workflows list planner
 station agents chat planner "Summarize the open work"
 ```
 
-For a new chat, `--project=<slug>` selects Project context for either engine
-kind. The current CLI also sends `process.cwd()` as that target's workspace
-directory; it does not simply request the Project's configured directory. The
-server requires this directory to resolve inside the selected Project's
-configured directory, following symlinks and comparing whole path segments.
-Run the CLI from that Project or a contained subdirectory; an outside or
-unresolvable directory refuses before execution. Separately verified remote
-workspace paths retain their remote-path admission. Use `--project` or `--cwd`,
-not both.
+For a new chat, `--project=<slug>` selects Project context and lets the server
+use the Project's configured directory under its existing workspace admission
+rules. Choose either `--project` or `--cwd`.
 
-The checkout launcher changes directory to the Station checkout before running
-the CLI. Chat currently uses that process directory rather than the preserved
-`STATION_INVOKED_CWD`; an invocation from another repository can therefore use
-the Station checkout. For directory-based work, pass an explicit target-visible
-`--cwd`. This is a current caller limitation, not a Project authorization grant.
+A new directory-based chat on the current environment at an IP-literal
+loopback Station uses the directory where you invoked the CLI, including when
+using the checkout launcher. A relative `--cwd` resolves from that directory.
+For other endpoints or a selected remote environment, Station receives an
+explicit `--cwd` as typed. Without an explicit workspace, the remote Station
+chooses its default. Tilde paths are expanded by the target Station.
 
-With `--on=<environment>` and neither `--project` nor `--cwd`, a new chat sends
-no workspace, because this machine's directory means nothing on another Station.
 A directory workspace (the default for the current Station, or `--cwd`, or
 `station delegate --project-path`/`--cwd`) needs the operator's credential or a
 device holding the `coding:exec` grant; a paired device without it is refused with
 `working-directory-not-granted` and nothing starts. `--project` needs no grant.
 
-On continuation, the current caller omits workspace selection: `--project`
-and `--cwd` have no effect and are not warned about. The Conversation keeps its
-persisted workspace. Omit those flags when continuing; start a new chat to
-choose another workspace. [#2733](https://github.com/kontourai/station/issues/2733)
-tracks these caller limitations.
+A continuation keeps its persisted workspace and rejects `--project` and
+`--cwd`. Start a new chat to choose another workspace.
 
 ### `chat`
 
@@ -1232,17 +1222,16 @@ not support this engine-options bag. `--approval-mode` accepts exactly
 error, exit 1, before any request); `--effort` and `--thinking` are
 otherwise engine-specific. `--model-option=key=value` is a repeatable
 escape hatch for any `modelOptions` key not covered by a named flag — named
-flags always win a key collision. The equals form is required by the current
-parser: a space-separated `--model-option key=value` is not supported and may
-become prompt text instead of an option. [#2732](https://github.com/kontourai/station/issues/2732)
-tracks rejection or support for that spelling. An option key the target engine's adapter
+flags always win a key collision. A bare `--model-option` or a space-separated
+`--model-option key=value` is a usage error before any request. An option key
+the target engine's adapter
 doesn't actually read is rejected with an explicit 400 naming the option
 and target (nothing is silently dropped); see
 `packages/contracts/src/provider.ts`'s `PROVIDER_MODEL_OPTION_SUPPORT` for
 the authoritative per-engine list. `--session=<id>` (or `--conversation=<id>`)
 continues the durable Conversation. Supported model overrides/options are
 forwarded for that turn; omission retains the current choice. Workspace flags
-are currently omitted as described above, not rejected.
+are rejected on continuation.
 
 `--model` is capability-gated at the same shared orchestration dispatch seam as
 the API. Omission may deliberately be engine-selected (Codex does not receive a
@@ -1280,16 +1269,17 @@ station approvals respond <thread-id> <request-id> <accept|acceptForSession|decl
 out-of-band (the notice just makes the wait legible). `--on-request=fail`
 stops waiting and exits **4** instead, leaving the session alive and
 resumable — it is never torn down (no `stopSession`) just because a
-request opened. `--json` carries a typed `pendingRequest` field
-(`requestId`/`requestType`/`title`/`respondCommand`) plus `lifecycleState` (the session's
-`SessionLifecycleState`, e.g. `needs_input`/`review_pending`) whenever
-either was observed. `pendingRequest` retains the last request-opened notice;
-the CLI does not clear it on resolution. With `--on-request=fail`, it explains
-why waiting stopped. With `wait`, even completed final JSON can retain that
-notice. Read the current Session/request before deciding that it still needs
-an answer; the field's presence alone is not current pending-state evidence.
-The response-contract correction is tracked in
-[#2741](https://github.com/kontourai/station/issues/2741).
+request opened. In `--json`, `lastObservedRequest` carries the last opening
+notice from this turn observation, with `requestId`, `requestType`, and
+`title`. The notice can describe an already resolved request. `lifecycleState`
+is included when observed.
+
+The legacy `pendingRequest` field includes `respondCommand` only when a
+bounded read confirms that an exact request on the accepted turn is still open
+and accepts an approval decision. On exit 4, this check is limited to the
+request that stopped the wait. Older peers and inconclusive reads yield only
+the observed notice. The check is a point-in-time observation. The responder
+still checks request identity and authority before applying a decision.
 
 **Managed-chat orchestration — landed, and not behind a flag.** A managed
 Station-agent `station chat <slug>` starts a private `station-agent`
@@ -1752,7 +1742,8 @@ station delegate --agent=codex --model-option=fastMode=true "Quick check" --json
 `connection-default` (an invalid value is a usage error, exit 1, before any
 request). `--model-option=key=value` is a repeatable escape hatch for any
 `modelOptions` key not covered by a named flag; named flags always win a
-key collision. An option key the target's adapter doesn't actually read is
+key collision. A bare or space-separated flag is a usage error before any
+request. An option key the target's adapter doesn't actually read is
 rejected with an explicit exit-3 error naming the option and target —
 including a Station agent target, whose `modelOptions` are inert (never
 read by the managed chat path), so accepting one there would silently do
