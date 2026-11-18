@@ -631,8 +631,8 @@ is shown.
 The UI owners are [saved relay routes](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx),
 [Project detail](../../src-ui/src/views/ProjectPage.tsx), and the
 [member Project view](../../src-ui/src/views/project-page/MemberProjectPage.tsx).
-Its captured-scope list and detail reads live in
-[ProjectsContext](../../src-ui/src/contexts/ProjectsContext.tsx) and use the
+Its [shared-work hooks](../../src-ui/src/views/project-page/useMemberProjectSharedWork.ts)
+read the list and detail with the captured Project scope through the
 [shared-task SDK readers](../../packages/sdk/src/client/project-shared-tasks.ts).
 
 No direct HTTP fallback is used. The CLI continues to refuse these routes as

@@ -206,6 +206,9 @@ vi.mock('../contexts/ProjectsContext', async (importOriginal) => ({
       isMemberProject: sdkMocks.isMemberProject,
     };
   }),
+}));
+
+vi.mock('../views/project-page/useMemberProjectSharedWork', () => ({
   useScopedMemberProjectSharedTasksQuery: sdkMocks.sharedTaskQuery,
 }));
 
