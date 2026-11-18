@@ -67,6 +67,7 @@ function json(response, status, body) {
 
 /**
  * @typedef {{ sequence: number, receivedAt: number, method: string, path: string, query: string, headers: Record<string, string>, bodyBytes: number, body: unknown, refused?: string }} StubRequest
+ * @param {{host?: string, turns?: ReadonlyArray<{prompt: string, reply: string}>}} [options]
  * @returns {Promise<{ url: string, requests: StubRequest[], close: () => Promise<void> }>}
  */
 export async function startStubAnthropic({

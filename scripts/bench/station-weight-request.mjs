@@ -341,7 +341,7 @@ export function analyzeConversationTurn({
   turns,
   index,
   markers,
-  previous,
+  previous = undefined,
 }) {
   const expected = turns[index];
   const candidates = messagesRequests(calls).filter((request) =>

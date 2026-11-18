@@ -1173,7 +1173,7 @@ export function runOwnership(
  * still names one process, so the guarantee is this recheck, not more: a
  * pid would have to be freed and reused, with the recorded birth, between
  * the recheck and the signal.
- * @param {Array<Partial<OwnedRow> & { pid: number, killEligible: boolean, exactStart?: string }>} rows
+ * @param {Array<Partial<OwnedRow> & { pid: number }>} rows
  * @param {NodeJS.Signals} signal
  * @param {{ platform?: string, run?: RunCommand, readFile?: (path: string, encoding: 'utf8') => string, kill?: (pid: number, signal: NodeJS.Signals) => unknown, bootId?: string }} [options]
  */
@@ -2100,6 +2100,21 @@ export async function measureRequestConversation({
   markers,
   sideCallWindowMs,
 }) {
+  /** @type {{
+   * status: 'not_measured' | 'measured',
+   * reportOnly: true,
+   * reason?: string,
+   * turns: Array<{
+   *   ordinal: number,
+   *   prompt: string,
+   * } & (
+   *   {status: 'not_measured', reason: string} |
+   *   {status: 'measured', stationSessionId: string, stationProviderTurnId: string,
+   *    controlSessionId: string, station: ReturnType<typeof analyzeConversationTurn>['report'],
+   *    control: ReturnType<typeof analyzeConversationTurn>['report'],
+   *    stationAdded: ReturnType<typeof diffAgainstControl>}
+   * )>,
+   * }} */
   const report = { status: 'not_measured', reportOnly: true, turns: [] };
   let stationSession;
   let controlSession;
