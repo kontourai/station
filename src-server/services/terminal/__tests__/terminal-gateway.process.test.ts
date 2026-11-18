@@ -372,8 +372,15 @@ describe('same-origin terminal gateway with real sockets', () => {
     expect(
       client.controls.filter((item) => item.type === 'progress'),
     ).toHaveLength(progressCount);
-    client.ack(1, client.output.at(-1)!.seq);
-    await expect.poll(() => client.output.at(-1)?.seq).toBe(end);
+    while (client.output.at(-1)!.seq < end) {
+      const received = client.output.length;
+      client.ack(1, client.output.at(-1)!.seq);
+      await expect.poll(() => client.output.length).toBeGreaterThan(received);
+      expect(client.output.length - received).toBeLessThanOrEqual(
+        TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+      );
+    }
+    expect(client.output.at(-1)!.seq).toBe(end);
     // ConPTY repaints its screen instead of passing a lone link opener
     // through, so only a POSIX PTY yields a record the filter empties.
     if (!windows)
