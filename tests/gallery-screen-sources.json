@@ -811,6 +811,42 @@
       "src-ui/src/views/project-page/setup-recommendations.ts",
       "src-ui/src/lib/continue-in-project.ts"
     ],
+    "channel-nav-rail-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-rail-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-attention-dark-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-attention-dark-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-attention-light-desktop": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
+    "channel-nav-attention-light-mobile": [
+      "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+      "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",
+      "src-ui/src/views/ProjectPage.tsx"
+    ],
     "channel-nav-list-dark-desktop": [
       "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
       "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",

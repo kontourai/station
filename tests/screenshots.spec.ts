@@ -4944,49 +4944,58 @@ function roomConversationScreens(): Screen[] {
  * collapsed dock overlays the bottom band of the page's scrollport, and in
  * a 844px frame some control of this page always sits behind it.
  */
-const CHANNEL_NAV_SCENES = ['list', 'conversation', 'thread'] as const;
+const CHANNEL_NAV_SCENES = [
+  'list',
+  'conversation',
+  'thread',
+  'rail',
+  'attention',
+] as const;
 const PHONE_PAGE = { width: MOBILE.width, height: 1200 } as const;
 
 function channelNavigationScreens(): Screen[] {
   return CHANNEL_NAV_SCENES.flatMap((scene) =>
     (['dark', 'light'] as const).flatMap((theme) =>
-      [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE].map(
-        (viewport): Screen => {
-          const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
-          const phone = viewport.width === MOBILE.width;
-          const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
-          const other = `${slug}-site`;
-          let request: ReturnType<typeof createAuthenticatedE2ERequest>;
-          const created: string[] = [];
-          const cleanups: (() => Promise<void>)[] = [];
-          const query =
-            scene === 'conversation'
-              ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
-              : scene === 'thread'
-                ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
-                : '';
-          const screen: Screen = {
-            name: `channel-nav-${scene}-${theme}-${width}`,
-            title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
-            path: `/projects/${slug}${query}`,
-            viewport,
-            async beforeGoto(page) {
-              request = createAuthenticatedE2ERequest(page.request);
-              const createProject = async (
-                name: string,
-                projectSlug: string,
-              ) => {
-                const response = await request.post(
-                  `${resolveE2EApiBase()}/api/projects`,
-                  { data: { name, slug: projectSlug } },
-                );
-                expect(response.ok()).toBe(true);
-                created.push(projectSlug);
-                return (await response.json()).data as { id: string };
-              };
-              const project = await createProject('Onboarding revamp', slug);
-              // A second Project stays collapsed in the sidebar.
-              await createProject('Kontour site', other);
+      (scene === 'rail'
+        ? [DESKTOP]
+        : [DESKTOP, scene === 'list' ? PHONE_PAGE : MOBILE]
+      ).map((viewport): Screen => {
+        const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const phone = viewport.width === MOBILE.width;
+        const slug = `gallery-channels-${scene}-${theme}-${viewport.width}`;
+        const other = `${slug}-site`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const created: string[] = [];
+        const cleanups: (() => Promise<void>)[] = [];
+        const query =
+          scene === 'conversation'
+            ? `?section=room&channel=${GALLERY_DESIGN_ROOM_ID}`
+            : scene === 'thread'
+              ? `?section=room&thread=${NAVIGATION_THREAD_ROOT}`
+              : '';
+        const screen: Screen = {
+          name: `channel-nav-${scene}-${theme}-${width}`,
+          title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
+          path: scene === 'attention' ? '/' : `/projects/${slug}${query}`,
+          viewport,
+          ...(scene === 'rail' || scene === 'attention'
+            ? { captureTheme: theme }
+            : {}),
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const createProject = async (name: string, projectSlug: string) => {
+              const response = await request.post(
+                `${resolveE2EApiBase()}/api/projects`,
+                { data: { name, slug: projectSlug } },
+              );
+              expect(response.ok()).toBe(true);
+              created.push(projectSlug);
+              return (await response.json()).data as { id: string };
+            };
+            const project = await createProject('Onboarding revamp', slug);
+            // A second Project stays collapsed in the sidebar.
+            await createProject('Kontour site', other);
+            if (scene !== 'attention') {
               const room = await installProjectRoomFixture(page, {
                 slug,
                 projectId: project.id,
@@ -4998,120 +5007,199 @@ function channelNavigationScreens(): Screen[] {
                 { slug, projectId: project.id },
               );
               cleanups.push(conversations.cleanup);
-            },
-            async afterGoto(page) {
-              await page.evaluate(
-                (selected) =>
-                  document.documentElement.setAttribute('data-theme', selected),
-                theme,
-              );
-              const sidebar = page.getByRole('navigation', {
-                name: 'Primary navigation',
-              });
-              // Unread and working come from the read-marker and session
-              // fixtures; the rows below are the server's answer.
-              const expectProjectList = async (list: Locator) => {
-                await expect(
-                  list.getByRole('button', { name: 'general, 3 unread' }),
-                ).toHaveClass(/conversation-list__row--unread/);
-                await expect(
-                  list.getByRole('button', { name: 'design', exact: true }),
-                ).toBeVisible();
-                await expect(
-                  list.getByRole('button', {
-                    name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
-                  }),
-                ).toBeVisible();
-                // A Task whose room never opened is not a Task room.
-                await expect(
-                  list.getByRole('button', { name: /Rename the onboarding/ }),
-                ).toHaveCount(0);
-              };
-              const room = page.getByRole('region', {
-                name: 'Project room',
-                exact: true,
-              });
-              if (scene === 'conversation' || scene === 'thread') {
-                await expect(room).toBeVisible();
-                if (scene === 'conversation') {
-                  await expect(
-                    room.getByText('New checkout screens are up for review.'),
-                  ).toBeVisible();
-                  if (phone) {
-                    await expect(
-                      room.getByRole('heading', { level: 2, name: 'design' }),
-                    ).toBeVisible();
-                    await expectTouchTarget(
-                      room.getByRole('button', {
-                        name: 'Back to Onboarding revamp',
-                      }),
-                      'Back',
-                    );
-                    await expectTouchTarget(
-                      room.getByRole('button', { name: 'Channel options' }),
-                      'Channel options',
-                    );
-                  } else {
-                    // Opening #design marked it read: the sidebar's row is
-                    // current and plain.
-                    const row = sidebar.getByRole('button', {
-                      name: 'design',
-                      exact: true,
+            }
+            if (scene === 'rail' || scene === 'attention') {
+              const pattern = '**/api/attention';
+              const handler = (route: Route) =>
+                route.request().method() !== 'GET'
+                  ? rejectUnexpectedFixtureRequest(route)
+                  : route.fulfill({
+                      json: {
+                        success: true,
+                        data: {
+                          pendingCount: 1,
+                          items: [
+                            {
+                              id: 'approval:gallery-sidebar',
+                              kind: 'approval',
+                              title: 'Approve workspace check',
+                              projectSlug: slug,
+                              createdAt: '2026-10-20T12:00:00Z',
+                              updatedAt: '2026-10-20T12:00:00Z',
+                              source: {
+                                notificationId: 'gallery-sidebar',
+                                notificationSource: 'approval-inbox',
+                              },
+                              actions: [],
+                            },
+                          ],
+                        },
+                      },
                     });
-                    await expect(row).toHaveAttribute('aria-current', 'page');
-                    await expect(row).not.toHaveClass(
-                      /conversation-list__row--unread/,
-                    );
-                  }
-                } else {
-                  await expect(
-                    room.getByText('Both fixes are in the branch now.'),
-                  ).toBeVisible();
-                  await expect(
-                    room.getByRole('heading', { name: 'Thread' }),
-                  ).toBeVisible();
-                  await expect(
-                    room.getByRole('textbox', { name: 'Reply in thread' }),
-                  ).toBeVisible();
-                }
-                await page.mouse.move(0, 0);
-                return;
-              }
-              if (phone) {
-                const list = page.getByRole('main');
-                await expectProjectList(list);
-                await expectTouchTarget(
-                  list.getByRole('button', { name: 'design', exact: true }),
-                  'Channel row',
-                );
-              } else {
-                await expectProjectList(sidebar);
-                // The other Project stays collapsed: no rows of its own.
+              await page.route(pattern, handler);
+              cleanups.push(() => page.unroute(pattern, handler));
+            }
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            const sidebar = page.getByRole('navigation', {
+              name: phone ? 'Mobile navigation' : 'Primary navigation',
+            });
+            // Unread and working come from the read-marker and session
+            // fixtures; the rows below are the server's answer.
+            const expectProjectList = async (list: Locator) => {
+              await expect(
+                list.getByRole('button', { name: 'general, 3 unread' }),
+              ).toHaveClass(/conversation-list__row--unread/);
+              await expect(
+                list.getByRole('button', { name: 'design', exact: true }),
+              ).toBeVisible();
+              await expect(
+                list.getByRole('button', {
+                  name: 'Fix the login redirect on Safari, Task room, agent working, 2 unread',
+                }),
+              ).toBeVisible();
+              // A Task whose room never opened is not a Task room.
+              await expect(
+                list.getByRole('button', { name: /Rename the onboarding/ }),
+              ).toHaveCount(0);
+            };
+            const room = page.getByRole('region', {
+              name: 'Project room',
+              exact: true,
+            });
+            if (scene === 'conversation' || scene === 'thread') {
+              await expect(room).toBeVisible();
+              if (scene === 'conversation') {
                 await expect(
-                  sidebar.getByRole('button', {
-                    name: 'Kontour site',
+                  room.getByText('New checkout screens are up for review.'),
+                ).toBeVisible();
+                if (phone) {
+                  await expect(
+                    room.getByRole('heading', { level: 2, name: 'design' }),
+                  ).toBeVisible();
+                  await expectTouchTarget(
+                    room.getByRole('button', {
+                      name: 'Back to Onboarding revamp',
+                    }),
+                    'Back',
+                  );
+                  await expectTouchTarget(
+                    room.getByRole('button', { name: 'Channel options' }),
+                    'Channel options',
+                  );
+                } else {
+                  // Opening #design marked it read: the sidebar's row is
+                  // current and plain.
+                  const row = sidebar.getByRole('button', {
+                    name: 'design',
                     exact: true,
-                  }),
+                  });
+                  await expect(row).toHaveAttribute('aria-current', 'page');
+                  await expect(row).not.toHaveClass(
+                    /conversation-list__row--unread/,
+                  );
+                }
+              } else {
+                await expect(
+                  room.getByText('Both fixes are in the branch now.'),
                 ).toBeVisible();
                 await expect(
-                  sidebar.getByRole('list', { name: 'Channels' }),
-                ).toHaveCount(1);
+                  room.getByRole('heading', { name: 'Thread' }),
+                ).toBeVisible();
+                await expect(
+                  room.getByRole('textbox', { name: 'Reply in thread' }),
+                ).toBeVisible();
               }
               await page.mouse.move(0, 0);
-            },
-            async cleanup() {
-              for (const release of cleanups.splice(0)) await release();
-              for (const projectSlug of created.splice(0)) {
-                const removed = await request.delete(
-                  `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+              return;
+            }
+            if (scene === 'rail' || scene === 'attention') {
+              if (scene === 'rail') {
+                const collapse = page.getByRole('button', {
+                  name: 'Collapse workspace map',
+                });
+                const expand = page.getByRole('button', {
+                  name: 'Expand workspace map',
+                });
+                if (await collapse.isVisible()) {
+                  await collapse.click();
+                  cleanups.push(() => expand.click());
+                }
+                await expect(expand).toBeVisible();
+                const project = sidebar.getByRole('button', {
+                  name: /^Onboarding revamp views/,
+                });
+                await expect(project).toHaveAccessibleName(
+                  /Needs attention: 1/,
                 );
-                expect(removed.ok()).toBe(true);
+                await project.click();
+                const views = page.getByRole('dialog', {
+                  name: 'Onboarding revamp views',
+                });
+                await expectProjectList(views);
+                await expect(
+                  views.locator('[data-conversation-row][tabindex="0"]'),
+                ).toHaveCount(1);
+              } else {
+                if (phone)
+                  await page
+                    .getByRole('button', { name: 'Toggle menu' })
+                    .click();
+                const project = sidebar.getByRole('button', {
+                  name: /^Onboarding revamp/,
+                });
+                await expect(project).toHaveAccessibleName(
+                  /Needs attention: 1/,
+                );
+                await expect(
+                  project.locator('[title="Needs attention: 1"]'),
+                ).toBeVisible();
+                await expect(
+                  sidebar.getByRole('button', { name: /^Kontour site/ }),
+                ).not.toHaveAccessibleName(/Needs attention/);
               }
-            },
-          };
-          return screen;
-        },
-      ),
+              await page.mouse.move(0, 0);
+              return;
+            }
+            if (phone) {
+              const list = page.getByRole('main');
+              await expectProjectList(list);
+              await expectTouchTarget(
+                list.getByRole('button', { name: 'design', exact: true }),
+                'Channel row',
+              );
+            } else {
+              await expectProjectList(sidebar);
+              // The other Project stays collapsed: no rows of its own.
+              await expect(
+                sidebar.getByRole('button', {
+                  name: 'Kontour site',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await expect(
+                sidebar.getByRole('list', { name: 'Channels' }),
+              ).toHaveCount(1);
+            }
+            await page.mouse.move(0, 0);
+          },
+          async cleanup() {
+            for (const release of cleanups.splice(0)) await release();
+            for (const projectSlug of created.splice(0)) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+              );
+              expect(removed.ok()).toBe(true);
+            }
+          },
+        };
+        return screen;
+      }),
     ),
   );
 }

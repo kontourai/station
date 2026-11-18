@@ -16,6 +16,18 @@
     "agents": [
       "axe:label-content-name-mismatch:button.split-pane__item[Station Assistant]"
     ],
+    "channel-nav-attention-dark-mobile": [
+      "hit-target:overlap:button.sidebar__home-button[Station home] / button.app-toolbar__icon-btn[Search or jump to…]",
+      "hit-target:overlap:button.sidebar__home-button[Station home] / button.app-toolbar__sidebar-toggle[Toggle menu]",
+      "hit-target:overlap:button.sidebar__mobile-close[Close navigation] / [data-testid=app-toolbar-connection]",
+      "hit-target:overlap:button.sidebar__project-btn[Open Kontour site workspace] / textarea.editor-textarea[What would you like done?]"
+    ],
+    "channel-nav-attention-light-mobile": [
+      "hit-target:overlap:button.sidebar__home-button[Station home] / button.app-toolbar__icon-btn[Search or jump to…]",
+      "hit-target:overlap:button.sidebar__home-button[Station home] / button.app-toolbar__sidebar-toggle[Toggle menu]",
+      "hit-target:overlap:button.sidebar__mobile-close[Close navigation] / [data-testid=app-toolbar-connection]",
+      "hit-target:overlap:button.sidebar__project-btn[Open Kontour site workspace] / textarea.editor-textarea[What would you like done?]"
+    ],
     "child-chat-dark-1440": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Plan the change across the workspace and review every navigation boundary, No project]"
     ],

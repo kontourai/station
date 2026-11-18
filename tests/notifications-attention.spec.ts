@@ -5,6 +5,7 @@ import {
 import type { Page } from '@playwright/test';
 import {
   type AuthenticatedE2ERequest,
+  createAuthenticatedE2ERequest,
   expect,
   test,
 } from './helpers/authenticated-request';
@@ -469,6 +470,59 @@ for (const viewport of [
     }
   });
 }
+
+test('the Project row counts the server approval until its actual request is resolved', async ({
+  page,
+}, testInfo) => {
+  const { exactRequestBackend } = await import(
+    './helpers/exact-request-backend'
+  );
+  const request = createAuthenticatedE2ERequest(page.request);
+  const slug = 'sidebar-approval-project';
+  const otherSlug = 'sidebar-idle-project';
+  const createProject = async (name: string, slug: string) => {
+    const response = await request.post(`${API}/api/projects`, {
+      data: { name, slug },
+    });
+    expect(response.status()).toBe(201);
+  };
+  await createProject('Approval project', slug);
+  await createProject('Unaffected project', otherSlug);
+  const backend = await exactRequestBackend(
+    page,
+    testInfo.outputPath('sidebar-request.sqlite'),
+    slug,
+  );
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect.poll(() => backend.current().state).toBe('found');
+    const projection = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/attention' && response.ok(),
+    );
+    await page.goto('/notifications');
+    expect((await (await projection).json()).data.items).toContainEqual(
+      expect.objectContaining({ kind: 'approval', projectSlug: slug }),
+    );
+    const rail = page.getByRole('navigation', { name: 'Primary navigation' });
+    const project = rail.getByRole('button', { name: /^Approval project/ });
+    const other = rail.getByRole('button', { name: /^Unaffected project/ });
+    await expect(project).toHaveAccessibleName(/Needs attention: 1/);
+    await expect(other).not.toHaveAccessibleName(/Needs attention/);
+    await attentionRegion(page)
+      .getByRole('button', { name: 'Approve once', exact: true })
+      .click();
+    await expect.poll(() => backend.effects.length).toBe(1);
+    await expect(project).not.toHaveAccessibleName(/Needs attention/);
+  } finally {
+    await backend.close();
+    for (const projectSlug of [slug, otherSlug]) {
+      expect(
+        (await request.delete(`${API}/api/projects/${projectSlug}`)).ok(),
+      ).toBe(true);
+    }
+  }
+});
 
 test('exact request inspector refuses a same-ID request reopened after inspection', async ({
   page,
