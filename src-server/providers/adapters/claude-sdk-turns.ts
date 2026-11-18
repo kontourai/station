@@ -635,7 +635,8 @@ export function observeClaudeReplyFrame(
 
 export type ClaudeResultTarget =
   | { kind: 'turn'; turn: ClaudeSdkTurn; folded: ClaudeSdkTurn[] }
-  | { kind: 'none' | 'stale-stop' };
+  | { kind: 'none' }
+  | { kind: 'stale-stop' };
 
 /**
  * Which turn a `result` closes. Its user uuids name the turn(s) it answers;
