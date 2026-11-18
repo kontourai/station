@@ -344,7 +344,9 @@
 
     "src-ui/src/components/chat/__tests__/BackgroundTaskNoticeCard.test.tsx",
 
-    "tests/chat-settings-and-task-notices.spec.ts"
+    "tests/chat-settings-and-task-notices.spec.ts",
+
+    "src-ui/src/hooks/useConversationInboxSnapshot.ts"
   ],
 
   "checks": [
