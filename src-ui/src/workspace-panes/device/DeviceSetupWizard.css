@@ -6,32 +6,28 @@
 .device-setup {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3, 12px);
+  gap: var(--k-space-3);
 }
 
 .device-setup__steps {
+  border-block-end: 1px solid var(--k-line);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2, 8px);
+  gap: var(--k-space-1) var(--k-space-3);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-/* Where the person is in setup: plain text (step names with a separator),
-   not bordered chips that read as clickable tabs. */
 .device-setup__step-label {
+  border-block-end: 2px solid transparent;
   color: var(--k-text-muted);
-  font-size: 0.8125rem;
-}
-
-.device-setup__step-label:not(:last-child)::after {
-  color: var(--k-text-faint);
-  content: "›";
-  margin-inline-start: var(--k-space-2);
+  font-size: var(--k-text-sm);
+  padding-block-end: var(--k-space-2);
 }
 
 .device-setup__step-label--current {
+  border-block-end-color: var(--k-action);
   color: var(--k-text);
   font-weight: 600;
 }
@@ -39,23 +35,27 @@
 .device-setup__step {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
+  gap: var(--k-space-2);
+}
+
+.device-setup__step > .button {
+  align-self: flex-start;
 }
 
 .device-setup__step-title {
-  font-size: 1rem;
+  font-size: var(--k-text-lg);
   margin: 0;
 }
 
 .device-setup__choice {
   align-items: flex-start;
   display: flex;
-  gap: var(--space-3, 12px);
+  gap: var(--k-space-3);
   justify-content: space-between;
 }
 
 .device-setup__choice p {
-  margin: 0 0 var(--space-1, 4px);
+  margin: 0 0 var(--k-space-1);
 }
 
 /* The switch is small; its hit area keeps the 44px target floor. */
@@ -70,15 +70,15 @@
 
 .device-setup__muted {
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: var(--k-text-md);
 }
 
 .device-setup__status {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2, 8px);
-  font-size: 0.875rem;
+  gap: var(--k-space-2);
+  font-size: var(--k-text-md);
 }
 
 .device-setup__status p {
@@ -92,7 +92,7 @@
 .device-setup__platforms {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
+  gap: var(--k-space-2);
   list-style: none;
   margin: 0;
   padding: 0;
@@ -103,8 +103,8 @@
   border-radius: var(--radius-2, 8px);
   display: flex;
   flex-direction: column;
-  gap: var(--space-1, 4px);
-  padding: var(--space-2, 8px) var(--space-3, 12px);
+  gap: var(--k-space-1);
+  padding: var(--k-space-2) var(--k-space-3);
 }
 
 .device-setup__platform--ready {
@@ -119,19 +119,19 @@
 .device-setup__versions-panel {
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-2, 8px);
-  margin-top: var(--space-2, 8px);
+  margin-top: var(--k-space-2);
   overflow-x: auto;
-  padding: var(--space-2, 8px);
+  padding: var(--k-space-2);
 }
 
 .device-setup__versions-table {
   border-collapse: collapse;
-  font-size: 0.8125rem;
+  font-size: var(--k-text-sm);
   width: 100%;
 }
 
 .device-setup__versions-table th,
 .device-setup__versions-table td {
-  padding: var(--space-1, 4px) var(--space-2, 8px);
+  padding: var(--k-space-1);
   text-align: left;
 }
