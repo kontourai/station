@@ -1,5 +1,5 @@
 /*
- * The Add engine catalogue in the Engines detail pane. A row wraps its action
+ * The Add engine catalogue. A row wraps its action
  * under the engine's name when the pane is too narrow for both, so a phone
  * needs no rule of its own here.
  */
@@ -55,4 +55,50 @@
 
 .engine-catalog__action {
   margin-left: auto;
+}
+
+.engine-setup-flow {
+  min-width: 0;
+  font-size: var(--k-text-md);
+  line-height: 1.5;
+}
+
+.engine-setup-flow .detail-header {
+  position: static;
+  padding: 0 0 var(--k-space-4);
+  border-bottom: 0;
+  background: transparent;
+}
+
+.engine-setup-flow .agent-editor__section,
+.engine-setup-flow .engine-catalog__list {
+  padding: 0;
+}
+
+.engine-setup-flow
+  :is(
+    .detail-header__subtitle,
+    .editor-label,
+    .editor-help,
+    .engine-catalog__detail,
+    .public-registry__intro,
+    .public-registry__source,
+    .public-registry__facts,
+    .public-registry__reason,
+    .acp-add-dialog__confirm-lead,
+    .plugins__cap,
+    .engine-install-hint,
+    .engine-install-hint__command,
+    .acp-add-dialog__result > span,
+    .acp-add-dialog__confirm-list,
+    .acp-add-dialog__confirm-note,
+    .acp-add-dialog__confirm-registry
+  ) {
+  font-size: inherit;
+}
+
+.engine-catalog__search {
+  display: grid;
+  gap: var(--k-space-2);
+  margin-bottom: var(--k-space-4);
 }

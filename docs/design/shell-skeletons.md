@@ -351,3 +351,11 @@ This Knowledge port (this PR) creates **no new exception of either kind** — it
 CSS, it doesn't add inline styles or hex literals. This section is left in place for the next
 five ports to append to, per the steal-list's instruction to record allowlist decisions as they
 happen rather than after the fact.
+
+### Add engine flow
+
+The Engines collection uses `SplitPaneLayout`. **Add engine** leaves that
+collection for a narrow flow page: choose an engine, complete setup, then
+return to the collection with the new engine selected. Both the plain
+`/connections/engines/new` route and engine-specific setup links use this frame.
+The collection rail and its Add action stay on the collection page.

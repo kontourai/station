@@ -6,6 +6,72 @@ This guide is for developers who want to connect their own external engine to St
 
 ---
 
+## Set up an engine from chat
+
+On a personal Station, enable **Guided engine setup** in Settings → Advanced →
+Feature previews. An Agent with Station Control can call `list_engine_setup`,
+then `open_engine_setup` with the chosen entry's id. The same read is available
+as `station acp setup`. On an older host without these tools, use
+Connections → Engines or update the host.
+
+The tool opens the existing engine-specific pane. Complete the steps there:
+
+1. If the CLI is missing, choose **Install … on Station** and review the exact
+   installer command. A terminal shows its progress on the Station computer;
+   **Stop installation** ends that attempt. Successful completion re-checks
+   detection; an exit alone does not claim that the CLI is installed.
+2. Choose **Connect**. If sign-in is required, open the sign-in panel and use
+   its offered method. Grok and Kiro CLI offer a device-code terminal login
+   only after the installed CLI's help advertises the reviewed flag.
+   Antigravity advertises its terminal login through ACP. These complete on
+   the Station host while the person uses their current device. A completed
+   CLI login is verified with the engine's own status command, then setup
+   checks the connection again.
+3. If an existing connection needs the supported launch arguments, choose
+   **Use recommended setup** and review them. The connection id, authored Agent
+   and history stay in place. A connection with multiple possible variants is
+   left for the person to choose, rather than silently selecting another mode.
+4. Choose **Add Station tools** if this Agent should use Station Control,
+   Knowledge and Docs. This is an explicit choice; it preserves the Agent's
+   prompt, existing tools and tool restrictions. Selection is not delivery
+   proof. Then start its chat, or return to the originating chat for a check.
+
+Closing setup leaves the chat intact. Device permissions still control installation,
+terminal access and engine sign-in; enabling the preview grants none of them.
+Permission notices link to **Device access** instead of requiring a host shell.
+Only reviewed built-in installer recipes can run this way. Public/plugin
+listings retain their own inspection/install paths. Installer requests are
+serialized per engine, carry a durable operation id in the terminal record,
+and reuse that record after a lost response. Stop names the exact attempt.
+The terminal host enforces a 15-minute lifetime even while no core is attached;
+an older host that cannot negotiate that bound refuses before the installer
+starts. Turning the preview off retains inspection and Stop for an existing
+installer while refusing new work.
+The catalog is an owner-scoped projection, not a dump of commands,
+configuration paths, accounts or credentials. Hosted Stations refuse this read.
+
+Use Station's built-in entry for supported engines. Antigravity uses
+`agy acp --process-per-session` so it can receive HTTP MCP servers. A custom
+`agy acp` connection answering a prompt does not establish that Station Control
+was delivered. A browser on a phone is not the browser on the Station computer.
+Complete sign-in through the pane's offered method, rather than pasting OAuth
+codes into chat.
+
+After setup, the Agent re-reads the catalog and `list_agents`. Detection,
+recorded initialize handshake, sign-in, a successful chat turn and tool delivery
+are separate observations. `httpTools: advertised` reports the handshake's
+channel capability, not a tool invocation. Run the intended bounded work only
+after the selected Agent is available and report these limits explicitly.
+
+The catalog reports `connectionId` and related saved connections. It reuses an
+unambiguous saved alias rather than creating a duplicate. It does not replace
+custom arguments that already deliver the required HTTP channel.
+
+A saved connection can be checked with `station acp connections reconnect <id>`
+even if its live probe is absent. This preserves its saved setup and authored
+Agent. Disabled connections must be enabled in their engine page. A generic
+`station acp commands` listing does not start or test a named engine.
+
 ## What is ACP?
 
 Station is a UI and session-management layer. It handles conversations, memory, tool approval, and streaming responses. ACP is the protocol that lets an external engine plug into all of that as an Agent app connection.
@@ -1398,10 +1464,10 @@ and any a plugin contributes. Besides the launch fields above, an entry
 
 | Field | Description |
 |---|---|
-| `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
+| `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. The response adds `hostInstall`, the recipe for the platform Station runs on. With Guided engine setup enabled, the person can review and run a built-in recipe in a bounded host terminal; plugin/public recipes remain guidance. Detection never runs a recipe. |
 | `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`, `AUGMENT_`, `KIRO_CLI_`). The environment Station already launches with wins a conflict. |
 | `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
-| `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`). See [Sign an engine in](connections.md#sign-an-engine-in). |
+| `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`); and a reviewed `terminalLogin`, offered only after its required flag is observed in the installed CLI's bounded help output. See [Sign an engine in](connections.md#sign-an-engine-in). |
 | `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
 | `minimumVersion` | Built-in entries only. `versionCommand` (argv) prints the installed version, `minimum` is the oldest working `major.minor.patch`, and `updateHint` says how to update. Read only after a check of the engine fails for a reason other than sign-in: the command runs bounded like a status command, and a version below `minimum` makes the failure `engine-update-required` with Station's own sentence naming both versions and the hint. A failed run or output without a version leaves it unnamed. |
 | `managedRuntime` | Built-in entries only. `installId` names a pinned install Station downloads with consent and verifies from its manifest digest (`@kontourai/station-contracts/managed-engine-install`); `argv` are the runtime's arguments, exactly one of them `{script}`, the install's entry script. |

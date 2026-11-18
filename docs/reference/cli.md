@@ -1048,6 +1048,23 @@ the UI and REST API. Payload-bearing commands accept JSON via:
 - `--file=/absolute/or/relative/path.json`
 - piped stdin
 
+
+### Guided engine setup
+
+`station acp setup` reads the safe engine setup catalog on a personal Station
+with the **Guided engine setup** Feature Preview enabled. It returns each
+engine's `setupPath`, next action, recorded handshake time and advertised HTTP
+tool channel. It runs no engine, installation or sign-in. The Station Control
+counterpart is `list_engine_setup`; `open_engine_setup` navigates the person's
+client to that same destination. An older host can answer 404 without supporting
+this journey; use Connections → Engines or update the host. Preserve any
+preview or authority refusal rather than editing configuration. See the
+[ACP guide](../guides/acp.md#set-up-an-engine-from-chat).
+
+`station acp connections reconnect <id>` also recovers a saved connection without
+a live probe. It preserves the saved command and authored Agent, refuses a
+disabled engine, and reports a failed handshake with a sanitized diagnostic.
+
 ### `mcp-clients`
 
 Expose a bounded set of Station tools to an existing external MCP client on the
@@ -3005,7 +3022,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
-| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has its `TMPDIR` there: `<home>/tmp/engine-spawn`, which Station reaps by age, or with the `chat-host-images` preview a per-session directory under `<home>/tmp/session-tmp` removed when the session exits), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
+| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has its `TMPDIR` there: `<home>/tmp/engine-spawn`, which Station reaps by age, or with the `chat-host-images` preview a per-session directory removed when the session exits), or is inside such a per-session directory in Station's short root (`<system temp>/stn-<uid>/<pid>-<digest>`, used instead of `<home>/tmp/session-tmp` when the home is too long to leave room for Unix socket paths), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
 | `--instance=<name>` | derived from `{cwd, base, ports}` | Stable instance name for targeted stop/restart flows |
 | `--log[=<path>]` | `/tmp/station-server.log` | Redirect server stdout/stderr to a log file |
 

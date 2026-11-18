@@ -1892,6 +1892,47 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Setup reads expose an owner-scoped recipe/eligibility projection. The
+  // installer includes terminal metadata only after its command/terminal guard.
+  ...(
+    [
+      '/acp/setup',
+      '/acp/registry/:id/install-terminal',
+      '/acp/connections/:id/station-tools',
+    ] as const
+  ).map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:engine-setup-read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  // Preserve the ACP operate tier. Handlers additionally require terminal and
+  // host-command authority, a current personal-owner device, and the attempt id.
+  ...(['POST', 'DELETE'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/acp/registry/:id/install-terminal:${method.toLowerCase()}`,
+      method,
+      prefix: '/acp/registry/:id/install-terminal',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // Agent mutations stay person-only; launcher repair also checks host-command authority.
+  ...(['station-tools', 'recommended-setup'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-setup-operate`,
+      method: 'POST',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
   // Installing a managed engine downloads and lays down code Station runs:
   // an operate-tier action, with explicit consent in the body.
   {

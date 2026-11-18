@@ -3198,6 +3198,37 @@ separate identities.
 secrets redacted. Current Agent App rows use `kind: "agent"`; `runtime` is retained
 as a write-schema compatibility spelling, not the current row kind.
 
+### Guided ACP engine setup
+
+On a personal Station with **Guided engine setup** enabled, `GET /acp/setup`
+returns bounded engine identities, setup destinations, related saved connections
+and recorded handshake/HTTP-channel observations. It admits the owner in person
+or a verified Agent acting for the recorded owner. It returns no executable
+configuration or credential values. A handshake is not a successful chat turn
+or proof of Station-tool delivery.
+
+The following actions require the current owner in person; Agent callers cannot
+perform them. Installation additionally requires command and terminal-operate
+authority. Launch repair requires command authority.
+
+| Route | Request and result |
+| --- | --- |
+| `GET /acp/registry/:id/install-terminal` | Read the reviewed built-in installer command and retained attempt. |
+| `POST /acp/registry/:id/install-terminal` | Confirm `{ command, operationId }`; return the server-owned terminal. Reusing the operation id returns the retained attempt. |
+| `DELETE /acp/registry/:id/install-terminal` | Stop the exact `{ terminalId, operationId }` attempt. |
+| `GET /acp/connections/:id/station-tools` | Read the canonical Agent's selection, observed HTTP support and any unambiguous recommended launch. |
+| `POST /acp/connections/:id/station-tools` | Explicitly add Station Control, Knowledge and Docs while preserving existing authored fields and restrictions. |
+| `POST /acp/connections/:id/recommended-setup` | Confirm `{ id, command, args }` from the reviewed recommendation; preserve the saved connection identity and check it again. |
+
+Installation uses only reviewed built-in recipes and a 15-minute lifetime
+enforced by the terminal host. A host without that capability refuses before
+launch. Preview disablement retains installer inspection and Stop while refusing
+new work. These routes have their own owner/permission refusals; they do not
+extend the earlier `command-not-granted` response contract. See the
+[setup guide](../guides/acp.md#set-up-an-engine-from-chat) and
+[SDK hooks](sdk.md#guided-engine-setup-queries) for the person-driven sequence,
+authority-scoped clients and older-host behavior.
+
 ### List Model Connections
 
 `GET /api/connections/models` returns `{success: true, data, failures}`. A row

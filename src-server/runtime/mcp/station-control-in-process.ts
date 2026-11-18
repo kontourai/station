@@ -93,6 +93,7 @@ export async function createCodexBoundToolServer(input: {
     undefined,
     input.isCurrent,
   );
+  // Adopted threads also hold a header credential; never rotate it here.
   const control = input.stationControl
     ? mintStationControlMcpToken(
         input.sessionId,
@@ -100,7 +101,7 @@ export async function createCodexBoundToolServer(input: {
         undefined,
         input.tenantExecutionContext,
         undefined,
-        'station-control',
+        'codex-control',
         undefined,
         input.isCurrent,
       )
@@ -255,7 +256,7 @@ export async function createCodexBoundToolServer(input: {
         revokeStationControlMcpTokenIfCurrent(
           control.token,
           input.sessionId,
-          'station-control',
+          'codex-control',
         );
       for (const item of pending.values())
         item.reject(new Error('bound-tool-refused'));

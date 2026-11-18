@@ -139,6 +139,8 @@ const first = describeArchive(resolve(values.archive1));
 const second = describeArchive(resolve(values.archive2));
 check(first.ring === second.ring, 'both archives must be of one ring');
 check(first.version !== second.version, 'the archives must be two versions');
+const launcherName =
+  first.runtime === 'stable' ? 'station.cmd' : `station-${first.runtime}.cmd`;
 
 const work = resolve(values.work);
 rmSync(work, { recursive: true, force: true });
@@ -513,7 +515,7 @@ async function serviceUpdates() {
   const runtime = join(installRoot, 'runtime');
   const home = join(stationRoot, 'instances', first.runtime);
   const binDir = join(stationRoot, 'bin');
-  const launcher = join(binDir, `station-${first.runtime}.cmd`);
+  const launcher = join(binDir, launcherName);
   const instance = 'w3smoke';
   const taskName = `\\KontourStation-${instance}`;
   const wrapper = join(home, 'service', `station-${instance}.cmd`);
@@ -858,12 +860,7 @@ async function nonAsciiProfile() {
     }),
   );
   check(installed.status === 0, 'install under a non-ASCII profile failed');
-  const launcher = join(
-    unicodeProfile,
-    '.local',
-    'bin',
-    `station-${first.runtime}.cmd`,
-  );
+  const launcher = join(unicodeProfile, '.local', 'bin', launcherName);
   const text = readFileSync(launcher, 'utf8');
   check(
     /^[\x20-\x7e\r\n]*$/.test(text) && text.includes('%USERPROFILE%'),
@@ -950,12 +947,7 @@ async function fullInstall() {
   const stationRoot = join(profile, 'w2');
   const installRoot = join(stationRoot, 'installs', first.runtime);
   const home = join(stationRoot, 'instances', first.runtime);
-  const launcher = join(
-    profile,
-    '.local',
-    'bin',
-    `station-${first.runtime}.cmd`,
-  );
+  const launcher = join(profile, '.local', 'bin', launcherName);
   // Station derives its terminal, voice and consent ports from the server
   // port (+1..+3), so the two are chosen far apart, off every channel's
   // defaults, and checked free.

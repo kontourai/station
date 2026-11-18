@@ -1,0 +1,13 @@
+{
+  "revision": "5cf822e140cd0838d4c5ffc53965e5b0fa28520e",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"session-tmpdir socket budget: updated the --temp-home row. A candidate inside a per-session directory in Station's short root (<system temp>/stn-<uid>/<pid>-<digest>, used when <home>/tmp/session-tmp would be too long for Unix socket paths) is now refused and retried under /tmp/station, as stationSessionTmpContaining in helpers.ts does. The engine-spawn and in-home session-tmp claims and the Windows refusal are unchanged.","inputs":["docs/reference/cli.md","packages/cli/src/commands/helpers.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"session-tmpdir socket budget: helpers.ts only adds a --temp-home refusal for candidates inside Station's short per-session TMPDIR root. The guide's --temp-home commands and its local-development advice still hold. It makes no claim about where temporary homes or engine TMPDIRs live.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/helpers.ts"]},
+
+    {"path":"docs/guides/development.md","note":"session-tmpdir socket budget: helpers.ts only adds a --temp-home refusal for candidates inside Station's short per-session TMPDIR root (stn-<uid>). The just dev/station start --temp-home smoke commands and the advice on unique ports and temp homes are unaffected. No claim about engine TMPDIR paths.","inputs":["docs/guides/development.md","packages/cli/src/commands/helpers.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"session-tmpdir socket budget: helpers.ts changes only --temp-home candidate admission (refusing Station's short per-session TMPDIR root). Port bands, channel defaults and instance selection, which this guide documents, are untouched.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/helpers.ts"]}
+  ]
+}

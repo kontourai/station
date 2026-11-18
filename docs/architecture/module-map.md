@@ -2859,6 +2859,37 @@ worker exit or response completion for accounting settlement.
 
 ## ConnectionInspector
 
+### Engine setup handoff
+
+The [ACP routes](../../src-server/routes/connections/acp.ts) expose a bounded,
+owner-only setup read on personal Stations behind **Guided engine setup**.
+[engine-setup](../../src-server/services/acp/engine-setup.ts) projects existing
+catalog, saved configuration and recorded probe facts into destinations for the
+existing engine pane, without executable configuration or credential values.
+Station Control's `list_engine_setup` and `open_engine_setup` use that read;
+`station acp setup` is its CLI counterpart. Navigation preserves its refusal,
+and install/sign-in remain in the person's existing authority boundary.
+The [instruction composer](../../src-server/runtime/agents/station-orchestration-instructions.ts)
+names these tools only when offered. Reconnect recovers a persisted-only
+connection through the configuration mutation owner and the same probe/register
+path as Retry check; it preserves authored Agent content.
+
+The [person-owned actions](../../src-server/routes/connections/engine-setup-actions.ts)
+choose only reviewed built-in installer recipes, preserve a saved alias during
+launch repair, and update Station-tool selection under the existing Agent
+persistence owner. Installer attempts use durable terminal operation ids;
+Stop names its exact attempt. `TerminalSessions` and the supervisor's workload
+host own lifetime and cleanup, including a core restart. Protocol 1.4 requires
+a deadline capability observation before an installer can start.
+
+[Route/process tests](../../src-server/routes/connections/__tests__/engine-setup-actions.routes.test.ts),
+[MCP caller tests](../../src-server/tools/__tests__/station-control-platform-tools.test.ts),
+[mounted action tests](../../src-ui/src/__tests__/EngineSetupActions.test.tsx), and
+[fixture-backed browser journeys](../../tests/guided-engine-setup.spec.ts) exercise
+these seams. They do not establish real provider login or native-device
+qualification. See the
+[setup journey](../guides/acp.md#set-up-an-engine-from-chat).
+
 [ConnectionInspector](../../src-server/services/connections/connection-inspector.ts)
 turns adapter observations into an inventory with explicit freshness and gaps.
 [ConnectionService](../../src-server/services/connections/connection-service.ts) owns
