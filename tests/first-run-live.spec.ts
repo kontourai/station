@@ -675,21 +675,21 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await expect(draft).toBeVisible();
     });
     const form = draft.getByRole('form', { name: 'Start work' });
-    const agentList = page.getByRole('dialog', { name: 'Choose agent' });
+    const stationAgent = page
+      .getByRole('dialog', { name: 'Choose agent' })
+      .getByRole('button', { name: /^Station Assistant(?: |$)/ })
+      .first();
     await recordSurfaceTiming(page, 'station-agent-picker', async () => {
       await (
         await runSetupControl(form, (panel) =>
           panel.getByRole('button', { name: /^Agent:/ }),
         )
       ).click();
-      await expect(agentList).toBeVisible({
+      await expect(stationAgent).toBeVisible({
         timeout: STATION_AGENT_PICKER_TIMEOUT_MS,
       });
     });
-    await agentList
-      .getByRole('button', { name: /^Station Assistant(?: |$)/ })
-      .first()
-      .click();
+    await stationAgent.click();
     await closeRunSetup(form);
     const composer = form.getByRole('textbox');
     await composer.fill('Confirm the live first-run path');
