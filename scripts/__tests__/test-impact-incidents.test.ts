@@ -78,6 +78,14 @@ const dependencyReasons = (result: ReturnType<typeof select>) =>
 describe('Nightly regressions outside the import graph', () => {
   test.each([
     [
+      'src-ui/src/pages/AppearancePage.tsx',
+      'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
+    ],
+    [
+      'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
+      'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
+    ],
+    [
       'src-ui/src/views/project-settings/OverviewNotificationsSection.tsx',
       'src-ui/src/__tests__/project-settings.browser.test.tsx',
     ],
