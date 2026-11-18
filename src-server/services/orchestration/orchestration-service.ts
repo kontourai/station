@@ -5477,9 +5477,10 @@ export class OrchestrationService {
     },
   ): OrchestrationSessionSummary[] {
     const only = options.threadIds ? new Set(options.threadIds) : undefined;
-    this.evictCollidingAttachedAliases();
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
+    const persistedSessions =
+      this.evictCollidingAttachedAliases() ??
+      this.options.eventStore?.readSessions() ??
+      [];
     this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
     const persistedByThread = new Map(
       persistedSessions.map((session) => [session.threadId, session]),
@@ -5646,9 +5647,10 @@ export class OrchestrationService {
   async listAgentRuns(authority: SessionReadScope): Promise<AgentRunSummary[]> {
     this.initialize();
     await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
-    this.evictCollidingAttachedAliases();
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
+    const persistedSessions =
+      this.evictCollidingAttachedAliases() ??
+      this.options.eventStore?.readSessions() ??
+      [];
     this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
     const persistedByThread = new Map(
       persistedSessions.map((session) => [session.threadId, session]),
@@ -17830,7 +17832,7 @@ export class OrchestrationService {
     return metadata ? stripReservedOrchestrationMetadata(metadata) : undefined;
   }
 
-  private evictCollidingAttachedAliases(): void {
+  private evictCollidingAttachedAliases(): ProviderSession[] | undefined {
     const eventStore = this.options.eventStore;
     if (!eventStore) return;
     const persisted = eventStore.readSessions();
@@ -17867,6 +17869,7 @@ export class OrchestrationService {
         .filter((session) => session.controlMode === 'read-only-attached')
         .map((session) => [session.threadId, session]),
     );
+    let evicted = false;
     for (const alias of aliases.values()) {
       const externalId = alias.attachedSource?.externalSessionId;
       const candidates = externalId
@@ -17886,7 +17889,10 @@ export class OrchestrationService {
       }
       this.forgetThreadState(alias.threadId, { ownerCache: true });
       eventStore.deleteThread(alias.threadId);
+      evicted = true;
     }
+    // A deletion can cascade to other rows or notify commit observers.
+    return evicted ? undefined : persisted;
   }
 }
 
