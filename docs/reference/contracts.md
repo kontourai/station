@@ -347,7 +347,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/engine-commands` | How an engine slash command runs (`prompt-text`, a declared or identity-matched `engine-request`, or an `adapter-action`), its outcome, and `engineCommandRequestParams`. The server's shared half is [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts): the ACP and OpenCode adapters run every route kind through its `dispatchEngineCommand`, and Muse uses its reader and outcome line |
 | `@kontourai/station-contracts/managed-engine-install` | Pinned managed engine installs: the pin (manifest digest as the trust root), manifest, install state and failure reasons, the `{script}` argv token a descriptor's `managedRuntime` uses, the `station-managed:<installId>` command a managed entry carries (`managedRuntimeCommand`, `managedRuntimeInstallIdOf`), install progress (`receivedBytes`, `totalBytes`), and `validateManagedInstallPin` |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in/managed-runtime descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status, and the known full-access session mode ids (`KNOWN_FULL_ACCESS_ACP_MODE_IDS`, `isKnownFullAccessAcpModeId`) the server and the approval pickers share |
-| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
+| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. The model-selection cell's `overridePerTurn` declaration gates model changes in existing conversations without a provider-name branch. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
@@ -2547,14 +2547,16 @@ values before exposing a profile.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
 Current Session summaries and conversation-open execution carry the registered
-adapter's `durability` declaration at read time, except that a Session its
+adapter's `durability` declaration at read time, including a live
+`sessionDurability` override when its transport differs. A Session its
 adapter says cannot steer (`canSteerTurn` false) reports `steerPlacement`
 `none`. The live composer consumes that
 observation rather than resolving a provider-name table; absence stays unknown.
 Claude, Codex and Muse declare their live steering channels as native (Muse's
 is `muse serve`'s; an exec-fallback Session refuses a steer). ACP discloses a
-connection-dependent orchestration-command fallback that may interrupt and
-reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
+connection-dependent native channel or interrupting fallback. Explicit Steer
+on the fallback cancels, waits for the prompt to finish, and re-prompts with
+a continuation instruction; Queue remains its default. Live steering does
 not imply restart continuation: the inbox persists text and its expected head
 before claiming a handoff, but an unacknowledged claim remains unknown and is
 never automatically replayed. Station-owned steering is emulated at an observed

@@ -2767,8 +2767,9 @@ lookup keeps it held. Only `not-received` permits a protected same-ID first
 attempt. A successful save of the pending identity precedes a composer mutation;
 a failed save prevents engine invocation. Unsupported, busy, and no-active-turn outcomes remain
 explicit. See [Session API steering](session-api.md#lifecycle-control-commands) for the public
-command and engine-specific interruptive fallback; Station's composer offers a
-conservative safe-waiting fallback separately from native steering.
+command and engine-specific placement. The composer offers ACP's interrupting
+cancel, wait, and continuation fallback separately from native steering, and
+holds Station-owned steering for an observed boundary.
 
 
 `sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and

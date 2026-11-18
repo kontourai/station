@@ -444,7 +444,7 @@ export function createSessionAgentResolver(
       if (
         expectedFingerprint !== undefined &&
         (!authored ||
-          agentDefinitionFingerprint(authored) !== expectedFingerprint)
+          agentDefinitionFingerprint(authored, slug) !== expectedFingerprint)
       ) {
         throw new Error(
           'The selected Agent definition changed before execution; select it again',

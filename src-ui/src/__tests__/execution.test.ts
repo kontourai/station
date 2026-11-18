@@ -1,5 +1,6 @@
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
+  ACP_ENGINE_DURABILITY,
   STATION_ENGINE_DURABILITY,
   STEERING_ENGINE_DURABILITY,
   UNKNOWN_ENGINE_DURABILITY,
@@ -1318,6 +1319,7 @@ describe('execution utils', () => {
   });
 
   test('steering eligibility follows the server declaration and refuses missing profiles', () => {
+    expect(sessionAdapterSupportsSteering(ACP_ENGINE_DURABILITY)).toBe(true);
     expect(sessionAdapterSupportsSteering()).toBe(false);
     expect(sessionAdapterSupportsSteering(STATION_ENGINE_DURABILITY)).toBe(
       true,
