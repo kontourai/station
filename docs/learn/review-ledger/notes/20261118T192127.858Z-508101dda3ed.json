@@ -1,0 +1,9 @@
+{
+  "revision": "341b487490a2e5b65298338fbc7cfa08f9b99def",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed outbox-only chat identity, local inventory correlation and display scope. An unknown title no longer overrides a saved conversation title. Catalog names resolve only for the current Station. Lifecycle and project ownership remain at their existing shared projections.","inputs":["src-ui/src/views/home/home-view-model.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed outbox-only chat identity, local inventory correlation and display scope. An unknown title no longer overrides a saved conversation title. Catalog names resolve only for the current Station. Lifecycle and project ownership remain at their existing shared projections.","inputs":["src-ui/src/views/home/home-view-model.ts"]}
+  ]
+}
