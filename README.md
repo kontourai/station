@@ -32,7 +32,8 @@ regenerated with the gallery baseline.</sub>
 
 [Product site](https://station.kontourai.io) ·
 [Documentation](https://kontourai.github.io/station/docs/) ·
-[Getting started](docs/user/getting-started.md) ·
+[Quickstart](docs/user/getting-started.md#quickstart) ·
+[Product tour](docs/learn/walkthroughs.md) ·
 [Concepts](docs/user/concepts.md) ·
 [Contributing](CONTRIBUTING.md)
 

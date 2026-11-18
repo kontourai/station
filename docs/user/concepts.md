@@ -14,6 +14,74 @@ custom **Agent** when you want reusable instructions and tools. Choose **Run a
 task…** when you want tracked work you can return to. These choices can wait
 until you need them; starting a chat does not require creating each one.
 
+## Choose a Project, Task, or direct chat
+
+Start a **Project** when several conversations need the same files,
+instructions or tools. Add a **Task** when a particular outcome needs a plan,
+work chats or evidence you can reopen. A **direct chat** is enough for a
+standalone request you can finish in one conversation.
+
+| Use a Project when you want to… | What stays together |
+| --- | --- |
+| Hold p95 API latency under 200 ms through the next release | The API repository, benchmark instructions and separate investigations |
+| Retire the v1 endpoint across API, web and mobile | Migration instructions, the repositories or folders you connect, and a Task for each rollout |
+| Maintain onboarding docs for three services | Source documents, terminology and repeatable review instructions |
+| Review weekly changes to a shared release checklist | The checklist, Project context and recurring review Tasks |
+
+| Start somewhere else when you want to… | Use |
+| --- | --- |
+| Find out what an error means before deciding whether to investigate | A direct chat |
+| Ask an Agent to suggest three names for a command | A direct chat |
+| Ship one migration in a Project you already have | A Task in that Project |
+| Review a pull request in the same context as a tracked bug | The existing Task and its work chats |
+
+### Example Project brief
+
+Enable **Project brief, memory and models** in **Settings → Advanced →
+Feature previews**, then open **Brief** in Project settings. Put one line in
+**Goal** and the fuller instructions in **Instructions**. Save the brief for
+new Sessions in the Project.
+
+**Goal**
+
+Keep p95 API latency under 200 ms through the next release.
+
+**Instructions**
+
+- **What this Project is for**
+  Investigate latency spikes and keep benchmark results with each change.
+- **Where work happens**
+  Use the API repository, start from `main`, and prefix pull request titles
+  with `perf(api)`.
+- **How to check your work**
+  Run the existing latency benchmark against the same recorded workload.
+  Include the command, workload and before/after p95 results in the Task.
+- **When something is missing**
+  Say which environment or benchmark data you need and stop until it is
+  available.
+- **What needs my go-ahead**
+  Ask before changing the benchmark workload, running a production load test
+  or merging a pull request.
+
+### Troubleshoot opening Projects and Tasks
+
+These are the common messages encountered when opening a Project, its Tasks
+list, or a Task workspace. The details under some messages depend on the
+Station response.
+
+| Message | Next step |
+| --- | --- |
+| **Could not load Projects** | In the board's Projects section, select **Retry Projects**. |
+| **Station connection unavailable** | In **Connections → Computers**, connect to a Station with access to the Project. |
+| **Could not load project** | Select **Retry** on the Project page. |
+| **Project is taking longer than expected** | Select **Retry** to reload the Project. |
+| **Could not load Tasks** | Select **Retry Tasks** in the Project overview. |
+| **Unable to verify Task project** | Select **Retry** to check the Project again. |
+| **Unable to load task** | Select **Retry** in the Task workspace. |
+| **Task not found** | Open the Task from its Project's Tasks list to confirm it is still available to you. |
+| **Project deleted** | Use the Task's existing chats and details to recover context for new work. |
+| **Task workspace is unavailable** | Open the Project and check its working folder before starting new work. |
+
 ## Station And Device
 
 - A **Station** is the host you connect to and work on.
