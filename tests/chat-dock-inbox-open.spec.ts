@@ -321,6 +321,10 @@ test('the desktop Inbox hover card scrolls to Basis in a short window', async ({
     .toBeGreaterThan(0);
   await expect(basis).toBeInViewport({ ratio: 0.9 });
   await capturePlacement(page, testInfo, 'inbox-basis-scrolled');
+  await page.mouse.move(0, 0);
+  await expect(card).toBeHidden();
+  await row.hover();
+  await expect(card).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(card).toBeHidden();
 });
