@@ -686,6 +686,9 @@ export function wireApprovalInboxNotifications(
               sessionId: message.data?.conversationId,
               sessionKind: REGISTRY_SESSION_KIND,
               detail: message.data?.description,
+              ...(typeof message.data?.guardianReason === 'string'
+                ? { guardianReason: message.data.guardianReason }
+                : {}),
               requestKind: 'registry',
               requestKey: `approval:${message.data?.approvalId ?? 'unknown'}`,
               source: message.data?.source,

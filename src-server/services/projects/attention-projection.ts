@@ -1103,12 +1103,18 @@ export class AttentionProjectionService {
       ? presentOpenRequest(openRequest)
       : storedApprovalPresentation(notification);
 
+    const guardianReason =
+      notification.source === 'approval-inbox' &&
+      metadata.requestKind === 'registry'
+        ? stringValue(metadata.guardianReason)
+        : undefined;
     const requestReference = openRequest
       ? attentionRequestReference(openRequest, stringValue(metadata.threadId))
       : undefined;
     return {
       id: `approval:${notification.id}`,
       kind: 'approval',
+      ...(guardianReason ? { guardianReason } : {}),
       title: presentation.title,
       ...(presentation.body ? { body: presentation.body } : {}),
       createdAt: notification.createdAt,

@@ -1646,6 +1646,9 @@ Station reports a question's exact request and your access permits it, the card
 offers an **Answer on the paired Station** box whose **Send answer** reply is
 bound to that question; otherwise the card says to answer it on that Station.
 
+When the approval guardian asks you to review a call after repeated denials,
+**Approval guardian** quotes its reason separately from the tool’s description.
+
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision
 buttons. If the decision cannot be confirmed, **Check request again** refreshes

@@ -3886,6 +3886,7 @@ describe('ClaudeAdapter', () => {
       function guardianPolicy(
         decision: 'allow' | 'deny' | 'defer',
         mode: 'review' | 'enforce' = 'enforce',
+        currentTurnInteractive = false,
       ) {
         const reviewToolCall = vi.fn(async () => ({
           decision,
@@ -3898,7 +3899,10 @@ describe('ClaudeAdapter', () => {
           approvalGuardian: {
             isEnabled: () => true,
             getMode: () => mode,
-            readConversation: () => NO_PERSON_INTENT,
+            readConversation: () => ({
+              ...NO_PERSON_INTENT,
+              currentTurnInteractive,
+            }),
             reviewToolCall,
           },
           logger: { info: vi.fn(), warn: vi.fn() },
@@ -4350,7 +4354,7 @@ describe('ClaudeAdapter', () => {
       });
 
       test('a guardian defer leaves the call to the person', async () => {
-        const { evaluator } = guardianPolicy('defer');
+        const { evaluator } = guardianPolicy('defer', 'enforce', true);
         const { adapter, askFrame, hook } = await grantHarness(
           'thread-guardian-defer',
           { agent, preToolPolicy: evaluator },
@@ -4362,6 +4366,27 @@ describe('ClaudeAdapter', () => {
         expect(asked.kind).toBe('prompted');
         if (asked.kind === 'prompted') await asked.answer('decline');
         await adapter.stopSession('thread-guardian-defer');
+      });
+
+      test('an unattended enforce guardian defer denies in the Claude hook', async () => {
+        const { evaluator } = guardianPolicy('defer');
+        const threadId = 'thread-guardian-unattended-defer';
+        const { adapter, hook } = await grantHarness(threadId, {
+          agent,
+          preToolPolicy: evaluator,
+        });
+        await expect(
+          hook('Bash', { command: 'git status' }, 'toolu_unattended_defer'),
+        ).resolves.toMatchObject({
+          continue: false,
+          hookSpecificOutput: {
+            permissionDecision: 'deny',
+            permissionDecisionReason: expect.stringContaining(
+              'nobody is present to decide',
+            ),
+          },
+        });
+        await adapter.stopSession(threadId);
       });
 
       test('a delegated child that may not grant approvals keeps a guardian-allowed plain call and is denied an escalation fail-fast', async () => {
@@ -6596,6 +6621,60 @@ describe('ClaudeAdapter', () => {
       expect(after).toEqual({ continue: true });
       expect(JSON.stringify(after)).not.toContain('permissionDecision');
     });
+
+    test.each([true, false])(
+      'guardian escalation forces one prompt and reports the reason only for unchanged input (%s)',
+      async (unchanged) => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const evaluator = vi.fn().mockResolvedValue({
+          behavior: 'ask',
+          required: true,
+          guardianReason: 'The only-if-asked rule requires a person.',
+        });
+        const adapter = new ClaudeAdapter({
+          resolvePreToolPolicy: async () => evaluator,
+        });
+        const events = adapter.streamEvents()[Symbol.asyncIterator]();
+        const threadId = 'thread-guardian-approval';
+        await adapter.startSession({
+          provider: 'claude',
+          threadId,
+          agent: { slug: 'engine-lab' },
+        });
+        await events.next();
+        await events.next();
+        const queryArgs = mockQuery.mock.calls[0][0];
+        await expect(
+          preToolUse(queryArgs)(preToolInput, preToolInput.tool_use_id, {
+            signal: new AbortController().signal,
+          }),
+        ).resolves.toMatchObject({
+          hookSpecificOutput: { permissionDecision: 'ask' },
+        });
+        const permission = queryArgs.options.canUseTool(
+          preToolInput.tool_name,
+          unchanged ? preToolInput.tool_input : { scope: 'changed' },
+          {
+            signal: new AbortController().signal,
+            toolUseID: preToolInput.tool_use_id,
+            description: 'Approval guardian: fake tool reason.',
+            suggestions: [],
+          },
+        );
+        const { value: opened } = await events.next();
+        expect(opened).toMatchObject({ method: 'request.opened' });
+        if (unchanged) {
+          expect(opened.guardianReason).toBe(
+            'The only-if-asked rule requires a person.',
+          );
+        } else {
+          expect(opened).not.toHaveProperty('guardianReason');
+        }
+        await adapter.respondToRequest(threadId, opened.requestId, 'decline');
+        await expect(permission).resolves.toMatchObject({ behavior: 'deny' });
+        expect(evaluator).toHaveBeenCalledTimes(1);
+      },
+    );
 
     test('routes the interactive approval to canUseTool without a duplicate request', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));

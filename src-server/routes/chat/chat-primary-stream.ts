@@ -445,13 +445,16 @@ export function streamPrimaryAgentChat({
       if (agentHooks && operationContext.conversationId) {
         releaseApprovalRequester = agentHooks.registerApprovalRequester(
           operationContext.conversationId,
-          async (tool) => {
-            const result = await elicitation({
-              type: 'tool-approval',
-              toolName: tool.toolName,
-              toolDescription: tool.toolDescription || '',
-              toolArgs: tool.toolArgs,
-            });
+          async (tool, guardianReason) => {
+            const result = await elicitation(
+              {
+                type: 'tool-approval',
+                toolName: tool.toolName,
+                toolDescription: tool.toolDescription || '',
+                toolArgs: tool.toolArgs,
+              },
+              guardianReason,
+            );
             return !!result;
           },
         );
