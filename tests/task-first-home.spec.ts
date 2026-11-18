@@ -1239,7 +1239,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     };
     const bedrockOption = (picker: Locator) =>
       picker.getByRole('button', {
-        name: /^Shared model.*Bedrock · Prod · shared-model/,
+        name: /^Shared model Station · Bedrock · Prod\b/,
       });
 
     const picker = await openPicker();
@@ -1327,7 +1327,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await picker.getByRole('button', { name: 'Bedrock · Prod' }).click();
     await picker
       .getByRole('button', {
-        name: /^Shared model.*Bedrock · Prod · shared-model/,
+        name: /^Shared model Station · Bedrock · Prod\b/,
       })
       .click();
 
