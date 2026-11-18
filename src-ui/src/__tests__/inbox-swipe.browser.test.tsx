@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import type { CDPSession, Page } from '@playwright/test';
+import {
+  type CDPSession,
+  expect as expectBrowser,
+  type Page,
+} from '@playwright/test';
 import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
@@ -241,16 +245,9 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
     await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
-    await expect
-      .poll(() =>
-        page
-          .getByRole('button', {
-            name: 'Plan the next release, Station',
-            exact: true,
-          })
-          .evaluate((node) => document.activeElement === node),
-      )
-      .toBe(true);
+    await expectBrowser(
+      page.getByRole('button', { name: /^Plan the next release\b/ }),
+    ).toBeFocused();
     await page.getByRole('button', { name: 'Snoozed · 1' }).click();
     expect(
       await page
