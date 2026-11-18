@@ -1404,15 +1404,19 @@ export {
   useCodingFileMentionCandidatesQuery,
 } from './query-domains/chatRuntimeCoding.js';
 export {
-  type CustomAppearanceAction,
-  type CustomAppearanceLibraryAction,
   customAppearanceKey,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
+export {
+  type CustomAppearanceLibraryAction,
   customAppearanceLibraryKey,
   useCustomAppearanceLibraryMutation,
   useCustomAppearanceLibraryQuery,
+} from './query-domains/customAppearanceLibrary';
+export {
+  type CustomAppearanceAction,
   useCustomAppearanceMutation,
-  useCustomAppearanceQuery,
-} from './query-domains/customAppearance';
+} from './query-domains/customAppearanceMutation';
 export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,

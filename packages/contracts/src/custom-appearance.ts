@@ -594,17 +594,9 @@ export function isCustomAppearanceRasterDataUrl(
       0
   )
     return false;
-  const bytes = new Uint8Array(length);
-  for (let i = 0, j = 0; i < encoded.length; i += 4) {
-    const bits =
-      (alphabet.indexOf(encoded[i]!) << 18) |
-      (alphabet.indexOf(encoded[i + 1]!) << 12) |
-      (Math.max(0, alphabet.indexOf(encoded[i + 2]!)) << 6) |
-      Math.max(0, alphabet.indexOf(encoded[i + 3]!));
-    if (j < length) bytes[j++] = bits >>> 16;
-    if (j < length) bytes[j++] = bits >>> 8;
-    if (j < length) bytes[j++] = bits;
-  }
+  const bytes = Uint8Array.from(atob(encoded), (character) =>
+    character.charCodeAt(0),
+  );
   const view = new DataView(bytes.buffer);
   const ascii = (offset: number, count: number) =>
     String.fromCharCode(...bytes.subarray(offset, offset + count));
