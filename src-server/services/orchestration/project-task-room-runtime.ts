@@ -145,7 +145,13 @@ interface RequestPrincipal {
   readonly displayName?: string;
   readonly member?: true;
 }
+
 export interface ProjectTaskRoomRequestAuthority {
+  matchesMemberPublication?(
+    request: Request,
+    taskId: string,
+    expected: { principalId: string; shareId: string },
+  ): boolean;
   /** Synchronous grant recheck for SQLite transactions; absent support refuses writes. */
   isCurrent?(
     request: Request,
@@ -1923,6 +1929,7 @@ export class ProjectTaskRoomRuntime {
     attachments?: TaskRoomAttachment[];
     occurredAt?: string;
     expectedTaskCreatedAt?: string;
+    expectedMember?: { principalId: string; shareId: string };
     correlationId?: string;
     causationId?: string;
   }): Promise<ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomAppendOutcome>> {
@@ -1932,6 +1939,7 @@ export class ProjectTaskRoomRuntime {
       'message-write',
       undefined,
       input.expectedTaskCreatedAt,
+      input.expectedMember,
     );
     if (!grant) return { kind: 'not-found' };
     const result = await this.#history.append({
@@ -3738,6 +3746,7 @@ export class ProjectTaskRoomRuntime {
     capability: K,
     currentSharedRead?: () => Promise<boolean>,
     expectedTaskCreatedAt?: string,
+    expectedMember?: { principalId: string; shareId: string },
   ): Promise<ProjectTaskRoomGrant<K> | undefined> {
     if (this.#closed || this.#deps.hosted?.()) return undefined;
     const scope = this.#scope(taskId);
@@ -3748,6 +3757,17 @@ export class ProjectTaskRoomRuntime {
       roomRequestCapability(capability),
     );
     if (!principal) return undefined;
+    if (
+      expectedMember &&
+      (!principal.member ||
+        principal.operatorId !== expectedMember.principalId ||
+        !this.#deps.requestAuthority.matchesMemberPublication?.(
+          request,
+          taskId,
+          expectedMember,
+        ))
+    )
+      return undefined;
     const token = randomUUID();
     // Grants span only the one request → history-worker operation. Keep their
     // registry bounded even when a peer floods distinct, otherwise-valid

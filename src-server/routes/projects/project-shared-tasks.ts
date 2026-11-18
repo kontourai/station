@@ -228,6 +228,9 @@ export function createProjectSharedTaskRoutes(deps: {
         c.req.param('taskId'),
         authority,
       );
+      const expectedShare = c.req.query('share');
+      if (expectedShare !== undefined && expectedShare !== admission.shareId)
+        return missing();
       const value = await deps.room.sharedHistory({
         taskId: admission.taskId,
         request: c.req.raw,
@@ -283,6 +286,9 @@ export function createProjectSharedTaskRoutes(deps: {
         c.req.param('taskId'),
         authority,
       );
+      const expectedShare = c.req.query('share');
+      if (expectedShare !== undefined && expectedShare !== admission.shareId)
+        return missing();
       const value = await deps.room.sharedDocument({
         taskId: admission.taskId,
         request: c.req.raw,

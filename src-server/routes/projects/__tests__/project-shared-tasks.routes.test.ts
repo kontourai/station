@@ -102,6 +102,16 @@ function fixture() {
   return { app, authority, service, room };
 }
 describe('project shared Task routes', () => {
+  test.each(['history', 'document'])(
+    'withholds %s when an old link names a different publication',
+    async (leaf) => {
+      const h = fixture();
+      const path = `/api/projects/example/shared-work/task-1/${leaf}?share=`;
+      expect((await h.app.request(path + 'old-publication')).status).toBe(404);
+      expect((await h.app.request(path + admission.shareId)).status).toBe(200);
+    },
+  );
+
   test('publishes only human room history and rechecks admission through delivery', async () => {
     const h = fixture();
     const response = await h.app.request(

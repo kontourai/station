@@ -287,7 +287,7 @@ test.describe
           guest.getByText('People administration: can submit changes'),
         ).toBeVisible();
         await expect(
-          guest.getByText('Shared work is view-only here'),
+          guest.getByRole('heading', { name: 'Shared Tasks' }),
         ).toBeVisible();
         // The operator-only bootstrap must never render for a guest,
         // even on an error surface: the guest counterpart has no such action.

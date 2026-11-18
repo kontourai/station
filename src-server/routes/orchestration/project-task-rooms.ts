@@ -196,6 +196,13 @@ const messageSchema = z
       .max(16 * 1024),
     occurredAt: z.string().datetime().optional(),
     expectedTaskCreatedAt: z.string().min(1).max(40).optional(),
+    expectedMember: z
+      .object({
+        principalId: z.string().min(1).max(256),
+        shareId: z.string().uuid(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 const outputFeedbackSchema = z
@@ -635,6 +642,7 @@ export function createProjectTaskRoomRoutes(
         request: c.req.raw,
         proposalId: body.proposalId,
         text: body.text,
+        ...(body.expectedMember ? { expectedMember: body.expectedMember } : {}),
         ...(body.attachments?.length ? { attachments: body.attachments } : {}),
         ...(body.occurredAt ? { occurredAt: body.occurredAt } : {}),
         ...(body.expectedTaskCreatedAt

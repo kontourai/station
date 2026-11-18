@@ -221,21 +221,28 @@ export const readProjectSharedTaskHistory = (
   apiBase: string,
   slug: string,
   taskId: string,
-  options?: ClientRequestOptions & { cursor?: string },
-): Promise<ProjectSharedTaskHistory> =>
-  read(
-    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/history${options?.cursor ? `?cursor=${encodeURIComponent(options.cursor)}` : ''}`,
+  options?: ClientRequestOptions & {
+    cursor?: string;
+    expectedShareId?: string;
+  },
+): Promise<ProjectSharedTaskHistory> => {
+  const query = new URLSearchParams();
+  if (options?.cursor) query.set('cursor', options.cursor);
+  if (options?.expectedShareId) query.set('share', options.expectedShareId);
+  return read(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/history${query.size ? `?${query}` : ''}`,
     history,
     options,
   );
+};
 export const readProjectSharedTaskDocument = (
   apiBase: string,
   slug: string,
   taskId: string,
-  options?: ClientRequestOptions,
+  options?: ClientRequestOptions & { expectedShareId?: string },
 ): Promise<ProjectSharedTaskDocument> =>
   read(
-    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/document`,
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/document${options?.expectedShareId ? `?share=${encodeURIComponent(options.expectedShareId)}` : ''}`,
     document,
     options,
   );

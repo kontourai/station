@@ -1,5 +1,6 @@
 import { isPrincipalRef } from '@kontourai/station-contracts/principal';
 import {
+  GRANTABLE_PROJECT_ROLES,
   PROJECT_MEMBER_ROLES,
   PROJECT_MEMBERSHIP_VERSION,
   type ProjectAccessAdministrationView,
@@ -28,12 +29,12 @@ const scopeSchema = z
     portableProjectId: z.string().min(1),
   })
   .strict();
-const roleSchema = z.enum(['owner', 'admin', 'contributor', 'viewer']);
+const roleSchema = z.enum([...GRANTABLE_PROJECT_ROLES, 'owner']);
 const invitationSchema = z
   .object({
     id: z.string().min(1),
     recipientEmail: z.string().email().nullable(),
-    role: z.enum(['admin', 'contributor', 'viewer']),
+    role: z.enum(GRANTABLE_PROJECT_ROLES),
     actions: z.array(z.string()),
     invitedBy: z.custom(isPrincipalRef),
     status: z.enum(['pending', 'accepted', 'revoked', 'expired']),

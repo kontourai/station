@@ -181,7 +181,10 @@ beforeEach(() => {
               { status: 403 },
             )
           : reply({
-              scope: { localProjectSlug: 'example' },
+              scope: {
+                localProjectId: 'project-1',
+                localProjectSlug: 'example',
+              },
               grantsDeviceAccess: false,
             });
       if (
@@ -545,16 +548,13 @@ describe('invitation entry through real account SDK requests', () => {
         timeout: 5_000,
       }),
     ).toBeTruthy();
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Read Project details' }),
-    );
     expect(
       (
         await screen.findByRole('region', {
           name: 'Example Project details',
         })
       ).textContent,
-    ).toContain('Shared work is view-only here');
+    ).toContain('Shared project details');
     deviceReady = false;
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     expect(

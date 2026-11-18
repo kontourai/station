@@ -42,11 +42,13 @@ export function AccessSection({
   projectId,
   allowEnableSharing = true,
   writeDisabledReason,
+  invitationShareId,
 }: {
   slug: string;
   projectId: string;
   allowEnableSharing?: boolean;
   writeDisabledReason?: string;
+  invitationShareId?: string;
 }) {
   const authority = useHostRequestAuthorityScope();
   return (
@@ -56,6 +58,7 @@ export function AccessSection({
       projectId={projectId}
       authority={authority}
       allowEnableSharing={allowEnableSharing}
+      invitationShareId={invitationShareId}
       writeDisabledReason={writeDisabledReason}
     />
   );
@@ -111,12 +114,14 @@ function AccessPanel({
   authority,
   allowEnableSharing,
   writeDisabledReason,
+  invitationShareId,
 }: {
   slug: string;
   projectId: string;
   authority?: ApiRequestScope;
   allowEnableSharing: boolean;
   writeDisabledReason?: string;
+  invitationShareId?: string;
 }) {
   const { query, mutation, change } = useProjectAccess(slug, authority);
   const busy = mutation.isPending || query.isFetching;
@@ -370,6 +375,7 @@ function AccessPanel({
       view={query.data}
       busy={busy}
       apply={apply}
+      invitationShareId={invitationShareId}
       writeDisabledReason={writeDisabledReason}
       stationActions={<StationSharingActions />}
     />
