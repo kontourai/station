@@ -29,7 +29,10 @@ export async function checkPluginUpdates(
   opts?: ClientRequestOptions,
 ): Promise<PluginUpdateCheckResult> {
   const response = await getJson(`${apiBase}/api/plugins/check-updates`, opts);
-  const result = await response.json().catch((error: unknown) => {
+  let result: unknown;
+  try {
+    result = await response.json();
+  } catch (error) {
     rethrowDeadline(error);
     if (!response.ok)
       throw envelopeError(
@@ -38,7 +41,7 @@ export async function checkPluginUpdates(
         'Could not check for plugin updates',
       );
     throw error;
-  });
+  }
   if (!response.ok)
     throw envelopeError(response, result, 'Could not check for plugin updates');
   if (!result || typeof result !== 'object' || Array.isArray(result))
