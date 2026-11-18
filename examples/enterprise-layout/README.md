@@ -34,6 +34,13 @@ in query keys. Email and directory are additional registered provider types.
 layout.json (requiredProviders) → providerTypes.ts (type map) → init.ts (registration) → providers/*.ts (implementations)
 ```
 
+### Layout tab state
+
+The [calendar navigation hook](src/useCalendarNavigation.ts) reads and writes
+only its tab's state through the SDK. To erase a tab's saved string and cancel
+its pending restoration, use `clearTabState(tabId)` from
+[`useLayoutNavigation`](../../docs/reference/sdk.md#uselayoutnavigation).
+
 ### Provider Contracts (`src/data/providers.ts`)
 Typed interfaces (`ICalendarProvider`, `ICRMProvider`, etc.) define the contract between UI and data layer. Implementations can be swapped without changing components.
 

@@ -294,6 +294,10 @@ and cleanup remain available. See [setup and recovery](https://github.com/kontou
 
 Turning a preview on affects everyone who uses this Station.
 
+**Settings → Voice** shows the providers available for this Station and this
+device. If a saved choice disappears after a Station switch or a failed
+capability check, the control shows an available provider or an empty list.
+
 For **Local speech**, choose **Station (local)** in **Settings → Voice →
 Speech-to-text** after enabling the preview. Click the composer microphone to
 record and click again to stop; final text appears after transcription. Missing

@@ -4276,10 +4276,9 @@ type LayoutNavigationExcerpt = {
 }
 ```
 
-`clearTabState` currently removes storage for an inactive tab, but clears only
-the URL hash for the active tab. It is not a reliable way to erase that active
-tab's saved string; a later restoration can read it again. Tracked in
-[#2806](https://github.com/kontourai/station/issues/2806).
+`clearTabState` removes the specified tab's saved string. For the active tab
+it also clears the URL hash and cancels its pending restoration. Other tabs
+keep their saved state.
 
 To hand state to another tab of the same Layout, write it for that tab and then
 select the tab. The state is a URL search-params string. `setTabState` stores
@@ -4437,11 +4436,10 @@ Shape used in the voice lists returned by `GET /api/system/capabilities`.
 `configured` is the server's capability observation, not a successful live
 provider probe. Station can register configured server entries as display
 stubs whose methods warn that a plugin bundle is still needed; presence in the
-registry alone does not establish a working provider. The current capability
-hook does not retire its stubs when a later Station observation omits them, so
-a retained selection can still appear supported after changing connections.
-Lifecycle ownership for these entries is tracked in
-[#2807](https://github.com/kontourai/station/issues/2807).
+registry alone does not establish a working provider. The hook disposes its
+stubs when the observation is empty or fails, or its selected Station scope
+unmounts. A plugin that has replaced a stub with its own provider keeps that
+registration.
 
 ```ts
 interface ProviderCapability {
