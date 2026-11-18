@@ -668,7 +668,9 @@
 
     "packages/sdk/src/client/custom-appearance-library.ts",
 
-    "packages/sdk/src/client/custom-appearance-mutations.ts"
+    "packages/sdk/src/client/custom-appearance-mutations.ts",
+
+    "src-server/routes/chat/conversation-work-search.ts"
   ],
 
   "checks": [
