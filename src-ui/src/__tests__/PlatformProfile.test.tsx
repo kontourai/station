@@ -230,8 +230,11 @@ describe('PlatformProfile derivation', () => {
 
   test('offers recovery when iOS never returns its saved Station list', async () => {
     vi.useFakeTimers();
-    const read = Promise.withResolvers<void>();
-    const profileRead = vi.fn(() => read.promise);
+    let resolveRead!: () => void;
+    const read = new Promise<void>((resolve) => {
+      resolveRead = resolve;
+    });
+    const profileRead = vi.fn(() => read);
     state.adapter = tauriAdapter('ios', 'disabled');
     state.profileHydrate = profileRead;
     const authorize = vi.fn(async () => true);
@@ -260,7 +263,7 @@ describe('PlatformProfile derivation', () => {
         screen.getByRole('button', { name: 'Reload Station' }),
       ).toBeTruthy();
 
-      await act(async () => read.resolve());
+      await act(async () => resolveRead());
       expect(screen.queryByText('Workspace')).toBeNull();
       expect(authorize).not.toHaveBeenCalled();
     } finally {

@@ -19,10 +19,14 @@ test('a stalled pairing chunk leaves the phone welcome behind a reload action', 
   const { NativeConnectionStartup } = await import(
     '../NativeConnectionStartup'
   );
-  const module = Promise.withResolvers<{
+  type PairingModule = {
     default: ({ children }: { children: ReactNode }) => ReactNode;
-  }>();
-  const load = vi.fn(() => module.promise);
+  };
+  let resolveModule!: (module: PairingModule) => void;
+  const module = new Promise<PairingModule>((resolve) => {
+    resolveModule = resolve;
+  });
+  const load = vi.fn(() => module);
   render(
     <NativeConnectionStartup load={load} nonMobileRecovery={null}>
       <button type="button">Enter a pairing code</button>
@@ -38,9 +42,7 @@ test('a stalled pairing chunk leaves the phone welcome behind a reload action', 
   );
   expect(screen.getByRole('button', { name: 'Reload Station' })).toBeTruthy();
 
-  await act(async () =>
-    module.resolve({ default: ({ children }) => children }),
-  );
+  await act(async () => resolveModule({ default: ({ children }) => children }));
   expect(
     screen.queryByRole('button', { name: 'Enter a pairing code' }),
   ).toBeNull();
