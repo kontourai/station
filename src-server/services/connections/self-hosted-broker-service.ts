@@ -70,7 +70,6 @@ type NativeChannel = SelfHostedBrokerNativeClientSurfaceV2['channel'];
 const NATIVE_CHANNELS: ReadonlySet<NativeChannel> = new Set([
   'dev',
   'stable',
-  'beta',
   'nightly',
 ]);
 function isNativeChannel(value: unknown): value is NativeChannel {

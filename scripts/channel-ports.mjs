@@ -140,7 +140,7 @@ function rustSource() {
     "pub fn desktop_channel_from_identifier(identifier: &str) -> Option<&'static str> {",
   );
   lines.push('    match identifier {');
-  for (const channel of ['stable', 'beta', 'nightly']) {
+  for (const channel of ['stable', 'nightly']) {
     const identifier =
       channel === 'stable'
         ? 'io.kontourai.station'
@@ -154,7 +154,7 @@ function rustSource() {
     'pub fn default_desktop_port(channel: Option<&str>) -> Option<u16> {',
   );
   lines.push('    match channel {');
-  for (const channel of ['stable', 'beta', 'nightly'])
+  for (const channel of ['stable', 'nightly'])
     lines.push(
       `        Some("${channel}") => Some(${CHANNEL_PORTS[channel].serverPort.toLocaleString('en-US').replace(/,/g, '_')}),`,
     );
@@ -165,7 +165,7 @@ function rustSource() {
     'pub fn default_desktop_ui_port(channel: Option<&str>) -> Option<u16> {',
   );
   lines.push('    match channel {');
-  for (const channel of ['stable', 'beta', 'nightly'])
+  for (const channel of ['stable', 'nightly'])
     lines.push(
       `        Some("${channel}") => Some(${CHANNEL_PORTS[channel].uiPort.toLocaleString('en-US').replace(/,/g, '_')}),`,
     );
@@ -179,7 +179,7 @@ function rustSource() {
     'pub fn default_desktop_consent_port(channel: Option<&str>) -> Option<u16> {',
   );
   lines.push('    match channel {');
-  for (const channel of ['stable', 'beta', 'nightly'])
+  for (const channel of ['stable', 'nightly'])
     lines.push(
       `        Some("${channel}") => Some(${CHANNEL_PORTS[channel].consentPort.toLocaleString('en-US').replace(/,/g, '_')}),`,
     );
@@ -190,7 +190,7 @@ function rustSource() {
     "pub fn station_instance_directory(channel: Option<&str>) -> &'static str {",
   );
   lines.push('    match channel {');
-  for (const channel of ['stable', 'beta', 'nightly'])
+  for (const channel of ['stable', 'nightly'])
     lines.push(
       `        Some("${channel}") => "${CHANNEL_PORTS[channel].instanceDirectory}",`,
     );
@@ -226,7 +226,7 @@ function generatedFiles(outputRoot) {
       resolve(outputRoot, 'src-desktop/src/channel_ports_generated.rs'),
       rustSource(),
     ],
-    ...['stable', 'beta', 'nightly'].map((channel) => [
+    ...['stable', 'nightly'].map((channel) => [
       resolve(outputRoot, 'src-desktop', `Info.${channel}.plist`),
       plist(channel),
     ]),

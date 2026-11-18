@@ -106,7 +106,8 @@ export async function searchConversationMessages(
     // A non-2xx keeps its status; an unreadable 2xx is a protocol failure
     // with no failure status to carry (#2708, as `readEnvelopeOrThrow`).
     if (!response.ok) throw envelopeError(response, undefined, unreadable);
-    throw new Error(unreadable);
+    // The cause keeps why the body was unreadable (a byte ceiling, say).
+    throw Object.assign(new Error(unreadable), { cause: error });
   }
   if (!response.ok || !result.success) {
     // #2708: a 2xx `success:false` is a refusal too, and keeps its observed
@@ -320,19 +321,26 @@ export async function acknowledgeConversation(
   }
 }
 
-/** Personal explicit resolution. A 404 means this host does not offer the preview. */
+/**
+ * Personal explicit resolution. A 404 means this host does not offer the
+ * preview. `hidden` (third-party Session thread id to when it was hidden) is
+ * absent from a host that cannot hide third-party Sessions.
+ */
+export interface ConversationWorkState {
+  settled: Record<string, string>;
+  hidden?: Record<string, string>;
+}
 export async function getConversationWorkState(
   apiBase: string,
   opts?: ClientRequestOptions,
-): Promise<{ settled: Record<string, string> } | null> {
+): Promise<ConversationWorkState | null> {
   const response = await getJson(
     `${apiBase}/api/conversations/work-state`,
     opts,
   );
   if (response.status === 404) return null;
-  const result = await readConversationEnvelope<{
-    settled: Record<string, string>;
-  }>(response);
+  const result =
+    await readConversationEnvelope<ConversationWorkState>(response);
   if (!response.ok || !result.success || !result.data)
     throw envelopeError(response, result, 'Could not read inbox resolution');
   return result.data;
@@ -360,6 +368,32 @@ export async function setConversationWorkState(
     );
 }
 
+/**
+ * Hide or unhide a third-party Session (by thread id) in the caller's own
+ * inbox, on every device. Call only against a host whose work state carries
+ * `hidden`.
+ */
+export async function setConversationInboxHidden(
+  apiBase: string,
+  sessionId: string,
+  hidden: boolean,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  const response = await mutateJson(
+    `${apiBase}/api/conversations/${encodeURIComponent(sessionId)}/inbox-hidden`,
+    'PUT',
+    opts,
+    { hidden },
+  );
+  const result = await readConversationEnvelope<unknown>(response);
+  if (!response.ok || !result.success)
+    throw envelopeError(
+      response,
+      result,
+      'Could not update this session in your inbox',
+    );
+}
+
 /** Metadata-only turn directory, backed by the host's indexed Session digest. */
 export interface ConversationTurnDirectory {
   session: { conversationId: string; turnCount: number };
@@ -375,18 +409,23 @@ export async function getConversationTurnDirectory(
   apiBase: string,
   conversationId: string,
   cursor?: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { turnCountSnapshot?: number },
 ): Promise<ConversationTurnDirectory | null> {
-  const params = new URLSearchParams({ turnLimit: '25' });
+  const { turnCountSnapshot, ...requestOptions } = opts ?? {};
+  const params = new URLSearchParams({ turnLimit: '100' });
   if (cursor) params.set('cursor', cursor);
+  if (turnCountSnapshot !== undefined) params.set('includeCount', 'false');
   const response = await getJson(
-    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/digest?${params}`,
-    opts,
+    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/turn-directory?${params}`,
+    requestOptions,
   );
   if (response.status === 404) return null;
   const result =
     await readConversationEnvelope<ConversationTurnDirectory>(response);
   if (!response.ok || !result.success || !result.data)
     throw envelopeError(response, result, 'Could not read the turn directory');
-  return result.data;
+  const turnCount = result.data.session.turnCount ?? turnCountSnapshot;
+  if (turnCount === undefined)
+    throw new Error('Turn directory count was not supplied');
+  return { ...result.data, session: { ...result.data.session, turnCount } };
 }

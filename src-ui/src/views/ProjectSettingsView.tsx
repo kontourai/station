@@ -1,10 +1,10 @@
+import { PULL_REQUEST_FEEDBACK_PREVIEW_ID } from '@kontourai/station-contracts/pull-request-feedback';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   resolveWorkspaceIsolationMode,
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
 import {
-  useDeleteProjectMutation,
   useModelConnectionsQuery,
   useProjectIconCandidatesQuery,
   useUpdateProjectMutation,
@@ -22,7 +22,6 @@ import {
   ProjectIcon,
 } from '../components/icons/ProjectIcon';
 import { ModelSelector } from '../components/ModelSelector';
-import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { normalizeWorkingDirectory } from '../components/modals/project-form-utils';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
@@ -46,15 +45,27 @@ import { useShowSurface } from '../contexts/useShowSurface';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
+import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
+import { useProjectOverviewPreview } from './project-page/projectOverviewPreview';
 import { AccessSection } from './project-settings/AccessSection';
+import { AgentFeedbackDefaultsSection } from './project-settings/AgentFeedbackDefaultsSection';
 import { AgentsSection } from './project-settings/AgentsSection';
+import { BriefSection } from './project-settings/BriefSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
+import { MemorySection } from './project-settings/MemorySection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
+import { OverviewNotificationsSection } from './project-settings/OverviewNotificationsSection';
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
+import { ProjectLifecycleSection } from './project-settings/ProjectLifecycleSection';
+import { ProjectModelsSection } from './project-settings/ProjectModelsSection';
+import { ProjectSchedulesSection } from './project-settings/ProjectSchedulesSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import { ProjectUsageSection } from './project-settings/ProjectUsageSection';
+import { PullRequestWatchSection } from './project-settings/PullRequestWatchSection';
+import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
@@ -68,17 +79,51 @@ import './ProjectSettingsView.css';
 const PROJECT_SETTINGS_SECTIONS = [
   ['workspace', 'Workspace'],
   ['basic-info', 'Basic info'],
+  ['brief', 'Brief'],
+  ['memory', 'Memory'],
   ['model', 'Model'],
+  ['models', 'Models and effort'],
+  ['usage', 'Usage'],
   ['new-chat', 'New chats'],
-  ['thread-execution', 'Thread execution'],
+  ['overview', 'Overview and notifications'],
+  ['thread-execution', 'Chat workspace'],
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
+  ['agent-feedback', 'Agent feedback'],
+  ['pull-requests', 'Pull requests'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
+  ['schedules', 'Schedules'],
   ['danger', 'Danger zone'],
 ] as const;
+
+/** Sections only the `project-coordination` preview shows. */
+const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
+  'brief',
+  'memory',
+  'models',
+  'usage',
+]);
+
+/**
+ * Sections that do not go through the page's Save, and how each applies.
+ * Every other section is saved with Save.
+ */
+const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
+  layouts: 'Actions in this section apply when confirmed.',
+  overview: 'Changes in this section save automatically.',
+  'agent-feedback': 'Changes in this section save automatically.',
+  resources: 'Actions in this section apply when confirmed.',
+  access: 'Actions in this section apply when confirmed.',
+  knowledge: 'Actions in this section apply when confirmed.',
+  memory: 'Actions in this section apply when confirmed.',
+  brief: 'Save to apply. Changes reach new Sessions, not ones already running.',
+  models:
+    'Save to apply. Changes reach new Sessions, not ones already running.',
+  usage: 'Usage on this Station only.',
+};
 
 /** How each stored workspace mode reads in this picker. */
 const WORKSPACE_MODE_LABELS: Record<WorkspaceIsolationMode, string> = {
@@ -172,11 +217,23 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const showSurface = useShowSurface();
 
   const [form, setForm] = useState<ProjectForm | null>(null);
+  // #5069/#5070: Pause/Archive and Project schedules are Feature Previews.
+  const previewFlags = useSurfaceVisibilityFlags();
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const projectOverviewOn = useProjectOverviewPreview();
+  const projectCoordination = useProjectCoordinationPreview();
+  const settingsSections = PROJECT_SETTINGS_SECTIONS.filter(
+    ([id]) => projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id),
+  );
+  // Like Schedules: always a section (so a link to it survives a reload),
+  // offered in the list and rendered only with its Feature Preview, which a
+  // Station that cannot serve agent feedback never registers.
+  const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
   const { activeSection, hrefForSection, navigateToSection } =
+    // Every section stays navigable, so a link to a preview's section
+    // survives a reload before the preview flags load; the list and the
+    // panels show it only with its preview (like agent feedback).
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
       'workspace',
@@ -258,8 +315,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     project?.workingDirectory,
     { enabled: iconPickerOpen },
   );
-
-  const deleteMutation = useDeleteProjectMutation();
 
   const isDirty =
     !isLoading && !!form && JSON.stringify(form) !== JSON.stringify(savedForm);
@@ -346,7 +401,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     try {
       const saved = await saveMutation.mutateAsync({
         slug,
-        ...buildProjectSavePayload(form, workingDirectory, savedForm),
+        ...buildProjectSavePayload(form, workingDirectory, savedForm, {
+          projectCoordination,
+        }),
       });
       const savedProjectForm = buildProjectForm(saved);
       setSavedForm(savedProjectForm);
@@ -357,19 +414,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       );
     } catch (saveFailure) {
       setSaveError(userFacingErrorMessage(saveFailure));
-    }
-  }
-
-  async function deleteProject() {
-    setDeleteError(null);
-    try {
-      await deleteMutation.mutateAsync(slug);
-      // The project this view was about is gone, so there is no "back" to
-      // return to: land on Home BY NAME — the Home surface, placed in `main`
-      // (the model navigates to `/`) — not on whatever occupies `main` (#1523).
-      showSurface('home');
-    } catch (deleteFailure) {
-      setDeleteError(userFacingErrorMessage(deleteFailure));
     }
   }
 
@@ -402,11 +446,17 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <SectionNavigation
           label="Project settings sections"
           pickerLabel="Project settings section"
-          items={PROJECT_SETTINGS_SECTIONS.map(([id, label]) => ({
-            key: id,
-            label,
-            href: hrefForSection(id),
-          }))}
+          items={settingsSections
+            .filter(
+              ([id]) =>
+                (id !== 'overview' || projectOverviewOn) &&
+                (id !== 'agent-feedback' || agentFeedback),
+            )
+            .map(([id, label]) => ({
+              key: id,
+              label,
+              href: hrefForSection(id),
+            }))}
           activeKey={activeSection}
           onNavigate={navigateToSection}
         />
@@ -414,11 +464,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         {/* Body */}
         <div className="section-nav-rail__body project-settings__body">
           <p className="project-settings__save-hint">
-            {['layouts', 'resources', 'access', 'knowledge'].includes(
-              activeSection,
-            )
-              ? 'Actions in this section apply when confirmed.'
-              : 'Save to apply changes to project defaults.'}
+            {SECTION_SAVE_HINTS[activeSection] ??
+              'Save to apply changes to project defaults.'}
           </p>
           {activeSection !== 'basic-info' &&
             (!form.name.trim() || iconProblem) && (
@@ -460,7 +507,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-workspace"
               className="project-settings__section project-settings__section--hero"
-              eyebrow="Project home"
               title="Workspace"
               description="The folder used for work in this project."
               actions={
@@ -529,7 +575,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-basic-info"
               className="project-settings__section"
-              eyebrow="Project identity"
               title="Basic info"
             >
               <div className="project-settings__identity-grid">
@@ -621,6 +666,23 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             </PageSection>
           </div>
 
+          {projectCoordination && (
+            <>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'brief'}
+              >
+                <BriefSection form={form} setField={setField} />
+              </div>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'memory'}
+              >
+                {activeSection === 'memory' && <MemorySection slug={slug} />}
+              </div>
+            </>
+          )}
+
           {/* Default AI Model */}
           <div
             className="project-settings__panel"
@@ -629,7 +691,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-model"
               className="project-settings__section"
-              eyebrow="Conversation default"
               title="AI model"
               description="Choose a connection and model, or follow the Station default."
             >
@@ -707,7 +768,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
                     models={selectedConnectionModels}
                     disabled={!form.defaultProviderId || unavailableConnection}
                     onChange={(modelId) => setField('defaultModel', modelId)}
-                    placeholder="System default"
+                    placeholder="Station default"
                   />
                 }
               />
@@ -730,6 +791,25 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             </PageSection>
           </div>
 
+          {projectCoordination && (
+            <>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'models'}
+              >
+                <ProjectModelsSection form={form} setField={setField} />
+              </div>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'usage'}
+              >
+                {activeSection === 'usage' && (
+                  <ProjectUsageSection slug={slug} />
+                )}
+              </div>
+            </>
+          )}
+
           <div
             className="project-settings__panel"
             hidden={activeSection !== 'new-chat'}
@@ -751,9 +831,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <PageSection
               id="section-thread-execution"
               className="project-settings__section"
-              eyebrow="New thread default"
-              title="Thread execution"
-              description="A thread's own selection takes precedence."
+              title="Chat workspace"
+              description="Where new chats in this Project run. A chat's own choice takes precedence."
             >
               <EnvironmentPicker
                 id="project-default-environment"
@@ -807,9 +886,42 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
           <div
             className="project-settings__panel"
+            hidden={activeSection !== 'overview'}
+          >
+            {projectOverviewOn && (
+              <OverviewNotificationsSection
+                slug={slug}
+                projectId={project?.id}
+                autoResolveDays={project?.overviewAutoResolveDays}
+              />
+            )}
+          </div>
+
+          <div
+            className="project-settings__panel"
             hidden={activeSection !== 'layouts'}
           >
             <LayoutsSection slug={slug} />
+          </div>
+
+          {agentFeedback && (
+            <div
+              className="project-settings__panel"
+              hidden={activeSection !== 'agent-feedback'}
+            >
+              <AgentFeedbackDefaultsSection slug={slug} />
+            </div>
+          )}
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'pull-requests'}
+          >
+            <PullRequestWatchSection
+              slug={slug}
+              settings={project?.pullRequestWatch}
+              onSaved={refetchProject}
+            />
           </div>
 
           <div
@@ -839,47 +951,37 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <KnowledgeSection slug={slug} />
           </div>
 
-          {/* Danger Zone */}
+          {/* #5070: the Project's own schedules (`project-schedules` preview) */}
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'schedules'}
+          >
+            {project && previewFlags.has('project-schedules') && (
+              <ProjectSchedulesSection
+                projectId={project.id}
+                projectName={form.name}
+                held={project.lifecycle !== undefined}
+              />
+            )}
+          </div>
+
+          {/* #5069: Pause, Archive, Delete */}
           <div
             className="project-settings__panel"
             hidden={activeSection !== 'danger'}
           >
-            <PageSection
-              id="section-danger"
-              className="project-settings__section"
-              eyebrow="Destructive action"
-              title="Danger zone"
-              description="Deleting this project cannot be undone."
-              tone="danger"
-            >
-              <Button
-                variant="danger-outline"
-                onClick={() => {
-                  setDeleteError(null);
-                  setDeleteOpen(true);
-                }}
-              >
-                Delete Project
-              </Button>
-            </PageSection>
+            <ProjectLifecycleSection
+              slug={slug}
+              name={form.name}
+              lifecycle={project?.lifecycle}
+              pauseArchiveEnabled={previewFlags.has('project-pause-archive')}
+              // The Project is gone, so there is no "back": land on Home BY
+              // NAME, placed in `main`, not on whatever occupies it (#1523).
+              onDeleted={() => showSurface('home')}
+            />
           </div>
         </div>
       </div>
-
-      <ConfirmModal
-        isOpen={deleteOpen}
-        title="Delete Project"
-        message={`Delete "${form.name}"? Project settings and layouts will be deleted. Tasks and chats stay in history, but they will no longer have a live Project workspace. This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        pending={deleteMutation.isPending}
-        error={deleteError}
-        onConfirm={() => void deleteProject()}
-        onCancel={() => {
-          setDeleteOpen(false);
-          setDeleteError(null);
-        }}
-      />
 
       <DiscardModal />
     </div>

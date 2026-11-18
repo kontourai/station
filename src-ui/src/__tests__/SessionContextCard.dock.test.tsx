@@ -269,7 +269,7 @@ vi.mock('../views/home/useInboxWorkItems', async (importOriginal) => {
 });
 
 vi.mock('../components/chat-dock/useChatDockActiveChatSync', () => ({
-  useChatDockActiveChatSync: () => {},
+  useChatDockActiveChatSync: () => ({ pendingChat: null }),
 }));
 
 vi.mock('../components/chat/ShareIntakeController', () => ({
@@ -1000,6 +1000,51 @@ describe('the card is not re-rendered by dock renders that change none of its fa
       });
     }
     expect(fixture.cardRowRenders).toBe(before);
+  });
+});
+
+describe('the card owns what it shows, so the More menu drops it', () => {
+  const menuRows = () => {
+    fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+    const rows = screen
+      .getAllByRole('menuitem')
+      .map((row) => row.textContent ?? '');
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: 'Escape',
+    });
+    return rows;
+  };
+
+  test("beside the transcript: Copy and Background tasks are the card's, not the menu's", async () => {
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await waitFor(() => expect(card()).not.toBeNull());
+    expect(
+      within(card()!).getByRole('button', { name: 'Copy chat ID' }),
+    ).toBeTruthy();
+    const rows = menuRows();
+    expect(rows).not.toContain('Copy chat ID');
+    expect(rows.some((row) => row.startsWith('Background tasks'))).toBe(false);
+  });
+
+  test('folded behind the chip: Copy leaves the menu, Background tasks stays with its count', async () => {
+    fixture.surfaceWidth = 919;
+    renderDock();
+    await waitFor(() => expect(chip()).not.toBeNull());
+    const rows = menuRows();
+    expect(rows).not.toContain('Copy chat ID');
+    expect(rows.some((row) => row.startsWith('Background tasks'))).toBe(true);
+    expectMoreCarriesRunning(2);
+  });
+
+  test('a card chunk that failed to load leaves every row in the menu', async () => {
+    fixture.cardChunk = 'failed';
+    fixture.surfaceWidth = 1200;
+    renderDock();
+    await screen.findByText('Unable to load this part of Station.');
+    const rows = menuRows();
+    expect(rows).toContain('Copy chat ID');
+    expect(rows.some((row) => row.startsWith('Background tasks'))).toBe(true);
   });
 });
 

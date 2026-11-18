@@ -1,0 +1,7 @@
+{
+  "revision": "915d957bdc059e4954e266d14bf66cb383152ddc",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#5062/#5068: the strict project file schema admits the brief and model fields. Searched every document citing this input for claims about first-turn composition, ambient context, Project rules, ProjectConfig fields, usage grouping and filters, Station Control tools and pairing scopes; updated api.md, config.md, contracts.md, architecture.md, module-map.md, chat-composer.md and settings-architecture.md where a claim changed. Other citations describe unrelated behavior and still hold.","inputs":["src-server/domain/file-storage-schemas.ts"]}
+  ]
+}

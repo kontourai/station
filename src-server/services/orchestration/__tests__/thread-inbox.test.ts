@@ -1233,6 +1233,7 @@ describe('thread inbox (#3568)', () => {
     await runningFirstTurn(world);
     const sessions = await world.service.listSessionReadModel(
       INTERNAL_SESSION_READ_SCOPE,
+      { purpose: 'session-list' },
     );
     expect(sessions).toContainEqual(
       expect.objectContaining({ provider: 'claude', durability: declaration }),
@@ -1242,6 +1243,33 @@ describe('thread inbox (#3568)', () => {
         ?.session.durability,
     ).toEqual(declaration);
   });
+
+  test.each(['native', 'emulated'] as const)(
+    'session reads and inbox fidelity use the observed %s transport',
+    async (state) => {
+      const observed: ProviderDurabilityProfile = {
+        ...STEERING_ENGINE_DURABILITY,
+        steerPlacement: {
+          state,
+          boundary: 'engine-defined',
+          detail: 'Observed live transport.',
+        },
+      };
+      const adapter = Object.assign(
+        new CountingAdapter(EXTERNAL_ENGINE_DURABILITY),
+        { sessionDurability: () => observed },
+      );
+      const world = boot(path(), {}, undefined, adapter);
+      await runningFirstTurn(world);
+      expect(
+        (await world.service.readSession(THREAD, INTERNAL_SESSION_READ_SCOPE))
+          ?.session.durability,
+      ).toEqual(observed);
+      expect(await world.service.steerFidelityForThread(THREAD)).toBe(
+        state === 'native' ? 'native' : 'interrupting',
+      );
+    },
+  );
 
   test('cancelling steer S during fidelity resolution cannot steer following F', async () => {
     let resolveFidelity!: (value: 'native') => void;
@@ -1348,47 +1376,50 @@ describe('thread inbox (#3568)', () => {
     },
   );
 
-  test('a native steer is handed off once and survives a restart', async () => {
-    const file = path();
-    let world: World;
-    let handoffs = 0;
-    const ports: Partial<ThreadInboxDeliveryPorts> = {
-      steerFidelity: () => 'native',
-      inspectSteer: (input) => world.store.readSteerInput(input),
-      steer: async ({ threadId, clientInputId, payload, turnId }) => {
-        const input = {
-          threadId,
-          clientInputId,
-          input: payload.message,
-          turnId,
-        };
-        if (!world.store.claimSteerInput(input))
-          return world.store.readSteerInput(input)!;
-        handoffs += 1;
-        world.store.confirmSteerInput(input, turnId);
-        return { outcome: 'steered', turnId };
-      },
-    };
-    world = boot(file, ports);
-    await runningFirstTurn(world);
-    const expectedHead = world.inbox.currentHead(THREAD);
-    const input = {
-      conversationId: THREAD,
-      clientTurnId: 'steer-native',
-      payload,
-      expectedHead,
-    };
-    expect(world.inbox.submitSteer(input).outcome).toBe('queued');
-    await world.inbox.idle();
-    expect(handoffs).toBe(1);
-    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
-    await crash(world);
-    world = boot(file, ports);
-    await world.inbox.reconcile();
-    expect(world.inbox.submitSteer(input).outcome).toBe('queued');
-    await world.inbox.idle();
-    expect(handoffs).toBe(1);
-  });
+  test.each(['native', 'interrupting'] as const)(
+    'a %s steer is handed off once and survives a restart',
+    async (fidelity) => {
+      const file = path();
+      let world: World;
+      let handoffs = 0;
+      const ports: Partial<ThreadInboxDeliveryPorts> = {
+        steerFidelity: () => fidelity,
+        inspectSteer: (input) => world.store.readSteerInput(input),
+        steer: async ({ threadId, clientInputId, payload, turnId }) => {
+          const input = {
+            threadId,
+            clientInputId,
+            input: payload.message,
+            turnId,
+          };
+          if (!world.store.claimSteerInput(input))
+            return world.store.readSteerInput(input)!;
+          handoffs += 1;
+          world.store.confirmSteerInput(input, turnId);
+          return { outcome: 'steered', turnId };
+        },
+      };
+      world = boot(file, ports);
+      await runningFirstTurn(world);
+      const expectedHead = world.inbox.currentHead(THREAD);
+      const input = {
+        conversationId: THREAD,
+        clientTurnId: 'steer-native',
+        payload,
+        expectedHead,
+      };
+      expect(world.inbox.submitSteer(input).outcome).toBe('queued');
+      await world.inbox.idle();
+      expect(handoffs).toBe(1);
+      expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
+      await crash(world);
+      world = boot(file, ports);
+      await world.inbox.reconcile();
+      expect(world.inbox.submitSteer(input).outcome).toBe('queued');
+      await world.inbox.idle();
+      expect(handoffs).toBe(1);
+    },
+  );
 
   test('an emulated steer waits across restart and starts once after the turn boundary', async () => {
     const file = path();
@@ -2332,6 +2363,19 @@ describe('thread inbox (#3568)', () => {
       { clientTurnId: 'via-session', conversationId: THREAD },
     ]);
     expect(world.inbox.mustQueue('later-session')).toBe(true);
+    // The finished-alert hold asks by session id too, independent of busy.
+    expect(world.inbox.hasWaitingFollowUp('later-session')).toBe(true);
+  });
+
+  test('a waiting follow-up is reported until it is placed', async () => {
+    const world = boot(path());
+    const firstTurn = await runningFirstTurn(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(false);
+    queueFollowUp(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(true);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+    await settle(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(false);
   });
 
   test('the lookup answers queued only to the sender, and only while it waits', async () => {

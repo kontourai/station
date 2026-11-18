@@ -347,12 +347,12 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/engine-commands` | How an engine slash command runs (`prompt-text`, a declared or identity-matched `engine-request`, or an `adapter-action`), its outcome, and `engineCommandRequestParams`. The server's shared half is [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts): the ACP and OpenCode adapters run every route kind through its `dispatchEngineCommand`, and Muse uses its reader and outcome line |
 | `@kontourai/station-contracts/managed-engine-install` | Pinned managed engine installs: the pin (manifest digest as the trust root), manifest, install state and failure reasons, the `{script}` argv token a descriptor's `managedRuntime` uses, the `station-managed:<installId>` command a managed entry carries (`managedRuntimeCommand`, `managedRuntimeInstallIdOf`), install progress (`receivedBytes`, `totalBytes`), and `validateManagedInstallPin` |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in/managed-runtime descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status, and the known full-access session mode ids (`KNOWN_FULL_ACCESS_ACP_MODE_IDS`, `isKnownFullAccessAcpModeId`) the server and the approval pickers share |
-| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
+| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. The model-selection cell's `overridePerTurn` declaration gates model changes in existing conversations without a provider-name branch. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. Device lists may mark an unrevoked device `suspended` by a managed policy (#4519), separately from its revocation. Companion management uses the separate operator-promoted `telemetry:manage` permission, absent from presets/defaults; it does not enable sending or personal source access. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata, and the shared `StationReadinessStatus` vocabulary (`online`/`recovering`/`unconfirmed`/`unreachable`) with `PeerStationReadiness` and its pure handshake classifier; explicit `access:devices` administration scope and `device-access` / `operator-passkey` revocation provenance. Device lists may mark an unrevoked device `suspended` by a managed policy (#4519), separately from its revocation. Companion management uses the separate operator-promoted `telemetry:manage` permission, absent from presets/defaults; it does not enable sending or personal source access. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
 | `@kontourai/station-contracts/station-routes` | The addresses a Station reports it can be reached on (`GET /api/system/routes`): LAN, Tailscale and Tailscale HTTPS origins with the Station's `environmentId`, and a parser that drops invalid entries. A client learns them as routes to the same saved Station and still checks each against the handshake before use; see [Station routes](../design/station-routes.md). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
@@ -395,6 +395,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | `layoutOwner` derives ownership and `layoutSubject` derives the optional Project subject. Project ownership implies its Project; principal ownership without a subject remains a Board or reusable template. Personal records never inherit Coding's implicit primary Chat claim. Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
+| `@kontourai/station-contracts/custom-appearance` | A person's custom appearance (palette over `APPEARANCE_ROLE_PROPERTIES`, accent and CSS), its document, proposal and render report; `parseCustomAppearance`, the CSS text check (`customCssTextViolations`, `fetchingValueKind`), contrast rules rated with a caller-supplied ratio (`rateAppearancePalette`), the stable hook selectors (`APPEARANCE_HOOKS`) and the agent guide. See the [decision](../decisions/custom-appearance.md) |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions, one-time recovery results and the Project sharing setting |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. |
@@ -403,6 +404,8 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-checkout-freshness` | How far a Project's checkout is behind its upstream, from local git refs: the `GET /api/projects/:slug/checkout-freshness` view (`stale`, `not-stale` or `unknown` with a reason), the default thresholds, `resolveProjectCheckoutStaleThresholds` and `projectCheckoutStaleReasons` |
+| `@kontourai/station-contracts/project-lifecycle` | Pause, Archive and Delete for a Project: the `ProjectConfig.lifecycle` state, the `POST /api/projects/:slug/lifecycle` request and result (turns interrupted, still running after `PROJECT_LIFECYCLE_STOP_WAIT_MS`), `projectLifecycleHoldsWork`, the held-turn refusal, and the `GET /api/projects/:slug/deletion-preview` counts |
+| `@kontourai/station-contracts/project-session-context` | What a new Session in a Project starts from (#5062, #5065): the brief and memory note shapes and limits, their parsers, `composeProjectSessionContext` (the one composer of the brief and memory index, labelled as background) and the per-turn `ProjectSessionContextComposed` receipt. |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
@@ -414,8 +417,10 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, service and server update state, and engine workload memory budgets |
 | `@kontourai/station-contracts/troubleshoot` | In-app troubleshooting (#4470): the prepare route request and response, the seed's fields and limits (route, error summary, conversation and turn ids, which the host refuses rather than truncates), the `troubleshoot-report.yml` field ids, and a prefilled issue-link builder that returns over-limit fields separately instead of truncating |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
+| `@kontourai/station-contracts/task-lane` | Derived Task lanes: `deriveTaskLane` computes a Task's board lane (Needs you, Running, In review, Ready to merge, Idle) or shelf (Backlog, Done, Canceled), its status word and its one next action from the Task, its run summary and its kept pull requests' provider facts; `partitionTaskLanes` keeps lane order stable. Pure; never stored. Also the `GET /api/tasks/pull-request-facts` projection shapes; a fact's optional `feedback` (agent feedback, for a reader of its chat) becomes a card's `feedbackNote` and never moves a lane |
+| `@kontourai/station-contracts/task-overview` | Project Overview groups (#5064): `deriveTaskOverviewPlacement` files a Task's `deriveTaskLane` derivation under Waiting on you, Ready for review, Working, Landing, Idle or Resolved, with the "not queued" note for a ready pull request nobody armed and auto-resolve of an Idle Task after its Project's `overviewAutoResolveDays` (default 7, restarted by `TaskRecord.overviewReopenedAt`); `partitionTaskOverview` orders the groups. Waiting on you reads only the run and the Task, never pull requests. Pure; the caller passes `now`; never stored |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
-| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
+| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence, capture and independent code-review checkout projections; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. Code-review request identity retains Project and Task incarnations. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
 | `@kontourai/station-contracts/chat-app` | Discord/Slack chips sharing status action shapes, principal links and explicit legacy import provenance, Project/conversation channel bindings, approval-correlated delivery attempts, per-app kill switches, hashed two-step link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
 | `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `unverified`, `not-configured`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
 | `@kontourai/station-contracts/task-write-back` | Bounded Task-bound outbound attempts, targets, initiators, outcomes and retry chains; [source](../../packages/contracts/src/task-write-back.ts), [store tests](../../src-server/services/orchestration/__tests__/task-write-back-store.test.ts) |
@@ -902,6 +907,9 @@ not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
 stop, which decides `autoResume` in place of the setting. The chat banner
 reads it through the Session API's
 [usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+`UsageLimitContinueOnOptions` lists the `UsageLimitContinueOnProfile`s
+(`ref`, optional display `label`) a waiting stop may continue on; it says
+nothing about whether those accounts are limited.
 
 `@kontourai/station-contracts/agent-schedule` owns what an agent schedules
 for itself and what it only proposes: `AgentWakeUp`, `AgentJobProposal`,
@@ -1089,6 +1097,7 @@ non-retryable.
 | `confinement_not_observed` | `permission_denied` | `false` |
 | `confinement_workspace_incompatible` | `permission_denied` | `false` |
 | `continuation_engine_not_ready` | `unavailable` | `true` |
+| `continuation_source_active` | `busy` | `true` |
 | `continuation_workspace_corrupt_worktree_binding` | `input_unsupported` | `false` |
 | `continuation_workspace_different_project` | `input_unsupported` | `false` |
 | `continuation_workspace_direct_mismatch` | `input_unsupported` | `false` |
@@ -1096,6 +1105,7 @@ non-retryable.
 | `continuation_workspace_unbound` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
@@ -1148,6 +1158,8 @@ non-retryable.
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
+| `workload-memory-pressure` | `warning` | `false` |
+| `workload-memory-pressure-cleared` | `warning` | `false` |
 | `sandbox_unavailable` | `permission_denied` | `false` |
 | `provider_model_unavailable` | `model_unavailable` | `false` |
 
@@ -1341,6 +1353,11 @@ exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
 and `RelayManagementView`. The view contains public route/signing-confirmation
 facts, channel-specific setup links, exact approved surfaces and pending
 account-bound Device candidates; it contains no connector issuer credential.
+Active setup links and surfaces use Stable/Nightly (plus development surfaces).
+The optional `retiredRecords` counts are SDK-derived read metadata for excluded
+legacy Beta records, never actionable Device or approval authority.
+`RelayManagementWireView` retains the old public Beta route-intent link only for
+old SDK readers; it carries no enrollment grant.
 `approvedBy` preserves actual human actor attribution. `relay:manage`, declared
 in [environment security](../../packages/contracts/src/environment-security.ts),
 is an explicitly operator-promoted Device scope excluded from presets/defaults.
@@ -1473,8 +1490,12 @@ background work finishes, is published as a turn whose `turn.started` and
 terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 `runtime-events` is the one derivation consumers read. It has no prompt, moves
 the session lifecycle like any turn (reasons `provider_turn_started` /
-`provider_turn_completed`), and records a "Your agent replied" notification
-whose interruptions the delivery router decides by focus. A send while it runs is refused with the retryable code
+`provider_turn_completed`). Its completion joins the thread's completion
+episode: the episode's one alert reads "Your agent replied" when every turn in
+it was the engine's own, and "Your agent finished" when it follows a user turn
+whose finish was still held
+([finished alerts](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)).
+The delivery router decides its interruptions by focus. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends,
 unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,
@@ -1988,9 +2009,58 @@ an explicit unsupported/unavailable reason. `PullRequest.headSha` and
 `baseSha` are optional because a provider that omits exact revisions must not
 be presented as current by inference.
 
+`pull-request-feedback` defines pull request agent feedback: a person's
+switches, the forge observation (checks with their required flag, review
+threads with resolved and outdated state, latest reviews), the status and
+delivery history a chat reads, and pure helpers (the canonical lowercase
+identity key, the settings parser, the failing-conclusion set).
+`pullRequestFeedbackActive(settings, headReview)` is true for a sending
+switch, or for `reviewEachHead` (Station's review of each new head) while
+the `pull-request-head-review` preview is on. The newest review reads as
+`PullRequestHeadReview` (`headReview` on both views, with `current`), why
+the observed head has none yet as `PullRequestHeadReviewWaiting`
+(`headReviewWaiting`), and its required findings go as a `review-findings`
+delivery. `IPullRequestProvider.getFeedbackObservation` is
+optional; a provider without it reads as `unsupported`. A `paused` status
+carries `cap` (`head` or `day`, for a round limit) and `at` when it paused.
+The attention subpath's `PullRequestFeedbackAttentionItem`
+(`pull-request-feedback`) is that pause, or a stopped agent with feedback
+waiting, as a Needs-you item: its `source` names the owning chat and pull
+request, and `viewerMayChange` says whether the reader could send again or
+turn it off. `client-origin`'s `pull-request-feedback` sender labels the
+delivered message as Station's. `ProjectPullRequestFeedbackDefaults` is a
+Project's defaults as a reader sees them (`canChange`, and `stillOn`: open pull
+requests they turned on that still send, in chats the reader may read). The optional
+`IPullRequestProvider.findOpenPullRequestsByHead` lists open pull requests by
+exact head branch name (`PullRequestByHead`, with where each head lives),
+answering `PullRequestsByHeadResult`. See
+[Pull request agent feedback](../decisions/pull-request-agent-feedback.md).
+
+`pull-request-watch` defines Task-owned pull requests (#5066): the Project
+setting (`ProjectPullRequestWatchSettings`, parsed by
+`parseProjectPullRequestWatchSettings`), a Task's own choice
+(`TaskPullRequestWatchMode`), `resolveTaskPullRequestWatch` (the Task's choice
+wins, a done or canceled Task watches nothing), `pullRequestReadyForPerson` over
+a feedback observation, the refused-action kinds and the Task's watch view.
+`ProjectConfig.pullRequestWatch`, `TaskRecord.pullRequestWatch` and
+`TaskRecord.pullRequestWatchHold` are optional and absent means off; a Task
+store carrying either Task field is refused by Station builds that predate
+them. `PullRequestFeedbackStatus` gains the `fix-budget` pause reason and
+`TaskLaneRung` the `fixAttemptsUsed` rung. See
+[Task-owned pull requests](../decisions/task-owned-pull-requests.md).
+
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
 opt-in to move a Task to `done` when every pull request kept on it is merged;
 a Task store that carries it is refused by Station builds that predate it.
+
+`FocusReport.viewingSessionIds` (`@kontourai/station-contracts/presence`) is
+optional, and absent means the client does not say what it shows, so focus
+stays device-wide. A list (at most `FOCUS_VIEWING_SESSION_IDS_MAX`, each
+matching `FOCUS_VIEWING_SESSION_ID_PATTERN`; `[]` for no chat on screen) scopes
+a focused surface's quieting of `done`/`info` records to those sessions. A host
+built before the field refuses a report carrying it with 400. The client then
+drops the field for that document
+([notification delivery](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)).
 
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
@@ -2042,6 +2112,18 @@ Work-chat listings expose only currently readable canonical IDs and revisions.
 `ProjectSharedTaskService` remains the separate default-private publication
 owner. See the real-store relationship and mounted-route tests for the local
 persistence/transport boundary; these do not qualify production composition.
+
+### Scheduled check-backs
+
+`OrchestrationSessionSummary.nextWakeUpAt` is the earliest armed check-back
+in that conversation, as an ISO timestamp. Approval proposals are excluded.
+The field is absent when no check-back is pending, and on older hosts. It is a
+display fact; it grants no send or execution permission.
+
+Home work rows carry this field too. Its description is part of the canonical
+Home-role projection record. A grant that predates the widened field list no
+longer covers that projection; the built-in Home remains the fallback until
+the grant is approved again.
 
 ### Finish time and engines run
 
@@ -2251,7 +2333,10 @@ whether a change applies to new scopes or after a restart. Its optional
 `scopes` lists running scopes with the per-engine limit each was launched
 with, the OOM kills Station observed in it, when it first saw the latest, and
 for an engine scope whether its holder is `placed` or `unplaced` (with a
-`WorkloadHolderUnplacedReason` code).
+`WorkloadHolderUnplacedReason` code). A scope may also carry
+`lastOomKillProcesses` and, while near its memory limit, a
+`WorkloadScopePressure`; both list processes as `WorkloadScopeProcess`
+(`pid`, kernel command `name`, `rssBytes`).
 
 `@kontourai/station-contracts/system-status` owns `DevicePresentation`
 (the request-bound host/paired projection), `SystemRuntimeIdentity`
@@ -2323,6 +2408,9 @@ Sparse or mixed-model/pricing evidence cannot substantiate a combined estimate.
 Optional `connectionId` and `modelConnectionId` name the engine and model
 connections the session recorded; absence means none was recorded. They are
 local to the Station's rollup and are not part of export or peer transfer.
+Optional `projectSlug` (#5068) is the Project the Session's start recorded; it is
+likewise local, groups `groupBy: 'project'` rows, and `projectUsageTotals` sums a
+Project's per-Task rows into its total and its own chats' share.
 `aggregateReceipts` is bounded logical transfer material, separate from the
 receipt drilldown. See the [analytics API](api.md#read-usage-receipts-and-rollups)
 for limits and observation-window semantics.
@@ -2459,14 +2547,16 @@ values before exposing a profile.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
 Current Session summaries and conversation-open execution carry the registered
-adapter's `durability` declaration at read time, except that a Session its
+adapter's `durability` declaration at read time, including a live
+`sessionDurability` override when its transport differs. A Session its
 adapter says cannot steer (`canSteerTurn` false) reports `steerPlacement`
 `none`. The live composer consumes that
 observation rather than resolving a provider-name table; absence stays unknown.
 Claude, Codex and Muse declare their live steering channels as native (Muse's
 is `muse serve`'s; an exec-fallback Session refuses a steer). ACP discloses a
-connection-dependent orchestration-command fallback that may interrupt and
-reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
+connection-dependent native channel or interrupting fallback. Explicit Steer
+on the fallback cancels, waits for the prompt to finish, and re-prompts with
+a continuation instruction; Queue remains its default. Live steering does
 not imply restart continuation: the inbox persists text and its expected head
 before claiming a handoff, but an unacknowledged claim remains unknown and is
 never automatically replayed. Station-owned steering is emulated at an observed
@@ -2881,6 +2971,18 @@ with terminal observations; completed/aborted/failed partition those observation
 with unknown retained-only coverage. Independent source populations stay separate.
 
 
+## Project Library
+
+`@kontourai/station-contracts/project-library` owns the Library page
+(`ProjectLibraryPage`, version `project-library/v1`): uploads (`kind: upload`,
+named by `relativePath`) and kept Task outputs (`kind: task-output`, named by
+`outputId`, with `task.state` `present` or `orphaned`). `projectLibraryUploadPath`
+is the one path rule: it refuses absolute paths, `..`, control characters and
+Windows-reserved names, and skips hidden segments and `node_modules`.
+`filterProjectLibraryItems`, `projectLibraryTasks` and `sortProjectLibraryItems`
+are the page's pure filters. The `projectLibrary` handshake flag says the host
+serves the routes; hosted deployments withdraw it.
+
 ## Bounded context and reviewed learning
 
 `@kontourai/station-contracts/project-working-configuration` owns the reviewed
@@ -2937,3 +3039,7 @@ implemented by these declarations.
 The retired Activity pane and Activity review pane subpaths are no longer exported.
 Child transcript tool calls and results carry an optional engine-issued `toolCallId`;
 readers join only matching IDs, leaving legacy unkeyed results readable.
+A `ChildWorkTranscriptPage` names its message range with `offset` and
+`endOffset`, so a tail read (the latest messages) and a read from a cursor
+compose without re-reading earlier pages; a read from past the end names the
+end, so a reader can tell the transcript is shorter than its cursor.

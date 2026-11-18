@@ -24,8 +24,8 @@ export function orchestrationUsageRefFor(
       const service = current();
       return service
         ? {
-            listSessionUsage: () =>
-              service.listSessionUsage(INTERNAL_SESSION_READ_SCOPE),
+            listSessionUsage: (options) =>
+              service.listSessionUsage(INTERNAL_SESSION_READ_SCOPE, options),
             listUsageReceipts: (authority, stationId, request) =>
               service.listUsageReceipts(authority, stationId, request),
           }

@@ -51,6 +51,10 @@ const unregistered = [
   },
 ];
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../hooks/useACPConnections', () => ({
   useACPConnections: () => ({
     data: [],
@@ -114,7 +118,13 @@ describe('a saved engine that never connected', () => {
     render(<Page index={0} custom />);
 
     expect(screen.getByRole('heading', { name: 'Stub Engine' })).toBeTruthy();
-    expect(screen.getByText('Not connected yet', { selector: 'strong' }));
+    // Said once, by the header badge; the status block says what happened.
+    expect(screen.getAllByText('Not connected yet')).toHaveLength(1);
+    expect(
+      screen.getByText(
+        "Station saved this engine but couldn't connect. Its agent appears once it connects.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Check connection' }),

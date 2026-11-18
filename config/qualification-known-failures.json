@@ -38,41 +38,10 @@
       ]
     },
     {
-      "issue": 4941,
-      "file": "tests/android/mobile-layout.spec.ts",
-      "titlePath": [
-        "Android — Mobile Layout",
-        "sidebar drawer is named navigation with contained, restorable focus"
-      ],
-      "project": "android"
-    },
-    {
       "issue": 4901,
       "file": "scripts/__tests__/learning-media.test.ts",
       "titlePath": [
         "checks the actual capture manifest and recorded source bytes in the required documentation lane"
-      ]
-    },
-    {
-      "issue": 4971,
-      "file": "src-ui/src/__tests__/composer-engine-move.browser.test.tsx",
-      "titlePath": [
-        "a phone composer shows the next-turn destination in full beside four chips"
-      ]
-    },
-    {
-      "issue": 4971,
-      "file": "src-ui/src/__tests__/composer-engine-move.browser.test.tsx",
-      "titlePath": [
-        "a phone composer keeps \"Agent moved\" visible ahead of a long engine name"
-      ]
-    },
-    {
-      "issue": 4948,
-      "file": "scripts/__tests__/seed-dev-home.test.ts",
-      "titlePath": [
-        "seedDevHome",
-        "gives every known Station home root a deliberate decision"
       ]
     }
   ]

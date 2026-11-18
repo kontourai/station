@@ -1,5 +1,21 @@
 {
-  "app": {},
+  "app": {
+    "engine-install-terminal": {
+      "route": "POST /acp/registry/:id/install-terminal",
+      "exempt": "person-only",
+      "reason": "A person confirms the exact reviewed installer and operates its owned terminal; chat only opens the existing setup pane."
+    },
+    "engine-recommended-setup": {
+      "route": "POST /acp/connections/:id/recommended-setup",
+      "exempt": "person-only",
+      "reason": "A person reviews and applies built-in launch arguments while preserving the saved connection and Agent."
+    },
+    "engine-station-tools": {
+      "route": "POST /acp/connections/:id/station-tools",
+      "exempt": "person-only",
+      "reason": "A person explicitly selects Station tools for the canonical Agent; agent tools cannot grant themselves this selection."
+    }
+  },
   "cli": {
     "acp command-options": {
       "missing": 4286,
@@ -13,6 +29,7 @@
       "missing": 4286,
       "want": "List|create|update|delete|reconnect_acp_connection"
     },
+    "acp setup": { "tools": ["list_engine_setup"] },
     "acp status": {
       "missing": 4286,
       "want": "Acp_status"
@@ -235,6 +252,12 @@
     },
     "conversation fork": {
       "tools": ["fork_conversation"]
+    },
+    "conversation reopen": {
+      "tools": ["settle_conversation"]
+    },
+    "conversation settle": {
+      "tools": ["settle_conversation"]
     },
     "delegate attempt": {
       "exempt": "client-local",
@@ -1272,6 +1295,10 @@
     "enable_job": {
       "cli": ["schedule enable"]
     },
+    "forget_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "fork_conversation": {
       "cli": ["conversation fork"]
     },
@@ -1286,6 +1313,10 @@
     "get_answer_assessment_target": {
       "exempt": "agent-self",
       "reason": "Machine-produced Surface trust bundle for an answer; no person workflow publishes one."
+    },
+    "get_appearance": {
+      "exempt": "agent-proposal",
+      "reason": "An agent reads the person's custom appearance to propose a change; the person previews and keeps it in the Appearance page."
     },
     "get_basis": {
       "cli": ["tasks basis"],
@@ -1414,6 +1445,7 @@
     "list_delegation_targets": {
       "cli": ["delegate targets"]
     },
+    "list_engine_setup": { "cli": ["acp setup"] },
     "list_integrations": {
       "cli": ["tools list"]
     },
@@ -1445,6 +1477,14 @@
     "list_project_layouts": {
       "cli": ["projects layouts"],
       "note": "CLI layouts also creates/updates/deletes layouts; MCP is read-only."
+    },
+    "list_project_library": {
+      "exempt": "agent-self",
+      "reason": "The caller's own Project Library (route uses authority.caller's recorded Project). People use the Project page's Files & connections."
+    },
+    "list_project_notes": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
     },
     "list_project_s3_objects": {
       "missing": 4283,
@@ -1504,8 +1544,16 @@
       "cli": ["notifications create"],
       "note": "The tool posts an agent-attributed notification (POST /api/notifications/agent); the CLI posts as the person (POST /notifications)."
     },
+    "open_engine_setup": {
+      "exempt": "agent-ui",
+      "reason": "Navigates to the existing engine setup pane via POST /api/ui; station acp setup returns its setupPath."
+    },
     "preview_schedule": {
       "cli": ["schedule preview"]
+    },
+    "propose_appearance": {
+      "exempt": "agent-proposal",
+      "reason": "An agent proposes, the person previews and keeps or discards it in the Appearance page."
     },
     "propose_automation_rule": {
       "exempt": "agent-proposal",
@@ -1541,6 +1589,14 @@
     "read_monitoring_events": {
       "cli": ["monitoring events", "insights events"]
     },
+    "read_project_library_file": {
+      "exempt": "agent-self",
+      "reason": "One file from the caller's own Project Library (route uses authority.caller's recorded Project)."
+    },
+    "read_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "read_project_s3_object": {
       "missing": 4283,
       "want": "Knowledge s3 read"
@@ -1559,6 +1615,10 @@
     "release_claim": {
       "missing": 3427,
       "want": "Claims release"
+    },
+    "remember_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
     },
     "remove_answer_assessment": {
       "exempt": "agent-self",
@@ -1609,6 +1669,10 @@
     "send_to_session": {
       "cli": ["chat"],
       "note": "Different route and authority: MCP POST /api/orchestration/session-control/send (agent-to-agent, caller required, sender named); `chat --session <id>` is the person's own send via POST /api/orchestration/chat. Issue #3427 says the person send is the intended CLI equivalent. Modes (steer/auto/requestKey) not exposed by CLI."
+    },
+    "settle_conversation": {
+      "cli": ["conversation settle", "conversation reopen"],
+      "note": "Both reach PUT /api/conversations/:id/work-state, the person's own Open and Settled inbox record."
     },
     "system_status": {
       "missing": 4284,

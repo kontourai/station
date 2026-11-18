@@ -23,6 +23,12 @@
   max-width: 100%;
   min-height: 44px;
 }
+/* A choice whose caption takes a second line (the Agent moved) grows past the
+   44px floor; block padding keeps its text off the border. Single-line
+   choices keep their height. */
+.composer-run-panel__choices .composer-choice:has(.chat-input__engine-moved) {
+  padding-block: var(--k-space-1);
+}
 
 .composer-run-control__marks {
   position: relative;
@@ -55,23 +61,35 @@
 .composer-run-control .composer-choice__value {
   width: 100%;
 }
+/* The label keeps one line. The Agent name gives way first but never below a
+   readable width: when that and the model's own minimum do not fit, it wraps
+   onto a second line that the label clips, leaving the model (and effort).
+   `order` fills the line effort, model, Agent; row-reverse paints it back in
+   reading order, so the DOM (and its text) stays Agent · model · effort. */
 .composer-run-control__label {
   display: flex;
+  flex-flow: row-reverse wrap;
+  justify-content: flex-end;
   min-width: 0;
+  max-height: 1lh;
+  overflow: hidden;
 }
-/* The agent name gives way first; a long model id still ellipsizes instead of
-   being clipped mid-word once the agent part is gone. The separator clips
-   with the Agent name so the model never starts with a dangling dot. */
+/* The separator clips with the Agent name so the model never starts with a
+   dangling dot. */
 .composer-run-control__agent {
-  flex: 0 1000 auto;
-  min-width: 0;
+  order: 1;
+  flex: 1 1 8ch;
+  min-width: 8ch;
+  max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;
 }
+/* A long model id still ellipsizes once the Agent name is gone. */
 .composer-run-control__model {
-  flex: 0 1 auto;
+  flex: 1000 1 8ch;
   min-width: 0;
+  max-width: max-content;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;
@@ -112,4 +130,34 @@
     calc((100cqw - 450px) * 1000),
     var(--k-space-2)
   );
+}
+
+/* A fact the closed trigger states (the Agent moved) stays whole; the label
+   beside it gives way, and it outlasts the label's narrow-composer collapse. */
+.composer-run-control__notice {
+  flex: none;
+  white-space: pre;
+}
+/* Collapses exactly when the label does (the chip-stack rule above), so a
+   lone hint beside the marks does not start with a separator. */
+.composer-run-control__notice-separator {
+  display: inline-block;
+  vertical-align: top;
+  overflow: hidden;
+  max-width: clamp(
+    0px,
+    calc((100cqw - var(--composer-label-collapse, 380px)) * 1000),
+    2em
+  );
+}
+
+/* Effort qualifies the Model, so it gives way before the Model does. */
+.composer-run-control__effort {
+  order: -1;
+  flex: 10 1 0;
+  min-width: 0;
+  max-width: max-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
 }

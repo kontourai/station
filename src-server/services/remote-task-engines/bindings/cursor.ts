@@ -174,10 +174,28 @@ function emptyRunNote(
   };
 }
 
+/**
+ * A pending run the vendor answers 404 for: it is gone for good, so it is
+ * stored as a note (consumed) instead of blocking every later read.
+ */
+function goneRunNote(runId: string): RemoteTaskEvent {
+  return {
+    id: `run:${runId}`,
+    author: 'system',
+    text: `${VENDOR} no longer has this run; its result could not be read.`,
+  };
+}
+
 /** What a run-list call left for the next one (see `pageEvents`). */
 interface RunPaging {
   readonly pending: readonly string[];
   readonly resume?: string;
+  /**
+   * The oldest run's `createdAt` in the window `resume` continues. A resumed
+   * listing stops only at a stored run older than this, so a run inserted at
+   * the top (which shifts an offset cursor) cannot end the backlog early.
+   */
+  readonly resumeBefore?: string;
   readonly top?: true;
 }
 
@@ -201,9 +219,11 @@ function readRunPaging(cursor: string | null): RunPaging {
       )
     : [];
   const resume = stringField(record, 'resume');
+  const resumeBefore = stringField(record, 'resumeBefore');
   return {
     pending,
     ...(resume ? { resume } : {}),
+    ...(resume && resumeBefore ? { resumeBefore } : {}),
     ...(record.top === true ? { top: true as const } : {}),
   };
 }
@@ -338,9 +358,14 @@ export const cursorBinding: RemoteTaskBinding = {
    *   first. They are read on their own, five a call, before anything is
    *   listed again; a run that ended with no result is stored as a note.
    * - `resume`: the vendor's `nextCursor` where ten pages ran out, so the
-   *   next call continues that backlog instead of dropping it.
-   * - `top`: a resumed backlog ran out, so the next call lists again from the
-   *   newest run, which finished runs may have joined meanwhile.
+   *   next call continues that backlog instead of dropping it. A resumed
+   *   listing stops only at a stored run older than the backlog's boundary
+   *   (`resumeBefore`): with an offset cursor, a run added at the top shifts
+   *   an already stored run onto the first resumed page.
+   * - `top`: work was deferred (runs to read, or a backlog), so once it is
+   *   done the next call lists again from the newest run, which runs may have
+   *   joined meanwhile. A pass from the newest run that defers nothing ends
+   *   the paging.
    *
    * `hasMore` holds while any of them remains, so the task cannot settle
    * with work left. The service stores the cursor, so the work survives a
@@ -352,13 +377,22 @@ export const cursorBinding: RemoteTaskBinding = {
     if (state.pending.length > 0) {
       const pending = state.pending.filter((id) => !known(`run:${id}`));
       for (const runId of pending.slice(0, RESULT_READS_PER_PAGE)) {
-        const { body } = await context.http.json({
-          method: 'GET',
-          path: `${agentPath(taskId)}/runs/${encodeURIComponent(runId)}`,
-        });
+        let body: unknown;
+        try {
+          ({ body } = await context.http.json({
+            method: 'GET',
+            path: `${agentPath(taskId)}/runs/${encodeURIComponent(runId)}`,
+          }));
+        } catch (error) {
+          if (!isVendorCode(error, 404)) throw error;
+          events.push(goneRunNote(runId));
+          continue;
+        }
         const run = asRecord(body);
         const message = runMessage(run) ?? emptyRunNote(run);
-        if (message) events.push(message);
+        // Listed as finished, so its own read must say how it ended.
+        if (!message) throw malformed(VENDOR, 'a run');
+        events.push(message);
       }
       return pagingResult(events, {
         ...state,
@@ -366,6 +400,7 @@ export const cursorBinding: RemoteTaskBinding = {
       });
     }
     const resuming = state.resume !== undefined;
+    const boundary = state.resumeBefore;
     const runs: Array<Record<string, unknown>> = [];
     let next: string | undefined = state.resume;
     let resume: string | undefined;
@@ -382,7 +417,15 @@ export const cursorBinding: RemoteTaskBinding = {
       next = stringField(record, 'nextCursor');
       const reachedStored = items.some((run) => {
         const id = stringField(run, 'id');
-        return id !== undefined && known(`run:${id}`);
+        if (id === undefined || !known(`run:${id}`)) return false;
+        if (!resuming) return true;
+        // Resumed: only a stored run past the backlog's boundary ends it.
+        const createdAt = stringField(run, 'createdAt');
+        return (
+          boundary !== undefined &&
+          createdAt !== undefined &&
+          createdAt < boundary
+        );
       });
       if (!next || reachedStored) break;
       if (page === RUN_LIST_PAGES - 1) resume = next;
@@ -413,11 +456,16 @@ export const cursorBinding: RemoteTaskBinding = {
       const message = runMessage(run) ?? emptyRunNote(run);
       if (message) events.push(message);
     }
+    const oldest = runs.at(-1);
+    const resumeBefore = oldest ? stringField(oldest, 'createdAt') : undefined;
+    // Any deferred work (runs to read, or a backlog), and a backlog that ran
+    // out, ends with one more pass from the newest run.
+    const deferred = pending.length > 0 || resume !== undefined || resuming;
     return pagingResult(events, {
       pending,
       ...(resume !== undefined ? { resume } : {}),
-      // A backlog that ran out: list from the newest run once more.
-      ...(resuming && resume === undefined ? { top: true } : {}),
+      ...(resume !== undefined && resumeBefore ? { resumeBefore } : {}),
+      ...(deferred ? { top: true } : {}),
     });
   },
 

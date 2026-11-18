@@ -1,5 +1,6 @@
 import type { ClientOrigin } from './client-origin.js';
 import type { EngineId, ProviderSession } from './provider.js';
+import type { TaskPullRequestWatchMode } from './pull-request-watch.js';
 import { isObjectRecord } from './record-guard.js';
 
 /**
@@ -687,9 +688,40 @@ export interface TaskRecord {
    * Absent means off.
    */
   closeOnMerge?: boolean;
+  /**
+   * When a person last reopened this Task on the Project Overview (#5064).
+   * The Overview auto-resolves an Idle Task after its Project's quiet
+   * period; that clock restarts here. Only a person sets it
+   * (`POST /api/tasks/:taskId/overview-reopen`). Absent: never reopened.
+   */
+  overviewReopenedAt?: string;
+  /**
+   * A person's choice (#5066) whether this Task watches the pull requests
+   * kept on it: `on` and `off` override the Project's setting, absent
+   * follows it. Only a person sets it
+   * (`PUT /api/tasks/:taskId/pull-request-watch`); "Stop watching" writes
+   * `off`. Older Station builds refuse a Task store that carries it.
+   */
+  pullRequestWatch?: TaskPullRequestWatchMode;
+  /**
+   * Why Station moved this Task to `blocked` (#5066): a watched pull
+   * request used every fix attempt and these checks still fail. Cleared
+   * when the Task's status changes. Older Station builds refuse a Task
+   * store that carries it.
+   */
+  pullRequestWatchHold?: TaskPullRequestWatchHold;
   /** Deliverable hierarchy, independent of execution Sessions and status. */
   parent?: TaskIdentity;
   relationshipRevision?: number;
+}
+
+/** See {@link TaskRecord.pullRequestWatchHold}. */
+export interface TaskPullRequestWatchHold {
+  /** The failing check names, at most 20. */
+  checks: string[];
+  /** The pull request, as `owner/name#ref`. */
+  pullRequest: string;
+  at: string;
 }
 
 export interface TaskCreateInput {

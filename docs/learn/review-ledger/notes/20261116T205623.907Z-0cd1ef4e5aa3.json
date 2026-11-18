@@ -1,0 +1,7 @@
+{
+  "revision": "8a7dee80b0b050d312da8caa6176d86776d85fa5",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"validateChangedVerificationReceipt still returns rejections as errors; the escalated importer change adds plan fields only, no receipt schema change.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]}
+  ]
+}

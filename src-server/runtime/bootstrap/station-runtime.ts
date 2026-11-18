@@ -9,6 +9,7 @@ import {
   getBrandingProvider,
   listProviders,
 } from '../../providers/registries/registry.js';
+import { AcpSessionListSource } from '../../providers/sessions/acp-session-list-source.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
@@ -129,6 +130,7 @@ import {
   managedPolicyAllowsRemoteClients,
   managedRemoteClientsDenial,
 } from '@kontourai/station-contracts/managed-policy';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -177,8 +179,10 @@ import { runMuseSchemaCommand } from '../../providers/adapters/muse-serve-schema
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
+  configuredEngineHomes,
   createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
+  credentialProfileEnvForHome,
 } from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
@@ -238,6 +242,7 @@ import { OrchestrationStreamPresence } from '../../services/orchestration/orches
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
+import { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
 import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
@@ -289,7 +294,10 @@ import {
   type AgentHooksDeps,
   createAgentHooks,
 } from '../agents/agent-hooks.js';
-import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
+import {
+  createStagedPreToolPolicyEvaluator,
+  type PullRequestWatchPolicy,
+} from '../agents/pre-tool-policy.js';
 import {
   activatePreparedRuntimeAgentInstance,
   buildRuntimeAgentInstance,
@@ -318,6 +326,10 @@ import {
   startMcpUiFrameServer,
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
+import {
+  composeProjectCoordinationRuntime,
+  type ProjectCoordinationRuntime,
+} from '../project-coordination-runtime.js';
 import {
   composeProjectWorkingRuntime,
   type ProjectWorkingRuntime,
@@ -520,7 +532,6 @@ import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-vari
 import { bootstrapRuntimeVoiceAgent } from '../agents/runtime-voice-agent.js';
 import { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import type { StrandsFramework } from '../frameworks/strands-adapter.js';
-import { releaseAllNativeStationControlClients } from '../frameworks/strands-native-client-pool.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   createStationControlCallerRecordResolver,
@@ -531,9 +542,8 @@ import {
   createCodexBoundToolServer,
 } from '../mcp/station-control-in-process.js';
 import {
-  buildStationControlMcpHeaderUrl,
   coordinatorGeneration,
-  mintStationControlMcpToken,
+  mintCodexStationMcpHeaderAuth,
   revokeStationControlMcpToken,
 } from '../mcp/station-control-mcp-token.js';
 import {
@@ -666,6 +676,15 @@ const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
 export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
+  /**
+   * #5066: the watching-Task refusals, bound once the routes compose pull
+   * request feedback. Every agent's pre-tool policy reads it per call, so
+   * an agent built before that binding is still covered.
+   */
+  private readonly pullRequestWatchSlot: { current?: PullRequestWatchPolicy } =
+    {};
+  private readonly pullRequestWatchPolicy: PullRequestWatchPolicy = (input) =>
+    this.pullRequestWatchSlot.current?.(input);
   private virtualApplication?: VirtualApplicationIngress;
   private readonly relayInvitationOwner?: RelayInvitationOwner;
   private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
@@ -899,7 +918,17 @@ export class StationRuntime {
   private host?: string;
   private approvalRegistry: ApprovalRegistry;
   private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
-  private readonly codexRolloutSource = new CodexRolloutSessionSource();
+  // Discovery also reads the Codex homes Station points its own sessions at
+  // (connection config home, app home, credential profiles), so a session
+  // run under one of them is found and continues in that same home.
+  private readonly codexRolloutSource = new CodexRolloutSessionSource({
+    listConfiguredHomes: () =>
+      configuredEngineHomes({
+        engine: 'codex',
+        loadConnectionSettings: async () =>
+          (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+      }),
+  });
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   // The Claude adapter's app-home settings and connection-launch resolver,
@@ -1036,6 +1065,7 @@ export class StationRuntime {
       ),
   });
   private codexAdapter = new CodexAdapter({
+    toolFamiliesEnabled: () => this.codexToolFamiliesEnabled(),
     resolveBoundToolPolicy: (input) =>
       this.resolveExternalPreToolPolicy(input, 'authentic'),
     boundToolsEpoch: () =>
@@ -1071,7 +1101,22 @@ export class StationRuntime {
         this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
     },
     resolveSourceHome: (affinity) =>
-      this.codexRolloutSource.resolveSourceHome(affinity),
+      this.codexRolloutSource.resolveSourceHomeWithRefresh(affinity),
+    // A session found in a credential-profile home runs with that profile's
+    // overlay too, as a profile spawn would (proxy URL, masked ambient keys).
+    resolveSourceHomeEnv: (sourceHome) =>
+      credentialProfileEnvForHome(
+        {
+          engine: 'codex',
+          loadConnectionSettings: async () =>
+            (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+          warn: (message) =>
+            (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
+              message,
+            ),
+        },
+        sourceHome,
+      ),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
     // §6.1's overlay model, channel 2) — mirrors claudeAdapter's
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
@@ -1106,61 +1151,45 @@ export class StationRuntime {
     // constructor body (same lazy-capture posture as
     // `getStationControlEnv` above), but this closure is only invoked at
     // `startSession` time, well after construction completes.
+    // #2376 slice 3: the adapter passes `toolFamilies` only for a session
+    // it admitted (preview on, qualified Codex version, header-token path);
+    // every other mint starts with the whole catalog.
     mintStationControlMcpAuth: (
       threadId: string,
       tenantExecutionContext,
       allowedTools,
       generation,
-    ) => {
-      const conversationId =
-        this.orchestrationEventStore.conversationForSession(threadId)
-          ?.conversationId ?? threadId;
-      const { token } = mintStationControlMcpToken(
-        threadId,
-        'http-header-token',
-        undefined,
+      toolFamilies,
+    ) =>
+      mintCodexStationMcpHeaderAuth({
+        port: this.port,
+        sessionId: threadId,
+        conversationId:
+          this.orchestrationEventStore.conversationForSession(threadId)
+            ?.conversationId ?? threadId,
+        serverId: 'station-control',
         tenantExecutionContext,
         allowedTools,
-        generation !== undefined ? 'coordinator-control' : 'station-control',
-        undefined,
-        generation === undefined
-          ? undefined
-          : () => coordinatorGeneration(conversationId) === generation,
-        // Codex 0.164 does not refresh tools after load_tool_family, even on
-        // the next turn. Keep its catalog callable until refresh is qualified.
-        false,
-      );
-      return { url: buildStationControlMcpHeaderUrl(this.port), token };
-    },
+        coordinatorGeneration: generation,
+        toolFamilies: toolFamilies === true,
+      }),
     mintStationKnowledgeMcpAuth: (
       threadId,
       tenantExecutionContext,
       allowedTools,
       generation,
-    ) => {
-      const conversationId =
-        this.orchestrationEventStore.conversationForSession(threadId)
-          ?.conversationId ?? threadId;
-      const { token } = mintStationControlMcpToken(
-        threadId,
-        'http-header-token',
-        undefined,
+    ) =>
+      mintCodexStationMcpHeaderAuth({
+        port: this.port,
+        sessionId: threadId,
+        conversationId:
+          this.orchestrationEventStore.conversationForSession(threadId)
+            ?.conversationId ?? threadId,
+        serverId: 'station-knowledge',
         tenantExecutionContext,
         allowedTools,
-        generation !== undefined
-          ? 'coordinator-knowledge'
-          : 'station-knowledge',
-        undefined,
-        generation === undefined
-          ? undefined
-          : () => coordinatorGeneration(conversationId) === generation,
-        false,
-      );
-      return {
-        url: buildStationControlMcpHeaderUrl(this.port, 'station-knowledge'),
-        token,
-      };
-    },
+        coordinatorGeneration: generation,
+      }),
     revokeStationControlMcpAuth: (threadId: string) =>
       revokeStationControlMcpToken(threadId),
     // `this.logger` is not assigned until later in the constructor body
@@ -1328,8 +1357,25 @@ export class StationRuntime {
   /** #4305: gates the Settings control, not deployment configuration. */
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private codexBoundToolsPreview?: FeaturePreviewSelector;
+  private codexToolFamiliesPreview?: FeaturePreviewSelector;
+  /** The `codex-tool-families` preview's current choice. */
+  private codexToolFamiliesEnabled(): boolean {
+    return (
+      this.codexToolFamiliesPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false
+    );
+  }
   private stationInstructionsPreview?: FeaturePreviewSelector;
   private coordinatorSessionPreview?: FeaturePreviewSelector;
+  /** #5062/#5065/#5068: the `project-coordination` preview's composition. */
+  /**
+   * Composed with the services; absent until then, so every reader below
+   * (initialization deps, routes, dispatch) treats it as optional, like the
+   * other runtime collaborators a failed startup may never have built.
+   */
+  private projectCoordination?: ProjectCoordinationRuntime;
   private openCodeNativeEnginePreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
@@ -1440,6 +1486,7 @@ export class StationRuntime {
     });
     return createStagedPreToolPolicyEvaluator({
       spec,
+      pullRequestWatchPolicy: this.pullRequestWatchPolicy,
       projectToolPolicy: () => {
         const policy = new ToolLibraryService(
           this.configLoader.getProjectHomeDir(),
@@ -1785,9 +1832,17 @@ export class StationRuntime {
           id: 'codex-bound-browser-device-tools',
           label: 'Codex browser and device tools',
           description:
-            'Let Codex Sessions use authorized browser and device tools through a bound channel.',
+            'Let Codex Sessions use authorized browser and device tools through a bound channel. New Sessions also get Station Control there instead of a header token, adding about 110 KB of tool definitions to each thread.',
         });
       }
+      // #2376 slice 3. A new id, not the withdrawn progressive-tools one, so
+      // a host that saved that choice is not opted in by an upgrade.
+      this.codexToolFamiliesPreview = this.featurePreviews.bind({
+        id: 'codex-tool-families',
+        label: 'Codex tool families',
+        description:
+          'Start new Codex Sessions that use Station Control over its header token with a short index of tool families instead of every tool; the agent loads a family when it needs one. Needs Codex 0.167.0 or later, and stays off for the Codex browser and device tools channel. A change applies to new and resumed Sessions; a running Session keeps what it started with.',
+      });
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -1822,6 +1877,7 @@ export class StationRuntime {
           connect: (id) => this.sshEnvironmentService.connect(id),
         },
         peers: new PeerCredentialStore(projectHomeDir),
+        readiness: new PeerReadinessService(),
         warn: (message) => this.logger.warn(message),
       });
       this.discordGatewayService = new DiscordGatewayService({
@@ -1960,6 +2016,7 @@ export class StationRuntime {
       this.proposedChangeService = services.proposedChangeService;
       this.knowledgeService = services.knowledgeService;
       this.knowledgeStoreProvider = services.knowledgeStoreProvider;
+      this.projectCoordination = this.composeProjectCoordination();
       this.fileTreeService = services.fileTreeService;
       this.ptyAdapter = services.ptyAdapter;
       this.voiceService = services.voiceService;
@@ -2253,21 +2310,26 @@ export class StationRuntime {
       controlPlaneObservation?: ControlPlaneObservation;
     }>
   > {
-    return (await this.connectionService.listRuntimeConnections()).map(
-      (connection) => ({
-        id: engineConnectionId(connection.id),
-        type: connection.type,
-        name: connection.name,
-        enabled: connection.enabled,
-        status: connection.status,
-        engineId: parseEngineId(connection.config.engineId),
-        capabilities: connection.capabilities,
-        // archive#1549: per connection, from the projection the picker
-        // reads — so the bootstrap binding and the picker derive the same
-        // capability from the same evidence.
-        controlPlaneObservation: connection.controlPlaneObservation,
-      }),
-    );
+    // Readiness comes from prerequisites, so the binding asks for neither
+    // model discovery nor commands: both can start an engine at every boot.
+    return (
+      await this.connectionService.listRuntimeConnections({
+        includeModelCatalog: false,
+        includeCommands: false,
+      })
+    ).map((connection) => ({
+      id: engineConnectionId(connection.id),
+      type: connection.type,
+      name: connection.name,
+      enabled: connection.enabled,
+      status: connection.status,
+      engineId: parseEngineId(connection.config.engineId),
+      capabilities: connection.capabilities,
+      // archive#1549: per connection, from the projection the picker
+      // reads — so the bootstrap binding and the picker derive the same
+      // capability from the same evidence.
+      controlPlaneObservation: connection.controlPlaneObservation,
+    }));
   }
 
   /**
@@ -4453,6 +4515,11 @@ export class StationRuntime {
             this.codexRolloutSource,
             new GrokSessionSource({ logger: this.logger }),
             this.openCodeSessionSource,
+            // Opt-in (STATION_EXTERNAL_ACP_SESSIONS=1), list only: reads the
+            // session lists the ACP capability probes already fetched.
+            new AcpSessionListSource({
+              listings: () => this.acpBridge?.sessionListings() ?? [],
+            }),
           ],
           port: this.port,
           host: this.host,
@@ -4482,11 +4549,23 @@ export class StationRuntime {
               enabled: () => true,
               disabled: () => false,
             }) ?? false,
+          // #2377 slice D: Station's own engine derives its station-control
+          // caller from the same records as in-process Claude.
+          stationControlCallerRecords: () =>
+            this.orchestrationService
+              ? createStationControlCallerRecordResolver(
+                  this.stationControlRecordSources(),
+                )
+              : undefined,
           codexBoundToolsEnabled: () =>
             this.codexBoundToolsPreview?.select({
               enabled: () => true,
               disabled: () => false,
             }) ?? false,
+          // The adapter's own admission question, so the families line in
+          // the instructions and the credential's listing agree.
+          codexToolFamiliesAdmitted: (threadId, eligible) =>
+            this.codexAdapter.toolFamiliesAdmitted(threadId, eligible),
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];
@@ -4515,6 +4594,16 @@ export class StationRuntime {
           orchestrationEventStore: this.orchestrationEventStore,
           hostImagesPreview: this.chatHostImagesPreview,
           coordinatorSessionPreview: this.coordinatorSessionPreview,
+          projectSessionContext: this.projectCoordination?.sessionContext,
+          projectCoordinatorEffort: (projectSlug) => {
+            if (this.projectCoordination?.enabled() !== true) return undefined;
+            try {
+              return this.storageAdapter.getProject(projectSlug)
+                .coordinatorEffort;
+            } catch {
+              return undefined;
+            }
+          },
           openCodeNativeEnginePreview: this.openCodeNativeEnginePreview,
           durableAgentPreview: this.featurePreviews.bind({
             id: 'durable-station-agent',
@@ -4840,6 +4929,29 @@ export class StationRuntime {
                       this.orchestrationService,
                     ),
                   ),
+                // #5068: the Project's Task model and effort, read at each
+                // dispatch, while the `project-coordination` preview is on.
+                projectTaskDefaults: (projectSlug) => {
+                  if (this.projectCoordination?.enabled() !== true)
+                    return undefined;
+                  let project: ProjectConfig;
+                  try {
+                    project = this.storageAdapter.getProject(projectSlug);
+                  } catch {
+                    return undefined;
+                  }
+                  return {
+                    ...(project.taskModel
+                      ? { modelId: project.taskModel }
+                      : {}),
+                    ...(project.taskProviderId
+                      ? { providerId: project.taskProviderId }
+                      : {}),
+                    ...(project.taskEffort
+                      ? { effort: project.taskEffort }
+                      : {}),
+                  };
+                },
                 // A seeded dispatch records its Agent; refuse one this
                 // Station does not have.
                 assertAgentExists: (agentId) =>
@@ -5390,6 +5502,9 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      bindPullRequestWatchPolicy: (policy) => {
+        this.pullRequestWatchSlot.current = policy;
+      },
       discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
@@ -5529,6 +5644,7 @@ export class StationRuntime {
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
       coordinatorSessionPreview: this.coordinatorSessionPreview,
+      projectCoordination: this.projectCoordination,
       projectWorkingConfiguration: this.projectWorkingConfiguration,
       learningReview: this.learningReview,
       getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
@@ -5720,6 +5836,7 @@ export class StationRuntime {
       observeModelContext: (
         observation: import('../types.js').ModelGenerationObservation,
       ) => recordManagedModelContext(this.orchestrationEventStore, observation),
+      pullRequestWatchPolicy: this.pullRequestWatchPolicy,
       agentSlug,
       validateProjectTools: (
         slug: string,
@@ -5983,6 +6100,51 @@ export class StationRuntime {
         .designationForConversation(conversationId)?.actor.userId ===
       principal.id
     );
+  }
+
+  private composeProjectCoordination(): ProjectCoordinationRuntime {
+    const projectCoordination = composeProjectCoordinationRuntime({
+      preview: this.featurePreviews.bind({
+        id: 'project-coordination',
+        label: 'Project brief, memory and models',
+        description:
+          "Start every new Session in a Project with its goal, instructions and memory notes, on every engine, and set its coordinator and Task models. Adds the brief and memory index to each new Session's first turn.",
+      }),
+      projectHomeDir: this.configLoader.getProjectHomeDir(),
+      getProject: (slug) => {
+        try {
+          return this.storageAdapter.getProject(slug);
+        } catch {
+          return undefined;
+        }
+      },
+      saveProject: async (slug, update) => {
+        const revision = this.storageAdapter.projectRevision(slug);
+        await revision.replace({
+          ...revision.value,
+          ...update,
+          updatedAt: new Date().toISOString(),
+        });
+      },
+      knowledge: {
+        listDocuments: (slug, namespace) =>
+          this.knowledgeService.listDocuments(slug, namespace),
+        getDocumentContent: (slug, docId, namespace) =>
+          this.knowledgeService.getDocumentContent(slug, docId, namespace),
+      },
+      warn: (message, fields) => this.logger.warn(message, fields),
+    });
+    this.knowledgeService.setBriefCarriesRules((slug) => {
+      if (!projectCoordination.enabled()) return false;
+      try {
+        return Boolean(
+          this.storageAdapter.getProject(slug).instructionsMigratedAt,
+        );
+      } catch {
+        return false;
+      }
+    });
+    return projectCoordination;
   }
 
   private bindChatHostImagesPreview(): void {
@@ -6380,14 +6542,6 @@ export class StationRuntime {
         configLoader: undefined,
         optionalNetworkShutdownTasks,
       });
-    } catch (error) {
-      failures.push(error);
-    }
-    try {
-      await Promise.all([
-        MCPManager.releaseAllNativeStationControlConnections(this.mcpCustody),
-        releaseAllNativeStationControlClients(this.mcpCustody),
-      ]);
     } catch (error) {
       failures.push(error);
     }

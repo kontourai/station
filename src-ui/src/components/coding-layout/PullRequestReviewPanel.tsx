@@ -1,3 +1,4 @@
+import type { PullRequestFeedbackByPullRequest } from '@kontourai/station-contracts/pull-request-feedback';
 import type {
   PullRequest,
   PullRequestCheck,
@@ -43,6 +44,11 @@ import {
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
+import {
+  PullRequestFeedbackStrip,
+  usePullRequestFeedbackStrip,
+} from '../pull-requests/PullRequestFeedbackStrip';
+import { PullRequestHeadReviewSection } from '../pull-requests/PullRequestHeadReviewSection';
 import {
   humanise,
   PullRequestChip,
@@ -152,16 +158,38 @@ function DisclosureSummary({ children }: { children: React.ReactNode }) {
 const checkKey = (check: PullRequestCheck) =>
   `${check.group ?? ''}:${check.name}:${check.url ?? ''}`;
 
+/** Failing checks the agent was told about, on the head this panel shows. */
+type SentChecks = NonNullable<PullRequestFeedbackByPullRequest['sentChecks']>;
+
+/**
+ * When a failing check was sent to the agent: matched by its link, else by
+ * the "workflow / job" name agent feedback gives it.
+ */
+function sentAt(
+  check: PullRequestCheck,
+  sent: SentChecks | undefined,
+): string | undefined {
+  if (!sent || check.state !== 'failure') return undefined;
+  const name = check.group ? `${check.group} / ${check.name}` : check.name;
+  return (
+    (check.url && sent.checks.find((entry) => entry.url === check.url)) ||
+    sent.checks.find((entry) => entry.name === name)
+  )?.at;
+}
+
 function CheckList({
   checks,
   onAddToChat,
   justAdded,
+  sent,
 }: {
   checks: readonly PullRequestCheck[];
   onAddToChat?: (check: PullRequestCheck) => void;
   /** The check whose add was just pressed: its icon shows a check mark. */
   justAdded?: string | null;
+  sent?: SentChecks;
 }) {
+  const now = useCoarseNow();
   if (checks.length === 0) return null;
   return (
     <ul className="pull-request-review__checks">
@@ -190,6 +218,11 @@ function CheckList({
             ) : null}
           </span>
           <span className="pull-request-review__check-tools">
+            {sentAt(check, sent) ? (
+              <span className="pull-request-review__sent-time">
+                Sent <RelativeTime iso={sentAt(check, sent)!} now={now} />
+              </span>
+            ) : null}
             {onAddToChat ? (
               <IconButton
                 className="pull-request-review__icon pull-request-review__check-tool"
@@ -232,11 +265,13 @@ function PullRequestChecks({
   siteName,
   onAddToChat,
   justAdded,
+  sent,
 }: {
   checks: PullRequestChecksObservation | undefined;
   siteName: string;
   onAddToChat?: (check: PullRequestCheck) => void;
   justAdded?: string | null;
+  sent?: SentChecks;
 }) {
   if (!checks)
     return <p className="pull-request-review__muted">Checks not reported</p>;
@@ -293,6 +328,7 @@ function PullRequestChecks({
         checks={needsAttention}
         onAddToChat={onAddToChat}
         justAdded={justAdded}
+        sent={sent}
       />
       {settled.length > 0 && (
         <details className="pull-request-review__settled">
@@ -655,6 +691,23 @@ function ReviewOwner({
   const [reviewTab, setReviewTab] = useState<'review' | 'guide'>('review');
   const [method, setMethod] = useState<PullRequestMergeMethod>('merge');
   const { guard, DiscardModal } = useUnsavedGuard(Boolean(body) || pending);
+  const activeChatKey = activeChat
+    ? activeChatsStore.getChatKeyForExecutionSession(activeChat)
+    : undefined;
+  const feedback = usePullRequestFeedbackStrip(
+    {
+      provider: target.provider,
+      host: target.host,
+      repository: { owner: target.owner, name: target.repository },
+      ref: target.ref,
+    },
+    activeChat
+      ? (activeChatKey &&
+          activeChatsStore.getSnapshot()[activeChatKey]?.conversationId) ||
+          activeChat
+      : undefined,
+  );
+  const sentChecks = feedback.byPullRequest.data?.sentChecks;
   const review = useQuery({
     queryKey: ['pull-request-review', identity],
     queryFn: ({ signal }) =>
@@ -947,6 +1000,11 @@ function ReviewOwner({
             headSha={data.headSha}
             observedAt={data.observedAt}
           />
+          <PullRequestFeedbackStrip
+            strip={feedback}
+            reference={`${target.owner}/${target.repository} #${target.ref}`}
+          />
+          <PullRequestHeadReviewSection strip={feedback} />
           <p
             className="pull-request-review__status pull-request-review__status--live"
             role="status"
@@ -992,6 +1050,11 @@ function ReviewOwner({
                   siteName={siteName}
                   onAddToChat={activeChat ? addCheckToChat : undefined}
                   justAdded={justAdded}
+                  sent={
+                    sentChecks?.headSha === data.headSha
+                      ? sentChecks
+                      : undefined
+                  }
                 />
                 {data.pullRequest.body?.trim() ? (
                   <>

@@ -1,0 +1,9 @@
+{
+  "revision": "d13a224d141a5844f259f5071592f28c7ff2eec2",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Adds one PROVIDER_FAILURE_KINDS mapping: project_held -> conflict (a paused or archived Project refuses until a person resumes it). contracts.md describes the closed kinds, retry table and inventory guard generally and lists selected codes; sdk.md references the same contract; neither claim changes.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds one PROVIDER_FAILURE_KINDS mapping: project_held -> conflict (a paused or archived Project refuses until a person resumes it). contracts.md describes the closed kinds, retry table and inventory guard generally and lists selected codes; sdk.md references the same contract; neither claim changes.","inputs":["packages/contracts/src/provider-failure.ts"]}
+  ]
+}

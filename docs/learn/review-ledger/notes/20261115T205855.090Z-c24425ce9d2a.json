@@ -1,0 +1,9 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#4995 adds AgentService.findAgent (absence returns null, other read errors still throw); listing, getAgent and smoke-confidence behaviour these pages describe are unchanged.","inputs":["src-server/services/agents/agent-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#4995 adds AgentService.findAgent (absence returns null, other read errors still throw); listing, getAgent and smoke-confidence behaviour these pages describe are unchanged.","inputs":["src-server/services/agents/agent-service.ts"]}
+  ]
+}

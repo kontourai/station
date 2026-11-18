@@ -82,6 +82,7 @@ The optional [Durable Station Agent](#durable-station-agent) owner sits above th
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions, scoped to one embedding generation. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
+| [Custom appearance](#custom-appearance) | Let a person, or an agent proposing for them, restyle Station with a palette and sandboxed CSS. | `src-server/services/identity/custom-appearance.ts` |
 | [Personal Board authoring](#personal-board-authoring) | Preview, edit and publish personal dashboards through user and chat authoring. | `src-server/services/layouts/personal-board-authoring.ts` |
 | [Personal Work Board](#personal-work-board) | Arrange exact work references without copying their owners' state. | `src-server/services/spatial-board/spatial-board-store.ts` |
 | [BrowserSessionService](#browsersessionservice) | Own browser acquisition, profile-scoped sessions and authorized automation independently of viewers. | `src-server/services/browser/browser-service.ts` |
@@ -177,7 +178,8 @@ it is delivered; resolvers and adapters own the channel, the preview and receipt
 **Interface and ownership.** Every tool name in the text is gated on the
 `controlTools` set the caller passes, which `effectiveStationControlTools`
 derives from the Agent's selection and `stationControlToolListable` at the
-engine's assurance (`stationControlAssuranceFor`: Claude `bound`; Codex and ACP
+engine's assurance (`stationControlAssuranceFor`: Claude `bound`; Codex `bound`
+when its bound channel carries the catalog, otherwise `delegated-custody`; ACP
 `delegated-custody`; other engines none). A section with no offered tool is
 omitted. A delegated session gets the delegated-child section in place of
 orchestration and is never told to use `delegate_task` or `send_message`.
@@ -298,7 +300,9 @@ the host half is the [operator-only route set](../../src-server/routes/operator-
 behind `station environment operator passkeys`. The
 [session service](../../src-server/services/identity/operator-sessions.ts) verifies
 single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
-and stores hashed, device-bound sessions in that same private registry. The HTTP
+and stores hashed, device-bound sessions in that same private registry. WebAuthn
+initialization waits for the first ceremony; its code remains in the server bundle.
+The HTTP
 boundary admits exact session read leaves, including pending pairing requests,
 and per-action access-change requests.
 Those writes return 202 without mutation. The
@@ -352,7 +356,12 @@ retains the canonical human actor, account state and Device binding;
 [management authority](../../src-server/security/relay-management-authority.ts)
 rechecks explicit Device scope and provider currentness after asynchronous work.
 Target approval/revision is rechecked before issuance or revocation. Public SDK
-projections expose route/trust facts, never issuer credentials.
+projections expose route/trust facts, never issuer credentials. The
+[SDK read owner](../../packages/sdk/src/relay-management.ts) validates every
+wire row's Station scope before excluding legacy Beta approvals and pending
+Devices from actionable arrays and reporting their counts. Active setup links
+use Stable/Nightly; the protocol-1 wire response retains the old public Beta
+route-intent link only for old readers, without enrollment authority.
 
 The [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
 serves desktop and selected native relay views. `relay:manage` (**Manage remote
@@ -1528,14 +1537,14 @@ not establish installed-app or autonomous execution qualification. See the
 
 This is the read boundary for a Session’s messages and exact answer/input/result references. It keeps authorization and event interpretation together so routes and Knowledge readers do not each reconstruct a different answer. The [query implementation](../../src-server/services/orchestration/session-query-module.ts) separates transcript replay from bounded Basis descriptors.
 
-**Interface.** `read({ type: 'conversation', threadId }, authority)` returns a conversation with ordered messages, `not-found`, or `unavailable`. The same module exposes exact `readAssistantTurn`, `readUserInput`, `readToolResult`, and `readAnswerBasis` operations. It has no mutation operation.
+**Interface.** `read({ type: 'conversation', threadId }, authority, prefetched?)` returns a conversation with ordered messages, `not-found`, or `unavailable`. A caller that already read the Session's whole history in the same request (the conversation-open point read) passes those events as `prefetched`; the session lookup and read check still run, and only the second history read is skipped. The same module exposes exact `readAssistantTurn`, `readUserInput`, `readToolResult`, and `readAnswerBasis` operations. It has no mutation operation.
 
 **Behavior.** The Implementation resolves the session, checks authority, then replays its events exactly once in stored order. An absent session and denied authority are both `not-found`, preventing disclosure. Title and messages are derived from that same event set. Exact assistant-answer reads require a normally completed, non-cancelled turn and return its latest eligible answer. Input and result reads use event identity, not transcript position. Basis reads use an exact descriptor-only turn window (at most 1,000 events and 128 KiB at the storage owner); raw replay fallback is rejected, and corruption has a separate outcome. Durable query failure becomes `unavailable`, not an empty successful read.
 
 **Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. The connected Chat inventory also reopens exact authored inputs through
 `GET /sessions/:threadId/inputs/:eventId?turnId=...`, with route-level current
 principal and Session checks adjacent to publication. Its selected-row reader
-uses scoped SDK queries; bodies stay outside inventory descriptors. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Large runtime event content is stored out of line in `orchestration_event_content` and the event keeps a typed reference ([event content spill](../design/event-content-spill.md)); readers that owe exact content opt in to `EventStore.resolveEventContent` or join the table in SQL, and the session content route serves a body on demand under the window read's authority. The request content-binding route returns the server's single definition of what an allow must load (the request and its bound `tool.started` events) and the digest the gate expects. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Usage polling keeps a per-session projection keyed by the durable event head, rereading SQL-selected usage facts only when that head changes (or another SQLite connection changes the database). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
+uses scoped SDK queries; bodies stay outside inventory descriptors. Other inventories remain with their owning modules. Conversation replay carries stored attachment references; the attachment route fetches retained bytes on demand. Large runtime event content is stored out of line in `orchestration_event_content` and the event keeps a typed reference ([event content spill](../design/event-content-spill.md)); readers that owe exact content opt in to `EventStore.resolveEventContent` or join the table in SQL, and the session content route serves a body on demand under the window read's authority. The request content-binding route returns the server's single definition of what an allow must load (the request and its bound `tool.started` events) and the digest the gate expects. Internal binding and lifecycle readers select their event methods, and inbox existence gates use an authorized session point read. Lifetime usage keeps each session's fold in the event store (`orchestration_usage_projection_cache`) and refolds only sessions with events past a durable `global_sequence` watermark; delete and update triggers drop a session's fold whichever connection edits its events, and a missing, other-version or ahead-of-store watermark, or **Rebuild usage**, refolds every session (#373). Token, cost, activity, attribution and relay-mirror rules still belong to the shared usage fold. These caches hold read results, never authorization. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
 
 ## StationControlDispatchScope
 
@@ -1926,6 +1935,10 @@ builds the person gate, the delivery and the routes' ports; the
 drives that composition through the real boundary, guard and routes per
 credential channel, with a real thread inbox. A person reads a conversation
 schedule with conversation read access; an agent may read its own.
+Session read-model lists batch the earliest pending check-back time once per
+request, emitting only `nextWakeUpAt` for readable conversations. The shared
+work-status selector uses that fact for **Working · Waiting** after a turn settles;
+approval proposals are excluded.
 
 **Automation proposals (#4830).** `propose_automation_source` and
 `propose_automation_rule` follow the same pattern for Automation sources and
@@ -2231,6 +2244,17 @@ refresh combines copied parent rows with subsequent runtime turns. Deletion
 before first send tombstones the context under the lifecycle guard before file
 cleanup, so failed cleanup cannot reactivate the seed.
 
+A conversation continued from a paired Station is saved the same way.
+`POST /agents/:slug/conversation-imports` in the
+[conversation routes](../../src-server/routes/chat/conversations.ts) builds the
+fork context from the sender's bounded text history
+([peer-conversation-handoff](../../src-server/services/peers/peer-conversation-handoff.ts)).
+Its source identity names the other Station, so it never resolves to a
+conversation here. The sending side is the
+[peer chat routes](../../src-server/routes/environments/peer-chat-routes.ts)'
+`conversation-handoffs` leaf, which reads history through
+`ConversationLineage.readConversationCarriedMessages`.
+
 Native-fork persistence has a separate, fail-closed recovery boundary. Its
 [private SQLite intent](../../src-server/services/orchestration/event-store.ts)
 joins the existing Session-start claim before invocation. A possible native
@@ -2284,7 +2308,61 @@ implements `hasOpenEngineWork` also vetoes the park while its engine still runs 
 task it never reported an end for, whatever the child-work record says.
 Parking stops the process but absorbs its exit, so the session stays dormant
 rather than ending: the next turn restarts it in place. No worktree, claim or
-room effect fires.
+room effect fires. The same check guards the recovery replay into a failed
+Claude turn and the relaunch for full access, so nothing below reaches them.
+
+A Session that is finished by design does not wait for that threshold.
+[`FinishedSessionParking`](../../src-server/services/orchestration/finished-session-parking.ts)
+watches every turn terminal the service commits. It parks the engine
+`finishedSessionParkAfterMs` (15 seconds) after the turn settled when all of
+these hold:
+
+- The Session's newest turn a send produced was unattended: `dispatchOrigin`
+  `delegation`, `automation` or `task-dispatch`, or `unknown` in a Session
+  started as a delegated child whose context Station derived or attested (a
+  delegator's `continue_task` follow-up records no origin). A turn the engine
+  opened on its own (`metadata.trigger` `provider`) does not decide.
+- No person has, or may have, sent into it. Counted as a person's: a turn
+  start placed `interactive` or marked person-typed, every steer (a steer
+  inherits its turn's origin, so a person's steer from an unmarked surface
+  reads as the turn's) except a child's result Station steered in (Station's
+  internal actor with the server-stamped `delegation-result` sender), and a
+  turn start with no origin this build recognises (history from before the
+  field). Engine-opened turns do not count.
+- The engine's adapter declares `openEngineWork: 'complete'` and its
+  `earlyParkRefusal` gives no reason. Only Claude declares it. Claude runs
+  with `includeHookEvents`, and Station's own hooks are SDK callbacks that
+  report no hook events, so any reported hook is one Station did not install
+  (user, project, local, plugin or managed): from then on that engine refuses,
+  since an `async` or `asyncRewake` hook can outlive the turn. It also
+  refuses on a Claude Code older than the one this was checked against, or
+  one whose `init` reported no version. It refuses
+  while it has a housekeeping task running (`skip_transcript`, such as a
+  post-turn memory save), while its last `init` reported any MCP server that
+  is not one of Station's in-process (`sdk`) servers or reported none, and
+  while its scheduled wakeups (CronCreate, ScheduleWakeup, a loop) are
+  non-zero or unknown. They are unknown before any Stop hook reported
+  `session_crons` and after any scheduling-tool call until one does again;
+  a turn that ends through StopFailure runs none. The refusal is read again
+  under the lifecycle lock. Codex, whose background command processes nothing
+  tracks, and ACP engines, whose own tools can run processes Station never
+  sees, do not declare it, and neither does any engine until it can.
+
+So a delegated child, a dedicated Automation run or a Task dispatch nobody
+typed in qualifies when it runs on Claude with only Station's own MCP servers
+and hooks, scheduled nothing, and has no housekeeping running. Not seen: a
+hook that is configured but has not fired in that engine (nothing of it is
+running; one that fires only after idling, such as an idle `Notification`,
+does not fire once parked, as after the idle park), and a process a command
+leaves running after its tool call returned without making it a background
+task. The park is the idle park
+with that grace as its threshold, so every refusal above still applies under
+the lifecycle lock. An engine event after the settle restarts the grace. A
+delegator's follow-up or a queued inbox entry starts a turn, which the park
+never stops, and that turn's own settle decides again. A refused park is left
+to the sweep, which never reads `earlyParkRefusal`. Everything else, a
+person's chat included, keeps the ordinary threshold.
+`idleSessionParkAfterMs: 0` turns both parks off.
 `isSessionLifecycleStateAtRest` answers "is this session doing anything";
 `sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.
 
@@ -2393,8 +2471,9 @@ anything else as `unknown`. Who passes what:
   then a person's entry is `interactive`; a delegated child's result
   (server-stamped `delegation-result` sender, also delivered through
   `delegationResultStartPort`) is `delegation` when the parent Session is
-  itself unattended (bound to a Task, or a delegated child whose start
-  carries Station's provenance stamp), and otherwise takes the parent's own
+  itself unattended (bound to a Task, or a delegated child whose first
+  start carries Station's provenance stamp; an in-place restart after a park
+  does not repeat the stamp), and otherwise takes the parent's own
   newest non-result turn's origin (`readSessionDispatchFacts`), so a
   person's chat stays `interactive`; Station's other entries (a
   Task question wake, a check-back) are
@@ -2522,8 +2601,12 @@ children are excluded from fresh stop targets; pending stops still redeliver.
 Completing root stop delivery releases its temporary root fence while child fences remain.
 Ownership candidate and activity reads use one SQLite snapshot. Inventory and conversation-history reads batch owned activity per request. Session
 summaries report `running` while verified owned descendants run or stop
-obligations remain pending, retaining the own fold in `ownedWork`. Turn
-coordination continues to describe the parent's own turn.
+obligations remain pending, retaining the own fold in `ownedWork`.
+Descendant work activity uses the same event-based lifecycle projection as
+the descendant's own summary. An attached adapter or stale provider status
+does not keep a finished child running. Pending starts, unresolved provider
+invocations and stop obligations still keep the parent busy.
+Turn coordination continues to describe the parent's own turn.
 `ownedWork.pendingStops` exposes grouped custody, reason and count;
 `ownedWork.state` distinguishes `running`, `stopping`, `waiting-on-peer` and
 `unknown`. The shared status ladder carries custody through its existing fact
@@ -2746,7 +2829,7 @@ Recovery must distinguish a requested retry, an observed provider turn, and an a
 
 An automatic profile change is a compensation protocol, not a switch followed by a blind retry. The [recovery module](../../src-server/services/orchestration/credential-recovery-module.ts) stages a candidate, dispatches through the existing session owner, and commits or rolls back from exact provider and registry outcomes.
 
-**Interface.** `recover`, `complete`, `abandon`, and `reconcile` form one compensation protocol for credential-profile recovery. Each returns a total recovery or reconciliation outcome rather than making callers infer stage/commit/rollback order.
+**Interface.** `recover`, `complete`, `abandon`, and `reconcile` form one compensation protocol for credential-profile recovery. Each returns a total recovery or reconciliation outcome rather than making callers infer stage/commit/rollback order. A `recover` observation may carry `consentedProfileRef`, a person's "Continue on <label>" choice from a waiting usage-limit stop (`SessionRecoveryCoordinator.continueUsageLimitOnProfile`); the Adapter's `stage` then selects exactly that profile with the consent replacing only the `automatic` opt-in, and `listContinueOnProfiles` offers the candidates. The execution Adapter marks its pre-send boundary explicitly: a failure before the provider's `sendTurn` is called (the profile session cannot restart, posture or workspace checks refuse) throws `RecoveryNotSentError` and dispatches as `rejected` (with `sessionTouched` unless the restart refused before stopping anything, marked with `markSessionUntouched`), so the module rolls the profile back, restores a touched session, and ends the intent `failed`, which the coordinator records (or returns a person's Continue on to waiting, or retires it as `session-ended` when the session had to be quarantined). Any failure after `sendTurn` is called stays indeterminate.
 
 **Behavior.** A recovery call waits for shared startup reconciliation and stages only when its result is `reconciled`. An `indeterminate` result or an unavailable durable scan blocks staging across connections, because an unreadable or unresolved obligation cannot prove that a different connection is safe. The coordinator backs off refused automatic recovery from 60 seconds to a 10-minute cap; only a `reconciled` result latches the startup pass. The module warns when readiness becomes blocked, when its blocking reason changes, and when it recovers. Refused automatic attempts emit `station.recovery.admission_refused` with a bounded reason. Session recovery projections expose a blocked admission reason and next retry time, while preserving the durable intent outcome; the existing usage-limit banner names the credential-read or unconfirmed-change reason and displays the next check time when known. An unavailable scan, like a visible linked receipt, suppresses the identity-free orphan sweep while independent scoped compensation still drains. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation runs only in the startup pass, retried by later callers until it reconciles.
 
@@ -2782,6 +2865,37 @@ worker exit or response completion for accounting settlement.
 
 ## ConnectionInspector
 
+### Engine setup handoff
+
+The [ACP routes](../../src-server/routes/connections/acp.ts) expose a bounded,
+owner-only setup read on personal Stations behind **Guided engine setup**.
+[engine-setup](../../src-server/services/acp/engine-setup.ts) projects existing
+catalog, saved configuration and recorded probe facts into destinations for the
+existing engine pane, without executable configuration or credential values.
+Station Control's `list_engine_setup` and `open_engine_setup` use that read;
+`station acp setup` is its CLI counterpart. Navigation preserves its refusal,
+and install/sign-in remain in the person's existing authority boundary.
+The [instruction composer](../../src-server/runtime/agents/station-orchestration-instructions.ts)
+names these tools only when offered. Reconnect recovers a persisted-only
+connection through the configuration mutation owner and the same probe/register
+path as Retry check; it preserves authored Agent content.
+
+The [person-owned actions](../../src-server/routes/connections/engine-setup-actions.ts)
+choose only reviewed built-in installer recipes, preserve a saved alias during
+launch repair, and update Station-tool selection under the existing Agent
+persistence owner. Installer attempts use durable terminal operation ids;
+Stop names its exact attempt. `TerminalSessions` and the supervisor's workload
+host own lifetime and cleanup, including a core restart. Protocol 1.4 requires
+a deadline capability observation before an installer can start.
+
+[Route/process tests](../../src-server/routes/connections/__tests__/engine-setup-actions.routes.test.ts),
+[MCP caller tests](../../src-server/tools/__tests__/station-control-platform-tools.test.ts),
+[mounted action tests](../../src-ui/src/__tests__/EngineSetupActions.test.tsx), and
+[fixture-backed browser journeys](../../tests/guided-engine-setup.spec.ts) exercise
+these seams. They do not establish real provider login or native-device
+qualification. See the
+[setup journey](../guides/acp.md#set-up-an-engine-from-chat).
+
 [ConnectionInspector](../../src-server/services/connections/connection-inspector.ts)
 turns adapter observations into an inventory with explicit freshness and gaps.
 [ConnectionService](../../src-server/services/connections/connection-service.ts) owns
@@ -2797,7 +2911,10 @@ the inspector does not start its own timeout. It distinguishes a `TimeoutError` 
 from other aborts. Built-in adapters declaring awaited abort settlement get a separate
 bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
 launchable-model refresh supplies a signal, while ordinary runtime inventory calls can
-omit one. Command/prerequisite inclusion and discovery policy are explicit inputs.
+omit one. Command, model-catalog and prerequisite inclusion and discovery policy are
+explicit inputs. The boot-time built-in agent binding excludes model discovery and
+commands, because either can start an engine's program and readiness comes from
+prerequisites alone.
 Public connection identity is mapped at the composition Seam from the Adapter's
 canonical EngineId. Partial results state whether facts came from live observation,
 built-in fallback, or neither. Adapter failure cannot throw through the total Interface
@@ -3189,6 +3306,18 @@ The rename commits the visible value. Directory sync is attempted afterward;
 its failure does not turn already published bytes into a retryable failed write,
 and the directory-sync helper is a no-op on Windows. This is not a tested
 power-loss guarantee for every filesystem.
+
+The `${path}.mutation` lock is published by hard-linking a
+`${path}.mutation.<uuid>.tmp` owner record onto it
+([lock protocol](../../packages/shared/src/lifecycle-events.ts)). Every exit of
+an acquisition, including a thrown error, removes that temporary. A process
+that dies mid-acquisition can still leave one, so server startup runs
+`sweepOrphanedFileMutationLockTemporaries` over the Station home
+([startup](../../src-server/runtime/bootstrap/runtime-startup.ts)). It walks
+three levels and at most 20,000 entries, and removes only exactly-named
+temporaries at least 24 hours old that are not hard-linked as a lock and name
+no live owner. Results are counted as `station.file_mutation_lock.orphan_temporaries`
+and logged once when anything is found.
 
 A caller-supplied `maxBytes` limits the serialized document; there is no default
 byte cap. Serialization happens before that size check. Schema validation,
@@ -3873,7 +4002,18 @@ composes Project membership with current transport grants and checks again at
 mutation commit and delivery. Reading, discussion, note editing and Agent execution
 are separate actions. Presence expires and is not restored as live after restart.
 The [routes](../../src-server/routes/projects/project-room-routes.ts) expose bounded
-history and guarded live delivery. The [SDK](../reference/sdk.md#shared-project-room)
+history and guarded live delivery. [One live stream](../../src-server/routes/projects/project-room-live.ts)
+per client and Project carries up to 50 channels, each admitted as its own history
+read and re-checked before each frame (#4798). It sends the next message and the
+messages a reaction, edit or delete changed, from the store's commit hints, with the
+sequence and activity range each covers; a change it cannot describe exactly (an
+other-process writer, a burst) is a `resync`. Typing and stream-bound presence live
+in the service's memory and clear when their stream closes. Structured person
+mentions (#4799) are validated against the access adapter's member directory and
+told once per newly named person through the notification service's principal
+feed (`project-room-mention-notifications.ts`). The stream also carries each room's
+newest Agent request records and its newest 50 still working (unsettled with no
+recorded failure), never their Sessions (#4800). The [SDK](../reference/sdk.md#shared-project-room)
 retains exact send intents and retires protected content when authority changes.
 
 [ProjectRoomAgentModule](../../src-server/services/projects/project-room-agent-module.ts)
@@ -4101,6 +4241,16 @@ ceiling; an observed external commit restores 250 ms sampling. Unsubscribing the
 last watcher cancels sampling. Idle external edits can therefore take up to two
 seconds plus scheduling delays to notify readers; this polling runs in the
 worker, separately from the server event loop.
+
+**Worker lifecycle.** The [working-state](../../src-server/services/orchestration/project-task-room-working-state.ts)
+and [history](../../src-server/services/orchestration/project-task-room-history.ts)
+workers are each a V8 isolate and start on their first request, not at
+composition. Each is retired after 60 seconds with no request in flight (and,
+for working state, no watcher), and the next request starts a fresh one over
+the same database. Every reply follows its commit and the workers keep no
+durable state in memory, so retirement is not a failure: it neither makes
+working state terminal nor starts the history worker's failure cooldown. A
+worker that fails is handled as before.
 
 ## SharedWorkingStateEditingCapability
 
@@ -4530,6 +4680,18 @@ tests own distinct persistence, authority, transport and presentation checks.
 They do not establish live owner publication, provider consumption, causal
 improvement or human usability. See [bounded agent work](../guides/agent-efficiency.md).
 
+## Project Library
+
+[Library routes](../../src-server/routes/projects/project-library-routes.ts)
+project uploads from the Project's folder
+([ProjectLibraryUploads](../../src-server/services/projects/project-library-uploads.ts))
+and kept outputs from [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)
+(`listForProject`, `readContentForProject`). Nothing is copied. The
+[composer](../../src-server/runtime/routes/runtime-project-library.ts) mounts
+nothing on a hosted Station, and every route selects the `project-library`
+preview. The station-control side reads the Project recorded on the verified
+caller's Session.
+
 ## Project working configuration
 
 [ProjectWorkingConfigurationService](../../src-server/services/projects/project-working-configuration.ts)
@@ -4865,12 +5027,24 @@ inventory at 256 and materialize the newest 512 receipts. They may repair the
 reference index under its lock. Unreadable/contended Projects are reported;
 a missing workspace contributes no receipts rather than proving it has none.
 
-Confirmed-start shutdown failure and executor timeout retain the workspace.
-There is a current exception: if Session start returns an indeterminate outcome
-by throwing, the executor has not set its `started` flag, reports the workspace
-safe and skips stop. The module can then close that workspace despite possible
-live reviewer work. This path needs uncertainty propagation and confirmed
-cleanup before the general retention guarantee can be claimed.
+Confirmed-start shutdown failure, executor timeout and an unconfirmed Session
+start retain the workspace. A start invocation whose reply throws or lacks a
+confirmed Session does not classify its checkout as safe to remove.
+
+**Task association.** [TaskCodeReviewModule](../../src-server/services/evidence/task-code-review-module.ts)
+projects the submission owner's server-derived Task/Project incarnation binding.
+The association is published with request admission, before reviewer invocation;
+it is not guessed from titles, commits or receipt content. Requests retain the
+original Project ID and creation time as equality preconditions. Recreating a
+Project with the same slug and checkout cannot rebind a saved request.
+Receipt publication retains the admitted storage identity and rechecks authority
+at commit. Project and aggregate readers keep Task-associated evidence behind
+the same personal-only boundary; delta ancestry cannot drop that association.
+The personal-host [Task code-review routes](../../src-server/routes/evidence/task-code-reviews.ts)
+recheck current Task authority and keep checkout observation, revision freshness
+and reviewer outcomes separate. The [Overview panel](../../src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx)
+uses Project-scoped SDK queries and preserves the original request across response
+loss. Task checkout facts do not prove placement parity for independent room requests.
 
 **Consumers and evidence.** API, SDK client, CLI and station-control MCP share
 `REVIEW_EVIDENCE_OPERATOR_SURFACE`. Project Review UI uses that client; the old
@@ -5001,7 +5175,25 @@ engine launch names, which the [workload routes](../../src-server/routes/system/
 and the [workload_status tool](../../src-server/tools/station-control-workload-tools.ts)
 read from cgroup v2 files, including each scope's kernel `oom_kill` count
 (scopes launch with `OOMPolicy=continue`, so a command, not the engine, is
-normally killed). Orchestration's first-turn composition adds the
+normally killed). The launcher's 1 s poll logs each kill as it sees it with
+the scope's largest processes, reports near-cap memory pressure on entering
+and leaving it, and raises an engine's commands' `oom_score_adj` above the
+engine's so the kernel takes a command first. Each pressure transition and
+each kill announced while the engine lives is also a workload notice to the
+engine process's subscribers (`watchChildWorkloadNotices`), never one per poll;
+WorkloadResources knows no adapter. The
+[engine notice queue](../../src-server/providers/adapters/engine-workload-notices.ts)
+words, coalesces and counts them per session, and each adapter delivers through
+its own channel: Claude through the `additionalContext` of its next
+`PostToolUse`/`PostToolUseFailure` hook (a system reminder after the next tool
+result) or, with no tool first, its next `UserPromptSubmit`; Codex through a
+`turn/steer` into the running turn or, between turns or when refused, an extra
+input item of the next `turn/start`. Both adapters also publish a
+`runtime.warning` the transcript shows at once. Orchestration's first-turn composition adds the
+Project brief and memory index a Session's start recorded
+([`project-session-context-source.ts`](../../src-server/services/projects/project-session-context-source.ts),
+read once at start, behind the `project-coordination` preview; its receipt
+rides `turn.started` for every engine), the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
@@ -5303,6 +5495,28 @@ public `station` Agent; the adapter alone maps it to the private runtime key.
 The operator projection exposes the principal for standing-grant management,
 but creation/update does not accept caller-declared execution authority.
 
+**Project jobs and Project lifecycle (#5069, #5070).** A job with a
+`projectId` replaces the scheduled-turn adapter with
+[ScheduledProjectRuns](../../src-server/services/scheduling/scheduled-project-runs.ts):
+each run creates a Task in that Project (keyed by run id), dispatches it
+through the Task dispatcher, queues the prompt on the Task's chat through
+ScheduledConversationRuns, and writes a run summary as the Task summary.
+That Task and turn act as the job's `createdBy` exactly as recorded (#5126):
+the dispatch's `ownerUserId` and owner attribution and the queued turn's actor
+are the creator's, so the Session's station-control caller, Project role and
+scope follow from them. The run first checks that the creator holds `execute`
+in the Project (`createProjectPrincipalPermission`, the dispatch scope's
+membership rule) and refuses before creating a Task otherwise; an ownerless
+Project job starts nothing and its view carries `ownerNeeded`. The
+[ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
+composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
+is an orchestration turn admission (a paused or archived Project's chats admit
+no turn), interrupts a Project's running turns through
+`OrchestrationService.interruptTurn`, and tells the scheduler which Projects
+hold their jobs: `SchedulerLedger.claimDue`'s `held` predicate leaves those
+occurrences unclaimed. Both are behind Feature Previews (`project-pause-archive`,
+`project-schedules`).
+
 **Conversation targets (Automations).** A job with a `target` never uses the
 scheduled-turn adapter. [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
 queues each run on the target conversation's thread inbox as a framed Station
@@ -5581,7 +5795,9 @@ conversation nor grants execution.
 
 **Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
 
-**Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the open-Task lookup and before the tracker is read). `parseGitHubWorkItemRef` lowercases owner and repository, and refs compare by `workItemRefKey`. `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true` (another Project's as `{id, projectId}` only), checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref, `workItemObservedAt` and `workItemProvenance: 'project-board'`. Every create that names a work item keeps one open Task per item under that lock (`TaskWorkItemTakenError`, `409` from `POST /api/tasks`): across Projects only for board-checked GitHub refs, within the Project (compared through `localProjectIdFor`) for every other ref, and `POST /api/tasks` takes a `github:` ref only when the board lists it, recording the same provenance. Dispatch, `get_task_brief` and the Task header read the tracker only for a ref with that provenance. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, a caller's abort signal, an output bound and `--hostname github.com`, with an observed answer kept 30 s per ref and comments-since mark. GitHub Enterprise hosts and pull requests are `unsupported`. **Task tracker follow-ups (#4508, preview `task-tracker-follow-ups`).** [`TaskFollowUpPoller`](../../src-server/services/work-item-providers/task-follow-up-poller.ts) is started, not awaited, on each built-in scheduler `automationPoller` tick (composed in `runtime-route-support.ts`, not in hosted mode), on its own single flight with a 60-second deadline and a 15-minute backoff when `gh` is missing, signed out or rate limited. It reads each eligible Task's primary item and the kept pull requests in that item's repository through [`GhGitHubFollowUpReader`](../../src-server/services/work-item-providers/github-follow-up-reader.ts) (`gh api graphql`, keyset cursors), and records into [`TaskFollowUpStore`](../../src-server/services/work-item-providers/task-follow-up-store.ts), the runtime's one `taskFollowUps` holder that `composeTaskBriefSource` also reads for the brief's "Tracker follow-ups" section. [`TaskFollowUpWake`](../../src-server/services/work-item-providers/task-follow-up-wake.ts), composed beside the poller, sends a Task's lead one conversation-inbox entry (`tf-` key) for the items the poller marked to wake (members' comments and reviews, failing checks), through the same durable inbox path as the Task question lead wake; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery`. Evidence: `task-follow-ups.test.ts`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
+**Project Overview groups (#5064, preview `project-overview`).** [`task-overview`](../../packages/contracts/src/task-overview.ts) files each Task's `deriveTaskLane` derivation under Waiting on you, Ready for review, Working, Landing, Idle or Resolved. It is a projection: the only stored input is a person's reopen (`TaskRecord.overviewReopenedAt`, `POST /api/tasks/:taskId/overview-reopen`, refused with the typed preview 404 while the preview is off), which restarts the Project's quiet period (`ProjectConfig.overviewAutoResolveDays`, default 7). Landing reads `TaskPullRequestFact.status.landing`. The GitHub status read observes it from `autoMergeRequest`, plus one GraphQL `isInMergeQueue` read for an open, unarmed pull request while the preview is on. `GET /api/tasks` carries each Task's summary line as `latestReport` from `TaskMemoryStore.currentSummaries`. The UI ([`ProjectOverviewSection`](../../src-ui/src/views/project-page/ProjectOverviewSection.tsx), [`useProjectsWaitingOnYou`](../../src-ui/src/views/project-page/useProjectsWaitingOnYou.ts)) reuses the Tasks board's read model. Evidence: `task-overview.test.ts`, `task-overview.routes.test.ts`, `github-pull-request-provider-read-cache.test.ts` and `ProjectOverviewSection.test.tsx`.
+
+**Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the open-Task lookup and before the tracker is read). `parseGitHubWorkItemRef` lowercases owner and repository, and refs compare by `workItemRefKey`. `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true` (another Project's as `{id, projectId}` only), checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref, `workItemObservedAt` and `workItemProvenance: 'project-board'`. Every create that names a work item keeps one open Task per item under that lock (`TaskWorkItemTakenError`, `409` from `POST /api/tasks`): across Projects only for board-checked GitHub refs, within the Project (compared through `localProjectIdFor`) for every other ref, and `POST /api/tasks` takes a `github:` ref only when the board lists it, recording the same provenance. Dispatch, `get_task_brief` and the Task header read the tracker only for a ref with that provenance. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, a caller's abort signal, an output bound and `--hostname github.com`, with an observed answer kept 30 s per ref and comments-since mark. GitHub Enterprise hosts and pull requests are `unsupported`. **Task tracker follow-ups (#4508, preview `task-tracker-follow-ups`).** [`TaskFollowUpPoller`](../../src-server/services/work-item-providers/task-follow-up-poller.ts) is started, not awaited, on each built-in scheduler `automationPoller` tick (composed in `runtime-route-support.ts`, not in hosted mode), on its own single flight with a 60-second deadline and a 15-minute backoff when `gh` is missing, signed out or rate limited. It reads each eligible Task's primary item and the kept pull requests in that item's repository through [`GhGitHubFollowUpReader`](../../src-server/services/work-item-providers/github-follow-up-reader.ts) (`gh api graphql`, keyset cursors), and records into [`TaskFollowUpStore`](../../src-server/services/work-item-providers/task-follow-up-store.ts), the runtime's one `taskFollowUps` holder that `composeTaskBriefSource` also reads for the brief's "Tracker follow-ups" section. [`TaskFollowUpWake`](../../src-server/services/work-item-providers/task-follow-up-wake.ts), composed beside the poller, sends a Task's lead one conversation-inbox entry (`tf-` key) for the items the poller marked to wake (members' comments and reviews, failing checks), through the same durable inbox path as the Task question lead wake; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery`. Evidence: `task-follow-ups.test.ts`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md). **Pull request agent feedback (preview `pull-request-agent-feedback`).** [`composePullRequestFeedbackRuntime`](../../src-server/runtime/routes/runtime-pull-request-feedback.ts) (not in hosted mode, and only with an event store and conversation inbox) composes [`PullRequestFeedbackStore`](../../src-server/services/pull-requests/pull-request-feedback-store.ts) (`<home>/pull-request-feedback/pull-request-feedback.sqlite`), [`PullRequestFeedbackOwnership`](../../src-server/services/pull-requests/pull-request-feedback-ownership.ts) (one owning conversation per pull request, claimable only for an explicit link or a Task-kept pull request), [`PullRequestFeedbackPoller`](../../src-server/services/pull-requests/pull-request-feedback-poller.ts) (started, not awaited, on the same `automationPoller` tick, one [`gh api graphql`](../../src-server/services/pull-requests/github-feedback-observation.ts) per due pull request) and [`PullRequestFeedbackDelivery`](../../src-server/services/pull-requests/pull-request-feedback-delivery.ts), which sends the owning conversation one `prf-` inbox entry through `submitStationFramedTurn` while its agent is idle; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery` and mounts `/api/pull-request-feedback`. `TaskFollowUpWake` skips checks and reviews on a pull request it owns. The same routes answer one pull request's feedback whichever chat is open (`by-pull-request`, for the pull request panel), and the runtime's `factFor` gives `GET /api/tasks/pull-request-facts` a kept pull request's feedback ([`pull-request-feedback-task-fact.ts`](../../src-server/services/pull-requests/pull-request-feedback-task-fact.ts)), both naming the owning chat only to a reader of it. [`PullRequestFeedbackTaskBranches`](../../src-server/services/pull-requests/pull-request-feedback-task-branches.ts) holds Project defaults and, first on each poller tick (at most 3 [`gh pr list --head`](../../src-server/services/pull-requests/github-pull-requests-by-head.ts) reads), finds a live Task's own-branch pull request, records it as the lead chat's `branch-derived` link and claims it from the defaults; the chat's linked pull requests include those links. Evidence: `pull-request-feedback-task-branches.test.ts`, `runtime-pull-request-feedback-task-branches.test.ts`, `pull-request-feedback.test.ts` (real inbox harness), `pull-request-feedback-ownership.test.ts`, `pull-request-feedback-poller.test.ts`, `github-pull-request-provider-feedback.test.ts`, `pull-request-feedback.routes.test.ts`, `pull-request-feedback-by-pull-request.routes.test.ts`, `runtime-pull-request-feedback-facts.test.ts` (real inbox harness). See [the decision](../decisions/pull-request-agent-feedback.md). **Task-owned pull requests (#5066, same preview).** The same runtime composes [`PullRequestWatch`](../../src-server/services/pull-requests/pull-request-watch.ts): on each tick it claims, for a Task that watches (its own `pullRequestWatch`, else its Project's), the kept pull requests no chat owns, marked with the Task (`ClaimWatch`), and releases them on Stop watching or when the Task ends. Delivery counts failing-check messages as fix attempts and, when they are spent, pauses the claim (`fix-budget`, one feedback notice) and has the watch move the Task to `blocked` with `pullRequestWatchHold`. Its `guard`, matched by [`pull-request-watch-guard.ts`](../../src-server/services/pull-requests/pull-request-watch-guard.ts), is the `pullRequestWatchPolicy` stage of [`createStagedPreToolPolicyEvaluator`](../../src-server/runtime/agents/pre-tool-policy.ts), bound by `configureRuntimeRoutes` into a slot `StationRuntime` passes to every agent's hooks and external engine evaluator. `GET`/`PUT /api/tasks/:taskId/pull-request-watch` and `PUT /api/projects/:slug/pull-request-watch` read and set it. Evidence: `pull-request-watch.test.ts` (real inbox harness and policy evaluator), `pull-request-watch-guard.test.ts`, `task-pull-request-watch.test.ts`. See [the decision](../decisions/task-owned-pull-requests.md). **Review each new head (preview `pull-request-head-review`).** [`PullRequestHeadReviewer`](../../src-server/services/pull-requests/pull-request-head-review.ts), composed in the same runtime and bound to the review module by `bindHeadReview` once `ReviewEvidenceModule` exists, is considered after each delivery decision: it runs one independent review per stable head of a claim with `reviewEachHead` against the Project's own checkout (never fetching), records it in the feedback store's `head_reviews` table, and delivery sends its required findings as a `review-findings` block. It holds no forge provider. Evidence: `pull-request-head-review.test.ts` (real git repository, real inbox harness), `PullRequestReviewPanel.headReview.test.tsx`. See [the decision](../decisions/pull-request-agent-feedback.md).
 
 **Task memory and the Task brief (#4003, in delivery).** Task memory is the judgment layer above the facts the event store derives. [`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts) (`EventStore.taskMemoryStore()`, migration [`020-task-memory.ts`](../../src-server/domain/migrations/020-task-memory.ts)) keeps every revision of one bounded Task summary and every version of keyed decisions, questions and dead ends, in two append-only tables whose CHECKs and triggers hold the shape. Each write runs in one `BEGIN IMMEDIATE` transaction with the caller's authority re-check, the base-revision or record-state read, the live-record cap and the insert; bounds are refusals, never cuts. Shapes, defaults and refusal wording are the [`task-memory` contract](../../packages/contracts/src/task-memory.ts). `ProjectTaskRoomRuntime` owns authority: a Session writes the Task its immutable room execution binding names while it is that Task's lead or a recorded independent request, through `task_summary_update` and `task_record` ([tools](../../src-server/tools/station-control-task-memory-tools.ts), [routes](../../src-server/routes/orchestration/task-memory.ts)); a person reads and writes through the room's request authority (`/api/tasks/:taskId/room/memory`, `…/summary`, `…/summary/revisions`, `…/records`). Neither reaches Task status or the Task document. [`task-brief.ts`](../../src-server/services/projects/task-brief.ts) renders everything agents, people or a tracker wrote as quoted lines under a label naming who wrote it, and composes the digest-pinned brief from the Task, the observed work item, the summary, standing records, open questions, recent dead ends, a line per Session from the session digest facts ([`readSessionDigestHead`](../../src-server/services/orchestration/session-digest.ts), the same fold as `get_session_digest`) with each Session's active Task-scoped claims (`listActiveClaims({ projectId, taskId })` from [`work-claims.ts`](../../src-server/services/orchestration/work-claims.ts)), and counted omissions; [`task-brief-source.ts`](../../src-server/services/projects/task-brief-source.ts) gathers it for dispatch and for `get_task_brief`, whose `include` option lists every record or the summary history. `GET /api/tasks` adds `openQuestionCount`, which the Home and inbox Task fold (`taskLifecycleLabel`, `buildWorkFacts`) turns into "Task · Needs input" in Needs you. The Task workspace shows it in [`TaskMemoryPanel`](../../src-ui/src/views/task-workspace/TaskMemoryPanel.tsx). Evidence: `task-memory-store.test.ts`, `project-task-room-task-memory.test.ts`, `runtime-routes-task-memory-engine.test.ts` (the real Station Control MCP connection), `task-brief.test.ts`, `task-brief-dispatch.test.ts`, `TaskMemoryPanel.test.tsx` and `work-status.test.ts`. **Learning (layer 4):** when a Task is done, [`task-learning.ts`](../../src-server/services/projects/task-learning.ts) derives promotion candidates from its active standing decisions and dead ends, reads "promoted" back from the Project's knowledge stores, and promotes one, as a person edited it, with one `create` through the store's adapter under an id derived from the Task incarnation and record version. Before that write it inserts an append-only row naming the chosen store (`task_learning_promotions`, migration [`022-task-learning-promotions.ts`](../../src-server/domain/migrations/022-task-learning-promotions.ts)), so a version is written once across the Project's stores. Dismissals are kept in `task_learning_dismissals` (migration [`021-task-learning-dismissals.ts`](../../src-server/domain/migrations/021-task-learning-dismissals.ts)). Its [routes](../../src-server/routes/orchestration/task-learning.ts) (`/api/tasks/:taskId/room/memory/learning`, `…/promote`, `…/dismiss`) take the room's request authority through `ProjectTaskRoomRuntime.personTaskLearningAccess`, and no Station Control tool names them; the Task workspace shows them in [`TaskLearningPanel`](../../src-ui/src/views/task-workspace/TaskLearningPanel.tsx). Evidence: `runtime-routes-task-learning.test.ts` (closing, candidates, promotion with provenance, idempotency, search after reindex, dismissal, agent refusal, no store), `task-learning-promotion.test.ts` (two concurrent promotions into two stores write one record), `task-memory-store.test.ts` and `TaskLearningPanel.test.tsx`.
 
@@ -5952,8 +6168,15 @@ appearance are registry-applied emulation shared by every viewer and Agent; the
 pane sizes a page it just opened from a narrow stage once and announces changes
 it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
 The off-by-default **Inline browser activity** preview places the same browser
-beside its qualified transcript calls. The conversation boundary supplies the
-Station request scope; exact session selection also requires the Project,
+beside its qualified transcript calls. The
+[turn projection](../../src-ui/src/components/chat/BrowserTurnActivity.tsx) owns one
+activity per execution thread, turn and browser session from loaded messages
+and the current stream. The active viewer has a stable transcript-tail owner;
+new browser calls update its action strip without remounting the canvas.
+Completed activity becomes a compact historical summary. Distinct terminal
+results retain their source-event identity and ordinary tool/approval controls.
+The conversation boundary supplies the Station request scope; exact session
+selection also requires the Project,
 principal and conversation binding. Inline and floating placements share
 `float-over-chat/BrowserSessionSurface.tsx`, including input, page dialogs and
 navigation. Existing source-visibility arbitration suppresses duplicate viewers.
@@ -5980,7 +6203,10 @@ live-surface binder restores the saved human appearance on human claims. The cur
 records the authority constraints and Codex's default-off bound-channel preview.
 `codex-bound-tool-channel.ts` fences calls to the Session's current stream and
 turn; `codex-bound-request.ts` carries in-process proof through the HTTP
-bounded-body replacement. ACP remains unavailable without independent binding.
+bounded-body replacement. With the preview on, `createCodexBoundToolServer`
+also serves the Station Control catalog at `bound` and the adapter mints no
+header token; the resume cursor's `boundCatalog` says whether a resumed thread
+holds that catalog. ACP remains unavailable without independent binding.
 Control operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.
@@ -6369,6 +6595,24 @@ cover desktop/phone authoring, live Task visibility, persistence and explicit
 proposal Apply. These are controlled runtime journeys, not physical multi-device
 or external Agent-provider evidence.
 
+## Custom appearance
+
+A person's own palette and CSS ([decision](../decisions/custom-appearance.md)).
+The [contract](../../packages/contracts/src/custom-appearance.ts) owns the
+shapes, the CSS text check, the contrast rules and the stable hook selectors.
+The [personal route](../../src-server/routes/me/custom-appearance.ts) resolves
+the request principal and refuses agents every step but read and propose; the
+[store](../../src-server/services/identity/custom-appearance.ts) keeps one
+revisioned document per person. Agents use
+[`get_appearance` and `propose_appearance`](../../src-server/tools/station-control-appearance-tools.ts).
+In the browser, the [controller](../../src-ui/src/lib/custom-appearance/controller.ts)
+adopts the palette and the [sanitized](../../src-ui/src/lib/custom-appearance/sanitize-css.ts)
+CSS, suspends the CSS while a [decision surface](../../src-ui/src/lib/custom-appearance/decision-surfaces.ts)
+is mounted and caches it for pre-paint; [previews](../../src-ui/src/lib/custom-appearance/preview.ts)
+run under the [keep bar](../../src-ui/src/lib/custom-appearance/keep-bar.ts).
+Evidence: [route tests](../../src-server/routes/me/__tests__/custom-appearance.routes.test.ts)
+and the [Chromium suite](../../src-ui/src/__tests__/custom-appearance.browser.test.ts).
+
 ## Personal Work Board
 
 **Purpose and interface.** Work Board stores typed references to existing work
@@ -6428,7 +6672,9 @@ exactly-once presentation. Bounded pending-call and late-result state keep a
 stuck OS backend from opening unlimited threads. Linux can retract a notification
 this process posted; the current macOS/Windows backends can suppress an unposted
 alert but cannot close an already displayed one. Clicks focus Station and pass
-only a validated in-app path to the main WebView.
+only a validated in-app path to the main WebView, with the Station origin the
+alert was read from, so the WebView's notification opener opens it on that
+Station (`src-ui/src/lib/notificationStationOpen.ts`).
 
 **Evidence and change guidance.** Rust tests in the owner cover cursor/epoch and
 surface changes, handoff, focus, malformed feeds, refused/timed-out/unstarted

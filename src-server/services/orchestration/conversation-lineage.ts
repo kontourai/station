@@ -12,6 +12,7 @@ import type {
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
+import { CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE } from '@kontourai/station-contracts/orchestration';
 import type {
   EngineId,
   NativeResumeIdentityStatus,
@@ -77,6 +78,7 @@ import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
 import { conversationTitle } from './session-query-module.js';
+import type { SessionReadModelReadOptions } from './session-read-model-purpose.js';
 
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
 const CONTINUATION_TRANSCRIPT_HEADING =
@@ -272,6 +274,7 @@ interface ConversationLineageDeps {
   ) => ConversationMessage[];
   listSessionReadModel: (
     authority: SessionReadScope,
+    options: SessionReadModelReadOptions,
   ) => Promise<OrchestrationSessionSummary[]>;
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
 }
@@ -1135,8 +1138,11 @@ export class ConversationLineage {
       !isSessionLifecycleStateAtRest(lifecycle) ||
       detail.session.hasActiveTurn
     ) {
-      throw new Error(
-        'An Agent/engine handoff requires the predecessor Session to be terminal with no active turn.',
+      throw Object.assign(
+        new Error(
+          'An Agent/engine handoff requires the predecessor Session to be terminal with no active turn.',
+        ),
+        { code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE },
       );
     }
     const nativeReturn = !boundary
@@ -1782,6 +1788,37 @@ export class ConversationLineage {
     ];
   }
 
+  /**
+   * The messages a handoff to another Station carries: the same lineage,
+   * context-boundary filtering, authorization and seed-message reads an
+   * Agent/engine handoff builds its transcript seed from. Only text survives
+   * the receiver's projection; the caller bounds what it sends.
+   */
+  async readConversationCarriedMessages(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): Promise<ConversationMessage[]> {
+    const lineage =
+      this.deps.eventStore?.conversationSessions(conversationId) ?? [];
+    if (lineage.length === 0)
+      throw new Error('The requested conversation was not found');
+    const filtered = this.contextSources(lineage);
+    for (const source of filtered.seed?.sourceCutoffs ?? [])
+      if (!(await this.deps.readSession(source.sessionId, authority)))
+        throw new ConversationStartContextError(
+          'Retained summary source is no longer authorized.',
+        );
+    for (const entry of filtered.sources)
+      if (!(await this.deps.readSession(entry.sessionId, authority)))
+        throw new Error('Conversation context is not authorized.');
+    return [
+      ...this.summaryMessages(filtered.seed),
+      ...filtered.sources.flatMap((entry) =>
+        this.deps.readSessionSeedMessages(entry.sessionId, authority),
+      ),
+    ];
+  }
+
   private contextSources(sources: readonly { sessionId: string }[]) {
     let start = 0;
     let seed:
@@ -1977,7 +2014,9 @@ export class ConversationLineage {
     agentSlug: string,
     authority: SessionReadScope,
   ) {
-    const sessions = await this.deps.listSessionReadModel(authority);
+    const sessions = await this.deps.listSessionReadModel(authority, {
+      purpose: 'agent-conversations',
+    });
     const conversations = await Promise.all(
       sessions
         .filter(
@@ -2027,7 +2066,9 @@ export class ConversationLineage {
         limit: CONVERSATION_HISTORY_MAX_ENTRIES,
       }).items;
     }
-    const sessions = await this.deps.listSessionReadModel(authority);
+    const sessions = await this.deps.listSessionReadModel(authority, {
+      purpose: 'conversation-inventory',
+    });
     const capped = sessions
       .filter((session) => session.assignedAgentSlug !== undefined)
       .slice(-CONVERSATION_HISTORY_MAX_ENTRIES);

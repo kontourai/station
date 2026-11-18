@@ -43,6 +43,7 @@ import {
   stationControlTokenAssurance,
   verifyStationControlMcpTokenEntry,
 } from './station-control-mcp-token.js';
+import { stationControlRequestRun } from './station-control-request-runs.js';
 
 export interface StationControlCallerRecord {
   /** Rechecked only for a coordinator-scoped in-process credential. */
@@ -124,6 +125,14 @@ export function createStationControlCallerRecordResolver(
   sources: StationControlCallerRecordSources,
 ): StationControlCallerRecordResolver {
   return (sessionId) => {
+    // #2377 slice D: a request run (an invoke endpoint, a raw tool call)
+    // acts for the principal Station resolved for its authenticated request.
+    // It has no session records: no Project, no conversation.
+    const run = stationControlRequestRun(sessionId);
+    if (run)
+      return {
+        principal: { id: run.principalId, source: 'session-owner' as const },
+      };
     const principal = sources.actingPrincipal(sessionId);
     const metadata = sources.startedMetadata(sessionId);
     const delegation = metadata?.delegation as
@@ -242,6 +251,7 @@ function resolveVerifiedStationControlCaller(
     !verified ||
     (verified.serverId !== 'station-control' &&
       verified.serverId !== 'codex-tools' &&
+      verified.serverId !== 'codex-control' &&
       verified.serverId !== 'station-knowledge' &&
       verified.serverId !== 'coordinator-control' &&
       verified.serverId !== 'coordinator-knowledge')
@@ -363,7 +373,8 @@ export function resolveStationControlCallerForRequest(
  *
  * Use {@link resolveStationControlCallerForRequest} for WHO: an
  * agent-originated request with a `null` caller is an agent Station cannot
- * attribute to a session (a pooled child), and must be treated as such.
+ * attribute to a session (a stray child or a copied token), and must be
+ * treated as such.
  */
 export function isAgentOriginatedRequest(request: Request): boolean {
   return (

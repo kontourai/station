@@ -1,0 +1,11 @@
+{
+  "revision": "b93c3b3e71b3d89ea978e3bc79ef97109421306f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked all three citing pages: the change only rewords the refused account-switch line to 'Couldn't switch accounts, so nothing changed.' (retiring 'still waiting'); none of them quotes that line, and their descriptions of the banner, Continue on and its outcomes still hold.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked all three citing pages: the change only rewords the refused account-switch line to 'Couldn't switch accounts, so nothing changed.' (retiring 'still waiting'); none of them quotes that line, and their descriptions of the banner, Continue on and its outcomes still hold.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked all three citing pages: the change only rewords the refused account-switch line to 'Couldn't switch accounts, so nothing changed.' (retiring 'still waiting'); none of them quotes that line, and their descriptions of the banner, Continue on and its outcomes still hold.","inputs":["src-ui/src/components/chat-dock/UsageLimitBanner.tsx"]}
+  ]
+}

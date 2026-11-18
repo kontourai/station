@@ -298,9 +298,10 @@ The authenticated one-liner uses an existing GitHub CLI login for release
 verification. It verifies the
 stable-ring manifest,
 checksum, and archive attestations before parsing or using them; there is no
-anonymous or unsigned fallback. Set `STATION_CHANNEL=beta` for the beta runtime
-channel, whose signed release ring is preview. See [release rings](../guides/release-rings.md) for recovery and
-revocation guidance.
+anonymous or unsigned fallback. Beta and `preview` are retired and refused.
+For an accepted candidate, pin `STATION_VERSION=vX.Y.Z-rc.N`; it uses Stable
+identity and the base product version. See [release rings](../guides/release-rings.md)
+for candidate acceptance, recovery and revocation guidance.
 
 The checksum-addressed releases live under `~/.station/installs/stable/releases`,
 `current` points atomically to the active release, and `~/.local/bin/station`
@@ -688,7 +689,7 @@ station triage
 station triage --context-only
 station triage --headless --agent=codex
 station triage --agent=claude
-station triage --problem='Beta stopped opening' --search-issues --agent=codex
+station triage --problem='Nightly stopped opening' --search-issues --agent=codex
 station triage draft-report < report.json
 ```
 
@@ -1046,6 +1047,23 @@ the UI and REST API. Payload-bearing commands accept JSON via:
 - `--data='{"key":"value"}'`
 - `--file=/absolute/or/relative/path.json`
 - piped stdin
+
+
+### Guided engine setup
+
+`station acp setup` reads the safe engine setup catalog on a personal Station
+with the **Guided engine setup** Feature Preview enabled. It returns each
+engine's `setupPath`, next action, recorded handshake time and advertised HTTP
+tool channel. It runs no engine, installation or sign-in. The Station Control
+counterpart is `list_engine_setup`; `open_engine_setup` navigates the person's
+client to that same destination. An older host can answer 404 without supporting
+this journey; use Connections → Engines or update the host. Preserve any
+preview or authority refusal rather than editing configuration. See the
+[ACP guide](../guides/acp.md#set-up-an-engine-from-chat).
+
+`station acp connections reconnect <id>` also recovers a saved connection without
+a live probe. It preserves the saved command and authored Agent, refuses a
+disabled engine, and reports a failed handshake with a sanitized diagnostic.
 
 ### `mcp-clients`
 
@@ -1413,11 +1431,13 @@ same `session-cli-reads` Feature Preview as `sessions wait`.
 ### `conversation`
 
 Export a conversation as a portable thread, or in a provider-native format,
-or fork it into a new conversation.
+fork it into a new conversation, or settle or reopen it in your own inbox.
 
 ```
 station conversation export <agent> <conversationId>
 station conversation fork <agent> <conversationId> [--target-agent=<slug>] [--project=<slug>] [--turn=<id>] [--idempotency-key=<key>] [--json]
+station conversation settle <conversationId> [--json]
+station conversation reopen <conversationId> [--json]
 ```
 
 `export`:
@@ -1448,6 +1468,15 @@ unreachable, 3 refused (for example, not found, no completed turn at the branch
 point, or a target Agent not available in the Project). An agent forks through
 Station Control's `fork_conversation`, which the route holds to the agent's
 scope; a person's fork is not.
+
+`settle` and `reopen` move a conversation between **Open** and **Settled** in
+your own inbox (`PUT /api/conversations/:id/work-state`, SDK
+`setConversationWorkState`) and need the **Open and Settled inbox** Feature
+Preview. Your next message, a question, a failure or a stop reopens it on its
+own. `--json` prints `{ok, kind: "conversation.work-state", data}`. Exit codes:
+0 done, 1 usage error, 2 Station unreachable, 3 refused (preview off, or a
+conversation you cannot read). An agent uses Station Control's
+`settle_conversation`, only when you ask.
 
 ### `claims`
 
@@ -2598,7 +2627,8 @@ records which version it runs. An update request
 into `versions/<version>`, nothing else changed). The launcher then stops the
 running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
-manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
+manifests (including native-engine effect custody under `service/engine-effects/`),
+`instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
 versioned re-acquirable `media-tools/` and `engines/` (pinned engine installs),
 the default project directories under
@@ -2855,8 +2885,8 @@ allowed origins. The
 unit is named by instance alone, so a manifest in the home `status` read can
 describe an earlier install. On Windows the command comes from the manifest
 beside the task's wrapper. A service that runs an installer-owned archive is
-reinstalled through that install's channel launcher (`station`,
-`station-beta`, or `station-nightly`); the launcher sets `STATION_ROOT`
+reinstalled through that install's channel launcher (`station` or
+`station-nightly`); the launcher sets `STATION_ROOT`
 itself, so when the unit records another root no command is given. Otherwise
 the command is prefixed with `STATION_ROOT=…` when the unit's recorded root
 differs from the one a shell without `STATION_ROOT` would derive. When no
@@ -2993,7 +3023,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
-| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has its `TMPDIR` there: `<home>/tmp/engine-spawn`, which Station reaps by age, or with the `chat-host-images` preview a per-session directory under `<home>/tmp/session-tmp` removed when the session exits), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
+| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has its `TMPDIR` there: `<home>/tmp/engine-spawn`, which Station reaps by age, or with the `chat-host-images` preview a per-session directory removed when the session exits), or is inside such a per-session directory in Station's short root (`<system temp>/stn-<uid>/<pid>-<digest>`, used instead of `<home>/tmp/session-tmp` when the home is too long to leave room for Unix socket paths), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
 | `--instance=<name>` | derived from `{cwd, base, ports}` | Stable instance name for targeted stop/restart flows |
 | `--log[=<path>]` | `/tmp/station-server.log` | Redirect server stdout/stderr to a log file |
 
@@ -3199,7 +3229,7 @@ station environment show
 station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
-station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--tailscale] [--tailscale-serve-port=<port>]
+station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--tailscale] [--tailscale-serve-port=<port>] [--client-channel=<stable|nightly>] [--payload-only]
 station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
@@ -3243,7 +3273,11 @@ station environment peers remove <environment-id>
   owner-validated local service record, verifies the loopback listener's identity and
   proof before sending the operator credential, then creates the existing
   device-pairing offer and prints its expiry, short manual pairing code, plaintext
-  `station-pairing:v1:` payload, and terminal QR. A loopback offer is explicitly
+  `station-pairing:v1:` payload, and terminal QR. `--client-channel` selects the
+  Stable (default) or Nightly app link independently of the host channel. Beta
+  and other unsupported client channels are refused before local identity or
+  network work, including with `--payload-only`, which prints only the raw offer.
+  A loopback offer is explicitly
   not reachable from a phone; it does not guess or advertise a LAN address.
   Under a [managed policy](../guides/managed-policy.md#network-exposure)
   without `remote` clients, `--tailscale` is refused before any `tailscale`
@@ -3666,7 +3700,9 @@ WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Re-acquirable `media-tools/` downloads and
+quarantine directory are excluded. Native-engine effect custody in
+`service/engine-effects/` stays with the current home across update rollback and is also
+excluded from backups. Re-acquirable `media-tools/` downloads and
 pinned `engines/` installs are also excluded; a restored home requires host
 tools or fresh download consent.
 See [media backup and rollback](../guides/local-speech.md#backup-and-update-rollback).
@@ -3835,7 +3871,9 @@ check, and no stored connection counts as ready while it stands.
 Run from a prebuilt server archive, doctor reports the Node.js the archive
 ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
 other Node.js is running it) and a `Prebuilt archive` line with the release
-ref, sha, ring, channel and lifecycle-state directory. It skips the npm, tsx,
+version, sha, ring, channel and lifecycle-state directory. Schema-3 provenance
+binds that version and source SHA without an origin tag; schema-2 archives
+retain their exact-ref validation. It skips the npm, tsx,
 Rust and `@kontourai/*` pin checks and the toolchain fix commands: an archive
 cannot build itself and ships no source manifest.
 
@@ -4137,6 +4175,17 @@ provenance (`fullSha`, `shortSha`, `branch`, `builtAt`, `ageSeconds`,
 `instanceId`, `bootId`, `channel`, and `dirty`), redacted app configuration,
 and up to 256 KiB from the end of the current server log. Build provenance is
 additive within schema version 1 and omitted only when none is available.
+`sessionReadModel` (additive, #4992) carries per-purpose totals of session
+read model reads since the server process first read it: `since`,
+`observedAt`, and `byPurpose`, keyed by the caller's declared purpose (a
+closed vocabulary such as `session-list`, `sse-snapshot` or `attention`), with
+`reads`, `threadScopedReads`, `totalMs`/`maxTotalMs`, `buildMs`/`maxBuildMs`
+(the synchronous fold), `threadsConsidered`, and the event store cache's
+`projectionRefolded`/`projectionReused` and `countRefreshed`/`countReused`
+thread counts. It holds counts and durations only, never a session, user or
+thread identity. The same numbers are exported as the
+`station.orchestration.session_read_model.reads`, `.duration` and `.threads`
+OpenTelemetry metrics.
 When logging is not enabled,
 the payload explicitly contains:
 
@@ -4533,7 +4582,7 @@ station review read <project-slug> <receipt-id>
 
 `review run` requires a caller-generated `requestId` and implementing Agent slug. Explicit mode carries distinct reviewer Agent slugs; Repo Map mode carries `"reviewers":[]` plus `"selection":{"kind":"repo-map"}` and Station resolves trusted policy, eligible read-only reviewers, and pins the exact resolved Git SHAs. Unavailable routing or reviewers becomes durable `not-verified` with a server-owned reason; no reviewer is invoked and no clean receipt is fabricated. Station resolves actor identities; clients cannot declare attribution.
 
-The SDK gives each HTTP operation a 30-second bound, reads status after a submission failure, and retries the same request ID once if that read also fails. It then polls a running request every 500 ms; there is no CLI-wide review deadline. Completed results are printed, while terminal refused or indeterminate outcomes fail. `review status` reads the exact durable status directly.
+The SDK gives each HTTP operation a 30-second bound. An explicit `409 review_request_conflict` fails immediately without status recovery or retry. After other submission failures, it reads status and retries the same request ID once if that read also fails. It then polls a running request every 500 ms; there is no CLI-wide review deadline. Completed results are printed, while terminal refused or indeterminate outcomes fail. `review status` reads the exact durable status directly.
 
 Findings are evidence input only and do not approve, reject, satisfy a gate, or replace the completion gate. The station-control MCP exposes the same shared operations as `run_independent_review`, `get_review_request`, `list_review_receipts`, and `get_review_receipt`.
 

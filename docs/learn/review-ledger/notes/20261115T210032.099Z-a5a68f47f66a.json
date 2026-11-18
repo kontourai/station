@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Telemetry delivery SDK section re-read for #4994: the status schema now accepts an optional lastFailure.detail (<=200 chars); malformed responses still throw and no exported name changed.","inputs":["docs/reference/sdk.md","packages/contracts/src/product-telemetry.ts","packages/sdk/src/query-domains/telemetryDelivery.ts"]}
+  ]
+}

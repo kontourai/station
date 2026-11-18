@@ -1,0 +1,7 @@
+{
+  "revision": "9ffc9c2f9f03c50ca170fa8e808e06eb3c87c4bb",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked its gallery claim against tests/screenshots.spec.ts: the usage-sharing, outbox and feedback screens are unchanged; only the capture loop moved into tested helpers.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

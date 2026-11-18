@@ -93,9 +93,11 @@ import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
+  TURN_DISPATCH_ORIGINS,
   type TurnDispatchOrigin,
   turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
+import { isSessionLifecycleStateAtRest } from '@kontourai/station-contracts/session-lifecycle';
 import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
@@ -194,6 +196,7 @@ import {
   ensureWorktreeOutputSettlementOwnerColumn,
   WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION,
 } from '../../domain/migrations/029-worktree-output-settlements.js';
+import { USAGE_PROJECTION_CACHE_MIGRATION } from '../../domain/migrations/030-usage-projection-cache.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -411,6 +414,7 @@ import type {
   RecoveryLedger,
   RecoveryLedgerCoordinator,
 } from './recovery-ledger-binding.js';
+import { projectSessionLifecycle } from './session-lifecycle-service.js';
 import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
@@ -624,6 +628,19 @@ const MAX_SESSION_WORK_ITEM_ASSOCIATION_ROW_BYTES = 8 * 1024;
 const MAX_SESSION_ACTIVITY_TOOL_NAME_BYTES = 256;
 
 /** Descriptor-only row for the Session Outputs owner. No event payload crosses it. */
+/**
+ * What one batched session-projection read did with the per-thread cache
+ * (#4992), reported to an optional observer so a caller can measure it
+ * without reaching into the cache. A read inside a transaction, or with
+ * caches disabled, refreshes every requested thread.
+ */
+export interface SessionProjectionCacheOutcome {
+  /** Threads read from the database again. */
+  refreshed: number;
+  /** Threads served from the cache. */
+  reused: number;
+}
+
 export interface DeclaredOutputDescriptorRow {
   declarationId: string;
   eventId: string;
@@ -809,6 +826,14 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                     AND json_valid(config.payload)
                     AND json_type(config.payload, '$.metadata.taskId') = 'text'
                   ORDER BY config.sequence DESC LIMIT 1) AS task_id,
+                (SELECT json_extract(config.payload, '$.metadata.projectSlug')
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method = 'session.started'
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.projectSlug') = 'text'
+                  ORDER BY config.sequence DESC LIMIT 1) AS project_slug,
                 (SELECT COALESCE(json_extract(config.payload, '$.metadata.effectiveModel'), json_extract(config.payload, '$.model'))
                    FROM orchestration_events config
                   WHERE config.thread_id = e.thread_id
@@ -1023,6 +1048,8 @@ export interface UsageReceiptEventRow {
   event: PersistedRuntimeEvent;
   conversationId: string;
   taskId?: string;
+  /** The Project the Session's start recorded (#5068). */
+  projectSlug?: string;
   model?: string;
   /**
    * The `CumulativeCostSegments` key of this event's cost figure when its
@@ -1094,6 +1121,10 @@ function spilledTypeSql(path: string, payload = 'payload') {
  * A turn's own `turn.started`. A steer re-announces its turn with another
  * `turn.started` of the same id; it neither starts a turn nor marks one.
  */
+/** Every origin this build classifies, as an SQL list (fixed literals). */
+const KNOWN_TURN_DISPATCH_ORIGINS_SQL = TURN_DISPATCH_ORIGINS.map(
+  (origin) => `'${origin}'`,
+).join(', ');
 const OWN_TURN_START_SQL = `method = 'turn.started' AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.inputKind') END) IS NOT 'steer'`;
 
 /**
@@ -1126,6 +1157,12 @@ const UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION =
   'station_unresolved_completion_stands';
 /** Distinct (thread, high-water) transcript checks kept for paging reuse. */
 const STANDING_UNRESOLVED_CACHE_MAX = 8;
+/**
+ * Threads whose session projection facts and event count are kept between
+ * reads (#4992). Each entry holds a thread's handful of folded facts, without
+ * hydrated attachment data, so the bound is on thread count, not history.
+ */
+const SESSION_PROJECTION_CACHE_MAX = 2048;
 
 /** SQLite function: whether the exact input read would serve this row. */
 const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
@@ -1851,6 +1888,8 @@ export interface PersistedRuntimeEventPage {
   events: PersistedRuntimeEvent[];
   hasMore: boolean;
   nextSequence: number;
+  /** The thread's `MAX(sequence)`, read in the same snapshot as `events`. */
+  highWaterSequence: number;
 }
 export interface PersistedRuntimeEventReplayDescriptor {
   threadId: string;
@@ -2801,6 +2840,26 @@ export class EventStore {
    * per process.
    */
   private readonly standingUnresolvedCache = new Map<string, Set<string>>();
+  /**
+   * Per-thread session projection facts and event count, keyed by the
+   * thread's highest `global_sequence` (#4992). Every write that can change a
+   * thread's projection (an append, which also maintains its fact and request
+   * rows, or the thread's deletion) moves or removes that mark, and global
+   * sequences come from a monotonic high-water and are never reused. So an
+   * entry whose mark still matches describes exactly the rows a fresh read
+   * would fold. Rows are stored unhydrated and frozen; attachment data is
+   * read at return time, as before. Small LRU, per process.
+   */
+  private readonly sessionProjectionCache = new Map<
+    string,
+    {
+      highWater: number;
+      events?: readonly PersistedRuntimeEvent[];
+      eventCount?: number;
+    }
+  >();
+  /** Set only while the projection is computed for the cache above. */
+  private deferAttachmentHydration = false;
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
   private usageExportActivation?: () => string;
@@ -3302,6 +3361,8 @@ export class EventStore {
       ensureWorktreeOutputSettlementOwnerColumn(this.db);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
+      // #373: lifetime usage's per-thread fold cache and its watermark.
+      this.db.exec(USAGE_PROJECTION_CACHE_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -5188,7 +5249,9 @@ export class EventStore {
     if (row.payload === null)
       throw new Error('Projection payload exceeds read budget');
     const event = mapPersistedEventRow(row);
-    return hydrate ? this.hydrateAttachments(event) : event;
+    return hydrate && !this.deferAttachmentHydration
+      ? this.hydrateAttachments(event)
+      : event;
   }
 
   /**
@@ -7894,20 +7957,128 @@ export class EventStore {
     return rows.map((row) => JSON.parse(row.payload as string));
   }
 
-  /** Append-only usage projection identity; delete/recreate gets a new head. */
-  readUsageRevision(threadId: string): string {
+  /**
+   * #373: lifetime usage's projection watermark (`030-usage-projection-cache`).
+   * `undefined` when no pass has completed its catch-up under any version.
+   */
+  readUsageProjectionCheckpoint():
+    | { version: string; watermark: number }
+    | undefined {
     const row = this.readStatement(
-      `SELECT id, global_sequence FROM orchestration_events
-       WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1`,
-    ).get(threadId) as { id: string; global_sequence: number } | undefined;
-    const external = this.readStatement('PRAGMA data_version').get() as
-      | { data_version: number }
-      | undefined;
-    return JSON.stringify([
-      row?.id,
-      row?.global_sequence,
-      external?.data_version,
-    ]);
+      `SELECT version, watermark FROM orchestration_usage_projection_checkpoint
+       WHERE singleton = 1`,
+    ).get() as { version: string; watermark: number } | undefined;
+    return row
+      ? { version: row.version, watermark: Number(row.watermark) }
+      : undefined;
+  }
+
+  /**
+   * #373: one pass's catch-up, in one transaction. A rebuild (`since`
+   * undefined) forgets every cached thread; otherwise only the threads with
+   * a row in `(since, through]` are forgotten. Either way the watermark then
+   * moves to `through`, so a later pass never re-reads these rows and a thread
+   * forgotten here is refolded whenever it is next read.
+   *
+   * The range read is pinned to `idx_events_global_sequence`: left to itself
+   * SQLite scans the whole `(thread_id, global_sequence)` index instead.
+   */
+  advanceUsageProjection(input: {
+    version: string;
+    since?: number;
+    through: number;
+  }): { rows: number; threads: number } {
+    const changed =
+      input.since === undefined
+        ? []
+        : (this.readStatement(
+            `SELECT thread_id, COUNT(*) AS rows
+             FROM orchestration_events INDEXED BY idx_events_global_sequence
+             WHERE global_sequence > ? AND global_sequence <= ?
+             GROUP BY thread_id`,
+          ).all(input.since, input.through) as Array<{
+            thread_id: string;
+            rows: number;
+          }>);
+    this.inUsageProjectionWrite(() => {
+      if (input.since === undefined)
+        this.db
+          .prepare('DELETE FROM orchestration_usage_projection_cache')
+          .run();
+      else {
+        const forget = this.readStatement(
+          'DELETE FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+        );
+        for (const row of changed) forget.run(row.thread_id);
+      }
+      this.readStatement(
+        `INSERT INTO orchestration_usage_projection_checkpoint (singleton, version, watermark)
+         VALUES (1, ?, ?)
+         ON CONFLICT(singleton) DO UPDATE SET
+           version = excluded.version, watermark = excluded.watermark`,
+      ).run(input.version, input.through);
+    });
+    return {
+      rows: changed.reduce((sum, row) => sum + Number(row.rows), 0),
+      threads: changed.length,
+    };
+  }
+
+  /** #373: one thread's cached usage fold, as the reader serialized it. */
+  readUsageProjection(threadId: string): string | undefined {
+    const row = this.readStatement(
+      'SELECT projection FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+    ).get(threadId) as { projection: string } | undefined;
+    return row?.projection;
+  }
+
+  /**
+   * #373: stores refolded threads and drops threads the caller no longer
+   * lists. Never moves the watermark: that belongs to
+   * {@link advanceUsageProjection}.
+   */
+  writeUsageProjections(input: {
+    upserts: ReadonlyArray<readonly [threadId: string, projection: string]>;
+    retainOnly?: ReadonlySet<string>;
+  }): void {
+    this.inUsageProjectionWrite(() => {
+      const upsert = this.readStatement(
+        `INSERT INTO orchestration_usage_projection_cache (thread_id, projection)
+         VALUES (?, ?)
+         ON CONFLICT(thread_id) DO UPDATE SET projection = excluded.projection`,
+      );
+      for (const [threadId, projection] of input.upserts)
+        upsert.run(threadId, projection);
+      if (!input.retainOnly) return;
+      const forget = this.readStatement(
+        'DELETE FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+      );
+      for (const { thread_id } of this.readStatement(
+        'SELECT thread_id FROM orchestration_usage_projection_cache',
+      ).all() as Array<{ thread_id: string }>)
+        if (!input.retainOnly.has(thread_id)) forget.run(thread_id);
+    });
+  }
+
+  /** Takes the writer first, as appends do, so a peer writer waits rather than failing the upgrade. */
+  private inUsageProjectionWrite(write: () => void): void {
+    const nested = this.db.isTransaction;
+    this.db.exec(
+      nested ? 'SAVEPOINT usage_projection_write' : 'BEGIN IMMEDIATE',
+    );
+    try {
+      write();
+      this.db.exec(
+        nested ? 'RELEASE SAVEPOINT usage_projection_write' : 'COMMIT',
+      );
+    } catch (error) {
+      this.db.exec(
+        nested
+          ? 'ROLLBACK TO SAVEPOINT usage_projection_write; RELEASE SAVEPOINT usage_projection_write'
+          : 'ROLLBACK',
+      );
+      throw error;
+    }
   }
 
   /**
@@ -7915,7 +8086,9 @@ export class EventStore {
    * transcript deltas; SQL removes large input/output fields before JS sees
    * them. Keep optional usage fields absent rather than manufacturing nulls.
    * A method the fold reads (`foldUsageEvents`) must be listed here, or it
-   * never reaches the fold in production.
+   * never reaches the fold in production. Lifetime usage caches what the fold
+   * makes of these rows (#373), so a change here also bumps
+   * `USAGE_PROJECTION_VERSION` in `session-transcript-reads.ts`.
    */
   listUsageEventPayloads(
     threadId: string,
@@ -8141,6 +8314,99 @@ export class EventStore {
       thread_id: string;
     }>;
     return rows.map((row) => row.thread_id);
+  }
+
+  /** Navigation reads indexed metadata without tools or files; later pages can omit the initial count. */
+  readTurnDirectoryFacts(
+    threadIds: readonly string[],
+    options: {
+      beforeGlobalSequence?: number;
+      turnLimit: number;
+      includeCount?: boolean;
+    },
+  ): {
+    turns: Pick<
+      TurnDigestFacts,
+      | 'threadId'
+      | 'turnId'
+      | 'startedAt'
+      | 'startSequence'
+      | 'promptPrefix'
+      | 'terminal'
+    >[];
+    totalTurns?: number;
+    hasMore: boolean;
+  } {
+    const ids = [...new Set(threadIds)];
+    if (ids.length > TURN_DIGEST_LINEAGE_MAX)
+      throw new TurnDigestLineageTooLongError();
+    if (
+      !ids.length ||
+      !Number.isInteger(options.turnLimit) ||
+      options.turnLimit < 1 ||
+      options.turnLimit > 100
+    )
+      throw new Error(
+        'Turn directory requires a lineage and a limit between 1 and 100',
+      );
+    const startsWhere = `thread_id IN (${ids.map(() => '?').join(', ')}) AND method = 'turn.started'
+      AND turn_id IS NOT NULL AND json_valid(payload) AND json_extract(payload, '$.inputKind') IS NULL`;
+    const totalTurns =
+      options.includeCount === false
+        ? undefined
+        : Number(
+            (
+              this.db
+                .prepare(
+                  `SELECT COUNT(*) AS total FROM orchestration_events WHERE ${startsWhere}`,
+                )
+                .get(...ids) as { total: number }
+            ).total,
+          );
+    const starts = this.db
+      .prepare(`
+      SELECT thread_id, turn_id, created_at, global_sequence,
+        substr(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}, 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
+        (SELECT json_object('method', terminal.method, 'finishReason', json_extract(terminal.payload, '$.finishReason'))
+           FROM orchestration_events terminal
+          WHERE terminal.thread_id = orchestration_events.thread_id AND terminal.turn_id = orchestration_events.turn_id
+            AND terminal.method IN ('turn.completed', 'turn.aborted', 'runtime.error') AND json_valid(terminal.payload)
+          ORDER BY terminal.sequence DESC LIMIT 1) AS terminal_json
+      FROM orchestration_events WHERE ${startsWhere} AND global_sequence < ?
+      ORDER BY global_sequence DESC LIMIT ?
+    `)
+      .all(
+        ...ids,
+        options.beforeGlobalSequence ?? Number.MAX_SAFE_INTEGER,
+        options.turnLimit + 1,
+      ) as {
+      thread_id: string;
+      turn_id: string;
+      created_at: string;
+      global_sequence: number;
+      prompt: unknown;
+      terminal_json: string | null;
+    }[];
+    return {
+      totalTurns,
+      hasMore: starts.length > options.turnLimit,
+      turns: starts.slice(0, options.turnLimit).map((start) => ({
+        threadId: start.thread_id,
+        turnId: start.turn_id,
+        startedAt: start.created_at,
+        startSequence: start.global_sequence,
+        ...(typeof start.prompt === 'string'
+          ? { promptPrefix: start.prompt }
+          : {}),
+        ...(start.terminal_json
+          ? {
+              terminal: JSON.parse(start.terminal_json) as NonNullable<
+                TurnDigestFacts['terminal']
+              >,
+            }
+          : {}),
+      })),
+    };
   }
 
   /**
@@ -8421,6 +8687,9 @@ export class EventStore {
       event: this.mapEventRow(row),
       conversationId: row.conversation_id,
       ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
+      ...(typeof row.project_slug === 'string' && row.project_slug
+        ? { projectSlug: row.project_slug }
+        : {}),
       ...(typeof row.model === 'string' ? { model: row.model } : {}),
       ...(typeof accountKey === 'string' ? { accountKey } : {}),
       ...(typeof row.connection_id === 'string' && row.connection_id
@@ -9395,6 +9664,59 @@ export class EventStore {
       )
       .get(threadId) as { origin: unknown } | undefined;
     return row ? turnDispatchOrigin({ dispatchOrigin: row.origin }) : undefined;
+  }
+
+  /**
+   * #2540: {@link latestTurnDispatchOrigin}, skipping turns the engine opened
+   * on its own (`PROVIDER_TURN_TRIGGER`): such a turn records no origin and
+   * continues whatever the last send started. `undefined` with no such turn.
+   */
+  latestSentTurnDispatchOrigin(
+    threadId: string,
+  ): TurnDispatchOrigin | undefined {
+    const row = this.readStatement(
+      `SELECT json_extract(payload, '$.dispatchOrigin') AS origin
+         FROM orchestration_events
+         WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+           AND COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+         ORDER BY sequence DESC
+         LIMIT 1`,
+    ).get(threadId) as { origin: unknown } | undefined;
+    return row ? turnDispatchOrigin({ dispatchOrigin: row.origin }) : undefined;
+  }
+
+  /**
+   * Whether a person has, or may have, sent into `threadId`. Any turn start
+   * Station placed as a person's (`interactive`, #4512) or marked
+   * person-typed (`authoredBy`, #4827) counts, and so, read conservatively,
+   * does every steer whatever origin it carries (a steer inherits its turn's
+   * origin, so one a person sent from a surface that does not mark
+   * authorship reads as the turn's), except one Station itself delivered: a
+   * child's result, recorded with Station's internal actor and the
+   * server-stamped `delegation-result` sender (`DELEGATION_RESULT_CLIENT_ORIGIN`
+   * plus sender), which no person's request can carry. Also counted: any
+   * turn start that records no origin
+   * this build recognises (one from before the field existed, a newer
+   * Station's value). A turn the engine opened on its own
+   * (`PROVIDER_TURN_TRIGGER`) is demonstrably no one's send and never counts.
+   */
+  hasPersonTurn(threadId: string): boolean {
+    return (
+      this.readStatement(
+        `SELECT 1 FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND json_valid(payload)
+           AND (json_extract(payload, '$.dispatchOrigin') = 'interactive'
+             OR json_extract(payload, '$.authoredBy') = 'person'
+             OR (COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+               AND ((json_extract(payload, '$.inputKind') = 'steer'
+                   AND NOT (COALESCE(json_extract(payload, '$.clientOrigin.actor.kind'), '') = 'internal'
+                     AND COALESCE(json_extract(payload, '$.clientOrigin.sender.kind'), '') = 'delegation-result'))
+                 OR (json_extract(payload, '$.inputKind') IS NOT 'steer'
+                   AND (json_extract(payload, '$.dispatchOrigin') IS NULL
+                     OR json_extract(payload, '$.dispatchOrigin') NOT IN (${KNOWN_TURN_DISPATCH_ORIGINS_SQL}))))))
+         LIMIT 1`,
+      ).get(threadId) !== undefined
+    );
   }
 
   /**
@@ -10474,8 +10796,120 @@ export class EventStore {
    */
   listSessionProjectionEventsForThreads(
     threadIds: readonly string[],
+    observe?: (outcome: SessionProjectionCacheOutcome) => void,
   ): Map<string, PersistedRuntimeEvent[]> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    if (uniqueThreadIds.length === 0) {
+      observe?.({ refreshed: 0, reused: 0 });
+      return new Map();
+    }
+    const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
+    if (!marks) {
+      observe?.({ refreshed: uniqueThreadIds.length, reused: 0 });
+      return this.foldSessionProjectionEvents(uniqueThreadIds);
+    }
+    // #4992: the read model folds every readable thread on each list, and it
+    // is listed several times a second while any session streams. Only the
+    // threads whose mark moved are folded again.
+    const stale = uniqueThreadIds.filter(
+      (threadId) =>
+        this.cachedSessionProjection(threadId, marks)?.events === undefined,
+    );
+    observe?.({
+      refreshed: stale.length,
+      reused: uniqueThreadIds.length - stale.length,
+    });
+    let folded = new Map<string, PersistedRuntimeEvent[]>();
+    if (stale.length > 0) {
+      this.deferAttachmentHydration = true;
+      try {
+        folded = this.foldSessionProjectionEvents(stale);
+      } finally {
+        this.deferAttachmentHydration = false;
+      }
+      for (const threadId of stale) {
+        const events = folded.get(threadId) ?? [];
+        this.storeSessionProjection(threadId, marks, {
+          events: events.map(deepFreezeEvent),
+        });
+      }
+    }
+    const result = new Map<string, PersistedRuntimeEvent[]>();
+    for (const threadId of uniqueThreadIds) {
+      const events =
+        folded.get(threadId) ??
+        this.cachedSessionProjection(threadId, marks)?.events ??
+        [];
+      result.set(
+        threadId,
+        events.map((event) => this.hydrateAttachments(event)),
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Each thread's highest `global_sequence`, the key of
+   * {@link sessionProjectionCache}, or `undefined` when no cache may be used
+   * for this read. A read inside an open transaction is never cached: a
+   * rollback would hand its global sequences to different events.
+   */
+  private sessionProjectionCacheMarks(
+    threadIds: readonly string[],
+  ): Map<string, number> | undefined {
+    if (this.cachesDisabled || this.db.isTransaction) return undefined;
+    // One min/max-optimised index seek per thread; a `GROUP BY` over the
+    // same index walks every row of each thread.
+    const statement = this.readStatement(
+      `SELECT MAX(global_sequence) AS highWater
+         FROM orchestration_events WHERE thread_id = ?`,
+    );
+    const marks = new Map<string, number>();
+    for (const threadId of threadIds) {
+      const row = statement.get(threadId) as
+        | { highWater: number | null }
+        | undefined;
+      if (typeof row?.highWater === 'number')
+        marks.set(threadId, row.highWater);
+      else this.sessionProjectionCache.delete(threadId);
+    }
+    return marks;
+  }
+
+  private cachedSessionProjection(
+    threadId: string,
+    marks: ReadonlyMap<string, number>,
+  ) {
+    const highWater = marks.get(threadId);
+    const entry = this.sessionProjectionCache.get(threadId);
+    if (highWater === undefined || entry?.highWater !== highWater)
+      return undefined;
+    this.sessionProjectionCache.delete(threadId);
+    this.sessionProjectionCache.set(threadId, entry);
+    return entry;
+  }
+
+  private storeSessionProjection(
+    threadId: string,
+    marks: ReadonlyMap<string, number>,
+    facts: { events?: readonly PersistedRuntimeEvent[]; eventCount?: number },
+  ): void {
+    const highWater = marks.get(threadId);
+    if (highWater === undefined) return;
+    const current = this.sessionProjectionCache.get(threadId);
+    const kept = current?.highWater === highWater ? current : { highWater };
+    this.sessionProjectionCache.delete(threadId);
+    this.sessionProjectionCache.set(threadId, { ...kept, ...facts });
+    while (this.sessionProjectionCache.size > SESSION_PROJECTION_CACHE_MAX) {
+      const oldest = this.sessionProjectionCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.sessionProjectionCache.delete(oldest);
+    }
+  }
+
+  private foldSessionProjectionEvents(
+    uniqueThreadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent[]> {
     const result = new Map<string, PersistedRuntimeEvent[]>();
     if (uniqueThreadIds.length === 0) return result;
 
@@ -12098,8 +12532,44 @@ export class EventStore {
    * callers read a missing entry as zero — the same answer
    * `countEventsByThread` gives a threadless id.
    */
-  countEventsByThreads(threadIds: readonly string[]): Map<string, number> {
+  countEventsByThreads(
+    threadIds: readonly string[],
+    observe?: (outcome: SessionProjectionCacheOutcome) => void,
+  ): Map<string, number> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    if (uniqueThreadIds.length === 0) {
+      observe?.({ refreshed: 0, reused: 0 });
+      return new Map();
+    }
+    const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
+    if (!marks) {
+      observe?.({ refreshed: uniqueThreadIds.length, reused: 0 });
+      return this.queryEventCountsByThreads(uniqueThreadIds);
+    }
+    // #4992: a count only moves with the thread's mark, so only threads whose
+    // mark moved are counted again. A thread without a mark has no events.
+    const counts = new Map<string, number>();
+    const stale: string[] = [];
+    for (const threadId of uniqueThreadIds) {
+      if (!marks.has(threadId)) continue;
+      const cached = this.cachedSessionProjection(threadId, marks)?.eventCount;
+      if (cached === undefined) stale.push(threadId);
+      else counts.set(threadId, cached);
+    }
+    // A thread without a mark has no events and needs no query: neither.
+    observe?.({ refreshed: stale.length, reused: counts.size });
+    const counted = this.queryEventCountsByThreads(stale);
+    for (const threadId of stale) {
+      const eventCount = counted.get(threadId) ?? 0;
+      this.storeSessionProjection(threadId, marks, { eventCount });
+      if (eventCount > 0) counts.set(threadId, eventCount);
+    }
+    return counts;
+  }
+
+  private queryEventCountsByThreads(
+    uniqueThreadIds: readonly string[],
+  ): Map<string, number> {
     const counts = new Map<string, number>();
     if (uniqueThreadIds.length === 0) return counts;
     for (const chunk of this.chunkArray(
@@ -12517,15 +12987,36 @@ export class EventStore {
     threadId: string,
     options: { afterSequence: number; limit: number },
   ): PersistedRuntimeEventPage {
-    const rows = this.db
-      .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
-         FROM orchestration_events
-         WHERE thread_id = ? AND sequence > ?
-         ORDER BY sequence ASC
-         LIMIT ?`,
-      )
-      .all(threadId, options.afterSequence, options.limit + 1);
+    // #5077: the page and the thread's high water come from one read
+    // snapshot, so no event in the page can lie above the reported bound.
+    const owned = !this.db.isTransaction;
+    if (owned) this.db.exec('BEGIN');
+    let rows: unknown[];
+    let highWaterSequence: number;
+    try {
+      rows = this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+           WHERE thread_id = ? AND sequence > ?
+           ORDER BY sequence ASC
+           LIMIT ?`,
+        )
+        .all(threadId, options.afterSequence, options.limit + 1);
+      highWaterSequence = (
+        this.db
+          .prepare(
+            `SELECT COALESCE(MAX(sequence), 0) AS high_water
+             FROM orchestration_events
+             WHERE thread_id = ?`,
+          )
+          .get(threadId) as { high_water: number }
+      ).high_water;
+      if (owned) this.db.exec('COMMIT');
+    } catch (error) {
+      if (owned && this.db.isTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
     const hasMore = rows.length > options.limit;
     const events = rows.slice(0, options.limit).map((row: any) => ({
       id: row.id,
@@ -12542,6 +13033,7 @@ export class EventStore {
       events,
       hasMore,
       nextSequence: events.at(-1)?.sequence ?? options.afterSequence,
+      highWaterSequence,
     };
   }
 
@@ -13676,6 +14168,28 @@ export class EventStore {
       )
       .get(threadId);
     return row ? mapPersistedSessionRow(row as any) : undefined;
+  }
+
+  /**
+   * Persisted session ids under one thread-id prefix, oldest first. Internal
+   * inventory for a narrowed read model (#5051); never exposed to callers and
+   * not readability-checked here. A half-open range ('p:' <= id < 'p;'), not
+   * LIKE, so it is exact regardless of case_sensitive_like and seeks the
+   * primary key.
+   */
+  listSessionIdsByThreadPrefix(prefix: string): string[] {
+    if (!prefix) throw new Error('thread prefix is required');
+    const upper = `${prefix.slice(0, -1)}${String.fromCharCode(
+      prefix.charCodeAt(prefix.length - 1) + 1,
+    )}`;
+    const rows = this.db
+      .prepare(
+        `SELECT thread_id FROM provider_session_state
+         WHERE thread_id >= ? AND thread_id < ?
+         ORDER BY created_at ASC`,
+      )
+      .all(prefix, upper) as Array<{ thread_id: string }>;
+    return rows.map((row) => row.thread_id);
   }
 
   /** Internal workspace-mutation barrier inventory; never exposed to callers. */
@@ -15786,7 +16300,13 @@ export class EventStore {
           offset + EVENT_STORE_BATCH_CHUNK_SIZE,
         );
         const relations = z
-          .array(z.object({ root_id: z.string(), child_id: z.string() }))
+          .array(
+            z.object({
+              root_id: z.string(),
+              child_id: z.string(),
+              starting: z.number(),
+            }),
+          )
           .parse(
             this.db
               .prepare(`WITH RECURSIVE
@@ -15798,13 +16318,77 @@ export class EventStore {
           owned(root_id, child_id) AS (
             SELECT root_id, root_id FROM requested
             UNION SELECT owned.root_id, edges.child_id FROM owned JOIN edges ON edges.parent_id = owned.child_id
-          ) SELECT root_id, child_id FROM owned`)
+          ) SELECT root_id, child_id,
+            EXISTS (SELECT 1 FROM orchestration_ownership_starts WHERE child_session_id = owned.child_id) AS starting
+            FROM owned`)
               .all(...chunk),
           );
         const facts = readCascadeSessionFacts(
           this.db,
           relations.map((row) => row.child_id),
         );
+        const childIds = [
+          ...new Set(
+            relations
+              .filter((row) => row.child_id !== row.root_id)
+              .map((row) => row.child_id),
+          ),
+        ];
+        const starting = new Set(
+          relations.filter((row) => row.starting).map((row) => row.child_id),
+        );
+        const events = childIds.length
+          ? this.listSessionProjectionEventsForThreads(childIds)
+          : new Map<string, PersistedRuntimeEvent[]>();
+        const sessions = new Map<string, ProviderSession>();
+        for (
+          let offset = 0;
+          offset < childIds.length;
+          offset += EVENT_STORE_BATCH_CHUNK_SIZE
+        ) {
+          const ids = childIds.slice(
+            offset,
+            offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+          );
+          for (const session of this.db
+            .prepare(
+              `SELECT thread_id, provider, status, created_at, updated_at
+               FROM provider_session_state WHERE thread_id IN (${ids.map(() => '?').join(',')})`,
+            )
+            .all(...ids)
+            .map(mapPersistedSessionRow))
+            sessions.set(session.threadId, session);
+        }
+        const activeChildren = new Set<string>();
+        for (const childId of childIds) {
+          const current = facts.get(childId)!;
+          const session = sessions.get(childId);
+          const pendingInvocation =
+            current.owner &&
+            ['prepared', 'invoking', 'accepted', 'indeterminate'].includes(
+              current.owner.state,
+            );
+          // An idle adapter may remain attached. Work activity follows the same
+          // event fold as the child's summary, not its persisted provider status.
+          const active =
+            starting.has(childId) ||
+            pendingInvocation ||
+            (session
+              ? !isSessionLifecycleStateAtRest(
+                  projectSessionLifecycle({
+                    session,
+                    events: (events.get(childId) ?? []).map(
+                      (event) => event.payload,
+                    ),
+                  }).lifecycleState,
+                )
+              : current.active);
+          if (
+            active &&
+            !isCascadeStopSettled(current, this.hasSessionBinding(childId))
+          )
+            activeChildren.add(childId);
+        }
         for (const rootId of chunk) {
           const children = new Set(
             relations
@@ -15831,12 +16415,7 @@ export class EventStore {
           }
           let runningChildCount = 0;
           for (const childId of children) {
-            const current = facts.get(childId)!;
-            if (
-              childId !== rootId &&
-              current.active &&
-              !isCascadeStopSettled(current, this.hasSessionBinding(childId))
-            )
+            if (childId !== rootId && activeChildren.has(childId))
               runningChildCount++;
           }
           result.set(rootId, {
@@ -18786,6 +19365,25 @@ export class EventStore {
       .get() as { max_sequence: number };
     return row.max_sequence + 1;
   }
+}
+
+/**
+ * Freezes a cached projection row and everything it holds (#4992). The cache
+ * hands the same objects to every later read, so a caller that mutated one
+ * would change another request's answer; frozen, it fails where it writes.
+ */
+function deepFreezeEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
+  const pending: object[] = [event];
+  const seen = new Set<object>();
+  while (pending.length > 0) {
+    const value = pending.pop()!;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    Object.freeze(value);
+    for (const child of Object.values(value))
+      if (child !== null && typeof child === 'object') pending.push(child);
+  }
+  return event;
 }
 
 function parsePersistedTenantExecutionContext(value: unknown) {

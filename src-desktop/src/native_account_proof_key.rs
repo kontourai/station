@@ -310,16 +310,16 @@ mod tests {
         assert_ne!(owner().account(), other_device.account());
 
         // Same identity fields but a different channel is a different owner.
-        let beta = NativeAccountProofKeyOwner::new(
+        let nightly = NativeAccountProofKeyOwner::new(
             APP,
-            NativeProofKeyChannel::Beta,
+            NativeProofKeyChannel::Nightly,
             CLIENT,
             STATION,
             DEVICE,
         )
         .unwrap();
         assert_eq!(
-            vault.restore(&beta).unwrap_err(),
+            vault.restore(&nightly).unwrap_err(),
             AccountProofKeyError::Missing
         );
     }

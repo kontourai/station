@@ -19,15 +19,25 @@ import {
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
+import {
+  CONVERSATION_IMPORT_DELETED_CODE,
+  PAIRED_STATION_REQUIRED_CODE,
+  PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
+  PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
+  PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+} from './peer-chat.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
+import { PROJECT_HELD_REFUSAL_CODE } from './project-lifecycle.js';
 import {
   PROJECT_ROOM_FILES_UNAVAILABLE_CODE,
   PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
 } from './project-room.js';
+import { PROJECT_MEMORY_FULL_CODE } from './project-session-context.js';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -64,6 +74,8 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_REATTACH_CONFLICT_CODE,
   WORKLOAD_COMMAND_OOM_KILLED_CODE,
+  WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE,
+  WORKLOAD_MEMORY_PRESSURE_CODE,
 } from './provider.js';
 import { SESSION_ENDED_REJECTION_CODE } from './session-lifecycle.js';
 
@@ -90,6 +102,11 @@ export const RESOURCE_ENGINE_START_CAPACITY_CODE =
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
 export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
   'adoption_continuation_in_progress';
+/**
+ * The attached source reads `active` (`AttachedSourceActivity`) and the
+ * request did not say `continueWhileSourceActive`. Nothing was created.
+ */
+export const ADOPTION_SOURCE_ACTIVE_CODE = 'continuation_source_active';
 
 export const ENGINE_STARTUP_FAILURE_GUIDANCE = {
   sandbox_unavailable:
@@ -181,7 +198,19 @@ export const PROVIDER_FAILURE_KINDS = {
   [SESSION_START_IN_FLIGHT_CODE]: 'busy',
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
+  // The current Session still has a turn running; the handoff waits for it.
+  [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
+  // Continuing a conversation on a paired Station: the paired Station refused
+  // the import outright (not retryable as sent), refused this Station's
+  // credential, or takes imports only from a Station paired as a Station.
+  [PEER_CONVERSATION_HANDOFF_REFUSAL_CODE]: 'conflict',
+  [PEER_CONVERSATION_HANDOFF_ACCESS_CODE]: 'permission_denied',
+  [PEER_CONVERSATION_HANDOFF_PAIRING_CODE]: 'permission_denied',
+  [PAIRED_STATION_REQUIRED_CODE]: 'permission_denied',
+  // The import this key saved was deleted before it started.
+  [CONVERSATION_IMPORT_DELETED_CODE]: 'session_gone',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
+  [ADOPTION_SOURCE_ACTIVE_CODE]: 'busy',
   // A second consumer violates Station's internal queue-ownership invariant.
   async_event_queue_consumer_conflict: 'conflict',
   foreground_invocation_unavailable: 'conflict',
@@ -220,6 +249,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [PROJECT_ROOM_PROJECT_NOT_FOUND_CODE]: 'input_unsupported',
   // Someone else's (or an Agent's) room message (#4797): a retry is refused too.
   [PROJECT_ROOM_FORBIDDEN_CODE]: 'permission_denied',
+  // A paused or archived Project admits no turn (#5069): only a person's
+  // Resume or Unarchive changes that, so a retry cannot succeed.
+  [PROJECT_HELD_REFUSAL_CODE]: 'conflict',
   // The room's file store cannot prove its references (#4852): attachments
   // pause until an operator repairs it; a later retry can succeed.
   [PROJECT_ROOM_FILES_UNAVAILABLE_CODE]: 'unavailable',
@@ -234,6 +266,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [ENGINE_MEMORY_EXHAUSTED_CODE]: 'engine_crashed',
   // A command inside the engine's scope was killed; the engine kept running.
   [WORKLOAD_COMMAND_OOM_KILLED_CODE]: 'warning',
+  // The engine's own scope neared its memory limit, or left that state.
+  [WORKLOAD_MEMORY_PRESSURE_CODE]: 'warning',
+  [WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE]: 'warning',
   [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
   [ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
@@ -273,6 +308,10 @@ export const PROVIDER_FAILURE_KINDS = {
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
   // #4517: a managed policy locks the setting a write would change.
   managed_setting_locked: 'permission_denied',
+  // #5065: a Project's memory holds its maximum notes. Not retryable: like
+  // `project_held`, it is a state refusal that lasts until the state changes
+  // (a person or agent forgets a note), not a transient capacity limit.
+  [PROJECT_MEMORY_FULL_CODE]: 'conflict',
   // #4520: an engine the managed policy does not allow, or a launch that
   // cannot honor a locked pin.
   [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',

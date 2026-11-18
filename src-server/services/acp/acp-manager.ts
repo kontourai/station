@@ -17,6 +17,7 @@ import {
 } from './acp-manager-orchestration.js';
 import { getACPManagerStatus } from './acp-manager-view.js';
 import { ACPProbe, type ACPProbeInitiator } from './acp-probe.js';
+import type { AcpSessionListing } from './acp-session-listing.js';
 
 /**
  * Probe architecture: periodic connect→discover→disconnect per ACP source.
@@ -199,6 +200,27 @@ export class ACPManager {
    */
   getStatus(): ReturnType<typeof getACPManagerStatus> {
     return getACPManagerStatus(this.probes, this.configs, 0);
+  }
+
+  /**
+   * Each held connection's last `session/list` answer (see
+   * `ACPProbe.cachedSessionListing`), for `AcpSessionListSource`. Reads the
+   * probe caches only; it starts no process.
+   */
+  sessionListings(): Array<{
+    connection: ACPConnectionConfig;
+    listing: AcpSessionListing;
+  }> {
+    const listings: Array<{
+      connection: ACPConnectionConfig;
+      listing: AcpSessionListing;
+    }> = [];
+    for (const [id, probe] of this.probes) {
+      const listing = probe.getSessionListing?.();
+      const connection = this.configs.get(id);
+      if (listing && connection) listings.push({ connection, listing });
+    }
+    return listings;
   }
 
   /**

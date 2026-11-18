@@ -35,9 +35,11 @@ import {
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
+import { EngineStationTools } from '../components/acp-connections/EngineStationTools';
 import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
+import { EngineInstallTerminal } from '../components/engine-install/EngineInstallTerminal';
 import { PublicRegistryUpdateNotice } from '../components/engine-install/PublicRegistry';
 import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPanel';
 import { BrandIcon } from '../components/icons/BrandIcon';
@@ -58,7 +60,6 @@ import {
 } from '../components/state';
 import {
   type ACPConnectionInfo,
-  type ACPConnectionRegistryEntry,
   useACPConnectionRegistry,
   useACPConnections,
   useUnregisteredACPConnections,
@@ -161,15 +162,21 @@ export function AgentConnectionView({
     error?: unknown;
     refetch: () => unknown;
   };
-  const { data: catalog = [] } = useAgentConnectionCatalogQuery() as {
-    data?: AgentConnectionViewData[];
-  };
+  const {
+    data: catalog = [],
+    isPending: catalogPending,
+    error: catalogError,
+    refetch: refetchCatalog,
+  } = useAgentConnectionCatalogQuery();
   // The merged Add-engine catalogue's second population (#592 slice 2):
   // registry entries not yet installed as a connection. `installed` already
   // reflects a configured connection.
-  const { data: acpRegistryEntries = [] } = useACPConnectionRegistry() as {
-    data?: ACPConnectionRegistryEntry[];
-  };
+  const {
+    data: acpRegistryEntries = [],
+    isPending: registryPending,
+    error: registryError,
+    refetch: refetchRegistry,
+  } = useACPConnectionRegistry();
   const availableCommandEntries = useMemo(
     () => acpRegistryEntries.filter((entry) => !entry.installed),
     [acpRegistryEntries],
@@ -283,10 +290,8 @@ export function AgentConnectionView({
   const testMutation = useSmokeAgentConnectionMutation();
   const refreshMutation = useTestAgentConnectionMutation();
 
-  // The handshake retry the refusal sentence names (enriched-agents.ts). The
-  // bridge's live connection set is the same projection the reconnect route
-  // 404s against, so it is also the gate: a non-ACP engine gets no button
-  // that could only ever answer "Connection not found".
+  // Retry the saved ACP connection, including one without a live probe.
+  // Native engines retain their own connection check.
   const { data: acpBridgeConnections = [] } = useACPConnections();
   const reconnectMutation = useReconnectACPConnectionMutation({
     onSuccess: () => {
@@ -477,6 +482,34 @@ export function AgentConnectionView({
   const visibleModels = runtimeCatalogVisibleModels(form);
   const reportedModelCount = visibleModels.length;
 
+  if (isAddRoute)
+    return (
+      <div className="engine-setup-flow">
+        <EngineAddFlow
+          initialChoiceId={addChoiceId}
+          catalogPending={catalogPending || registryPending}
+          catalogError={catalogError ?? registryError}
+          onRetryCatalog={() => {
+            void refetchCatalog();
+            void refetchRegistry();
+          }}
+          notConnected={notConnected}
+          connections={availableEngines}
+          commandEntries={availableCommandEntries}
+          onDone={(id) =>
+            onNavigate(
+              id
+                ? { type: 'connections-engine-edit', id }
+                : { type: 'connections-engines' },
+            )
+          }
+          onOpenEngine={(id) =>
+            onNavigate({ type: 'connections-engine-edit', id })
+          }
+        />
+      </div>
+    );
+
   return (
     <SplitPaneLayout
       paneId={CONNECTIONS_ENGINES_PANE_ID}
@@ -524,24 +557,7 @@ export function AgentConnectionView({
       listEmptyTitle="Add an engine to get started"
       listEmptyDescription="Detected and supported engines appear here once one is connected."
       emptyDescription="Select an engine to review its status and setup."
-      emptyContent={
-        isAddRoute ? (
-          <EngineAddFlow
-            initialChoiceId={addChoiceId}
-            notConnected={notConnected}
-            connections={availableEngines}
-            commandEntries={availableCommandEntries}
-            onDone={() =>
-              onNavigate({ type: 'connections-engines' } as NavigationView)
-            }
-            onOpenEngine={(id) =>
-              onNavigate({ type: 'connections-engine-edit', id })
-            }
-          />
-        ) : undefined
-      }
-      unselectedDetailOpen={isAddRoute}
-      searchPlaceholder="Search engines..."
+      searchPlaceholder="Search engines…"
     >
       {form && repair?.engine.connection.id !== selectedRuntimeId ? (
         <div className="editor-layout">
@@ -668,6 +684,21 @@ export function AgentConnectionView({
                 }
               />
             )}
+            {selectedAcpConnection?.installerId ? (
+              <EngineInstallTerminal
+                id={selectedAcpConnection.installerId}
+                installNeeded={
+                  selectedAcpConnection.installerDetected !== true &&
+                  selectedAcpConnection.status !== 'available'
+                }
+                onFinished={() => {
+                  void refetchRuntimes();
+                }}
+              />
+            ) : null}
+            {selectedAcpConnectionId ? (
+              <EngineStationTools connectionId={selectedAcpConnectionId} />
+            ) : null}
             {/* #4520: a policy-disallowed engine is explained by the managed
                 notice; "turn this on" would offer a fix the policy refuses. */}
             {health?.verdict !== 'ready' &&
@@ -816,23 +847,36 @@ export function AgentConnectionView({
 
                 <div className="editor-field">
                   <span className="editor-label">Continuity</span>
-                  <p className="editor-help">
-                    {continuity
-                      ? [
-                          continuity.resume === 'same-session'
-                            ? 'Can continue this execution session when its engine supports it.'
-                            : 'Cannot resume an existing execution session.',
-                          continuity.fork === 'native'
-                            ? 'Can create an engine-native conversation branch.'
+                  {continuity ? (
+                    // Shares the engine account overview's fact-list layout;
+                    // its stylesheet loads with this view.
+                    <dl className="engine-account-overview__facts editor-help">
+                      <div>
+                        <dt>Resume</dt>
+                        <dd>
+                          {continuity.resume === 'same-session' ? 'Yes' : 'No'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Branch</dt>
+                        <dd>
+                          {continuity.fork === 'native'
+                            ? 'Yes'
                             : continuity.fork === 'replay-seed'
-                              ? 'Can start a new conversation from Station’s transcript. It does not carry engine cursor, tool, or approval state.'
-                              : 'Cannot create an engine-native branch.',
-                          continuity.rewind === 'in-place'
-                            ? 'Can rewind this execution session in place.'
-                            : 'Cannot rewind an execution session in place.',
-                        ].join(' ')
-                      : 'No native continuity capability declared by this connection.'}
-                  </p>
+                              ? 'Copies the transcript only'
+                              : 'No'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Rewind</dt>
+                        <dd>
+                          {continuity.rewind === 'in-place' ? 'Yes' : 'No'}
+                        </dd>
+                      </div>
+                    </dl>
+                  ) : (
+                    <p className="editor-help">Not reported</p>
+                  )}
                 </div>
 
                 {form.type === 'claude' && (
@@ -915,7 +959,7 @@ export function AgentConnectionView({
                     )}
                     {capabilityInventory.slashCommands.length > 0 && (
                       <>
-                        <div className="editor-label">Native Commands</div>
+                        <div className="editor-label">Native commands</div>
                         <div className="plugins__registry-list">
                           {capabilityInventory.slashCommands.map((command) => (
                             <div
@@ -1006,14 +1050,16 @@ export function AgentConnectionView({
                       ))}
                     </div>
                   ) : (
-                    <p className="editor-help">No prerequisites reported.</p>
+                    <p className="editor-help">None reported.</p>
                   )}
                 </div>
                 {selectedAcpConnection && (
-                  <ACPConnectionDetailsField
-                    connection={selectedAcpConnection}
-                    agents={agents}
-                  />
+                  <>
+                    <ACPConnectionDetailsField
+                      connection={selectedAcpConnection}
+                      agents={agents}
+                    />
+                  </>
                 )}
                 <div className="editor-field">
                   <button
@@ -1484,10 +1530,10 @@ function CredentialRecoveryLayout({
           id={`${connectionId}-credential-profiles-heading`}
           className="editor-label"
         >
-          Credential entries
+          Accounts
         </h3>
         <p className="editor-help">
-          References only; Station doesn't store or show credentials here.
+          Station keeps a reference to each account here, never its credentials.
         </p>
       </div>
 
@@ -1516,15 +1562,15 @@ function CredentialRecoveryManagement({
   state: ReturnType<typeof useCredentialRecoveryState>;
 }) {
   if (state.isLoading) {
-    return <SkeletonBlock count={2} label="Loading credential entries" />;
+    return <SkeletonBlock count={2} label="Loading accounts" />;
   }
   // archive#771: this used to fall straight through to the (empty) management
-  // UI on a settled error, reading as "no credential entries" instead of "the
+  // UI on a settled error, reading as "no accounts" instead of "the
   // read failed". A retry that never had cached data has nothing to preserve.
   if (state.isError && !state.recovery) {
     return (
       <ErrorState
-        title="Couldn't load credential entries"
+        title="Couldn't load accounts"
         description={describeReadFailure(state.error)}
         action={
           <button type="button" onClick={() => state.refetch()}>
@@ -1575,9 +1621,19 @@ function CredentialRecoveryFeedback({
           className={`credential-recovery__outcome${isFailure ? ' credential-recovery__outcome--failure' : ''}`}
           role={isFailure ? 'alert' : 'status'}
         >
+          {/* 'failed' also covers indeterminate and superseded applications
+              (connection-service), so it cannot promise the account held.
+              'rejected' and 'unsupported' are defensive: the projection does
+              not send them today. */}
           {isFailure
-            ? `Credential application ${outcome === 'rolled_back' ? 'was rolled back' : 'did not complete'}; the active credential was not changed.`
-            : `Credential application: ${outcome.replaceAll('_', ' ')}.`}
+            ? outcome === 'rolled_back'
+              ? 'Account not changed. The switch was undone.'
+              : outcome === 'failed'
+                ? "Station couldn't confirm the switch. Check which account is active before trying again."
+                : "Account not changed. The switch didn't finish."
+            : outcome === 'adopted'
+              ? 'Switched accounts.'
+              : 'Switching accounts. Station is checking the new account.'}
         </p>
       )}
       <CredentialRecoveryErrors errors={errors} />
@@ -1593,9 +1649,9 @@ function CredentialProfileApplyConfirmation({
   return (
     <ConfirmModal
       isOpen={state.profileToApply !== null}
-      title="Apply credential entry"
-      message="Verifying uses one potentially billable engine turn. If it fails, the current credential stays active."
-      confirmLabel="Apply and verify"
+      title="Switch to this account"
+      message="One engine turn checks this account first and may be billed. If the check fails, the current account stays active."
+      confirmLabel="Check and switch"
       cancelLabel="Cancel"
       variant="warning"
       onConfirm={state.confirmApply}
@@ -1672,9 +1728,7 @@ function CredentialProfileList({
         ))}
       </div>
       {profiles.length === 0 && (
-        <p className="credential-recovery__notice">
-          No credential entries added yet.
-        </p>
+        <p className="credential-recovery__notice">None added yet.</p>
       )}
     </>
   );
@@ -1704,7 +1758,7 @@ function CredentialProfileRow({
           onChange={(enabled) => state.setEnrollment(profile.ref, enabled)}
           disabled={state.profileMutating.enrollment}
         >
-          Allow automatic recovery selection
+          Use as backup
         </Checkbox>
       </div>
       <CredentialProfileActions profile={profile} state={state} />
@@ -1792,7 +1846,9 @@ function CredentialProfileActions({
         disabled={applyDisabled}
         onClick={() => state.requestApply(profile.ref)}
       >
-        {state.applyingRef === profile.ref ? 'Applying…' : 'Apply manually'}
+        {state.applyingRef === profile.ref
+          ? 'Switching…'
+          : 'Switch to this account'}
       </button>
       <button
         type="button"
@@ -1832,14 +1888,14 @@ function CredentialProfileCreateForm({
     <div className="credential-recovery__add-row">
       <input
         className="editor-input"
-        aria-label="Credential entry reference"
+        aria-label="Account reference"
         value={profileRef}
         onChange={(event) => setProfileRef(event.target.value)}
-        placeholder="Credential reference"
+        placeholder="Account reference"
       />
       <input
         className="editor-input"
-        aria-label="Credential entry label"
+        aria-label="Account label"
         value={profileLabel}
         onChange={(event) => setProfileLabel(event.target.value)}
         placeholder="Management label (optional)"
@@ -1850,7 +1906,7 @@ function CredentialProfileCreateForm({
         disabled={pending || profileRef.trim().length === 0}
         onClick={addProfile}
       >
-        {pending ? 'Adding…' : 'Add credential entry'}
+        {pending ? 'Adding…' : 'Add account'}
       </button>
     </div>
   );
@@ -1878,17 +1934,17 @@ function CredentialProfileProvisioning({
   const [includeCredentials, setIncludeCredentials] = useState(false);
   return (
     <fieldset>
-      <legend className="editor-label">Provisioning import</legend>
+      <legend className="editor-label">Import settings</legend>
       <p className="editor-help">
-        Imports the entry’s global {engineLabel} snapshot. Credentials are
-        excluded unless checked below.
+        Copies your global {engineLabel} settings into an account. Sign-in
+        credentials are copied only if you check the box below.
       </p>
       <Checkbox
         id={`${connectionId}-credential-profile-include-credentials`}
         checked={includeCredentials}
         onChange={setIncludeCredentials}
       >
-        Include selected credential entry sign-in credentials
+        Also copy sign-in credentials into the account
       </Checkbox>
       <div className="credential-recovery__profile-actions">
         {profiles.map((profile) => (
@@ -1923,15 +1979,15 @@ function CredentialProfileImportResult({
     <p
       className="credential-recovery__outcome"
       role="status"
-      aria-label="Credential entry provisioning import result"
+      aria-label="Import result"
     >
-      Provisioning import completed: {result.copied.length}{' '}
-      {result.copied.length === 1 ? 'item' : 'items'} copied;{' '}
+      Import finished: {result.copied.length}{' '}
+      {result.copied.length === 1 ? 'item' : 'items'} copied,{' '}
       {result.skipped.length} {result.skipped.length === 1 ? 'item' : 'items'}{' '}
       skipped.{' '}
       {result.provenanceUpdated
-        ? 'This credential entry is marked as imported.'
-        : 'This credential entry was not marked as imported because nothing was copied.'}
+        ? 'This account is marked as imported.'
+        : 'Nothing was copied, so this account is not marked as imported.'}
     </p>
   );
 }
@@ -1951,21 +2007,19 @@ function CredentialRecoveryPolicy({
 }) {
   return (
     <fieldset>
-      <legend className="editor-label">Automatic recovery</legend>
+      <legend className="editor-label">Automatic switching</legend>
       <Checkbox
         id={`${connectionId}-credential-recovery-automatic`}
         checked={automatic}
         onChange={onChange}
         disabled={unsupported || pending}
       >
-        Automatically try an enrolled credential entry after an account-scoped
-        capacity or rate-limit failure
+        Switch to a backup account when this one hits a usage or rate limit
       </Checkbox>
       <p className="editor-help">
-        Only enrolled entries are tried.
         {unsupported
-          ? ' This engine does not declare a safe application capability.'
-          : ''}
+          ? "This engine can't switch accounts automatically."
+          : 'Only accounts marked as backup are used.'}
       </p>
     </fieldset>
   );

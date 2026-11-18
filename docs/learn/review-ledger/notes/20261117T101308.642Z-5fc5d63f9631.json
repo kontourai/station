@@ -1,0 +1,9 @@
+{
+  "revision": "cd49bdf3bc94a4332bbabfd736005485c2acb191",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Only the pull-request-head-review row gains that stored review settings resume when the preview is turned on; neither guide makes claims about that row.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Only the pull-request-head-review row gains that stored review settings resume when the preview is turned on; neither guide makes claims about that row.","inputs":["docs/user/settings.md"]}
+  ]
+}

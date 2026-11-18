@@ -19,9 +19,6 @@ internal const val STATION_NOTIFICATION_KIND = "station_notification"
  */
 internal const val NOTIFICATION_AAD_PREFIX = "station-notification:v1:"
 
-/** Ids the Station mints are UUIDs; anything outside this grammar is refused. */
-private val NOTIFICATION_ID_PATTERN = Regex("^[A-Za-z0-9._:-]{1,128}$")
-
 /** Deliveries of one id remembered per registration, newest last. */
 internal const val NOTIFICATION_HISTORY = 64
 
@@ -78,7 +75,7 @@ internal fun openStationNotification(registration: Registration, data: Map<Strin
       urgency = NotificationUrgency.forWire(fields["urgency"]) ?: NotificationUrgency.INFO,
       createdAt = createdAt,
       expiresAt = expiresAt,
-      route = SessionRoute.validOrNull(registration.stationId, fields["session_id"], fields["project_slug"])
+      route = SessionRoute.validOrNull(registration.stationId, fields["session_id"], fields["project_slug"], id)
     )
     else -> null
   }

@@ -238,10 +238,15 @@ vendor's refusal in the vendor's own words.
   readable for an archived agent. A call reads at most ten Cursor list pages,
   stopping at a stored run, and the stored cursor carries what it could not
   finish: finished runs still to read on their own (read before anything is
-  listed again), the vendor's `nextCursor` where the ten pages ran out, and
-  one more pass from the newest run once a resumed backlog ends. The task
-  does not settle while any of it remains, and it survives a failed page and
-  a restart.
+  listed again), and the vendor's `nextCursor` where the ten pages ran out.
+  A resumed listing stops only at a stored run older than the backlog's
+  oldest listed run, so a run added at the top cannot end it early. Whenever
+  work was deferred, paging ends with one more pass from the newest run,
+  which finished runs may have joined meanwhile. The task does not settle
+  while any of it remains, and it survives a failed page and a restart. A
+  run the vendor answers 404 for is stored as a note, so it does not block
+  the rest; one whose own read says neither its result nor how it ended is
+  refused as malformed.
 - **What is retried.** Only failures that resolve on their own: a rate
   limit, an unreachable vendor, and the preview or policy turned off, which
   rechecks at the ceiling. Anything else stops polling until a client writes

@@ -283,7 +283,7 @@ deployment's ledger does not record, so each swept environment and bundle
 must have exactly one ledger: never create channels in a swept scope from
 anywhere else (`wrangler dev`, a staging deploy, a manual test with the real
 key), or they will be deleted. `SWEEP_SCOPES` defaults to production for the
-three shipping bundles (`io.kontourai.station`, `.beta`, `.nightly`); the
+two supported bundles (`io.kontourai.station` and `.nightly`); the
 sandbox environment and `io.kontourai.station.dev.instance` are never swept,
 so do development and testing there. An entry naming another environment or a
 bundle outside `ALLOWED_IOS_BUNDLES` is ignored and logged, and an empty value

@@ -711,6 +711,8 @@ describe('EnvironmentSecurityService', () => {
     const chat = [
       '/api/environments/peers/environment-b/chat-api/api/orchestration/chat',
       '/api/environments/peers/environment-b/chat-api/api/orchestration/commands',
+      // Continuing one of the owner's conversations on that Station.
+      '/api/environments/peers/environment-b/conversation-handoffs',
     ];
     for (const path of chat) {
       expect(service.authorizeCredential(owner, { method: 'POST', path })).toBe(
@@ -731,6 +733,8 @@ describe('EnvironmentSecurityService', () => {
       '/api/environments/peers/environment-b/chat-api/api/orchestration/chat/extra',
       '/api/environments/peers/environment-b/chat-api/api/orchestration/delegations',
       '/api/environments/peers/environment-b/nested/chat-api/api/orchestration/chat',
+      '/api/environments/peers/environment-b/conversation-handoffs/extra',
+      '/api/environments/peers/environment-b/nested/conversation-handoffs',
     ])
       expect(service.authorizeCredential(owner, { method: 'POST', path })).toBe(
         false,

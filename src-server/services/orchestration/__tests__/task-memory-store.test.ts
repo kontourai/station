@@ -144,6 +144,29 @@ describe('the Task summary', () => {
   });
 });
 
+describe('current summaries for the Tasks list (#5064)', () => {
+  test('one batched read answers each incarnation’s newest summary', () => {
+    const s = setup();
+    s.summary('First pass.', 0);
+    s.summary('Parser fixed; tests green.', 1);
+    const other = { taskId: 'task-2', taskCreatedAt: TASK.taskCreatedAt };
+    const recreated = {
+      taskId: TASK.taskId,
+      taskCreatedAt: '2026-10-21T00:00:00.000Z',
+    };
+    const summaries = s.memory.currentSummaries([TASK, other]);
+    expect([...summaries.keys()]).toEqual(['task-1']);
+    expect(summaries.get('task-1')).toMatchObject({
+      text: 'Parser fixed; tests green.',
+    });
+    expect(
+      Number.isNaN(Date.parse(summaries.get('task-1')?.createdAt ?? '')),
+    ).toBe(false);
+    // A re-created Task's list row carries no earlier incarnation's report.
+    expect(s.memory.currentSummaries([recreated])).toEqual(new Map());
+  });
+});
+
 describe('Task records', () => {
   test('set creates, set again supersedes, and every version is kept', () => {
     const s = setup();

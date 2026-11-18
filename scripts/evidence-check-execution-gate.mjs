@@ -388,7 +388,7 @@ function validate(repoRoot) {
           '../node_modules/@kontourai/veritas/bin/veritas.mjs',
         ) &&
         readinessWrapper.includes(
-          "[entry, 'readiness', ...process.argv.slice(2)]",
+          "[entry, 'readiness', ...branchScopedArgs(process.argv.slice(2))]",
         )));
   const readinessRouted =
     readinessCommand &&

@@ -289,6 +289,13 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     const title = quoted(text(args, 'title'));
     return title ? `a Session to ${title}` : 'a Session';
   }),
+  settle_conversation: entry(
+    'Moved',
+    'Moving',
+    'Move',
+    (context) =>
+      `${conversation(context)} to ${context.args.settled === false ? 'Open' : 'Settled'}`,
+  ),
   send_to_session: entry('Sent to', 'Sending to', 'Send to', (context) =>
     session(context, ['sessionId']),
   ),
@@ -337,6 +344,13 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     'Proposing',
     'Propose',
     fixed('a personal Board'),
+  ),
+  get_appearance: read(fixed('your appearance')),
+  propose_appearance: entry(
+    'Proposed',
+    'Proposing',
+    'Propose',
+    ({ args }) => quoted(text(args, 'name')) ?? 'an appearance',
   ),
 
   // Skills
@@ -556,6 +570,24 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   list_projects: listed('Projects'),
   get_project: read(named('Project', 'slug', 'a Project')),
   list_project_layouts: listed('Project layouts'),
+  list_project_library: listed('the Project Library'),
+  read_project_library_file: read(
+    named('Library file', 'path', 'a Library file'),
+  ),
+  list_project_notes: listed('Project memory notes'),
+  read_project_note: read(fixed('a Project memory note')),
+  remember_project_note: entry(
+    'Remembered',
+    'Remembering',
+    'Remember',
+    named('note', 'title', 'a Project memory note'),
+  ),
+  forget_project_note: entry(
+    'Forgot',
+    'Forgetting',
+    'Forget',
+    fixed('a Project memory note'),
+  ),
 
   // Delegation and environments
   list_delegation_environments: listed('delegation environments'),
@@ -653,6 +685,13 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   ),
 
   // Integrations and plugins
+  list_engine_setup: listed('Engine setup'),
+  open_engine_setup: entry(
+    'Requested',
+    'Requesting',
+    'Request',
+    () => 'engine setup',
+  ),
   list_integrations: listed('Integrations'),
   get_integration: read(named('Integration', 'id', 'an Integration')),
   create_integration: entry(

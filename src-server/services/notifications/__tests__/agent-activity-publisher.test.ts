@@ -19,7 +19,14 @@ import { parseSendRequest } from '../../../../deploy/push-gateway/src/send-reque
 import { verifyStationRequest } from '../../../../deploy/push-gateway/src/station-auth.js';
 import { createAgentActivitySessionReader } from '../../../runtime/routes/agent-activity-session-reader.js';
 import { EventBus } from '../../orchestration/event-bus.js';
+import { FinishedAlertEpisodes } from '../../orchestration/finished-alert-episodes.js';
 import { buildOrchestrationSessionSummary } from '../../orchestration/orchestration-session-state.js';
+import { orchestrationStreamPresenceSubjectForSession } from '../../orchestration/orchestration-stream-presence.js';
+import {
+  FINISHED_ALERT_CONFIRM_MS,
+  FINISHED_ALERT_RECHECK_MS,
+  wireTurnCompletionNotifications,
+} from '../../orchestration/turn-completion-notifications.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { agentActivityEntryId } from '../agent-activity-card.js';
 import {
@@ -32,8 +39,10 @@ import {
 import type { NativePushRegistration } from '../native-push-registration-store.js';
 import {
   createNativePushSendFloor,
+  NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
   type NativePushSendFloor,
 } from '../native-push-send-floor.js';
+import { NotificationService } from '../notification-service.js';
 import { PushSigningKeyStore } from '../push-signing-key-store.js';
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -173,10 +182,22 @@ function readSummaries(sessions: Map<string, CanonicalRuntimeEvent[]>) {
 }
 
 /** Folds sessions exactly as the runtime wiring does. */
-function readRows(sessions: Map<string, CanonicalRuntimeEvent[]>) {
+function readRows(
+  sessions: Map<string, CanonicalRuntimeEvent[]>,
+  /** The completion episodes the turn-completion producer writes. */
+  episodes: FinishedAlertEpisodes = new FinishedAlertEpisodes(),
+  /** Delegated children: their finish is their parent's to announce. */
+  quiet: ReadonlySet<string> = new Set(),
+) {
   const rows = readSummaries(sessions).map((summary) =>
-    agentActivityRowFromSummary(summary, (slug) =>
-      slug === 'login-app' ? 'Login App' : undefined,
+    agentActivityRowFromSummary(
+      summary,
+      (slug) => (slug === 'login-app' ? 'Login App' : undefined),
+      {
+        held: (threadId) => episodes.isPending(threadId),
+        release: (threadId) => episodes.releaseFor(threadId),
+        quiet: (threadId) => quiet.has(threadId),
+      },
     ),
   );
   return agentActivityRowsWithEntries(
@@ -189,8 +210,23 @@ function readRows(sessions: Map<string, CanonicalRuntimeEvent[]>) {
 function pairingReader(
   pairing: () => DevicePairingService,
   sessions: Map<string, CanonicalRuntimeEvent[]>,
+  /** The runtime's finished-alert deps, as runtime-route-support.ts wires them. */
+  finish?: {
+    episodes: FinishedAlertEpisodes;
+    delegated: ReadonlySet<string>;
+  },
 ) {
   return createAgentActivitySessionReader({
+    ...(finish
+      ? {
+          finishedAlertHeld: (threadId: string) =>
+            finish.episodes.isPending(threadId),
+          finishedAlertRelease: (threadId: string) =>
+            finish.episodes.releaseFor(threadId),
+          isDelegatedChildSession: (threadId: string) =>
+            finish.delegated.has(threadId),
+        }
+      : {}),
     listDevices: () => pairing().listDevices(),
     deviceLocality: (deviceId) => pairing().deviceLocality(deviceId),
     listSessionReadModel: async () => readSummaries(sessions),
@@ -223,6 +259,11 @@ async function harness(
      * device's stored scope decides whether it may read, as in production.
      */
     readerFromPairing?: boolean;
+    /**
+     * With `readerFromPairing`: the reader also gets the runtime's
+     * finished-alert deps over `episodes` and `quiet` (delegated children).
+     */
+    finishFromRuntime?: boolean;
     /** The floor shared with the Station notification channel (#2588). */
     sendFloor?: NativePushSendFloor;
   } = {},
@@ -238,7 +279,9 @@ async function harness(
   const eventBus = new EventBus();
   let clock = START;
   const sessions = new Map<string, CanonicalRuntimeEvent[]>();
-  const listSessions = vi.fn(async () => readRows(sessions));
+  const episodes = new FinishedAlertEpisodes();
+  const quiet = new Set<string>();
+  const listSessions = vi.fn(async () => readRows(sessions, episodes, quiet));
   const answers = [...(options.answers ?? [])];
   const delivered: Delivered[] = [];
   const refused: string[] = [];
@@ -285,6 +328,13 @@ async function harness(
     return found;
   }
   const timers: Array<{ fn: () => void; at: number; live: boolean }> = [];
+  const setTimer = (fn: () => void, delayMs: number) => {
+    const timer = { fn, at: clock + delayMs, live: true };
+    timers.push(timer);
+    return () => {
+      timer.live = false;
+    };
+  };
   const warn = vi.fn();
   const publisher = wireAgentActivityPublisher({
     eventBus,
@@ -292,7 +342,13 @@ async function harness(
     signingKey: keys,
     sessionReaderFor: (deviceId) => {
       if (options.readerFromPairing)
-        return pairingReader(() => pairing, sessions)(deviceId);
+        return pairingReader(
+          () => pairing,
+          sessions,
+          options.finishFromRuntime
+            ? { episodes, delegated: quiet }
+            : undefined,
+        )(deviceId);
       if (!options.principalFor) return { principalId: 'reader', listSessions };
       const reader = options.principalFor(deviceId);
       if (!reader) return null;
@@ -313,13 +369,7 @@ async function harness(
     fetchImpl: fetchImpl as unknown as typeof fetch,
     now: () => clock,
     windowMs: 1,
-    setTimer: (fn, delayMs) => {
-      const timer = { fn, at: clock + delayMs, live: true };
-      timers.push(timer);
-      return () => {
-        timer.live = false;
-      };
-    },
+    setTimer,
   });
   async function pairAndRegister(
     name = 'Pixel',
@@ -365,6 +415,9 @@ async function harness(
     keys,
     eventBus,
     sessions,
+    episodes,
+    quiet,
+    setTimer,
     listSessions,
     fetchImpl,
     fetchInits,
@@ -1770,5 +1823,319 @@ describe('resolvePushGatewayConfig', () => {
     expect(
       resolvePushGatewayConfig({ STATION_PUSH_GATEWAY_URL: value }),
     ).toBeNull();
+  });
+});
+
+/**
+ * The phone card and the "finished" push agree on one finish per completion
+ * episode, sent after its confirmation window. The REAL turn-completion
+ * producer writes the episodes (`finished-alert-episodes.ts`) the REAL
+ * publisher reads, on one bus and one clock, as the runtime composes them
+ * (runtime-route-support.ts), and every card is opened as the phone opens it.
+ */
+describe('one "Agent finished" per completion episode', () => {
+  async function episodeWorld() {
+    const sendFloor = createNativePushSendFloor();
+    // The runtime's own reader: device scope, episodes, delegated children.
+    const h = await harness({
+      sendFloor,
+      readerFromPairing: true,
+      finishFromRuntime: true,
+    });
+    const { deviceId } = await h.pairAndRegister();
+    const recordsHome = join(h.homeDir, 'notification-records');
+    mkdirSync(recordsHome);
+    const notifications = new NotificationService(
+      h.eventBus,
+      recordsHome,
+      999_999,
+    );
+    const producerWarn = vi.fn();
+    await notifications.start();
+    const holds = new Set<string>();
+    const delegated = new Set<string>();
+    const unwire = wireTurnCompletionNotifications(
+      h.eventBus,
+      {
+        isReadOnlyAttachedSession: () => false,
+        isEphemeralSession: () => false,
+        resolveSessionPresenceSubject: () =>
+          orchestrationStreamPresenceSubjectForSession('owner-1'),
+        readFinishedAlertHold: (threadId) =>
+          holds.has(threadId) ? ['child-agent'] : [],
+        isDelegatedChildSession: (threadId) => delegated.has(threadId),
+      },
+      notifications,
+      { warn: producerWarn },
+      { episodes: h.episodes, setTimer: h.setTimer, now: h.now },
+    );
+    // As the runtime composes them.
+    const offEpisodes = h.episodes.subscribe(() => h.publisher.requestFlush());
+    const settle = async () => {
+      for (let round = 0; round < 3; round += 1) {
+        await notifications.drainAsyncDispatch();
+        await h.settle();
+      }
+    };
+    /** Appends to the session's log and publishes it, as the runtime does. */
+    const push = async (threadId: string, fields: Record<string, unknown>) => {
+      const event = ev(threadId, h.now(), fields);
+      h.sessions.get(threadId)?.push(event);
+      h.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, { event });
+      await settle();
+      return event;
+    };
+    /** Runs every timer due within `ms`, in order, then moves the clock. */
+    const runFor = async (ms: number) => {
+      const until = h.now() + ms;
+      for (let fired = 0; fired < 1_000; fired += 1) {
+        const due = h.liveTimers().some((timer) => timer.at <= until);
+        if (!due) break;
+        await h.fireNextTimer();
+        await settle();
+      }
+      if (until > h.now()) h.advance(until - h.now());
+      await settle();
+    };
+    const alerts = () =>
+      h.delivered
+        .filter((entry) => entry.card.alert_title !== undefined)
+        .map((entry) => entry.card.alert_title);
+    const records = async () =>
+      (await notifications.list()).filter(
+        (record) => record.source === 'turn-completion',
+      );
+    const lastPhase = () => h.delivered.at(-1)?.card.activity_phase;
+    const dispose = async () => {
+      // Every finish above was written: none failed on the way.
+      expect(producerWarn).not.toHaveBeenCalled();
+      offEpisodes();
+      unwire();
+      await notifications.shutdown();
+      await h.publisher.stop();
+    };
+    return {
+      h,
+      deviceId,
+      sendFloor,
+      holds,
+      delegated,
+      notifications,
+      producerWarn,
+      push,
+      runFor,
+      alerts,
+      records,
+      lastPhase,
+      dispose,
+    };
+  }
+
+  test('a finished turn reads Running through its confirmation window, then alerts exactly once', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    w.h.publisher.requestFlush();
+    await w.runFor(0);
+    expect(w.lastPhase()).toBe('running');
+
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(FINISHED_ALERT_CONFIRM_MS - 1);
+    // Not yet confirmed: no record, and the card neither reads Done nor
+    // alerts.
+    expect(await w.records()).toEqual([]);
+    expect(w.lastPhase()).toBe('running');
+    expect(w.alerts()).toEqual([]);
+
+    await w.runFor(1 + NATIVE_PUSH_MIN_SEND_INTERVAL_MS);
+    expect(await w.records()).toHaveLength(1);
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual(['Agent finished']);
+
+    // Later refreshes of the same Done never alert again.
+    w.h.publisher.requestFlush();
+    await w.runFor(60_000);
+    expect(w.alerts()).toEqual(['Agent finished']);
+    await w.dispose();
+  });
+
+  test('a user turn and the provider reply that follows it are one finish, on the card and in the record', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(2_000);
+    // Claude opens its own turn after a background child settled.
+    const provider = { trigger: 'provider' };
+    await w.push('s1', {
+      method: 'turn.started',
+      turnId: 'turn-3',
+      metadata: provider,
+    });
+    await w.runFor(10_000);
+    await w.push('s1', {
+      method: 'turn.completed',
+      turnId: 'turn-3',
+      metadata: provider,
+    });
+    await w.runFor(
+      FINISHED_ALERT_CONFIRM_MS + NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+    );
+
+    expect(w.alerts()).toEqual(['Agent finished']);
+    expect(await w.records()).toEqual([
+      expect.objectContaining({
+        title: 'Your agent finished',
+        metadata: expect.objectContaining({ turnId: 'turn-3' }),
+      }),
+    ]);
+    await w.dispose();
+  });
+
+  test('a finish held past the alert window alerts once on release, even when the send waits on the floor', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    w.holds.add('s1');
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    // A subagent runs for ten minutes: Running throughout, no alert.
+    await w.runFor(10 * 60_000);
+    expect(w.lastPhase()).toBe('running');
+    expect(w.alerts()).toEqual([]);
+
+    // It settles: the next recheck opens the window.
+    w.holds.delete('s1');
+    await w.push('s1', { method: 'child-work.updated' });
+    await w.runFor(FINISHED_ALERT_CONFIRM_MS - 10);
+    expect(w.alerts()).toEqual([]);
+    // A Station notification took this phone's send slot just before the
+    // release: the card waits out the floor and is read again before it
+    // goes. That read must still date the Done from the release.
+    w.sendFloor.record(w.deviceId, w.h.now());
+    await w.runFor(10);
+    expect(await w.records()).toHaveLength(1);
+    await w.runFor(NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2);
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual(['Agent finished']);
+    await w.dispose();
+  });
+
+  test('a hold that releases with no event on the bus updates the card by the next recheck', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    w.holds.add('s1');
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(30_000);
+    expect(w.lastPhase()).toBe('running');
+    // Claude's follow-up-pending fact expires: nothing is published.
+    w.holds.delete('s1');
+    await w.runFor(
+      FINISHED_ALERT_RECHECK_MS +
+        FINISHED_ALERT_CONFIRM_MS +
+        NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+    );
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual(['Agent finished']);
+    await w.dispose();
+  });
+
+  test('only the released finish alerts: a later successful exit adds no second alert, and a Done the producer never released adds none', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(
+      FINISHED_ALERT_CONFIRM_MS + NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+    );
+    expect(w.alerts()).toEqual(['Agent finished']);
+    // The session then exits cleanly: still the same one finish.
+    await w.push('s1', { method: 'session.exited', exitCode: 0 });
+    await w.runFor(NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2);
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual(['Agent finished']);
+
+    // A second session ends with no turn terminal the producer released.
+    w.h.sessions.set('s2', sessionEvents('s2', 'running', START));
+    await w.push('s2', { method: 'session.exited', exitCode: 0 });
+    await w.runFor(NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2);
+    expect(w.alerts()).toEqual(['Agent finished']);
+    expect(await w.records()).toHaveLength(1);
+    await w.dispose();
+  });
+
+  test('a provider turn that closes without a result after a held finish still lets that finish alert once', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    w.holds.add('s1');
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(10_000);
+    // Claude opens its own turn, which then closes with no result of its
+    // own: the card's Done now derives from that later terminal.
+    const provider = { trigger: 'provider' };
+    await w.push('s1', {
+      method: 'turn.started',
+      turnId: 'turn-3',
+      metadata: provider,
+    });
+    await w.push('s1', {
+      method: 'turn.completed',
+      turnId: 'turn-3',
+      finishReason: 'other',
+      metadata: { ...provider, closedWithoutResult: 'session-ended' },
+    });
+    w.holds.delete('s1');
+    await w.push('s1', { method: 'child-work.updated' });
+    await w.runFor(
+      FINISHED_ALERT_CONFIRM_MS + NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2,
+    );
+    expect(await w.records()).toHaveLength(1);
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual(['Agent finished']);
+    await w.dispose();
+  });
+
+  test('a finish whose tag another producer already owns reads Done on the card without an "Agent finished"', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    await w.notifications.schedule('scheduler', {
+      category: 'turn-completed',
+      title: 'Not this producer',
+      body: 'A colliding record',
+      dedupeTag: 'turn-completion:s1:turn-2',
+    } as never);
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(
+      FINISHED_ALERT_CONFIRM_MS + NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2,
+    );
+    expect(w.producerWarn).toHaveBeenCalledWith(
+      'turn-completion: a finished alert cannot be written; its tag belongs to another producer',
+      expect.anything(),
+    );
+    w.producerWarn.mockClear();
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual([]);
+    expect(await w.records()).toEqual([]);
+    await w.dispose();
+  });
+
+  test('a delegated child reads Done but raises no "Agent finished"; its failure still alerts', async () => {
+    const w = await episodeWorld();
+    w.delegated.add('s1');
+    w.h.quiet.add('s1');
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(
+      FINISHED_ALERT_CONFIRM_MS + NATIVE_PUSH_MIN_SEND_INTERVAL_MS,
+    );
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual([]);
+    expect(await w.records()).toEqual([]);
+
+    await w.push('s1', { method: 'turn.started', turnId: 'turn-3' });
+    await w.runFor(NATIVE_PUSH_MIN_SEND_INTERVAL_MS);
+    await w.push('s1', {
+      method: 'runtime.error',
+      turnId: 'turn-3',
+      message: 'boom',
+    });
+    await w.runFor(NATIVE_PUSH_MIN_SEND_INTERVAL_MS);
+    expect(w.alerts()).toEqual(['Agent failed']);
+    await w.dispose();
   });
 });

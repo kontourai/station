@@ -1,0 +1,7 @@
+{
+  "revision": "6b3e1426d9cd829157b7621179242834a4e0a47f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Arming removed: the engine-handoff paragraph now describes one action that switches now with the prepared draft or the catch-up turn, the newer-draft rule and Details; the chip, Undo, cross-pane and catalog-wait claims are gone with their code. Checked against ConversationHandoffDialog, ConversationBoundaryDialogs and their tests and the rendered picker.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockContentArea.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts"]}
+  ]
+}

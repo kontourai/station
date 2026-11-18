@@ -177,6 +177,15 @@ product decisions.
   is a later phase; the `parked` and `promote` steps exist so the protocol
   does not have to change for it.
 
+  A core that refuses startup because its machine policy cannot be enforced
+  or its home requires reset exits with the reserved code `78`. During boot
+  or rollback the supervisor logs that terminal refusal, retains the core's
+  stderr diagnostic, and gives up after one attempt. A terminal rollback
+  returns a refusal result before the control channel closes; a non-reading
+  requester is bounded by the existing one-second reply-close deadline.
+  It does not interpret marker text as authority. The CLI checks policy before requesting a restart,
+  so an already-invalid policy does not drain the serving generation.
+
   A crash of the active generation, outside a drain, restarts it with
   exponential backoff: 1s doubling to a 30s cap, reset after 60s of stable
   serving. A crash during a handoff counts toward the same failure budget.
@@ -480,6 +489,10 @@ work is running, the user chooses between waiting for it and stopping it.
   with binary framing. Engine JSON-RPC lines and terminal bytes pass through
   as bytes, never re-encoded.
 - **Journaling:** a ring buffer plus appends. Nothing rewrites a whole file.
+- **Core memory:** each core generation is forked with the supervisor's own
+  Node flags dropped and `--max-semi-space-size=16` added. That flag bounds a young
+  generation V8 would otherwise size from host memory and keep at rest
+  ([measurement](../reference/station-weight.md#server-memory-at-rest)).
 - **Budget:** the added hop must stay under 1 ms at p99 on a local machine,
   measured before and after the engine phase. If it does not, the transport is
   fixed before engines move.
@@ -845,3 +858,20 @@ verification, and fault injection.
   marker appears exactly once. Stopping the supervisor ends the shell. The
   journey does not boot the whole core server or its authenticated
   terminal routes.
+
+## Bounded setup commands (protocol 1.4)
+
+A reviewed engine installer is a server-owned terminal workload with a finite
+`maxRuntimeMs`. `SupervisorShellHost` asks the workload host's `capabilities`
+operation before starting it; an older supervisor or host refuses before the
+installer command is invoked. The process-owning host enforces the deadline
+while a core is absent, so a core restart does not reset the installation's
+lifetime. Existing interactive terminals without that field retain their prior
+behavior. `TerminalSessions` persists the attempt's operation id and lifetime;
+response-loss retries attach to that record instead of starting a duplicate.
+
+The real-PTY supervisor-shell-host regression detaches the core and requires
+the bounded workload to end with no core attached, then reopens its saved
+outcome. A separate negative control requires an unsupported host to receive
+only capability negotiation, never spawn. This is one-host process evidence,
+not a vendor-installer or native-device qualification.

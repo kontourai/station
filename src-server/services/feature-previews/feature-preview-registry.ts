@@ -138,6 +138,15 @@ export class FeaturePreviewRegistry {
       description:
         'Configure how tool servers and built-in tools behave after reading untrusted content.',
     });
+    // UI-only: Continue in Project and Setup recommendations draft in the
+    // browser and create Projects and Tasks through their ordinary routes,
+    // which keep their own access checks; no server branch reads this choice.
+    this.rememberConsumer({
+      id: 'continue-in-project',
+      label: 'Continue in Project',
+      description:
+        'Move a chat into a new or existing Project from its More menu, and start new Projects with Setup recommendations.',
+    });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),
       storeLabel: 'feature-previews',

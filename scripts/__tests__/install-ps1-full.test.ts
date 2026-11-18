@@ -38,6 +38,7 @@ import {
 
 const makeTempDir = trackTempDirs();
 const NIGHTLY_KEY_ID = 'station-portable-nightly-2026-09';
+const RELEASE_KEY_ID = 'station-portable-release-2026-09';
 const servers: Server[] = [];
 
 afterEach(async () => {
@@ -51,6 +52,7 @@ afterEach(async () => {
 });
 
 type Fixture = {
+  channel: 'stable' | 'nightly';
   dir: string;
   core: string;
   stationRoot: string;
@@ -63,7 +65,7 @@ type Fixture = {
   key: KeyObject;
 };
 
-function fixture(): Fixture {
+function fixture(channel: Fixture['channel'] = 'nightly'): Fixture {
   const dir = makeTempDir('station-install-ps1-full-');
   const pair = generateKeyPairSync('ed25519');
   const keyPath = join(dir, 'test-key.pem');
@@ -74,13 +76,17 @@ function fixture(): Fixture {
   const stationRoot = join(dir, 'root');
   const binDir = join(dir, 'bin');
   return {
+    channel,
     dir,
     core: extractInstallerCore(dir),
     stationRoot,
-    installRoot: join(stationRoot, 'installs', 'nightly'),
-    home: join(stationRoot, 'instances', 'nightly'),
+    installRoot: join(stationRoot, 'installs', channel),
+    home: join(stationRoot, 'instances', channel),
     binDir,
-    launcher: join(binDir, 'station-nightly.cmd'),
+    launcher: join(
+      binDir,
+      channel === 'stable' ? 'station.cmd' : 'station-nightly.cmd',
+    ),
     log: join(dir, 'cli.log'),
     keyUrl: pathToFileURL(keyPath).href,
     key: pair.privateKey,
@@ -116,7 +122,7 @@ function core(
       USERPROFILE: f.dir,
       STATION_ROOT: f.stationRoot,
       STATION_BIN_DIR: f.binDir,
-      STATION_CHANNEL: 'nightly',
+      STATION_CHANNEL: f.channel,
       STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: f.keyUrl,
       STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
       STATION_INSTALL_TEST_HOST_TARGET: 'win32-x64',
@@ -141,7 +147,7 @@ function install(
       f.dir,
       archive,
       f.key,
-      NIGHTLY_KEY_ID,
+      f.channel === 'stable' ? RELEASE_KEY_ID : NIGHTLY_KEY_ID,
       { name: `manifest-${archive.version}-${Math.random()}.json` },
     ),
     ...env,
@@ -194,75 +200,87 @@ function state(f: Fixture) {
 const real = (path: string) => realpathSync(path);
 
 describe('install.ps1 installer core: full install (#2675 W2)', () => {
-  it('installs: current, the owned launcher, schema 4 state and a start on the resolved ports', async () => {
-    const f = fixture();
-    const [server, ui] = await freePorts();
-    const archive = buildWindowsArchive(f.dir, '0.7.0-nightly.12');
-    const result = install(f, archive, {
-      STATION_INSTALL_SERVER_PORT: String(server),
-      STATION_INSTALL_UI_PORT: String(ui),
-    });
-    expect(result.status, result.stderr).toBe(0);
-    expect(currentVersion(f)).toBe('0.7.0-nightly.12');
-    expect(
-      readFileSync(
-        join(f.installRoot, 'current', '.station-install-complete'),
-        'utf8',
-      ),
-    ).toBe(`${archive.sha256}\n`);
+  it.each([
+    { channel: 'nightly', version: '0.7.0-nightly.12' },
+    { channel: 'stable', version: '0.7.0' },
+  ] as const)(
+    '$channel installs: current, the owned launcher, schema 4 state and a start on the resolved ports',
+    async ({ channel, version }) => {
+      const f = fixture(channel);
+      const [server, ui] = await freePorts();
+      const archive = buildWindowsArchive(f.dir, version);
+      const result = install(f, archive, {
+        STATION_INSTALL_SERVER_PORT: String(server),
+        STATION_INSTALL_UI_PORT: String(ui),
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(currentVersion(f)).toBe(version);
+      expect(
+        readFileSync(
+          join(f.installRoot, 'current', '.station-install-complete'),
+          'utf8',
+        ),
+      ).toBe(`${archive.sha256}\n`);
 
-    const root = real(f.stationRoot);
-    const installRoot = real(f.installRoot);
-    const home = real(f.home);
-    const launcherPath = (path: string) =>
-      process.platform === 'win32'
-        ? `%USERPROFILE%${path.slice(real(f.dir).length)}`
-        : path;
-    expect(readFileSync(f.launcher, 'utf8')).toBe(
-      [
-        '@echo off',
-        'rem station-owned-launcher-v2',
-        'setlocal EnableExtensions DisableDelayedExpansion',
-        'set "STATION_CHANNEL=nightly"',
-        `set "STATION_ROOT=${launcherPath(root)}"`,
-        `set "STATION_HOME=${launcherPath(home)}"`,
-        `set "STATION_INSTALL_ROOT=${launcherPath(installRoot)}"`,
-        `"${launcherPath(join(installRoot, 'current', 'bin', 'station.cmd'))}" %*`,
-        '',
-      ].join('\r\n'),
-    );
-    const manifestUrl = state(f).manifestUrl;
-    expect(state(f)).toEqual({
-      schemaVersion: 4,
-      channel: 'nightly',
-      releaseChannel: 'nightly',
-      installRoot,
-      stationRoot: root,
-      stationHome: home,
-      manifestUrl,
-      serverPort: server,
-      uiPort: ui,
-    });
-    expect(manifestUrl).toMatch(/^file:.*manifest-0\.7\.0-nightly\.12-/);
-    expect(
-      readFileSync(join(f.home, '.station-portable-data-root'), 'utf8'),
-    ).toBe('station-portable-data-root-v1\n');
+      const root = real(f.stationRoot);
+      const installRoot = real(f.installRoot);
+      const home = real(f.home);
+      const launcherPath = (path: string) =>
+        process.platform === 'win32'
+          ? `%USERPROFILE%${path.slice(real(f.dir).length)}`
+          : path;
+      expect(readFileSync(f.launcher, 'utf8')).toBe(
+        [
+          '@echo off',
+          'rem station-owned-launcher-v2',
+          'setlocal EnableExtensions DisableDelayedExpansion',
+          `set "STATION_CHANNEL=${channel}"`,
+          `set "STATION_ROOT=${launcherPath(root)}"`,
+          `set "STATION_HOME=${launcherPath(home)}"`,
+          `set "STATION_INSTALL_ROOT=${launcherPath(installRoot)}"`,
+          `"${launcherPath(join(installRoot, 'current', 'bin', 'station.cmd'))}" %*`,
+          '',
+        ].join('\r\n'),
+      );
+      const manifestUrl = state(f).manifestUrl;
+      expect(state(f)).toEqual({
+        schemaVersion: 4,
+        channel,
+        releaseChannel: channel,
+        installRoot,
+        stationRoot: root,
+        stationHome: home,
+        manifestUrl,
+        serverPort: server,
+        uiPort: ui,
+      });
+      expect(manifestUrl).toMatch(/^file:/);
+      expect(manifestUrl).toContain(`manifest-${version}-`);
+      expect(
+        readFileSync(join(f.home, '.station-portable-data-root'), 'utf8'),
+      ).toBe('station-portable-data-root-v1\n');
 
-    // A first install has nothing to stop; it starts the version itself,
-    // from its own directory, with the install's identity and ports.
-    const runs = takeCliRuns(f);
-    expect(verbs(runs)).toEqual(['start@0.7.0-nightly.12']);
-    expect(runs[0]).toMatchObject({
-      args: ['start', `--base=${home}`, `--port=${server}`, `--ui-port=${ui}`],
-      cwd: real(join(f.installRoot, 'versions', '0.7.0-nightly.12')),
-      channel: 'nightly',
-      root,
-      home,
-      installRoot,
-    });
-    expect(result.stdout).toContain(`Open http://localhost:${ui}`);
-    expect(result.stdout).toContain(`Add ${real(f.binDir)} to PATH`);
-  });
+      // A first install has nothing to stop; it starts the version itself,
+      // from its own directory, with the install's identity and ports.
+      const runs = takeCliRuns(f);
+      expect(verbs(runs)).toEqual([`start@${version}`]);
+      expect(runs[0]).toMatchObject({
+        args: [
+          'start',
+          `--base=${home}`,
+          `--port=${server}`,
+          `--ui-port=${ui}`,
+        ],
+        cwd: real(join(f.installRoot, 'versions', version)),
+        channel,
+        root,
+        home,
+        installRoot,
+      });
+      expect(result.stdout).toContain(`Open http://localhost:${ui}`);
+      expect(result.stdout).toContain(`Add ${real(f.binDir)} to PATH`);
+    },
+  );
 
   it('upgrades: stops the old version, switches, starts the new, keeps the previous and prunes the rest, on the recorded ports', async () => {
     const f = fixture();

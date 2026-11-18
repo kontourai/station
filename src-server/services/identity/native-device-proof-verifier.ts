@@ -468,7 +468,6 @@ function validateClaims(
     !CLIENT_INSTANCE_ID.test(surface.clientInstanceId) ||
     (surface.channel !== 'dev' &&
       surface.channel !== 'stable' &&
-      surface.channel !== 'beta' &&
       surface.channel !== 'nightly')
   )
     throw new NativeDeviceProofRejectedError(

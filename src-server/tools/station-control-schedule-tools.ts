@@ -120,6 +120,13 @@ export function registerScheduleTools(registry: StationControlToolRegistry) {
       ),
       prompt: z.string().min(1).describe('What the job runs each time.'),
       agent: z.string().min(1).optional().describe('Agent slug to run it.'),
+      projectId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'The Project id (not its slug); each run is a new Task there.',
+        ),
       rationale: z
         .string()
         .min(1)

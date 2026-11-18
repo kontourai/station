@@ -197,6 +197,8 @@ let agentCatalog: unknown[] = DEFAULT_AGENT_CATALOG;
  * exercise the ACP half set this explicitly.
  */
 let acpRegistryEntries: unknown[] = [];
+let acpRegistryPending = false;
+let acpRegistryError: Error | null = null;
 /**
  * The ACP bridge's live connection set — the projection that gates (and the
  * reconnect route 404s against) the detail header's Reconnect action. Empty
@@ -253,7 +255,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: agentConnectionsQueryError,
     refetch: refetchAgentConnections,
   }),
-  useAgentConnectionCatalogQuery: () => ({ data: agentCatalog }),
+  useAgentConnectionCatalogQuery: () => ({
+    data: agentCatalog,
+    refetch: vi.fn(),
+  }),
   useAgentConnectionQuery: (id: unknown, config?: { enabled?: boolean }) => {
     connectionReads.push([id, config?.enabled]);
     return { data: connectionQueryData };
@@ -406,6 +411,8 @@ vi.mock('../hooks/useACPConnections', () => ({
   useACPConnectionProbeStatuses: () => ({ data: undefined }),
   useACPConnectionRegistry: () => ({
     data: acpRegistryEntries,
+    isPending: acpRegistryPending,
+    error: acpRegistryError,
     refetch: refetchRegistry,
     isFetching: false,
   }),
@@ -415,6 +422,8 @@ import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
   beforeEach(() => {
+    acpRegistryPending = false;
+    acpRegistryError = null;
     queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -430,6 +439,8 @@ describe('AgentConnectionView', () => {
           new Response(JSON.stringify(data), {
             headers: { 'Content-Type': 'application/json' },
           });
+        if (path === '/api/feature-previews')
+          return reply({ success: true, data: [] });
         if (path.endsWith('/sign-in/attempt'))
           return reply({ success: true, data: null });
         if (path.endsWith('/sign-in'))
@@ -718,14 +729,16 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Choose an engine' }),
+    ).toBeTruthy();
     expect(screen.getByText('Claude Code')).toBeTruthy();
     // #592 slice 2: the bespoke Detected/Available chip retired in favor of
     // the same ProviderReadiness vocabulary every other picker uses —
     // `setup.state: 'available', detected: true` reads "Found, not
     // connected" everywhere else on Connections.
     expect(screen.getByText('Found, not connected')).toBeTruthy();
-    expect(screen.getByText('Station engine')).toBeTruthy();
+    expect(screen.queryByText('Station engine')).toBeNull();
 
     // #592 slice 2 review M3: bare "Add" is ambiguous with more than one row
     // in the catalogue — the accessible name carries the engine's own name.
@@ -767,7 +780,10 @@ describe('AgentConnectionView', () => {
     // No route jump on the way: the result is in the add pane.
     expect(onNavigate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-engine-edit',
+      id: 'claude',
+    });
   });
 
   // A native row the catalogue labels "Setup required" still adds the engine
@@ -883,13 +899,11 @@ describe('AgentConnectionView', () => {
     // The always-available manual escape hatch.
     expect(screen.getByText('Custom engine')).toBeTruthy();
 
-    // An engine that is not installed is installed first: its row offers
-    // the install hint and Check again, never a way to connect it.
     expect(
-      screen.getByRole('button', { name: 'Check again for OpenCode' }),
+      screen.getByRole('button', { name: 'Set up OpenCode' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'Set up OpenCode' }),
+      screen.queryByRole('button', { name: 'Check again for OpenCode' }),
     ).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Connect OpenCode' }),
@@ -914,6 +928,55 @@ describe('AgentConnectionView', () => {
     expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
   });
 
+  test.each([undefined, 'antigravity'])(
+    'engine setup %s waits for discovery and offers retry after a failed read',
+    async (addChoiceId) => {
+      acpRegistryEntries = [];
+      acpRegistryPending = true;
+      const mounted = await render(
+        <AgentConnectionView
+          selectedRuntimeId="new"
+          addChoiceId={addChoiceId}
+          onNavigate={vi.fn()}
+        />,
+      );
+      expect(
+        screen.queryByRole('heading', { name: 'Choose an engine' }),
+      ).toBeNull();
+      expect(screen.queryByText('Engine not found')).toBeNull();
+      acpRegistryPending = false;
+      acpRegistryError = new Error('Discovery failed');
+      mounted.rerender(
+        <AgentConnectionView
+          selectedRuntimeId="new"
+          addChoiceId={addChoiceId}
+          onNavigate={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Couldn't load engine setup")).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(refetchRegistry).toHaveBeenCalled();
+      expect(acpInstall).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a missing engine setup target offers the catalog without substituting a custom command', async () => {
+    acpRegistryEntries = [];
+    agentCatalog = [];
+    const onNavigate = vi.fn();
+    await render(
+      <AgentConnectionView
+        selectedRuntimeId="new"
+        addChoiceId="missing"
+        onNavigate={onNavigate}
+      />,
+    );
+    expect(screen.getByText('Engine not found')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse engines' }));
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+    expect(acpInstall).not.toHaveBeenCalled();
+  });
+
   test('a deep link to one entry opens its confirm step in the same pane', async () => {
     acpRegistryEntries = [
       {
@@ -936,7 +999,9 @@ describe('AgentConnectionView', () => {
       screen.getByRole('heading', { name: 'Connect Kiro CLI' }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Choose an engine' }),
+    ).toBeTruthy();
   });
 
   test('an undetected catalogue engine shows its host install recipe and re-checks on demand; a detected one does not', async () => {
@@ -973,6 +1038,8 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    expect(screen.queryByTestId('engine-install-hint')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const hints = screen.getAllByTestId('engine-install-hint');
     expect(hints).toHaveLength(1);
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
@@ -1027,6 +1094,7 @@ describe('AgentConnectionView', () => {
     await render(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
     fireEvent.click(
       within(goose).getByRole('button', { name: 'Check again for Goose' }),
@@ -1060,6 +1128,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Acme Agent' }));
     const hint = screen.getByRole('group', {
       name: 'How to install Acme Agent',
     });
@@ -1083,6 +1152,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Goose' }));
     const goose = screen.getByRole('group', { name: 'How to install Goose' });
     expect(
       within(goose).getByText(
@@ -2088,16 +2158,14 @@ describe('AgentConnectionView', () => {
     );
 
     fireEvent.click(screen.getByText('Advanced'));
-    expect(
-      screen.getByRole('heading', { name: 'Credential entries' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeTruthy();
     expect(screen.getByText('Active: primary-profile')).toBeTruthy();
     const automatic = screen.getByRole('checkbox', {
-      name: /Automatically try an enrolled credential entry/,
+      name: /Switch to a backup account when this one hits/,
     }) as HTMLInputElement;
     expect(automatic.checked).toBe(false);
     const enrollment = screen.getByRole('checkbox', {
-      name: 'Allow automatic recovery selection',
+      name: 'Use as backup',
     }) as HTMLInputElement;
     expect(enrollment.checked).toBe(false);
 
@@ -2116,7 +2184,7 @@ describe('AgentConnectionView', () => {
     // Every form control has an accessible label, and the profile ref is
     // displayed as an opaque handle rather than a filesystem location.
     expect(
-      screen.getByRole('textbox', { name: 'Credential entry reference' }),
+      screen.getByRole('textbox', { name: 'Account reference' }),
     ).toBeTruthy();
     expect(
       screen.getByRole('textbox', { name: 'Label for backup-profile' }),
@@ -2126,16 +2194,16 @@ describe('AgentConnectionView', () => {
     ).toBeNull();
     expect(
       screen.getByRole('status', {
-        name: 'Credential entry provisioning import result',
+        name: 'Import result',
       }).textContent,
     ).toContain(
-      'Provisioning import completed: 2 items copied; 1 item skipped. This credential entry is marked as imported.',
+      'Import finished: 2 items copied, 1 item skipped. This account is marked as imported.',
     );
     expect(screen.queryByText('settings.json')).toBeNull();
     expect(screen.queryByText('credentials.json')).toBeNull();
 
     const includeCredentials = screen.getByRole('checkbox', {
-      name: 'Include selected credential entry sign-in credentials',
+      name: 'Also copy sign-in credentials into the account',
     }) as HTMLInputElement;
     expect(includeCredentials.checked).toBe(false);
     fireEvent.click(
@@ -2167,14 +2235,12 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
-    expect(
-      screen.getByRole('heading', { name: 'Credential entries' }),
-    ).toBeTruthy();
-    expect(screen.getByText('No credential entries added yet.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeTruthy();
+    expect(screen.getByText('None added yet.')).toBeTruthy();
     expect(
       (
         screen.getByRole('checkbox', {
-          name: /Automatically try an enrolled credential entry/,
+          name: /Switch to a backup account when this one hits/,
         }) as HTMLInputElement
       ).disabled,
     ).toBe(true);
@@ -2203,10 +2269,10 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
-    expect(screen.getByText("Couldn't load credential entries")).toBeTruthy();
+    expect(screen.getByText("Couldn't load accounts")).toBeTruthy();
     expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.queryByText('credential recovery unavailable')).toBeNull();
-    expect(screen.queryByText('No credential entries added yet.')).toBeNull();
+    expect(screen.queryByText('None added yet.')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetchCredentialRecovery).toHaveBeenCalledTimes(1);
@@ -2265,20 +2331,20 @@ describe('AgentConnectionView', () => {
       expect(
         (
           screen.getByRole('checkbox', {
-            name: /Automatically try an enrolled credential entry/,
+            name: /Switch to a backup account when this one hits/,
           }) as HTMLInputElement
         ).disabled,
       ).toBe(true);
       expect(
         (
           screen.getByRole('button', {
-            name: 'Apply manually',
+            name: 'Switch to this account',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
       if (explains) {
         expect(
-          screen.getByText(/does not declare a safe application capability/),
+          screen.getByText("This engine can't switch accounts automatically."),
         ).toBeTruthy();
       }
     },
@@ -2308,10 +2374,16 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Apply manually' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Switch to this account' }),
+    );
     expect(applyMutate).not.toHaveBeenCalled();
-    expect(screen.getByText(/potentially billable engine turn/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Apply and verify' }));
+    expect(
+      screen.getByText(
+        /One engine turn checks this account first and may be billed/,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check and switch' }));
     expect(applyMutate).toHaveBeenCalledWith({
       id: 'claude',
       ref: 'backup-profile',
@@ -2319,34 +2391,43 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('a rolled-back outcome is announced as failure rather than success', async () => {
-    connectionQueryData = {
-      id: 'claude',
-      kind: 'agent',
-      type: 'claude',
-      name: 'Claude Code',
-      enabled: true,
-      status: 'ready',
-      capabilities: ['agent-runtime'],
-      prerequisites: [],
-      config: { useAppHome: true },
-      setup: { state: 'ready', detected: true, configured: false },
-    };
-    credentialRecoveryQueryData = {
-      profiles: [],
-      group: { profileRefs: [], enrolledProfileRefs: [] },
-      policy: { automatic: false },
-      application: { capability: 'restart_resume', outcome: 'rolled_back' },
-    };
+  test.each([
+    ['rolled_back', 'Account not changed. The switch was undone.'],
+    [
+      'failed',
+      "Station couldn't confirm the switch. Check which account is active before trying again.",
+    ],
+    ['rejected', "Account not changed. The switch didn't finish."],
+    ['unsupported', "Account not changed. The switch didn't finish."],
+  ])(
+    'a %s outcome is announced as failure with what is known',
+    async (outcome, message) => {
+      connectionQueryData = {
+        id: 'claude',
+        kind: 'agent',
+        type: 'claude',
+        name: 'Claude Code',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: { useAppHome: true },
+        setup: { state: 'ready', detected: true, configured: false },
+      };
+      credentialRecoveryQueryData = {
+        profiles: [],
+        group: { profileRefs: [], enrolledProfileRefs: [] },
+        policy: { automatic: false },
+        application: { capability: 'restart_resume', outcome },
+      };
 
-    await render(
-      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
-    );
+      await render(
+        <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+      );
 
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Credential application was rolled back; the active credential was not changed.',
-    );
-  });
+      expect(screen.getByRole('alert').textContent).toContain(message);
+    },
+  );
 
   test('deduplicates safe feedback from simultaneous credential-profile mutation failures', async () => {
     connectionQueryData = {
@@ -2398,30 +2479,18 @@ describe('AgentConnectionView', () => {
   test.each([
     [
       { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
-      [
-        'Can continue this execution session',
-        'Can start a new conversation from Station’s transcript.',
-        'Cannot rewind an execution session in place.',
-      ],
+      { Resume: 'Yes', Branch: 'Copies the transcript only', Rewind: 'No' },
     ],
     [
       { resume: 'none', fork: 'native', rewind: 'in-place' },
-      [
-        'Cannot resume an existing execution session.',
-        'Can create an engine-native conversation branch.',
-        'Can rewind this execution session in place.',
-      ],
+      { Resume: 'No', Branch: 'Yes', Rewind: 'Yes' },
     ],
     [
       { resume: 'none', fork: 'none', rewind: 'none' },
-      [
-        'Cannot resume an existing execution session.',
-        'Cannot create an engine-native branch.',
-        'Cannot rewind an execution session in place.',
-      ],
+      { Resume: 'No', Branch: 'No', Rewind: 'No' },
     ],
   ])(
-    'renders continuity dimensions as explanatory detail',
+    'renders continuity dimensions as a facts list',
     async (continuity, expected) => {
       connectionQueryData = {
         id: 'claude',
@@ -2439,13 +2508,14 @@ describe('AgentConnectionView', () => {
       await render(
         <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
       );
-      const rendered =
-        screen.getByText('Continuity').parentElement?.textContent;
-      for (const sentence of expected) expect(rendered).toContain(sentence);
-      if (continuity.fork === 'replay-seed')
-        expect(
-          screen.getByText(/engine cursor, tool, or approval state/),
-        ).toBeTruthy();
+      const field = screen.getByText('Continuity').parentElement!;
+      const facts = Object.fromEntries(
+        Array.from(field.querySelectorAll('dt')).map((term) => [
+          term.textContent,
+          term.nextElementSibling?.textContent,
+        ]),
+      );
+      expect(facts).toEqual(expected);
     },
   );
 
@@ -2588,6 +2658,27 @@ describe('AgentConnectionView', () => {
     );
     expect(detailStatus(container).tile).toBe('Not allowed');
     expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+  });
+
+  test('says continuity is not reported when the connection declares none', async () => {
+    connectionQueryData = {
+      id: 'claude',
+      kind: 'agent',
+      type: 'claude',
+      name: 'Claude Code',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: false },
+    };
+    await render(
+      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+    );
+    expect(screen.getByText('Continuity').parentElement?.textContent).toContain(
+      'Not reported',
+    );
   });
 });
 

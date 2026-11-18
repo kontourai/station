@@ -1,0 +1,7 @@
+{
+  "revision": "9a287e04e4f1456b0209812af93227727484b720",
+
+  "notes": [
+    {"path":"docs/reference/issue-lifecycle.md","note":"labels.json gained full-checks (CI opt-in); handoff-label lifecycle claims unchanged.","inputs":["docs/reference/issue-lifecycle.md",".github/labels.json"]}
+  ]
+}

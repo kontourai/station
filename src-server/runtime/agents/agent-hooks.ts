@@ -55,11 +55,16 @@ import type {
 } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import { stationDenial } from './denial-message.js';
-import { createStagedPreToolPolicyEvaluator } from './pre-tool-policy.js';
+import {
+  createStagedPreToolPolicyEvaluator,
+  type PullRequestWatchPolicy,
+} from './pre-tool-policy.js';
 
 // ── Hook factory dependencies ──────────────────────────
 
 export interface AgentHooksDeps {
+  /** #5066: refusals for a watching Task's agent. */
+  pullRequestWatchPolicy?: PullRequestWatchPolicy;
   /** Exact model-step context measurement; never an invocation billing total. */
   observeModelContext?: NonNullable<IAgentHooks['afterModelGeneration']>;
   projectToolPolicy?: (
@@ -158,6 +163,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
   };
   const evaluatePreToolPolicy = createStagedPreToolPolicyEvaluator({
     spec: deps.spec,
+    pullRequestWatchPolicy: deps.pullRequestWatchPolicy,
     projectToolPolicy: deps.projectToolPolicy,
     agentPolicyService: deps.agentPolicyService,
     approvalGuardian: deps.approvalGuardian,

@@ -1,6 +1,7 @@
 import { engineId as toEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { AgentConnectionView as AgentConnectionViewData } from '@kontourai/station-contracts/tool';
 import { useSaveAgentConnectionMutation } from '@kontourai/station-sdk';
+import { Field, Input } from '@kontourai/ui/react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { ActionRow } from '../components/ActionRow';
 import { ACPConnectionSetupPanel } from '../components/acp-connections/ACPConnectionSetupPanel';
@@ -13,10 +14,14 @@ import {
   PublicRegistryCatalogGroup,
   PublicRegistryFacts,
 } from '../components/engine-install/PublicRegistry';
-import { RegistryEntryInstallHint } from '../components/engine-install/RegistryEntryInstallHint';
 import { registryEntryDiscovery } from '../components/engine-install/registryEntryDiscovery';
 import { BrandIcon } from '../components/icons/BrandIcon';
-import { Empty } from '../components/state';
+import {
+  Empty,
+  ErrorState,
+  FilteredEmpty,
+  SkeletonBlock,
+} from '../components/state';
 import type {
   ACPConnectionInfo,
   ACPConnectionRegistryEntry,
@@ -125,29 +130,61 @@ function EngineAddCatalog({
   notConnected,
   connections,
   commandEntries,
-  error,
   onChoose,
 }: {
   notConnected: NotConnectedEngine[];
   connections: AgentConnectionViewData[];
   commandEntries: ACPConnectionRegistryEntry[];
-  error?: string | null;
   onChoose: (choice: EngineAddChoice) => void;
 }) {
-  const stationEntries = commandEntries.filter(
+  const [query, setQuery] = useState('');
+  const matches = (name: string, command = '', id = '') =>
+    `${name} ${command} ${id}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase());
+  const visibleConnections = connections.filter((entry) =>
+    matches(entry.name, '', entry.id),
+  );
+  const visibleNotConnected = notConnected.filter(({ connection }) =>
+    matches(connection.name, connection.command, connection.id),
+  );
+  const visibleEntries = commandEntries.filter((entry) =>
+    matches(entry.name, entry.command, entry.id),
+  );
+  const stationEntries = visibleEntries.filter(
     (entry) => entry.source !== 'registry',
   );
-  const publicEntries = commandEntries.filter(
+  const publicEntries = visibleEntries.filter(
     (entry) => entry.source === 'registry',
   );
   const hasCatalogEntries = connections.length > 0 || commandEntries.length > 0;
   return (
     <div className="editor-layout engine-catalog">
-      <DetailHeader
-        title="Add engine"
-        subtitle="Station checks local apps and commands before showing them as ready."
-      />
-      {error ? <div className="editor-error">{error}</div> : null}
+      <DetailHeader title="Choose an engine" />
+      <Field
+        label="Find an engine"
+        htmlFor="engine-catalog-search"
+        className="engine-catalog__search"
+      >
+        <Input
+          id="engine-catalog-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Name or command, e.g. Antigravity or agy"
+        />
+      </Field>
+      {query.trim() &&
+      visibleConnections.length +
+        visibleNotConnected.length +
+        visibleEntries.length ===
+        0 ? (
+        <FilteredEmpty
+          query={query}
+          noun="engines"
+          onClear={() => setQuery('')}
+        />
+      ) : null}
       {!hasCatalogEntries && (
         <Empty
           variant="prominent"
@@ -156,7 +193,7 @@ function EngineAddCatalog({
         />
       )}
       <ul className="engine-catalog__list" aria-label="Engines to add">
-        {notConnected.map(({ connection, custom }) => (
+        {visibleNotConnected.map(({ connection, custom }) => (
           <CatalogRow
             key={`not-connected-${connection.id}`}
             icon={
@@ -175,7 +212,7 @@ function EngineAddCatalog({
                     connection.lastError,
                     connection.name,
                   )
-                : 'Saved, but Station has not connected to it yet.'
+                : "Station saved this engine but couldn't connect."
             }
             action={
               <Button
@@ -189,7 +226,7 @@ function EngineAddCatalog({
             }
           />
         ))}
-        {connections.map((connection) => {
+        {visibleConnections.map((connection) => {
           const presentation = nativePresentation(connection);
           // The row still needing setup continues there, so the label says so.
           const addLabel =
@@ -241,7 +278,14 @@ function EngineAddCatalog({
               tag={presentation.readiness}
               detail={presentation.detail}
               action={
-                notInstalled ? undefined : (
+                notInstalled ? (
+                  <Button
+                    aria-label={`Set up ${entry.name}`}
+                    onClick={() => onChoose({ kind: 'command', entry })}
+                  >
+                    Set up
+                  </Button>
+                ) : (
                   <Button
                     aria-label={`${presentation.actionLabel} ${entry.name}`}
                     onClick={() => onChoose({ kind: 'command', entry })}
@@ -254,7 +298,6 @@ function EngineAddCatalog({
               {entry.publicRegistry ? (
                 <PublicRegistryFacts listing={entry.publicRegistry} />
               ) : null}
-              <RegistryEntryInstallHint entry={entry} />
             </CatalogRow>
           );
         })}
@@ -272,10 +315,12 @@ function EngineAddCatalog({
           }
         />
       </ul>
-      <PublicRegistryCatalogGroup
-        entries={publicEntries}
-        onChoose={(entry) => onChoose({ kind: 'command', entry })}
-      />
+      {!query.trim() || publicEntries.length > 0 ? (
+        <PublicRegistryCatalogGroup
+          entries={publicEntries}
+          onChoose={(entry) => onChoose({ kind: 'command', entry })}
+        />
+      ) : null}
     </div>
   );
 }
@@ -294,7 +339,7 @@ function NativeEngineSetup({
 }: {
   connection: AgentConnectionViewData;
   onBack: () => void;
-  onDone: () => void;
+  onDone: (connectionId?: string) => void;
   onOpenEngine: (id: string) => void;
 }) {
   const [stage, setStage] = useState<NativeSetupStage>('confirm');
@@ -322,7 +367,9 @@ function NativeEngineSetup({
   };
   const presentation = saved ? nativePresentation(saved) : null;
   const ready = presentation?.readiness === 'Ready';
-  const done = <Button onClick={onDone}>Done</Button>;
+  const done = (
+    <Button onClick={() => onDone(ready ? saved?.id : undefined)}>Done</Button>
+  );
   return (
     <section
       ref={sectionRef}
@@ -332,12 +379,12 @@ function NativeEngineSetup({
     >
       <DetailHeader
         title={`Add ${connection.name}`}
+        // The checking and result stages say what is happening in their own
+        // status block, so only the confirm stage needs a subtitle.
         subtitle={
           stage === 'confirm'
             ? 'Review what adding this engine changes.'
-            : stage === 'checking'
-              ? 'Station is checking this engine now.'
-              : 'Here is the current readiness result.'
+            : undefined
         }
       />
       <div className="agent-editor__section">
@@ -353,22 +400,20 @@ function NativeEngineSetup({
               <li>Checks whether it is ready to run work.</li>
             </ul>
             <p className="acp-add-dialog__confirm-note">
-              You can reset it from its engine page at any time.
+              To undo this, reset it from its engine page.
             </p>
           </div>
         )}
         {stage === 'checking' && (
           <div className="acp-add-dialog__result" role="status">
             <strong>Checking</strong>
-            <span>Adding {connection.name} and checking its readiness.</span>
+            <span>Checking {connection.name}…</span>
           </div>
         )}
         {stage === 'result' && presentation && (
           <div className="acp-add-dialog__result" role="status">
             <strong>{presentation.readiness}</strong>
-            <span>
-              {ready ? 'This engine is ready to use.' : presentation.detail}
-            </span>
+            <span>{ready ? null : presentation.detail}</span>
           </div>
         )}
         {stage === 'error' && (
@@ -433,7 +478,7 @@ function CommandEngineSetup({
 }: {
   choice: Exclude<EngineAddChoice, { kind: 'native' }>;
   onBack: () => void;
-  onDone: () => void;
+  onDone: (connectionId?: string) => void;
 }) {
   const owner = useACPConnectionSetupOwner();
   const startChat = useStartChatWithEngine();
@@ -466,13 +511,14 @@ function CommandEngineSetup({
 }
 
 /**
- * Add engine, start to finish, inside the Engines detail pane: the catalogue,
- * then the chosen engine's confirm step, Checking and its result. Choosing
- * changes no route, so the list beside it stays put; a deep link
- * (`/connections/engines/new/<id>`) opens on that entry's confirm step.
+ * The focused Add engine journey. A deep link opens the chosen engine's setup;
+ * Done returns to Engines with the connected engine selected.
  */
 export function EngineAddFlow({
   initialChoiceId,
+  catalogPending = false,
+  catalogError,
+  onRetryCatalog,
   notConnected,
   connections,
   commandEntries,
@@ -480,10 +526,13 @@ export function EngineAddFlow({
   onOpenEngine,
 }: {
   initialChoiceId?: string;
+  catalogPending?: boolean;
+  catalogError?: unknown;
+  onRetryCatalog?: () => void;
   notConnected: NotConnectedEngine[];
   connections: AgentConnectionViewData[];
   commandEntries: ACPConnectionRegistryEntry[];
-  onDone: () => void;
+  onDone: (connectionId?: string) => void;
   onOpenEngine: (id: string) => void;
 }) {
   const [choice, setChoice] = useState<EngineAddChoice | null>(null);
@@ -511,6 +560,30 @@ export function EngineAddFlow({
 
   const back = () => setChoice(null);
   if (!choice) {
+    if (catalogPending) return <SkeletonBlock />;
+    if (catalogError)
+      return (
+        <ErrorState
+          title="Couldn't load engine setup"
+          action={<Button onClick={onRetryCatalog}>Retry</Button>}
+        />
+      );
+    if (initialChoiceId && handledChoiceId.current !== initialChoiceId) {
+      // The effect opens a known entry after render. Only a missing choice
+      // needs recovery; never silently substitute a custom engine form.
+      const known =
+        initialChoiceId === 'custom' ||
+        commandEntries.some((entry) => entry.id === initialChoiceId) ||
+        connections.some((entry) => entry.id === initialChoiceId);
+      if (!known)
+        return (
+          <ErrorState
+            title="Engine not found"
+            description="Choose an engine from this Station's catalog."
+            action={<Button onClick={() => onDone()}>Browse engines</Button>}
+          />
+        );
+    }
     return (
       <EngineAddCatalog
         notConnected={notConnected}

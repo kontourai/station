@@ -49,7 +49,7 @@ export type NativeCompileTarget =
 
 export interface NativeCapabilityReport {
   platform: NativeCompileTarget;
-  channel?: 'stable' | 'dev' | 'beta' | 'nightly';
+  channel?: 'stable' | 'dev' | 'nightly';
   /** The one custom scheme registered by this native client channel. */
   pairingDeepLinkScheme?: string;
   capabilities: NativeCapabilityStatus[];
@@ -164,6 +164,8 @@ export interface NativeAgentActivityLaunchRoute {
   stationId: string;
   sessionId: string;
   projectSlug?: string;
+  /** An alert tap's record (never a card's), so opening it reads it. */
+  notificationId?: string;
 }
 
 /** Exactly what a Station returned from native-push registration. */

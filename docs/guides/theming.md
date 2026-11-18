@@ -36,7 +36,7 @@ installed package defines the roles (equal to the shipped brand), so the
 `--k-brand` fallback written beside them does not apply. The focus-visible
 outline reads `--k-focus` only where something chose a focus colour: a
 white-label theme that sets it for the current mode (the root then carries
-`data-brand-focus`) or a Dev, Beta or Nightly build. Everywhere else it reads
+`data-brand-focus`) or a Dev or Nightly build. Everywhere else it reads
 `--accent-primary`, so a device accent recolours buttons, links and the focus
 ring. The package always defines `--k-focus`, which is why the choice is keyed
 on that marker instead of on the property being defined.
@@ -108,9 +108,13 @@ the underlying root is also hidden from assistive technology. Handoff
 restores access and removes the animation and observers.
 The mobile detail view retains its initial Back-button focus request until
 handoff restores interaction; unmounting the view cancels that request.
-Later connection, authority and route waits use state primitives and do not replay the launch
-intro. Warm resume of the same document does not recreate it. Route-level waits still use the state
-primitives. The imagery remains the committed Station mark, in the install's channel
+After launch, connecting to a Station (switching Stations) and its later
+preparing stages draw the same mark, animation and stage label in React
+([StationPreparingSurface](../../src-ui/src/components/StationPreparingSurface.tsx)),
+titled with what the Station is doing by name, such as "Connecting to Kontour".
+It plays the intro afresh for that wait; the launch presentation itself is not
+recreated. Warm resume of the same document does not recreate it. Route-level
+waits still use the state primitives. The imagery remains the committed Station mark, in the install's channel
 colours: the host reports the channel only after the app loads, so
 [startup-theme.js](../../src-ui/public/startup-theme.js) applies the mark the
 install last reported before first paint (a first launch shows the stable
@@ -209,6 +213,30 @@ measures the applied sizes and the startup stamp in Chromium;
 [AppearancePage.test.tsx](../../src-ui/src/__tests__/AppearancePage.test.tsx)
 and [appearance-page-keyboard.test.ts](../../src-ui/src/__tests__/appearance-page-keyboard.test.ts)
 cover the controls, keyboard use, 44px hit areas and a reload.
+
+## Custom appearance
+
+A signed-in person can add their own palette and CSS on top of everything
+above, and an agent can propose one for them to preview and keep
+([decision](../decisions/custom-appearance.md), [user guide](../user/appearance.md)).
+The palette sets `APPEARANCE_ROLE_PROPERTIES` (the same list the color-theme
+catalog reads, now owned by the contracts) and an accent per mode, as one
+adopted sheet of `!important` values, so it wins over Station's tokens, a
+named theme, white-label branding and a device accent for what it sets. The
+CSS is a second adopted sheet, parsed and walked by
+[sanitize-css.ts](../../src-ui/src/lib/custom-appearance/sanitize-css.ts)
+before it is adopted, and switched off while any approval or consent surface
+is mounted. `main.tsx` applies the last applied copy before the first render,
+after the color theme is bound. Custom CSS should select only the stable hooks
+in `APPEARANCE_HOOKS`; a component that owns one of them keeps its attribute,
+and its suite renders it. A component that shows a decision (a person granting
+authority) calls `useDecisionSurface` with an id added to `DECISION_SURFACES`. Contrast is rated
+on the palette over the theme with the CSS out of the cascade, so CSS that
+sets a background without its text colour is not caught (a restyled button's
+disabled label can vanish); the agent guide asks for both.
+[custom-appearance.browser.test.ts](../../src-ui/src/__tests__/custom-appearance.browser.test.ts)
+measures the guard, the palette over a named theme, suspension, the keep bar
+against hostile CSS and the countdown in Chromium.
 
 ## White-label branding theme
 

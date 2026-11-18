@@ -1,0 +1,15 @@
+{
+  "revision": "a517b145435a9cf91a62e158cf74cf703222b4cd",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Comment only. --ease-out is still var(--k-ease), and src-ui declares no --ease-in token. The removed comment named var(--ease-in); the undefined-custom-property test reads comments and failed on that text, then passed 9/9 after the rewrite. Docs that cite this file do not quote the removed comment. motion.md still owns the duration steps, the status-pill exception, and the ratchet rule. No screenshot or computed timing.","inputs":["src-ui/src/tokens.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Comment only. --ease-out is still var(--k-ease), and src-ui declares no --ease-in token. The removed comment named var(--ease-in); the undefined-custom-property test reads comments and failed on that text, then passed 9/9 after the rewrite. Docs that cite this file do not quote the removed comment. motion.md still owns the duration steps, the status-pill exception, and the ratchet rule. No screenshot or computed timing.","inputs":["src-ui/src/tokens.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Comment only. --ease-out is still var(--k-ease), and src-ui declares no --ease-in token. The removed comment named var(--ease-in); the undefined-custom-property test reads comments and failed on that text, then passed 9/9 after the rewrite. Docs that cite this file do not quote the removed comment. motion.md still owns the duration steps, the status-pill exception, and the ratchet rule. No screenshot or computed timing.","inputs":["src-ui/src/tokens.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Comment only. --ease-out is still var(--k-ease), and src-ui declares no --ease-in token. The removed comment named var(--ease-in); the undefined-custom-property test reads comments and failed on that text, then passed 9/9 after the rewrite. Docs that cite this file do not quote the removed comment. motion.md still owns the duration steps, the status-pill exception, and the ratchet rule. No screenshot or computed timing.","inputs":["src-ui/src/tokens.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Comment only. --ease-out is still var(--k-ease), and src-ui declares no --ease-in token. The removed comment named var(--ease-in); the undefined-custom-property test reads comments and failed on that text, then passed 9/9 after the rewrite. Docs that cite this file do not quote the removed comment. motion.md still owns the duration steps, the status-pill exception, and the ratchet rule. No screenshot or computed timing.","inputs":["src-ui/src/tokens.css"]}
+  ]
+}

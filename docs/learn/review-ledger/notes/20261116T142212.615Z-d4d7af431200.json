@@ -1,0 +1,7 @@
+{
+  "revision": "e26b308e7d05d2a276b127d0474da57442735cad",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Re-read the pre-push sections against .githooks/pre-push, check-prepush-push-range.mjs, check-prepush-docs-freshness.mjs and prepush-verdict.mjs after the final round: whitespace, raw mkdtemp and a stale recorded review on a clean checkout of the pushed commit refuse, reported with exit 40; the new-export and main-conflict checks only warn; any other non-zero status and every case without a verdict warns and continues; the measured costs and the pure-merge skip list match.","inputs":["docs/guides/development.md",".githooks/pre-push","packages/basis-pane/package.json","packages/board-pane/package.json"]}
+  ]
+}

@@ -49,7 +49,7 @@ async function writeScopeFixture(directory: string, oomKills = 0) {
     'memory.swap.current': '0\n',
     'memory.swap.max': '268435456\n',
     'memory.events': `low 0\nhigh 0\nmax 12\noom ${oomKills}\noom_kill ${oomKills}\noom_group_kill 0\n`,
-    'memory.stat': 'anon 1500000000\nfile 100000000\n',
+    'memory.stat': 'anon 1500000000\nfile 100000000\ninactive_file 100000000\n',
     'pids.current': '57\n',
     'pids.max': '512\n',
   };
@@ -231,6 +231,8 @@ describe('cgroup v2 scope reading', () => {
       swapCurrentBytes: 0,
       swapMaxBytes: 'max',
       oomKills: 1,
+      workingSetBytes: 1510612736,
+      memoryEvents: { high: 0, max: 12, oom: 1 },
       tasksCurrent: 57,
       tasksMax: 512,
     });
@@ -638,7 +640,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(scope, 0);
     trackChildWorkload(engine, process.pid);
     const kills: ChildWorkloadOomKill[] = [];
-    const stop = engine.watchOomKills?.((kill) => kills.push(kill));
+    const stop = engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     try {
       await __workloadTestHooks.pollOomKills();
       expect(kills).toEqual([]);
@@ -968,7 +972,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(`${cgroupRoot}${group}`, 0);
     trackChildWorkload(engine, process.pid);
     const kills: ChildWorkloadOomKill[] = [];
-    engine.watchOomKills?.((kill) => kills.push(kill));
+    engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     // The kernel kills the engine; one poll sees the count before Station
     // hears of the exit.
     await writeFile(
@@ -999,7 +1005,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(`${cgroupRoot}${group}`, 1);
     trackChildWorkload(engine, exited.pid as number);
     const kills: ChildWorkloadOomKill[] = [];
-    engine.watchOomKills?.((kill) => kills.push(kill));
+    engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     await __workloadTestHooks.pollOomKills();
     await __workloadTestHooks.pollOomKills();
     expect(kills).toEqual([]);
@@ -1040,7 +1048,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(scope, 0);
     trackChildWorkload(engine, process.pid);
     const kills: ChildWorkloadOomKill[] = [];
-    engine.watchOomKills?.((kill) => kills.push(kill));
+    engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     const pollAt = async (count: number) => {
       await writeFile(
         join(scope, 'memory.events'),
@@ -1083,7 +1093,9 @@ describe('workload manager budgets (fake systemd manager)', () => {
     await writeScopeFixture(`${cgroupRoot}/app.slice/${unit}`, 1);
     trackChildWorkload(engine, process.pid);
     const kills: ChildWorkloadOomKill[] = [];
-    engine.watchOomKills?.((kill) => kills.push(kill));
+    engine.watchNotices?.((notice) => {
+      if (notice.kind === 'oom-kill') kills.push(notice.kill);
+    });
     // The process at the pid is alive, but it started at another time than
     // the engine Station launched.
     __workloadTestHooks.recordLeaderBirth('thread-reused-pid', 'another-start');

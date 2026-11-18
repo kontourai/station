@@ -353,8 +353,8 @@ export function openCodeFormAnswer(
 
 /**
  * The text a message held when history was read: each text part of an
- * assistant message, keyed `<messageId>:<ordinal>` (an ordinal is the part's
- * index in the message's `content`, as `session.text.*` events name it).
+ * assistant message, keyed by {@link openCodePartKey} as the live
+ * `session.text.*` events name the part.
  */
 export function openCodeHistoryText(messages: unknown): Map<string, string> {
   const texts = new Map<string, string>();
@@ -362,11 +362,29 @@ export function openCodeHistoryText(messages: unknown): Map<string, string> {
     const message = ownRecord(item);
     const id = readString(message?.id);
     if (!message || !id || message.type !== 'assistant') continue;
-    (ownArray(message.content) ?? []).forEach((part, ordinal) => {
+    // Counted among the message's text parts only, as the live feed counts
+    // them: reasoning and tool parts before a text part do not move it.
+    let ordinal = 0;
+    for (const part of ownArray(message.content) ?? []) {
       const block = ownRecord(part);
-      if (block?.type === 'text' && typeof block.text === 'string')
-        texts.set(`${id}:${ordinal}`, block.text);
-    });
+      if (block?.type !== 'text') continue;
+      if (typeof block.text === 'string')
+        texts.set(openCodePartKey('text', id, ordinal), block.text);
+      ordinal += 1;
+    }
   }
   return texts;
+}
+
+/**
+ * A message part's key: its kind, its message and its ordinal among that
+ * message's parts of the same kind, which is how OpenCode 2.x numbers them
+ * (`session.text.*` and `session.reasoning.*` each count from 0).
+ */
+export function openCodePartKey(
+  kind: 'text' | 'reasoning',
+  messageId: string,
+  ordinal: number | '',
+): string {
+  return `${kind}:${messageId}:${ordinal}`;
 }

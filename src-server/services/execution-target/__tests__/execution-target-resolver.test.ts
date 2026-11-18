@@ -5,6 +5,7 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import { resolveModelLaunchPlan } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -12,6 +13,7 @@ import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { BedrockAdapter } from '../../../providers/adapters/bedrock-adapter.js';
 import { MuseAdapter } from '../../../providers/adapters/muse-adapter.js';
 import { OllamaAdapter } from '../../../providers/adapters/ollama-adapter.js';
+import { OpenCodeAdapter } from '../../../providers/adapters/opencode-adapter.js';
 import {
   type EnvironmentAccess,
   type ExecutionTargetResolverDependencies,
@@ -1156,6 +1158,63 @@ describe('the model a turn launches with', () => {
     // layer is what keeps it off resume/per-turn.
     expect(resolved.modelId).toBe('zai-coding-plan/glm-5.3');
     expect(resolved.modelLaunchPlan.kind).not.toBe('unavailable');
+  });
+
+  // The composer names the selected model on every new chat, so an engine
+  // with no `modelLaunch` refuses every one (`override-unsupported`). The
+  // OpenCode engine is bound by the real adapter here, not a stand-in.
+  test('an OpenCode-engine chat that names its model resolves', async () => {
+    const opencode = new OpenCodeAdapter({
+      getConnections: async () => [],
+      acp: {} as never,
+      createAcpAdapter: () => ({}) as ProviderAdapterShape,
+      pool: {} as never,
+    });
+    const resolved = await resolveExecutionTarget(
+      {
+        agent: agentId('station'),
+        environment: { kind: 'current' },
+        model: { override: 'zai-coding-plan/glm-5.3-flash' },
+      },
+      dependencies({
+        getAgent: vi.fn(async () => ({
+          slug: agentId('station'),
+          available: true,
+          execution: { agentConnectionId: engineConnectionId('opencode') },
+        })),
+        getConnection: vi.fn(async (_access, id) => connection(id, 'opencode')),
+        getProviderAdapter: vi.fn((provider) =>
+          provider === 'opencode' ? opencode : undefined,
+        ),
+      }),
+    );
+
+    expect(resolved.provider).toBe('opencode');
+    expect(resolved.modelId).toBe('zai-coding-plan/glm-5.3-flash');
+    expect(resolved.modelLaunchPlan.kind).not.toBe('unavailable');
+
+    // The resolver only asks whether an override is accepted somewhere; the
+    // orchestrator's start, resume and turn gates read the declaration as is
+    // (`assertAcceptedModelLaunchPlan`).
+    const plan = (
+      lifecycle: 'start' | 'resume' | 'turn',
+      requestedModelId: string,
+      retainedModelId?: string,
+    ) =>
+      resolveModelLaunchPlan(opencode.metadata.modelLaunch, {
+        lifecycle,
+        requestedModelId,
+        retainedModelId,
+      });
+    expect(plan('start', 'zai-coding-plan/glm-5.3-flash').kind).not.toBe(
+      'unavailable',
+    );
+    expect(plan('resume', 'a/b', 'a/b').kind).not.toBe('unavailable');
+    expect(plan('resume', 'a/c', 'a/b')).toEqual({
+      kind: 'unavailable',
+      reason: 'resume-override-unsupported',
+    });
+    expect(plan('turn', 'a/c', 'a/b').kind).not.toBe('unavailable');
   });
 
   test('a blank declared model is treated as unstated, never sent as an empty id', async () => {

@@ -832,10 +832,11 @@ export interface ThreadInboxDeliveryPorts {
     threadId: string,
   ):
     | 'native'
+    | 'interrupting'
     | 'emulated'
     | 'none'
     | 'pending'
-    | Promise<'native' | 'emulated' | 'none' | 'pending'>;
+    | Promise<'native' | 'interrupting' | 'emulated' | 'none' | 'pending'>;
   /** Read the durable receipt before deciding whether a steer may be handed off. */
   inspectSteer?(input: {
     readonly threadId: string;
@@ -1246,8 +1247,18 @@ export class ThreadInboxDelivery {
   mustQueue(conversationId: string): boolean {
     const inbox = this.inboxOf(conversationId);
     if (this.isBusy(this.ports.currentSessionId(inbox))) return true;
+    return this.hasWaitingFollowUp(inbox);
+  }
+
+  /**
+   * Whether follow-ups are waiting in this conversation's inbox (queued,
+   * being placed, or placed without confirmation), whether or not its
+   * Session is busy. Takes a conversation or Session id. The "finished"
+   * alert holds on it: the waiting follow-up becomes the next turn.
+   */
+  hasWaitingFollowUp(conversationId: string): boolean {
     return this.ports.store
-      .list(inbox)
+      .list(this.inboxOf(conversationId))
       .some(
         (entry) =>
           entry.state === 'queued' ||
@@ -2022,7 +2033,7 @@ export class ThreadInboxDelivery {
             continue;
           }
           if (
-            fidelity !== 'native' ||
+            (fidelity !== 'native' && fidelity !== 'interrupting') ||
             !this.ports.steer ||
             !this.ports.inspectSteer
           ) {

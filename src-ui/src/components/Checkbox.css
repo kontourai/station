@@ -1,5 +1,6 @@
 /* ═══ Styled Checkbox ═══ */
 .cb {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -11,12 +12,16 @@
   cursor: default;
 }
 
+/* The real input spans the whole row, transparent, so the row (44px tall on
+   touch) is the input's own target rather than a 1px box beside a label. */
 .cb__input {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
 }
 
 .cb__box {

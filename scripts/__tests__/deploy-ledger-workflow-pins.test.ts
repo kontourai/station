@@ -232,8 +232,12 @@ describe('the nightly workflow records what it ships', () => {
     );
     // Native recording is a final job after both provider receipts, so a
     // recorder failure cannot suppress either provider effect. It also waits
-    // on the independent iOS delivery only to disclose its result (#1774).
-    expect(nightly).toContain('needs: [protected-finalize, deliver-ios]');
+    // on the independent iOS delivery only to disclose its result (#1774),
+    // and on the verifier's second attempt, which runs only when the first
+    // never got a runner.
+    expect(nightly).toContain(
+      'needs: [protected-finalize, protected-finalize-retry, deliver-ios]',
+    );
     expect(nightly).toContain("needs.protected-finalize.result == 'success'");
   });
 });

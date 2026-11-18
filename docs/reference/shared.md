@@ -87,8 +87,10 @@ retention and operator-only counts belong to the
 [Lite receiver](../../packages/telemetry-broker/README.md#lite-observations).
 
 
-`mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to `preview` and
-returns undefined for unmapped labels. Full omits that field; Lite supplies
+`mapRuntimeChannelToTelemetryChannel` preserves labels admitted by the telemetry
+contract and returns undefined for unmapped labels, including retired runtime
+`beta`. The historical `preview` wire dimension remains readable; current RCs
+report Stable identity. Full omits an unmapped field; Lite supplies
 `unknown` at its sender. `parseStationDailyPing` uses the receiver's configured
 release list by default; the sender selects `semver` to admit valid versions
 or `custom` without claiming catalog membership.
@@ -730,6 +732,7 @@ interface ProjectMetadata {
   hasKnowledge: boolean;
   defaultProviderId?: string;
   position?: number;
+  lifecycle?: ProjectLifecycle; // paused or archived; absent is active
 }
 ```
 

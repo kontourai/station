@@ -1,0 +1,9 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the added test pinning ENABLE_TOOL_SEARCH per mcpLoading; no claim in this document about adapter test coverage changes.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the added test pinning ENABLE_TOOL_SEARCH per mcpLoading; no claim in this document about adapter test coverage changes.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

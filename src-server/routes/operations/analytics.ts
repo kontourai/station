@@ -251,14 +251,26 @@ export function createAnalyticsRoutes(
         { success: false, error: 'Invalid model connection usage filter.' },
         400,
       );
-    // Connection ids name this Station's own configuration. Another Station's
-    // ids are unrelated, so connection filters and groupings never combine
-    // with peer usage.
+    // #5068: a Project is this Station's own; its slug is the filter.
+    const projectSlug = c.req.query('projectSlug');
+    if (
+      projectSlug !== undefined &&
+      !/^[a-z0-9][a-z0-9-]{0,127}$/.test(projectSlug)
+    )
+      return c.json(
+        { success: false, error: 'Invalid Project usage filter.' },
+        400,
+      );
+    // Connection ids and Project slugs name this Station's own
+    // configuration. Another Station's are unrelated, so these filters and
+    // groupings never combine with peer usage.
     const connectionScoped =
       connectionId !== undefined ||
       modelConnectionId !== undefined ||
+      projectSlug !== undefined ||
       groupBy === 'connection' ||
-      groupBy === 'modelConnection';
+      groupBy === 'modelConnection' ||
+      groupBy === 'project';
     if (connectionScoped && c.req.query('localOnly') !== '1')
       return c.json(
         {
@@ -273,6 +285,7 @@ export function createAnalyticsRoutes(
       'station',
       'conversation',
       'task',
+      'project',
       'day',
       'connection',
       'modelConnection',
@@ -361,6 +374,7 @@ export function createAnalyticsRoutes(
           credentialProfileRef,
           ...(connectionId !== undefined ? { connectionId } : {}),
           ...(modelConnectionId !== undefined ? { modelConnectionId } : {}),
+          ...(projectSlug !== undefined ? { projectSlug } : {}),
           groupBy: groupBy as UsageRollupGroupBy | undefined,
           cursor: c.req.query('cursor'),
           pageSize,
@@ -426,7 +440,9 @@ export function createAnalyticsRoutes(
           500,
         );
       }
-      const stats = publicUsageStats(await usageAggregator.fullRescan());
+      const stats = publicUsageStats(
+        await usageAggregator.fullRescan({ rebuild: true }),
+      );
       analyticsOps.add(1, { op: 'rescan' });
       return c.json({
         success: true,

@@ -1,0 +1,7 @@
+{
+  "revision": "b0e05f0a189c0b7686fd21a20dbaf89935b00065",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated static bundle delta against the current canonical manual/catalog/module map. The relay-management topic now describes protocol-1 public intent compatibility and SDK quarantine of legacy Beta read rows; no dynamic read, credential access or active Beta authority is added. Generation preserves stable topic IDs and current source text; MCP retrieval is not native, provider or release qualification.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

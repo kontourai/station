@@ -168,3 +168,172 @@ test.each([
     }
   },
 );
+
+// #4799: a notification opens the room at one message. The list brings it
+// into view and keeps it there while the room keeps changing (live arrivals,
+// a reconciling re-read), instead of following the newest message.
+const focusFixture = `
+import React, {useState} from 'react';
+import {flushSync} from 'react-dom';
+import {createRoot} from 'react-dom/client';
+import {RoomConversation} from './src-ui/src/components/room/RoomConversation';
+const at = (index) => new Date(Date.UTC(2026, 10, 3, 9, 0) + index * 7 * 60000).toISOString();
+const row = (index) => ({
+  id: 'm' + index,
+  kind: 'message',
+  author: {id: index % 3 ? 'ana' : 'scout', label: index % 3 ? 'Ana Ruiz' : 'Scout', agent: !(index % 3)},
+  at: at(index),
+  text: 'Message ' + index,
+});
+function Harness() {
+  // The newest window first; the room pages back to the message after.
+  const [loaded, setLoaded] = useState(false);
+  const [first, setFirst] = useState(1010);
+  const [last, setLast] = useState(1039);
+  const [version, setVersion] = useState(0);
+  window.room = {
+    append: (count) => setLast((value) => value + count),
+    prepend: (count) => setFirst((value) => value - count),
+    reread: () => setVersion((value) => value + 1),
+    load: () => setLoaded(true),
+    // The message arrives, a reconciling re-read briefly drops it, and it
+    // returns, all before the next frame.
+    // The message loads, and the list's own scroll to the end (made as the
+    // rows arrived) is delivered after the list focused the message.
+    lateScroll: () => {
+      flushSync(() => setFirst(1000));
+      document.querySelector('.room-conversation__scroller').dispatchEvent(new Event('scroll'));
+    },
+    flicker: () => {
+      setFirst(1000);
+      setTimeout(() => setFirst(1010), 0);
+      setTimeout(() => setFirst(1000), 4);
+    },
+  };
+  const rows = [];
+  // The room renders its loading state before any history arrives.
+  for (let index = first; loaded && index <= last; index += 1)
+    rows.push({...row(index), text: row(index).text + (version ? '' : '')});
+  return <div style={{height: 600, display: 'flex', flexDirection: 'column'}}>
+    <RoomConversation label="Conversation" rows={rows} loading={!loaded} focusId="m1005" />
+  </div>;
+}
+createRoot(document.getElementById('root')).render(<Harness />);
+`;
+
+test('the list scroll that lands after a notification focus does not resume following the newest message', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(focusFixture);
+  const inView = () =>
+    scroller(page).evaluate((element) => {
+      const target = element.querySelector<HTMLElement>(
+        '[data-chat-message-key="m1005"]',
+      );
+      if (!target) return 'missing';
+      const box = element.getBoundingClientRect();
+      const row = target.getBoundingClientRect();
+      return row.bottom > box.top && row.top < box.bottom ? 'in view' : 'out';
+    });
+  try {
+    await scroller(page).waitFor();
+    await settle(page);
+    await page.evaluate(() =>
+      (window as unknown as { room: { load(): void } }).room.load(),
+    );
+    await settle(page);
+    await page.evaluate(() =>
+      (window as unknown as { room: { lateScroll(): void } }).room.lateScroll(),
+    );
+    await settle(page);
+    await expect.poll(inView).toBe('in view');
+    // The room keeps changing: a live arrival must not pull the list away.
+    await call(page, 'append', 2);
+    await settle(page);
+    await settle(page);
+    expect(await inView()).toBe('in view');
+    await page
+      .getByRole('button', { name: /new message/ })
+      .waitFor({ timeout: 2000 });
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('a message that flickers out of the rows as it loads is still brought into view, and its mark clears', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(focusFixture);
+  const inView = () =>
+    scroller(page).evaluate((element) => {
+      const target = element.querySelector<HTMLElement>(
+        '[data-chat-message-key="m1005"]',
+      );
+      if (!target) return 'missing';
+      const box = element.getBoundingClientRect();
+      const row = target.getBoundingClientRect();
+      return row.bottom > box.top && row.top < box.bottom ? 'in view' : 'out';
+    });
+  try {
+    await scroller(page).waitFor();
+    await settle(page);
+    await page.evaluate(() =>
+      (window as unknown as { room: { load(): void } }).room.load(),
+    );
+    await settle(page);
+    await page.evaluate(() =>
+      (window as unknown as { room: { flicker(): void } }).room.flicker(),
+    );
+    await settle(page);
+    await expect.poll(inView).toBe('in view');
+    // The mark is a moment, not a state: it clears.
+    await expect
+      .poll(() => page.locator('.room-row--focused').count(), {
+        timeout: 5000,
+      })
+      .toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('a message a notification opens is brought into view and stays there as the room changes', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(focusFixture);
+  const inView = () =>
+    scroller(page).evaluate((element) => {
+      const target = element.querySelector<HTMLElement>(
+        '[data-chat-message-key="m1005"]',
+      );
+      if (!target) return 'missing';
+      const box = element.getBoundingClientRect();
+      const row = target.getBoundingClientRect();
+      return row.bottom > box.top && row.top < box.bottom ? 'in view' : 'out';
+    });
+  try {
+    await scroller(page).waitFor();
+    await settle(page);
+    await page.evaluate(() =>
+      (window as unknown as { room: { load(): void } }).room.load(),
+    );
+    await settle(page);
+    // Not loaded yet: the list follows the newest window meanwhile.
+    expect(await inView()).toBe('missing');
+    await settle(page);
+    await call(page, 'prepend', 10);
+    await settle(page);
+    await expect.poll(inView).toBe('in view');
+    await expect.poll(() => page.locator('.room-row--focused').count()).toBe(1);
+    // The room keeps changing after it opened: arrivals and a re-read.
+    await call(page, 'append', 3);
+    await settle(page);
+    await page.evaluate(() =>
+      (window as unknown as { room: { reread(): void } }).room.reread(),
+    );
+    await settle(page);
+    await settle(page);
+    expect(await inView()).toBe('in view');
+    // It does not jump back to the newest message on its own.
+    expect(await distanceFromEnd(page)).toBeGreaterThan(400);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

@@ -1,0 +1,7 @@
+{
+  "revision": "c04d1ea3e5009e462d243bc7a1f7394a03737458",
+
+  "notes": [
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Checked after tests/agents-pane.spec.ts gained a 380px/600px dark-theme row-layout journey and its manifest rationale was extended: the spec keeps its owner row, bucket and tier; no claim in this document about the Agents pane journey changes.","inputs":["docs/plans/whole-app-ux-campaign.md","tests/e2e-manifest.mjs"]}
+  ]
+}

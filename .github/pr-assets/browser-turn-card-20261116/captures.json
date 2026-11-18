@@ -1,0 +1,54 @@
+{
+  "source": "74f27cecba6325e1f230513b5059676458e6871b",
+  "command": "npm run test:e2e:product -- --spec=tests/inline-browser-activity.spec.ts",
+  "result": "11 passed in 32.8s; toolbar and compact disclosure target floors checked",
+  "transport": "Controlled local HTTP binary stream of a real PNG fixture page; production Chromium producer not exercised.",
+  "lifecycle": "Single managed boot; journalDaemonMatch true, identityGap null, cleanup settled true. Earlier boot-race journal gaps remain historical and do not qualify those earlier boots.",
+  "captures": [
+    {
+      "name": "inline-browser-preview-off",
+      "path": "inline-browser-preview-off.png",
+      "sha256": "59b07a1d720983b6337e249ce812afea885e28094465c206526945f965efad26"
+    },
+    {
+      "name": "inline-browser-390-light",
+      "path": "inline-browser-390-light.png",
+      "sha256": "c45aa0c414cb043fe2c750ae868bdb506ce8b56738c41c3dfec2f1d99a5d0486"
+    },
+    {
+      "name": "inline-browser-settled-390-light",
+      "path": "inline-browser-settled-390-light.png",
+      "sha256": "449263236f55b0b3f2b8544d9a97ee8cff52a7767e5e982a11e4defd0437673b"
+    },
+    {
+      "name": "inline-browser-390-dark",
+      "path": "inline-browser-390-dark.png",
+      "sha256": "508ca9d05b81963e735823eb236c5bc6a8825394363412cd19f1e36ff01ef493"
+    },
+    {
+      "name": "inline-browser-settled-390-dark",
+      "path": "inline-browser-settled-390-dark.png",
+      "sha256": "f1c75eaf67efafa4afcf192d7bf0943198162d09295f5fe49ce6cee46a949ba0"
+    },
+    {
+      "name": "inline-browser-1440-light",
+      "path": "inline-browser-1440-light.png",
+      "sha256": "91700c2a3e497ee835e9a6f89ba5b106a20228adc056fdcc81f8f68d46058e10"
+    },
+    {
+      "name": "inline-browser-settled-1440-light",
+      "path": "inline-browser-settled-1440-light.png",
+      "sha256": "802292c8ed7b3d440ec373fe1dfa8a9432901d8bc8ef32019ab5fd187f461685"
+    },
+    {
+      "name": "inline-browser-1440-dark",
+      "path": "inline-browser-1440-dark.png",
+      "sha256": "e98e5c657679b10828214f67dbd2f7adf5785890e9c9296f5f329c144f181ad3"
+    },
+    {
+      "name": "inline-browser-settled-1440-dark",
+      "path": "inline-browser-settled-1440-dark.png",
+      "sha256": "6c4c9f5565e879704f91e70d20920e679fbaa701a799478af94b2f8c381f8b3e"
+    }
+  ]
+}

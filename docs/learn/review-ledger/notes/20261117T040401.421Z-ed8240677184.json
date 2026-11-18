@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed after both fix rounds: the opening paragraph matches ChatInputArea (no slash selector while draft-only, the send-blocked reason with a draft) and ConversationBody (the step announcer, the recovery Start new chat carrying the draft, a history failure not announced as a long wait). The approvals hold while a cached transcript revalidates is documented in offline-outbound-queue.md.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/__tests__/ChatInputArea.test.tsx"]}
+  ]
+}

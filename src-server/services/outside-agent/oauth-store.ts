@@ -593,7 +593,9 @@ export class OutsideAgentGrantStore {
         throw new OutsideOAuthRefusal('capacity');
       this.#requireAuditCapacity();
       for (const old of replace) this.#endRequest(old, 'replaced');
-      const id = random();
+      // Operators type request and grant IDs as CLI operands. The prefix keeps
+      // the random part from starting with "--", which the parser reads as a flag.
+      const id = random('oar_');
       const request: Records['request'] = {
         id,
         bootId: this.options.bootId,
@@ -932,7 +934,7 @@ export class OutsideAgentGrantStore {
         this.#endRequest(request, 'denied');
         return invalid();
       }
-      const id = random();
+      const id = random('oag_');
       const familyId = random();
       const grant: Records['grant'] = {
         id,

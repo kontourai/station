@@ -1,0 +1,7 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Adds lifecycle to the UI ProjectMetadata type.","inputs":["src-ui/src/contexts/ProjectsContext.tsx"]}
+  ]
+}

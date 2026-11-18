@@ -57,6 +57,7 @@ import type {
   NativePushIosRegistration,
   NativePushRegistration,
 } from '../native-push-registration-store.js';
+import { nativeSessionReference } from '../notification-session.js';
 import {
   osNotificationBody,
   osNotificationTitle,
@@ -249,6 +250,7 @@ export class ApnsAlertChannel implements DeliveryChannel {
             urgency: envelope.urgency,
             hideContent: target.hideContent,
             now: this.#now(),
+            session: nativeSessionReference(notification, envelope),
           }),
           payloadKey: registration.payloadKey,
           registrationId: registration.registrationId,
@@ -350,7 +352,10 @@ export function apnsAlertCollapseId(
 /**
  * The sealed notification: one JSON object of strings. `title` and `body`
  * are left out when the surface hides content, and shortened (body first)
- * to keep the plaintext within {@link MAX_PLAINTEXT_BYTES}.
+ * to keep the plaintext within {@link MAX_PLAINTEXT_BYTES}. The session a
+ * tap opens (`session_id`, `project_slug`: the FCM alert's reference, in the
+ * contract grammar) travels with or without content and is never cut; the
+ * app reads it on a tap (`AlertTapRouteResolver`).
  */
 export function composeApnsAlertPlaintext(input: {
   stationId: string;
@@ -358,12 +363,21 @@ export function composeApnsAlertPlaintext(input: {
   urgency: NotificationUrgency;
   hideContent: boolean;
   now: number;
+  session?: { session_id?: string; project_slug?: string };
 }): string {
   const base: Record<string, string> = {
     user_id: input.stationId,
     notification_id: input.notification.id,
     urgency: input.urgency,
     issued_at: String(input.now),
+    ...(input.session?.session_id
+      ? {
+          session_id: input.session.session_id,
+          ...(input.session.project_slug
+            ? { project_slug: input.session.project_slug }
+            : {}),
+        }
+      : {}),
   };
   if (input.hideContent) return JSON.stringify(base);
   // Display form (#3382); every cut, here and below, re-bounds the raw text

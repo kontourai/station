@@ -192,7 +192,7 @@ const toolKey = (tool) => JSON.stringify(tool ?? null);
  * Tools are compared by whole definition, not by name: a tool both requests
  * carry but whose definition Station changed counts its byte growth.
  */
-export function diffAgainstControl(stationBody, controlBody) {
+export function diffAgainstControl(stationBody, controlBody, previous) {
   const station = lineCounts(stationBody);
   const control = lineCounts(controlBody);
   const stationTools = new Map(
@@ -246,6 +246,17 @@ export function diffAgainstControl(stationBody, controlBody) {
       ) + changedTools.reduce((sum, tool) => sum + tool.growthBytes, 0),
     // Tools Station makes available by name only (deferred schemas).
     addedNamedTools,
+    ...(previous
+      ? {
+          addedTextProgress: lineProgress(
+            addedLineCounts(station, control),
+            addedLineCounts(
+              lineCounts(previous.station),
+              lineCounts(previous.control),
+            ),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -273,5 +284,120 @@ export function summarizeSideCall(request) {
       typeof request.body?.max_tokens === 'number'
         ? request.body.max_tokens
         : null,
+  };
+}
+
+/** A fixed, unchanged-context workload; unique receipts cannot satisfy a later turn. */
+export function requestConversationTurns(nonce) {
+  return [1, 2, 3].map((ordinal) => ({
+    ordinal,
+    prompt: `station-weight-${nonce}-turn-${ordinal}: acknowledge this turn without tools.`,
+    reply: `station-weight-${nonce}-reply-${ordinal}`,
+  }));
+}
+
+function addedLineCounts(left, right) {
+  return new Map(
+    [...left].flatMap(([key, entry]) => {
+      const count = Math.max(0, entry.count - (right.get(key)?.count ?? 0));
+      return count
+        ? [[key, { count, originals: entry.originals.slice(-count) }]]
+        : [];
+    }),
+  );
+}
+
+function lineProgress(now, before) {
+  const repeated = [];
+  for (const [key, entry] of now)
+    repeated.push(
+      ...entry.originals.slice(
+        0,
+        Math.min(entry.count, before.get(key)?.count ?? 0),
+      ),
+    );
+  return {
+    cumulative: lineReport(
+      [...now.values()].flatMap((entry) => entry.originals),
+    ),
+    repeatedFromPrevious: lineReport(repeated),
+    newSincePrevious: lineReport(multisetDifference(now, before)),
+    removedSincePrevious: lineReport(multisetDifference(before, now)),
+  };
+}
+
+function textProgress(current, previous) {
+  return lineProgress(lineCounts(current), lineCounts(previous));
+}
+
+/**
+ * Strict pairing at the captured caller window. Multiple matching requests are
+ * ambiguous, even if one looks usable. A restarted history cannot borrow an
+ * earlier ordinal's receipt. No fields beyond the existing version stamp are
+ * normalized by the byte analysis.
+ */
+export function analyzeConversationTurn({
+  calls,
+  turns,
+  index,
+  markers,
+  previous = undefined,
+}) {
+  const expected = turns[index];
+  const candidates = messagesRequests(calls).filter((request) =>
+    findTurnRequest([request], expected.prompt),
+  );
+  if (candidates.length !== 1)
+    throw new Error(
+      `turn ${index + 1}: expected one request, found ${candidates.length}`,
+    );
+  const request = candidates[0];
+  if (calls.some((call) => call.refused))
+    throw new Error(`turn ${index + 1}: stub refused a request`);
+  const messages = request.body.messages;
+  const history = messages.flatMap((message) => {
+    const blocks = textBlocks({ messages: [message] });
+    if (message.role === 'assistant')
+      return blocks.map((block) => `assistant:${block.text}`);
+    if (message.role !== 'user') return [];
+    return turns.flatMap((turn, ordinal) =>
+      blocks.some((block) => block.text.trimEnd().endsWith(turn.prompt))
+        ? [`user:${ordinal}`]
+        : [],
+    );
+  });
+  const expectedHistory = turns
+    .slice(0, index + 1)
+    .flatMap((turn, ordinal) =>
+      ordinal < index
+        ? [`user:${ordinal}`, `assistant:${turn.reply}`]
+        : [`user:${ordinal}`],
+    );
+  if (JSON.stringify(history) !== JSON.stringify(expectedHistory))
+    throw new Error(
+      `turn ${index + 1}: missing, replayed or invalid interleaved history`,
+    );
+  const rules = markersReached(request.body, markers);
+  if (Object.values(rules).some((reached) => !reached))
+    throw new Error(`turn ${index + 1}: repository rules missing`);
+  const summary = summarizeRequest(request.body, request.bodyBytes);
+  return {
+    request,
+    report: {
+      ...summary,
+      requestSequence: request.sequence,
+      repoRules: rules,
+      requestCount: messagesRequests(calls).length,
+      sideCallCount: messagesRequests(calls).length - 1,
+      sideCalls: messagesRequests(calls)
+        .filter((call) => call !== request)
+        .map(summarizeSideCall),
+      otherCalls: calls
+        .filter((call) => !messagesRequests([call]).length)
+        .map((call) => `${call.method} ${call.path}`),
+      text: textProgress(request.body, previous),
+      cumulativeHistory: textProgress({ messages: messages.slice(0, -1) }, null)
+        .cumulative,
+    },
   };
 }

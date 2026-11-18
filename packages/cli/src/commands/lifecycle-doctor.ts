@@ -38,6 +38,7 @@ import {
 } from './lifecycle.js';
 import {
   type LifecycleCodeRoot,
+  packagedReleaseVersion,
   resolveLifecycleStateLocation,
 } from './lifecycle-code-root.js';
 import { effectiveAppConfigOffline } from './managed-settings-guard.js';
@@ -448,7 +449,7 @@ export function prebuiltArchiveChecks(
       {
         label: 'Prebuilt archive',
         status: 'pass',
-        detail: `${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring, ${release.channel} channel) at ${archive.root}; lifecycle state in ${stateDir}`,
+        detail: `v${packagedReleaseVersion(release)} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring, ${release.channel} channel) at ${archive.root}; lifecycle state in ${stateDir}`,
       },
     ];
   });

@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import type { BrowserActivityScope } from '../chat/BrowserActivityContext';
 import { classifyToolCallRun } from '../chat/tool-call-groups';
 import { isToolCallAwaitingApproval } from '../chat/tool-call-labels';
 import type { ToolCallLike, ToolCallRun } from '../chat/tool-call-runs';
+import { useRunWithObservedRunningCalls } from '../chat/useObservedRunningToolCalls';
 import { InlineBrowserActivity } from './InlineBrowserActivity';
 
 export default function BrowserActivityContent({
@@ -10,15 +11,26 @@ export default function BrowserActivityContent({
   browserSessionId,
   run,
   active,
+  summaryCalls,
   renderRow,
 }: {
   scope: BrowserActivityScope;
   browserSessionId: string | null;
   run: ToolCallRun<ToolCallLike>;
   active: boolean;
+  summaryCalls: ToolCallLike[];
   renderRow: (index: number) => ReactNode;
 }) {
-  const group = classifyToolCallRun(run);
+  const summaryRun = useMemo(
+    () => ({
+      ...run,
+      calls: summaryCalls.map((part, index) => ({ part, index })),
+    }),
+    [run, summaryCalls],
+  );
+  // A call still running in the background is counted as running, not as
+  // "no result", exactly as the tool batch counts it.
+  const group = classifyToolCallRun(useRunWithObservedRunningCalls(summaryRun));
   const outcomes = [
     group.failedCount > 0 ? `${group.failedCount} failed` : null,
     group.unresolvedCount > 0
@@ -30,7 +42,7 @@ export default function BrowserActivityContent({
       ? `${group.awaitingApprovalCount} awaiting approval`
       : null,
   ].filter(Boolean);
-  const children = active ? (
+  const children = !run.calls.length ? null : active ? (
     run.calls.map(({ index }) => renderRow(index))
   ) : (
     <>
@@ -52,10 +64,9 @@ export default function BrowserActivityContent({
       scope={scope}
       browserSessionId={browserSessionId}
       active={active}
-      toolCount={run.calls.length}
-      status={[active ? 'In progress' : 'Past activity', ...outcomes].join(
-        ' · ',
-      )}
+      toolCount={summaryCalls.length}
+      steps={summaryCalls}
+      status={outcomes.join(' · ')}
     >
       {children}
     </InlineBrowserActivity>

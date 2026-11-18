@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { PreviewProvider } from '../../../contexts/PreviewContext';
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { NeedsInputReply } from '../NeedsInputReply';
 
 const api = vi.hoisted(() => ({ context: vi.fn(), send: vi.fn() }));
@@ -20,7 +21,11 @@ vi.mock('@kontourai/station-sdk/client', async (original) => ({
 vi.mock('../../../contexts/ModelCapabilitiesContext', () => ({
   useModelImageSupport: () => 'unknown',
 }));
-vi.mock('../../../hooks/useComposerAttachments', () => ({
+vi.mock('../../../hooks/useComposerAttachments', async (importOriginal) => ({
+  // Keep the module's pure helpers (hasUploadsInFlight); only the hook is faked.
+  ...(await importOriginal<
+    typeof import('../../../hooks/useComposerAttachments')
+  >()),
   useComposerAttachments: () => ({
     selectFiles: vi.fn(),
     remove: vi.fn(),
@@ -82,6 +87,8 @@ test('real shared composer locks an uncertain draft and retries the identical bo
   const draft = screen.getByRole('textbox');
   await waitFor(() => expect(draft.hasAttribute('disabled')).toBe(false));
   fireEvent.change(draft, { target: { value: 'Use staging' } });
+  // Custom CSS is held off while this decision is on screen.
+  expect(mountedDecisionSurfaces()).toContain('needs-input-reply');
   fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
   const retry = await screen.findByRole('button', {
     name: 'Retry same answer',

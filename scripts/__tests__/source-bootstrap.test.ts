@@ -91,7 +91,7 @@ describe('source Station bootstrap', () => {
 
   test('normalizes only an explicit home and keeps all explicit launch overrides', () => {
     const env = sourceEnv({
-      STATION_CHANNEL: 'beta',
+      STATION_CHANNEL: 'nightly',
       STATION_HOME: './runtime-home',
       STATION_SERVER_PORT: '29141',
       STATION_UI_PORT: '29000',
@@ -100,7 +100,7 @@ describe('source Station bootstrap', () => {
     const context = initializeSourceBootstrap({ env, wrapperUrl });
 
     expect(context).toMatchObject({
-      channel: 'beta',
+      channel: 'nightly',
       serverPort: 29141,
       uiPort: 29000,
       consentPort: 29144,

@@ -13,6 +13,7 @@ import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
+import { decideHeavyChecks } from '../pr-heavy-checks-decision.mjs';
 
 /**
  * #2709 re-land: the sharded fast-checks graph evaluated with GitHub's job
@@ -59,6 +60,8 @@ type Job = {
 type Context = {
   event: string;
   action?: string;
+  /** Repository variables; unset ones read as ''. */
+  vars?: Record<string, string>;
   retarget?: boolean;
   repository: string;
   headRepository: string;
@@ -255,6 +258,8 @@ function simulate(
             : undefined;
         throw new Error(`unmodelled github context ${key}`);
       }
+      if (head === 'vars' && rest.length === 1)
+        return context.vars?.[rest[0]] ?? '';
       if (head === 'needs') {
         const [need, field, name] = rest;
         if (!needsOf(jobs[ready]).includes(need))
@@ -1241,7 +1246,26 @@ describe('repository-wide PR source runner ceilings', () => {
     'ci-pr-shards-fourth',
     'ci-pr-shards-fifth',
   ];
-  test('25 simultaneous PRs expose exactly two statics and five shard slots, with no cancellation or pending replacement', () => {
+  // Three shared statics groups since the 2026-11-15 statics wait
+  // measurement, keyed by the PR number's last digit. Pinned as literals.
+  const STATICS_GROUPS = [
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-third',
+  ];
+  const STATICS_SLOT_BY_DIGIT = [
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-third',
+    'ci-pr-statics-third',
+    'ci-pr-statics-third',
+  ];
+  test('25 simultaneous PRs expose exactly three statics and five shard slots, with no cancellation or pending replacement', () => {
     const statics = new Set();
     const shards = new Set();
     for (let pr = 3700; pr < 3725; pr++) {
@@ -1249,13 +1273,44 @@ describe('repository-wide PR source runner ceilings', () => {
       for (const shard of [1, 2, 3, 4])
         shards.add(sourceGroups(jobs['fast-checks-shard'], pr, shard));
     }
-    expect(statics.size).toBe(2);
+    expect(statics).toEqual(new Set(STATICS_GROUPS));
     expect(shards).toEqual(new Set(SHARD_GROUPS));
-    expect(new Set([...statics, ...shards]).size).toBe(7);
+    expect(new Set([...statics, ...shards]).size).toBe(8);
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       expect(jobs[id].concurrency?.queue).toBe('max');
       expect(jobs[id].concurrency?.['cancel-in-progress']).toBe(false);
     }
+  });
+  test('every last digit lands in exactly one shared statics group, split 4/3/3', () => {
+    const job = jobs['fast-checks-statics'];
+    const perGroup = new Map<unknown, number>();
+    for (let digit = 0; digit <= 9; digit++) {
+      // Several PR numbers, heads and matrix values per digit: every run of
+      // one PR must share one slot, so the group depends only on the digit.
+      const cell = new Set([
+        sourceGroups(job, 4940 + digit),
+        sourceGroups(job, 4940 + digit, 1, undefined, 'c'.repeat(40)),
+        sourceGroups(job, 4940 + digit, 3),
+        sourceGroups(job, 120 + digit),
+        sourceGroups(job, digit === 0 ? 10 : digit),
+      ]);
+      expect(cell.size, `digit ${digit}`).toBe(1);
+      const [group] = cell;
+      expect(group, `digit ${digit}`).toBe(STATICS_SLOT_BY_DIGIT[digit]);
+      perGroup.set(group, (perGroup.get(group) ?? 0) + 1);
+    }
+    expect(Object.fromEntries(perGroup)).toEqual({
+      'ci-pr-statics-even': 4,
+      'ci-pr-statics-odd': 3,
+      'ci-pr-statics-third': 3,
+    });
+    // Runs created under the parity mapping keep their slot names; only
+    // digits 7, 8 and 9 moved, so only those PRs can briefly hold two slots
+    // while a pre-change run is still live.
+    for (let digit = 0; digit <= 6; digit++)
+      expect(sourceGroups(job, 4940 + digit), `digit ${digit}`).toBe(
+        digit % 2 === 1 ? 'ci-pr-statics-odd' : 'ci-pr-statics-even',
+      );
   });
   test('every last digit and shard index lands in exactly one shared shard group, evenly', () => {
     const job = jobs['fast-checks-shard'];
@@ -1377,7 +1432,7 @@ describe('repository-wide PR source runner ceilings', () => {
             undefined,
             identity,
           ),
-        ).toBe(digit % 2 === 1 ? 'ci-pr-statics-odd' : 'ci-pr-statics-even');
+        ).toBe(STATICS_SLOT_BY_DIGIT[digit]);
       }
     },
   );
@@ -2057,4 +2112,222 @@ describe('the zsh provisioning text, executed', () => {
       expect(result.stdout).not.toContain('zsh 5.9');
     },
   );
+});
+
+/**
+ * STATION_PR_HEAVY_CHECKS (scripts/pr-heavy-checks-decision.mjs). The graph
+ * reads the decision only through pr-admission's `heavy` output, which the
+ * scenarios take from the real decision function for the same event.
+ */
+describe('heavy pull-request checks switch under GitHub job-status semantics', () => {
+  const jobs = readJobs();
+  const fork: Context = {
+    ...sameRepositoryPr,
+    headRepository: 'someone/station',
+  };
+  const armed = (context: Context, mode?: string): Context => ({
+    ...context,
+    action: 'auto_merge_enabled',
+    vars: mode === undefined ? {} : { STATION_PR_HEAVY_CHECKS: mode },
+  });
+  const decided = (context: Context, armedAtEvent = false) => ({
+    admitted: 'true',
+    heavy: String(
+      decideHeavyChecks({
+        mode: context.vars?.STATION_PR_HEAVY_CHECKS,
+        eventName: context.event,
+        action: context.action ?? 'synchronize',
+        runAttempt: '1',
+        repository: REPOSITORY,
+        live: null,
+        pullRequest: {
+          number: 7,
+          head: { repo: { full_name: context.headRepository } },
+          labels: [],
+          auto_merge: armedAtEvent ? { merge_method: 'squash' } : null,
+        },
+      }).heavy,
+    ),
+  });
+  const run = (context: Context, armedAtEvent = false) =>
+    simulate(jobs, context, {
+      outputs: {
+        'pr-admission': decided(context, armedAtEvent),
+        'fast-checks-plan': { legacy: 'false', shards: '[1,2]' },
+        classify: { heavy: 'true' },
+      },
+    });
+  /** Which of the aggregate's steps run, from their base-controlled `if`. */
+  const aggregateSteps = (state: State) => {
+    const steps = (
+      jobs['fast-checks'] as Job & {
+        steps: Array<{ name?: string; if?: string }>;
+      }
+    ).steps;
+    return steps
+      .filter((step) => step.name?.startsWith('Record heavy checks'))
+      .filter((step) =>
+        truthy(
+          evaluate(
+            String(step.if)
+              .replace(/^\$\{\{\s*/, '')
+              .replace(/\s*\}\}$/, ''),
+            (path) => {
+              const [head, need, field, name] = path;
+              if (head !== 'needs' || field !== 'outputs')
+                throw new Error(`unmodelled ${path.join('.')}`);
+              return state.outputs.get(need)?.[name] ?? '';
+            },
+            { always: () => true },
+          ),
+        ),
+      )
+      .map((step) => step.name);
+  };
+  const HEAVY_JOBS = ['fast-checks-shard', 'ui-bundle-delta', 'delivery-plan'];
+
+  test('when-armed: an unarmed push runs the cheap jobs only, the aggregate passes and records the deferral', () => {
+    const context = {
+      ...sameRepositoryPr,
+      vars: { STATION_PR_HEAVY_CHECKS: 'when-armed' },
+    };
+    const state = run(context);
+    expect(state.outputs.get('pr-admission')?.heavy).toBe('false');
+    for (const id of [
+      'fast-checks-plan',
+      'fast-checks-statics',
+      'fast-checks',
+      'source-policy',
+      // Nothing before landing runs the source scans except a push run.
+      'repo-scans',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+    for (const id of HEAVY_JOBS)
+      expect(state.results.get(id), id).toBe('skipped');
+    expect(aggregatorPartResults(jobs, state)).toBe(0);
+    expect(aggregateSteps(state)).toEqual([
+      'Record heavy checks deferred until armed',
+    ]);
+  });
+
+  test.each([
+    ['arming', armed(sameRepositoryPr, 'when-armed'), false],
+    [
+      'a push to an armed pull request',
+      { ...sameRepositoryPr, vars: { STATION_PR_HEAVY_CHECKS: 'when-armed' } },
+      true,
+    ],
+  ] as const)(
+    'when-armed: %s runs every heavy job and records that they ran',
+    (_name, context, armedAtEvent) => {
+      const state = run(context, armedAtEvent);
+      for (const id of [
+        'pr-admission',
+        'fast-checks-plan',
+        'fast-checks-statics',
+        'fast-checks',
+        'source-policy',
+        ...HEAVY_JOBS,
+      ])
+        expect(state.results.get(id), id).toBe('success');
+      expect(state.shards.get('fast-checks-shard')).toEqual([1, 2]);
+      expect(aggregatorPartResults(jobs, state)).toBe(0);
+      expect(aggregateSteps(state)).toEqual(['Record heavy checks ran']);
+      // The push run of that head already scanned it; arming does not repeat.
+      expect(state.results.get('repo-scans')).toBe(
+        armedAtEvent ? 'success' : 'skipped',
+      );
+    },
+  );
+
+  test('when-armed: a merge group runs the shards and records that they ran', () => {
+    const state = run({
+      ...sameRepositoryPr,
+      event: 'merge_group',
+      vars: { STATION_PR_HEAVY_CHECKS: 'when-armed' },
+    });
+    expect(state.results.get('pr-admission')).toBe('skipped');
+    expect(state.results.get('fast-checks-shard')).toBe('success');
+    expect(state.results.get('merge-queue-regression')).toBe('success');
+    expect(aggregateSteps(state)).toEqual(['Record heavy checks ran']);
+  });
+
+  test('a cheap-only aggregate fails if a shard ran and failed anyway', () => {
+    const context = {
+      ...sameRepositoryPr,
+      vars: { STATION_PR_HEAVY_CHECKS: 'when-armed' },
+    };
+    const state = run(context);
+    state.results.set('fast-checks-shard', 'failure');
+    expect(aggregatorPartResults(jobs, state)).toBe(1);
+  });
+
+  test.each([
+    ['switch unset', armed(sameRepositoryPr), []],
+    ['switch every-push', armed(sameRepositoryPr, 'every-push'), []],
+    // Only the in-run publisher, which reads every source job skipped on a
+    // `PR armed` run and republishes the older run's verdict.
+    ['a fork under when-armed', armed(fork, 'when-armed'), ['source-policy']],
+  ])(
+    'arming with %s runs no source job, so the source policy ignores the run',
+    (_name, context, expected) => {
+      const state = run(context);
+      const ran = [...state.results]
+        .filter(([, result]) => result !== 'skipped')
+        .map(([id]) => id);
+      expect(ran).toEqual(expected);
+    },
+  );
+
+  /**
+   * The switch unset must plan exactly what ci.yml planned before it existed,
+   * origin/main at f7f8f28e46. Compares job results only, for jobs present
+   * then; delete this case once ci.yml's admission changes for another
+   * reason, since it pins that revision rather than a lasting rule.
+   */
+  test('switch unset: every event plans the same jobs as the pre-switch ci.yml', () => {
+    const baseline = spawnSync(
+      'git',
+      ['show', 'f7f8f28e46:.github/workflows/ci.yml'],
+      { cwd: root, encoding: 'utf8', windowsHide: true },
+    );
+    expect(
+      baseline.status,
+      `pre-switch ci.yml unavailable: ${baseline.stderr}`,
+    ).toBe(0);
+    const before = readJobs(baseline.stdout);
+    const contexts: Array<[string, Context]> = [
+      ['same-repository synchronize', sameRepositoryPr],
+      ['opened', { ...sameRepositoryPr, action: 'opened' }],
+      ['metadata edit', { ...sameRepositoryPr, action: 'edited' }],
+      [
+        'base retarget',
+        { ...sameRepositoryPr, action: 'edited', retarget: true },
+      ],
+      ['fork', fork],
+      ['merge group', { ...sameRepositoryPr, event: 'merge_group' }],
+      ['dispatch', { ...sameRepositoryPr, event: 'workflow_dispatch' }],
+      ['push', { ...sameRepositoryPr, event: 'push' }],
+    ];
+    for (const [name, context] of contexts) {
+      const outputs = {
+        'pr-admission': decided(context),
+        'fast-checks-plan': { legacy: 'false', shards: '[1,2,3]' },
+        classify: { heavy: 'true' },
+      };
+      const now = simulate(jobs, context, { outputs });
+      const then = simulate(before, context, { outputs });
+      const pick = (state: State) =>
+        Object.fromEntries(
+          Object.keys(before).map((id) => [id, state.results.get(id)]),
+        );
+      expect(pick(now), name).toEqual(pick(then));
+      expect(now.shards.get('fast-checks-shard'), name).toEqual(
+        then.shards.get('fast-checks-shard'),
+      );
+      expect(aggregatorPartResults(jobs, now), name).toBe(
+        aggregatorPartResults(before, then),
+      );
+    }
+  });
 });

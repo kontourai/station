@@ -1,0 +1,15 @@
+{
+  "revision": "fdc210b0bd05629d1f20dc1a021beb771b9be8c7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5120: development.md only gained a Verification paragraph on branch-scoped Veritas readiness through scripts/run-veritas-readiness.mjs; no claim this page takes from the guide changed.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"#5120: development.md only gained a Verification paragraph on branch-scoped Veritas readiness through scripts/run-veritas-readiness.mjs; no claim this page takes from the guide changed.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#5120: development.md only gained a Verification paragraph on branch-scoped Veritas readiness through scripts/run-veritas-readiness.mjs; no claim this page takes from the guide changed.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"#5120: development.md only gained a Verification paragraph on branch-scoped Veritas readiness through scripts/run-veritas-readiness.mjs; no claim this page takes from the guide changed.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#5120: development.md only gained a Verification paragraph on branch-scoped Veritas readiness through scripts/run-veritas-readiness.mjs; no claim this page takes from the guide changed.","inputs":["docs/guides/development.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "97e1eefda198a51bd315b249b226e75f4655f5a5",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"testing.md anchors cited here (gallery-product-assertions, host-heavy-check-slots, host-pressure liveness, pre-push transfer gate, what-counts-as-tested) still exist; the new Gallery section changes none of the cited claims.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

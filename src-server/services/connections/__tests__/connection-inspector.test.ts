@@ -47,6 +47,38 @@ describe('ConnectionInspector Interface', () => {
     });
   }
 
+  test('skips live model discovery when the request excludes the catalog, keeping prerequisite readiness', async () => {
+    const listModelCatalog = vi.fn(async () => ({
+      models: [{ id: 'live', name: 'Live', originalId: 'live' }],
+    }));
+    const subject = inspector(
+      adapter('codex', {
+        metadata: {
+          displayName: 'Codex Runtime',
+          description: 'test',
+          capabilities: ['agent-runtime'],
+          engineId: 'codex',
+        },
+        getPrerequisites: vi.fn(async () => []),
+        listModelCatalog,
+      }),
+    );
+    const skipped = await subject.inspect({
+      kind: 'runtime-capability-inventory',
+      includeModelCatalog: false,
+    });
+    expect(listModelCatalog).not.toHaveBeenCalled();
+    expect(skipped.connections[0]).toMatchObject({ status: 'ready' });
+    expect(skipped.connections[0]?.runtimeCatalog?.source).not.toBe('live');
+
+    const live = await subject.inspect({
+      kind: 'runtime-capability-inventory',
+    });
+    expect(listModelCatalog).toHaveBeenCalledTimes(1);
+    expect(live.connections[0]).toMatchObject({ status: 'ready' });
+    expect(live.connections[0]?.runtimeCatalog?.source).toBe('live');
+  });
+
   // #1208 review: the engine's catalog is decorated with reviewed identity
   // keyed on (engine family, id). `sonnet` from the Claude Code engine is a
   // reviewed route; the identical id from another engine carries nothing.

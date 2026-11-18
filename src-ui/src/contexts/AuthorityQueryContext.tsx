@@ -141,6 +141,7 @@ import {
 import { StationConnectingScreen } from '../components/StationConnectingScreen';
 import { retireStationConnectionRegistries } from '../connections/station-connection-registry';
 import { SessionReadModelProvider } from '../hooks/orchestration/SessionReadModelProvider';
+import { clearTranscriptWindowCache } from '../hooks/orchestration/transcriptWindowCache';
 import {
   useConnectionSwitchScope,
   useInvalidateCachesOnConnectionSwitch,
@@ -423,6 +424,7 @@ export function AuthorityQueryProvider({
       previousReadingScope.current !== readingScope
     ) {
       void clearOfflineReading().catch(() => {});
+      clearTranscriptWindowCache();
     }
     previousReadingScope.current = readingScope;
   }, [readingScope]);
@@ -461,6 +463,8 @@ export function AuthorityQueryProvider({
       lastVerifiedNamespaceRef.current !== verifiedNamespace
     ) {
       activeChatsStore.clearAllConversationActivity();
+      // Recently read transcript windows belong to the previous authority.
+      clearTranscriptWindowCache();
       // #1418/#1419: a different Station's ledger is not this document's to
       // settle. Flush what the old identity owes, then mint a fresh one.
       notifyPluginCommandEffectAuthoritySwitch();
@@ -699,7 +703,7 @@ export function AuthorityQueryProvider({
       return (
         <StationConnectingScreen
           key={`${observationKeyText}:loading`}
-          step="Loading Station"
+          step="Loading Station data"
           answered
         />
       );

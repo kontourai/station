@@ -146,6 +146,17 @@ describe('gate-for report', () => {
     );
   });
 
+  it("names CI's full code-health command, which the hook no longer runs", () => {
+    const plan = gatePlan({ changedPaths: ['src-server/a.ts'], baseSha });
+    expect(plan.codeHealth.command).toBe(
+      'node scripts/code-health-gate.mjs --base=$(git merge-base origin/main HEAD)',
+    );
+    expect(hookChecks().join('\n')).not.toContain('code-health');
+    expect(
+      gateReport({ changedPaths: ['src-server/a.ts'], baseSha }),
+    ).toContain(plan.codeHealth.command);
+  });
+
   it('reports the static gates as running for a docs-only text surface, because the vocabulary gate reads it', () => {
     const changedPaths = ['docs/guides/testing.md'];
     const scopes = gateScopes({ changedPaths, baseSha });

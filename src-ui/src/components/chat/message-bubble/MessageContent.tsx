@@ -1,10 +1,11 @@
-import { memo, useMemo } from 'react';
+import { memo, useContext, useMemo } from 'react';
 import type { ChatMessage } from '../../../types';
 import {
   projectedRuntimeErrorRaw,
   translateChatError,
   translateProjectedRuntimeError,
 } from '../../../utils/chatErrorTranslation';
+import { ApprovalsHeldContext } from '../approvalsHeld';
 import { useBrowserActivityScope } from '../BrowserActivityContext';
 import {
   BrowserActivityRun,
@@ -152,6 +153,7 @@ function MessageContentComponent({
       ),
     );
 
+  const approvalsHeld = useContext(ApprovalsHeldContext);
   const renderToolCall = (part: MessageContentPart, index: number) => (
     <ToolCallDisplay
       key={index}
@@ -162,7 +164,9 @@ function MessageContentComponent({
         // wherever its row sits — the server verifies the exact prompt
         // (`expectedRequestEventId`), which is what the last-row gate stood
         // in for. A part without that binding keeps the last-row gate.
-        part.needsApproval && (isStreamingMessage || part.approvalEventId)
+        !approvalsHeld &&
+        part.needsApproval &&
+        (isStreamingMessage || part.approvalEventId)
           ? (action) =>
               onToolApproval?.(part, action) ??
               Promise.reject(new Error('This chat cannot answer requests.'))
@@ -207,7 +211,6 @@ function MessageContentComponent({
                 <BrowserActivityRun
                   key={block.key}
                   run={block}
-                  active={false}
                   renderCall={renderToolCall}
                 />
               );
@@ -344,6 +347,15 @@ function MessageContentComponent({
               <LazyMarkdown key={block.key ?? index}>
                 {part.content}
               </LazyMarkdown>
+            );
+          }
+          // A record's own note inside a turn (a stop, hook feedback, a
+          // part left out): shown, but not the agent's words.
+          if (part.type === 'notice' && part.content) {
+            return (
+              <p key={index} className="message-notice">
+                {part.content}
+              </p>
             );
           }
           if (part.type === 'file') {

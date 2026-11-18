@@ -115,7 +115,8 @@ three different observations; the label alone does not establish all three.
 `WebPushChannel.accepts` uses
 [the category classifier](../../packages/shared/src/notification-priority.ts).
 Current categories include approval requests, job failures/misses, unhealthy
-scheduler notices, turn completion/stop/failure, pairing requests, and the Agent
+scheduler notices, turn completion/stop/failure, pairing requests, pull request
+agent feedback that paused or waits on a stopped agent, and the Agent
 attention/failed/done/info categories. Lifecycle `needs_input` and
 `review_pending` projections are not themselves notification delivery events;
 a separate approval notification can represent related work.
@@ -138,9 +139,10 @@ Future-scheduled principal writes are refused; expiry is settled when the feed
 is next accessed. These records do not enter the owner feed or shared
 notification stream and do not trigger push. The authenticated person reads,
 marks read, and dismisses their own entries through the
-[person notification routes](../reference/api.md#person-notifications). A
-per-person notification preference, account-bound Device push, producers, and
-the corresponding inbox UI remain future work.
+[person notification routes](../reference/api.md#person-notifications). The
+first producer is a Project room mention (#4799), shown under **For you** on
+the Notifications page. A per-person notification preference, account-bound
+Device push, other producers and a full inbox view remain future work.
 
 The router consumes `NOTIFICATION_DELIVERED`. It also handles content changes to
 previously seen, delivered, unread enveloped records on `NOTIFICATION_UPDATED`;
@@ -172,7 +174,17 @@ of its chats and turns, not per turn. Hiding or unloading a document reports
 not qualify as live.
 
 A live focused document suppresses `info`/`done` on the person's other surfaces
-and can defer `attention`/`failed`. Default escalation is three minutes. It is
+and can defer `attention`/`failed`. For an `info`/`done` record that names a
+session, such as a finished turn, a document counts as focused only while it
+shows that session. Its report lists the open chat's ids (`viewingSessionIds`,
+sent as `[]` when no chat is on screen). A document showing another chat
+neither quiets the other surfaces nor skips its own alert. With the
+`project-overview` preview on, a document showing a Project page also counts as
+watching that Project's finished turns (`viewingProjectId`), and each Project's
+notification setting applies to its turn and approval alerts. A client that does
+not send the field keeps the device-wide rule. A host built before the field
+answers 400, and the client then reports without it
+([notification delivery](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)). Default escalation is three minutes. It is
 one in-memory recheck of the current record, audience, registrations, focus and
 preferences—not a delivery guarantee or general retry queue. Quiet hours, mute,
 minimum urgency, silent interrupt, current focus, read/dismiss state or expiry
@@ -225,18 +237,23 @@ The title and body are sent in display form (#3382): bidi controls and
 invisible characters removed, controls turned into spaces, a multi-line title
 joined onto one line with " ⏎ ". A device's hide-content preference
 substitutes generic title/body text. The
-browser still receives category, notification ID and destination URL. For
-routing, Session metadata is tried first (`sessionId` or `conversationId`), then
-a validated relative `metadata.link`, then `/notifications`; the URL also carries
-`openedNotification=<id>`, which the loaded page uses to mark that record read
-and then removes. Managed Sessions
-legitimately use `/?chat=...&dock=open`; the root route with these parameters is
-not an error. The current composed payload does not carry the legacy service
+browser still receives category, notification ID and destination URL. The URL
+is the one every OS channel opens for the record (`notificationOpenLink`; see
+[Opening a notification](../design/notification-delivery.md#opening-a-notification-on-the-station-that-sent-it)):
+its path target, else its session (`/projects/<slug>?chat=...&dock=open`, or
+`/?chat=...&dock=open` without a Project, for runtime and managed sessions),
+else a validated relative `metadata.link`, else `/notifications`. It also
+carries `openedNotification=<id>`, which the loaded page uses to mark that
+record read and then removes, and `station=<environmentId>`, the sending
+Station, so a page connected to another saved Station switches to it before
+opening; the root route with these parameters is not an error. The current composed payload does not carry the legacy service
 worker's approval-action fields, so those old action branches are not this
 channel's live payload path.
 
-On a tap, the worker closes that notification and attempts to focus/navigate a
-window or open one. It resolves the payload URL against its own origin and opens
+On a tap, the worker closes that notification, focuses a window and posts it
+the link (`station-notification-open`), so the running app opens it in place;
+a window that does not acknowledge within 1.5 seconds is navigated to the link,
+and with no window one is opened. It resolves the payload URL against its own origin and opens
 `/notifications` instead for anything off it or not http(s). The server never
 sends one: a link (an agent's included) is admitted only if its normalized path
 stays on Station (`/..//host` and `/%2e%2e//host` are refused) and it carries no
@@ -244,7 +261,8 @@ fragment and no `openedNotification` (only the alert's own open link names a
 record to read); the open link with the record id is rebuilt on Station's
 origin, without a fragment, or falls back to the inbox. Notification action
 requests go only to the worker's own origin, with their ids path-encoded. Navigation can fail; there is no replacement-window fallback
-after a rejected existing-window navigation. Verify the actual destination on
+after a rejected existing-window navigation, and an app that acknowledged the
+message owns the open from there. Verify the actual destination on
 the target platform rather than claiming the URL alone proves successful display.
 
 Web Push has `retract: false`. Read, dismissal or expiry on the host does not

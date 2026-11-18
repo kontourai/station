@@ -18,13 +18,24 @@ import type {
   TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
 import type { TaskWorkChatPresentation } from '@kontourai/station-contracts/task-graph';
-import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
+import type { TaskPullRequestFactsProjection } from '@kontourai/station-contracts/task-lane';
+import type {
+  TaskLatestReportPresentation,
+  TaskMemoryAttention,
+} from '@kontourai/station-contracts/task-memory';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getTaskAnswerSupportCards,
   type TaskAnswerSupportStandingWithCard,
 } from '../client/answer-support';
-import { getJson, readEnvelopeOrThrow } from '../client/http';
+import {
+  envelopeErrorCode,
+  envelopeErrorMessage,
+  getJson,
+  readEnvelopeOrThrow,
+  readJsonBody,
+} from '../client/http';
+import { rethrowDeadline } from '../client/request-deadline';
 import {
   type AttachTaskUserInputReferenceInput,
   attachTaskUserInputReference as attachTaskUserInputReferenceClient,
@@ -145,12 +156,59 @@ export async function fetchTasks(
 }
 
 /**
- * A Tasks-list row: the Task, and (#4003) its open Task-memory question
- * count when it has any, which Home and the inbox read for "Needs you".
+ * A Tasks-list row: the Task, (#4003) its open Task-memory question count
+ * when it has any, which Home and the inbox read for "Needs you", and
+ * (#5064) its summary's first line, which the Project Overview prints.
  */
 export type TaskListRecord = TaskRecord &
   Partial<TaskMemoryAttention> &
+  TaskLatestReportPresentation &
   TaskWorkChatPresentation;
+
+/**
+ * Derived Task lanes: the provider's current facts for each pull request kept
+ * on a Project's live Tasks (`GET /api/tasks/pull-request-facts`). `null`
+ * when the host answers a plain 404: a Station older than this read, whose
+ * board then claims nothing about pull requests. A 404 carrying
+ * `request_principal_changed` is lost standing, and is thrown as an error.
+ */
+export async function fetchTaskPullRequestFacts(
+  projectId: string,
+  apiBase?: string,
+): Promise<TaskPullRequestFactsProjection | null> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/tasks/pull-request-facts?${new URLSearchParams({ projectId })}`,
+  );
+  if (response.status === 404) {
+    const body = await readJsonBody(response);
+    if (envelopeErrorCode(body) !== 'request_principal_changed') return null;
+    throw new Error(envelopeErrorMessage(body, 'Request failed with HTTP 404'));
+  }
+  return readApiResult<TaskPullRequestFactsProjection>(response);
+}
+
+/**
+ * The board's pull request facts. Provider reads are slow and rate-limited,
+ * so it refreshes every two minutes and on focus, never retries a failure,
+ * and keeps the last answer when a refresh fails.
+ */
+export function useTaskPullRequestFactsQuery(
+  projectId: string | undefined,
+  config: { enabled?: boolean } = {},
+) {
+  return useApiQuery(
+    taskQueries.pullRequestFacts(projectId ?? '').queryKey,
+    () => fetchTaskPullRequestFacts(projectId ?? ''),
+    {
+      enabled: Boolean(projectId) && (config.enabled ?? true),
+      staleTime: taskQueries.pullRequestFacts(projectId ?? '').staleTime,
+      refetchInterval: 120_000,
+      refetchOnWindowFocus: true,
+      retry: false,
+    },
+  );
+}
 
 export async function fetchTask(
   taskId: string,
@@ -212,6 +270,54 @@ export async function updateTaskStatus(input: {
     },
   );
   return readApiResult<TaskRecord>(response);
+}
+
+/** A host older than the Overview's reopen answers its route 404. */
+export class TaskOverviewReopenUnsupportedError extends Error {
+  constructor() {
+    super('This Station cannot reopen Tasks from the Overview yet.');
+    this.name = 'TaskOverviewReopenUnsupportedError';
+  }
+}
+
+/**
+ * #5064: reopen a Task the Project Overview auto-resolved. The host restarts
+ * its quiet clock; the Task returns to the group its facts place it in.
+ */
+export async function reopenTaskOnOverview(input: {
+  taskId: string;
+  apiBase?: string;
+}): Promise<TaskRecord> {
+  const resolvedApiBase = await resolveApiBase(input.apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/tasks/${encodeURIComponent(input.taskId)}/overview-reopen`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  // An older host has no such route. A refusal it does send carries an
+  // envelope, which `readApiResult` reports as itself.
+  if (response.status === 404 && !(await hasEnvelope(response.clone())))
+    throw new TaskOverviewReopenUnsupportedError();
+  return readApiResult<TaskRecord>(response);
+}
+
+async function hasEnvelope(response: Response): Promise<boolean> {
+  try {
+    const body: unknown = await response.json();
+    return typeof body === 'object' && body !== null && 'success' in body;
+  } catch (error) {
+    rethrowDeadline(error);
+    return false;
+  }
+}
+
+export function useReopenTaskOnOverviewMutation() {
+  return useApiMutation(reopenTaskOnOverview, {
+    invalidateKeys: [['tasks']],
+  });
 }
 
 export async function dispatchTask(input: {

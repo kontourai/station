@@ -1,11 +1,14 @@
 import {
   appendFileSync,
+  closeSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
+  truncateSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -16,6 +19,33 @@ import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { AttachedSessionCursor } from '../attached-session-source.js';
 import { CodexRolloutSessionSource } from '../codex-rollout-session-source.js';
+import { readLeadingLine } from '../transcript-file-io.js';
+
+const readChunk = vi.hoisted(() =>
+  vi.fn<
+    (
+      descriptor: number,
+      buffer: NodeJS.ArrayBufferView,
+      offset: number,
+      length: number,
+      position: number | null,
+    ) => number
+  >(),
+);
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    readSync: readChunk.mockImplementation((...args) =>
+      actual.readSync(...args),
+    ),
+    openSync: vi.fn(actual.openSync),
+    closeSync: vi.fn(actual.closeSync),
+  };
+});
+
+const realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
 
 const roots: string[] = [];
 
@@ -78,12 +108,223 @@ async function drain(
 
 afterEach(() => {
   vi.restoreAllMocks();
+  readChunk
+    .mockReset()
+    .mockImplementation((...args) => realFs.readSync(...args));
+  vi.mocked(openSync).mockReset().mockImplementation(realFs.openSync);
+  vi.mocked(closeSync).mockReset().mockImplementation(realFs.closeSync);
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
 describe('CodexRolloutSessionSource', () => {
+  test('bounds repeated discovery and read validation to the leading record and observes a rewritten head', async () => {
+    const root = fixtureRoot();
+    const path = rolloutPath(root);
+    writeFileSync(
+      path,
+      line(meta('bounded-head')) + 'x'.repeat(8 * 1024 * 1024),
+    );
+    const source = new CodexRolloutSessionSource({ homeDir: root });
+    let actualBytes = 0;
+    await readChunk.withImplementation(
+      (descriptor, buffer, offset, length, position) => {
+        const bytesRead = realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          length,
+          position,
+        );
+        actualBytes += bytesRead;
+        return bytesRead;
+      },
+      async () => {
+        const first = await discoverOne(source);
+        expect(await discoverOne(source)).toEqual(first);
+        expect(await source.read(first, -1)).toMatchObject({
+          outcome: 'rejected_candidate',
+          events: [],
+          cursor: -1,
+        });
+        expect(actualBytes).toBeLessThanOrEqual(3 * 4096);
+        expect(readChunk).toHaveBeenCalledTimes(3);
+        writeFileSync(path, line(meta('rewritten-head')));
+        expect(await source.read(first)).toMatchObject({
+          outcome: 'rejected_candidate',
+          events: [],
+        });
+        expect((await discoverOne(source)).sessionId).toBe('rewritten-head');
+      },
+    );
+  });
+
+  test.each([4095, 4096, 4097, 128 * 1024])(
+    'accepts a %i-byte leading record with UTF-8 split across reads and a newline at the cap',
+    async (length) => {
+      const root = fixtureRoot();
+      const path = rolloutPath(root);
+      const content = `${'a'.repeat(length - 2)}é`;
+      writeFileSync(path, `${content}\nignored`);
+      expect(readLeadingLine(path, length)).toBe(content);
+      const head = JSON.stringify(meta('boundary', '/workspace/é'));
+      writeFileSync(
+        path,
+        `${head}${' '.repeat(length - Buffer.byteLength(head))}\nignored`,
+      );
+      const source = new CodexRolloutSessionSource({
+        homeDir: root,
+        maxLineBytes: length,
+      });
+      expect((await discoverOne(source)).cwd).toBe('/workspace/é');
+    },
+  );
+
+  test.each([
+    { content: '', expected: undefined },
+    { content: ' \r\nignored', expected: undefined },
+    { content: 'é', expected: 'é' },
+    { content: 'x'.repeat(4096), expected: 'x'.repeat(4096) },
+    { content: 'x'.repeat(4097), expected: null },
+    { content: `${'x'.repeat(4097)}\n`, expected: null },
+    { content: Buffer.from([0xc3, 0x28, 0x0a]), expected: '�(' },
+  ])(
+    'preserves EOF, blank, oversized and malformed UTF-8 handling ($content.length bytes)',
+    ({ content, expected }) => {
+      const path = rolloutPath(fixtureRoot());
+      writeFileSync(path, content);
+      expect(readLeadingLine(path, 4096)).toBe(expected);
+      for (const call of readChunk.mock.calls) {
+        expect(Number(call[4]) + call[3]).toBeLessThanOrEqual(4097);
+      }
+    },
+  );
+
+  test('continues short reads on one descriptor and closes it after EOF or a read failure', () => {
+    const path = rolloutPath(fixtureRoot());
+    writeFileSync(path, 'éabc');
+    readChunk.withImplementation(
+      (descriptor, buffer, offset, length, position) =>
+        realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 1),
+          position,
+        ),
+      () => expect(readLeadingLine(path, 4096)).toBe('éabc'),
+    );
+    expect(openSync).toHaveBeenCalledTimes(1);
+    expect(closeSync).toHaveBeenCalledTimes(1);
+    expect(readChunk).toHaveBeenCalledTimes(6);
+    readChunk.withImplementation(
+      () => {
+        throw new Error('read failed');
+      },
+      () => {
+        expect(() => readLeadingLine(path, 4096)).toThrow('read failed');
+      },
+    );
+    expect(closeSync).toHaveBeenCalledTimes(2);
+  });
+
+  test('bounds retained prefix storage across one-byte short reads', () => {
+    const path = rolloutPath(fixtureRoot());
+    const limit = 8192;
+    const head = 'a'.repeat(limit);
+    writeFileSync(path, `${head}\nignored`);
+    const storage = new Set<ArrayBufferLike>();
+    readChunk.withImplementation(
+      (descriptor, buffer, offset, length, position) => {
+        storage.add(buffer.buffer);
+        return realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          Math.min(length, 1),
+          position,
+        );
+      },
+      () => expect(readLeadingLine(path, limit)).toBe(head),
+    );
+    expect(
+      [...storage].reduce((bytes, buffer) => bytes + buffer.byteLength, 0),
+    ).toBeLessThanOrEqual(limit + 1);
+  });
+
+  test('does not combine replacement bytes across chunks and handles truncation at EOF', () => {
+    const path = rolloutPath(fixtureRoot());
+    const replacement = `${path}.replacement`;
+    writeFileSync(path, `${'a'.repeat(4096)}original\n`);
+    writeFileSync(replacement, `${'b'.repeat(4096)}replacement\n`);
+    readChunk.mockImplementationOnce(
+      (descriptor, buffer, offset, length, position) => {
+        const bytes = realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          length,
+          position,
+        );
+        renameSync(replacement, path);
+        return bytes;
+      },
+    );
+    expect(readLeadingLine(path, 8192)).toBe(`${'a'.repeat(4096)}original`);
+    readChunk.mockImplementationOnce(
+      (descriptor, buffer, offset, length, position) => {
+        const bytes = realFs.readSync(
+          descriptor,
+          buffer,
+          offset,
+          length,
+          position,
+        );
+        truncateSync(path, 4096);
+        return bytes;
+      },
+    );
+    expect(readLeadingLine(path, 8192)).toBe('b'.repeat(4096));
+    expect(openSync).toHaveBeenCalledTimes(2);
+    expect(closeSync).toHaveBeenCalledTimes(2);
+  });
+
+  test('rejects a file swapped during secure open and closes the rejected descriptor', () => {
+    const path = rolloutPath(fixtureRoot());
+    const replacement = `${path}.replacement`;
+    writeFileSync(path, line(meta('original')));
+    writeFileSync(replacement, line(meta('replacement')));
+    vi.mocked(openSync).mockImplementationOnce((file, flags, mode) => {
+      renameSync(replacement, path);
+      return realFs.openSync(file, flags, mode);
+    });
+    expect(() => readLeadingLine(path, 4096)).toThrow(
+      'changed during secure open',
+    );
+    expect(readChunk).not.toHaveBeenCalled();
+    expect(closeSync).toHaveBeenCalledTimes(1);
+  });
+
+  test('rejects malformed or incomplete leading JSON until the record is completed', async () => {
+    const root = fixtureRoot();
+    const path = rolloutPath(root);
+    const head = JSON.stringify(meta('partial-head'));
+    const source = new CodexRolloutSessionSource({ homeDir: root });
+    writeFileSync(path, head.slice(0, -1));
+    expect(await source.discover()).toEqual({
+      outcome: 'malformed_record',
+      sessions: [],
+    });
+    appendFileSync(path, '}');
+    expect((await discoverOne(source)).sessionId).toBe('partial-head');
+    writeFileSync(path, Buffer.from([0xff, 0x0a]));
+    expect(await source.discover()).toEqual({
+      outcome: 'malformed_record',
+      sessions: [],
+    });
+  });
+
   test('binds descriptors to one opaque Codex home across restart and rejects foreign or replaced homes', async () => {
     const root = fixtureRoot();
     writeFileSync(rolloutPath(root), line(meta('affinity')));
@@ -151,6 +392,16 @@ describe('CodexRolloutSessionSource', () => {
         ).sessions,
       ).toHaveLength(1);
       expect(process.env.CODEX_HOME).toBe(authenticatedHome);
+      // Nor any home Station configures.
+      const listConfiguredHomes = vi.fn(async () => [authenticatedHome]);
+      expect(
+        (
+          await new CodexRolloutSessionSource({
+            listConfiguredHomes,
+          }).discover()
+        ).sessions,
+      ).toHaveLength(0);
+      expect(listConfiguredHomes).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -783,6 +1034,247 @@ describe('CodexRolloutSessionSource', () => {
     const discovery = await firstSource.discover();
     expect(discovery.outcome).toBe('rejected_candidate');
     expect(discovery.sessions).toHaveLength(1);
+  });
+
+  test('discovers every configured Codex home and resolves each affinity to its own home', async () => {
+    const defaultHome = fixtureRoot();
+    const profileHome = fixtureRoot();
+    const turn = (prompt: string) =>
+      [
+        envelope('event_msg', { type: 'task_started', turn_id: 't1' }),
+        envelope('event_msg', { type: 'user_message', message: prompt }),
+      ]
+        .map(line)
+        .join('');
+    writeFileSync(
+      rolloutPath(defaultHome),
+      line(meta('default-only')) + turn('in default'),
+    );
+    writeFileSync(
+      rolloutPath(profileHome),
+      line(meta('profile-only')) + turn('in profile'),
+    );
+    // The same conversation copied into both homes is one session.
+    writeFileSync(
+      rolloutPath(defaultHome, 'shared.jsonl'),
+      line(meta('shared')) + turn('shared'),
+    );
+    writeFileSync(
+      rolloutPath(profileHome, 'shared.jsonl'),
+      line(meta('shared')) + turn('shared'),
+    );
+    let configured: string[] = [profileHome, profileHome];
+    const source = new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+      listConfiguredHomes: async () => configured,
+    });
+    const discovery = await source.discover();
+    expect(discovery.outcome).toBe('ok');
+    expect(discovery.sessions).toHaveLength(4);
+    const byId = new Map(
+      discovery.sessions
+        .filter((s) => s.sessionId !== 'shared')
+        .map((s) => [s.sessionId, s]),
+    );
+
+    const defaultOnly = byId.get('default-only')!;
+    const profileOnly = byId.get('profile-only')!;
+    expect(profileOnly.affinity).not.toEqual(defaultOnly.affinity);
+    expect(source.resolveSourceHome(profileOnly.affinity)).toBe(
+      realpathSync(profileHome),
+    );
+    expect(source.resolveSourceHome(defaultOnly.affinity)).toBe(
+      realpathSync(defaultHome),
+    );
+    // A conversation copied into two homes is two threads, one per home, each
+    // continuing in its own home: once both copies continue they have forked.
+    const shared = discovery.sessions.filter((s) => s.sessionId === 'shared');
+    expect(shared).toHaveLength(2);
+    const sharedDefault = shared.find(
+      (s) => s.affinity?.ref === defaultOnly.affinity?.ref,
+    )!;
+    const sharedProfile = shared.find(
+      (s) => s.affinity?.ref === profileOnly.affinity?.ref,
+    )!;
+    expect(sharedDefault.threadId).not.toBe(sharedProfile.threadId);
+    // The default home keeps the thread id a single-home source gives it.
+    const defaultAlone = await new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+    }).discover();
+    expect(
+      defaultAlone.sessions.find((s) => s.sessionId === 'shared')?.threadId,
+    ).toBe(sharedDefault.threadId);
+
+    // The default copy failing to parse for one discovery leaves the profile
+    // copy's thread exactly as it was: no copy takes over another's thread.
+    const sharedDefaultPath = rolloutPath(defaultHome, 'shared.jsonl');
+    writeFileSync(sharedDefaultPath, 'not json\n');
+    const degraded = await source.discover();
+    expect(degraded.sessions.filter((s) => s.sessionId === 'shared')).toEqual([
+      sharedProfile,
+    ]);
+    writeFileSync(sharedDefaultPath, line(meta('shared')) + turn('shared'));
+
+    const read = await drain(source, profileOnly);
+    expect(JSON.stringify(read.events)).toContain('in profile');
+
+    // A home Station no longer configures stops resolving after rediscovery.
+    configured = [];
+    const narrowed = await source.discover();
+    expect(narrowed.sessions.map((s) => s.sessionId).sort()).toEqual([
+      'default-only',
+      'shared',
+    ]);
+    expect(
+      narrowed.sessions.find((s) => s.sessionId === 'shared')?.threadId,
+    ).toBe(sharedDefault.threadId);
+    expect(source.resolveSourceHome(profileOnly.affinity)).toBeNull();
+  });
+
+  test('after a restart, an affinity for a configured home resolves without waiting for a discovery', async () => {
+    const defaultHome = fixtureRoot();
+    const profileHome = fixtureRoot();
+    writeFileSync(rolloutPath(profileHome), line(meta('profile-session')));
+    const options = {
+      homeDir: defaultHome,
+      listConfiguredHomes: async () => [profileHome],
+    };
+    const before = await discoverOne(new CodexRolloutSessionSource(options));
+
+    const restarted = new CodexRolloutSessionSource(options);
+    expect(restarted.resolveSourceHome(before.affinity)).toBeNull();
+    await expect(
+      restarted.resolveSourceHomeWithRefresh(before.affinity),
+    ).resolves.toBe(realpathSync(profileHome));
+    // A home no longer configured still refuses after the refresh.
+    await expect(
+      new CodexRolloutSessionSource({
+        homeDir: defaultHome,
+      }).resolveSourceHomeWithRefresh(before.affinity),
+    ).resolves.toBeNull();
+  });
+
+  test('each home has its own candidate budget, so a busy profile home cannot evict default-home sessions', async () => {
+    const defaultHome = fixtureRoot();
+    const busyProfile = fixtureRoot();
+    const old = rolloutPath(defaultHome, 'old.jsonl');
+    writeFileSync(old, line(meta('default-old')));
+    utimesSync(old, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
+    for (const name of ['p1', 'p2', 'p3']) {
+      const path = rolloutPath(busyProfile, `${name}.jsonl`);
+      writeFileSync(path, line(meta(name)));
+      utimesSync(
+        path,
+        new Date(1_800_000_000_000),
+        new Date(1_800_000_000_000),
+      );
+    }
+    const discovery = await new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+      maxCandidates: 2,
+      listConfiguredHomes: async () => [busyProfile],
+    }).discover();
+    expect(discovery.outcome).toBe('candidate_limit');
+    const ids = discovery.sessions.map((s) => s.sessionId);
+    expect(ids).toContain('default-old');
+    expect(ids.filter((id) => id.startsWith('p'))).toHaveLength(2);
+  });
+
+  test('the total candidate ceiling holds at max, refuses max+1, and stops walking homes once full', async () => {
+    const homes = [fixtureRoot(), fixtureRoot(), fixtureRoot()];
+    for (const [index, home] of homes.entries())
+      for (const name of index === 2 ? ['c1'] : [`h${index}a`, `h${index}b`])
+        writeFileSync(rolloutPath(home, `${name}.jsonl`), line(meta(name)));
+    const scanHome = vi.spyOn(
+      CodexRolloutSessionSource.prototype as unknown as {
+        scanHome: (root: string) => unknown;
+      },
+      'scanHome',
+    );
+    const at = (configured: string[]) =>
+      new CodexRolloutSessionSource({
+        homeDir: homes[0],
+        maxCandidates: 2,
+        maxTotalCandidates: 4,
+        listConfiguredHomes: async () => configured,
+      }).discover();
+
+    const exactlyFull = await at([homes[1]!]);
+    expect(exactlyFull.outcome).toBe('ok');
+    expect(exactlyFull.sessions).toHaveLength(4);
+
+    scanHome.mockClear();
+    const oneMore = await at([homes[1]!, homes[2]!]);
+    expect(oneMore.outcome).toBe('candidate_limit');
+    expect(oneMore.sessions.map((s) => s.sessionId).sort()).toEqual([
+      'h0a',
+      'h0b',
+      'h1a',
+      'h1b',
+    ]);
+    // The third home is not walked once the total is full.
+    expect(scanHome).toHaveBeenCalledTimes(2);
+    expect(
+      () =>
+        new CodexRolloutSessionSource({
+          homeDir: homes[0],
+          maxTotalCandidates: 513,
+        }),
+    ).toThrow(/maxTotalCandidates/);
+  });
+
+  test('a refresh runs only for a well-formed Codex affinity, and concurrent ones share one home-list read', async () => {
+    const defaultHome = fixtureRoot();
+    const profileHome = fixtureRoot();
+    writeFileSync(rolloutPath(profileHome), line(meta('profile-session')));
+    const listConfiguredHomes = vi.fn(async () => [profileHome]);
+    const options = { homeDir: defaultHome, listConfiguredHomes };
+    const affinity = (await discoverOne(new CodexRolloutSessionSource(options)))
+      .affinity!;
+    listConfiguredHomes.mockClear();
+
+    const source = new CodexRolloutSessionSource(options);
+    for (const malformed of [
+      { kind: 'claude-config-home', ref: affinity.ref },
+      { kind: 'codex-config-home', ref: 'not-a-digest' },
+      { kind: 'codex-config-home', ref: affinity.ref, extra: true },
+    ])
+      await expect(
+        source.resolveSourceHomeWithRefresh(malformed as never),
+      ).resolves.toBeNull();
+    expect(listConfiguredHomes).not.toHaveBeenCalled();
+
+    const answers = await Promise.all([
+      source.resolveSourceHomeWithRefresh(affinity),
+      source.resolveSourceHomeWithRefresh(affinity),
+      source.resolveSourceHomeWithRefresh(affinity),
+    ]);
+    expect(answers).toEqual(Array(3).fill(realpathSync(profileHome)));
+    expect(listConfiguredHomes).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failing or oversized home list keeps the default home and reports the limit', async () => {
+    const defaultHome = fixtureRoot();
+    writeFileSync(rolloutPath(defaultHome), line(meta('default')));
+    const failing = new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+      listConfiguredHomes: async () => {
+        throw new Error('config unreadable');
+      },
+    });
+    expect((await failing.discover()).sessions.map((s) => s.sessionId)).toEqual(
+      ['default'],
+    );
+
+    const extra = fixtureRoot();
+    writeFileSync(rolloutPath(extra), line(meta('extra')));
+    const capped = await new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+      maxHomes: 1,
+      listConfiguredHomes: async () => [extra, 'relative/home'],
+    }).discover();
+    expect(capped.outcome).toBe('candidate_limit');
+    expect(capped.sessions.map((s) => s.sessionId)).toEqual(['default']);
   });
 
   test('bounds traversal, yields while parsing, and rejects unsafe option expansion', async () => {

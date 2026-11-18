@@ -1,0 +1,7 @@
+{
+  "revision": "67bd286b93e17830d406816132e065d38135b8f6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added one test: a conversation still opening keeps its draft editable (new placeholder) while Enter and Send stay refused. Matches the chat-composer page's new opening paragraph; no other composer claim changed.","inputs":["src-ui/src/__tests__/ChatInputArea.test.tsx"]}
+  ]
+}

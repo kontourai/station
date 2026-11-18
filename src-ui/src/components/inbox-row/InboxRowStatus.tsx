@@ -52,6 +52,7 @@ const RUNG_GLYPHS: Record<
   childWork: PeopleGlyph,
   // A clock, never the play triangle: this run is not visibly progressing.
   quiet: TimeGlyph,
+  scheduled: TimeGlyph,
   running: PlayGlyph,
   draft: EditGlyph,
   done: CheckGlyph,

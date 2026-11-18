@@ -22,7 +22,7 @@ choose a section from the picker. One section is shown at a time. Section
 links remain bookmarkable, and moving between sections keeps unsaved edits.
 
 **Save** applies project defaults. Layout, source, access and knowledge actions
-apply separately when confirmed. A saved model connection that is no longer
+apply separately when confirmed, and **Pull requests** saves as you change it. A saved model connection that is no longer
 available stays visible until you choose a replacement; an unrelated edit does
 not reset it to the Station default.
 
@@ -31,6 +31,79 @@ phone or remote browser belongs to that Station, rather than to the viewing
 device. **Sources** shows repository links and checkout locations. Use
 **Add a repository** to attach a checkout and **Advanced: checkout repair**
 for filesystem repair. **Workspace** edits the Project's local working folder.
+
+### Project brief, memory and models
+
+With the **Project brief, memory and models** preview on
+(`project-coordination`), Project settings gain four sections. Each new
+Session in the Project starts with the brief and the memory index, whatever
+engine runs it: Station's own, Claude Code, Codex, an ACP engine, a Task's
+Session, a delegated Session or a scheduled run in the Project. Sessions
+already running keep what they started with; an edit reaches the next one.
+The turn's **Added context** lists **Project brief** and **Project memory**
+with approximate tokens, so you can see that they arrived.
+
+- **Brief**: the Project's one-line **Goal**, shown under its name on the
+  Project page, and its **Instructions** (up to 16,000 characters). The empty
+  field suggests what to cover: what the Project is for, where work happens,
+  how a Session checks its work, what to do when something is missing, and
+  what needs your go-ahead. Saved with **Save**.
+- **Memory**: short notes agents save when you ask them to remember
+  something or correct them, and that you can add, edit or delete here. Each
+  note shows who last changed it and when. A new Session sees the note titles
+  as background, not instructions, and opens a note when it needs it. Changes
+  apply at once. Notes stay in this Station's data for the Project, never in
+  a repository, and only the Project's owner sees them. Agents use the
+  `remember_project_note`, `list_project_notes`, `read_project_note` and
+  `forget_project_note` tools, which reach only their own Project.
+- **Models and effort**: the reasoning effort for the Project's own chats
+  (those that are not Tasks; their model is the Project's **AI model**), and
+  the engine, model and effort for the Tasks it dispatches. A Task dispatched
+  with its own model or effort keeps it. Effort applies on Claude Code, Codex
+  and Muse. A new Project starts its chats at medium effort. Each Task runs
+  its own Session, so parallel Tasks multiply usage. Saved with **Save**;
+  each change reaches the next chat or Task.
+- **Usage**: tokens the Project's Sessions used on this Station in the last
+  30 days, the Project chats' share, and the split by Task and by model.
+
+Three kinds of instructions reach a Session. The **brief** is your standing
+instruction for every Session in the Project. **Memory** is notes agents keep
+as they work, read as background. **Repository instructions** stay in each
+repository's `AGENTS.md` or `CLAUDE.md`.
+
+The first time a Session starts in a Project after you turn the preview on,
+Station copies the Project's existing rules (`project-rules.md` in Project
+knowledge) into the brief's instructions, after any instructions already
+there. The copy is word for word, runs once, and leaves the rules document in
+place; from then on the brief carries them on every engine, without a vector
+database or embedding provider. Rules longer than the brief allows are not
+copied and keep working as before. Turning the preview off restores the old
+behavior: no brief or memory, and the rules inject only on Station's engine
+when knowledge search is configured.
+
+### Pause, archive, delete
+
+The last section of Project settings stops or removes a Project's work.
+Pause and Archive are Feature Previews (`project-pause-archive`); Delete is
+always offered:
+
+- **Pause** stops every chat running in the Project, through the same Stop a
+  chat offers, and holds it: no message, schedule or restart starts a turn
+  there until you **Resume**. Station waits up to 10 seconds for running
+  chats to stop and says how many it stopped. A stopped chat continues only
+  when you message it after Resume. The Project page shows a banner with
+  **Resume** while it is paused.
+- **Archive** does what Pause does and hides the Project from the sidebar.
+  **Archived (n)** at the end of the Project list shows archived Projects;
+  **Unarchive** returns one, active.
+- **Delete** first lists what it removes (Project settings, Layouts,
+  knowledge documents, schedules), the running chats it stops, and what it
+  keeps: Tasks, chats, the repository checkout, pushed branches and pull
+  requests. Tasks and chats stay readable in history.
+
+**Schedules** (the `project-schedules` Feature Preview) lists the Project's
+own automations. See
+[Project schedules](automations.md#project-schedules).
 
 ## Feature previews
 
@@ -50,9 +123,13 @@ only when this Station's build can run it; if none is, the section says
 | --- | --- | --- | --- |
 | `durable-station-agent` | Crash-durable Station Agent | Keeps Station-engine text turns running after a client disconnect and resumes journaled steps after restart. Stop still cancels. | Experimental; writes every model/tool step to private SQLite and can add substantial latency. An uncertain model request is surfaced without automatic resend; pending approvals still require an answer. |
 | `reviewed-usage-tariffs` | Reviewed usage tariffs | Lets the operator review exact Bearing source bytes and route/model tariff bindings for later usage capture. | No default price or live fetching. Retail values remain separate from billing, subscription fees and quota. Historical snapshots stay frozen. |
-| `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
+| `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. A new Codex Session whose Agent has Station Control also gets every Station Control tool on that channel instead of a header token, which adds about 110 KB of tool definitions to each thread. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
+| `codex-tool-families` | Codex tool families | New Codex Sessions that use Station Control over its header token list a short index of tool families instead of every tool and load a family when they need it. Needs Codex 0.167.0 or later; never applies to the Codex browser and device tools channel, Claude or ACP engines. | A resumed Session starts at the index again and reloads the families it uses. Turning it on applies to new Sessions; a thread that started without families keeps every tool on resume. Turning it off also applies on resume. A running Session keeps what it started with. |
 | `station-orchestration-instructions` | Station orchestration instructions | Tells Agents that have Station control tools when and how to use them (delegating to another Agent, waiting on Sessions, browser and device tools). It rides the Agent's system prompt on Claude when the Agent has one, otherwise the first message of a new Session. | Adds a few thousand characters to each new Session's prompt. Applies to Sessions started after the change; resumed Sessions are not re-sent. Station control tool approval and access rules are unchanged. |
+| `project-overview` | Project Overview | Groups a Project's Tasks by what they need next (Waiting on you, Ready for review, Working, Landing, Idle, Resolved), adds a Waiting on you dot to the sidebar and Room, and adds **Overview and notifications** to Project settings: when Idle Tasks resolve and when this Project notifies you. | One GitHub GraphQL read per unarmed open pull request to check the merge queue, shared for 150 seconds. Per-Project notification choices start applying to finished turns and approvals, including an existing **Mute this project**. |
 | `learning-lifecycle-review` | Learning lifecycle review | Shows evidence, decisions, active guidance, effects and retirement in Project Sources. | Personal POSIX hosts only. Owner-reviewed activation can change future Task context; it does not install or deploy a Skill. |
+| `project-pause-archive` | Pause and archive Projects | Offers **Pause** and **Archive** in Project settings. Both stop the Project's running chats and hold its turns and schedules until **Resume** or **Unarchive**. | Turning it off hides Pause and Archive but keeps every hold: a paused or archived Project still offers Resume or Unarchive. |
+| `project-schedules` | Project schedules | Offers **Schedules** in Project settings and lets an agent propose a Project schedule. Each run starts a new Task in the Project. | Each run starts an agent and can spend model credits. Turning it off holds every Project schedule: none runs, and Run now is refused. |
 | `context-compaction` | Context compaction | Offers a bounded summary cold start and opt-in threshold compaction where supported. | Summary generation can spend model tokens. Old messages stay retained; native tool and approval state is omitted, not transferred. Unknown capacity prevents automatic compaction. |
 | `project-supervision` | Project supervision | Retains opted-in Task supervision and reconciles missed next actions through the conversation inbox. | Needs Coordinator chat. May queue model turns; current access, Task incarnation, waits, capacity and original delivery keys still govern placement. |
 | `github-automation-actions` | GitHub automation actions | Dispatches explicitly granted, matching rules into durable Tasks and their first inbox turn. | Can spend model tokens under retained budgets. Off by default; observation alone grants no execution authority. Repair publication requires credential separation. |
@@ -77,20 +154,26 @@ only when this Station's build can run it; if none is, the section says
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
 | `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
+| `pull-request-agent-feedback` | Pull request agent feedback | Sends a chat's agent one message when a pull request it owns has failing checks, unresolved review threads or a merge conflict. Turn it on per pull request from the pull request's ⋯ in a chat's Details, or once for a Project in its settings' Agent feedback. Tasks can also watch the pull requests they keep (Project settings → **Pull requests**, or **Watch pull requests** on a Task). | Uses the host's `gh` login and one GitHub API request per pull request every few minutes. Off by default, personal Stations only. Waits while the agent works or waits on you; pauses after 3 rounds on one push. A watching Task gets a set number of fix attempts, then waits for you; its agent may not merge, arm auto-merge or force-push, and asks you before changing CI configuration. |
+| `pull-request-head-review` | Pull request head review | Runs Station's independent review once on each new head of a pull request a chat owns, and sends its required findings to the agent. Turn it on per pull request with "Review each new head". | Needs Pull request agent feedback. Uses reviewer agents (provider charges may apply); at most one review per Project at a time and 10 per day. Reviews the Project's checkout and never fetches. Pull requests already set to review resume when you turn this on. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
-| `task-review` | Task review | Adds a Review tab and Overview Timeline to Tasks for Screens and anchored comments that can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
+| `task-review` | Task review | Adds Review, Timeline and committed-code review to eligible Tasks. | Sending comments starts or queues a lead-agent turn; code review may incur provider charges. Screen capture needs a committed workspace. |
+| `guided-engine-setup` | Guided engine setup | Lets chat find setup pages; you review installation, sign in and choose Station tools in the engine pane. | Personal Stations only. Existing device permissions still apply. Turning it off keeps an existing install visible and stoppable, but starts no new one. |
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the configured sign-in address, selected in Settings or supplied by `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
 | `apps-library` | Apps library | Adds a searchable launcher for your personal Boards and plugin layouts, with name, icon and description editing. | Uses existing personal-layout permissions; does not install plugins or grant access. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
 | `chat-apps` | Chat apps | Shows integration capability status in Connections and write-back history in Task Details. | Status checks can run `gh auth status` on the Station host; an unverified result does not prove delivery. |
 | `repository-auth-details` | Repository sign-in details | Shows the current Station’s GitHub CLI account, health and reported scopes in Project Sources. | Runs a bounded `gh auth status --json hosts --no-refresh`; no token refresh, credential transfer or repository-permission proof. |
 | `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
+| `project-library` | Project Library | Adds a **Library** to a Project's **Files & connections** tab: files people add and files its Tasks keep, readable by every chat in the Project through `list_project_library` and `read_project_library_file`. | Uploads are stored on this Station, up to 25 MB each; hidden files and installed-package folders are skipped. Personal Stations only. Turning it off hides the Library and refuses its routes and tools; uploaded files are kept. |
+| `continue-in-project` | Continue in Project | Adds **Continue in Project…** to a chat's More menu and **Setup recommendations** to a new Project. | Drafts only: nothing is created until you choose Create, Create Task or Apply, and the chat is never changed. |
 | `continue-unattended-after-restart` | Continue unattended work after restart | After a restart, continues Task and delegated work the restart cut off, once, with the restart note, oldest Task first. | Starts an agent turn per interrupted turn on its own; never for your chats, Automations or Tasks that are done, canceled or blocked. Waits for engine-start capacity. |
 | `paired-station-chats` | Paired Station chats | Starts text chats on a paired Station from New Chat, with that Station’s Project picker, transcript, replies and approvals. | Personal hosts only. Uses the destination’s providers and credits. Off disables reads and new operations; saved tabs and unconfirmed messages remain. Existing remote Tasks keep their separate flow. |
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 | `project-sharing-setting` | Project sharing setting | Shows **Project sharing with local accounts** under **Settings → System**, where the Station operator turns on invitations with username and password accounts and picks the sign-in address. | Only the control is the preview. Applying restarts Station through its process supervisor. Turning the preview off keeps the saved choice in force; environment variables set by the deployment always win. See [deployment authentication](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#turn-it-on-from-settings). |
+| `project-coordination` | Project brief, memory and models | Starts every new Session in a Project with its goal, instructions and memory notes on every engine, and adds Brief, Memory, Models and effort, and Usage to Project settings ([details](#project-brief-memory-and-models)). | Adds the brief and memory index to each new Session's first turn, which costs tokens. Copies a Project's rules into its brief once. Turning it off stops adding them; saved briefs and notes remain. |
 | `session-cli-reads` | Session reads from the station CLI | Lets a person wait on, digest and list their own Sessions from the CLI: `station sessions wait`, `station sessions digest` and `station activity`. | Read-only. A wait holds one connection for up to 50 seconds at a time, from a bounded per-person pool. |
 
 For **Crash-durable Station Agent**, an output-limit message means you should start a new turn to continue. Recovery replay for finished turns (completed, failed or cancelled) expires after seven days; this cleanup does not delete conversation history.
@@ -112,6 +195,21 @@ after the latest 12. A bound agent can also capture an
 authorized device Screen; see [device capture](https://github.com/kontourai/station/blob/main/docs/guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task).
 Turning the preview off hides Review and Timeline; a
 `taskView=review` link then opens Overview.
+
+Overview also offers **Code review** on personal hosts. Its checkout label,
+branch and commit describe the Task's recorded working directory; they do not
+establish where every linked conversation runs or whether dependencies are
+prepared. Expand **Checkout and comparison** to inspect the path and base
+commit. Assign a lead Agent and configure a different Codex Agent in the Project
+to request a read-only review. Requesting review can spend provider credits.
+When no reviewer is available, **Open Agents** leads to the existing Agent setup.
+
+Reviews cover committed changes only. Reviewer failures and the comparison with
+the current checkout are separate observations. A recorded review is neither
+approval nor a passed gate. Refresh after changes to inspect freshness. If a
+reply is lost, **Retry request** uses the original Project, request and commit
+pair, including after reloading the same browser tab. Unavailable history is
+shown explicitly instead of an empty review list.
 
 With **Walkthroughs** also enabled, Browser clips made by the Task's bound
 agent appear under **Screens** with their commit and duration. With **Device
@@ -266,10 +364,10 @@ section, and only on a personal Station.
    as `me@build-host.example` or an alias from your SSH config.
 3. Choose **Test connection**. Station checks that it can reach the host and
    that Node.js, Xcode simulators and the Android SDK are available.
-4. Choose **Enable device hub** and confirm **Install and enable**. Station
-   installs its device hub on the host under `~/.station-device-host`.
+4. Choose **Enable device helper** and confirm **Install and enable**. Station
+   installs its device helper on the host under `~/.station-device-host`.
 
-Each host's menu also offers **Share devices…**, **Disable hub**, **Edit** and
+Each host's menu also offers **Share devices…**, **Disable helper**, **Edit** and
 **Remove**. A Station can have up to 32 hosts. The
 [mobile device workspace guide](https://github.com/kontourai/station/blob/main/docs/guides/mobile-device-workspace.md)
 explains what you can do with the devices once a host is ready.

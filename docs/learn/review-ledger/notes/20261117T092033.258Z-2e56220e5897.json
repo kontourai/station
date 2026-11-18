@@ -1,0 +1,9 @@
+{
+  "revision": "d2c0261a2de1858da260d44f4dac45468c65106e",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#5065: adds PROJECT_MEMORY_FULL_CODE (project_memory_full) to PROVIDER_FAILURE_KINDS as the non-retryable conflict kind, a state refusal like project_held, and pins it in the independent wire-expectations table. contracts.md and sdk.md describe the closed kind set, retry eligibility and the diagnostic mapping generically and list no individual codes; their claims still hold.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#5065: adds PROJECT_MEMORY_FULL_CODE (project_memory_full) to PROVIDER_FAILURE_KINDS as the non-retryable conflict kind, a state refusal like project_held, and pins it in the independent wire-expectations table. contracts.md and sdk.md describe the closed kind set, retry eligibility and the diagnostic mapping generically and list no individual codes; their claims still hold.","inputs":["packages/contracts/src/provider-failure.ts"]}
+  ]
+}

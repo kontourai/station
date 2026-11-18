@@ -2087,7 +2087,7 @@ describe.runIf(process.platform !== 'win32')(
         ).rejects.toThrow('invalid_native_proof');
         const changedChannel = {
           ...invitation,
-          surface: { ...invitation.surface, channel: 'beta' as const },
+          surface: { ...invitation.surface, channel: 'nightly' as const },
         };
         await expect(
           service.redeemNativeInvitation(

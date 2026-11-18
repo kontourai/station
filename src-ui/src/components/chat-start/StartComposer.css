@@ -41,6 +41,8 @@
 .start-composer__without-project {
   flex-basis: 100%;
   color: var(--k-text-muted);
+  text-decoration: underline;
+  text-underline-offset: var(--k-space-1);
 }
 .start-composer__location {
   display: flex;
@@ -224,6 +226,7 @@
   cursor: pointer;
 }
 .start-composer__chip-remove:focus-visible,
+.start-composer__file-preview:focus-visible,
 .start-composer__context-chip:focus-visible {
   outline: 2px solid var(--k-focus);
   outline-offset: 2px;
@@ -570,6 +573,18 @@
   margin-right: var(--k-space-2);
 }
 
+/* The thumbnail is the preview control; the image keeps its own size. */
+.start-composer__file-preview {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  min-height: 44px;
+  background: none;
+  border-radius: var(--k-radius-sm);
+  cursor: zoom-in;
+}
+
 .start-composer__actions {
   flex: 1 1 0;
   min-width: 0;
@@ -591,4 +606,12 @@
 .start-composer {
   container-type: inline-size;
   --composer-label-collapse: 310px;
+}
+/* A Station that cannot take work now: listed, greyed, with its reason. */
+.start-menu__list .start-menu__station--unavailable {
+  color: var(--k-text-muted);
+}
+.start-menu__list .start-menu__station--unavailable:disabled {
+  background: transparent;
+  cursor: not-allowed;
 }

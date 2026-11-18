@@ -10,9 +10,9 @@ import {
   sessionFailureCause,
 } from '../../utils/attention';
 import {
-  acknowledgeThenOpen,
   isPlainLeftClick,
   navigateToAttentionTarget,
+  openThenAcknowledge,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
 import {
@@ -225,7 +225,7 @@ function FailedSessionOpenLink({
         onClose();
         if (!isPlainLeftClick(event)) return;
         event.preventDefault();
-        void acknowledgeThenOpen({
+        void openThenAcknowledge({
           acknowledge: () => mutation.mutateAsync(item.id),
           navigate: () => navigateToAttentionTarget(href),
         });
@@ -256,6 +256,8 @@ function openLinkLabel(kind: AttentionItem['kind']): string {
       return 'Review tool request';
     case 'plugin-lifecycle-proposal':
       return 'Open in Plugins';
+    case 'pull-request-feedback':
+      return 'Open chat';
     default:
       return 'Open session';
   }

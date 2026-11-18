@@ -39,7 +39,10 @@
  * reached through a helper parameter (`const read = (p) =>
  * readFileSync(join(UI_SRC, p))`, at least 14 files, hiding
  * `ChatDockHeader.tsx`, `DockShell.tsx` and `ProjectLayoutRenderer.tsx`) or
- * written as a cwd-relative literal is not seen at all. A green run here is
+ * written as a cwd-relative literal is not seen at all (a literal naming a
+ * native file under `src-desktop/`, `tests/ios-runtime-smoke/` or
+ * `scripts/templates/` is scheduled separately, see
+ * `native-literal-pin-boundary.test.ts`). A green run here is
  * evidence about the pins the scanner reports, not about the class;
  * `path-read-pin-scan.mjs` carries the full statement of the gap.
  *
@@ -65,6 +68,7 @@ import { selectChangedVerification } from '../run-changed-verification.mjs';
 import {
   buildTestImpactManifest,
   E2E_CONTRACT_BOUNDARIES,
+  nativeLiteralPinEdges,
   PATH_READ_PIN_BOUNDARY_TEST,
   pathReadPinEdges,
   REPO_SCAN_SUITES,
@@ -101,6 +105,10 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads each workflow under .github/workflows by a name taken from a
+  // directory listing, to check which pull-request workflows no source event
+  // triggers. Its ci-health.mjs import selects it for changes to that script.
+  'scripts/__tests__/ci-health.test.ts',
   // Reads only package.json created in a trackTempDirs checkout fixture,
   // never repository source. Its real service and route imports select it.
   'src-server/services/projects/__tests__/project-working-configuration.test.ts',
@@ -112,6 +120,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // Reads staged licenses and native binaries only in trackTempDirs fixtures.
   // Its desktop-server-runtime import selects the real staging behavior.
   'scripts/__tests__/desktop-runtime-pruning.test.ts',
+  // Its completeness check reads every scripts test by a computed path to
+  // discover native-file literals independently of the derivation under
+  // test; the scripts it reads are its subject, not one pinned source file.
+  'scripts/__tests__/native-literal-pin-boundary.test.ts',
   // Reads a deliberately excluded fixtures/ manifest and temporary installed copies,
   // not production source. Keep fixture paths outside the source pin inventory.
   'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
@@ -740,6 +752,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/utils/__tests__/git-exec.hardening.test.ts':
     'git ls-files inside the temporary repository its helper creates',
+  'scripts/__tests__/version-pr-current.test.ts':
+    'git ls-files inside the temporary repository its helper creates',
   'tests/learning-source.spec.ts':
     'a Playwright spec; Vitest cannot schedule it (#1817)',
   'tests/message-delivery-recovery.spec.ts':
@@ -964,10 +978,12 @@ describe('derived pin edges only add to selection', () => {
     expect(built.slice(0, TEST_IMPACT_MANIFEST.length)).toEqual(
       TEST_IMPACT_MANIFEST,
     );
-    // #2922: the spawned-script edges follow the pin edges.
+    // The native-literal edges (#4891) and then the spawned-script edges
+    // (#2922) follow the pin edges.
     expect(built.length).toBe(
       TEST_IMPACT_MANIFEST.length +
         derived.length +
+        nativeLiteralPinEdges({ root: ROOT }).length +
         spawnedScriptEdges({ root: ROOT }).length,
     );
     expect(derived.length).toBeGreaterThan(40);

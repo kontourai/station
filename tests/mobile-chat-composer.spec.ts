@@ -1301,37 +1301,47 @@ test('keeps mobile attachment selection reviewable without moving the draft', as
       buffer: Buffer.from('# Accessibility'),
     },
   ]);
-  await expect(
-    page.getByRole('button', { name: 'Review 5 attachments' }),
-  ).toBeVisible();
+  const strip = page
+    .locator('#chat-dock')
+    .getByRole('list', { name: 'Attached files' });
+  await expect(strip.getByRole('listitem')).toHaveCount(5);
+  await expect(strip).toContainText('mobile-context.md');
   await expect(textarea).toHaveValue('Review the attached notes');
 
-  const reviewAttachments = page.getByRole('button', {
-    name: 'Review 5 attachments',
+  // With files attached, the paperclip still opens the picker (to add more);
+  // the strip is where they are reviewed, so there is no panel to open.
+  const chooser = page.waitForEvent('filechooser');
+  await attach.click();
+  await chooser;
+  await expect(page.locator('.attachment-menu')).toHaveCount(0);
+
+  // The image's thumbnail opens the transcript's previewer, at touch size.
+  const thumbnail = strip.getByRole('button', {
+    name: 'Preview mobile-photo.png',
   });
-  await reviewAttachments.click();
-  const menu = page.locator('.attachment-menu');
-  await expect(menu).toBeVisible();
-  await setVisualViewport(page, 360);
-  await expect(menu).toContainText('mobile-context.md');
-  await expect(menu).toContainText('mobile-photo.png');
-  const menuBox = await menu.boundingBox();
-  expect(menuBox?.x ?? -1).toBeGreaterThanOrEqual(0);
-  expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(390);
-  expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(360);
-  const listBox = await menu.locator('.attachment-menu__list').boundingBox();
-  expect((listBox?.y ?? 0) + (listBox?.height ?? 0)).toBeLessThanOrEqual(360);
-  for (const label of ['Add more', 'Clear all']) {
-    const box = await menu.getByRole('button', { name: label }).boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-  }
+  const thumbBox = await thumbnail.boundingBox();
+  expect(thumbBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(thumbBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  await thumbnail.click();
+  const preview = page.getByRole('dialog', { name: 'Preview' });
+  await expect(preview).toBeVisible();
+  await preview.getByRole('button', { name: 'Close preview' }).click();
+  await expect(preview).toBeHidden();
 
-  await setVisualViewport(page, 844);
-  await textarea.click({ position: { x: 8, y: 8 } });
-  await expect(menu).toBeHidden();
-  await expect(textarea).toHaveValue('Review the attached notes');
-  await reviewAttachments.click();
-  await menu.getByRole('button', { name: 'Clear all' }).click();
+  // Each chip removes its own file; the draft stays.
+  for (const name of [
+    'mobile-context.md',
+    'mobile-photo.png',
+    'requirements.md',
+    'review-notes.md',
+    'accessibility.md',
+  ]) {
+    const remove = strip.getByRole('button', { name: `Remove ${name}` });
+    const box = await remove.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    await remove.click();
+  }
+  await expect(strip).toHaveCount(0);
   await expect(attach).toBeVisible();
   await expect(textarea).toHaveValue('Review the attached notes');
 });
@@ -1438,6 +1448,207 @@ test('stages a current-host attachment before dispatching only its opaque refere
   expect(JSON.stringify(dispatched[0])).not.toContain('c3RhZ2UgbWU=');
 });
 
+/**
+ * The staging fixture for an upload whose PUT is held until the test settles
+ * it, so Send can be pressed while the file is still uploading.
+ */
+async function routeHeldStaging(page: Page) {
+  await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/inbox',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill(json({ success: true, data: { entries: [] } }));
+    },
+  );
+  await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/event-window**',
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This dispatch fixture does not emit provider events',
+        }),
+      }),
+  );
+  // The accepted send opens the conversation, which reads these.
+  await page.route(
+    /\/api\/(?:orchestration\/agent-schedule\/staged-attachment-thread|orchestration\/sessions\/staged-attachment-thread\/checkpoints|terminal\/runs)(?:\?.*)?$/u,
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      const path = new URL(route.request().url()).pathname;
+      const data = path.endsWith('/checkpoints')
+        ? []
+        : path.endsWith('/terminal/runs')
+          ? { runs: [] }
+          : { wakeUps: [], jobProposals: [], jobs: [] };
+      await route.fulfill(json({ success: true, data }));
+    },
+  );
+  const stageId = 'stage_22222222-2222-4222-8222-222222222222';
+  let prepared: Record<string, unknown> | undefined;
+  let settleUpload: (ok: boolean) => void = () => undefined;
+  const uploadSettled = new Promise<boolean>((resolve) => {
+    settleUpload = resolve;
+  });
+  const dispatched: unknown[] = [];
+  await page.route(
+    /\/api\/orchestration\/attachment-staging(?:\/.*)?$/u,
+    async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith('/capability'))
+        return route.fulfill(
+          json({ state: 'supported', version: 1, maxConcurrentUploads: 3 }),
+        );
+      if (path.endsWith('/prepare')) {
+        prepared = request.postDataJSON() as Record<string, unknown>;
+        return route.fulfill(
+          json({
+            ...prepared,
+            stageId,
+            uploadGrant: 'b'.repeat(43),
+            expiresAt: '2030-01-01T00:00:00.000Z',
+          }),
+        );
+      }
+      if (path.endsWith(`/${stageId}`) && request.method() === 'PUT') {
+        if (!(await uploadSettled))
+          return route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'upload failed' }),
+          });
+        return route.fulfill(
+          json({
+            ...prepared,
+            stageId,
+            source: 'current-composer',
+            digest: `sha256-${'b'.repeat(64)}`,
+            expiresAt: '2030-01-01T00:00:00.000Z',
+          }),
+        );
+      }
+      return route.abort();
+    },
+  );
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched.push(route.request().postDataJSON());
+    return route.fulfill(
+      json(
+        foregroundMessageReceiptEnvelope({
+          conversationId: 'staged-attachment-thread',
+          agent: 'agent:claude',
+        }),
+      ),
+    );
+  });
+  // The accepted send opens the conversation, whose transcript asks for its
+  // turn directory; a 404 is the client's "no directory" answer.
+  await page.route(
+    '**/api/orchestration/session-reads/staged-attachment-thread/turn-directory*',
+    (route) =>
+      route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: false, error: 'Not found' }),
+      }),
+  );
+  return { stageId, dispatched, settleUpload };
+}
+
+for (const [width, height] of [
+  [390, 844],
+  [1440, 900],
+] as const) {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`Send during an upload waits and sends with the file (${width}px ${colorScheme})`, async ({
+      page,
+    }, testInfo) => {
+      test.setTimeout(30_000);
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme });
+      await mockChatShell(page);
+      const { stageId, dispatched, settleUpload } =
+        await routeHeldStaging(page);
+
+      const textarea = await openComposer(page);
+      await closeRunSetup(page);
+      await textarea.fill('Send it when the upload lands');
+      await page.locator('#chat-dock .attachment-input').setInputFiles({
+        name: 'held-notes.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('held upload'),
+      });
+
+      const strip = page.getByRole('list', { name: 'Attached files' });
+      await expect(
+        strip.getByText(/^(Uploading|Waiting to upload)/),
+      ).toBeVisible();
+      const send = page.getByRole('button', { name: 'Send', exact: true });
+      // Uploading is progress, not a block: Send works and nothing is red.
+      await expect(send).toBeEnabled();
+      await send.click();
+      const waiting = page.getByText('Sends when uploads finish');
+      await expect(waiting).toBeVisible();
+      await expect(send).toBeDisabled();
+      await expect(page.locator('.chat-input__attachment-error')).toHaveCount(
+        0,
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`upload-wait-${width}-${colorScheme}.png`),
+      });
+      expect(dispatched).toHaveLength(0);
+
+      settleUpload(true);
+      await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+        timeout: 10_000,
+      });
+      expect(dispatched[0]).toMatchObject({
+        message: 'Send it when the upload lands',
+        attachmentRefs: [{ stageId, name: 'held-notes.txt' }],
+      });
+      await expect(waiting).toBeHidden();
+    });
+  }
+}
+
+test('a failed upload under a waiting send shows its error and sends nothing', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockChatShell(page);
+  const { dispatched, settleUpload } = await routeHeldStaging(page);
+
+  const textarea = await openComposer(page);
+  await closeRunSetup(page);
+  await textarea.fill('This upload will fail');
+  await page.locator('#chat-dock .attachment-input').setInputFiles({
+    name: 'failing-notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('failing upload'),
+  });
+  const strip = page.getByRole('list', { name: 'Attached files' });
+  await expect(strip.getByText(/^(Uploading|Waiting to upload)/)).toBeVisible();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('Sends when uploads finish')).toBeVisible();
+
+  settleUpload(false);
+  await expect(
+    strip.getByRole('button', {
+      name: /^(Retry|Upload again) failing-notes\.txt$/,
+    }),
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
+  await expect(page.getByText('Sends when uploads finish')).toBeHidden();
+  expect(dispatched).toHaveLength(0);
+  await expect(textarea).toHaveValue('This upload will fail');
+});
+
 // archive#3344. The whole paste path against the STATION engine — the one an
 // unbound Station agent uses, and the one whose composer used to refuse every
 // image because no signal it read said yes. Three claims, each of which failed
@@ -1506,8 +1717,9 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   // Visible in the composer itself, not behind the paperclip popover.
   const strip = page.getByRole('list', { name: 'Attached files' });
   await expect(strip).toBeVisible();
+  // The thumbnail is its Preview button; the image inside is decorative.
   await expect(
-    strip.getByRole('img', { name: 'pasted-screenshot.png' }),
+    strip.getByRole('button', { name: 'Preview pasted-screenshot.png' }),
   ).toBeVisible();
   const remove = strip.getByRole('button', {
     name: 'Remove pasted-screenshot.png',
@@ -5143,7 +5355,8 @@ for (const [name, viewport, maximize] of [
         .boundingBox();
       expect(controlsRow!.height).toBeLessThanOrEqual(44.5);
       // Send is concealed from the accessibility tree while the draft is
-      // empty, so it is found by its group rather than by role.
+      // empty, so it is found by its group rather than by role. An empty
+      // draft collapses it entirely, leaving nothing for Discard to cover.
       const send = await page
         .locator('.chat-input__submit-controls')
         .boundingBox();
@@ -5151,10 +5364,11 @@ for (const [name, viewport, maximize] of [
         (report) => report.inComposer,
       );
       expect(carried, 'the composer carries a Discard').toBeDefined();
-      expect(
-        carried!.box[0] + carried!.box[2],
-        'Discard stays clear of Send',
-      ).toBeLessThanOrEqual(send!.x + 0.5);
+      if (send)
+        expect(
+          carried!.box[0] + carried!.box[2],
+          'Discard stays clear of Send',
+        ).toBeLessThanOrEqual(send.x + 0.5);
       // Under load the transcript can report a scroll while it is still
       // collapsing, which portals its Scroll to bottom button into the
       // composer's activity row. That state is forced here rather than

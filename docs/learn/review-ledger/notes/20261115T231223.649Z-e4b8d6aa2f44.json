@@ -1,0 +1,17 @@
+{
+  "revision": "85534836acfda54b33644dc5fc2847ffd7065aab",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Fix round: the hook's docs-freshness step now warns until the branch records a review and refuses after; the freshness check's --json adds reason, base and mergeBase; .fallowrc.json declares the three hook-invoked scripts as dynamically loaded. Re-read this page's claims about these: none states the old refuse-always rule or the JSON field list, and none is contradicted.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Fix round: the hook's docs-freshness step now warns until the branch records a review and refuses after; the freshness check's --json adds reason, base and mergeBase; .fallowrc.json declares the three hook-invoked scripts as dynamically loaded. Re-read this page's claims about these: none states the old refuse-always rule or the JSON field list, and none is contradicted.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Fix round: the hook's docs-freshness step now warns until the branch records a review and refuses after; the freshness check's --json adds reason, base and mergeBase; .fallowrc.json declares the three hook-invoked scripts as dynamically loaded. Re-read this page's claims about these: none states the old refuse-always rule or the JSON field list, and none is contradicted.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Fix round: the hook's docs-freshness step now warns until the branch records a review and refuses after; the freshness check's --json adds reason, base and mergeBase; .fallowrc.json declares the three hook-invoked scripts as dynamically loaded. Re-read this page's claims about these: none states the old refuse-always rule or the JSON field list, and none is contradicted.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Fix round: the hook's docs-freshness step now warns until the branch records a review and refuses after; the freshness check's --json adds reason, base and mergeBase; .fallowrc.json declares the three hook-invoked scripts as dynamically loaded. Re-read this page's claims about these: none states the old refuse-always rule or the JSON field list, and none is contradicted.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Fix round: the hook's docs-freshness step now warns until the branch records a review and refuses after; the freshness check's --json adds reason, base and mergeBase; .fallowrc.json declares the three hook-invoked scripts as dynamically loaded. Re-read this page's claims about these: none states the old refuse-always rule or the JSON field list, and none is contradicted.","inputs":["docs/guides/testing.md"]}
+  ]
+}

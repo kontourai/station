@@ -1,0 +1,7 @@
+{
+  "revision": "f54463d7a163a673e7c5d6d1eccf5c9597609ebc",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Re-reviewed after the final UI ratchet fixes: the loading stage's mark no longer animates (a static, subtle mark), its page-local reduced-motion rule was dropped in favor of the global motion tokens, the opening placeholder reads 'Start typing. You can send once this chat opens…', and ConversationBody's sticky-reset condition was only reformatted. Claims on this page remain accurate.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

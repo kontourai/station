@@ -1,0 +1,7 @@
+{
+  "revision": "8cbe9bbfd1addb45446dce86d51850f87b118b7a",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Only the subagent bound sentence changed; ADR 0010's reference to the session API remains accurate.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

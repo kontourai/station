@@ -798,13 +798,15 @@ const VERBS: Record<string, VerbSpec> = {
   },
   conversation: {
     group: 'Core Workspace',
-    summary: 'Export or fork a conversation',
+    summary: 'Export, fork, settle or reopen a conversation',
     targets: true,
     usage: [
       'station conversation export <agent> <conversationId>',
       'station conversation fork <agent> <conversationId> [--json]',
+      'station conversation settle <conversationId> [--json]',
+      'station conversation reopen <conversationId> [--json]',
     ],
-    actions: ['export', 'fork'],
+    actions: ['export', 'fork', 'settle', 'reopen'],
     detail: [
       'export:',
       '  --format=<fmt>        thread (default), anthropic-messages, openai-chat, gemini, markdown',
@@ -817,6 +819,10 @@ const VERBS: Record<string, VerbSpec> = {
       '  --idempotency-key=<k> retrying with the same key returns the same fork',
       'Exit codes (fork): 0 forked, 1 usage error, 2 Station unreachable,',
       '3 refused (not found, not a completed turn, target not available).',
+      'settle / reopen (your own Open and Settled inbox; needs that Feature',
+      'Preview). Your next message, a question, a failure or a stop reopens',
+      'it on its own. Exit codes: 0 done, 1 usage error, 2 Station',
+      'unreachable, 3 refused (preview off, not found).',
     ],
   },
   claims: {
@@ -1349,9 +1355,11 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Core Workspace',
     summary: 'Manage ACP status, commands, and connections',
     targets: true,
-    actions: ['status', 'commands', 'command-options', 'connections'],
+    actions: ['setup', 'status', 'commands', 'command-options', 'connections'],
     usage: [
+      'station acp setup',
       'station acp connections list',
+      'station acp connections reconnect <id>',
       'station acp connections create --id=<id> --command=<cmd> [--args=<arg>]... [--name=<name>] [--cwd=<path>]',
       'station acp connections create --data=<json>',
       'station acp connections delete <id>',

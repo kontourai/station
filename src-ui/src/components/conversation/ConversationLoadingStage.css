@@ -1,0 +1,56 @@
+/* A conversation's first load: the splash's mark and status line, sized for a
+   transcript. Centered by the `.chat-messages--empty` filler it sits in. */
+.conversation-loading {
+  display: grid;
+  justify-items: center;
+  gap: var(--k-space-2);
+  max-width: 360px;
+  padding: var(--k-space-4);
+  text-align: center;
+  /* A load that lands quickly paints nothing: the stage only appears once
+     the wait is long enough to notice. */
+  animation: conversation-loading-in var(--motion-slow) var(--ease-out) 180ms
+    both;
+}
+
+.conversation-loading__mark {
+  width: 32px;
+  height: 32px;
+  margin-bottom: var(--k-space-1);
+  opacity: 0.55;
+}
+
+:root[data-startup-mark="dev"] .conversation-loading__mark {
+  content: url("/favicon-dev.png");
+}
+
+:root[data-startup-mark="nightly"] .conversation-loading__mark {
+  content: url("/favicon-nightly.png");
+}
+
+.conversation-loading__step {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  animation: station-startup-stage var(--motion-slow) var(--ease-out) both;
+}
+
+/* The slot is always there, so the mark and step stay put when the long wait
+   begins; only its words fade in. */
+.conversation-loading__long {
+  min-height: 1.5em;
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  opacity: 0.85;
+  animation: station-startup-stage var(--motion-slow) var(--ease-out) both;
+}
+
+@keyframes conversation-loading-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

@@ -16,6 +16,7 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { useConversationOnScreen } from '../../contexts/conversation-on-screen-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
+import { useTranscriptWindowPrefetch } from '../../hooks/orchestration/useTranscriptWindowPrefetch';
 import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import { useInboxSwipe } from '../../hooks/useInboxSwipe';
@@ -75,7 +76,10 @@ import {
 } from '../ResponsiveDialogSurface';
 import { ErrorState } from '../state';
 import type { MobileActivityGroup } from './mobile-activity-groups';
-import { useConversationWorkState } from './useConversationWorkState';
+import {
+  inboxHideTarget,
+  useConversationWorkState,
+} from './useConversationWorkState';
 import './ChatDockInboxPanel.css';
 import {
   endConversationReferenceDrag,
@@ -434,6 +438,8 @@ interface InboxRowProps {
   onDismiss?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
   onRestore?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
   resolution?: { settled: boolean; pending: boolean; onChange: () => void };
+  /** `hide`: the put-away action hides a third-party Session on the host. */
+  dismissVerb?: 'dismiss' | 'hide';
   isDismissed?: boolean;
   swipeActions?: boolean;
   swipeOpen?: boolean;
@@ -569,6 +575,7 @@ export function InboxRow({
   onDismiss,
   onRestore,
   resolution,
+  dismissVerb = 'dismiss',
   isDismissed = false,
   swipeActions = false,
   swipeOpen,
@@ -596,6 +603,10 @@ export function InboxRow({
   const referenceable = useReferenceableConversations();
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
   const hover = useInboxRowHoverCard();
+  // Only this Station's own conversations: a remote row reads elsewhere.
+  const prefetch = useTranscriptWindowPrefetch(
+    item.environmentId || facts?.station ? undefined : item.conversationId,
+  );
   const hoverCardId = useId();
   const statusId = useId();
   const [ownDetailsOpen, setOwnDetailsOpen] = useState(false);
@@ -657,6 +668,7 @@ export function InboxRow({
       (onDismiss || (onCloseChat && isOpenChat && item.chatSessionId))
         ? {
             dismiss: Boolean(onDismiss),
+            hide: Boolean(onDismiss) && dismissVerb === 'hide',
             select: (trigger) => {
               if (onDismiss) onDismiss(item, trigger);
               else if (item.chatSessionId)
@@ -874,10 +886,22 @@ export function InboxRow({
           swipe.close();
         }
       }}
-      onPointerEnter={tooltip ? hover.onPointerEnter : undefined}
-      onPointerLeave={tooltip ? hover.onPointerLeave : undefined}
-      onFocus={tooltip ? hover.onFocus : undefined}
-      onBlur={tooltip ? hover.onBlur : undefined}
+      onPointerEnter={(event) => {
+        prefetch.onPointerEnter(event);
+        if (tooltip) hover.onPointerEnter(event);
+      }}
+      onPointerLeave={() => {
+        prefetch.onPointerLeave();
+        if (tooltip) hover.onPointerLeave();
+      }}
+      onFocus={(event) => {
+        prefetch.onFocus();
+        if (tooltip) hover.onFocus(event);
+      }}
+      onBlur={(event) => {
+        prefetch.onBlur();
+        if (tooltip) hover.onBlur(event);
+      }}
     >
       {canSwipe && (
         <div
@@ -969,35 +993,11 @@ export function InboxRow({
           </>
         ) : (
           <>
-            <span className="inbox-row__meta">
-              {/* Decorative, deliberately: the agent is stated in words
-                  beside it, and this icon sits INSIDE a button that carries
-                  an explicit `aria-label`. Passing no `accessibleLabel` is
-                  what makes `BrandIcon` render `aria-hidden` rather than
-                  `role="img"`, so the row gains a picture and not a second
-                  announcement or a tab stop. An unresolved agent renders no
-                  icon at all, never a stand-in. */}
-              <IdentityMarks
-                identity={identity}
-                size={actionsInDetails ? 20 : 16}
-              />
-              <span className="inbox-row__meta-text">
-                <span className="inbox-row__agent">{agentText}</span>
-                {!actionsInDetails && (
-                  <>
-                    {' '}
-                    ·{' '}
-                    <ProjectAccentSwatch
-                      accent={projectAccent}
-                      icon={projectIcon}
-                      fallback={remoteProject ? 'initials' : 'dot'}
-                      name={contextLabel}
-                    />
-                    <span className="inbox-row__project">{contextLabel}</span>
-                    {hasUnsentDraft && <DraftMarker />}
-                  </>
-                )}
-              </span>
+            {/* What, then its state, then who and where:
+                the title leads, with the time beside it in the slot the
+                hover actions take over. */}
+            <span className="inbox-row__headline">
+              <InboxRowTitle title={item.title} />
               {/* Never a fabricated duration: an item with no real
                   timestamp shows no time. */}
               {hasTime && (
@@ -1006,8 +1006,53 @@ export function InboxRow({
                 </span>
               )}
             </span>
-            <InboxRowTitle title={item.title} />
-            <InboxRowStatusLine id={statusId} status={status} now={now} />
+            {actionsInDetails ? (
+              <>
+                <InboxRowStatusLine id={statusId} status={status} now={now} />
+                <span className="inbox-row__meta">
+                  {/* Decorative, deliberately: the agent is stated in words
+                      beside it, and this icon sits INSIDE a button that carries
+                      an explicit `aria-label`. Passing no `accessibleLabel` is
+                      what makes `BrandIcon` render `aria-hidden` rather than
+                      `role="img"`, so the row gains a picture and not a second
+                      announcement or a tab stop. An unresolved agent renders no
+                      icon at all, never a stand-in. */}
+                  <IdentityMarks identity={identity} size={20} />
+                  <span className="inbox-row__meta-text">
+                    <span className="inbox-row__agent">{agentText}</span>
+                  </span>
+                </span>
+              </>
+            ) : (
+              // Two lines on a hover row: what (above), then state and where.
+              // The agent is its mark here, named in the mark's tooltip and the
+              // hover card; a row with no mark keeps the agent in words, so
+              // no row is left unattributed.
+              <span className="inbox-row__state">
+                <IdentityMarks
+                  identity={identity}
+                  size={16}
+                  fallbackTitle={agentText}
+                />
+                <InboxRowStatusLine id={statusId} status={status} now={now} />
+                <span className="inbox-row__context">
+                  {identity.marks.length === 0 && (
+                    <>
+                      <span className="inbox-row__agent">{agentText}</span>
+                      {' · '}
+                    </>
+                  )}
+                  <ProjectAccentSwatch
+                    accent={projectAccent}
+                    icon={projectIcon}
+                    fallback={remoteProject ? 'initials' : 'dot'}
+                    name={contextLabel}
+                  />
+                  <span className="inbox-row__project">{contextLabel}</span>
+                  {hasUnsentDraft && <DraftMarker />}
+                </span>
+              </span>
+            )}
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 {/* One project mark: its own icon when it has one, else the
@@ -1298,27 +1343,48 @@ export function InboxGroupList({
   const resolutionState = useConversationWorkState();
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
+  // Shelves whose rows past the recency window the person asked to see.
+  const [olderShown, setOlderShown] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   // Owned here, by item id, so the sheet outlives the row's remount when
   // the item moves to another lane.
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
   const [swipedFor, setSwipedFor] = useState<string | null>(null);
   const isCurrent = (item: HomeWorkItem) =>
     isCurrentInboxItem(item, activeChatSessionId);
-  /** The rows a group actually renders, including the current row beyond page one. */
+  /** The row holds the open chat itself or, folded under it, as a member. */
+  const holdsCurrent = (group: MobileActivityGroup, item: HomeWorkItem) =>
+    isCurrent(item) ||
+    Boolean(group.childrenById?.get(item.id)?.some(isCurrent));
+  /**
+   * The rows a group actually renders, including the current row beyond page
+   * one. A collapsed section still shows the open chat's row under its
+   * header, so the chat on screen is never hidden from the list.
+   */
+  /** The shelf's rows within reach: its window, then older ones once asked. */
+  const reachableItems = (group: MobileActivityGroup): HomeWorkItem[] =>
+    group.older?.length
+      ? olderShown.has(group.id)
+        ? [...group.items, ...group.older]
+        : [
+            ...group.items,
+            ...group.older.filter((item) => holdsCurrent(group, item)),
+          ]
+      : group.items;
   const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
     const collapsed =
       collapsible &&
       group.id !== 'dismissed' &&
       collapsible.sections[group.id] === false;
-    if (collapsed) return [];
+    const reachable = reachableItems(group);
+    if (collapsed) return reachable.filter((item) => holdsCurrent(group, item));
     if (group.id === 'earlier' || group.id === 'settled')
-      return group.items.filter(
+      return reachable.filter(
         (item, index) =>
-          index < settledVisibleCount ||
-          isCurrent(item) ||
-          Boolean(group.childrenById?.get(item.id)?.some(isCurrent)),
+          index < settledVisibleCount || holdsCurrent(group, item),
       );
-    return group.items;
+    return reachable;
   };
   // A sheet belongs to a row that is on screen. Once its row is gone
   // (collapsed, folded away, discarded, snoozed) the open state is cleared,
@@ -1366,7 +1432,23 @@ export function InboxGroupList({
         onActivate={onActivate}
         onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
         onCloseChat={onCloseChat}
-        onDismiss={onDismiss}
+        // With Open and Settled, Settle is how owned conversations are put
+        // away; a third-party Session is hidden on the host instead.
+        onDismiss={
+          resolutionState.supported &&
+          workFacts?.get(item.id)?.hostDetails !== false &&
+          item.kind !== 'remote-session' &&
+          item.controlMode !== 'read-only-attached' &&
+          item.conversationId
+            ? undefined
+            : onDismiss
+        }
+        dismissVerb={
+          resolutionState.hideSupported &&
+          inboxHideTarget(item, workFacts?.get(item.id))
+            ? 'hide'
+            : 'dismiss'
+        }
         onRestore={onRestore}
         isDismissed={group.id === 'dismissed'}
         resolution={
@@ -1467,7 +1549,7 @@ export function InboxGroupList({
         ? 0
         : 1;
   const visibleGroups = groups
-    .filter((group) => group.items.length > 0)
+    .filter((group) => group.items.length > 0 || Boolean(group.older?.length))
     .sort(
       (left, right) =>
         shelfRank(left) - shelfRank(right) ||
@@ -1495,7 +1577,12 @@ export function InboxGroupList({
     [order[from], order[to]] = [order[to], order[from]];
     collapsible?.onReorder?.(order);
   };
-  const firstCollapsed = visibleGroups.find((group) => !isGroupExpanded(group));
+  // Collapsed shelves dock at the bottom below expanded work. With nothing
+  // expanded there is nothing to dock below, so they stack from the top
+  // rather than leaving the list empty above them.
+  const firstCollapsed = visibleGroups.some(isGroupExpanded)
+    ? visibleGroups.find((group) => !isGroupExpanded(group))
+    : undefined;
   return (
     <>
       {resolutionState.query.isError && (
@@ -1527,7 +1614,7 @@ export function InboxGroupList({
           showGroupCounts
             ? group.id === 'needsYou'
               ? workAttentionCount(group.items, now, group.childrenById)
-              : group.items.length
+              : group.items.length + (group.older?.length ?? 0)
             : undefined;
         const label = <WorkGroupLabel label={group.label} count={count} />;
         const labelId = `${idPrefix}-${group.id}`;
@@ -1574,11 +1661,10 @@ export function InboxGroupList({
               </h3>
             )}
 
-            {isExpanded &&
-              renderedItems(group).map((item) => renderRow(group, item))}
+            {renderedItems(group).map((item) => renderRow(group, item))}
             {isExpanded &&
               (group.id === 'earlier' || group.id === 'settled') &&
-              settledVisibleCount < group.items.length && (
+              settledVisibleCount < reachableItems(group).length && (
                 <Button
                   variant="ghost"
                   className="chat-dock-inbox__show-more"
@@ -1609,6 +1695,43 @@ export function InboxGroupList({
                   }}
                 >
                   Show more
+                </Button>
+              )}
+            {isExpanded &&
+              Boolean(group.older?.length) &&
+              !olderShown.has(group.id) &&
+              (group.id !== 'settled' ||
+                settledVisibleCount >= group.items.length) && (
+                <Button
+                  variant="ghost"
+                  className="chat-dock-inbox__show-more"
+                  aria-label={`Show ${group.older!.length} older ${group.label} ${group.older!.length === 1 ? 'item' : 'items'}`}
+                  onClick={(event) => {
+                    const container = event.currentTarget.closest('section');
+                    const previous = new Set(
+                      container?.querySelectorAll('.chat-dock-inbox__item'),
+                    );
+                    const restoreFocus =
+                      document.activeElement === event.currentTarget;
+                    setOlderShown((shown) => new Set(shown).add(group.id));
+                    // The first page of older rows shows at once.
+                    if (group.id === 'settled')
+                      setSettledVisibleCount((count) =>
+                        Math.max(count, group.items.length + SETTLED_PAGE_SIZE),
+                      );
+                    if (restoreFocus)
+                      requestAnimationFrame(() => {
+                        Array.from(
+                          container?.querySelectorAll<HTMLButtonElement>(
+                            '.chat-dock-inbox__item',
+                          ) ?? [],
+                        )
+                          .find((row) => !previous.has(row))
+                          ?.focus();
+                      });
+                  }}
+                >
+                  Show older
                 </Button>
               )}
           </section>

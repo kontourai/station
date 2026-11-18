@@ -715,7 +715,7 @@ describe('release artifact inventory: the host stream (#2959)', () => {
             keyId: RELEASE_KEY_ID,
             algorithm: 'ed25519',
             publicKeySpkiPem: publicKey.export({ type: 'spki', format: 'pem' }),
-            channels: ['stable', 'preview'],
+            channels: ['stable'],
           },
         ],
       }),

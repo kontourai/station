@@ -466,6 +466,7 @@ export function HomeStartComposer({
         status: 'ready',
         agent,
         modelLabel,
+        effortLabel: effectiveChoice?.effortLabel,
         executionAgent:
           agents.find(
             (entry) => entry.slug === effectiveChoice?.executionAgentId,
@@ -529,6 +530,10 @@ export function HomeStartComposer({
             : undefined,
       };
   const noAgentToOffer = !agent && !defaultSelection?.missingPreferredAgentSlug;
+  // Setup shows only for an Agent picked from the menu that cannot start.
+  // With no Agent to offer, Start hands the dock its automatic start, which
+  // prepares an engine; the dock's draft owns the setup card then.
+  const setupAgents = agent && !agentRunnability(agent).runnable ? [agent] : [];
   const canStart =
     Boolean(prompt.trim()) &&
     !loading &&
@@ -724,12 +729,12 @@ export function HomeStartComposer({
             )}
           </p>
         )}
-        {!loading && agent && !agentRunnability(agent).runnable && (
+        {!loading && setupAgents.length > 0 && (
           <React.Suspense
             fallback={<SkeletonList count={1} label="Loading setup options" />}
           >
             <HomeChatSetupHelper
-              agents={[agent]}
+              agents={setupAgents}
               connections={agentConnections}
               busy={enabler.inFlight || setupFetching}
               onRepair={repair}
@@ -746,11 +751,11 @@ export function HomeStartComposer({
                   : handOff({ kind: 'connections' })
               }
               onModels={() =>
-                handOff({
-                  kind: 'repair',
-                  agentSlug: agent.slug,
-                  route: 'models',
-                })
+                handOff(
+                  agent
+                    ? { kind: 'repair', agentSlug: agent.slug, route: 'models' }
+                    : { kind: 'connections' },
+                )
               }
               // A failed check leaves `setupError` saying so (with its own
               // retry); feedback here would outlive a later success.

@@ -4,6 +4,7 @@ import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provi
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 
@@ -69,6 +70,7 @@ import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/u
 import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
+import { deriveAttachedSourceActivity } from './attached-source-activity.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { isStationChatFolder } from './no-project-chat-folder.js';
@@ -597,6 +599,8 @@ export function buildOrchestrationSessionSummary(options: {
    * same prompt two different ways.
    */
   conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
+  /** Read time for `attachedSourceActivity`; defaults to the wall clock. */
+  now?: number;
   /**
    * #2310: what the store knows about this thread's whole conversation
    * (`EventStore.conversationDraftFactsForThreads`). Omitted means the lineage
@@ -604,6 +608,14 @@ export function buildOrchestrationSessionSummary(options: {
    * stays absent unless the thread's own events rule it out).
    */
   conversationDraftFacts?: ConversationDraftFacts;
+  /**
+   * #5050: the admitted Station runtime home, for the "is `cwd` a folder
+   * Station made" check. A READER so a list builder admits the home once per
+   * build and only when some row has a `cwd`; resolving it per row repeated
+   * the whole admission filesystem walk for every session. Omitted, the check
+   * resolves the home itself.
+   */
+  readStationHome?: () => string;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   const persistedNativeState =
@@ -744,7 +756,7 @@ export function buildOrchestrationSessionSummary(options: {
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
     // #4389: a no-project chat's scratch folder is one Station made too.
-    ...(base.cwd && isStationChatFolder(base.cwd)
+    ...(base.cwd && isStationChatFolder(base.cwd, options.readStationHome?.())
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(appliedApprovalMode ? { appliedApprovalMode } : {}),
@@ -830,6 +842,15 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelLaunchPlan ? { modelLaunchPlan } : {}),
     ...(reportedModel ? { reportedModel } : {}),
     hasActiveTurn: hasOpenTurn(events),
+    ...(controlMode === 'read-only-attached'
+      ? {
+          attachedSourceActivity: deriveAttachedSourceActivity(
+            events,
+            options.now ?? Date.now(),
+            base.attachedSource?.lastWriteAt,
+          ),
+        }
+      : {}),
     ...(draft !== undefined ? { draft } : {}),
   };
   const ownedWork = options.readOwnedWork?.(base.threadId);
@@ -1936,7 +1957,10 @@ export async function startRecoveredOrchestrationSession(options: {
             ? deps.invokeSessionStart(startInput.threadId, () =>
                 adapter.startSession(startInput),
               )
-            : adapter.startSession(startInput),
+            : // #2377 slice D: never inherit a dispatch route's server scope.
+              runEngineOutsideStationServerScope(() =>
+                adapter.startSession(startInput),
+              ),
       );
     } finally {
       admissionLease?.release();

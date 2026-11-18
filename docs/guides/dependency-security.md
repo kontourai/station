@@ -20,7 +20,7 @@ run and source and asks the owner to separate findings from scan errors and
 coordinate one compatible repair. The next complete successful scan closes the
 tracker. The schedule is nominal, not a detection deadline.
 
-Preview (Beta) and Stable publication require a fresh blocking scan of the
+Stable RC/final publication requires a fresh blocking scan of the
 exact candidate graph. [The release gate](../../scripts/release-advisory-gate.mjs)
 runs from a trusted default-branch policy checkout, not a tag's evaluator or
 exception file. A supplied policy snapshot must be an ancestor of the freshly
@@ -39,7 +39,7 @@ checked against the candidate tree using the trusted remediation record.
 
 The shared [release workflow](../../.github/workflows/release-advisory.yml)
 gates tagged staging before GHCR/Play/store effects, protected native/portable
-publication (including pointer repair), manual npm publication and Beta/Stable
+publication (including pointer repair), manual npm publication and Stable
 TestFlight upload, including the internal cohort entrypoint. Nightly TestFlight
 skips the advisory job and retains its existing source, artifact and provider
 gates. Operational failures retain a separate `NOT_VERIFIED` receipt with
@@ -380,6 +380,21 @@ existing export-error handling and OpenTelemetry timeout semantics. A timeout ca
 settle the flush attempt while its exporter remains active, so stream completion
 is not proof that every exporter or other run resource has settled. This change
 does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
+
+The 2.11.0 patch also loads VoltAgent's OTLP log and trace exporters and its
+JSON serializers when they are first needed: the exporters once VoltAgent's default
+observability finds a VoltOps client, the serializers on the first export of VoltAgent's
+serverless observability, which Station does not use. Before, importing the
+module loaded them. VoltAgent's tree holds several copies of the OTLP
+transformer, each costing megabytes of heap, and Station's default
+local-only observability never exports to VoltOps. The CJS and ESM regression in
+`src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts`
+records that importing VoltAgent loads none of them. The VoltOps control cases in
+`src-server/runtime/bootstrap/__tests__/voltagent-managed-telemetry.test.ts`
+still send traces and logs to a local recorder through the deferred exporters;
+no test runs the deferred serializers. An exporter package that cannot load now
+fails inside VoltAgent's existing processor setup, which drops VoltOps export
+quietly, as it already did for an exporter that could not be constructed.
 
 The process keeper audits Core 2.11.0 with the locked AI 6.0.330. Requalification
 on Node 24 and macOS verified the installed CJS/ESM entries against the official

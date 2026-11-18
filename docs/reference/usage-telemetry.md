@@ -203,7 +203,7 @@ Settings exposes a collapsed **What was sent to {publisher}** section below each
 the newest 50 records for that publisher and an explicit empty/error state.
 Sent entries have a collapsible JSON viewer. Unsent entries expose only their
 reason and observation count, with Off/DNT/disclosure/notice/unconfigured
-classified as suppressed and transport/overflow/expired as dropped. There is no
+classified as suppressed and transport/rejected/overflow/expired as dropped. There is no
 payload viewer for either unsent category. Refresh reads the current ledger.
 Opening status/outbox views refetches their current data. Tier writes refresh
 both views, including after a partial Settings failure; Full acknowledgement
@@ -251,7 +251,7 @@ monthly and is never linked to an account by Station. The Full payload carries
 SHA-256 of a random UUID concatenated with the publisher ID and UTC `YYYY-MM`. Upgrading from the permanent `sha256(uuid)` scheme immediately changes existing receivers’ `distinct_id`; historical installation series do not continue under the new ID. Station does not send a migration link. The UUID is persisted at
 `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
 
-Full `occurred_at` and `observed_at` are rounded down to the UTC minute to reduce cross-publisher correlation. Unknown Full channels are omitted; runtime `beta` maps to `preview`. The broker deduplicates by source and `event_id`, not timestamps; its reporting groups by day. Other shared facts can still correlate pseudonymous Full events.
+Full `occurred_at` and `observed_at` are rounded down to the UTC minute to reduce cross-publisher correlation. Unknown Full channels are omitted; retired runtime `beta` is no longer mapped. The historical `preview` wire dimension remains readable, while current RCs report `stable`. The broker deduplicates by source and `event_id`, not timestamps; its reporting groups by day. Other shared facts can still correlate pseudonymous Full events.
 
 ## Daily aggregates and observation limits
 
@@ -275,7 +275,7 @@ The contract validator checks every outgoing daily field. Current sources are:
 | Field | Server observation or conservative value |
 | --- | --- |
 | version | The running package version when it is valid SemVer within the 64-character bound; otherwise `custom`. Receivers default to a configured release list; an explicit SemVer policy can admit valid versions plus `custom` without expanding the public version domain. Version alone cannot establish an official build: source/fork builds can reuse a release version. |
-| channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` maps runtime `beta` to the Lite schema's `preview` and preserves permitted labels; missing or unrecognized provenance becomes `unknown`. |
+| channel/platform/arch | `captureBuildProvenance(env)?.channel` (baked `__STATION_SERVER_BUILD__.channel`, then existing runtime metadata), server OS and CPU. At daily serialization, the shared `mapRuntimeChannelToTelemetryChannel` preserves permitted telemetry labels; retired runtime `beta` is unmapped. Missing or unrecognized provenance becomes `unknown`. The historical `preview` schema value remains readable, and RCs use `stable`. |
 | surfaces_today | Reported web/desktop/CLI origin on an authenticated general-events connection, either `/events` or the shared orchestration stream. This is reported metadata, not device attestation. Missing/unknown/mobile origins are omitted because the current mobile header does not distinguish iOS and Android. |
 | first_active_this_week/month, install_age_bucket | Local observed activity dates. Age starts when this telemetry state is first created; an existing install without that state starts at `0d`. This is not historical OS/package installation age. |
 | engines_used_today | Existing engine-turn terminal observations. |
@@ -309,7 +309,14 @@ Inline tier-lowering reasons and standalone feedback share one persisted budget 
 publisher, tier, timestamp, sent/dropped outcome, and classified reason. The ledger
 is `STATION_HOME/config/telemetry-outbox.json`, retained for at most 30 days and
 5 MiB of actual serialized bytes, oldest first. Reads also enforce retention. The HTTP API returns the newest 50 records by default; `limit` accepts integers from 1 to 200 and rejects values outside that range with 400. Publisher filtering happens before the limit. Settings requests 50 and uses the same authority scope as its status read.
-It is an audit log, not a retry spool. Dropped Full observations are coalesced
+It is an audit log, not a retry spool. A Full batch is recorded once, when it
+leaves the queue: `sent`/`acknowledged` on a commit receipt, or `dropped` with
+reason `rejected` (a permanent refusal), `off` (consent withdrawn, telemetry
+disabled or the destination changed), `overflow` (the oldest event evicted from
+a full buffer) or `transport` (still queued when shutdown ends). A retryable
+failure that keeps the batch queued writes no record; attempt history lives in
+the delivery status counts and the `station.usage_telemetry.batches` metric.
+Dropped Full observations are coalesced
 in memory, then published at the flush interval, on outbox reads, and at shutdown
 as `telemetry_dropped` counts per publisher, reason and UTC day. A process crash
 before that publication can lose pending dropped counts. Suppressed traffic
@@ -376,12 +383,22 @@ for the current workflow and remaining acceptance limits.
 
 Settings → Privacy & sharing → Advanced shows the connected Station's current-process queue,
 acknowledged observations, failed attempts and discarded observations. These
-are process counters, not lifetime accounting or a durable spool. A product
+are process counters, not lifetime accounting or a durable spool. Failed
+attempts count every unsuccessful request, so one batch retried three times
+adds three; rejected, overflow and discarded (withdrawal or shutdown)
+observations count each event once, when it leaves the queue. A product
 batch leaves the queue only after a matching `station-product-commit/v1`
 receipt covers its exact event IDs and counts. Generic 2xx responses, malformed
 receipts, refused redirects and bounded-response failures retain the batch for
-retry with the same IDs. The latest failed attempt remains visible alongside
-historical success. Refreshing or unavailable status hides cached success.
+retry with the same IDs. A 4xx refusal other than 408 or 429 cannot succeed on
+resend, so it drops that batch at once: its events count as `rejected`, the
+ledger records them with reason `rejected`, and the next batch is not delayed.
+The latest failed attempt remains visible alongside historical success; for a
+refusal, `lastFailure.detail` carries the receiver's stated reason (its JSON
+`error`/`code`/`message`/`reason` strings, or plain text), at most 200
+characters with installation hashes, event IDs, receiver keys, URLs and paths
+masked. It is never logged; Settings shows it as plain text under Product
+delivery while delivery has failed. Refreshing or unavailable status hides cached success.
 
 An operator's **Check connection** calls a separate
 `station-product-probe/v1` source-key endpoint when the configured address has
@@ -464,12 +481,26 @@ separate existing identity and is unaffected by this Full rotation.
 accepts only the inventory's event/property vocabulary. Its memory buffer holds
 100 events, dropping the oldest on overflow. It flushes batches of 20 at a
 10-second interval or when a batch fills. A request has a one-second timeout;
-failed batches remain in memory for a later attempt. There is no durable queue. Observation IDs and their producer times/build metadata
+failed batches remain in memory for a later attempt. There is no durable queue.
+After a retryable failure (a network error, timeout, 5xx, 408, 429, or a 2xx
+without a matching receipt) neither trigger sends again until a backoff
+elapses: one flush interval, doubling per consecutive failure up to 15
+minutes, with equal jitter. A `Retry-After` on a 429 or 503 is a floor on that
+delay, bounded at one hour. An acknowledgement, a permanent refusal or a
+destination change resets it; shutdown's bounded flush ignores it. The first
+failure of a given code and HTTP status logs a warning naming the publisher;
+identical repeats log at debug until the failure changes or a batch is
+acknowledged. `station.usage_telemetry.batches` counts batches by publisher,
+outcome (`acknowledged`, `rejected`, `retry_scheduled`), failure code and
+status class, and `station.usage_telemetry.suppressed_warnings` counts the
+repeats. Observation IDs and their producer times/build metadata
 are assigned once and preserved on retry, so a receiver can deduplicate a
 lost-response retry. The sender alone provides no exactly-once guarantee; the
 receiver must commit and deduplicate by source/event identity. Disabling telemetry clears buffered events and aborts an active request;
 it cannot retract data the endpoint already accepted. Shutdown attempts a
-bounded flush and can drop unsent events.
+bounded flush and can drop unsent events; those count once as shutdown drops
+(the `shutdown_dropped` outcome and a `transport` ledger record), not once per
+failed attempt.
 
 The v1 batch and event shapes are published on
 `@kontourai/station-contracts/product-telemetry`. The Node-only shared

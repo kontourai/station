@@ -1,0 +1,7 @@
+{
+  "revision": "c36eed39078e220f4dd85b40baf3a090961872ca",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"c36eed3907 dedupes opencode-next.db candidates by primary key against every 2.x session_v2 row, skips the file once OpenCode's v1-v2 migration is completed, names the held conversation in the compaction warning, and keys the drained-read cache independently of cursor key order. Re-read the external transcript import and source-home lines citing the source: ordering, observation-only source root and no continuation are unchanged. No prose change needed.","inputs":["src-server/providers/sessions/opencode-session-source.ts"]}
+  ]
+}

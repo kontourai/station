@@ -23,6 +23,7 @@ import {
   type ProjectConfig,
   useScopedProjectPageViewQuery,
 } from '../contexts/ProjectsContext';
+import { useForegroundProject } from '../hooks/projectForeground';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -37,24 +38,30 @@ import {
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
 import { MemberProjectPage } from './project-page/MemberProjectPage';
+import { ProjectHeldBanner } from './project-page/ProjectHeldBanner';
 import { ProjectKnowledgeSection } from './project-page/ProjectKnowledgeSection';
 import {
   ProjectAddLayoutModal,
   ProjectLayoutsSection,
 } from './project-page/ProjectLayoutsSection';
+import { ProjectLibrarySection } from './project-page/ProjectLibrarySection';
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import {
   ProjectNavigation,
   useProjectDestination,
 } from './project-page/ProjectNavigation';
+import { ProjectOverviewSection } from './project-page/ProjectOverviewSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
 import type { ProjectRoomProps } from './project-page/ProjectRoom';
 import { ProjectRoom } from './project-page/ProjectRoom';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
+import { useProjectSearch } from './project-page/project-room-navigation';
+import { SetupRecommendationsCard } from './project-page/SetupRecommendationsCard';
 import type { AvailableLayout } from './project-page/types';
 import { useListScrollMemory } from './project-page/useListScrollMemory';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import './project-page-frame.css';
 import './ProjectPage.css';
 
@@ -210,7 +217,15 @@ function ProjectOperatorPage({
   project: ProjectConfig;
   requestScope: ProjectRoomProps['requestScope'];
 }) {
-  const { setLayout, navigate } = useNavigation();
+  const { setLayout, navigate, updateParams } = useNavigation();
+  // #5072: this Project's own alerts are not sent here while it is shown.
+  useForegroundProject(project.id);
+  // The Tasks section's presentation: the board unless the address asks
+  // for the list (`?tasksView=list`).
+  const tasksView =
+    new URLSearchParams(useProjectSearch()).get('tasksView') === 'list'
+      ? 'list'
+      : 'board';
   const {
     destination,
     selectDestination,
@@ -222,6 +237,7 @@ function ProjectOperatorPage({
   // #4795: on a phone the Project page is its channel list, and a channel
   // is its own full screen; one breakpoint, `MOBILE_MEDIA_QUERY`.
   const phone = useIsMobile();
+  const projectCoordination = useProjectCoordinationPreview();
   const roomScreen = phone && destination === 'room';
   const pageRef = useRef<HTMLDivElement>(null);
   const { openFromList } = useListScrollMemory(
@@ -351,9 +367,15 @@ function ProjectOperatorPage({
         {!roomScreen && (
           <ProjectPageHeader
             project={project}
+            {...(projectCoordination && project.goal
+              ? { goal: project.goal }
+              : {})}
             gitStatus={gitStatus}
             navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
           />
+        )}
+        {!roomScreen && (
+          <ProjectHeldBanner slug={slug} lifecycle={project.lifecycle} />
         )}
 
         <div className="section-nav-rail project-page__layout">
@@ -392,6 +414,19 @@ function ProjectOperatorPage({
                   }}
                 />
               )}
+              <SetupRecommendationsCard
+                project={{
+                  id: project.id,
+                  slug,
+                  name: project.name || slug,
+                  ...(project.description
+                    ? { description: project.description }
+                    : {}),
+                }}
+                hasRepository={Boolean(
+                  gitStatus?.isRepo || project.repositorySource,
+                )}
+              />
               <div className="project-page__operator-actions">
                 <Button
                   variant="primary"
@@ -403,6 +438,11 @@ function ProjectOperatorPage({
                   Add files
                 </Button>
               </div>
+              <ProjectOverviewSection
+                slug={slug}
+                projectId={project.id}
+                autoResolveDays={project.overviewAutoResolveDays}
+              />
               <ProjectLiveWorkSection slug={slug} />
             </section>
 
@@ -561,6 +601,10 @@ function ProjectOperatorPage({
                 projectWorkingDirectory={project.workingDirectory}
                 gitStatus={gitStatus}
                 agents={project.agents}
+                presentation={tasksView}
+                onPresentationChange={(view) =>
+                  updateParams({ tasksView: view === 'board' ? null : view })
+                }
               />
             </section>
 
@@ -568,6 +612,7 @@ function ProjectOperatorPage({
               hidden={destination !== 'sources'}
               aria-label="Files and connections"
             >
+              <ProjectLibrarySection slug={slug} />
               <ProjectSourcesSection slug={slug} projectId={project.id} />
               {namespacesQuery.isError && (
                 <ErrorState

@@ -9,6 +9,19 @@ For usage context, see [docs/guides/agent-configuration.md](../guides/agent-conf
 
 ---
 
+## Project brief and models
+
+With the `project-coordination` Feature Preview on,
+[ProjectConfig](../../packages/contracts/src/project.ts) also carries the
+Project brief and models (#5062, #5068): `goal` (one line, at most 200
+characters), `instructions` (at most 16,000 characters), `coordinatorEffort`
+(`low`, `medium` or `high`, for the Project's own chats; a new Project starts at
+`medium`), and `taskProviderId`, `taskModel` and `taskEffort` for Tasks it
+dispatches. `PUT /api/projects/:slug` drops each on `null` or blank text.
+`instructionsMigratedAt` records the one-time copy of legacy `project-rules.md`
+into `instructions`. See
+[Project settings](../user/settings.md#project-brief-memory-and-models).
+
 ## Project tool defaults
 
 [ProjectConfig](../../packages/contracts/src/project.ts) accepts optional
@@ -93,7 +106,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `terminalHistoryMaxAgeDays` | integer 1–3650 | `30` | Days after a terminal ends before its history is deleted. |
 | `terminalHistoryMaxTerminalMiB` | integer 1–1024 | `16` | History each terminal keeps; the oldest output goes first. |
 | `terminalHistoryMaxTotalMiB` | integer 16–1048576 | `1024` | History all terminals keep together, and at least the per-terminal size; the oldest ended terminals go first. Values outside any of these ranges are refused, not clamped. |
-| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Station follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from history, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
+| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Station follows Claude Code, Codex, Grok and OpenCode conversations on this machine (and, with `STATION_EXTERNAL_ACP_SESSIONS=1`, the sessions ACP engines list) whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from history, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
 | `knowledgeStores` | boolean | `false` | Whether a personal Station adds past conversations to Knowledge as the read-only `root:conversations` source. Read once at [startup](../../src-server/knowledge-store/conversation-root-bootstrap.ts), so a change applies after a restart. The conversations become searchable after a Knowledge reindex, which needs an embedding connection and the local operator. Turning it off does not remove the root, and the root cannot be deleted. Hosted Stations never register it. Settings → My knowledge store → Past conversations in Knowledge. |
 | `claudeArtifactsEnabled` | boolean | `false` | Turns on Claude Code's Artifact tool, which publishes a local HTML or Markdown file as a page on claude.ai. Read when each Claude session starts, so a running session keeps its value. [`claudeArtifactsSpawnEnv`](../../src-server/providers/adapters/claude-adapter.ts) sets `CLAUDE_CODE_ARTIFACT=1` when on and `CLAUDE_CODE_ARTIFACT=0` when off, overriding Station's own environment and the connection's `env`, so the setting decides. The engine offers the tool only to a claude.ai subscription login; API-key, Bedrock and Vertex sessions do not get it. A publish shows in chat as a link to its claude.ai page, taken from the tool's structured output and shown only for an `https://claude.ai` address. Settings → Agent runs → Claude Code artifacts. |
 
@@ -262,6 +275,34 @@ Completed writes reach the OS page cache, with no power-loss/fsync guarantee.
 Stdout and the local store serialize separate redacted and unredacted records;
 they cannot safely share the same serialized bytes.
 
+**Repeated warnings.** The [logger seam](../../src-server/utils/logger.ts) limits
+repeated identical warnings ([limiter](../../src-server/utils/log-repeat-limiter.ts)).
+Two `warn` records are identical when they come from the same logger name, carry
+the same message, and carry the same error identity: the error's name, code and
+message, with digit runs folded so a changing pid or port does not count as a new
+error. Other context fields are not compared. The first five identical warnings
+in a 60-second window are written. Later ones are dropped and counted. When the
+window ends, one `warn` line, `Suppressed K repeats of: <message>`, reports the
+count. A graceful shutdown writes every summary still pending before it exits,
+so a window open at shutdown is not lost. `error` and `fatal` records are never limited, and neither are levels
+below `warn`. Suppressed records increment the `station.logs.suppressed_records`
+counter, with attributes `component` (the logger name) and `level`. At most 512
+identities are tracked at once, and the oldest is summarized and dropped first.
+
+**The stdout log file.** `station start` and the service supervisor send the
+server's stdout and stderr to `<home>/logs/<instance>.log`
+(`station-<instance>.log` from a plain `station start`), passed to the server as
+`STATION_LOG_FILE`. The server checks that file's size at boot and every 30
+seconds. Once it reaches the cap, the server copies it to `<file>.1`, shifts
+older copies up to the retained count, removes any beyond it, and truncates the
+file in place ([source](../../src-server/services/infra/server-stdout-log-file.ts)).
+The diagnostics bundle, the failed-start report and smoke diagnostics read the
+tail of the current file, which always holds the newest output. They do not read
+the numbered copies. The day files above are the searchable history. Output
+another process writes to the same descriptor between the copy and the truncate
+can be lost. Rotations increment `station.logs.stdout_file.rotations`, with
+`outcome` `rotated` or `failed`.
+
 A successful read — a 2xx/304 `GET` or `HEAD` — is logged at `debug`; every other request (any other status, every mutation, and every streaming response) is logged at `info`. Because the level is applied before the durable store is written, at the default `info` those successful reads are not recorded at all rather than filed one level down, and the Developer → Logs level filter cannot recover them: set `STATION_LOG_LEVEL=debug` (or `logLevel` in `app.json`) before reproducing if you need the full access log.
 
 The Tauri desktop shell has a separate log and level (`STATION_DESKTOP_LOG_LEVEL`), documented with its recovery and privacy boundaries in [Recover a desktop start](../user/native-recovery.md#check-the-local-diagnosis). Do not substitute server-log output for evidence of native-window or renderer behavior.
@@ -297,6 +338,10 @@ issuance and read boundaries.
 | `STATION_LOG_LEVEL` | — | Overrides `app.json`'s `logLevel` for every logger in this process — every `createLogger()` call site resolves it at creation, and a later `app.json` change is pushed to all of them via `setGlobalLogLevel`, not just Station's own root logger. Takes precedence over the configured value, but not over a [managed policy](../guides/managed-policy.md#settings) lock on `logLevel`, which every logger applies instead, including those created before the policy loaded; an invalid value is ignored (falls back to `logLevel`/`"info"`) with a single startup warning. `"fatal"` is not a valid value here — fatal is emit-only, never a configurable filter floor. |
 | `STATION_SERVER_LOG_RETENTION_DAYS` | `30` | Days of server log files retained on disk (the active day is always kept regardless of age). |
 | `STATION_SERVER_LOG_MAX_BYTES` | `268435456` (256 MiB) | Maximum total bytes retained across server log files; oldest non-active-day files are removed first once the budget is exceeded. |
+| `STATION_LOG_REPEAT_LIMIT` | `5` | Identical warnings written per window before the rest are counted and summarized (see Repeated warnings above). `0` writes every repeat, for diagnosing a noisy loop. |
+| `STATION_LOG_REPEAT_WINDOW_SECONDS` | `60` | Length of the repeated-warning window, in seconds. |
+| `STATION_LOG_FILE_MAX_BYTES` | `67108864` (64 MiB) | Size at which the server rotates its stdout log file (`STATION_LOG_FILE`). |
+| `STATION_LOG_FILE_GENERATIONS` | `3` | Rotated copies of the stdout log file kept (`<file>.1` is newest; at most 20). `0` truncates without keeping a copy. |
 
 ## Chat attachments
 
@@ -425,6 +470,32 @@ invokes the scheduled-turn adapter after durable admission; a job with a
 attempt into any resulting session, rather than assuming the IDs match.
 
 ---
+
+## Notification retention
+
+The notification feed (`<STATION_HOME>/notifications.json`) keeps a record
+while it is pending or delivered, however old. A settled record (expired,
+actioned or dismissed) is removed once its settle time is older than the
+retention window. The settle time is the record's last change, so a producer
+that keeps updating a settled record by its dedupe tag keeps it. Removal
+happens inside the notification service's own locked write: every change to
+the feed first drops what is due, and startup does the same for a home that
+went quiet. Open inbox and history views are told to refetch. The principal
+feed (`principal-notifications.json`) is separate and keeps its own 100-record
+cap per person.
+
+A removed record that held a dedupe tag leaves a tombstone (tag, id, source,
+status, settle time) in `<STATION_HOME>/notification-tombstones.json`. A
+producer that schedules that tag again gets the settled record's id and status
+back, and nothing is created, delivered or pushed. A tombstone is kept for one
+window after the removal or after the last schedule that hit it, so a tag is
+forgotten only once its producer has been silent for a whole window. A record
+someone clears by hand leaves no tombstone, as before.
+([source](../../src-server/services/notifications/notification-service.ts))
+
+| variable | default | description |
+|---|---|---|
+| `STATION_NOTIFICATION_RETENTION_DAYS` | `30` | Days a settled notification record is kept after it settled, and a dedupe tombstone after its last use. A value that is not a positive integer falls back to the default. |
 
 ## agent.json
 

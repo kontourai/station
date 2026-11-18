@@ -35,7 +35,7 @@ function PairingDeepLinkHarness({
   onPairingPayload,
   onError,
 }: {
-  clientChannel?: 'stable' | 'beta' | 'nightly';
+  clientChannel?: 'stable' | 'nightly';
   onPairingPayload: (payload: string) => void;
   onError: (message: string) => void;
 }) {
@@ -111,7 +111,7 @@ describe('usePairingDeepLink', () => {
 
     render(
       <PairingDeepLinkHarness
-        clientChannel="beta"
+        clientChannel="stable"
         onPairingPayload={onPairingPayload}
         onError={onError}
       />,

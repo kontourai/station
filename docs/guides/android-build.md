@@ -64,7 +64,7 @@ updater payloads; it is not the Android upload key.
 1. **Setup** — the Node version in `.nvmrc`, Rust with Android targets, and the Java/SDK/NDK versions pinned in the workflow
 2. **Build frontend** — `npm run dependencies:ci`, then the SDK, Connect, and desktop resources
 3. **Tauri Android Init** — `node scripts/reset-android-generated-project.mjs`
-   first removes the tracked seed, as the Nightly and beta lanes do, so the
+   first removes the tracked seed, as the Nightly and tagged Stable lanes do, so the
    project comes entirely from the pinned CLI's templates. Init then runs from
    `src-desktop` with the base and Dev overlays, `--ci` and
    `--skip-targets-install`. Running discovery from the repository root can
@@ -96,6 +96,18 @@ updater payloads; it is not the Android upload key.
    reads the stamp back out of the APK for the same reason: staging can succeed
    without the file reaching the artefact.
 8. **Upload** — debug APK/AAB uploaded as a workflow artifact
+
+The same Cargo configuration also supplies `WRY_RUSTWEBVIEW_CLASS_EXTENSION`
+for keyboard image input and the image clipboard selection menu. Its maintained
+implementation and JS asset live in the media-intake Android plugin; no generated
+`RustWebView.kt` edit is required. The PR Kotlin unit lane substitutes the
+resolved Wry template with this configuration and compiles it against the
+media-intake plugin. Missing lifecycle/input/menu hooks fail before Gradle;
+JNI calls and Chromium superclass results are stubbed. Behavioral tests call the
+generated input/menu overrides and assert that they return/pass the wrappers;
+this does not prove APK packaging or device routing.
+Build/package and physical keyboard acceptance
+remain separate; follow [the mobile verification sequence](mobile-release.md).
 
 ### Renderer recovery and network cost
 

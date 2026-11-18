@@ -26,18 +26,18 @@ export function ACPConnectionSetupHeader({
   /** The catalogue choice being connected; absent for a custom engine. */
   engineName?: string;
 }) {
+  // The checking and result stages say what is happening in their own status
+  // block, so a subtitle there would only repeat it.
   const subtitle =
     editing && stage === 'custom'
       ? "Change this engine's setup, then check it."
       : stage === 'confirm'
         ? 'Review what connecting this engine changes.'
-        : stage === 'checking'
-          ? 'Station is checking this engine now.'
-          : stage === 'result'
-            ? 'Here is the current readiness result.'
-            : stage === 'error'
-              ? 'Your setup is still here. Try again or edit it.'
-              : 'Enter the command that starts your engine.';
+        : stage === 'checking' || stage === 'result'
+          ? undefined
+          : stage === 'error'
+            ? 'Your setup is still here. Try again or edit it.'
+            : 'Enter the command that starts your engine.';
   const title = editing
     ? 'Edit engine'
     : engineName
@@ -381,6 +381,7 @@ export function ACPConnectionSetupStatus({
   attempt = 'add',
   engineName,
   connectionId,
+  onSignedIn,
 }: {
   stage: ACPConnectionSetupStage;
   label?: string;
@@ -400,6 +401,7 @@ export function ACPConnectionSetupStatus({
   /** A first add, a re-check, or a saved edit: they are said differently. */
   attempt?: ACPConnectionSetupAttempt;
   engineName?: string;
+  onSignedIn?: () => void;
 }) {
   const engine = engineName ?? 'this engine';
   if (stage === 'checking') {
@@ -417,7 +419,7 @@ export function ACPConnectionSetupStatus({
                 ? `Checking ${engine} again.`
                 : attempt === 'edit'
                   ? `Saving your changes and checking ${engine}.`
-                  : 'Adding the engine and checking its readiness.'}
+                  : `Checking ${engine}…`}
         </span>
       </div>
     );
@@ -425,16 +427,16 @@ export function ACPConnectionSetupStatus({
   if (stage === 'result' && label) {
     const detail =
       label === 'Ready'
-        ? 'This engine is ready to use.'
+        ? null
         : label === 'Setup required'
-          ? 'This engine needs more setup before it can run work — its Agent is added when it connects.'
+          ? "Station saved this engine but couldn't connect. Its agent appears once it connects."
           : label === 'Off'
             ? 'This engine is configured but turned off.'
             : 'Station could not make this engine available.';
     return (
       <div className="acp-add-dialog__result" role="status" aria-live="polite">
         <strong>{label}</strong>
-        <span>{detail}</span>
+        {detail ? <span>{detail}</span> : null}
         {label !== 'Ready' && reason && (
           <>
             <span className="acp-add-dialog__result-reason">
@@ -464,6 +466,7 @@ export function ACPConnectionSetupStatus({
           <EngineSignInDisclosure
             connectionId={connectionId}
             engineName={engine}
+            onSignedIn={onSignedIn}
           />
         )}
       </div>

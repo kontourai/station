@@ -216,8 +216,9 @@ shell, or a home-screen web app) locks page zoom through
 `platform/installedAppZoom.ts`. Transient toasts dismiss with a sideways touch
 swipe; approval and pairing cards keep their explicit dismiss.
 
-The chat header's **⋯** menu holds **Chat inventory** and **Browse turns** on
-desktop and phones. Keeping secondary actions there avoids wrapping the
+The chat header's **⋯** menu holds **Chat inventory** (the full reader) and
+**Browse turns** on desktop and phones; the **This chat** card's footer link
+opens the compact inventory beside the transcript. Keeping secondary actions there avoids wrapping the
 phone header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
 above. Selecting a row reveals detail inline, within the existing scrollable
 reader; it does not add another modal. Closing returns focus to the opener.
@@ -286,7 +287,10 @@ dock body (full screen on a phone). New-chat and running-chat controls share
 [ComposerRunControl](../../src-ui/src/components/ComposerRunControl.tsx): one
 Agent/model trigger opens Run setup, containing the existing
 [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) controls. Long
-trigger labels truncate; the sheet owns the full choices. Attach, mic and Start
+trigger labels truncate; the sheet owns the full choices. On desktop a picker
+opened from Run setup takes the panel's place (`yieldToChildPopover` on
+`ResponsiveDialogSurface`) and is clamped inside the composer column
+(`data-popover-boundary`); phones keep stacked sheets. Attach, mic and Start
 share the phone action row. Targets remain at least 44px; picker menus are edge
 sheets on phones with their own
 scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents
@@ -313,8 +317,9 @@ rechecks on foreground or network return. A refused credential waits for explici
 pairing; Request access opens the selected Station directly. Pairing inputs keep
 a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding
 inside the available width. A disconnected
-phone starts with pairing and a computer-setup handoff. Host addresses and broker
-routes are under **Other ways to connect**. Native capability and coarse-pointer
+phone starts with pairing and a computer-setup handoff. **Enter a pairing code**
+and **Enter Station address** sit under the QR action; nearby discovery and saved
+Stations are under **More ways to connect**. Native capability and coarse-pointer
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 
@@ -500,7 +505,10 @@ work, or deleting a draft. Inbox search reveals matching dismissed items and
 their Restore action. Lifecycle changes use the existing debounce; running
 progress does not restore a dismissed row. Hidden Third-party sessions stay
 hidden through external updates and return to normal status handling when
-adopted into Station.
+adopted into Station. With Open and Settled inbox on, owned rows offer Settle
+instead of Dismiss, and Hide records a third-party Session on the host for the
+person rather than in the browser; the action keeps the same row, tray and
+Details placement.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,

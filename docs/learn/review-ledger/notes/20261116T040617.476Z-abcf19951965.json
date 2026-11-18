@@ -1,0 +1,11 @@
+{
+  "revision": "59b4533bcb83f102ddc71a839485dde034b5c152",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Reviewed the credential-scope paragraph against portable-nightly-publish plan/publish permissions, exact token binding, base-history helper and protected signing environment. Clarified that planning reads release history with the run GitHub token while the publish job alone reads the Nightly signing secret. Operator setup, source/reservation gates, publication sequence, receipt/rollback behavior and valid channels are unchanged.53 owner tests passed; signing-secret injection failed, exact-restored control passed. No site deployment, external review-hash refresh, provider/native/device qualification or new product availability claim.","inputs":["docs/guides/nightly.md","scripts/__tests__/portable-nightly-publish-workflow.test.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the bounded credential-test correction against the real portable Nightly workflow. Only the exact github.token binding on the published-base history step is excepted, after requiring contents:read; all other explicit credential references outside protected publish remain checked, including extra signing-secret fields on that same step. A clean-tree injected signing-secret reference failed the intended plan assertion, then exact workflow restoration returned the named control green. Signing environment/key access and publication effect gates are unchanged.53 focused tests, lint and scripts typecheck passed. Nightly guide now distinguishes the automatic read token from the protected signing secret. No workflow dispatch, provider read/write or live credential provisioning claimed.","inputs":["scripts/__tests__/portable-nightly-publish-workflow.test.ts"]},
+
+    {"path":"README.md","note":"Reviewed the narrow automatic-read-token versus protected-signing-secret clarification against actual workflow permissions and steps. README installation and opt-in Nightly routes remain accurate; no public capability, setup command, platform support or deployment claim changes. External product-content mappings are conservative leads; this clarification needs no public-copy change and does not renew their byte bindings or live-site evidence.","inputs":["docs/guides/nightly.md"]}
+  ]
+}

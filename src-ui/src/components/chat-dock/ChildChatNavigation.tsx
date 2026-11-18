@@ -149,8 +149,10 @@ export function ChildChatNavigation({
         }
       }}
     >
+      {/* The phone's way back; on a wider bar the parent's own crumb is. */}
       <Button
         variant="ghost"
+        className="child-chat-trail__back"
         onClick={() => pop(entries.length - 1)}
         aria-label="Back to parent chat"
       >
@@ -158,7 +160,11 @@ export function ChildChatNavigation({
       </Button>
       {[{ title }, ...entries].map((entry, index) => (
         <span className="child-chat-trail__segment" key={index}>
-          {index > 0 && <span aria-hidden="true"> › </span>}
+          {index > 0 && (
+            <span className="child-chat-trail__separator" aria-hidden="true">
+              /
+            </span>
+          )}
           {index < entries.length ? (
             <Button variant="ghost" onClick={() => pop(index)}>
               <span className="child-chat-trail__label">{entry.title}</span>

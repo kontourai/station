@@ -250,7 +250,12 @@ export function readAuthorizedUsageExport(input: {
             }
           : {
               globalSequence: row.globalSequence,
-              receipts: usageReceiptsForEventRow(row.usage, stationId),
+              // The export's receipt grammar has no Project field; the
+              // Project attribution (#5068) stays in interactive rollups.
+              receipts: usageReceiptsForEventRow(
+                { ...row.usage, projectSlug: undefined },
+                stationId,
+              ),
             },
       ),
       ...(next

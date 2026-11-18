@@ -1,0 +1,7 @@
+{
+  "revision": "dda782fc179791048d20713a2ac49eff256047ca",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Hook table now lists the main-conflict warning, push-range whitespace/temp-dir check, docs freshness and code-health rows in the order .githooks/pre-push runs them; pure-merge skip list, heavy-slot list and the CI-failure measurement paragraph checked against the hook, gate-for.mjs and the new scripts.","inputs":["docs/guides/code-quality.md",".githooks/pre-push","docs/guides/testing.md","scripts/__tests__/prepush-typecheck.test.ts","scripts/fast-checks-shard.mjs"]}
+  ]
+}

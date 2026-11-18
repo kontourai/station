@@ -54,6 +54,12 @@ export interface NotificationDeliveryWiringDeps {
     deviceLocality(deviceId: string): 'home-possession' | undefined;
     /** Owner standing, so an owner device reads as its own requests do. */
     deviceHasOwnerStanding?(deviceId: string): boolean;
+    /**
+     * This Station's environment id, which every OS alert link carries so a
+     * client connected elsewhere opens it here. Read per delivery: an
+     * environment reset replaces it.
+     */
+    environmentId?(): string;
   };
   webPushService: Pick<WebPushService, 'send'>;
   canUserReadSession(
@@ -80,6 +86,8 @@ export interface NotificationDeliveryWiringDeps {
    */
   focus?: FocusSource;
   inAppLiveness?: InAppLiveness;
+  /** #5072: per-Project notification settings (a Feature Preview). */
+  projectNotificationSettings?: () => boolean;
 }
 
 export interface NotificationDeliveryWiring {
@@ -112,11 +120,23 @@ export function wireNotificationDelivery(
     };
   // The desktop app's native host reads its decided alerts from a feed;
   // inert until a host polls it.
-  const desktopHostChannel = new DesktopHostChannel();
+  const stationId = () => {
+    try {
+      return deps.devicePairing.environmentId?.();
+    } catch {
+      return undefined;
+    }
+  };
+  const desktopHostChannel = new DesktopHostChannel({ stationId });
   const router = wireNotificationDeliveryRouter({
     eventBus: deps.eventBus,
     channels: [
-      new WebPushChannel(deps.devicePairing, deps.webPushService, deps.logger),
+      new WebPushChannel(
+        deps.devicePairing,
+        deps.webPushService,
+        deps.logger,
+        stationId,
+      ),
       desktopHostChannel,
       ...(deps.apnsAlert
         ? [new ApnsAlertChannel({ ...deps.apnsAlert, logger: deps.logger })]
@@ -151,6 +171,9 @@ export function wireNotificationDelivery(
     logger: deps.logger,
     ...(deps.focus ? { focus: deps.focus } : {}),
     ...(deps.inAppLiveness ? { inAppLiveness: deps.inAppLiveness } : {}),
+    ...(deps.projectNotificationSettings
+      ? { projectNotificationSettings: deps.projectNotificationSettings }
+      : {}),
     readNotification: (id) => deps.getNotification(id),
   });
   return { preferences, router, desktopHostChannel, isFeedDevice };

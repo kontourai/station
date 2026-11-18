@@ -1,9 +1,12 @@
 {
-  "stationControlToolListJsonBytes": 100098,
-  "stationBrowserToolListJsonBytes": 12561,
-  "stationKnowledgeToolListJsonBytes": 2035,
+  "stationControlToolListJsonBytes": 100575,
+  "stationControlDelegatedToolListJsonBytes": 79137,
+  "stationControlFamilyIndexToolListJsonBytes": 423,
+  "codexBoundToolsJsonBytes": 116186,
+  "stationBrowserToolListJsonBytes": 12534,
+  "stationKnowledgeToolListJsonBytes": 2008,
   "stationDocsToolListJsonBytes": 1580,
-  "stationInstructionsClaudeBytes": 4735,
+  "stationInstructionsClaudeBytes": 4733,
   "workloadBudgetContextBytes": 486,
   "hostImageInstructionBytes": 226
 }

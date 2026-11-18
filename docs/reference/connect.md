@@ -704,7 +704,7 @@ installed Station channel, then redeem the invitation. Creating it approves
 the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** under **More options**.
 **Paired devices → Approve another device** also opens the invitation panel.
 The selected client channel controls both the app-opening QR and any published
-mobile download links. Public store and beta invitation URLs are maintained in
+mobile download links. Public store and TestFlight invitation URLs are maintained in
 `packages/connect/src/core/mobileAppDownloads.ts`; absent destinations have no
 install link. Native clients default to their own release channel. Station
 creates a five-minute, single-use offer containing an environment ID, endpoint,
@@ -1184,7 +1184,8 @@ const { candidates, refresh } = useConnectionCandidates();
 
 Plain browsers do not register a provider by default and never enumerate a
 guessed subnet or probe a hard-coded port. Manual address and pairing-code
-entry remain available under Other ways to connect.
+entry remain available on the phone welcome screen (**Enter a pairing code** and
+**Enter Station address**).
 
 The former `useNetworkDiscovery` and `DiscoveredServer` exports remain as
 deprecated source-compatibility adapters. The hook reads the same registered

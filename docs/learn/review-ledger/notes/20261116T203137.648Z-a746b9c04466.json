@@ -1,0 +1,7 @@
+{
+  "revision": "8c008b260937ba2a64428ac7cfa283b81c2041aa",
+
+  "notes": [
+    {"path":"README.md","note":"README only links the Nightly guide; none of its claims cite the verifier or its retry, so nothing changed.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

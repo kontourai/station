@@ -1,6 +1,7 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type {
   MemberProjectView,
+  ProjectEffort,
   ProjectRepositorySource,
   ProjectRunLocations,
   ProjectRunsAt,
@@ -20,6 +21,7 @@ import type {
   ProjectSharedTaskPublication,
   ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
+import type { ProjectPullRequestWatchSettings } from '@kontourai/station-contracts/pull-request-watch';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConnectionReadTarget } from '@kontourai/station-sdk';
 import {
@@ -624,6 +626,8 @@ export interface ProjectMetadata {
   defaultProviderId?: string;
   /** Server-owned explicit sidebar position (archive#3315); list is pre-sorted by it. */
   position?: number;
+  /** Paused or archived; absent is active (`@kontourai/station-contracts/project-lifecycle`). */
+  lifecycle?: import('@kontourai/station-contracts/project-lifecycle').ProjectLifecycle;
   /**
    * #3370: where a new chat in this project runs. Never sent by the Project
    * list: the start composer merges it in from the run-locations read
@@ -635,6 +639,14 @@ export interface ProjectMetadata {
 
 export interface ProjectConfig extends ProjectMetadata {
   toolDefaults?: ProjectToolDefaults;
+  /** #5062: the Project brief. See `ProjectConfig` in the contracts. */
+  goal?: string;
+  instructions?: string;
+  /** #5068: coordinator and Task model and effort. */
+  coordinatorEffort?: ProjectEffort;
+  taskModel?: string;
+  taskProviderId?: string;
+  taskEffort?: ProjectEffort;
   workingDirectory?: string;
   defaultModel?: string;
   /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
@@ -647,6 +659,9 @@ export interface ProjectConfig extends ProjectMetadata {
   similarityThreshold?: number;
   topK?: number;
   agents?: AgentId[];
+  /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
+  overviewAutoResolveDays?: number;
+  pullRequestWatch?: ProjectPullRequestWatchSettings;
   createdAt: string;
   updatedAt: string;
 }

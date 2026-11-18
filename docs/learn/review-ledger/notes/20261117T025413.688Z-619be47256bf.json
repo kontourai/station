@@ -1,0 +1,11 @@
+{
+  "revision": "721507c8d06d859579642d51ef1e3792acb9d1d5",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Merged with #5098 (pause, archive, schedules). Agent feedback is gated on its Feature Preview like Schedules and the save hint is a per-section map (agent feedback saves automatically); settings architecture, skeletons and the settings user page are otherwise unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Merged with #5098 (pause, archive, schedules). Agent feedback is gated on its Feature Preview like Schedules and the save hint is a per-section map (agent feedback saves automatically); settings architecture, skeletons and the settings user page are otherwise unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Merged with #5098 (pause, archive, schedules). Agent feedback is gated on its Feature Preview like Schedules and the save hint is a per-section map (agent feedback saves automatically); settings architecture, skeletons and the settings user page are otherwise unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}
