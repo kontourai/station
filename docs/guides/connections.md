@@ -1810,7 +1810,7 @@ working directory while the receipt retains the repository root and exact commit
 The directory must exist inside the checkout; traversal, Git metadata directories
 and symlink redirects are refused and rechecked at Project creation. It does not install dependencies or execute repository setup.
 
-**Choose from GitHub** and **Choose from GitLab** list accessible public/private
+The **GitHub** and **GitLab** tiles in New Project and **Sources → Add a repository** list accessible public/private
 repositories through this host's signed-in `gh` or `glab` account. A page holds
 at most 30 entries and shows the observed account, visibility and default branch.
 Choose HTTPS or SSH explicitly; selection fills editable URL/ref fields using
@@ -1819,7 +1819,7 @@ establish that the host's separate Git credentials can access that repository.
 Discovery checks the account before and after listing, withholds late results
 after Station authority changes, and never reads or returns provider tokens.
 If the CLI or sign-in is unavailable, sign in on the host with `gh auth login`
-or `glab auth login`, retry, or paste a Git URL. Self-hosted forges remain an
+or `glab auth login`, retry, or choose **Git URL** and paste the repository URL. Self-hosted forges remain an
 explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
 
 **Find existing checkouts** lists up to 20 retained acquisitions matching the

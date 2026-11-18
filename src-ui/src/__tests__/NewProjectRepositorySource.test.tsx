@@ -139,10 +139,11 @@ test.each(['github', 'gitlab'] as const)(
       }),
     );
     mount();
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'Repository provider' }),
-      { target: { value: provider } },
-    );
+    const tile = screen.getByRole('button', {
+      name: provider === 'github' ? 'GitHub' : 'GitLab',
+    });
+    fireEvent.click(tile);
+    expect(tile.getAttribute('aria-pressed')).toBe('true');
     await screen.findByText(/Signed in as operator/);
     expect(acquired).toBeUndefined();
     fireEvent.change(screen.getByLabelText('Clone protocol'), {

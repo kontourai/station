@@ -9,6 +9,14 @@ import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
+import { ForgeMark } from '../icons/ForgeMark';
+import { LinkGlyph } from '../icons/Glyph';
+import './RepositoryProviderPicker.css';
+
+const providers = [
+  { id: 'github', label: 'GitHub' },
+  { id: 'gitlab', label: 'GitLab' },
+] as const;
 
 export function RepositoryProviderPicker({
   scope,
@@ -21,7 +29,7 @@ export function RepositoryProviderPicker({
   const [page, setPage] = useState(1);
   const [protocol, setProtocol] = useState<'https' | 'ssh'>('https');
   const protocolId = useId();
-  const providerId = useId();
+
   const catalog = useQuery({
     queryKey: [
       'repository-provider',
@@ -47,24 +55,32 @@ export function RepositoryProviderPicker({
     },
   });
   return (
-    <section aria-label="Choose a hosted repository">
-      <label htmlFor={providerId}>Repository provider</label>
-      <select
-        id={providerId}
-        className="editor-input"
-        value={provider ?? ''}
-        onChange={(event) => {
-          const value = event.target.value;
-          setProvider(
-            value === 'github' || value === 'gitlab' ? value : undefined,
-          );
-          setPage(1);
-        }}
-      >
-        <option value="">Choose a provider</option>
-        <option value="github">GitHub</option>
-        <option value="gitlab">GitLab</option>
-      </select>
+    <section aria-label="Repository source">
+      <fieldset className="repository-provider-picker">
+        <legend>Choose a repository source</legend>
+        {providers.map(({ id, label }) => (
+          <Button
+            key={id}
+            type="button"
+            variant="secondary"
+            aria-pressed={provider === id}
+            onClick={() => {
+              setProvider(id);
+              setPage(1);
+            }}
+          >
+            <ForgeMark forge={id} /> {label}
+          </Button>
+        ))}
+        <Button
+          type="button"
+          variant="secondary"
+          aria-pressed={!provider}
+          onClick={() => setProvider(undefined)}
+        >
+          <LinkGlyph /> Git URL
+        </Button>
+      </fieldset>
       {provider && (
         <>
           <p>
