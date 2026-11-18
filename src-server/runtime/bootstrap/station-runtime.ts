@@ -880,8 +880,9 @@ export class StationRuntime {
   private configurationSourceUnsubscribers: Array<() => void> = [];
   private stopConversationTitleGeneration?: () => void;
   private stopTaskLifecycleEvents?: () => void;
-  private taskFinalizationAdmissionClosed = false;
-  private readonly taskFinalizations = new Set<Promise<void>>();
+  private taskWorktreeRetryAdmissionClosed = false;
+  private readonly taskWorktreeRetries = new Set<Promise<void>>();
+  private readonly sessionExitFinalizations = new Set<Promise<void>>();
   private readonly assignmentClaimUpdates = new Set<Promise<void>>();
   private schedulerService?: SchedulerService;
   private kitLifecycleReady: Promise<void> = Promise.resolve();
@@ -2126,31 +2127,43 @@ export class StationRuntime {
             event.reason ?? 'session.exited',
           ),
         );
-        if (this.taskFinalizationAdmissionClosed) return;
-        this.trackTaskLifecycleWrite(this.taskFinalizations, () =>
+        this.trackTaskLifecycleWrite(this.sessionExitFinalizations, () =>
           finalizeSessionExit(
             { ...event, sessionId },
             {
-              readExitDetail: (id) =>
-                this.orchestrationService.readSession(
+              // The event bus receives committed exits, including ones
+              // published by orchestration after its public reads stop.
+              readExitDetail: async (id) => {
+                const store = this.orchestrationEventStore;
+                const session = store.readSessionByThread(id);
+                if (!session) return null;
+                const events = store.listEventPayloads(
                   id,
-                  INTERNAL_SESSION_READ_SCOPE,
-                  {
-                    eventMethods: [
-                      'session.started',
-                      'session.configured',
-                      'session.exited',
-                      'session.state-changed',
-                      'turn.started',
-                      'turn.completed',
-                      'turn.aborted',
-                      'runtime.error',
-                      'request.opened',
-                      'request.resolved',
-                      'session.stop-settled',
-                    ],
+                  [
+                    'session.started',
+                    'session.configured',
+                    'session.exited',
+                    'session.state-changed',
+                    'turn.started',
+                    'turn.completed',
+                    'turn.aborted',
+                    'runtime.error',
+                    'request.opened',
+                    'request.resolved',
+                    'session.stop-settled',
+                  ],
+                  false,
+                  true,
+                );
+                return {
+                  session: {
+                    ...session,
+                    lifecycleState: projectSessionLifecycle({ session, events })
+                      .lifecycleState,
                   },
-                ),
+                  events,
+                };
+              },
               publishAgentFinished: async ({
                 sessionId: id,
                 provider,
@@ -2166,16 +2179,8 @@ export class StationRuntime {
                       .listTasks()
                       .find((candidate) => candidate.sessionId === id);
                 if (!task) return;
-                // Fold the persisted canonical stream through the one lifecycle
-                // classifier used by every other Station projection. Exit
-                // `reason` is adapter text, not a room-outcome authority.
-                const lifecycle = projectSessionLifecycle({
-                  session: detail.session,
-                  events: detail.events,
-                });
-                // An exit while work was still in progress was cut off.
                 const outcome =
-                  sessionLifecycleOutcome(lifecycle.lifecycleState) ??
+                  sessionLifecycleOutcome(detail.session.lifecycleState) ??
                   'cancelled';
                 await this.projectTaskRoomRuntime?.publishAgentFinished({
                   taskId: task.id,
@@ -2214,7 +2219,7 @@ export class StationRuntime {
       });
     } catch (error) {
       this.stopConversationTitleGeneration?.();
-      this.taskFinalizationAdmissionClosed = true;
+      this.taskWorktreeRetryAdmissionClosed = true;
       this.stopTaskLifecycleEvents?.();
       this.stopTaskLifecycleEvents = undefined;
       const failures: unknown[] = [error];
@@ -6359,8 +6364,8 @@ export class StationRuntime {
   }
 
   private retryDeferredTaskWorktreeFinalizations(): void {
-    if (this.taskFinalizationAdmissionClosed) return;
-    this.trackTaskLifecycleWrite(this.taskFinalizations, () =>
+    if (this.taskWorktreeRetryAdmissionClosed) return;
+    this.trackTaskLifecycleWrite(this.taskWorktreeRetries, () =>
       this.taskGraphService.retryDeferredTaskWorktreeFinalizations(),
     );
   }
@@ -6382,19 +6387,48 @@ export class StationRuntime {
     }
   }
 
+  private async settleSessionExitWrites(
+    taskLifecycleDeadline: number,
+  ): Promise<void> {
+    this.stopTaskLifecycleEvents?.();
+    this.stopTaskLifecycleEvents = undefined;
+    const sessionExitWrites = await Promise.allSettled([
+      this.drainTaskLifecycleWrites(
+        this.sessionExitFinalizations,
+        taskLifecycleDeadline,
+        'Session exit finalizations',
+      ),
+      this.drainTaskLifecycleWrites(
+        this.assignmentClaimUpdates,
+        taskLifecycleDeadline,
+        'assignment claim updates',
+      ),
+    ]);
+    const pendingWriterFailures = sessionExitWrites.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    if (pendingWriterFailures.length > 0) {
+      throw new AggregateError(
+        pendingWriterFailures,
+        'Runtime shutdown cleanup was incomplete.',
+      );
+    }
+  }
+
   private async shutdownAfterConfigurationDrain(): Promise<void> {
     this.recordRuntimeLifecycle('stopping');
-    this.taskFinalizationAdmissionClosed = true;
+    this.taskWorktreeRetryAdmissionClosed = true;
     const taskLifecycleDeadline = performance.now() + this.drainGraceMs();
-    const [taskFinalizations, configuration] = await Promise.allSettled([
+    const [taskWorktreeRetries, configuration] = await Promise.allSettled([
       this.drainTaskLifecycleWrites(
-        this.taskFinalizations,
+        this.taskWorktreeRetries,
         taskLifecycleDeadline,
-        'Task lifecycle finalization',
+        'deferred Task worktree retries',
       ),
       this.drainConfigurationQueues(),
     ]);
-    if (taskFinalizations.status === 'rejected') throw taskFinalizations.reason;
+    if (taskWorktreeRetries.status === 'rejected')
+      throw taskWorktreeRetries.reason;
     if (configuration.status === 'rejected') throw configuration.reason;
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
@@ -6518,6 +6552,7 @@ export class StationRuntime {
     } catch (error) {
       failures.push(error);
     }
+    let sessionExitWritersPending = false;
     try {
       const optionalNetworkShutdownTasks = [
         this.usageTelemetry
@@ -6535,6 +6570,14 @@ export class StationRuntime {
         stopHealthChecks: this.stopHealthChecks,
         schedulerService: this.schedulerService,
         orchestrationService: this.orchestrationService,
+        settleSessionExitWrites: async () => {
+          try {
+            await this.settleSessionExitWrites(taskLifecycleDeadline);
+          } catch (error) {
+            sessionExitWritersPending = true;
+            throw error;
+          }
+        },
         attachedSessionFollowService: this.attachedSessionFollowService,
         consoleBridgeService: this.consoleBridgeService,
         voltAgent: this.voltAgent,
@@ -6578,24 +6621,14 @@ export class StationRuntime {
         optionalNetworkShutdownTasks,
       });
     } catch (error) {
+      if (sessionExitWritersPending) {
+        if (failures.length === 0) throw error;
+        throw new AggregateError(
+          [...failures, error],
+          'Runtime shutdown cleanup was incomplete.',
+        );
+      }
       failures.push(error);
-    }
-    // Orchestration shutdown can emit session exits. Join their claim
-    // releases before disposing assignment providers or the EventStore.
-    this.stopTaskLifecycleEvents?.();
-    this.stopTaskLifecycleEvents = undefined;
-    try {
-      await this.drainTaskLifecycleWrites(
-        this.assignmentClaimUpdates,
-        taskLifecycleDeadline,
-        'assignment claim updates',
-      );
-    } catch (error) {
-      failures.push(error);
-      throw new AggregateError(
-        failures,
-        'Runtime shutdown cleanup was incomplete.',
-      );
     }
     try {
       const subscriptions =

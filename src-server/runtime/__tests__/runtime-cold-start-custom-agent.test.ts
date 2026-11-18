@@ -32,6 +32,7 @@
  * regression and nothing below asserts on it, so the watcher is faked and
  * `ConfigLoader` itself stays real.
  */
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -41,7 +42,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -91,6 +95,7 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { WorktreeProvisioningService } from '../../services/projects/worktree-provisioning-service.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -872,9 +877,15 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     }
   });
 
-  it('joins session finalization before stopping orchestration and claim updates before closing the home', async () => {
+  it('joins deferred Task worktree retries before stopping orchestration and claim updates before closing the home', async () => {
     home = await createSchemaHome('station-task-writer-shutdown-');
-    const finalization = deferred<null>();
+    const finalization = deferred<void>();
+    const retries = vi
+      .spyOn(
+        TaskGraphService.prototype,
+        'retryDeferredTaskWorktreeFinalizations',
+      )
+      .mockReturnValue(finalization.promise);
     const release = deferred<void>();
     const reconcile = deferred<{ releasedSubjects: string[] }>();
     const releaseClaim = vi
@@ -889,30 +900,27 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
         event: { method: 'session.exited', sessionId, reason: 'ended' },
       });
-    const readSession = vi.fn(() => finalization.promise);
     const stop = vi.fn(async () => emitExit('during-shutdown'));
     const subject = runtime as unknown as {
       orchestrationService: {
-        readSession: typeof readSession;
         shutdown: typeof stop;
       };
       orchestrationEventStore: EventStore;
     };
-    subject.orchestrationService = { readSession, shutdown: stop };
+    subject.orchestrationService = { shutdown: stop };
     const outbox = subject.orchestrationEventStore.operationalEventReader();
 
     try {
       emitExit('before-shutdown');
-      await vi.waitFor(() => expect(readSession).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(retries).toHaveBeenCalled());
       const shutdown = runtime.shutdown();
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(stop).not.toHaveBeenCalled();
 
-      finalization.resolve(null);
+      finalization.resolve();
       await vi.waitFor(() =>
         expect(releaseClaim).toHaveBeenCalledWith('during-shutdown', 'ended'),
       );
-      expect(readSession).toHaveBeenCalledTimes(1);
       expect(reconcileClaims).toHaveBeenCalledTimes(1);
       expect(outbox.readAfter().kind).toBe('available');
       expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
@@ -925,19 +933,145 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       expect(outbox.readAfter().kind).toBe('available');
       reconcile.resolve({ releasedSubjects: [] });
       await shutdown;
-      expect(readSession).toHaveBeenCalledTimes(1);
       const maintenance = acquireStationHomeMaintenanceLease(home);
       maintenance.release();
       emitExit('after-shutdown');
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(releaseClaim).toHaveBeenCalledTimes(2);
     } finally {
-      finalization.resolve(null);
+      finalization.resolve();
       release.resolve();
       reconcile.resolve({ releasedSubjects: [] });
       await runtime.shutdown();
+      retries.mockRestore();
       releaseClaim.mockRestore();
       reconcileClaims.mockRestore();
+    }
+  });
+
+  it('settles the real worktree of a terminal Session published during orchestration shutdown', async () => {
+    home = await createSchemaHome('station-late-session-exit-');
+    const repo = makeTempDir('station-late-session-exit-repo-');
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo });
+    git('init', '-q');
+    git(
+      '-c',
+      'user.name=Station Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '--allow-empty',
+      '-qm',
+      'initial',
+    );
+    const sessionId = 'claude:late-terminal';
+    const metadata = await new WorktreeProvisioningService().provision({
+      repoPath: repo,
+      threadId: sessionId,
+      providerKind: 'claude',
+      isolation: { mode: 'worktree', policy: { preserveOnFailure: false } },
+    });
+    if (!metadata) throw new Error('Expected a provisioned Session worktree');
+    expect(existsSync(metadata.path)).toBe(true);
+
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    await runtime.initialize();
+    const subject = runtime as unknown as {
+      orchestrationService: {
+        shutdown(): Promise<void>;
+        projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+        stopEventConsumption(): void;
+      };
+      orchestrationEventStore: EventStore;
+    };
+    const orchestra = subject.orchestrationService;
+    const store = subject.orchestrationEventStore;
+    const base = {
+      provider: 'claude' as const,
+      threadId: sessionId,
+      sessionId,
+      createdAt: new Date().toISOString(),
+    };
+    orchestra.projectAndPublishEvent({
+      ...base,
+      eventId: 'late-worktree-start',
+      method: 'session.started',
+      metadata: { userId: 'human:local:operator', worktree: metadata },
+    });
+    expect(store.listEventPayloads(sessionId, ['session.started'])).toEqual([
+      expect.objectContaining({
+        metadata: expect.objectContaining({ worktree: metadata }),
+      }),
+    ]);
+    expect(git('rev-parse', '--show-toplevel').toString().trim()).toBe(
+      metadata.repoPath,
+    );
+    const stopConsumption = orchestra.stopEventConsumption.bind(orchestra);
+    const stopped = vi
+      .spyOn(orchestra, 'stopEventConsumption')
+      .mockImplementationOnce(() => {
+        stopConsumption();
+        orchestra.projectAndPublishEvent({
+          ...base,
+          eventId: 'late-worktree-exit',
+          method: 'session.exited',
+          exitCode: 0,
+          reason: 'process_exit',
+        });
+      });
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    const finalizeOriginal = WorktreeProvisioningService.prototype.finalize;
+    const finalize = vi
+      .spyOn(WorktreeProvisioningService.prototype, 'finalize')
+      .mockImplementation(async function (
+        this: WorktreeProvisioningService,
+        input,
+      ) {
+        entered.resolve();
+        await finish.promise;
+        return finalizeOriginal.call(this, input);
+      });
+
+    try {
+      const shutdown = runtime.shutdown();
+      const state = await Promise.race([
+        entered.promise.then(() => 'finalizing'),
+        shutdown.then(() => 'closed'),
+      ]);
+      expect(state).toBe('finalizing');
+      expect(stopped).toHaveBeenCalledTimes(1);
+      expect(store.listEventPayloads(sessionId, ['session.exited'])).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ eventId: 'late-worktree-exit' }),
+        ]),
+      );
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+      expect(existsSync(metadata.path)).toBe(true);
+
+      finish.resolve();
+      await shutdown;
+      expect(existsSync(metadata.path)).toBe(false);
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      const reopened = new EventStore(getOrchestrationDatabasePath(home));
+      try {
+        expect(
+          reopened.worktreeOutputSettlementStore().read(sessionId)?.record,
+        ).toMatchObject({
+          outcome: 'cleaned-up-without-decision',
+          state: 'settled',
+        });
+      } finally {
+        reopened.close();
+        maintenance.release();
+      }
+    } finally {
+      finish.resolve();
+      await runtime.shutdown();
+      finalize.mockRestore();
+      stopped.mockRestore();
     }
   });
 
