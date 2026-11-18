@@ -50,6 +50,10 @@ import {
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
+import {
+  acquireStationHomeMaintenanceLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { adoptNativeEngineConnection } from '../../domain/agent-registry.js';
@@ -858,6 +862,131 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
     } finally {
       retry.mockRestore();
+    }
+  });
+
+  it('joins session finalization before stopping orchestration and claim updates before closing the home', async () => {
+    home = await createSchemaHome('station-task-writer-shutdown-');
+    const finalization = Promise.withResolvers<null>();
+    const release = Promise.withResolvers<void>();
+    const reconcile = Promise.withResolvers<{ releasedSubjects: string[] }>();
+    const releaseClaim = vi
+      .spyOn(TaskGraphService.prototype, 'releaseClaimForSession')
+      .mockReturnValue(release.promise);
+    const reconcileClaims = vi
+      .spyOn(TaskGraphService.prototype, 'reconcileStaleAssignmentClaims')
+      .mockReturnValue(reconcile.promise);
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    const { eventBus } = runtime;
+    const emitExit = (sessionId: string) =>
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: { method: 'session.exited', sessionId, reason: 'ended' },
+      });
+    const readSession = vi.fn(() => finalization.promise);
+    const stop = vi.fn(async () => emitExit('during-shutdown'));
+    const subject = runtime as unknown as {
+      orchestrationService: {
+        readSession: typeof readSession;
+        shutdown: typeof stop;
+      };
+      orchestrationEventStore: EventStore;
+    };
+    subject.orchestrationService = { readSession, shutdown: stop };
+    const outbox = subject.orchestrationEventStore.operationalEventReader();
+
+    try {
+      emitExit('before-shutdown');
+      await vi.waitFor(() => expect(readSession).toHaveBeenCalledTimes(1));
+      const shutdown = runtime.shutdown();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(stop).not.toHaveBeenCalled();
+
+      finalization.resolve(null);
+      await vi.waitFor(() =>
+        expect(releaseClaim).toHaveBeenCalledWith('during-shutdown', 'ended'),
+      );
+      expect(readSession).toHaveBeenCalledTimes(1);
+      expect(reconcileClaims).toHaveBeenCalledTimes(1);
+      expect(outbox.readAfter().kind).toBe('available');
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+
+      release.resolve();
+      // The startup sweep is a separate writer and still has custody.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(outbox.readAfter().kind).toBe('available');
+      reconcile.resolve({ releasedSubjects: [] });
+      await shutdown;
+      expect(readSession).toHaveBeenCalledTimes(1);
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      emitExit('after-shutdown');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(releaseClaim).toHaveBeenCalledTimes(2);
+    } finally {
+      finalization.resolve(null);
+      release.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      releaseClaim.mockRestore();
+      reconcileClaims.mockRestore();
+    }
+  });
+
+  it('retains the live EventStore and home lease when startup claim reconciliation exceeds the drain deadline', async () => {
+    home = await createSchemaHome('station-task-writer-timeout-');
+    const reconcile = Promise.withResolvers<{ releasedSubjects: string[] }>();
+    const sweep = Promise.withResolvers<void>();
+    const reconcileClaims = vi
+      .spyOn(TaskGraphService.prototype, 'reconcileStaleAssignmentClaims')
+      .mockReturnValue(reconcile.promise);
+    const retryWorktrees = vi
+      .spyOn(
+        TaskGraphService.prototype,
+        'retryDeferredTaskWorktreeFinalizations',
+      )
+      .mockResolvedValue(undefined);
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      orphanEngineSweep: sweep.promise,
+    });
+    const subject = runtime as unknown as {
+      agentConfigurationShutdownDrainGraceMs: number;
+      orchestrationEventStore: EventStore;
+    };
+    subject.agentConfigurationShutdownDrainGraceMs = 20;
+    const outbox = subject.orchestrationEventStore.operationalEventReader();
+
+    try {
+      await vi.waitFor(() => expect(reconcileClaims).toHaveBeenCalledTimes(1));
+      await expect(runtime.shutdown()).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.stringContaining(
+              'waiting for assignment claim updates',
+            ),
+          }),
+        ]),
+      });
+      expect(outbox.readAfter().kind).toBe('available');
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+
+      sweep.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      expect(retryWorktrees).not.toHaveBeenCalled();
+    } finally {
+      sweep.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      reconcileClaims.mockRestore();
+      retryWorktrees.mockRestore();
     }
   });
 
