@@ -511,9 +511,7 @@ describe('NewProjectModal starter layout picker', () => {
     expect(screen.getByText('First Project')).toBeTruthy();
     expect(screen.queryByRole('combobox', { name: 'Project' })).toBeNull();
     expect(screen.queryByRole('textbox', { name: 'Task' })).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Close', exact: true }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
 
     const creatingAccount = authorityState.recoveryKey;
