@@ -1,63 +1,39 @@
+import type { RepositoryProvider } from '@kontourai/station-contracts/project';
+import { REPOSITORY_SIGN_IN_COMMANDS } from '@kontourai/station-contracts/terminal-transport';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
-import { useShowSurface } from '../contexts/useShowSurface';
 import { copyToClipboard } from '../lib/clipboard';
 import { useDockProject } from '../workspace-panes/useDockProject';
 import { ActionRow } from './ActionRow';
 import { Button } from './Button';
-import { requestProjectShell } from './coding-layout/terminalShellRequest';
+import { TerminalPanel } from './coding-layout/TerminalPanel';
 import { CopyGlyph, TerminalGlyph } from './icons/Glyph';
 import './TerminalCommandAction.css';
 
-function OpenStationTerminalButton({
-  authority,
-  onOpen,
-}: {
-  authority: ApiRequestScope;
-  onOpen: () => void;
-}) {
-  const host = useHostRequestAuthorityScope();
-  const { projectSlug } = useDockProject();
-  const show = useShowSurface();
-  if (
-    !projectSlug ||
-    host?.apiBase !== authority.apiBase ||
-    host.authorityKey !== authority.authorityKey ||
-    !host.isCurrent()
-  )
-    return null;
-  return (
-    <Button
-      variant="ghost"
-      aria-label="Copy and open terminal"
-      title="Copy and open terminal"
-      onClick={() => {
-        if (!host.isCurrent()) return;
-        onOpen();
-        requestProjectShell(projectSlug);
-        show('coding:terminal', undefined, { region: 'bottom' });
-      }}
-    >
-      <TerminalGlyph />
-    </Button>
-  );
-}
-
 export function TerminalCommandAction({
-  command,
+  provider,
   authority,
   stationName,
 }: {
-  command: string;
+  provider: RepositoryProvider;
   authority: ApiRequestScope;
   stationName: string;
 }) {
+  const host = useHostRequestAuthorityScope();
+  const { projectId, projectSlug } = useDockProject();
   const [copyStatus, setCopyStatus] = useState<'copied' | 'failed'>();
-
-  const copy = async () => {
-    setCopyStatus((await copyToClipboard(command)) ? 'copied' : 'failed');
-  };
+  const [runTarget, setRunTarget] = useState<{
+    projectId: string;
+    projectSlug: string;
+  }>();
+  const [terminalId, setTerminalId] = useState<string>();
+  const command = REPOSITORY_SIGN_IN_COMMANDS[provider].join(' ');
+  const targetMatches = Boolean(
+    host?.apiBase === authority.apiBase &&
+      host.authorityKey === authority.authorityKey &&
+      host.isCurrent(),
+  );
   return (
     <section className="terminal-command" aria-label="Terminal command">
       <div className="terminal-command__header">
@@ -71,16 +47,30 @@ export function TerminalCommandAction({
               variant="ghost"
               aria-label="Copy command"
               title="Copy command"
-              onClick={() => void copy()}
+              onClick={async () =>
+                setCopyStatus(
+                  (await copyToClipboard(command)) ? 'copied' : 'failed',
+                )
+              }
             >
               <CopyGlyph />
             </Button>
           }
           primary={
-            <OpenStationTerminalButton
-              authority={authority}
-              onOpen={() => void copy()}
-            />
+            targetMatches && projectSlug && projectId ? (
+              <Button
+                variant="ghost"
+                aria-label="Run in terminal"
+                title="Run in terminal"
+                disabled={Boolean(runTarget)}
+                onClick={() => {
+                  if (host?.isCurrent())
+                    setRunTarget({ projectId, projectSlug });
+                }}
+              >
+                <TerminalGlyph />
+              </Button>
+            ) : undefined
           }
         />
       </div>
@@ -90,9 +80,27 @@ export function TerminalCommandAction({
       {copyStatus && (
         <p role="status">
           {copyStatus === 'copied'
-            ? 'Copied. Paste it into the terminal.'
+            ? 'Copied.'
             : 'Select and copy the command above.'}
         </p>
+      )}
+      {runTarget && targetMatches && (
+        <div className="terminal-command__session">
+          <TerminalPanel
+            projectSlug={runTarget.projectSlug}
+            workingDir=""
+            viewKey="repository-sign-in"
+            terminalId={terminalId}
+            onOpened={setTerminalId}
+            target={{ projectId: runTarget.projectId, bindingKey: 'project' }}
+            launch={{ kind: 'repository-sign-in', provider }}
+            ended={{
+              message:
+                'Sign-in command ended. Retry repositories to check access.',
+            }}
+            isActive
+          />
+        </div>
       )}
     </section>
   );

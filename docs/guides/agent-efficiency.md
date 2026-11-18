@@ -9,9 +9,11 @@ additional tool permission.
 
 ## Review a Project's working configuration
 
-In **Project settings → Sources → Where new chats start**, discover the
-repository guidance, then review the proposed rules, validation commands,
-completion criteria, checkpoints and evidence pointers before applying them.
+In **Project settings → Sources → Working configuration**, discover the
+repository guidance, then choose **Review defaults** to select instruction
+files and validation commands. Expand an instruction to edit its excerpt.
+Use **Advanced defaults** for completion criteria, checkpoints and evidence
+pointers.
 Only the operator in person can discover or change this host-filesystem
 configuration. Applying it saves defaults; it runs no setup, installation,
 validation command or model.

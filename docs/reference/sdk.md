@@ -49,8 +49,11 @@ native shell's host-owned transport), and `requestTicket`, `createSocket` and
 
 - `open(target, {cols, rows, launch?, legacyTerminalId?})` asks the server for a
   new session in `target` (`{projectId, bindingKey}`). `launch` names a
-  server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
-  mode}`); no executable, argument or directory is sent. `legacyTerminalId`
+  server-resolved program (`{kind: 'shell'}`, `{kind: 'agent', connectionId,
+  mode}`, or `{kind: 'repository-sign-in', provider}`). The repository sign-in
+  profile runs a fixed GitHub or GitLab browser login in an interactive terminal
+  when the Station operator has command authority. The client supplies no executable
+  or arguments. `legacyTerminalId`
   imports a pre-socket Coding terminal's owned history once.
 - `attach(target, terminalId)` views an existing session; repeated calls share
   one view until it is detached.

@@ -12,12 +12,10 @@ const setup = {
   github: {
     name: 'GitHub',
     install: 'https://cli.github.com/',
-    command: 'gh auth login --hostname github.com --web',
   },
   gitlab: {
     name: 'GitLab',
     install: 'https://docs.gitlab.com/cli/',
-    command: 'glab auth login --hostname gitlab.com --web',
   },
 } as const;
 
@@ -62,7 +60,7 @@ export function RepositoryProviderRecovery({
           </p>
           {code === 'repository_sign_in_required' && (
             <TerminalCommandAction
-              command={providerSetup.command}
+              provider={provider}
               authority={authority}
               stationName={stationName}
             />

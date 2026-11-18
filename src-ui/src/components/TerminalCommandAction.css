@@ -47,3 +47,8 @@
   overflow-x: auto;
   color: var(--k-text);
 }
+
+.terminal-command__session {
+  block-size: clamp(12rem, 35dvh, 22rem);
+  min-inline-size: 0;
+}

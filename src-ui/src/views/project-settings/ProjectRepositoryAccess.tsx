@@ -53,7 +53,7 @@ export function ProjectRepositoryAccess({
       />
       {data.signIn === 'failed' && (
         <TerminalCommandAction
-          command="gh auth login --hostname github.com --web"
+          provider="github"
           authority={authority}
           stationName={stationName}
         />

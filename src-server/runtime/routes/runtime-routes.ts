@@ -21,6 +21,7 @@ import {
   taskStatusLabel,
 } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
+import { REPOSITORY_SIGN_IN_COMMANDS } from '@kontourai/station-contracts/terminal-transport';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { zodSchema } from 'ai';
@@ -10429,7 +10430,29 @@ export function configureRuntimeRoutes(
         },
         // An agent tab names a configured connection and one of its live
         // modes; the program and arguments come from the saved connection.
-        resolveLaunch: async (_request, _scope, profile) => {
+        resolveLaunch: async (request, _scope, profile) => {
+          if (profile.kind === 'repository-sign-in') {
+            const admitted = () =>
+              isOperatorInPersonNotAgent(request) &&
+              isRequestPrincipalCurrent(request) &&
+              mayRunCommandsOnHostCurrently(
+                request,
+                context.environmentSecurityService,
+              );
+            if (!admitted())
+              throw new TerminalSessionRefusal(
+                'Sign-in requires the Station operator',
+              );
+            const [command, ...args] =
+              REPOSITORY_SIGN_IN_COMMANDS[profile.provider];
+            const file = await findCliBinaryAsync(command);
+            const path = await resolveAugmentedPath();
+            if (!file || !admitted())
+              throw new TerminalSessionRefusal(
+                'Repository sign-in is unavailable',
+              );
+            return { file, args, env: { PATH: path } };
+          }
           const connection = (
             await context.configLoader.loadACPConfig()
           ).connections.find(

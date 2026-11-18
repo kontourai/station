@@ -99,6 +99,13 @@ export function ProjectSourcesSection({
             />
           )}
           {projectId && (
+            <ProjectWorkingConfiguration
+              slug={slug}
+              projectId={projectId}
+              authority={authority}
+            />
+          )}
+          {projectId && (
             <details className="project-sources__group">
               <summary>Where new chats start</summary>
               <ProjectWorkspaceSelection
@@ -107,11 +114,6 @@ export function ProjectSourcesSection({
                 authority={authority}
               />
               <ProjectOperatorSetup
-                slug={slug}
-                projectId={projectId}
-                authority={authority}
-              />
-              <ProjectWorkingConfiguration
                 slug={slug}
                 projectId={projectId}
                 authority={authority}

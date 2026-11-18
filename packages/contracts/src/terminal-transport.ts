@@ -58,7 +58,13 @@ export interface TerminalTicket {
  */
 export type TerminalLaunchProfile =
   | { kind: 'shell' }
-  | { kind: 'agent'; connectionId: string; mode: string };
+  | { kind: 'agent'; connectionId: string; mode: string }
+  | { kind: 'repository-sign-in'; provider: 'github' | 'gitlab' };
+
+export const REPOSITORY_SIGN_IN_COMMANDS = {
+  github: ['gh', 'auth', 'login', '--hostname', 'github.com', '--web'],
+  gitlab: ['glab', 'auth', 'login', '--hostname', 'gitlab.com', '--web'],
+} as const;
 
 /** Longest relative working directory a client may request for a session. */
 export const TERMINAL_SUBDIRECTORY_MAX_LENGTH = 4096;

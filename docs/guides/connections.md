@@ -1823,9 +1823,10 @@ or `glab auth login`, retry, or choose **Git URL** and paste the repository URL.
 explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
 When Station can identify a missing CLI or a provider sign-in failure, the
 picker shows installation or sign-in steps for that Station. The sign-in
-action displays the command, can copy it, and can open the bottom terminal
-when the dock has a Project on the same Station. Paste and run the command
-yourself, complete the provider authorization, then retry the repository list.
+card shows the exact command and the Station. **Copy command** puts it on the
+clipboard. **Run in terminal** starts the fixed provider command in a fresh
+interactive terminal when this Station and the current dock Project allow it.
+Complete provider authorization, then retry the repository list.
 
 The Project overview and Sources open the repository tiles directly.
 Repository names link to their Git host. The overview marks which repository

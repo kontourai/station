@@ -78,8 +78,11 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
     </QueryClientProvider>,
   );
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Review working configuration' }),
+    await screen.findByRole('button', { name: 'Review defaults' }),
   );
+  const advanced = screen.getByText('Advanced defaults', { exact: true });
+  expect(advanced.parentElement?.hasAttribute('open')).toBe(false);
+  fireEvent.click(advanced);
   fireEvent.change(screen.getByLabelText('Completion criteria'), {
     target: { value: 'Independent review and evidence.' },
   });
@@ -97,13 +100,11 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
   writeFileSync(join(cwd, 'AGENTS.md'), 'Changed repository rule.');
   fireEvent.click(
     screen.getByRole('button', {
-      name: 'Discover repository instructions again',
+      name: 'Refresh discovery',
     }),
   );
   await screen.findByText('Reviewed revision 1 · Repository sources changed');
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Review working configuration' }),
-  );
+  fireEvent.click(screen.getByRole('button', { name: 'Review defaults' }));
   expect(
     screen.getByLabelText<HTMLTextAreaElement>('Completion criteria').value,
   ).toBe('Independent review and evidence.');

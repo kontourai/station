@@ -108,10 +108,7 @@ export function ProjectWorkingConfiguration({
       aria-label="Project working configuration"
     >
       <h3>Working configuration</h3>
-      <p>
-        Review repository rules and validation defaults. Applying them does not
-        run commands or authorize setup.
-      </p>
+      <p>Choose the repository instructions and checks agents should use.</p>
       {read.isLoading && <SkeletonBlock />}
       {read.isError && (
         <ErrorState
@@ -129,7 +126,7 @@ export function ProjectWorkingConfiguration({
           <p role="status">
             {view.current
               ? `Reviewed revision ${view.current.revision}${view.stale ? ' · Repository sources changed' : ''}`
-              : 'No reviewed configuration'}
+              : `${view.suggested.rules.length} instruction files · ${view.suggested.validationCommands.length} validation commands`}
           </p>
           {view.stale && (
             <p>
@@ -173,10 +170,6 @@ export function ProjectWorkingConfiguration({
           )}
           {review && (
             <>
-              <p>
-                Rules apply at the root or their selected path scope. Other
-                scoped rules remain source pointers.
-              </p>
               {review.view.sources
                 .filter((source) => source.kind === 'instructions')
                 .map((source, index) => {
@@ -209,7 +202,8 @@ export function ProjectWorkingConfiguration({
                         <span>{source.path}</span>
                       </label>
                       {rule && (
-                        <>
+                        <details>
+                          <summary>Edit instruction</summary>
                           <label htmlFor={`${id}-rule-${index}`}>
                             Reviewed rule fragment
                           </label>
@@ -230,49 +224,52 @@ export function ProjectWorkingConfiguration({
                               })
                             }
                           />
-                        </>
+                        </details>
                       )}
                     </div>
                   );
                 })}
-              <label htmlFor={`${id}-completion`}>Completion criteria</label>
-              <textarea
-                id={`${id}-completion`}
-                className="editor-input"
-                rows={3}
-                maxLength={2000}
-                value={review.draft.completionCriteria}
-                disabled={save.isPending}
-                onChange={(event) =>
-                  change({ completionCriteria: event.target.value })
-                }
-              />
-              <label htmlFor={`${id}-checkpoints`}>
-                Checkpoints, one per line
-              </label>
-              <textarea
-                id={`${id}-checkpoints`}
-                className="editor-input"
-                rows={3}
-                value={review.draft.checkpoints.join('\n')}
-                disabled={save.isPending}
-                onChange={(event) =>
-                  change({ checkpoints: event.target.value.split('\n') })
-                }
-              />
-              <label htmlFor={`${id}-evidence`}>
-                Evidence and instruction pointers, one per line
-              </label>
-              <textarea
-                id={`${id}-evidence`}
-                className="editor-input"
-                rows={3}
-                value={review.draft.evidencePointers.join('\n')}
-                disabled={save.isPending}
-                onChange={(event) =>
-                  change({ evidencePointers: event.target.value.split('\n') })
-                }
-              />
+              <details>
+                <summary>Advanced defaults</summary>
+                <label htmlFor={`${id}-completion`}>Completion criteria</label>
+                <textarea
+                  id={`${id}-completion`}
+                  className="editor-input"
+                  rows={3}
+                  maxLength={2000}
+                  value={review.draft.completionCriteria}
+                  disabled={save.isPending}
+                  onChange={(event) =>
+                    change({ completionCriteria: event.target.value })
+                  }
+                />
+                <label htmlFor={`${id}-checkpoints`}>
+                  Checkpoints, one per line
+                </label>
+                <textarea
+                  id={`${id}-checkpoints`}
+                  className="editor-input"
+                  rows={3}
+                  value={review.draft.checkpoints.join('\n')}
+                  disabled={save.isPending}
+                  onChange={(event) =>
+                    change({ checkpoints: event.target.value.split('\n') })
+                  }
+                />
+                <label htmlFor={`${id}-evidence`}>
+                  Evidence and instruction pointers, one per line
+                </label>
+                <textarea
+                  id={`${id}-evidence`}
+                  className="editor-input"
+                  rows={3}
+                  value={review.draft.evidencePointers.join('\n')}
+                  disabled={save.isPending}
+                  onChange={(event) =>
+                    change({ evidencePointers: event.target.value.split('\n') })
+                  }
+                />
+              </details>
               <fieldset>
                 <legend>Declared validation commands</legend>
                 {review.view.suggested.validationCommands.map(
@@ -333,9 +330,7 @@ export function ProjectWorkingConfiguration({
                   Apply reviewed defaults
                 </Button>
               ) : (
-                <Button onClick={() => begin(false)}>
-                  Review working configuration
-                </Button>
+                <Button onClick={() => begin(false)}>Review defaults</Button>
               )
             }
             secondary={
@@ -351,7 +346,7 @@ export function ProjectWorkingConfiguration({
                   disabled={read.isFetching || save.isPending}
                   onClick={() => void read.refetch()}
                 >
-                  Discover repository instructions again
+                  Refresh discovery
                 </Button>
               )
             }
@@ -360,7 +355,7 @@ export function ProjectWorkingConfiguration({
                 ? [
                     {
                       key: 'discover',
-                      label: 'Discover repository instructions again',
+                      label: 'Refresh discovery',
                       disabled: read.isFetching || save.isPending,
                       onSelect: () => {
                         void read.refetch();
