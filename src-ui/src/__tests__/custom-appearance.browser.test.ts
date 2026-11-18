@@ -226,7 +226,9 @@ describe('custom appearance in Chromium', () => {
         (element as HTMLElement).style.display = '';
       });
       await page.setViewportSize({ width: 1024, height: 700 });
-      await backdrop.evaluate((element) => element.remove());
+      await backdrop.evaluate((element) =>
+        element.parentNode?.removeChild(element),
+      );
     }
   });
 
