@@ -506,6 +506,27 @@ describe('CommandPalette', () => {
     });
   });
 
+  test('identifies My knowledge store as personal and opens its Settings row', async () => {
+    await renderCommandPalette();
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'my knowledge store' },
+    });
+
+    const command = await screen.findByRole('option', {
+      name: /Settings: My knowledge store/i,
+    });
+    expect(command.textContent).toContain(
+      'The Station operator manages this personal store.',
+    );
+    fireEvent.click(command);
+
+    expect(navigateMock).toHaveBeenCalledWith('/settings', {
+      view: 'knowledge',
+      highlight: 'personal-knowledge-store',
+    });
+  });
+
   test('searches message rows only after two characters and renders hostile excerpts as text', async () => {
     messageSearchMock = {
       matches: [

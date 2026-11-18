@@ -709,3 +709,81 @@ test('Save remains clickable above an open resized dock', async ({ page }) => {
   expect((await saved).ok()).toBe(true);
   await expect(page.locator('.settings__save-pill')).toBeHidden();
 });
+
+test.describe('Settings scope and provenance', () => {
+  for (const [width, theme] of [
+    [390, 'light'],
+    [390, 'dark'],
+    [1440, 'light'],
+    [1440, 'dark'],
+  ] as const) {
+    test(`shows personal store scope and only meaningful provenance at ${width}px in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.emulateMedia({ colorScheme: theme });
+      await page.route(/\/config\/app(?:\?|$)/, async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        const response = await route.fetch();
+        expect(response.ok()).toBe(true);
+        const envelope = await response.json();
+        await route.fulfill({
+          response,
+          json: {
+            ...envelope,
+            provenance: {
+              ...envelope.provenance,
+              region: { source: 'env', envVar: 'AWS_REGION' },
+              defaultWorkspaceIsolation: { source: 'default' },
+            },
+          },
+        });
+      });
+
+      await page.goto('/settings?view=agent-runs');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      const region = page.locator('#default-region');
+      await expect(
+        region.getByText('Set by operator: AWS_REGION', { exact: true }),
+      ).toBeVisible();
+      await region.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath('operator-environment.png'),
+        animations: 'disabled',
+      });
+
+      const workspace = page.locator('#default-workspace-isolation');
+      await expect(workspace).toBeVisible();
+      await workspace.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath('built-in-default.png'),
+        animations: 'disabled',
+      });
+      await expect.soft(workspace.locator('.provenance-badge')).toHaveCount(0);
+      await workspace
+        .getByRole('button', { name: /Where .* comes from/ })
+        .click();
+      await expect(
+        page.getByText('Built-in default', { exact: true }),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+
+      await page.getByRole('button', { name: /Search or jump to/ }).click();
+      const palette = page.getByRole('dialog', { name: 'Command palette' });
+      await palette.getByRole('combobox').fill('my knowledge store');
+      const target = palette.getByRole('option', {
+        name: /Settings: My knowledge store/,
+      });
+      await expect(target).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath('personal-store-scope.png'),
+        animations: 'disabled',
+      });
+      await expect
+        .soft(target)
+        .toContainText('The Station operator manages this personal store.');
+      await target.click();
+      await expect(page.locator('#personal-knowledge-store')).toBeInViewport();
+    });
+  }
+});

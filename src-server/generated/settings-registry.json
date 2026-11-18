@@ -807,7 +807,7 @@
     {
       "id": "personal-knowledge-store",
       "label": "My knowledge store",
-      "scope": "station",
+      "scope": "personal",
       "section": "knowledge",
       "route": "/settings?view=knowledge&highlight=personal-knowledge-store"
     },

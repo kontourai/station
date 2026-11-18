@@ -46,24 +46,20 @@ GitHub owns implementation work and current status. These sections retain the
 source observations that explain each finding. Their issue links include
 suggested fixes and documentation acceptance; they are not a second backlog.
 
-### Personal Knowledge scope and the Settings card disagree
+### Personal Knowledge scope and Settings selection
 
 `KnowledgeStoreProvider.generateRootId` allows `root:personal:2` and later
-suffixes; the runtime's read-only `root:conversations` also uses personal scope.
+suffixes. The read-only `root:conversations` also has personal scope.
 [KnowledgeStoreSection](../../src-ui/src/views/settings/KnowledgeStoreSection.tsx)
-selects the first personal root and stops offering creation. It skips private
-memory roots (by `readPolicy`) and, since `knowledgeStores` became an ordinary
-Settings row, the conversation root (by its `conversation-store` adapter id,
-the same check `ProjectKnowledgeSources` makes). Those are special cases, not a
-contract: a scope tag still cannot tell this UI whether it found the intended
-writable store. Review the desired uniqueness and adapter-capability contract
-before adding another. This is an existing model/UI mismatch, not a claim that
-the registry already enforces one writable store per person.
+shows the first personal root returned by the Knowledge API that has neither
+an author-private read policy nor the conversation adapter. If it finds a
+match, the card stops offering creation. This selection permits multiple
+registrations.
 
-The existing [Settings scope issue #2192](https://github.com/kontourai/station/issues/2192)
-now carries this model/UI clarification and documentation acceptance. Its
-original per-principal uniqueness claim needs a contract decision, not just a
-label change.
+The Settings catalog calls this row `personal` and identifies the Station
+operator as its manager. The configuration API and account preferences keep
+their own storage scopes. The Knowledge API controls access to roots and
+requires an operator for registration. [Settings scope #2192](https://github.com/kontourai/station/issues/2192)
 
 ### Capture provenance depends on mutable UI state
 

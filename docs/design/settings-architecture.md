@@ -702,12 +702,14 @@ Epic #2144 slice 3 gives every generic registry row a status strip
 (`src-ui/src/views/settings/SettingRowStatus.tsx`): a scope badge naming the
 document that owns the value — **Station**, **This device**, or **Project**
 when `GET /config/app?project=<slug>` reported the project as its source — the
-unchanged provenance chip beside it, and a trigger opening an on-demand
+operator environment chip when applicable, and a trigger opening an on-demand
 inheritance list (`SettingInheritanceLayers.tsx`, loaded through
 `LazyBoundary`). That list shows the layers a value resolves through, project
 override first and built-in default last, with exactly one marked "in effect"
 — derived from the provenance entry the server computed, never re-derived by
-comparing raw values. A row the selected project overrides also offers **Reset
+comparing raw values. Built-in defaults and stored values are visible in those
+details without adding a per-row provenance chip. A row the selected project
+overrides also offers **Reset
 to inherited**, which sends `null` on `PUT /api/projects/:slug` (the route's
 own spelling for dropping an override) rather than omitting the field. It is
 withheld in two cases: a `required` setting has nothing to fall back to, and
