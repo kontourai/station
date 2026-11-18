@@ -49,6 +49,14 @@ class DelegationDepthLimitError extends Error {
   }
 }
 
+class DelegationPolicyLimitError extends Error {
+  readonly code = 'delegation_lineage_unavailable' as const;
+  constructor() {
+    super('Delegation allowlist ancestry exceeds 64 groups.');
+    this.name = 'DelegationPolicyLimitError';
+  }
+}
+
 /**
  * The ONE derivation of a delegated child's context from its parent: the
  * parent Agent, its conversation, its Agent spec's delegation policy and the
@@ -68,6 +76,13 @@ export function createChildDelegationContext(options: {
     throw new DelegationDepthLimitError(policy.maxDepth);
   }
 
+  const inherited = (options.current?.toolAllowlistConstraints ?? []).map(
+    (group) => [...group],
+  );
+  if (options.current?.allowedTools?.length)
+    inherited.push([...options.current.allowedTools]);
+  if (inherited.length > 64) throw new DelegationPolicyLimitError();
+
   return {
     mode: 'isolated-child',
     depth: currentDepth + 1,
@@ -81,6 +96,7 @@ export function createChildDelegationContext(options: {
     ...(policy.allowedTools.length > 0
       ? { allowedTools: policy.allowedTools }
       : {}),
+    ...(inherited.length ? { toolAllowlistConstraints: inherited } : {}),
     ...(policy.blockedTools.length > 0
       ? { blockedTools: policy.blockedTools }
       : {}),
@@ -104,6 +120,15 @@ export function isDelegatedToolAllowed(options: {
       options.toolName,
       delegation.allowedTools,
       options.toolNameMapping,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    delegation.toolAllowlistConstraints?.some(
+      (group) =>
+        !matchesToolPattern(options.toolName, group, options.toolNameMapping),
     )
   ) {
     return false;
