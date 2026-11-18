@@ -81,12 +81,11 @@ for (const width of [390, 1440]) {
       };
       const capture = async (state: string) => {
         const name = `engine-app-home-${state}-${width}-${theme}.png`;
-        const path = testInfo.outputPath(name);
-        await page.screenshot({ path });
+        await page.screenshot({ path: testInfo.outputPath(name) });
         const directory = process.env.STATION_UI_REVIEW_SCREENSHOT_DIR;
         if (directory) {
           mkdirSync(directory, { recursive: true });
-          copyFileSync(path, resolve(directory, name));
+          copyFileSync(testInfo.outputPath(name), resolve(directory, name));
         }
       };
       const appHome = page.getByRole('checkbox', {
@@ -109,7 +108,8 @@ for (const width of [390, 1440]) {
       await expect(page.getByText(/private-claude/)).toHaveCount(0);
       await expect(snapshot).toHaveCount(0);
       await expect(clear).toBeEnabled();
-      await clear.scrollIntoViewIfNeeded();
+      await expect(page.getByText('Loading accounts')).toHaveCount(0);
+      await appHome.scrollIntoViewIfNeeded();
       await capture('configured');
       await clear.click();
       const confirmation = page.getByRole('alertdialog', {
@@ -130,6 +130,8 @@ for (const width of [390, 1440]) {
       await expect(include).not.toBeChecked();
       await include.check();
       await expect(include).toBeChecked();
+      await expect(page.getByText('Loading accounts')).toHaveCount(0);
+      await appHome.scrollIntoViewIfNeeded();
       await capture('station-managed');
     });
   }
