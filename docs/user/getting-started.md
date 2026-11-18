@@ -788,7 +788,9 @@ you outside the filter, choose **Show all** from the notice; on a computer, a
 count badge on the scope picker does the same. On a computer the scope picker
 sits beside search, **Browse all conversations** is at the end of the list,
 and each row is two lines: its title and time, then the agent's icon, its
-status and its project. Hover the icon to read the agent's name.
+status and its project. Hover the icon to read the agent's name. To browse
+chats from a side dock, open **More dock actions** and choose **Open chat…**.
+The picker opens over the current dock placement.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
 from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
@@ -817,8 +819,8 @@ The Undo button replaces the row's discard shortcut; the Details sheet also
 shows the pending message. Undo keeps
 the Draft; leaving that control or switching Station or account also cancels
 the pending deletion. After the window, Station asks the server to discard it
-and shows any refusal. Discarding an **unsent draft** instead clears the text
-you typed on this device.
+and shows any refusal. On a touch row, the message appears below the row’s
+actions. Discarding an **unsent draft** clears the text you typed on this device.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**

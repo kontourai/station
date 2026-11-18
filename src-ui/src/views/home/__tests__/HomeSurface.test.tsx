@@ -1,9 +1,11 @@
 /** @vitest-environment jsdom */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -22,6 +24,12 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 // and Project queries (the dock's own hooks), and this file mounts no query
 // client. The cross-surface agreement is pinned in ActivityList.test and
 // ChatInboxHoverCard.test, which feed those reads.
+vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../contexts/ApiBaseContext')
+  >()),
+  useHostRequestAuthorityScope: () => null,
+}));
 vi.mock('../../../hooks/useGitLocationByThreadId', () => ({
   useGitLocationByThreadId: () => new Map(),
 }));
@@ -160,6 +168,79 @@ describe('HomeSurface live-lane focus', () => {
     expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
     expect(document.activeElement).toBe(open('Wire the delegate verbs'));
   });
+});
+
+test('Home forgets Details when its row leaves and moves focus after snoozing', async () => {
+  vi.stubGlobal('matchMedia', (media: string) => ({
+    matches: media === '(pointer: coarse)',
+    media,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  try {
+    const current = item(
+      'action-item',
+      'Review current work',
+      'Station',
+      2,
+      'Ready',
+    );
+    const following = item(
+      'next-item',
+      'Review following work',
+      'Station',
+      3,
+      'Ready',
+    );
+    const client = new QueryClient();
+    const home = (workItems: HomeWorkItem[]) => (
+      <QueryClientProvider client={client}>
+        <HomeSurface
+          model={model({ workItems })}
+          continuation={null}
+          onNavigate={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(home([current, following]));
+    const details = () =>
+      screen.getByRole('button', { name: 'Details for Review current work' });
+    const sheet = () =>
+      screen.queryByRole('dialog', { name: 'Details for Review current work' });
+    fireEvent.click(details());
+    await screen.findByRole('dialog', {
+      name: 'Details for Review current work',
+    });
+
+    view.rerender(home([following]));
+    expect(sheet()).toBeNull();
+    view.rerender(home([current, following]));
+    expect(sheet()).toBeNull();
+    expect(details().getAttribute('aria-expanded')).toBe('false');
+
+    details().focus();
+    fireEvent.click(details());
+    const choice = within(
+      await screen.findByRole('dialog', {
+        name: 'Details for Review current work',
+      }),
+    ).getByRole('button', { name: '1 hour' });
+    choice.focus();
+    fireEvent.click(choice);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen
+          .getByText('Review following work', { exact: true })
+          .closest('button'),
+      ),
+    );
+    expect(sheet()).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /^Review current work/ }),
+    ).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 describe('HomeSurface composition', () => {
