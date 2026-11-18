@@ -323,7 +323,7 @@ sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;
 <li>Otherwise, <strong>No project</strong>. These conversations have no Project assignment.
 </li>
 </ol>
-<p>Rows can show <strong>Directory · …/parent/folder</strong> when a working folder is recorded without a Project label. The label provides folder context and leaves Project membership unchanged.</p>
+<p>Rows can show <strong>Directory · …/parent/folder</strong> when a working folder is recorded without a Project label. The label provides folder context and leaves Project membership unchanged. A reopened delegated chat can show <strong>CLI (reported)</strong> when Station's accepted start receipt records a CLI caller.</p>
 <p>A conversation keeps its Project after its worktree is removed. If its Project is deleted while other Projects remain, it moves to <strong>No project</strong>. A conversation inside a git submodule of a worktree outside the Project folder also lands in <strong>No project</strong>: Station follows the submodule's own <code>.git</code>, which belongs to a different repository.</p>
 <p>If a conversation ran in a folder on a network drive that has stopped responding, Station can't tell which Project it belongs to. A conversation Station has already filed keeps its Project. A new one is listed under <strong>No project</strong>, and Station tries the folder again about once a minute. Once the drive responds, the conversation moves to its Project.</p>
 <p>Station copies what it reads into its own history and search index, so a conversation stays in history and in search after the original transcript is gone. You can open these conversations, and so can every device you have paired with session read access, including a phone.</p>
