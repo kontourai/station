@@ -5415,9 +5415,14 @@ records compensation and retained-state limits.
 
 `GET /api/plugins/check-updates` is operator-only. It reads installed names and
 checks git/registry update sources. Results use the installed manifest name as
-`name`, even when a registry entry ID differs. A caught top-level check failure
-currently returns 200 with `{updates: []}`; that legacy result cannot prove
-there were no available updates. Under a [managed policy](../guides/managed-policy.md#capability-switches)
+`name`, even when a registry entry ID differs. A 200 response includes `updates`
+and `status`. `complete` means every eligible source was checked. `partial`
+means some checks failed and the response retains updates from successful
+sources. `unavailable` means no eligible source completed. A scan that cannot
+read the installed inventory returns HTTP 500. Older servers may omit
+`status`, leaving coverage unknown.
+
+Under a [managed policy](../guides/managed-policy.md#capability-switches)
 `limits.registries.allowedUrls`, a plugin installed from a registry the policy
 refuses is not checked (its git origin is not fetched); it is listed in
 `managedByPolicy` as `{name, message}` with the policy sentence, not as an

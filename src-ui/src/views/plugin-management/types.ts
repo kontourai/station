@@ -114,6 +114,7 @@ export interface PreviewData extends PluginPreview {
     status: string;
     components?: Array<{ type: string; id: string }>;
     git?: GitInfo;
+    registryTrust?: PluginRegistryTrust;
     consent?: {
       grantRevision?: string;
       registryTrustRevision?: string;

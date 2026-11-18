@@ -20,8 +20,8 @@ import {
   usePluginSettingsMutation,
   usePluginSettingsQuery,
   usePluginsQuery,
+  usePluginUpdateCheckQuery,
   usePluginUpdateMutation,
-  usePluginUpdatesQuery,
   useReloadPluginsMutation,
   useRevokePluginPermissionMutation,
   waitForAgentHealth,
@@ -45,7 +45,6 @@ import {
   isRejectedPlugin,
   type Plugin,
   type PluginMessage,
-  type PluginUpdateSummary,
   type PreviewData,
   type ReadyPlugin,
   type ReinstallFromSource,
@@ -125,9 +124,8 @@ export function usePluginManagementViewModel() {
       isError: boolean;
     }>;
   };
-  const { data: updates = [] } = usePluginUpdatesQuery() as {
-    data: PluginUpdateSummary[];
-  };
+  const updateCheck = usePluginUpdateCheckQuery();
+  const updates = updateCheck.isError ? [] : (updateCheck.data?.updates ?? []);
   // #2323 S4: which installed plugins' source folders changed. Empty for
   // anyone but the operator (the server answers 404, read as "none").
   const { data: localSources = [] } = usePluginLocalSourcesQuery() as {
@@ -1049,6 +1047,7 @@ export function usePluginManagementViewModel() {
         checked ? new Set(current).add(slug) : toggleSetValue(current, slug),
       ),
     toggleProvider,
+    updateCheck,
     updateMutation,
     updatePlugin,
     updates,

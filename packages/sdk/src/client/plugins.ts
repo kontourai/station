@@ -4,6 +4,7 @@ import type {
   PluginInstallResult,
   PluginManifest,
   PluginPermissionPrompt,
+  PluginUpdateCheck,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
 import {
@@ -18,6 +19,40 @@ import {
   StationHttpError,
 } from './http';
 import { rethrowDeadline } from './request-deadline';
+
+export type PluginUpdateCheckResult = Omit<PluginUpdateCheck, 'status'> & {
+  status: PluginUpdateCheck['status'] | 'unknown';
+};
+
+export async function checkPluginUpdates(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<PluginUpdateCheckResult> {
+  const response = await getJson(`${apiBase}/api/plugins/check-updates`, opts);
+  const result = await response.json().catch((error: unknown) => {
+    rethrowDeadline(error);
+    if (!response.ok)
+      throw envelopeError(
+        response,
+        undefined,
+        'Could not check for plugin updates',
+      );
+    throw error;
+  });
+  if (!response.ok || result?.success === false)
+    throw envelopeError(response, result, 'Could not check for plugin updates');
+  if (!Array.isArray(result?.updates))
+    throw new Error('Plugin update check response is malformed');
+  const status = result.status;
+  if (
+    status !== undefined &&
+    status !== 'complete' &&
+    status !== 'partial' &&
+    status !== 'unavailable'
+  )
+    throw new Error('Plugin update check response is malformed');
+  return { ...result, status: status ?? 'unknown' };
+}
 
 export type InstalledPluginRecord =
   | (PluginManifest & {
@@ -295,6 +330,7 @@ export interface PluginRecoveryPreview {
   dependencies: Array<{
     id: string;
     expectedInstallation: PluginInstallationRevision;
+    registryTrust?: PluginRegistryTrust;
     consent: {
       contentDigest: string;
       permissions: string[];
@@ -337,6 +373,19 @@ export async function previewPluginRecovery(
     'registryTrust' in result &&
     result.registryTrust !== undefined &&
     !isPluginRegistryTrust(result.registryTrust)
+  )
+    throw new Error('Plugin recovery preview response is malformed');
+  if (
+    !('dependencies' in result) ||
+    !Array.isArray(result.dependencies) ||
+    result.dependencies.some(
+      (dependency) =>
+        !dependency ||
+        typeof dependency !== 'object' ||
+        Array.isArray(dependency) ||
+        (dependency.registryTrust !== undefined &&
+          !isPluginRegistryTrust(dependency.registryTrust)),
+    )
   )
     throw new Error('Plugin recovery preview response is malformed');
   return result as PluginRecoveryPreview;

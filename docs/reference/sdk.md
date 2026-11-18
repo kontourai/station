@@ -3535,6 +3535,14 @@ unknown; it must not be replaced with an empty list or inferred from preview.
 Each present dependency row has an `id` and typed `pendingConsent` permission/tier
 entries. Trusted permissions still require separate host-owned approval.
 
+### Update discovery
+
+`usePluginUpdateCheckQuery()` exposes the update records and a
+`complete`, `partial`, or `unavailable` status. Hosts that omit the status
+produce `unknown` coverage. Non-OK responses surface as query errors with the
+HTTP status. The existing `usePluginUpdatesQuery()` still returns the update
+array. Use the status-aware hook when presenting whether the scan completed.
+
 ### Marketplace source hooks
 
 `useRegistrySourcesQuery()` reads `GET /api/registry/sources` through the current

@@ -2,6 +2,7 @@ import {
   cpSync,
   existsSync,
   lstatSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   rmSync,
@@ -1547,6 +1548,7 @@ describe('Plugin Routes', () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
+      status: 'complete',
       updates: [
         {
           name: 'test-plugin',
@@ -1592,6 +1594,7 @@ describe('Plugin Routes', () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
+      status: 'complete',
       updates: [
         {
           name: 'actual-plugin',
@@ -1600,6 +1603,79 @@ describe('Plugin Routes', () => {
           source: 'registry',
         },
       ],
+    });
+  });
+
+  test('a clean empty scan is complete and a failed registry is unavailable', async () => {
+    const app = setup();
+    vi.mocked(readdirSync).mockReturnValueOnce([]).mockReturnValueOnce([]);
+    pluginRegistryProvider.listAvailable.mockResolvedValueOnce([]);
+    pluginRegistryProvider.listInstalled.mockResolvedValueOnce([]);
+    await expect(json(await app.request('/check-updates'))).resolves.toEqual({
+      status: 'complete',
+      updates: [],
+    });
+    pluginRegistryProvider.listAvailable.mockRejectedValueOnce(
+      new Error('registry unavailable'),
+    );
+    const response = await app.request('/check-updates');
+    expect(response.status).toBe(200);
+    await expect(json(response)).resolves.toEqual({
+      status: 'unavailable',
+      updates: [],
+    });
+  });
+
+  test('failed Git and registry sources leave later registry updates visible', async () => {
+    execGit.mockRejectedValueOnce(new Error('Git source unavailable'));
+    pluginRegistryProviderEntries.unshift({
+      source: 'unavailable',
+      provider: {
+        listAvailable: async () => {
+          throw new Error('registry unavailable');
+        },
+        listInstalled: async () => [],
+      },
+    });
+    pluginRegistryProvider.listAvailable.mockResolvedValueOnce([
+      { id: 'registry-plugin', version: '2.0.0' },
+    ]);
+    pluginRegistryProvider.listInstalled.mockResolvedValueOnce([
+      {
+        id: 'registry-plugin',
+        installedPluginName: 'local-name',
+        version: '1.0.0',
+      },
+    ]);
+    const response = await setup().request('/check-updates');
+    expect(response.status).toBe(200);
+    expect(
+      execGit.mock.calls.some(([args]) => (args as string[]).includes('fetch')),
+    ).toBe(true);
+    await expect(json(response)).resolves.toEqual({
+      status: 'partial',
+      updates: [
+        {
+          name: 'local-name',
+          currentVersion: '1.0.0',
+          latestVersion: '2.0.0',
+          source: 'registry',
+        },
+      ],
+    });
+  });
+
+  test('an unreadable plugin inventory fails the route', async () => {
+    const app = setup();
+    vi.mocked(readdirSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error('inventory unreadable'), {
+        code: 'EACCES',
+      });
+    });
+    const response = await app.request('/check-updates');
+    expect(response.status).toBe(500);
+    await expect(json(response)).resolves.toEqual({
+      error: 'Could not check for plugin updates',
     });
   });
 
