@@ -6277,7 +6277,23 @@ export class StationRuntime {
   /**
    * Shutdown the runtime
    */
-  async shutdown(): Promise<void> {
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+
+    // Reserve the shutdown before stopping producers or waiting for boot.
+    let resolveAttempt!: (shutdown: Promise<void>) => void;
+    const attempt = new Promise<void>((resolve) => {
+      resolveAttempt = resolve;
+    }).catch((error) => {
+      this.shutdownPromise = null;
+      throw error;
+    });
+    this.shutdownPromise = attempt;
+    resolveAttempt(this.runShutdown());
+    return attempt;
+  }
+
+  private async runShutdown(): Promise<void> {
     this.stopConversationTitleGeneration?.();
     this.stopConversationTitleGeneration = undefined;
     if (this.taskRecordings && !this.taskRecordingsShutdown) {
@@ -6306,11 +6322,9 @@ export class StationRuntime {
     // prototype-built doubles: the boot-time prerequisite priming must settle
     // rather than outlive the runtime.
     this.enginePrerequisitePrimingAbort?.abort();
-    // Early, before the shutdown-promise guard: a store probe in flight is a child process, and
-    // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
-    // reason as the line above — prototype-built doubles have no fields.
+    // Stop an in-flight store probe before waiting for initialization because
+    // the probe owns a child process and graceful shutdown ends in process.exit.
     this.stopStoreIntegrityVerification?.();
-    if (this.shutdownPromise) return this.shutdownPromise;
     // Settle any in-flight initialize() before tearing down — its rejection
     // is expected here (we are shutting down under it) and must not escape
     // as an unhandled rejection attributed to someone else.
@@ -6319,13 +6333,7 @@ export class StationRuntime {
     }
     this.stopObservingRuntimeConfigurationSources();
     this.agentConfigurationMutationsClosed = true;
-    this.shutdownPromise = this.shutdownAfterConfigurationDrain().catch(
-      (error) => {
-        this.shutdownPromise = null;
-        throw error;
-      },
-    );
-    return this.shutdownPromise;
+    await this.shutdownAfterConfigurationDrain();
   }
 
   private retireSelfHostedBroker(): Promise<void> {

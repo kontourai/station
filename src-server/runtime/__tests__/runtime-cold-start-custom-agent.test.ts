@@ -1288,7 +1288,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(virtualReady).not.toHaveBeenCalled();
   });
 
-  it('shutdown during boot settles the in-flight initialize (#1019)', async () => {
+  it('concurrent shutdown during boot shares one teardown after initialize settles (#1019)', async () => {
     // The cross-test contamination mode: a cancelled/abandoned boot kept
     // initializing after teardown deleted its home, and its rejection
     // surfaced in whichever test ran next ('custom-writer not found at
@@ -1322,11 +1322,26 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         bootSettled = true;
       });
 
-    await runtime.shutdown();
-    // shutdown resolving implies the boot promise already settled — nothing
-    // is left racing the (about-to-be-deleted) home directory.
-    expect(bootSettled).toBe(true);
-    await boot;
+    const store = (
+      runtime as unknown as { orchestrationEventStore: EventStore }
+    ).orchestrationEventStore;
+    const close = vi.spyOn(store, 'close');
+    try {
+      const outcomes = await Promise.allSettled([
+        runtime.shutdown(),
+        runtime.shutdown(),
+      ]);
+      expect(outcomes).toEqual([
+        { status: 'fulfilled', value: undefined },
+        { status: 'fulfilled', value: undefined },
+      ]);
+      expect(bootSettled).toBe(true);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(store.isClosed).toBe(true);
+    } finally {
+      close.mockRestore();
+      await boot;
+    }
   });
 
   it('resolves the built-in engine binding at boot without model discovery or commands', async () => {
