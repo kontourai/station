@@ -1,0 +1,19 @@
+{
+  "revision": "219ef172c1d348b1dcb6faf141275f8b1e510544",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the shared Station run cap selector against the built-in and both chat override constructors. The local framework and Agent binding determine the same effective cap as the implementation before consolidation. Existing runtime admission and leases are still applied at the original callers.","inputs":["docs/architecture/module-map.md","src-server/routes/chat/chat.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Rechecked both model override paths after moving the VoltAgent cap choice into one resolver. Persisted cap, built-in fallback and Strands absence are selected before construction, while model lease checks and history binding retain their existing roles.","inputs":["docs/design/chat-composer.md","src-server/routes/chat/chat.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Rechecked the simplified editor tooltip and shared cap selection. VoltAgent's authored cap range, fallback precedence, built-in settings ownership and Strands availability remain as documented.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/agents/runtime-default-agent.ts","src-ui/src/views/agent-editor/AgentEditorModelSection.tsx"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked the built-in Station constructor's shared cap selection. It applies only an explicit configured VoltAgent limit and leaves the existing model and Knowledge tool composition intact.","inputs":["docs/guides/knowledge.md","src-server/runtime/agents/runtime-default-agent.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the shared selector against both chat model override paths and built-in construction. The scoped VoltAgent fallback semantics are unchanged by consolidation. Buffered Agent invocation continues to have its own request clamp. OpenAPI was regenerated for the Agent create and update cap shapes.","inputs":["docs/reference/api.md","src-server/constants.ts","src-server/routes/chat/chat.ts","src-server/runtime/agents/runtime-default-agent.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Rechecked the runtime selector and visible tooltip after consolidation. A VoltAgent authored limit precedes the app fallback, the built-in Agent uses the explicit setting if supplied, and Strands has no Station-managed cap.","inputs":["docs/reference/config.md","src-server/constants.ts","src-server/routes/chat/chat.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the shared built-in cap resolver against the documented Station Agent role. Consolidation changes no tool enablement or prompt composition and retains the VoltAgent-specific scope.","inputs":["docs/reference/station-docs.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

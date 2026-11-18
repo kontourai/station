@@ -1,7 +1,8 @@
+import { copyFile } from 'node:fs/promises';
 import type { GitStatusResult } from '@kontourai/station-sdk';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import { selectCodingPane } from './helpers/coding-stack';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   installMockOrchestrationSse,
   seedOrchestrationRoutes,
@@ -14,16 +15,18 @@ import {
  * All endpoints are routed deterministically so the test is repo-independent.
  */
 
+const LONG_LINE = `const b = "${'words in this comment anchor '.repeat(10)}";`;
 const SAMPLE_PATCH = `diff --git a/foo.ts b/foo.ts
 --- a/foo.ts
 +++ b/foo.ts
 @@ -1,3 +1,3 @@
  const a = 1;
 -const b = 2;
-+const b = 3;
++${LONG_LINE}
  const c = 4;
 `;
 
+const COMMENT_AT = new Date(Date.now() - 2 * 60_000).toISOString();
 const SEEDED_COMMENT = {
   id: 'seed-1',
   projectId: 'dev',
@@ -31,9 +34,19 @@ const SEEDED_COMMENT = {
   side: 'additions' as const,
   lineNumber: 2,
   body: 'Needs a null guard here',
-  createdAt: '2026-06-28T00:00:00.000Z',
-  updatedAt: '2026-06-28T00:00:00.000Z',
+  createdAt: COMMENT_AT,
+  updatedAt: COMMENT_AT,
 };
+
+async function captureDiff(page: Page, testInfo: TestInfo, name: string) {
+  const destination = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({
+    path: testInfo.outputPath(`${name}.png`),
+    animations: 'disabled',
+  });
+  const review = process.env.STATION_UI_REVIEW_SCREENSHOT_DIR;
+  if (review) await copyFile(destination, `${review}/${name}.png`);
+}
 
 async function seedRoutes(page: Page) {
   await page.route('**/api/coding/repos**', (route) =>
@@ -91,6 +104,41 @@ async function seedRoutes(page: Page) {
       body: JSON.stringify({ success: true, data: [] }),
     }),
   );
+  await page.route('**/api/coding/files**', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: [{ name: 'foo.ts', path: 'foo.ts', type: 'file' }],
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route('**/api/projects/dev/file-preview', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: {
+              path: 'foo.ts',
+              status: 'ready',
+              renderKind: 'text',
+              content: `${LONG_LINE}\n`,
+            },
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route('**/api/projects/dev/file-preview/changes', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: { state: 'changed', base: 'HEAD', patch: SAMPLE_PATCH },
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
   // The diff the panel renders (real endpoint is /api/coding/git/diff).
   await page.route('**/api/coding/git/diff**', (route) =>
     route.fulfill({
@@ -121,6 +169,67 @@ async function seedRoutes(page: Page) {
       }),
     );
   }
+}
+
+async function expectPhoneDiffFits(page: Page) {
+  for (const name of [
+    'Collapse all files',
+    'Expand all files',
+    'Split view',
+    'Wrap lines',
+  ]) {
+    const control = page.getByRole('button', { name, exact: true });
+    await expect(control).toBeVisible();
+    await expect
+      .poll(() =>
+        control.evaluate((node) => {
+          const bounds = node.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            bounds.left + bounds.width / 2,
+            bounds.top + bounds.height / 2,
+          );
+          return (
+            bounds.left >= 0 &&
+            bounds.right <= window.innerWidth &&
+            !!hit &&
+            node.contains(hit)
+          );
+        }),
+      )
+      .toBe(true);
+  }
+  const wrap = page.getByRole('button', {
+    name: 'Wrap lines',
+    exact: true,
+  });
+  if ((await wrap.getAttribute('aria-pressed')) === 'false') await wrap.click();
+  await expect(wrap).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(() =>
+      page
+        .locator('diffs-container')
+        .first()
+        .evaluate((host) => {
+          const line = [
+            ...(host.shadowRoot?.querySelectorAll('[data-line]') ?? []),
+          ].find((node) =>
+            node.textContent?.includes('words in this comment anchor'),
+          );
+          if (!line) return false;
+          const range = document.createRange();
+          range.selectNodeContents(line);
+          const fragments = [...range.getClientRects()].filter(
+            (rect) => rect.width > 0,
+          );
+          return (
+            new Set(fragments.map((rect) => Math.round(rect.top))).size > 1 &&
+            fragments.every(
+              (rect) => rect.right <= host.getBoundingClientRect().right + 1,
+            )
+          );
+        }),
+    )
+    .toBe(true);
 }
 
 test.describe('Diff review annotations', () => {
@@ -170,16 +279,62 @@ test.describe('Diff review annotations', () => {
           timeout: 15000,
         });
 
+        if (width === 390) await expectPhoneDiffFits(page);
+
         // The seeded comment renders inline via the annotation slot.
         await expect(page.getByText('Needs a null guard here')).toBeVisible({
           timeout: 15000,
         });
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
         await page.evaluate(() => document.fonts.ready);
-        await page.screenshot({
-          path: testInfo.outputPath(`diff-review-${width}-${theme}.png`),
-          fullPage: true,
+        const annotation = page
+          .getByText('Needs a null guard here')
+          .locator('..');
+        await expect(annotation.locator('time')).toHaveAttribute(
+          'datetime',
+          SEEDED_COMMENT.createdAt,
+        );
+        await expect(annotation.locator('time')).toHaveText(/^now$|^\d+[mhd]$/);
+        await captureDiff(page, testInfo, `coding-diff-${width}-${theme}`);
+
+        await selectCodingPane(page, 'Files');
+        await page.getByText('foo.ts', { exact: true }).click();
+        const source = page.getByRole('region', { name: 'foo.ts source' });
+        await expect(source).toBeVisible();
+        await page.getByRole('button', { name: 'More file actions' }).click();
+        const sourceWrap = page.getByRole('menuitemcheckbox', {
+          name: 'Wrap lines',
         });
+        if ((await sourceWrap.getAttribute('aria-checked')) === 'false')
+          await sourceWrap.click();
+        else await page.keyboard.press('Escape');
+        await expect
+          .poll(() =>
+            source.locator('[data-line="1"]').evaluate((line) => {
+              const gutter = line.querySelector('a')!;
+              const content = line.querySelector('span')!;
+              const range = document.createRange();
+              range.selectNodeContents(content);
+              const fragments = [...range.getClientRects()];
+              return (
+                new Set(fragments.map(({ top }) => Math.round(top))).size > 1 &&
+                fragments.every(
+                  ({ left }) => left >= gutter.getBoundingClientRect().right,
+                )
+              );
+            }),
+          )
+          .toBe(true);
+        await captureDiff(page, testInfo, `file-source-${width}-${theme}`);
+
+        await page.getByRole('button', { name: /^Changes vs HEAD/ }).click();
+        const changes = page.getByRole('region', {
+          name: 'foo.ts changes against HEAD',
+        });
+        await expect(changes).toBeVisible();
+        await expect(changes.locator('diffs-container')).toBeVisible();
+        if (width === 390) await expectPhoneDiffFits(page);
+        await captureDiff(page, testInfo, `file-changes-${width}-${theme}`);
       });
     }
   }

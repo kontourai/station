@@ -1168,29 +1168,26 @@ function LiveConversationBody({
     ),
   });
 
-  const handleSendWithContext = useCallback((): Promise<void> => {
-    // Ambient context travels OUT-OF-BAND (#685): the server composes it into
-    // the model-facing input only, so the transcript keeps the typed text.
-    // `ambientContextForSend` keeps the `[`-prefix and slash-command
-    // short-circuits (slash commands must reach `useSendMessage` unmodified
-    // so `content.startsWith('/')` still routes them to the slash handler).
-    const ambientContext = ambientContextForSend(
-      getComposedContext(),
-      chatInput.input,
-    );
-    return chatInput.handleSend(undefined, undefined, { ambientContext });
-  }, [getComposedContext, chatInput]);
-  const handleQueueFollowUp = useCallback((): Promise<void> => {
-    const ambientContext = ambientContextForSend(
-      getComposedContext(),
-      chatInput.input,
-    );
-    return chatInput.handleSend(undefined, undefined, {
-      ambientContext,
-      queueOnBusy: true,
-      ...(queueTakesFiles ? { queueFilesOnBusy: true } : {}),
-    });
-  }, [getComposedContext, chatInput, queueTakesFiles]);
+  const handleSendWithContext = useCallback(
+    (intent?: 'steer'): Promise<void> => {
+      // Ambient context travels OUT-OF-BAND (#685): the server composes it into
+      // the model-facing input only, so the transcript keeps the typed text.
+      // `ambientContextForSend` keeps the `[`-prefix and slash-command
+      // short-circuits (slash commands must reach `useSendMessage` unmodified
+      // so `content.startsWith('/')` still routes them to the slash handler).
+      const ambientContext = ambientContextForSend(
+        getComposedContext(),
+        chatInput.input,
+      );
+      return chatInput.handleSend(undefined, undefined, {
+        ambientContext,
+        ...(intent === 'steer'
+          ? {}
+          : { queueOnBusy: true, queueFilesOnBusy: queueTakesFiles }),
+      });
+    },
+    [getComposedContext, chatInput, queueTakesFiles],
+  );
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
@@ -2978,7 +2975,7 @@ function LiveConversationBody({
             busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
-            onQueueFollowUp={handleQueueFollowUp}
+            onQueueFollowUp={handleSendWithContext}
             stopPending={!!activeSession.stopPending}
             modelSupportsAttachments={modelSupportsAttachments}
             fileAttachmentsSupported={fileAttachmentsSupported}

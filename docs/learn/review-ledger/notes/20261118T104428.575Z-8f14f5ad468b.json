@@ -1,0 +1,11 @@
+{
+  "revision": "32602a39a3c03888fc3d05ef767ffdfc9b08eb78",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Project creation and editing routes after moving their view adapter out of the eager shell. The existing Project-readiness gate and dismissal route still own creation. The app route tests passed, and the production entry bundle passes its existing limit.","inputs":["src-ui/src/app-shell/AppViewContent.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The phone member list loads when shown from the same scoped Project and shared Task inputs. The reused list remains mounted synchronously on warm Back navigation. Both 390px Gallery themes opened a channel on a scrolled list, returned through browser Back and restored that offset. The desktop member views and Task thread addressing retain their original owners.","inputs":["src-ui/src/views/project-page/MemberProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"The phone member list loads when shown from the same scoped Project and shared Task inputs. The reused list remains mounted synchronously on warm Back navigation. Both 390px Gallery themes opened a channel on a scrolled list, returned through browser Back and restored that offset. The desktop member views and Task thread addressing retain their original owners.","inputs":["src-ui/src/views/project-page/MemberProjectPage.tsx"]}
+  ]
+}

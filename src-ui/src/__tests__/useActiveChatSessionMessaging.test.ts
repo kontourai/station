@@ -91,9 +91,27 @@ class CodedOrchestrationError extends Error {
 const sendExecutionMessageMock = vi.fn();
 const submitConversationSteerMock = vi.fn();
 const readConversationInboxHeadMock = vi.fn();
-const queueExecutionMessageMock = vi
-  .fn()
-  .mockResolvedValue({ outcome: 'queued', entry: {} });
+const queueExecutionMessageMock = vi.fn().mockImplementation(
+  async (
+    _apiBase: string,
+    request: {
+      conversationId: string;
+      clientTurnId: string;
+      message: string;
+    },
+  ) => ({
+    outcome: 'queued',
+    conversationId: request.conversationId,
+    clientTurnId: request.clientTurnId,
+    entry: {
+      conversationId: request.conversationId,
+      clientTurnId: request.clientTurnId,
+      message: request.message,
+      kind: 'follow-up',
+      state: 'queued',
+    },
+  }),
+);
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   sendExecutionMessage: (...args: unknown[]) =>
@@ -3325,10 +3343,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       openTurnId: 'turn-open',
       conversationId: sessionId,
     });
-    queueExecutionMessageMock.mockResolvedValueOnce({
-      outcome: 'queued',
-      entry: {},
-    });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     await act(async () => {
       await result.current(
@@ -3699,31 +3713,45 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
   });
 
-  it('keeps an unanswered busy follow-up in the outbox, not the local chat queue', async () => {
-    activeChatsStore.updateChat(sessionId, {
-      status: 'sending',
-      conversationId: sessionId,
-    });
-    queueExecutionMessageMock.mockRejectedValueOnce(new TypeError('offline'));
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-    await act(async () => {
-      await result.current(
-        sessionId,
-        'claude',
-        sessionId,
-        'offline follow-up',
-        undefined,
-        undefined,
-        'offline-key',
-        { queueOnBusy: true },
+  it.each(['lost response', 'mismatched inner identity'])(
+    'keeps a busy follow-up in the outbox after a %s',
+    async (failure) => {
+      activeChatsStore.updateChat(sessionId, {
+        status: 'sending',
+        conversationId: sessionId,
+      });
+      if (failure === 'lost response') {
+        queueExecutionMessageMock.mockRejectedValueOnce(
+          new TypeError('offline'),
+        );
+      } else {
+        queueExecutionMessageMock.mockResolvedValueOnce({
+          outcome: 'queued',
+          conversationId: sessionId,
+          clientTurnId: 'offline-key',
+          entry: { conversationId: sessionId, clientTurnId: 'other-message' },
+        });
+      }
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'claude',
+          sessionId,
+          'offline follow-up',
+          undefined,
+          undefined,
+          'offline-key',
+          { queueOnBusy: true },
+        );
+      });
+      expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+        [],
       );
-    });
-    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
-      [],
-    );
-    expect(activeChatsStore.getSnapshot()[sessionId].status).toBe('queued');
-    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
-  });
+      expect(activeChatsStore.getSnapshot()[sessionId].status).toBe('queued');
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('uses the started receipt when the busy turn ends before the request', async () => {
     activeChatsStore.updateChat(sessionId, {
@@ -3981,10 +4009,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.updateChat(sessionId, {
         status: 'sending',
         conversationId: sessionId,
-      });
-      queueExecutionMessageMock.mockResolvedValueOnce({
-        outcome: 'queued',
-        entry: {},
       });
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       const replay = async (
