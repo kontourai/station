@@ -1772,7 +1772,9 @@
 
     "src-server/routes/evidence/task-code-reviews.ts",
 
-    "src-ui/src/components/chat/BrowserTurnActivity.tsx"
+    "src-ui/src/components/chat/BrowserTurnActivity.tsx",
+
+    "src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx"
   ],
 
   "checks": [
