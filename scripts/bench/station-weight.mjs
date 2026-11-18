@@ -43,10 +43,12 @@ import {
   recordBaseline,
 } from './station-weight-budgets.mjs';
 import {
+  analyzeConversationTurn,
   diffAgainstControl,
   findTurnRequest,
   markersReached,
   messagesRequests,
+  requestConversationTurns,
   summarizeRequest,
   summarizeSideCall,
 } from './station-weight-request.mjs';
@@ -1171,7 +1173,7 @@ export function runOwnership(
  * still names one process, so the guarantee is this recheck, not more: a
  * pid would have to be freed and reused, with the recorded birth, between
  * the recheck and the signal.
- * @param {Array<Partial<OwnedRow> & { pid: number, killEligible: boolean, exactStart?: string }>} rows
+ * @param {Array<Partial<OwnedRow> & { pid: number }>} rows
  * @param {NodeJS.Signals} signal
  * @param {{ platform?: string, run?: RunCommand, readFile?: (path: string, encoding: 'utf8') => string, kill?: (pid: number, signal: NodeJS.Signals) => unknown, bootId?: string }} [options]
  */
@@ -1727,7 +1729,7 @@ async function claudeReadiness(api) {
 }
 
 /** One stub-answered turn; resolves when the turn completed with the stub reply. */
-async function sendHi(api, cwd, conversationId) {
+async function sendStationTurn(api, cwd, conversationId, prompt, reply) {
   const { json } = await poll(
     'the chat dispatch to be accepted',
     90_000,
@@ -1738,7 +1740,7 @@ async function sendHi(api, cwd, conversationId) {
           agent: 'claude',
           workspace: { kind: 'directory', cwd },
         },
-        message: PROMPT,
+        message: prompt,
         clientTurnId: randomUUID(),
         ...(conversationId ? { conversationId } : {}),
       });
@@ -1748,10 +1750,13 @@ async function sendHi(api, cwd, conversationId) {
         /Agent catalog is refreshing/.test(response.json?.error ?? '')
       )
         return false;
-      assert(
-        response.status < 400 && response.json?.success !== false,
-        `chat dispatch: HTTP ${response.status} ${response.text.slice(0, 400)}`,
-      );
+      if (response.status >= 400 || response.json?.success === false)
+        throw Object.assign(
+          new Error(
+            `chat dispatch: HTTP ${response.status} ${response.text.slice(0, 400)}`,
+          ),
+          { fatal: true },
+        );
       return response;
     },
   );
@@ -1762,13 +1767,23 @@ async function sendHi(api, cwd, conversationId) {
       'GET',
       `/api/orchestration/sessions/${encodeURIComponent(sessionId)}`,
     );
-    return acceptedTurnReply(
-      detail.json?.data?.events ?? [],
-      providerTurnId,
-      STUB_REPLY_TEXT,
-    );
+    try {
+      return acceptedTurnReply(
+        detail.json?.data?.events ?? [],
+        providerTurnId,
+        reply,
+      );
+    } catch (error) {
+      throw Object.assign(error, { fatal: true });
+    }
   });
-  return sessionId;
+  return { sessionId, providerTurnId };
+}
+
+async function sendHi(api, cwd, conversationId) {
+  return (
+    await sendStationTurn(api, cwd, conversationId, PROMPT, STUB_REPLY_TEXT)
+  ).sessionId;
 }
 
 // ---------------------------------------------------------------------------
@@ -2007,18 +2022,28 @@ export function spawnControlChild(options, spawnChild = spawn) {
   return child;
 }
 
-async function controlRequest({ cwd, env, stub, executable, model }) {
+async function controlRequest({
+  cwd,
+  env,
+  stub,
+  executable,
+  model,
+  prompt = PROMPT,
+  resume,
+  expectedReply,
+}) {
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
   const from = stub.requests.length;
   const children = [];
   const run = query({
-    prompt: PROMPT,
+    prompt,
     options: {
       cwd,
       env,
       pathToClaudeCodeExecutable: executable,
       // Same model as Station's turn, so model-specific lines cancel out.
       ...(model ? { model } : {}),
+      ...(resume ? { resume } : {}),
       spawnClaudeCodeProcess: (options) => {
         const child = spawnControlChild(options);
         children.push(child);
@@ -2027,8 +2052,25 @@ async function controlRequest({ cwd, env, stub, executable, model }) {
     },
   });
   const deadline = setTimeout(() => void run.interrupt?.(), 120_000);
+  let result;
   try {
-    for await (const message of run) if (message.type === 'result') break;
+    for await (const message of run)
+      if (message.type === 'result') {
+        result = message;
+        break;
+      }
+    if (expectedReply !== undefined) {
+      assert(
+        result?.subtype === 'success' &&
+          !result.is_error &&
+          result.result?.trim() === expectedReply,
+        "control did not complete with this turn's expected reply",
+      );
+      assert(
+        result.session_id && (!resume || result.session_id === resume),
+        'control resumed a different session',
+      );
+    }
   } finally {
     clearTimeout(deadline);
     run.close?.();
@@ -2044,7 +2086,141 @@ async function controlRequest({ cwd, env, stub, executable, model }) {
       clearTimeout(timer);
     }
   }
-  return stub.requests.slice(from);
+  return { calls: stub.requests.slice(from), sessionId: result?.session_id };
+}
+
+/** Report-only, matched ordinals; no timing or parking inference. */
+export async function measureRequestConversation({
+  api,
+  cwd,
+  env,
+  stub,
+  executable,
+  turns,
+  markers,
+  sideCallWindowMs,
+}) {
+  /** @type {{
+   * status: 'not_measured' | 'measured',
+   * reportOnly: true,
+   * reason?: string,
+   * turns: Array<{
+   *   ordinal: number,
+   *   prompt: string,
+   * } & (
+   *   {status: 'not_measured', reason: string} |
+   *   {status: 'measured', stationSessionId: string, stationProviderTurnId: string,
+   *    controlSessionId: string, station: ReturnType<typeof analyzeConversationTurn>['report'],
+   *    control: ReturnType<typeof analyzeConversationTurn>['report'],
+   *    stationAdded: ReturnType<typeof diffAgainstControl>}
+   * )>,
+   * }} */
+  const report = { status: 'not_measured', reportOnly: true, turns: [] };
+  let stationSession;
+  let controlSession;
+  let previousStation;
+  let previousControl;
+  let previousSequence = 0;
+  const providerTurns = new Set();
+  for (let index = 0; index < turns.length; index += 1) {
+    const { prompt, reply, ordinal } = turns[index];
+    try {
+      const from = stub.requests.length;
+      const receipt = await sendStationTurn(
+        api,
+        cwd,
+        stationSession,
+        prompt,
+        reply,
+      );
+      assert(
+        !stationSession || receipt.sessionId === stationSession,
+        'Station resumed a different conversation',
+      );
+      assert(
+        !providerTurns.has(receipt.providerTurnId),
+        'Station replayed an accepted turn',
+      );
+      providerTurns.add(receipt.providerTurnId);
+      stationSession = receipt.sessionId;
+      await wait(sideCallWindowMs);
+      const station = analyzeConversationTurn({
+        calls: stub.requests.slice(from),
+        turns,
+        index,
+        markers,
+        previous: previousStation,
+      });
+      const controlTurn = await controlRequest({
+        cwd,
+        env,
+        stub,
+        executable,
+        model: station.report.model,
+        prompt,
+        resume: controlSession,
+        expectedReply: reply,
+      });
+      controlSession = controlTurn.sessionId;
+      const control = analyzeConversationTurn({
+        calls: controlTurn.calls,
+        turns,
+        index,
+        markers: { claudeMd: markers.claudeMd },
+        previous: previousControl,
+      });
+      assert(
+        station.report.claudeCodeVersion &&
+          station.report.claudeCodeVersion === control.report.claudeCodeVersion,
+        'Claude Code versions do not match',
+      );
+      assert(
+        station.report.model === control.report.model,
+        'models do not match',
+      );
+      assert(
+        station.request.sequence > previousSequence &&
+          control.request.sequence > station.request.sequence,
+        'stale or replayed request window',
+      );
+      previousSequence = control.request.sequence;
+      report.turns.push({
+        ordinal,
+        prompt,
+        status: 'measured',
+        stationSessionId: stationSession,
+        stationProviderTurnId: receipt.providerTurnId,
+        controlSessionId: controlSession,
+        station: station.report,
+        control: control.report,
+        stationAdded: diffAgainstControl(
+          station.request.body,
+          control.request.body,
+          { station: previousStation, control: previousControl },
+        ),
+      });
+      previousStation = station.request.body;
+      previousControl = control.request.body;
+    } catch (error) {
+      report.turns.push({
+        ordinal,
+        prompt,
+        status: 'not_measured',
+        reason: error.message,
+      });
+      for (const skipped of turns.slice(index + 1))
+        report.turns.push({
+          ordinal: skipped.ordinal,
+          prompt: skipped.prompt,
+          status: 'not_measured',
+          reason: 'predecessor was not measured',
+        });
+      report.reason = `turn ${ordinal}: ${error.message}`;
+      return report;
+    }
+  }
+  report.status = 'measured';
+  return report;
 }
 
 // ---------------------------------------------------------------------------
@@ -2437,6 +2613,7 @@ export function evaluateRun(
     baselinePath = DEFAULT_BASELINE_PATH,
     record = false,
     reportOnly = false,
+    multiTurn = false,
   } = {},
 ) {
   result.reportOnly = reportOnly;
@@ -2448,9 +2625,27 @@ export function evaluateRun(
         : undefined;
     result.budgets = evaluateBudgets(result, baseline, { reportOnly });
     result.gate = gateOutcome(result, result.budgets, { reportOnly });
+    if (
+      (multiTurn || result.requestConversation) &&
+      (result.requestConversation?.status !== 'measured' ||
+        result.requestConversation.turns?.length !== 3 ||
+        result.requestConversation.turns.some(
+          (turn, index) =>
+            turn.status !== 'measured' || turn.ordinal !== index + 1,
+        ))
+    ) {
+      result.gate.passed = false;
+      result.gate.reasons.push(
+        `request conversation NOT_MEASURED: ${result.requestConversation?.reason ?? 'incomplete paired turns'}`,
+      );
+    }
     if (!existsSync(baselinePath) && !reportOnly)
       result.gate.reasons.unshift(`no baseline file at ${baselinePath}`);
     if (record) {
+      assert(
+        !multiTurn && !result.requestConversation,
+        'multi-turn diagnostics cannot record a baseline',
+      );
       const next = recordBaseline(result, baseline);
       writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
       result.baselineRecorded = baselinePath;
@@ -2472,7 +2667,7 @@ export function evaluateRun(
 }
 
 /**
- * @param {{ out?: string, baselinePath?: string, record?: boolean, reportOnly?: boolean, allowDirty?: boolean, settings?: Partial<Record<keyof typeof DEFAULT_SETTINGS, number>>, hooks?: { beforeStop?: (context: { env: NodeJS.ProcessEnv, scratch: string }) => Promise<void> } }} [options]
+ * @param {{ out?: string, baselinePath?: string, record?: boolean, reportOnly?: boolean, multiTurn?: boolean, allowDirty?: boolean, settings?: Partial<Record<keyof typeof DEFAULT_SETTINGS, number>>, hooks?: { beforeStop?: (context: { env: NodeJS.ProcessEnv, scratch: string }) => Promise<void> } }} [options]
  * @returns {Promise<Record<string, any>>}
  */
 export async function runStationWeight({
@@ -2480,10 +2675,12 @@ export async function runStationWeight({
   baselinePath = DEFAULT_BASELINE_PATH,
   record = false,
   reportOnly = false,
+  multiTurn = false,
   allowDirty = false,
   settings: overrides = {},
   hooks = {},
 } = {}) {
+  assert(!multiTurn || !record, '--multi-turn cannot record a baseline');
   const settings = { ...DEFAULT_SETTINGS, ...overrides };
   for (const [name, value] of Object.entries(settings))
     assert(Number.isSafeInteger(value) && value >= 0, `invalid ${name}`);
@@ -2519,6 +2716,16 @@ export async function runStationWeight({
       chars: 'Unicode code points',
     },
     metrics: {},
+    ...(multiTurn
+      ? {
+          requestConversation: {
+            status: 'not_measured',
+            reportOnly: true,
+            turns: [],
+            reason: 'diagnostic did not run',
+          },
+        }
+      : {}),
   };
   const write = () => {
     result.host.loadEnd = loadavg();
@@ -2545,7 +2752,8 @@ export async function runStationWeight({
     claudeMd: `station-weight-claude-md-${runId}`,
     agentsMd: `station-weight-agents-md-${runId}`,
   };
-  const stub = await startStubAnthropic();
+  const conversationTurns = multiTurn ? requestConversationTurns(runNonce) : [];
+  const stub = await startStubAnthropic({ turns: conversationTurns });
   const claudeExecutable = bundledClaudeExecutable();
   const env = scrubbedEnvironment(
     scratch,
@@ -2778,7 +2986,7 @@ export async function runStationWeight({
 
       mkdirSync(controlConfigDir, { recursive: true });
       progress('idle-session sample taken; running the control request');
-      const controlCalls = await controlRequest({
+      const { calls: controlCalls } = await controlRequest({
         cwd: repo,
         env: { ...env, CLAUDE_CONFIG_DIR: controlConfigDir },
         stub,
@@ -2821,6 +3029,19 @@ export async function runStationWeight({
             note: 'added tools in full, plus the byte growth of tool definitions Station changed',
           },
         );
+      }
+      if (multiTurn) {
+        progress('running the report-only paired request conversation');
+        result.requestConversation = await measureRequestConversation({
+          api,
+          cwd: repo,
+          env: { ...env, CLAUDE_CONFIG_DIR: controlConfigDir },
+          stub,
+          executable: claudeExecutable,
+          turns: conversationTurns,
+          markers,
+          sideCallWindowMs: settings.sideCallWindowMs,
+        });
       }
     }
     const requestGap = readiness.ready
@@ -3107,6 +3328,14 @@ function printSummary(result) {
     );
   if (result.repoRules) line(`repoRules ${JSON.stringify(result.repoRules)}`);
   if (result.delegatedRun) line(delegatedRunSummary(result.delegatedRun));
+  if (result.requestConversation) {
+    for (const turn of result.requestConversation.turns)
+      line(
+        turn.status === 'measured'
+          ? `REPORTED requestConversation turn=${turn.ordinal} addedTextBytes=${turn.stationAdded.addedText.bytes} addedTools=${turn.stationAdded.addedTools.length + turn.stationAdded.addedNamedTools.length} addedToolDefinitionBytes=${turn.stationAdded.addedToolDefinitionBytes} requests=${turn.station.requestCount}/${turn.control.requestCount} sideCalls=${turn.station.sideCallCount}/${turn.control.sideCallCount}`
+          : `NOT_MEASURED requestConversation turn=${turn.ordinal}: ${turn.reason}`,
+      );
+  }
   for (const text of formatAttribution(result)) line(text);
   for (const text of formatVerdicts(result.budgets ?? [])) console.log(text);
   // What the run counted as its own but may not signal: left running.
@@ -3159,6 +3388,7 @@ if (invokedDirectly(import.meta.url)) {
         : DEFAULT_BASELINE_PATH,
     record: args['record-baseline'] === true,
     reportOnly: args['report-only'] === true,
+    multiTurn: args['multi-turn'] === true,
   };
   if (options.record && options.reportOnly)
     throw new Error('--record-baseline and --report-only exclude each other');

@@ -350,11 +350,13 @@ export {
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
 export {
-  type CustomAppearanceAction,
   customAppearanceKey,
-  useCustomAppearanceMutation,
   useCustomAppearanceQuery,
 } from './query-domains/customAppearance';
+export {
+  type CustomAppearanceAction,
+  useCustomAppearanceMutation,
+} from './query-domains/customAppearanceMutation';
 export {
   fetchPairedDevices,
   pairedDeviceQueries,

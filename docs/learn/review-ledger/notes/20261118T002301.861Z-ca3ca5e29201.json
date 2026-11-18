@@ -1,0 +1,9 @@
+{
+  "revision": "86f2c12a47c5995c991ac537214a4db877c6f8ec",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed final newline-only cleanup in docs/guides/theming.md after the Appearance studio explanation was moved under Custom appearance. Semantic text, links, implementation claims and evidence limits are byte-identical except trailing whitespace. Preserve all existing source, native, device and historical-capture qualification limits.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed final newline-only cleanup in docs/guides/theming.md after the Appearance studio explanation was moved under Custom appearance. Semantic text, links, implementation claims and evidence limits are byte-identical except trailing whitespace. Preserve all existing source, native, device and historical-capture qualification limits.","inputs":["docs/guides/theming.md"]}
+  ]
+}

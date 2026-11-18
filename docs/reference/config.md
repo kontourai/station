@@ -162,7 +162,9 @@ remain fallbacks (`false` means Off). Distribution/operator policy inputs only
 lower defaults; user choice wins otherwise. `STATION_AUTHOR_TELEMETRY_ENDPOINT`
 is a build-time server-banner constant, empty in source, never a runtime enabling
 variable. It is exposed in resolved telemetry configuration independently of the
-operator address; its independent sender remains inert when the build value is empty. See the [program decision](../decisions/telemetry-tiers.md).
+operator address. An empty build value leaves the sender inactive. An author
+address under `/v1/lite/` limits Kontour to anonymous counts after notice and
+fixed-choice feedback. See the [program decision](../decisions/telemetry-tiers.md).
 
 URLs cannot contain embedded credentials, a query or a fragment. Destination
 and key-reference writes through the live route require the operator or an

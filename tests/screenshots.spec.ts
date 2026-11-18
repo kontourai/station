@@ -2299,11 +2299,28 @@ function telemetryConsentScreens(): Screen[] {
               await main
                 .getByText('Changes wait until you select Save.')
                 .hover();
-              await page.mouse.wheel(0, 180);
+              // Check end-of-page clearance independently of the scroll
+              // position left by radio selection and hover auto-scrolling.
+              const content = page.locator('.content-view');
+              await page.mouse.wheel(
+                0,
+                await content.evaluate((element) => element.scrollHeight),
+              );
+              await expect
+                .poll(() =>
+                  content.evaluate(
+                    (element) =>
+                      element.scrollHeight -
+                      element.clientHeight -
+                      element.scrollTop,
+                  ),
+                )
+                .toBeLessThanOrEqual(1);
               const explanation = main.getByText(
                 'Feature use. Monthly code. No account or content.',
                 { exact: true },
               );
+              await expect(explanation).toBeInViewport({ ratio: 1 });
               await expect
                 .poll(async () => {
                   const [text, bar] = await Promise.all([
@@ -2317,6 +2334,7 @@ function telemetryConsentScreens(): Screen[] {
                   return text.y + text.height <= bar.y - 4;
                 })
                 .toBe(true);
+              await save.click({ trial: true });
             }
             if (mode === 'settings-detailed-expanded') {
               const included = main.getByRole('region', {

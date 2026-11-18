@@ -2394,6 +2394,14 @@ ownership, or an implicit change to completed-session behavior.
 
 ## SessionCommandModule
 
+The dormant [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
+captures create inputs before acquiring the storage lock and reserves each
+member start durably before calling its host adapter. Flow supplies dependency
+readiness and claims. A missing Session receipt leaves the reservation occupied.
+A zero dispatch allowance closes admission at creation. The allowance counts
+reserved member starts. Dollar, token, and physical-attempt caps are unavailable.
+Issue #91 tracks production composition with Station Session authority.
+
 Starting a Session crosses two boundaries: an engine may start, and Station must record the command’s result. The [command owner](../../src-server/services/orchestration/session-command-module.ts) reports those facts separately; losing a receipt must not invite a second engine start.
 
 **Interface.** `execute({ type: 'start-session', input }, context)` is the closed caller Interface. It always returns one of `accepted`, `rejected`, `failed`, or `indeterminate`, together with a receipt and `receiptStatus: persisted|unavailable`. `accepted` has a persisted accepted receipt and a session. `rejected` and `failed` report whether their terminal receipt is durable. `indeterminate` covers uncertain provider creation as well as missing accepted-receipt durability; a Session is included only when one is known. The server-only `executeInternal` also carries recovery, Task dispatch, owned-workspace, and portable-execution admission capabilities. Those options are not accepted from public command JSON.
@@ -3666,8 +3674,11 @@ built-in default-file and Obsidian adapters implement the checked-in Kit record
 contract; the conversation adapter is a read-only projection of Session history.
 Personal and Project are scope tags, not a universal uniqueness or authorization proof:
 the registry can allocate suffixed personal IDs, and the conversation root also has
-personal scope. The Settings card currently selects the first personal root. Root
-removal clears the cached adapter. File storage registers newly allocated root IDs
+personal scope. The Settings card shows the first ordinary personal root the
+operator can read, excluding author-private memory and read-only conversation
+history. The Settings catalog calls this row `personal`; it uses the
+operator-owned root registry through the Knowledge API. Root removal clears
+the cached adapter. File storage registers newly allocated root IDs
 with create-only conflict checks; concurrent providers cannot overwrite a registered
 root. Exact disconnect compares the observed root inside the registry mutation and
 refuses a changed incarnation. Neither removal form deletes source files. There is
@@ -6607,6 +6618,16 @@ adopts the palette and the [sanitized](../../src-ui/src/lib/custom-appearance/sa
 CSS, suspends the CSS while a [decision surface](../../src-ui/src/lib/custom-appearance/decision-surfaces.ts)
 is mounted and caches it for pre-paint; [previews](../../src-ui/src/lib/custom-appearance/preview.ts)
 run under the [keep bar](../../src-ui/src/lib/custom-appearance/keep-bar.ts).
+The Appearance studio preview adds typed visual settings through
+[visual-css.ts](../../src-ui/src/lib/custom-appearance/visual-css.ts), bounded
+embedded raster backgrounds, person-owned saved themes and versioned portable
+JSON packs. The store shares one atomic owner lock while library revisions
+remain independent. The [studio editor](../../src-ui/src/pages/AppearanceStudio.tsx)
+uses scoped SDK queries and protected previews. The
+[inline card](../../src-ui/src/components/chat/AppearanceProposalCard.tsx)
+reuses those previews with exact proposal/Session/Station checks; bounded
+proposal references are retained through EventStore excerpts/spill and the
+canonical transcript projection. Visual styling pauses with CSS on decisions.
 Evidence: [route tests](../../src-server/routes/me/__tests__/custom-appearance.routes.test.ts)
 and the [Chromium suite](../../src-ui/src/__tests__/custom-appearance.browser.test.ts).
 
