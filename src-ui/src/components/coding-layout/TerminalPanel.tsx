@@ -369,13 +369,17 @@ export function TerminalPanel({
 
   return (
     <div className="coding-terminal-shell">
-      {exited ? (
+      {exited && signIn ? (
+        <p className="coding-terminal-connection" role="status">
+          {ended?.message ?? 'Sign-in command ended.'}
+        </p>
+      ) : exited ? (
         <div className="coding-terminal-connection">
           <ErrorState
             variant="compact"
             title={ended?.message ?? 'The shell has exited.'}
             action={
-              signIn || readOnly || viewSession?.readOnly ? undefined : (
+              readOnly || viewSession?.readOnly ? undefined : (
                 <Button
                   size="sm"
                   disabled={restarting}

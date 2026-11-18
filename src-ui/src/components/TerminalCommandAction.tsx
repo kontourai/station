@@ -8,7 +8,7 @@ import { useDockProject } from '../workspace-panes/useDockProject';
 import { ActionRow } from './ActionRow';
 import { Button } from './Button';
 import { TerminalPanel } from './coding-layout/TerminalPanel';
-import { CopyGlyph, TerminalGlyph } from './icons/Glyph';
+import { CopyGlyph, PlayGlyph, TerminalGlyph } from './icons/Glyph';
 import './TerminalCommandAction.css';
 
 export function TerminalCommandAction({
@@ -68,7 +68,7 @@ export function TerminalCommandAction({
                     setRunTarget({ projectId, projectSlug });
                 }}
               >
-                <TerminalGlyph />
+                <PlayGlyph />
               </Button>
             ) : undefined
           }
