@@ -70,6 +70,31 @@ function row(slug: string): HTMLElement {
 afterEach(cleanup);
 
 describe('Agent picker row presentation', () => {
+  test('shows the detected coding app mark and respects custom artwork', () => {
+    const gemini: AgentData = {
+      slug: agentId('gemini-default'),
+      name: 'Gemini CLI',
+      source: 'acp',
+      engineId: 'acp',
+      execution: { agentConnectionId: engineConnectionId('gemini') },
+      provenance: {
+        origin: 'engine-detection',
+        engineId: 'gemini',
+        detectedAt: '2026-11-18T00:00:00Z',
+      },
+    };
+    const custom = { ...gemini, slug: agentId('gemini-custom'), icon: '★' };
+    renderRows([gemini, custom], () => ({
+      label: 'Default',
+      unavailable: false,
+    }));
+
+    expect(
+      row(gemini.slug).querySelector('[data-brand-key="gemini"]'),
+    ).toBeTruthy();
+    expect(within(row(custom.slug)).getByText('★')).toBeTruthy();
+  });
+
   test('an engine named after the Agent shows only its qualifier', () => {
     renderRows([PROXIED_CLAUDE, REVIEWER_ON_PROXY], () => ({
       label: 'Opus',

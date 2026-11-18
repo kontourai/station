@@ -5,28 +5,50 @@ import { getInitials } from '../../utils/layout';
 import { LazyBoundary } from '../LazyBoundary';
 import './BrandIcon.css';
 
-/** Brands drawn as inline SVG, in `BrandMarks`. */
-export type InlineBrandKey =
-  | 'station'
-  | 'claude'
-  | 'codex'
-  | 'pi'
-  | 'kiro'
-  | 'opencode';
-
-type BrandKey = InlineBrandKey | 'muse' | 'cursor' | 'goose' | 'qwen';
-
-const BRAND_KEYS = [
+const INLINE_BRANDS = [
   'station',
   'claude',
   'codex',
   'pi',
   'kiro',
   'opencode',
+] as const;
+
+/** Brands drawn as inline SVG, in `BrandMarks`. */
+export type InlineBrandKey = (typeof INLINE_BRANDS)[number];
+
+const MASK_BRANDS = [
+  'antigravity',
+  'auggie',
+  'cline',
+  'copilot',
+  'devin',
+  'factory-droid',
+  'gemini',
+  'grok-build',
+  'junie',
+  'kilo',
+  'kimi',
+  'mistral-vibe',
+] as const;
+
+type BrandKey =
+  | InlineBrandKey
+  | 'muse'
+  | 'cursor'
+  | 'goose'
+  | 'qwen'
+  | 'hermes'
+  | (typeof MASK_BRANDS)[number];
+
+const BRAND_KEYS = [
+  ...INLINE_BRANDS,
   'muse',
   'cursor',
   'goose',
   'qwen',
+  'hermes',
+  ...MASK_BRANDS,
 ] as const satisfies readonly BrandKey[];
 
 /** Exact engine-id-to-mark lookup. Engine display names never participate. */
@@ -38,6 +60,8 @@ export function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
   ) {
     return 'station';
   }
+  if (engineId === 'qwen-code') return 'qwen';
+  if (engineId === 'kiro-kas' || engineId === 'kiro-kas-bundle') return 'kiro';
   return BRAND_KEYS.find((brand) => brand === engineId);
 }
 
@@ -145,8 +169,14 @@ function Mark({ brand }: { brand: BrandKey }) {
     case 'cursor':
     case 'goose':
     case 'qwen':
+    case 'hermes':
       return <img src={`/provider-icons/${brand}.svg`} alt="" />;
-    default:
+    case 'station':
+    case 'claude':
+    case 'codex':
+    case 'pi':
+    case 'kiro':
+    case 'opencode':
       // Until the chunk arrives the tile shows its sized, neutral box.
       return (
         <LazyBoundary
@@ -155,6 +185,13 @@ function Mark({ brand }: { brand: BrandKey }) {
           pending={null}
           unavailable={noMark}
           shareAcrossMounts
+        />
+      );
+    default:
+      return (
+        <span
+          className="brand-icon__mask"
+          style={{ maskImage: `url(/provider-icons/${brand}.svg)` }}
         />
       );
   }
