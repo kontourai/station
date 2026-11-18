@@ -1187,11 +1187,51 @@ describe('approval inbox notifications', () => {
   }
 
   test.each([
-    ['the exact open event', 'approval-opened', 'dismissed'],
-    ['a different version of the event', 'other-event', 'delivered'],
-  ])(
-    'converges a legacy registry twin only for %s',
-    async (_label, eventId, status) => {
+    [
+      'the exact open event',
+      'thread-relayed',
+      'approval-opened',
+      undefined,
+      'dismissed',
+    ],
+    [
+      'a different event',
+      'thread-relayed',
+      'other-event',
+      undefined,
+      'delivered',
+    ],
+    [
+      'a persisted key naming a different pair',
+      'thread-other',
+      'approval-opened',
+      undefined,
+      'delivered',
+    ],
+    [
+      'a concurrently answered twin',
+      'thread-relayed',
+      'approval-opened',
+      'actioned',
+      'actioned',
+    ],
+    [
+      'a concurrently expired twin',
+      'thread-relayed',
+      'approval-opened',
+      'expired',
+      'expired',
+    ],
+    [
+      'a concurrently revised twin',
+      'thread-relayed',
+      'approval-opened',
+      'updated',
+      'delivered',
+    ],
+  ] as const)(
+    'reconciles a legacy registry twin against %s',
+    async (_label, threadId, eventId, concurrent, status) => {
       const metadata = {
         approvalId: 'legacy-approval',
         conversationId: 'thread-relayed',
@@ -1212,7 +1252,7 @@ describe('approval inbox notifications', () => {
         metadata: {
           provider: 'station-agent',
           requestId: metadata.approvalId,
-          threadId: metadata.orchestrationThreadId,
+          threadId,
           requestEventId: 'approval-opened',
           requestKind: 'orchestration',
           requestKey: 'orchestration:thread-relayed:legacy-approval',
@@ -1225,12 +1265,32 @@ describe('approval inbox notifications', () => {
           provider: 'station-agent',
           requestType: 'approval',
           requestId: metadata.approvalId,
-          threadId: metadata.orchestrationThreadId,
+          threadId,
           eventId,
           title: 'Allow write',
           createdAt: new Date().toISOString(),
         },
       });
+      if (concurrent) {
+        const markStatus =
+          notificationService.markStatus.bind(notificationService);
+        vi.spyOn(notificationService, 'markStatus').mockImplementationOnce(
+          async (id, next, observed) => {
+            expect(id).toBe(legacy.id);
+            if (concurrent === 'updated') {
+              await notificationService.schedule('approval-inbox', {
+                category: 'approval-request',
+                title: 'Revised relay notification',
+                dedupeTag: metadata.requestKey,
+                metadata,
+              });
+            } else {
+              await markStatus(id, concurrent);
+            }
+            await markStatus(id, next, observed);
+          },
+        );
+      }
       wireApprovalInboxNotifications(
         bus,
         provider,
@@ -1240,9 +1300,11 @@ describe('approval inbox notifications', () => {
       await notificationService.drainAsyncDispatch();
 
       const notifications = await notificationService.list();
-      expect(notifications.find((row) => row.id === legacy.id)?.status).toBe(
-        status,
-      );
+      const observedLegacy = notifications.find((row) => row.id === legacy.id);
+      expect(observedLegacy?.status).toBe(status);
+      if (concurrent === 'updated') {
+        expect(observedLegacy?.title).toBe('Revised relay notification');
+      }
       expect(notifications.find((row) => row.id === canonical.id)?.status).toBe(
         'delivered',
       );

@@ -315,11 +315,11 @@ for (const [mode, width, theme, decision] of [
     );
     await page.goto('/?dock=open&maximize=true');
     await dismissSetupLauncher(page);
-    const row = page
-      .getByRole('region', {
-        name: width === 390 ? 'Inbox' : 'Inbox chats',
-        exact: true,
-      })
+    const inbox =
+      width === 390
+        ? page.getByRole('region', { name: 'Inbox', exact: true })
+        : page.getByRole('complementary', { name: 'Inbox chats', exact: true });
+    const row = inbox
       .getByTestId('inbox-row')
       .filter({ hasText: 'Needs approval' });
     await expect(row).toBeVisible();
@@ -339,6 +339,16 @@ for (const [mode, width, theme, decision] of [
       return;
     }
     await expect(row.getByText(APPROVAL_BODY)).toBeVisible();
+    if (width === 390) {
+      const details = row.getByRole('button', { name: /^Details for/ });
+      const box = await details.boundingBox();
+      const approvalBox = await row
+        .getByRole('button', { name: 'Approve once', exact: true })
+        .boundingBox();
+      expect(box).not.toBeNull();
+      expect(approvalBox).not.toBeNull();
+      expect(box!.y + box!.height).toBeLessThanOrEqual(approvalBox!.y);
+    }
     await row.screenshot({ path: testInfo.outputPath('approval-row.png') });
     await row
       .getByRole('button', {

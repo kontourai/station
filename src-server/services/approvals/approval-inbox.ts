@@ -670,7 +670,10 @@ export function wireApprovalInboxNotifications(
         // The Station Agent relay and adapter share one approval identity.
         // Keep the registry route until the exact orchestration record arrives.
         const relayThread = message.data?.orchestrationThreadId;
-        const relayKey = relayedRegistryRequestKey(message.data);
+        const relay = relayedRegistryRequest(message.data);
+        const relayKey = relay
+          ? buildOrchestrationRequestKey(relay)
+          : undefined;
         if (relayKey && provider.hasOrchestrationRequest(relayKey)) return;
         const onActivityCard =
           relayKey &&
@@ -786,16 +789,16 @@ export function wireApprovalInboxNotifications(
   // Strictly after `subscribe` — that ordering is the whole commutativity
   // argument above, not a stylistic choice.
   notificationService.dispatch('approval-inbox-hydration', async () => {
-    provider.hydrate(
-      await notificationService.list({
-        category: [APPROVAL_NOTIFICATION_CATEGORY],
-        status: ['delivered', 'pending'],
-      }),
-    );
+    const snapshots = await notificationService.listWithRevision({
+      category: [APPROVAL_NOTIFICATION_CATEGORY],
+      status: ['delivered', 'pending'],
+    });
+    provider.hydrate(snapshots.map(({ notification }) => notification));
     await convergeHydratedOrchestrationApprovals(
       provider,
       notificationService,
       logger,
+      snapshots,
     );
   });
 
@@ -814,29 +817,27 @@ async function convergeHydratedOrchestrationApprovals(
   provider: ApprovalInboxNotificationProvider,
   notificationService: NotificationService,
   logger: ApprovalInboxLogger,
+  hydrated: { notification: Notification; revision: number }[],
 ): Promise<void> {
-  const hydrated = await notificationService.list({
-    category: [APPROVAL_NOTIFICATION_CATEGORY],
-    status: ['delivered', 'pending'],
-  });
-
-  const relayTwins = new Map<string, string>();
-  for (const notification of hydrated) {
+  const relayTwins = new Map<string, (typeof hydrated)[number]>();
+  for (const snapshot of hydrated) {
+    const { notification } = snapshot;
     const target = parseInboxTarget(notification);
     if (
-      notification.source !== APPROVAL_INBOX_SOURCE ||
       target?.kind !== 'registry' ||
       notification.metadata?.dedupeTag !== `approval:${target.approvalId}`
     )
       continue;
-    const relayKey = relayedRegistryRequestKey(notification.metadata);
-    if (relayKey) relayTwins.set(relayKey, notification.id);
+    const relay = relayedRegistryRequest(notification.metadata);
+    if (relay)
+      relayTwins.set(
+        JSON.stringify([relay.threadId, relay.requestId]),
+        snapshot,
+      );
   }
 
-  for (const notification of hydrated) {
+  for (const { notification } of hydrated) {
     const target = parseInboxTarget(notification);
-    // Registry-kind approvals have no orchestration session to replay —
-    // the same scope boundary `AttentionProjectionService` draws.
     if (target?.kind !== 'orchestration') continue;
 
     let outcome: RequestReplayOutcome;
@@ -856,11 +857,24 @@ async function convergeHydratedOrchestrationApprovals(
     if (
       outcome.state === 'open' &&
       outcome.request.provider === 'station-agent' &&
-      notification.source === APPROVAL_INBOX_SOURCE &&
+      outcome.request.requestType === 'approval' &&
+      target.threadId === outcome.request.threadId &&
+      target.requestId === outcome.request.requestId &&
       target.requestEventId === outcome.request.eventId
     ) {
-      const twin = relayTwins.get(target.requestKey);
-      if (twin) await notificationService.markStatus(twin, 'dismissed');
+      const twin = relayTwins.get(
+        JSON.stringify([outcome.request.threadId, outcome.request.requestId]),
+      );
+      if (twin) {
+        await notificationService.markStatus(
+          twin.notification.id,
+          'dismissed',
+          {
+            source: twin.notification.source,
+            revision: twin.revision,
+          },
+        );
+      }
     }
 
     // `open` — still genuinely outstanding. `undetermined` — nothing could
@@ -959,9 +973,9 @@ function mapRegistryApprovalDecision(actionId: string): boolean {
   throw new Error(`Unsupported registry approval action: ${actionId}`);
 }
 
-function relayedRegistryRequestKey(
+function relayedRegistryRequest(
   metadata: Record<string, unknown> | undefined,
-): string | undefined {
+): { threadId: string; requestId: string } | undefined {
   const threadId = metadata?.orchestrationThreadId;
   const requestId = metadata?.approvalId;
   if (
@@ -969,7 +983,7 @@ function relayedRegistryRequestKey(
     threadId === metadata?.conversationId &&
     typeof requestId === 'string'
   ) {
-    return buildOrchestrationRequestKey({ threadId, requestId });
+    return { threadId, requestId };
   }
   return undefined;
 }
