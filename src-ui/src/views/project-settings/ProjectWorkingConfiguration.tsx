@@ -126,7 +126,7 @@ export function ProjectWorkingConfiguration({
           <p role="status">
             {view.current
               ? `Reviewed revision ${view.current.revision}${view.stale ? ' · Repository sources changed' : ''}`
-              : `${view.suggested.rules.length} instruction files · ${view.suggested.validationCommands.length} validation commands`}
+              : `Instructions (${view.suggested.rules.length}) · Checks (${view.suggested.validationCommands.length})`}
           </p>
           {view.stale && (
             <p>
@@ -327,7 +327,7 @@ export function ProjectWorkingConfiguration({
                   disabled={save.isPending}
                   onClick={() => save.mutate()}
                 >
-                  Apply reviewed defaults
+                  Apply defaults
                 </Button>
               ) : (
                 <Button onClick={() => begin(false)}>Review defaults</Button>
@@ -339,7 +339,7 @@ export function ProjectWorkingConfiguration({
                   disabled={save.isPending}
                   onClick={() => guard(() => setReview(null))}
                 >
-                  Cancel review
+                  Cancel
                 </Button>
               ) : (
                 <Button

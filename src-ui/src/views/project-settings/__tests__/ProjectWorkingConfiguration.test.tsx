@@ -87,7 +87,7 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
     target: { value: 'Independent review and evidence.' },
   });
   fireEvent.click(
-    screen.getByRole('button', { name: 'Apply reviewed defaults' }),
+    screen.getByRole('button', { name: 'Apply defaults' }),
   );
   await screen.findByText('Reviewed revision 1');
   expect(
@@ -110,7 +110,7 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
   ).toBe('Independent review and evidence.');
   allowed = false;
   fireEvent.click(
-    screen.getByRole('button', { name: 'Apply reviewed defaults' }),
+    screen.getByRole('button', { name: 'Apply defaults' }),
   );
   await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
   expect((await service.discover('work', () => true)).current?.revision).toBe(
