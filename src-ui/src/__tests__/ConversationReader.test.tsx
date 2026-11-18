@@ -883,8 +883,7 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     expect(within(rows[1]!).queryByText('You')).toBeNull();
     expect(
       within(rows[1]!).getByRole('button', {
-        name: 'Copy message',
-        exact: true,
+        name: /^Copy message$/,
       }),
     ).toBeTruthy();
     expect(
@@ -914,7 +913,7 @@ describe('another agent’s message in the Activity transcript (#3419)', () => {
     expect(row!.getAttribute('aria-label')).toBe('Update from Station');
     expect(row!.textContent).toContain('Update from Station');
     expect(
-      within(row!).getByRole('button', { name: 'Copy message', exact: true }),
+      within(row!).getByRole('button', { name: /^Copy message$/ }),
     ).toBeTruthy();
     expect(
       within(row!).queryByRole('button', { name: 'Copy your message' }),
@@ -1321,8 +1320,7 @@ test('the durable incoming cause follows canonical phone state and expands full 
   expect(details.textContent).toContain('Please inspect the login patch.');
   expect(
     within(details).getAllByRole('button', {
-      name: 'Copy message',
-      exact: true,
+      name: /^Copy message$/,
     }),
   ).toHaveLength(1);
   expect(
