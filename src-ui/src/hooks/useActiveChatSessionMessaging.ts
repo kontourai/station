@@ -1154,7 +1154,7 @@ export function useSendMessage(
           dispatchPossiblyQueuedForeground,
           dispatchQueuedForeground,
           publishConversationInboxReceipt,
-        } = await import('../lib/foregroundMessageDispatch');
+        } = await import('../lib/composerForegroundDispatch');
         // #2436: the server applies the conversation's recorded posture to
         // this turn. The only posture this send carries is a pick the server
         // has not received yet (no session yet, or picked offline); it is
