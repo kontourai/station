@@ -387,6 +387,7 @@ describe('CI verification workflow contracts', () => {
       | {
           on?: { workflow_run?: { workflows?: unknown; branches?: unknown } };
           permissions?: unknown;
+          jobs?: Record<string, { steps?: { uses?: string }[] }>;
         }
       | undefined;
     // Both jobs require head_branch == 'main', so a branch filter on the
@@ -451,13 +452,22 @@ describe('CI verification workflow contracts', () => {
     expect(successJob).toContain(
       "github.event.workflow_run.conclusion == 'success'",
     );
+    const githubScriptActions = ['report-failure', 'close-after-success'].map(
+      (id) => {
+        const steps = parsedMainHealth?.jobs?.[id]?.steps?.filter(({ uses }) =>
+          uses?.startsWith('actions/github-script@'),
+        );
+        expect(steps, id).toHaveLength(1);
+        const action = steps?.[0]?.uses;
+        expect(action, id).toMatch(/^actions\/github-script@[0-9a-f]{40}$/);
+        return action;
+      },
+    );
+    expect(new Set(githubScriptActions).size).toBe(1);
     for (const job of [failureJob, successJob]) {
       expect(job).toContain("github.event.workflow_run.head_branch == 'main'");
       expect(job).toContain(
         'github.event.workflow_run.head_repository.full_name == github.repository',
-      );
-      expect(job).toContain(
-        'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
       );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
@@ -3954,6 +3964,10 @@ describe('hosted qualification workflow covers the full regression', () => {
     const { jobs } = document();
     const text = workflow('full-regression.yml');
     expect(text).not.toMatch(/:raw\b/);
+    expect(jobs['android-viewport'].steps?.[0]).toMatchObject({
+      uses: CHECKOUT_ACTION,
+      with: { ref: `\${{ inputs.source_sha }}` },
+    });
     const aggregate = jobs.qualification;
     expect(aggregate.name).toBe('Full source qualification');
     expect(aggregate.if).toBe('always() && !cancelled()');
@@ -4452,6 +4466,46 @@ describe('hosted qualification workflow covers the full regression', () => {
   it('includes quarantined files in every qualification corpus', () => {
     for (const { text } of selections(document().jobs))
       expect(text).not.toContain('--exclude-quarantined');
+  });
+
+  it('qualifies UI-only main pushes and routes completion through main health', () => {
+    const qualification = load(workflow('main-qualification.yml')) as {
+      name: string;
+      on: { push: unknown };
+    };
+    expect(qualification.on.push).toEqual({
+      branches: ['main'],
+      'paths-ignore': [
+        'docs/reference/deploy-ledger.json',
+        'docs/reference/deploy-ledger.md',
+      ],
+    });
+    expect(qualification).toMatchObject({
+      jobs: {
+        qualification: {
+          if: "github.ref == 'refs/heads/main'",
+          uses: './.github/workflows/full-regression.yml',
+          with: { source_sha: `\${{ github.sha }}` },
+        },
+      },
+    });
+    const health = load(workflow('qualification-health.yml')) as {
+      name: string;
+    };
+    expect(health).toMatchObject({
+      on: {
+        workflow_run: { workflows: [qualification.name], types: ['completed'] },
+      },
+    });
+    expect(load(workflow('main-health.yml'))).toMatchObject({
+      on: {
+        workflow_run: {
+          workflows: expect.arrayContaining([health.name]),
+          types: ['completed'],
+          branches: ['main'],
+        },
+      },
+    });
   });
 
   it('keeps scheduled full qualification canonical, including quarantined files', () => {

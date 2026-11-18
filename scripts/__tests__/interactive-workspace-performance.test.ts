@@ -51,8 +51,6 @@ const configPath = resolve(
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const roots: string[] = [];
 
-const RUNNER_PREFLIGHT_ACTION =
-  'kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef';
 const PHYSICAL_HOST_CAPACITY_ACTION = `kontourai/.github/actions/physical-host-capacity@${REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA}`;
 
 type WorkflowStep = {
@@ -71,6 +69,14 @@ function expectWindowsPhysicalAcceptanceStepPrefix(
   capacityName: string,
   ownerLifetimeSeconds: string,
 ) {
+  const preflight = job.steps?.filter(({ uses }) =>
+    uses?.startsWith('kontourai/.github/actions/runner-preflight@'),
+  );
+  expect(preflight).toHaveLength(1);
+  const preflightAction = preflight?.[0]?.uses;
+  expect(preflightAction).toMatch(
+    /^kontourai\/\.github\/actions\/runner-preflight@[0-9a-f]{40}$/,
+  );
   expect(job.steps?.slice(0, 4)).toEqual([
     {
       uses: CHECKOUT_ACTION,
@@ -80,7 +86,7 @@ function expectWindowsPhysicalAcceptanceStepPrefix(
       uses: SETUP_NODE_ACTION,
       with: { 'node-version-file': '.nvmrc' },
     },
-    { uses: RUNNER_PREFLIGHT_ACTION },
+    { uses: preflightAction },
     {
       name: capacityName,
       uses: PHYSICAL_HOST_CAPACITY_ACTION,
@@ -94,6 +100,7 @@ function expectWindowsPhysicalAcceptanceStepPrefix(
       },
     },
   ]);
+  return preflightAction;
 }
 type Observation = {
   fixtureId: string;
@@ -1966,15 +1973,18 @@ describe('interactive workspace performance contract', () => {
         '7800',
       ],
     ] as const;
-    for (const [jobId, capacityName, ownerLifetimeSeconds] of physicalJobs) {
-      const job = jobs?.[jobId];
-      expect(job).toBeDefined();
-      expectWindowsPhysicalAcceptanceStepPrefix(
-        job as WorkflowJob,
-        capacityName,
-        ownerLifetimeSeconds,
-      );
-    }
+    const preflightActions = physicalJobs.map(
+      ([jobId, capacityName, ownerLifetimeSeconds]) => {
+        const job = jobs?.[jobId];
+        expect(job).toBeDefined();
+        return expectWindowsPhysicalAcceptanceStepPrefix(
+          job as WorkflowJob,
+          capacityName,
+          ownerLifetimeSeconds,
+        );
+      },
+    );
+    expect(new Set(preflightActions).size).toBe(1);
 
     const referenceSteps = jobs?.['reference-performance'].steps;
     expect(referenceSteps).toBeDefined();
