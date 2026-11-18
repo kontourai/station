@@ -69,6 +69,7 @@ import {
   withTimeout,
 } from '../../providers/__tests__/codex-adapter-wire-harness.js';
 import { listProviders } from '../../providers/registries/registry.js';
+import * as chatTitleGeneration from '../../routes/chat/chat-title-generation.js';
 import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import {
   principalKey,
@@ -993,6 +994,78 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       await runtime.shutdown();
       reconcileClaims.mockRestore();
       retryWorktrees.mockRestore();
+    }
+  });
+
+  it('fences a late generated conversation title before closing the EventStore', async () => {
+    home = await createSchemaHome('station-title-writer-shutdown-');
+    const result = deferred<string>();
+    const generate = vi
+      .spyOn(chatTitleGeneration, 'generateConversationTitle')
+      .mockReturnValue(result.promise);
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    const subject = runtime as unknown as {
+      appConfig: { titleModel?: string };
+      orchestrationEventStore: EventStore;
+    };
+    subject.appConfig = {
+      ...subject.appConfig,
+      titleModel: 'test-title-model',
+    };
+    const store = subject.orchestrationEventStore;
+    const candidate = vi.spyOn(store, 'conversationTitleGenerationCandidate');
+    const write = vi.spyOn(store, 'recordGeneratedConversationTitle');
+    const threadId = 'claude:title-shutdown';
+    const createdAt = '2026-11-18T00:00:00Z';
+    const base = { provider: 'claude' as const, threadId, createdAt };
+    store.upsertSession({ ...base, status: 'ready', updatedAt: createdAt });
+    store.appendEvent({
+      ...base,
+      eventId: 'title-session-start',
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'human:local:operator', agentSlug: 'claude' },
+    });
+    store.appendEvent({
+      ...base,
+      eventId: 'title-turn-start',
+      method: 'turn.started',
+      turnId: 'title-turn',
+      prompt: 'Fix the dark theme contrast',
+    });
+    const completed = {
+      ...base,
+      eventId: 'title-turn-complete',
+      method: 'turn.completed',
+      turnId: 'title-turn',
+      outputText: 'Adjusted the theme contrast.',
+    } as const;
+    store.appendEvent(completed);
+
+    try {
+      runtime.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: completed,
+      });
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(candidate).toHaveBeenCalledTimes(1);
+
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      result.resolve('Improved Dark Theme Contrast');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(write).not.toHaveBeenCalled();
+
+      runtime.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: { ...completed, threadId: 'claude:post-shutdown' },
+      });
+      expect(candidate).toHaveBeenCalledTimes(1);
+    } finally {
+      result.resolve('Improved Dark Theme Contrast');
+      await runtime.shutdown();
+      generate.mockRestore();
+      candidate.mockRestore();
+      write.mockRestore();
     }
   });
 

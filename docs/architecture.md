@@ -196,6 +196,11 @@ drain deadline. If an operation is still running at its deadline, shutdown
 reports failure and retains the Station home runtime lease. See
 [StationRuntime shutdown](../src-server/runtime/bootstrap/station-runtime.ts).
 
+Runtime shutdown also stops admitting automatic conversation titles. A title
+model response can still arrive after shutdown begins. The
+[title generator](../src-server/services/orchestration/conversation-title-generation.ts)
+discards it before opening a write, so the prompt-derived title stays in place.
+
 ## Self-Configuring Loop
 
 An admitted Agent can inspect and request supported Station changes through

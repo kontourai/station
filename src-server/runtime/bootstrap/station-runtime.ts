@@ -878,6 +878,7 @@ export class StationRuntime {
    */
   private readonly enginePrerequisitePrimingAbort = new AbortController();
   private configurationSourceUnsubscribers: Array<() => void> = [];
+  private stopConversationTitleGeneration?: () => void;
   private stopTaskLifecycleEvents?: () => void;
   private taskFinalizationAdmissionClosed = false;
   private readonly taskFinalizations = new Set<Promise<void>>();
@@ -2068,7 +2069,14 @@ export class StationRuntime {
           }),
         logger: this.logger,
       });
-      subscribeConversationTitleGeneration(this.eventBus, conversationTitles);
+      const unsubscribeTitles = subscribeConversationTitleGeneration(
+        this.eventBus,
+        conversationTitles,
+      );
+      this.stopConversationTitleGeneration = () => {
+        conversationTitles.stop();
+        unsubscribeTitles();
+      };
       const worktreeProvisioningService = new WorktreeProvisioningService();
       const settlementStore =
         this.orchestrationEventStore?.worktreeOutputSettlementStore();
@@ -2205,6 +2213,7 @@ export class StationRuntime {
         }
       });
     } catch (error) {
+      this.stopConversationTitleGeneration?.();
       this.taskFinalizationAdmissionClosed = true;
       this.stopTaskLifecycleEvents?.();
       this.stopTaskLifecycleEvents = undefined;
@@ -6264,6 +6273,8 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.stopConversationTitleGeneration?.();
+    this.stopConversationTitleGeneration = undefined;
     if (this.taskRecordings && !this.taskRecordingsShutdown) {
       this.taskRecordingsShutdown = this.taskRecordings.dispose();
       void this.taskRecordingsShutdown.catch(() => {});
