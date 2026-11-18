@@ -776,10 +776,7 @@ function isFailLine(line) {
  * Every line in `lines` that names a failing check (a vitest `FAIL <file>`
  * line, or -- station#4249 -- the same-shaped `FAIL <lane>` marker the
  * completion-mode typecheck/docs aggregate runners print per failing
- * sub-lane), in document order, deduplicated by exact text. The plural
- * counterpart of `failLineIn`'s single `.find`: it exists so a run that
- * genuinely observed N distinct failing checks can report N excerpts instead
- * of only the first one found.
+ * sub-lane), in document order, deduplicated by exact text.
  */
 function allFailLines(lines) {
   const seen = new Set();
@@ -852,29 +849,9 @@ function findAllCausalDiagnostics(
 }
 
 /**
- * The plural counterpart of `firstCausalExcerpt`'s own resolution chain in
- * `summarizeVerificationOutput`: mirrors the SAME priority order (attributable
- * scoped-stdout evidence before unattributable stderr evidence, a FAIL line
- * before a generic diagnostic) and, at whichever tier wins, returns every
- * excerpt that tier observed rather than only the first. Because each branch
- * here calls the exact singular helper the caller also calls, branch
- * selection can never diverge from the SCANNED half of `firstCausalExcerpt`'s
- * chain -- the two are derived from the same evidence.
- *
- * That is now the whole of the claim (station#1827 review item 6). It used to
- * conclude that `causalExcerpts[0]` and `firstCausalExcerpt` therefore
- * describe the same excerpt, and invited a caller to build `causalExcerpts`
- * straight from this list. Both stopped being safe when a runner-declared
- * stop cause was allowed to outrank the scan: on an `infrastructure_error`
- * that carried one, `firstCausalExcerpt` is a value NO tier here returns.
- * The head agreement is preserved by the assembly site, which seeds the list
- * with `summary.firstCausalExcerpt` and then appends from this one. A caller
- * that takes this list's own head instead would silently drop the cause.
- *
- * Deliberately returns only what this one execution's captured output
- * actually contains. It cannot see -- and does not guess at -- a check that
- * never ran because an earlier tier short-circuited; that check is absent
- * from this list, not falsely reported as passing or failing.
+ * Select the winning failure tier once. The summary uses the first
+ * entry unless the runner declared its own stop cause, then keeps the
+ * remaining observed failures within its byte budget.
  */
 function allCausalExcerpts({
   scopedStdout,
@@ -915,6 +892,20 @@ function allCausalExcerpts({
   )
     return [lines[0]];
   return [];
+}
+
+// Keep stream boundaries so a severity marker cannot qualify a line from
+// another stream. Prefer final-step context before reaching earlier output.
+function diagnosticContext(scopedStdout, stderrLines, stdoutLines) {
+  const lowerSeverity = (lines) =>
+    lines.filter((_, index) => isNonCausalDiagnostic(lines, index));
+  return [
+    ...new Set([
+      ...lowerSeverity(scopedStdout),
+      ...lowerSeverity(stderrLines).reverse(),
+      ...lowerSeverity(stdoutLines),
+    ]),
+  ];
 }
 
 /**
@@ -1075,11 +1066,6 @@ export function summarizeVerificationOutput({
   const failureSection = scopedStdout.findLastIndex((line) =>
     /(?:Failed Tests|Test Failures|Failures\s+\d+)/i.test(line),
   );
-  // A vitest FAIL line names the failing FILE — always the most actionable
-  // excerpt when present. Ambient stderr (app logs) previously matched the
-  // generic diagnostic pattern first and masked the real failure
-  // (station#2591).
-  const failLineIn = (candidates) => candidates.find(isFailLine);
   const exitedNonZero =
     typeof terminal.exitCode === 'number' && terminal.exitCode !== 0;
   // A passing capture can include printed failure fixtures or lint warnings.
@@ -1164,33 +1150,6 @@ export function summarizeVerificationOutput({
     infrastructureCause.length > 0
       ? infrastructureCause
       : null;
-  const firstCausalExcerpt =
-    ownerFinalCause ??
-    (reportsCause ? failLineIn(scopedStdout) : undefined) ??
-    (reportsCause ? stderrFailLine(stderrLines) : undefined) ??
-    (failureSection >= 0
-      ? findCausalDiagnostic(scopedStdout.slice(failureSection + 1), {
-          allowFailShaped: reportsCause,
-        })
-      : null) ??
-    findCausalDiagnostic(scopedStdout, {
-      allowFailShaped: reportsCause,
-    }) ??
-    findCausalDiagnostic(stderrLines, {
-      preferLast: true,
-      allowFailShaped: reportsCause,
-    }) ??
-    (lines.length === 1 &&
-    /parser/i.test(terminal.status) &&
-    !isNonCausalDiagnostic(lines, 0)
-      ? lines[0]
-      : null);
-  // station#4249: the plural companion, derived from the SAME branch that won
-  // above (see `allCausalExcerpts`'s doc comment for why the two can never
-  // disagree about their head element). Computed unconditionally -- it is
-  // cheap pure text scanning -- but only ever rendered into the summary when
-  // `firstCausalExcerpt` itself made the byte budget (below), so its presence
-  // never outruns the field it extends.
   const causalExcerptsObserved = allCausalExcerpts({
     scopedStdout,
     stderrLines,
@@ -1199,23 +1158,10 @@ export function summarizeVerificationOutput({
     lines,
     reportsCause,
   });
-  // Lower-severity lines are context, even when the failing step is silent.
-  // Examine each stream separately so a severity marker never crosses streams.
+  const firstCausalExcerpt = ownerFinalCause ?? causalExcerptsObserved[0];
   const diagnosticExcerptsObserved =
     reportsCause && causalExcerptsObserved.length === 0
-      ? [
-          ...new Set([
-            ...scopedStdout.filter((_, index) =>
-              isNonCausalDiagnostic(scopedStdout, index),
-            ),
-            ...stderrLines
-              .filter((_, index) => isNonCausalDiagnostic(stderrLines, index))
-              .reverse(),
-            ...stdoutLines.filter((_, index) =>
-              isNonCausalDiagnostic(stdoutLines, index),
-            ),
-          ]),
-        ]
+      ? diagnosticContext(scopedStdout, stderrLines, stdoutLines)
       : [];
   // Emitted ONLY when the excerpt came from stderr, which is the case a reader
   // needs warning about: stderr carries no step markers, so that excerpt was
