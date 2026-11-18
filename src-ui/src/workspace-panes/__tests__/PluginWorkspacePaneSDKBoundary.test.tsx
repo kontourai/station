@@ -8,7 +8,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { PluginWorkspacePaneSDKBoundary } from '../PluginWorkspacePaneSDKBoundary';
 
@@ -33,14 +33,19 @@ function Controls() {
   );
 }
 
-function pane(active: string) {
+function FirstRenderHash() {
+  const [hash] = useState(() => window.location.hash);
+  return <output>{hash || 'no hash'}</output>;
+}
+
+function pane(active: string, child: ReactNode = <Controls />) {
   const layout = {
     slug: 'pane',
     tabs: [{ id: active }],
   } as LayoutDefinition;
   return (
     <PluginWorkspacePaneSDKBoundary layout={layout} projectSlug="project">
-      <Controls />
+      {child}
     </PluginWorkspacePaneSDKBoundary>
   );
 }
@@ -50,6 +55,21 @@ afterEach(() => {
   vi.useRealTimers();
   sessionStorage.clear();
   window.history.replaceState(null, '', '/');
+});
+
+test('a plugin initializer sees the retained active tab hash on first render', () => {
+  sessionStorage.setItem('layout-pane-tab-first', 'view=retained');
+  render(pane('first', <FirstRenderHash />));
+  expect(screen.getByText('#view=retained')).toBeTruthy();
+  expect(window.location.hash).toBe('#view=retained');
+});
+
+test('an incoming deep link wins over retained state before the plugin initializes', () => {
+  sessionStorage.setItem('layout-pane-tab-first', 'view=retained');
+  window.history.replaceState(null, '', '/#view=linked');
+  render(pane('first', <FirstRenderHash />));
+  expect(screen.getByText('#view=linked')).toBeTruthy();
+  expect(sessionStorage.getItem('layout-pane-tab-first')).toBe('view=retained');
 });
 
 test('clearing a tab cancels its delayed restoration and survives switches and remount', () => {
