@@ -492,6 +492,7 @@ it('Task-room uploads cannot bypass another process’s store lock or its commit
         TASK_ROOM_LOCK_ROOT: root,
         TASK_ROOM_LOCK_INPUT: JSON.stringify(first),
       },
+      windowsHide: true,
       stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
     },
   );
