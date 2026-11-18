@@ -98,7 +98,11 @@ describe('verification status projection', () => {
         expect(document.canonicalReceipt).toBe(
           `.kontourai/verification-receipts/${request.key}.canonical.json`,
         );
-        const markdown = renderSummary({ document });
+        const markdown = renderSummary({
+          document,
+          sourcePath: undefined,
+          unparseableReason: undefined,
+        });
         expect(markdown).toContain('✅ passed');
         expect(markdown).toContain('| executed | 19 |');
       }
