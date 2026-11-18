@@ -3489,7 +3489,10 @@ The `seatbelt-kernel` profile pins the kernel legs of
 - **Where they do not:** every pull-request, merge-queue and corpus lane.
   Those run on Linux or Windows, where the whole suite skips and the skip
   passes. A regression in these legs therefore shows after merge, on the
-  `main` push that introduced it, not on its pull request.
+  `main` push that introduced it, not on its pull request. Registration/profile
+  alignment is checked separately before landing when either kernel test file
+  changes; that audit collects test identities without running the bodies and
+  is not kernel execution evidence.
 - **Restricted network (#4769):** the nested `with a restricted network
   (#4769)` legs run real `sandbox-exec` children under the broker-only
   profile with an in-process egress broker and local listeners only; no
