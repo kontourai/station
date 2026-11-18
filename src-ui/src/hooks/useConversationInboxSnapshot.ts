@@ -1,0 +1,110 @@
+import type {
+  ConversationInboxEntry,
+  ConversationInboxQueuedReceipt,
+} from '@kontourai/station-contracts/orchestration';
+import { type QueryClient, skipToken, useQuery } from '@tanstack/react-query';
+import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
+import type { StationConnection } from '../connections/station-connection';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+
+type InboxScope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
+
+/** Entries a reader still needs to see: not sent, not withdrawn. */
+export function visibleInboxEntries(
+  entries: readonly ConversationInboxEntry[] | undefined,
+): ConversationInboxEntry[] {
+  return (entries ?? []).filter(
+    (entry) => entry.state !== 'sent' && entry.state !== 'cancelled',
+  );
+}
+
+export function inboxQueryKey(
+  scope: { apiBase: string; authorityKey: string } | undefined,
+  conversationId: string,
+  apiBase = scope?.apiBase,
+) {
+  return ['conversation-inbox', apiBase, scope?.authorityKey, conversationId];
+}
+
+export function inboxReceiptsKey(queryKey: readonly unknown[]) {
+  return [...queryKey, 'receipts'];
+}
+
+export function useInboxReceipts(queryKey: readonly unknown[]) {
+  return useQuery<ConversationInboxEntry[]>({
+    queryKey: inboxReceiptsKey(queryKey),
+    queryFn: skipToken,
+    gcTime: 0,
+  }).data;
+}
+
+export function withInboxReceipts(
+  entries: ConversationInboxEntry[] | undefined,
+  receipts: ConversationInboxEntry[] | undefined,
+) {
+  if (!receipts?.length) return entries;
+  return [
+    ...(entries ?? []),
+    ...receipts.filter(
+      (receipt) =>
+        !entries?.some((entry) => entry.clientTurnId === receipt.clientTurnId),
+    ),
+  ];
+}
+
+export function publishConversationInboxReceipt(
+  client: QueryClient,
+  scope: InboxScope | undefined,
+  apiBase: string,
+  receipt: ConversationInboxQueuedReceipt,
+) {
+  if (!scope?.isCurrent() || scope.apiBase !== apiBase) return;
+  const { entry, conversationId, clientTurnId } = receipt;
+
+  const queryKey = inboxQueryKey(scope, conversationId, apiBase);
+  const receiptsKey = inboxReceiptsKey(queryKey);
+  if (client.getQueryState(receiptsKey)) {
+    client.setQueryData<ConversationInboxEntry[]>(receiptsKey, (previous) => [
+      ...(previous ?? []).filter((item) => item.clientTurnId !== clientTurnId),
+      // The receipt confirms custody. The list read owns queue order.
+      { ...entry, position: undefined },
+    ]);
+  }
+  void client.invalidateQueries(
+    { queryKey, exact: true },
+    { cancelRefetch: false },
+  );
+}
+
+/**
+ * The entries the pending list shows now, read from the same query without
+ * reading the inbox again: for a second view of that list (the chat's
+ * context card). Empty while the list's own read has no current answer.
+ */
+export function useConversationInboxSnapshot(
+  conversationId: string,
+  connection?: StationConnection | null,
+): ConversationInboxEntry[] {
+  const hostScope = useHostRequestAuthorityScope();
+  const target = useOptionalConversationConnection();
+  const scope =
+    connection === null
+      ? undefined
+      : (connection?.requestScope ?? target?.requestScope ?? hostScope);
+  const apiBase =
+    connection === null
+      ? undefined
+      : (connection?.targetApiBase ?? target?.apiBase ?? scope?.apiBase);
+  const queryKey = inboxQueryKey(scope, conversationId, apiBase);
+  const query = useQuery<ConversationInboxEntry[]>({
+    queryKey,
+    queryFn: skipToken,
+    gcTime: 0,
+  });
+  const receipts = useInboxReceipts(queryKey);
+  const current =
+    connection?.isCurrent() ?? (target?.requestScope ?? hostScope)?.isCurrent();
+  return connection !== null && current && !query.isError && !query.isPaused
+    ? visibleInboxEntries(withInboxReceipts(query.data, receipts))
+    : [];
+}

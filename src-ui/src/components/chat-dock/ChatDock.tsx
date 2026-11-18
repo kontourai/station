@@ -117,7 +117,7 @@ import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
-import { useConversationInboxSnapshot } from '../../hooks/useConversationInbox';
+import { useConversationInboxSnapshot } from '../../hooks/useConversationInboxSnapshot';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,

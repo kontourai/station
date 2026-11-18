@@ -85,7 +85,7 @@ import { withDeliveryCheck } from '../utils/messageDeliveryState';
 import { describeStationFailure } from '../utils/stationFailure';
 import { isReplayThread } from './orchestration/replay/replay-registry';
 import { buildOutgoingUserMessage } from './useActiveChatSessions.helpers';
-import { publishConversationInboxReceipt } from './useConversationInbox';
+import { publishConversationInboxReceipt } from './useConversationInboxSnapshot';
 import { useStreamingMessage } from './useStreamingMessage';
 
 interface SendTransaction {
