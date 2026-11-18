@@ -4,6 +4,7 @@ import type {
   ConnectionCandidate,
   ConnectionCandidateSource,
 } from '../core/types';
+import { secondaryBtnStyle } from './connection-manager-modal/styles';
 
 const primaryBtnStyle: React.CSSProperties = {
   padding: '8px 14px',
@@ -15,18 +16,6 @@ const primaryBtnStyle: React.CSSProperties = {
   cursor: 'pointer',
   background: 'var(--accent-primary, #3b82f6)',
   color: 'var(--text-on-accent, white)',
-};
-
-const secondaryBtnStyle: React.CSSProperties = {
-  padding: '10px 20px',
-  minHeight: 44,
-  fontSize: 13,
-  fontWeight: 500,
-  borderRadius: 8,
-  border: '1px solid var(--border-primary, #333)',
-  cursor: 'pointer',
-  background: 'transparent',
-  color: 'var(--text-primary, #e5e5e5)',
 };
 
 const SOURCE_LABEL: Record<ConnectionCandidateSource, string> = {

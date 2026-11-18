@@ -37,7 +37,9 @@ For performance or test cleanup, use the [journey profiling and mutation route](
 
 For compact value pickers, reuse `.choice-trigger`, `.choice-caret`, and `ArrowDownGlyph`; keep picker behavior in its existing owner. Use `Button` for standard actions and `Dialog` for standard dialog chrome. `ResponsiveDialogSurface` supplies behavior and geometry only; a custom consumer must own its overlay, background, and foreground styles. Preserve visible keyboard focus and 44px mobile targets. Validate shared-style changes in each affected surface, including narrow widths and both themes.
 
-Before writing feature CSS, inspect the published `@kontourai/ui/react` primitives and the [shared presentation recipes](../docs/patterns/frontend.md#styling-and-responsive-behavior). In the shell, use `ActionRow` for primary/secondary command groups, `Field`/`Select` for ordinary form choices, `StatusSummary` for identity/status/check metadata, and `content-stack` for semantic flow. Pane packages keep the published-package boundary and must not import these shell modules. Reuse one owner across equivalent surfaces; do not recreate its badge, spacing, or control chrome locally.
+Before writing feature CSS, find a shipped caller with the same layout and interaction. Inspect the published `@kontourai/ui/react` primitives and the [shared presentation recipes](../docs/patterns/frontend.md#styling-and-responsive-behavior). In the shell, use `ActionRow` for primary/secondary command groups, `Field`/`Select` for ordinary form choices, `StatusSummary` for identity/status/check metadata, and `content-stack` for semantic flow. Pane packages keep the published-package boundary and must not import these shell modules.
+
+For a framed shell route, let `PageFrame` set the outer gutter. Compose `PageSection` and `PageRow` for titled sections and label/description/control rows. The parent sets the gap between children. The shared control sets its own type, padding and states. Keep geometry unique to a feature beside that feature. When two surfaces need the same change, update their common owner and remove the matching overrides in the same diff.
 
 | Conversation surface | Shared owner |
 | --- | --- |
@@ -81,4 +83,4 @@ Writing UI copy follows the [UI copy guide](../docs/guides/ui-copy.md) and the [
 
 ## Design system
 
-UI, brand, and product-copy rules live in `DESIGN.md` in `@kontourai/ui` (https://github.com/kontourai/ui/blob/main/DESIGN.md; also shipped at `node_modules/@kontourai/ui/DESIGN.md`). Style with the `--k-*` tokens instead of hard-coded colors, spacing, radii or font sizes, and don't resolve anything the doc marks OPEN.
+UI, brand, and product-copy rules live in `DESIGN.md` in `@kontourai/ui` (https://github.com/kontourai/ui/blob/main/DESIGN.md; also shipped at `node_modules/@kontourai/ui/DESIGN.md`). Inherit the component’s text style first. When a role needs an explicit size, use the shipped `--k-text-*` scale. Station’s `--k-text-sm` follows the Comfortable/Compact preference. Use `--k-space-*` for padding and gaps. Check the installed token definition when migrating legacy spacing. For example, `--space-2` computes to 4px and `--k-space-2` to 8px. Use the shipped color and radius tokens. Leave OPEN design decisions with their owners.
