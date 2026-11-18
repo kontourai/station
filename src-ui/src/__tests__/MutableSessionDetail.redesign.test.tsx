@@ -278,7 +278,6 @@ describe('header', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     try {
       await renderDetail(baseSession());
@@ -507,7 +506,6 @@ describe('fix round', () => {
     const focus = vi.fn();
     const unregister = openChatsStore.registerNavigation({
       focus,
-      openCollection: vi.fn(),
     });
     try {
       await renderDetail(

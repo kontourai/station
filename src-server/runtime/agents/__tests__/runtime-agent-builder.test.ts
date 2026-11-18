@@ -9,10 +9,16 @@
  */
 import { describe, expect, test, vi } from 'vitest';
 import { prepareRuntimeAgentInstance } from '../runtime-agent-builder.js';
+import { replaceRuntimeTemplateVariables } from '../runtime-template-variables.js';
 
 function fakeContext(overrides: Record<string, unknown> = {}) {
   const createAgent = vi.fn(
-    async (_slug: string, _spec: unknown, _config: any) => ({
+    async (
+      _slug: string,
+      _spec: unknown,
+      _config: any,
+      _options: { processedPrompt: () => string },
+    ) => ({
       agent: { id: 'fake-agent' },
       tools: [],
       memoryAdapter: {},
@@ -81,4 +87,25 @@ describe('prepareRuntimeAgentInstance forwards dispatch evidence wiring (station
     const [, , agentCreationConfig] = createAgent.mock.calls[0]!;
     expect(agentCreationConfig.dispatchEvidenceSource).toBeUndefined();
   });
+});
+
+test('Station-built prompts expand defaults before the authored Agent instructions', async () => {
+  const appConfig = {
+    defaultModel: 'fixture',
+    invokeModel: 'fixture',
+    structureModel: 'fixture',
+    systemPrompt: 'S1 {{project}}',
+    templateVariables: [
+      { key: 'project', type: 'static' as const, value: 'Demo' },
+    ],
+  };
+  const { context, createAgent } = fakeContext({
+    appConfig,
+    replaceTemplateVariables: (text: string) =>
+      replaceRuntimeTemplateVariables(text, appConfig),
+  });
+  await prepareRuntimeAgentInstance(context);
+  expect(createAgent.mock.calls[0]?.[3].processedPrompt()).toBe(
+    'S1 Demo\n\nBe helpful.',
+  );
 });

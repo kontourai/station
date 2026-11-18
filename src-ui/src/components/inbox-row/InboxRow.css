@@ -1,6 +1,6 @@
 /**
  * The shared inbox row (#3043): the dock inbox, the mobile sheet, Home's work
- * lanes and the sidebar's open chats all render this.
+ * lanes use the same row.
  *
  * Fixed line budget: the headline (title and time), then on a hover row one
  * state line (the agent's mark, status, project) and on a touch row the status
@@ -631,6 +631,29 @@
   opacity: 1;
   pointer-events: auto;
   transform: none;
+}
+
+/* A direct draft refusal gets its own line. Keep the existing action
+ * buttons in the top row where the pointer and focus left them. */
+.inbox-row--touch:has(> .inbox-row__actions > .discard-draft__error) {
+  flex-wrap: wrap;
+}
+
+.inbox-row--touch > .inbox-row__actions:has(> .discard-draft__error) {
+  display: contents;
+}
+
+.inbox-row--touch
+  > .inbox-row__actions:has(> .discard-draft__error)
+  > .inbox-row__action {
+  align-self: center;
+}
+
+.inbox-row--touch > .inbox-row__actions > .discard-draft__error {
+  flex: 0 0 100%;
+  max-width: none;
+  padding: 0 var(--inbox-row-pad-inline) var(--inbox-row-pad-block);
+  overflow-wrap: anywhere;
 }
 
 .inbox-row--touch .inbox-row__action {

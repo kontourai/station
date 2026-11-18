@@ -344,7 +344,7 @@ interface AgentSpec {
   project?: string;
   execution?: AgentExecutionConfig;
   delegation?: AgentDelegationPolicy;
-  maxSteps?: number;
+  maxSteps?: number | null;
   guardrails?: AgentGuardrails;
   /** @deprecated Ignored; accepted so existing agent files load (#3879). */
   streaming?: {
@@ -362,7 +362,6 @@ interface AgentGuardrails {
   temperature?: number;
   topP?: number;
   stopSequences?: string[];
-  maxSteps?: number;
 }
 
 interface AgentTools {

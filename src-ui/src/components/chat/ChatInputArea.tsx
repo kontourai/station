@@ -197,9 +197,8 @@ interface ChatInputAreaProps {
    */
   turnInFlight: boolean;
   /**
-   * What Enter does while a turn is in flight. Steer is the default on
-   * engines that can take mid-turn input; queue is the only path otherwise
-   * (and whenever this send carries attachments).
+   * Whether the running turn offers an explicit steer. A follow-up queues
+   * by default, including when the engine can steer.
    */
   busyFollowUp?: 'steer' | 'queue';
   busySteeringKind?: 'native' | 'safe-stop';
@@ -292,7 +291,7 @@ interface ChatInputAreaProps {
   slashCommands: SlashCommand[];
   // Handlers
   onInputChange: (value: string) => void;
-  onSend: () => Promise<void>;
+  onSend: (intent?: 'steer') => Promise<void>;
   onCancel: () => void;
   onClearInput: () => void;
   selectAttachmentFiles?: (files: File[]) => Promise<void>;
@@ -654,19 +653,11 @@ export function ChatInputArea({
   const removalUnblocksSend =
     removalUnblocksSendProp ||
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
-  // A follow-up during a running turn steers it when the engine takes the
-  // message natively (it joins the turn at its next tool boundary). Safe-stop
-  // steering ends the turn early, so there Queue stays the default. An
-  // explicit choice holds until the conversation changes.
-  const [chosenSendMode, setSendMode] = useState<'queue' | 'steer' | null>(
-    null,
-  );
-  const sendMode =
-    chosenSendMode ?? (busySteeringKind === 'native' ? 'steer' : 'queue');
+  const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
     void sessionId;
-    setSendMode(null);
+    setSendMode('queue');
     setSendModeOpen(false);
     setSendAfterUploads(false);
   }, [sessionId]);
@@ -693,11 +684,9 @@ export function ChatInputArea({
     submitPending.current = true;
     setSubmitting(true);
     try {
-      if (
-        turnInFlight &&
-        (sendMode === 'queue' || busyFollowUp !== 'steer') &&
-        onQueueFollowUp
-      ) {
+      if (turnInFlight && sendMode === 'steer' && busyFollowUp === 'steer') {
+        await onSend('steer');
+      } else if (turnInFlight && onQueueFollowUp) {
         await onQueueFollowUp();
       } else {
         await onSend();
@@ -827,8 +816,8 @@ export function ChatInputArea({
     : aliasLabel;
   const agentEngineMoveSentence = agentEngineMove
     ? agentEngineMove.nextTurn
-      ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
-      : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
+      ? `The next turn starts a new Session on ${agentEngineMove.to}, where its Agent now points.`
+      : `This conversation used ${executionEngineLabel ?? 'another engine'}. Its Agent now uses ${agentEngineMove.to}.`
     : undefined;
   const modelAccessibleLabel = [
     'Engine & model:',

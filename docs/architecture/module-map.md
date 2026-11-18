@@ -727,20 +727,21 @@ default 0. Dispatch skips a plugin shortcut on a
 [reserved kernel or text-editing chord](../../src-ui/src/contexts/kernelReservedShortcuts.ts),
 and registration refuses one.
 
-**Caller limits.** The [editor](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx)
-uses ID-derived context hints rather than the actual dispatch rule, and checks
-the first matching enabled binding when offering replacement. Its captured
-Space spelling also differs from the standard event key. The
-[user guide](../guides/keyboard-shortcuts.md) explains current behavior and links
-[#2767](https://github.com/kontourai/station/issues/2767) and
-[#2771](https://github.com/kontourai/station/issues/2771) for those corrections.
+**Editor.** The [settings list](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx)
+describes registered `when` rules and the dispatcher's modal and focus guards.
+It checks the first matching effective chord when offering replacement. Key
+matching, chord comparison and capture share the same Space normalization,
+including saved bindings with the `Space` name. The
+[user guide](../guides/keyboard-shortcuts.md) covers device persistence,
+platform interception and read-only mobile settings.
 
 **Evidence.** [Editor tests](../../src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx)
 and [registry tests](../../src-ui/src/__tests__/KeyboardShortcutsContext.test.ts)
-exercise DOM events and synthetic handlers. The independent Space probe enters
-through the mounted editor and provider; it does not qualify physical keyboards
-or native-shell interception. Keep the modal-guard and registration-loop
-regression rationale when changing this owner.
+exercise prompt-free dispatch under changed registration and focus rules.
+A [Chromium fixture](../../src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx)
+captures, saves, reloads and dispatches a Space chord through the production
+editor and provider. Physical keyboard and native-shell interception require
+their own evidence.
 
 ## ColorThemes
 
@@ -2300,7 +2301,16 @@ without reserving anything (`nextTurnStartsSession`, from
 a reserved child that has not started. A model switch depends on the send that
 asks for it and is not counted. It reports nothing for a turn the send would
 refuse: a handoff awaiting its target, or a continuation, fork, or handoff
-context delivery not yet completed on the current Session.
+context delivery not yet completed on the current Session. The composer only
+predicts a new Session when the open read describes its current child and
+permits continuation.
+
+An authorized, unstarted empty-context reservation opens as
+`fresh-context-ready`. The predecessor's messages remain in Conversation
+history and the next ordinary send starts the reserved Session with fresh
+engine context. The read publishes the two reservation identities separately
+from a current Session or execution binding. Claimed, cancelled, and
+indeterminate boundaries do not receive this ready state.
 
 `OrchestrationService` parks an at-rest engine left unused past
 `idleSessionParkAfterMs`, provided it is at rest, has no active turn or reported running child work,

@@ -118,7 +118,7 @@ describe('connection readiness evidence', () => {
     expect(evidence.summary).toBe(
       'Model catalog request failed with HTTP 404.',
     );
-    expect(evidence.action).toContain('Test Connection');
+    expect(evidence.action).toContain('Test connection');
   });
 
   test('configured selectors cannot lift a catalog-unavailable connection to catalog-ready', () => {
@@ -147,6 +147,10 @@ describe('connection readiness evidence', () => {
 
     expect(evidence.level).toBe('prerequisite-ready');
     expect(evidence.check).toEqual({ status: 'not-checked' });
+    expect(evidence.action).toBe(
+      'Choose Test connection to check the saved settings.',
+    );
+    expect(evidence.smoke.action).toBeUndefined();
   });
 
   test('a passed check is a live provider response, so it reaches catalog-ready', () => {
@@ -158,6 +162,11 @@ describe('connection readiness evidence', () => {
     );
 
     expect(evidence.level).toBe('catalog-ready');
+    expect(evidence.summary).toBe(
+      'The provider answered the last connection check.',
+    );
+    expect(evidence.smoke.status).toBe('not-tested');
+    expect(evidence.smoke.action).toBeUndefined();
   });
 
   test('keeps live catalog evidence distinct from an untested chat', () => {
