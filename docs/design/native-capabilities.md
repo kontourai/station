@@ -62,6 +62,15 @@ semantics. OS window reveal, startup cover/dialog wiring and physical
 packaged-channel proof remain **NOT_VERIFIED**. Readiness does not depend on a window-state
 plugin; conditional desktop updater registration is a separate owner below.
 
+Native mobile startup uses a 30-second renderer deadline shared by the
+[platform bootstrap](../../src-ui/src/platform/PlatformProfileContext.tsx) and
+the [pairing controls](../../src-ui/src/components/NativeConnectionStartup.tsx).
+The bootstrap bounds the capability, app identity, and saved-Station waits.
+A stage that stalls shows a fixed explanation and **Reload Station**. A late
+response cannot mount the workspace from that attempt. Reload starts a fresh
+renderer attempt using the existing saved profiles and pairing data. A clean
+unpaired device reaches the welcome screen after the pairing controls load.
+
 The current host does not emit inbound text share events
 (`station://share-received`) yet. That event name is a future-compatible
 boundary; shared images use the separate plugin path below. PWA share URLs keep

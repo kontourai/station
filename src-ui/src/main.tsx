@@ -39,6 +39,7 @@ installFoldGeometry();
 
 import App from './App';
 import { MobileWelcomeBoundary } from './components/MobileWelcomeBoundary';
+import { NativeConnectionStartup } from './components/NativeConnectionStartup';
 import { OfflineReadingBoundary } from './components/OfflineReadingBoundary';
 import { WebOfflineShell } from './components/WebOfflineShell';
 import './components/editor-controls.css';
@@ -115,10 +116,25 @@ import './providers/context/index';
 // Connection onboarding is mounted after the provider shell has booted. Keep
 // its recovery/pairing machinery out of the first-paint graph; the gate itself
 // preserves the shell once it resolves.
+const loadConnectionOwner = () => import('./components/OnboardingGate');
 const loadOnboardingGate = () =>
-  import('./components/OnboardingGate').then((module) => ({
+  loadConnectionOwner().then((module) => ({
     default: () => <module.OnboardingGate>{null}</module.OnboardingGate>,
   }));
+
+const loadMobileConnectionStartup = async () => {
+  const { OnboardingGate } = await loadConnectionOwner();
+  return {
+    default: ({ children }: { children: React.ReactNode }) => (
+      <>
+        <RecoveryQueryBoundary>
+          <OnboardingGate>{null}</OnboardingGate>
+        </RecoveryQueryBoundary>
+        {children}
+      </>
+    ),
+  };
+};
 
 // Voice providers subscribe through VoiceProviderContext, so they can load off
 // the startup bundle and notify the mounted tree when registration completes.
@@ -347,92 +363,98 @@ function renderApp(): void {
                   the selected Station changes. */}
                       <NavigationProvider>
                         <ScopedToastProvider>
-                          <RecoveryQueryBoundary>
-                            <DeferredCapabilityBoundary
-                              id="connection-recovery"
-                              load={loadOnboardingGate}
-                              copy={{
-                                // The title renders as the banner's badge, which
-                                // is uppercased and sits beside two-word badges —
-                                // a sentence here reads as shouting. The full
-                                // statement is the message below.
-                                failureTitle: 'Recovery unavailable',
-                                failure:
-                                  'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
-                              }}
-                            />
-                          </RecoveryQueryBoundary>
-                          <MobileWelcomeBoundary>
-                            <AuthorityQueryProvider
-                              localUiApiBase={localUiApiBase}
-                            >
-                              <TranscriptAppWorkspaceProvider>
-                                <AccountPreferencesProvider>
-                                  <ManagedPolicyProvider>
-                                    <SyntaxHighlighterProvider>
-                                      <AuthProvider>
-                                        {/* extension-registry stays in the protected
+                          <NativeConnectionStartup
+                            load={loadMobileConnectionStartup}
+                            nonMobileRecovery={
+                              <RecoveryQueryBoundary>
+                                <DeferredCapabilityBoundary
+                                  id="connection-recovery"
+                                  load={loadOnboardingGate}
+                                  copy={{
+                                    // The title renders as the banner's badge, which
+                                    // is uppercased and sits beside two-word badges —
+                                    // a sentence here reads as shouting. The full
+                                    // statement is the message below.
+                                    failureTitle: 'Recovery unavailable',
+                                    failure:
+                                      'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',
+                                  }}
+                                />
+                              </RecoveryQueryBoundary>
+                            }
+                          >
+                            <MobileWelcomeBoundary>
+                              <AuthorityQueryProvider
+                                localUiApiBase={localUiApiBase}
+                              >
+                                <TranscriptAppWorkspaceProvider>
+                                  <AccountPreferencesProvider>
+                                    <ManagedPolicyProvider>
+                                      <SyntaxHighlighterProvider>
+                                        <AuthProvider>
+                                          {/* extension-registry stays in the protected
                             query/auth boundary: PluginRegistryBootstrap
                             invalidates ['layouts'] on the authority client
                             and must never run against the observation
                             bootstrap client. Navigation/toast read from
                             the stable providers above. */}
-                                        <PermissionManager>
-                                          <KeyboardShortcutsProvider>
-                                            <ConversationsProvider>
-                                              <ActiveChatsProvider>
-                                                <VoiceProviderContext>
-                                                  <MessageContextContext>
-                                                    <AnalyticsProvider>
-                                                      <PreviewProvider>
-                                                        <LocaleProvider
-                                                          developmentLocale={
-                                                            developmentLocale
-                                                          }
-                                                        >
-                                                          <RegionModelProvider>
-                                                            <PaneRelationsProvider>
-                                                              <BrandingThemeBridge />
-                                                              <CustomAppearanceBridge />
-                                                              <WorkClaimsProvider>
-                                                                <ConversationWorkStateProvider>
-                                                                  <InboxDismissUndo>
-                                                                    <UndoableActionShortcut>
-                                                                      <App />
-                                                                    </UndoableActionShortcut>
-                                                                  </InboxDismissUndo>
-                                                                </ConversationWorkStateProvider>
-                                                              </WorkClaimsProvider>
-                                                            </PaneRelationsProvider>
-                                                          </RegionModelProvider>
-                                                          <NotificationContainer />
-                                                        </LocaleProvider>
-                                                      </PreviewProvider>
-                                                    </AnalyticsProvider>
-                                                  </MessageContextContext>
-                                                </VoiceProviderContext>
-                                              </ActiveChatsProvider>
-                                            </ConversationsProvider>
-                                          </KeyboardShortcutsProvider>
-                                        </PermissionManager>
-                                        <DeferredCapabilityBoundary
-                                          id="extension-registry"
-                                          failurePresentation="notification"
-                                          load={loadPluginRegistryBootstrap}
-                                          copy={{
-                                            failureTitle:
-                                              EXTENSIONS_UNAVAILABLE_LABEL,
-                                            failure:
-                                              'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
-                                          }}
-                                        />
-                                      </AuthProvider>
-                                    </SyntaxHighlighterProvider>
-                                  </ManagedPolicyProvider>
-                                </AccountPreferencesProvider>
-                              </TranscriptAppWorkspaceProvider>
-                            </AuthorityQueryProvider>
-                          </MobileWelcomeBoundary>
+                                          <PermissionManager>
+                                            <KeyboardShortcutsProvider>
+                                              <ConversationsProvider>
+                                                <ActiveChatsProvider>
+                                                  <VoiceProviderContext>
+                                                    <MessageContextContext>
+                                                      <AnalyticsProvider>
+                                                        <PreviewProvider>
+                                                          <LocaleProvider
+                                                            developmentLocale={
+                                                              developmentLocale
+                                                            }
+                                                          >
+                                                            <RegionModelProvider>
+                                                              <PaneRelationsProvider>
+                                                                <BrandingThemeBridge />
+                                                                <CustomAppearanceBridge />
+                                                                <WorkClaimsProvider>
+                                                                  <ConversationWorkStateProvider>
+                                                                    <InboxDismissUndo>
+                                                                      <UndoableActionShortcut>
+                                                                        <App />
+                                                                      </UndoableActionShortcut>
+                                                                    </InboxDismissUndo>
+                                                                  </ConversationWorkStateProvider>
+                                                                </WorkClaimsProvider>
+                                                              </PaneRelationsProvider>
+                                                            </RegionModelProvider>
+                                                            <NotificationContainer />
+                                                          </LocaleProvider>
+                                                        </PreviewProvider>
+                                                      </AnalyticsProvider>
+                                                    </MessageContextContext>
+                                                  </VoiceProviderContext>
+                                                </ActiveChatsProvider>
+                                              </ConversationsProvider>
+                                            </KeyboardShortcutsProvider>
+                                          </PermissionManager>
+                                          <DeferredCapabilityBoundary
+                                            id="extension-registry"
+                                            failurePresentation="notification"
+                                            load={loadPluginRegistryBootstrap}
+                                            copy={{
+                                              failureTitle:
+                                                EXTENSIONS_UNAVAILABLE_LABEL,
+                                              failure:
+                                                'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
+                                            }}
+                                          />
+                                        </AuthProvider>
+                                      </SyntaxHighlighterProvider>
+                                    </ManagedPolicyProvider>
+                                  </AccountPreferencesProvider>
+                                </TranscriptAppWorkspaceProvider>
+                              </AuthorityQueryProvider>
+                            </MobileWelcomeBoundary>
+                          </NativeConnectionStartup>
                         </ScopedToastProvider>
                       </NavigationProvider>
                     </QueryClientProvider>

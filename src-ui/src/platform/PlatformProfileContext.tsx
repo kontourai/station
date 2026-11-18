@@ -12,7 +12,6 @@ import { describeStationFailure } from '../utils/stationFailure';
  * server.
  */
 
-import { FullScreenLoader } from '@kontourai/station-sdk';
 import {
   createContext,
   type ReactNode,
@@ -22,10 +21,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { StartupHandoff } from '../components/StartupHandoff';
+import { NativeStartupRecovery } from '../components/NativeStartupRecovery';
 import { StartupScreen } from '../components/StartupScreen';
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
+import {
+  beforeNativeStartupDeadline,
+  NativeStartupTimeout,
+} from './native/startupDeadline';
 import type { NativeStationProfileStorage } from './native/stationProfileStorage';
 import type {
   NativeClientBuildProvenance,
@@ -132,8 +135,11 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
   if (adapter.platform !== 'tauri') return WEB_PROFILE;
 
   const [report, productName] = await Promise.all([
-    adapter.getCapabilityReport(),
-    nativeProductName(),
+    beforeNativeStartupDeadline(
+      'device capabilities',
+      adapter.getCapabilityReport(),
+    ),
+    beforeNativeStartupDeadline('this app’s name', nativeProductName()),
   ]);
   if (report.status !== 'ok') {
     return { ...TAURI_UNKNOWN_PROFILE, productName };
@@ -208,13 +214,20 @@ let cachedProfile: PlatformProfile | null = null;
 const profileReady: Promise<PlatformProfile> = platformResolution.then(
   async (profile) => {
     if (profile.isTauri) {
-      const [{ nativeStationProfileStorage }] = await Promise.all([
-        import('./native/stationProfileStorage'),
-      ]);
+      const profileStore = import('./native/stationProfileStorage');
+      const { nativeStationProfileStorage } = await (profile.isDesktop
+        ? profileStore
+        : beforeNativeStartupDeadline('saved Station storage', profileStore));
       // Both desktop and mobile own their selection locally; neither changes
       // the shared CLI default when someone switches Stations in the app.
-      profileRepository = nativeStationProfileStorage(true);
-      await profileRepository.hydrate();
+      const repository = nativeStationProfileStorage(true);
+      if (profile.isDesktop) await repository.hydrate();
+      else
+        await beforeNativeStartupDeadline(
+          'the saved Station list',
+          repository.hydrate(),
+        );
+      profileRepository = repository;
       if (profile.isDesktop) {
         const [{ bootstrapBundledLocalProfile }, { invokeTauri }] =
           await Promise.all([
@@ -238,20 +251,23 @@ const profileReady: Promise<PlatformProfile> = platformResolution.then(
       // by trying to authorize it; let OnboardingGate present the concrete
       // keychain remedy recorded above.
       if (!profile.isDesktop && !nativeBootstrapRecoveryError) {
-        const { deviceSettingsStore } = await import(
-          '../lib/device-settings-store'
+        const { deviceSettingsStore } = await beforeNativeStartupDeadline(
+          'device settings',
+          import('../lib/device-settings-store'),
         );
         // The same holds on mobile: a re-pairing interrupted before its final
         // write leaves the launch Station requires-auth, and the host refuses
         // to authorize it on every later start. Record that instead of failing
         // the whole start, so the shell mounts and Connections is reachable.
         try {
-          if (deviceSettingsStore.get('openLastStationOnLaunch')) {
-            await profileRepository.authorizeRememberedProfile();
-          } else {
-            await profileRepository.authorizeDefaultProfile(true);
-          }
+          await beforeNativeStartupDeadline(
+            'the selected Station',
+            deviceSettingsStore.get('openLastStationOnLaunch')
+              ? profileRepository.authorizeRememberedProfile()
+              : profileRepository.authorizeDefaultProfile(true),
+          );
         } catch (error) {
+          if (error instanceof NativeStartupTimeout) throw error;
           console.warn(
             'The launch Station could not be authorized; starting without it.',
             error,
@@ -283,7 +299,10 @@ let cachedProfileBootstrapError: string | null = null;
 const profileResolution = profileReady.then(
   (profile) => ({ status: 'ok' as const, profile }),
   (error) => {
-    const message = describeStationFailure(error).body;
+    const message =
+      error instanceof NativeStartupTimeout
+        ? error.message
+        : describeStationFailure(error).body;
     cachedProfileBootstrapError = message;
     return { status: 'error' as const, message };
   },
@@ -520,25 +539,8 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     };
   }, [profile]);
 
-  if (profileBootstrapError) {
-    return (
-      <>
-        <StartupHandoff recovery />
-        <FullScreenLoader
-          label="Station"
-          message="Station couldn’t finish starting"
-          action={
-            <div role="alert" aria-label="Station couldn’t finish starting">
-              <pre>{profileBootstrapError}</pre>
-              <button type="button" onClick={() => window.location.reload()}>
-                Reload Station
-              </button>
-            </div>
-          }
-        />
-      </>
-    );
-  }
+  if (profileBootstrapError)
+    return <NativeStartupRecovery detail={profileBootstrapError} />;
   if (!profile) return <StartupScreen message="Preparing this device" />;
 
   return (
