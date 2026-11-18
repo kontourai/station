@@ -17,7 +17,7 @@ import { SchedulerJobConflictError } from '../../services/scheduling/builtin-sch
 import { SchedulerStorageUnavailableError } from '../../services/scheduling/scheduler-ledger.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { SchedulerScheduleInvalidError } from '../../services/scheduling/scheduler-service.js';
-import { schedulerJobRuns } from '../../telemetry/metrics.js';
+import { schedulerManagementOperations } from '../../telemetry/metrics.js';
 import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -57,9 +57,17 @@ function publicManualRunReceipt(
   return { outcome: result.outcome, message, runId: result.runId };
 }
 
-function observeManualRunRequest() {
+function observeSchedulerManagement(
+  op:
+    | 'create_job'
+    | 'edit_job'
+    | 'run_job'
+    | 'enable_job'
+    | 'disable_job'
+    | 'delete_job',
+) {
   try {
-    schedulerJobRuns.add(1, { op: 'run_job' });
+    schedulerManagementOperations.add(1, { op });
   } catch {
     // Metrics are observability only. Do not change an authenticated run's
     // provider outcome because an OTel exporter is unavailable.
@@ -630,7 +638,7 @@ export function createSchedulerRoutes(
         approval?.revert();
         return admitted.refused;
       }
-      schedulerJobRuns.add(1, { op: 'create_job' });
+      observeSchedulerManagement('create_job');
       // #2377 slice D: an untargeted job records its owner too.
       const owner = body.target ? undefined : options.jobOwner?.(c);
       let output: Awaited<ReturnType<SchedulerService['addJob']>>;
@@ -666,7 +674,7 @@ export function createSchedulerRoutes(
         opts.target as SchedulerAutomationTarget | null | undefined,
       );
       if ('refused' in admitted) return admitted.refused;
-      schedulerJobRuns.add(1, { op: 'edit_job' });
+      observeSchedulerManagement('edit_job');
       const output = await schedulerService.editJob(param(c, 'target'), {
         ...opts,
         ...admitted,
@@ -686,7 +694,7 @@ export function createSchedulerRoutes(
     try {
       const stored = await refuseStoredTarget(c, target);
       if (stored) return stored;
-      observeManualRunRequest();
+      observeSchedulerManagement('run_job');
       const result = await schedulerService.runJob(target);
       // Provider/storage diagnostics belong to the protected run record, not
       // this public envelope. Keep the old output field stable and add only a
@@ -781,7 +789,7 @@ export function createSchedulerRoutes(
     try {
       const stored = await refuseStoredTarget(c, param(c, 'target'));
       if (stored) return stored;
-      schedulerJobRuns.add(1, { op: 'enable_job' });
+      observeSchedulerManagement('enable_job');
       await schedulerService.enableJob(param(c, 'target'));
       return c.json({ success: true });
     } catch (error: unknown) {
@@ -797,7 +805,7 @@ export function createSchedulerRoutes(
     try {
       const stored = await refuseStoredTarget(c, param(c, 'target'));
       if (stored) return stored;
-      schedulerJobRuns.add(1, { op: 'disable_job' });
+      observeSchedulerManagement('disable_job');
       await schedulerService.disableJob(param(c, 'target'));
       return c.json({ success: true });
     } catch (error: unknown) {
@@ -813,7 +821,7 @@ export function createSchedulerRoutes(
     try {
       const stored = await refuseStoredTarget(c, param(c, 'target'));
       if (stored) return stored;
-      schedulerJobRuns.add(1, { op: 'delete_job' });
+      observeSchedulerManagement('delete_job');
       await schedulerService.removeJob(param(c, 'target'));
       return c.json({ success: true });
     } catch (error: unknown) {

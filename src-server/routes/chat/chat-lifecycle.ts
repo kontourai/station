@@ -1,5 +1,4 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import { SpanStatusCode } from '@opentelemetry/api';
 import { STATION_ENGINE_PROVIDER } from '../../../src-shared/monitoring-keys.js';
 import { CHAT_ERROR_MARKER_PREFIX } from '../../runtime/conversation/chat-error-marker.js';
 import { resolveManagedModelIdentity } from '../../runtime/plugins/runtime-provider-resolution.js';
@@ -169,8 +168,6 @@ export async function finalizeChatRequest({
   chatStartMs: number;
   chatSpan: {
     setAttribute: (key: string, value: string | number) => void;
-    setStatus?: (status: { code: SpanStatusCode; message?: string }) => void;
-    end: () => void;
   };
   /**
    * The outward-safe failure text from `streamPrimaryAgentChat`'s outer
@@ -465,8 +462,6 @@ export async function finalizeChatRequest({
   if (outputTokenCount !== undefined) {
     chatSpan.setAttribute('station.tokens.output', outputTokenCount);
   }
-  chatSpan.setStatus?.({ code: SpanStatusCode.OK });
-  chatSpan.end();
 }
 
 /**

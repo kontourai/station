@@ -321,6 +321,8 @@ export function streamPrimaryAgentChat({
     let ownsClientTurnClaim = initialClaim?.claimed === true;
     let agentInvoked = false;
     let streamDrained = false;
+    let spanError: Error | undefined;
+    const abortController = new AbortController();
     let dedupShortCircuited = false;
     // Populated only when the outer catch below fires — used to persist a
     // reload-safe failure marker when the turn produced zero output (archive#191
@@ -457,7 +459,6 @@ export function streamPrimaryAgentChat({
         );
       }
 
-      const abortController = new AbortController();
       conversationId = operationContext.conversationId;
 
       const abortFromClient = prepareDurableForegroundHandoff({
@@ -826,13 +827,15 @@ export function streamPrimaryAgentChat({
         streamDrained = true;
       }
     } catch (error: unknown) {
-      chatSpan.setStatus({
-        code: SpanStatusCode.ERROR,
-        message: errorMessage(error),
-      });
-      chatSpan.recordException(
-        error instanceof Error ? error : new Error(errorMessage(error)),
-      );
+      const canceled =
+        completionReason === 'aborted' ||
+        (abortController.signal.aborted &&
+          error instanceof Error &&
+          error.name === 'AbortError');
+      if (!canceled) {
+        spanError =
+          error instanceof Error ? error : new Error(errorMessage(error));
+      }
       const agentModelForError = agent.model as
         | { modelId?: string }
         | undefined;
@@ -849,65 +852,88 @@ export function streamPrimaryAgentChat({
       await StreamOrchestrator.writeSSEError(streamWriter, error);
       await StreamOrchestrator.writeSSEDone(streamWriter);
     } finally {
-      stopKeepalive();
-      // A turn that ended without invoking the agent (a replayed turn, a refusal, an
-      // error) did not deliver its brief; a delivered one is unaffected.
-      if (!agentInvoked) memoryBrief?.abandoned();
-      releaseDurableForeground(streamWriter, releaseApprovalRequester);
-      // archive#1224 (offline): the dedup short-circuit above
-      // already wrote its own terminal SSE frames and `return`ed — none of
-      // this turn's own bookkeeping (stats, cost, and critically
-      // `persistUserTurnIfMissing`, which would otherwise see the empty
-      // `accumulatedText` this short-circuit leaves behind and persist a
-      // SECOND copy of the user's message) applies to it, since nothing
-      // here executed a turn at all.
-      if (dedupShortCircuited) {
-        // finalizeChatRequest() (which ends the span for every other path)
-        // never runs here — end it directly so it isn't left open.
-        chatSpan.end();
-      } else {
-        if (clientTurnId && ownsClientTurnClaim) {
-          if (agentInvoked && streamDrained && conversationId) {
-            try {
-              dedupStore?.resolve(clientTurnId, conversationId);
-            } catch (error) {
+      const settle = async () => {
+        stopKeepalive();
+        // A turn that ended without invoking the agent (a replayed turn, a refusal, an
+        // error) did not deliver its brief; a delivered one is unaffected.
+        if (!agentInvoked) memoryBrief?.abandoned();
+        releaseDurableForeground(streamWriter, releaseApprovalRequester);
+        // archive#1224 (offline): the dedup short-circuit above
+        // already wrote its own terminal SSE frames and `return`ed — none of
+        // this turn's own bookkeeping (stats, cost, and critically
+        // `persistUserTurnIfMissing`, which would otherwise see the empty
+        // `accumulatedText` this short-circuit leaves behind and persist a
+        // SECOND copy of the user's message) applies to it, since nothing
+        // here executed a turn at all.
+        if (!dedupShortCircuited) {
+          if (clientTurnId && ownsClientTurnClaim) {
+            if (agentInvoked && streamDrained && conversationId) {
+              try {
+                dedupStore?.resolve(clientTurnId, conversationId);
+              } catch (error) {
+                dedupStore?.retain(clientTurnId);
+                ctx.logger.error(
+                  'Chat turn resolution failed after invocation',
+                  {
+                    clientTurnId,
+                    error,
+                  },
+                );
+              }
+            } else if (agentInvoked) {
               dedupStore?.retain(clientTurnId);
-              ctx.logger.error('Chat turn resolution failed after invocation', {
-                clientTurnId,
-                error,
-              });
+            } else {
+              dedupStore?.release(clientTurnId);
             }
-          } else if (agentInvoked) {
-            dedupStore?.retain(clientTurnId);
-          } else {
-            dedupStore?.release(clientTurnId);
           }
+          await finalizeChatRequest({
+            ctx,
+            slug,
+            plugin,
+            input,
+            operationContext: {
+              userId: operationContext.userId,
+              conversationId: operationContext.conversationId,
+              traceId: requestTraceId,
+            },
+            completionReason,
+            accumulatedText,
+            reasoningText,
+            artifacts,
+            result,
+            modelOverride,
+            memoryAdapter,
+            conversationStorage,
+            conversationId,
+            isNewConversation,
+            chatStartMs,
+            chatSpan,
+            turnFailureText,
+          });
         }
-        await finalizeChatRequest({
-          ctx,
-          slug,
-          plugin,
-          input,
-          operationContext: {
-            userId: operationContext.userId,
-            conversationId: operationContext.conversationId,
-            traceId: requestTraceId,
-          },
-          completionReason,
-          accumulatedText,
-          reasoningText,
-          artifacts,
-          result,
-          modelOverride,
-          memoryAdapter,
-          conversationStorage,
-          conversationId,
-          isNewConversation,
-          chatStartMs,
-          chatSpan,
-          turnFailureText,
+      };
+      await settle()
+        .catch((error: unknown) => {
+          spanError ??=
+            error instanceof Error ? error : new Error(errorMessage(error));
+          throw error;
+        })
+        .finally(() => {
+          if (spanError) {
+            chatSpan.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: spanError.message,
+            });
+            chatSpan.recordException(spanError);
+          } else if (
+            agentInvoked &&
+            streamDrained &&
+            completionReason !== 'aborted'
+          ) {
+            chatSpan.setStatus({ code: SpanStatusCode.OK });
+          }
+          chatSpan.end();
         });
-      }
     }
   };
 

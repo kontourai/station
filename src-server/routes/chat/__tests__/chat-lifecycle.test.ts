@@ -212,7 +212,6 @@ describe('chat-lifecycle helpers', () => {
       cacheReadTokens: 33,
       cacheWriteTokens: 44,
     });
-    expect(chatSpan.end).toHaveBeenCalled();
   });
 
   test('omits metrics cost when pricing lookup fails', async () => {
