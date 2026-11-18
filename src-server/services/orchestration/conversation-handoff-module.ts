@@ -150,7 +150,10 @@ export class ConversationHandoffConflictError extends Error {
 }
 
 interface ConversationHandoffPersistence {
-  reserve(input: ConversationHandoffMarker): {
+  reserve(
+    input: ConversationHandoffMarker,
+    staged?: boolean,
+  ): {
     marker: ConversationHandoffMarker;
     outcome: 'created' | 'existing';
   };
@@ -168,7 +171,10 @@ export interface ConversationHandoffModule {
     marker: ConversationHandoffMarker,
     outcome: 'created' | 'existing',
   ): ReturnType<ConversationHandoffModule['reserve']>;
-  reserve(input: ConversationHandoffMarker): {
+  reserve(
+    input: ConversationHandoffMarker,
+    staged?: boolean,
+  ): {
     marker: Readonly<ConversationHandoffMarker>;
     outcome: 'created' | 'existing';
     carried: readonly ConversationHandoffCarriedField[];
@@ -259,9 +265,9 @@ export function createConversationHandoffModule(input: {
           .map((marker) => snapshot(marker)),
       );
     },
-    reserve(marker) {
+    reserve(marker, staged) {
       try {
-        const result = input.persistence.reserve(marker);
+        const result = input.persistence.reserve(marker, staged);
         try {
           input.observe?.(result.outcome);
         } catch {

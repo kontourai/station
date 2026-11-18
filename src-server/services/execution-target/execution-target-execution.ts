@@ -24,6 +24,7 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
   type SetApprovalModeResult,
+  type StagedConversationHandoff,
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
@@ -44,6 +45,7 @@ import type {
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import { assertProviderChatAttachments } from '../../providers/sessions/chat-attachments.js';
 import {
   type FullAccessGrant,
   FullAccessNotGrantedError,
@@ -273,13 +275,18 @@ function createConversationHandoffLaunchCapability(
 const conversationHandoffIntentBrand = Symbol('conversationHandoffIntent');
 type ConversationHandoffIntent = Readonly<{
   idempotencyKey: string;
+  stagedHandoff?: StagedConversationHandoff;
   [conversationHandoffIntentBrand]: true;
 }>;
 export function createConversationHandoffIntent(
   idempotencyKey: string,
+  stagedHandoff?: StagedConversationHandoff,
 ): ConversationHandoffIntent {
   return Object.freeze({
     idempotencyKey,
+    ...(stagedHandoff
+      ? { stagedHandoff: Object.freeze({ ...stagedHandoff }) }
+      : {}),
     [conversationHandoffIntentBrand]: true as const,
   });
 }
@@ -646,6 +653,7 @@ export interface ExecutionTargetExecutionDependencies
       modelId?: string;
       idempotencyKey: string;
       messageDigest: string;
+      stagedHandoff?: StagedConversationHandoff;
     },
   ) => Promise<{
     marker: {
@@ -753,7 +761,13 @@ export async function executeForegroundMessage(
   }
 
   assertInheritedDelegationToolPolicy(input.delegation);
-  let resolved = await resolveExecutionTarget(input.target, deps);
+  let resolved = await resolveExecutionTarget(
+    input.target,
+    deps,
+    input.handoffIntent?.stagedHandoff
+      ? { stagedAgentChange: true }
+      : undefined,
+  );
   if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
     throw new Error(
       'MCP prompt origin cannot be safely carried to another Station.',
@@ -777,7 +791,8 @@ export async function executeForegroundMessage(
     resolved.access,
     conversationId,
   );
-  resolved = keepConversationProvider(resolved, binding);
+  if (!input.handoffIntent?.stagedHandoff)
+    resolved = keepConversationProvider(resolved, binding);
   const initialContext = binding
     ? undefined
     : await deps.readInitialConversationContext(resolved.access, {
@@ -793,6 +808,9 @@ export async function executeForegroundMessage(
   const handoffPayloadDigest = requestedHandoff
     ? canonicalHandoffEffectDigest({
         message,
+        ...(input.handoffIntent!.stagedHandoff
+          ? { stagedHandoff: input.handoffIntent!.stagedHandoff }
+          : {}),
         attachments: input.attachments ?? [],
         ambientContext: input.ambientContext ?? '',
         provider: resolved.provider,
@@ -901,6 +919,11 @@ export async function executeForegroundMessage(
       inputDigest: submissionDigest,
     });
   }
+  if (input.handoffIntent?.stagedHandoff && !priorHandoff?.marker) {
+    const adapter = deps.getProviderAdapter(resolved.provider);
+    if (!adapter) throw new Error('The selected engine is unavailable.');
+    assertProviderChatAttachments(adapter.metadata, input.attachments ?? []);
+  }
   const preparedHandoff = requestedHandoff
     ? await deps.prepareConversationHandoff?.(resolved.access, {
         conversationId,
@@ -915,6 +938,9 @@ export async function executeForegroundMessage(
         ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
         idempotencyKey: input.handoffIntent!.idempotencyKey,
         messageDigest: handoffPayloadDigest!,
+        ...(input.handoffIntent!.stagedHandoff
+          ? { stagedHandoff: input.handoffIntent!.stagedHandoff }
+          : {}),
       })
     : undefined;
   if (requestedHandoff && !preparedHandoff) {

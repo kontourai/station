@@ -53,6 +53,7 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
+  STAGED_CONVERSATION_HANDOFF_PREVIEW,
 } from '@kontourai/station-contracts/orchestration';
 import {
   humanPrincipal,
@@ -168,6 +169,7 @@ import {
   ForegroundMessageIndeterminateError,
   ForegroundMessageTurnIdentityUnavailableError,
 } from '../../services/execution-target/execution-target-execution.js';
+import { FeaturePreviewDisabledError } from '../../services/feature-previews/feature-preview-refusal.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import {
@@ -1207,8 +1209,24 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema
     attachmentRefs: z.never().optional(),
     mcpPromptOrigin: z.never().optional(),
     idempotencyKey: z.string().min(1).max(200),
+    stagedHandoff: z
+      .object({
+        expectedCurrentSessionId: z.string().min(1).max(512),
+        contextPolicy: z.literal('continue-from-history'),
+      })
+      .strict()
+      .optional(),
   })
-  .superRefine(requireApprovalPickBasis);
+  .superRefine(requireApprovalPickBasis)
+  .superRefine((body, ctx) => {
+    if (body.stagedHandoff && !body.target.expectedEngine) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['target', 'expectedEngine'],
+        message: 'A staged Agent change requires the selected engine binding.',
+      });
+    }
+  });
 
 const conversationContextBoundarySchema = z.object({
   attachmentRefs: z.never().optional(),
@@ -2170,6 +2188,7 @@ export function createOrchestrationRoutes(
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
     ) => void;
+    stagedHandoffEnabled?: () => boolean;
     handoffConversation?: (
       input: ConversationHandoffRequest,
     ) => Promise<unknown>;
@@ -3601,10 +3620,19 @@ export function createOrchestrationRoutes(
     return await handleForegroundMessage(c);
   });
 
-  app.post(
-    '/conversations/:conversationId/handoff',
+  app.on(
+    'POST',
+    [
+      '/conversations/:conversationId/handoff',
+      '/conversations/:conversationId/staged-handoff',
+    ],
     validateFiles(conversationHandoffSchema),
     async (c) => {
+      const staged = c.req.path.endsWith('/staged-handoff');
+      if (staged && !deps.stagedHandoffEnabled?.()) {
+        const { id, label } = STAGED_CONVERSATION_HANDOFF_PREVIEW;
+        return c.json(new FeaturePreviewDisabledError(id, label).refusal, 404);
+      }
       if (!deps.handoffConversation) {
         return c.json(
           { success: false, error: 'Agent/engine handoff is unavailable' },
@@ -3613,6 +3641,15 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        if (staged !== Boolean(body.stagedHandoff)) {
+          return c.json(
+            {
+              success: false,
+              error: 'The handoff route and context policy do not match.',
+            },
+            400,
+          );
+        }
         // #2377 slice C3b: no station-control tool reaches this route today;
         // if one ever does, it hands off without an approval posture.
         const postureRefused = refuseCarriedPosture(c, [
@@ -3651,13 +3688,14 @@ export function createOrchestrationRoutes(
         if (directoryRefused) return directoryRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
+        const conversationId = param(c, 'conversationId');
         const data = await deps.handoffConversation({
           ...body,
           target: normalizeExecutionTarget(body.target),
           ...(body.attachments
             ? { attachments: body.attachments as ChatAttachmentInput[] }
             : {}),
-          conversationId: param(c, 'conversationId'),
+          conversationId,
           userId,
           // archive#4075 stage 2 review round 1 (F1): dropped here originally
           // — threaded exactly like /chat above, through

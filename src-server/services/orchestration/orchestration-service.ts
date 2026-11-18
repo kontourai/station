@@ -25,7 +25,6 @@ import {
   type AttentionRequestInspection,
   type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
-import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import {
   type ChildWorkItem,
   projectDelegateChildWork,
@@ -226,6 +225,7 @@ import {
   providerNativeSessionIdentity,
 } from '../../providers/provider-session-identity.js';
 import { AsyncEventQueueConsumerConflictError } from '../../providers/sessions/async-event-queue.js';
+import { assertProviderChatAttachments } from '../../providers/sessions/chat-attachments.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
   createAuthorizedTurnCorrelation,
@@ -6592,16 +6592,7 @@ export class OrchestrationService {
   async prepareConversationHandoff(
     conversationId: string,
     authority: SessionReadScope,
-    target: {
-      agentId: string;
-      executionAgentId?: string;
-      environmentId: string;
-      connectionId?: string;
-      modelId?: string;
-      idempotencyKey: string;
-      messageDigest: string;
-      provider?: EngineId;
-    },
+    target: Parameters<ConversationLineage['prepareConversationHandoff']>[2],
   ): ReturnType<ConversationLineage['prepareConversationHandoff']> {
     this.initialize();
     // #484 correction: an explicit Agent/engine handoff carries no portable
@@ -10283,29 +10274,8 @@ export class OrchestrationService {
               ),
             );
           }
-          const attachmentError = validateChatAttachments(
-            turnInput.attachments ?? [],
-          );
-          if (attachmentError) {
-            throw new Error(attachmentError);
-          }
           const attachments = turnInput.attachments ?? [];
-          if (
-            attachments.some((attachment) => attachment.kind === 'image') &&
-            !adapter.metadata.capabilities.includes('image-input')
-          ) {
-            throw new Error(
-              `${adapter.metadata.displayName} does not support image attachments.`,
-            );
-          }
-          if (
-            attachments.some((attachment) => attachment.kind === 'file') &&
-            !adapter.metadata.capabilities.includes('file-input')
-          ) {
-            throw new Error(
-              `${adapter.metadata.displayName} does not support file attachments.`,
-            );
-          }
+          assertProviderChatAttachments(adapter.metadata, attachments);
           // archive#1224 (offline): the crux of server-side turn
           // idempotency. A `clientTurnId` already claimed for this thread
           // means either (a) it was already resolved to a `turnId` by a

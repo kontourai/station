@@ -65,14 +65,15 @@ import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-ti
 import { appearanceProposalReferenceOfEvent } from '@kontourai/station-contracts/custom-appearance';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
-import type {
-  ConversationHandoffProjection,
-  InterruptTurnResult,
-  OrchestrationCommandReceipt,
-  OrchestrationSessionEventWindow,
-  OwnedSessionActivity,
-  RuntimeEventElisionReason,
-  SteerTurnResult,
+import {
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  type ConversationHandoffProjection,
+  type InterruptTurnResult,
+  type OrchestrationCommandReceipt,
+  type OrchestrationSessionEventWindow,
+  type OwnedSessionActivity,
+  type RuntimeEventElisionReason,
+  type SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
   type ProviderSession,
@@ -14577,8 +14578,9 @@ export class EventStore {
    */
   reserveConversationHandoff(
     input: ConversationHandoffMarker,
+    staged?: boolean,
   ): ReturnType<ConversationHandoffModule['reserve']> {
-    return this.conversationHandoffs.reserve(input);
+    return this.conversationHandoffs.reserve(input, staged);
   }
 
   assertNativeSessionMutable(sessionId: string): void {
@@ -15403,7 +15405,17 @@ export class EventStore {
       persistence: {
         listByConversation: (conversationId) =>
           (byConversation.all(conversationId) as any[]).map(read),
-        reserve: (input) => {
+        reserve: (input, staged) => {
+          const inbox =
+            staged &&
+            (this.threadInbox ||
+              this.db
+                .prepare(
+                  "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'monument_inbox_entries'",
+                )
+                .get())
+              ? this.threadInboxStore()
+              : undefined;
           this.db.exec('BEGIN IMMEDIATE');
           try {
             const existingForKey = byKey.get(
@@ -15419,6 +15431,12 @@ export class EventStore {
               }
               this.db.exec('COMMIT');
               return { marker: existing, outcome: 'existing' as const };
+            }
+            if (inbox?.hasWaitingFollowUp(input.conversationId, true)) {
+              throw Object.assign(
+                new Error('Wait for queued messages before switching Agents.'),
+                { code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE },
+              );
             }
             // The cutoffs precede projection. Under the write transaction,
             // reject any intervening append rather than acknowledge text

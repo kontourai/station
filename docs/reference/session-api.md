@@ -841,6 +841,25 @@ session metadata. Changing the engine on a bound conversation requires an
 explicit handoff; omitting the override on that handoff restores the authored
 binding and model default.
 
+### Send a staged Agent change
+
+With **Stage chat Agent changes** enabled, submit the first message with
+`POST /api/orchestration/conversations/:conversationId/staged-handoff`. Supply
+the ordinary handoff target and idempotency key, `target.expectedEngine`, and
+`stagedHandoff: { expectedCurrentSessionId, contextPolicy: "continue-from-history" }`.
+A selected model travels as `target.model.override` on that exact connection.
+A receiver-owned engine default with its own engine connection uses the Agent
+selector for engine changes. General-purpose profiles can use a compatible
+execution override under the same profile checks as other handoffs.
+
+Station requires an idle, current source Session and refuses while a follow-up
+is queued. A successful Send starts a fresh Session with bounded authorized
+conversation text and the submitted first message. Prior attachment bytes,
+engine-native cursors and engine-local tool state stay with the source.
+The message can include attachments supported by the selected engine. If the
+response is lost, check the handoff status using the same key before trying
+another Send. A same-key retry must identify the same request.
+
 The optional conversation-open `execution.environment: { kind: "current" }`
 requires the authorized current child's persisted start Environment identity to
 match this receiver's existing Environment record. Peer activity, foreign,

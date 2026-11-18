@@ -459,6 +459,39 @@ describe('client execution', () => {
     );
   });
 
+  test('never downgrades staged handoff when the receiver lacks the route', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('404 Not Found', { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const request = {
+      message: 'Continue with Codex',
+      idempotencyKey: 'handoff-1',
+      target: {
+        environment: { kind: 'current' as const },
+        agent: agentId('codex'),
+        expectedEngine: { kind: 'station' as const },
+        model: { override: 'gpt-5.4' },
+      },
+      stagedHandoff: {
+        expectedCurrentSessionId: 'session-1',
+        contextPolicy: 'continue-from-history' as const,
+      },
+    };
+
+    await expect(
+      handoffExecutionMessage('http://station.test', 'conv/1', request),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/conversations/conv%2F1/staged-handoff',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(request),
+      }),
+    );
+  });
+
   test('classifies a response without a handoff receipt as indeterminate', async () => {
     vi.stubGlobal(
       'fetch',
