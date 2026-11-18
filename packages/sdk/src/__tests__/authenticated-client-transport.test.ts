@@ -357,11 +357,26 @@ describe('authenticated client transport', () => {
         new Response('{}', { headers: { 'content-type': 'application/json' } }),
     ],
     [
-      'redirect',
+      'marked text',
+      () => {
+        const response = stationJson();
+        response.headers.set('content-type', 'text/plain');
+        return response;
+      },
+    ],
+    [
+      'same-origin redirect',
       () =>
         Object.defineProperties(stationJson(), {
-          url: { value: 'https://elsewhere.example.test/api/settings' },
+          url: { value: 'https://station.example.test/api/settings' },
           redirected: { value: true },
+        }),
+    ],
+    [
+      'foreign final URL',
+      () =>
+        Object.defineProperty(stationJson(), 'url', {
+          value: 'https://elsewhere.example.test/api/settings',
         }),
     ],
   ] as const)(
