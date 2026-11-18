@@ -155,7 +155,7 @@ async function selectComposerModel(page: Page, optionName: RegExp) {
   await modelButton.click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   await expect(picker).toBeVisible({ timeout: 5_000 });
-  await picker.getByRole('option', { name: optionName }).click();
+  await picker.getByRole('button', { name: optionName }).click();
   await expect(picker).toBeHidden({ timeout: 5_000 });
   await closeRunSetup(page);
 }
@@ -202,7 +202,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     // switch will use. Establishing the pre-switch model explicitly (rather
     // than inheriting whatever the reopened session resolved) keeps the
     // before/after comparison a fact about the switch.
-    await selectComposerModel(page, /Claude Sonnet 4/);
+    await selectComposerModel(page, /^Claude Sonnet 4/);
     await closeRunSetup(page);
     await textarea.fill('First turn on the picked model.');
     await closeRunSetup(page);
@@ -239,7 +239,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await shell.markCurrentSessionTerminal(SWITCH_CONVERSATION);
 
     // Switch the model IN PLACE through the composer's model picker.
-    await selectComposerModel(page, /Claude Haiku Mid Switch/);
+    await selectComposerModel(page, /^Claude Haiku Mid Switch/);
     // The composer names the switched model, so the switch is visible session
     // state rather than a silent per-turn side effect.
     await expect(
@@ -247,7 +247,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
         panel.getByRole('button', { name: /^(?:Model:|Engine & model:)/ }),
       ),
       'the composer must name the model the next turn will ask for',
-    ).toHaveAccessibleName(/Claude Haiku Mid Switch/, { timeout: 5_000 });
+    ).toHaveAccessibleName(/^Claude Haiku Mid Switch/, { timeout: 5_000 });
 
     // Turn 2 in the SAME conversation must dispatch the new model, and the
     // switched turn's provenance card must report it.

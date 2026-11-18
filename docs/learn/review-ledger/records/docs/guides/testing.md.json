@@ -294,7 +294,9 @@
 
     "tests/helpers/gallery-document-tracker.ts",
 
-    "tests/helpers/gallery-screen-attempt.ts"
+    "tests/helpers/gallery-screen-attempt.ts",
+
+    "scripts/required-test-profiles.json"
   ],
 
   "checks": [

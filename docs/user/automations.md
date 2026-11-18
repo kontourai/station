@@ -42,6 +42,16 @@ acts for them, with their role in the Project. When the run ends, Station
 writes a one-line run summary as the Task's summary; the answer itself is in
 the Task's chat.
 
+Creating a schedule, including approving an agent's proposal, requires permission
+to start work in the Project. People who can view the Project can see its
+schedules and their recorded runs. Older run records without a recorded
+destination still require owner access. The Station operator can see Project
+schedules and their current-format run history through the operator sign-in.
+Editing, enabling or manually running a schedule requires its creator to
+still have permission to start work in the Project, including when the Station
+operator acts on their behalf. The creator or the Station operator can still
+disable or delete the schedule after the creator loses that permission.
+
 While the Project is paused or archived its schedules wait: Station does not
 start a run, and **Run now** is refused. After **Resume**, a schedule that
 came due while paused runs once, unless it is more than six hours late, in
@@ -122,7 +132,7 @@ Templates only ask for work an agent can do with its workspace and tools.
   turn on or off, or delete it. You, signed in as the Station's operator on
   this computer or with the operator credential, can also manage any
   automation that doesn't run in a chat; when you run it, it still runs as its
-  owner, and that run's record is the owner's, so you can't read it. You can't
+  owner. Project schedule history follows the rules above. You can't
   point someone else's automation at a chat; only its owner can.
 - On a personal Station, older automations created before Station recorded an
   owner became yours once, when you updated. An automation without an owner
