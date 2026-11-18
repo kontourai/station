@@ -12,6 +12,11 @@ import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const root = resolve('.kontourai/metrics-populations');
+const grafanaRoot = process.env.STATION_METRICS_GRAFANA_ROOT;
+assert(
+  grafanaRoot,
+  'Set STATION_METRICS_GRAFANA_ROOT to the unpacked Grafana distribution outside the checkout.',
+);
 const suite = join(root, 'run-' + Date.now());
 mkdirSync(suite, { mode: 0o700 });
 mkdirSync(join(suite, 'provisioning', 'dashboards'), { recursive: true });
@@ -92,8 +97,8 @@ try {
   ]);
   start(
     'grafana',
-    join(root, 'grafana', 'bin', 'grafana'),
-    ['server', '--homepath', join(root, 'grafana')],
+    join(grafanaRoot, 'bin', 'grafana'),
+    ['server', '--homepath', grafanaRoot],
     {
       GF_PATHS_DATA: join(suite, 'grafana-data'),
       GF_PATHS_LOGS: join(suite, 'grafana-logs'),
