@@ -41,6 +41,7 @@ import {
 } from './request-deadline';
 import {
   forgetStationOrigin,
+  hasStationEnvelopeMarker,
   observeStationResponse,
 } from './station-envelope';
 
@@ -561,7 +562,8 @@ export type ClientCredential = {
   onAccountUnauthorized?: () => void | Promise<void>;
   /**
    * Records that this Station accepted an authenticated request, and names the
-   * URL it was accepted on. The URL matters to the recipient: a connection
+   * URL it was accepted on. Requires a direct, Station-marked JSON success.
+   * The URL matters to the recipient: a connection
    * keeps its identity across a rebind, so "this connection was reachable" and
    * "THIS ADDRESS accepted us" are different facts.
    */
@@ -1181,25 +1183,24 @@ async function reportAuthenticated(
   configured: ClientCredential | undefined,
   opts?: ClientRequestOptions,
 ): Promise<void> {
-  if (!response.ok || opts?.authentication === 'omit') return;
-  // A stale Station address can serve an HTML fallback or a sign-in page
-  // with status 200. That is not evidence that it accepted this credential.
-  // Recovering here would re-key the authority gate before JSON parsing
-  // rejects the page, repeating the startup/401/recovery cycle indefinitely.
-  // Custom `fetch` implementations may return response-like objects without
-  // headers; those carry no HTML evidence, so they keep the recovery path.
+  if (
+    !configured?.onAuthenticated ||
+    !response.ok ||
+    opts?.authentication === 'omit' ||
+    !sameOrigin(url, configured.origin) ||
+    response.redirected ||
+    (response.url && !sameOrigin(response.url, configured.origin)) ||
+    !hasStationEnvelopeMarker(response)
+  )
+    return;
   const mediaType = response.headers
-    ?.get?.('content-type')
+    .get('content-type')
     ?.split(';')[0]
     ?.trim()
     .toLowerCase();
-  if (mediaType === 'text/html' || mediaType === 'application/xhtml+xml')
-    return;
+  if (mediaType !== 'application/json') return;
 
-  if (configured && sameOrigin(url, configured.origin)) {
-    // Awaited, and bounded, for the same reasons as `reportUnauthorized`.
-    await awaitCredentialReport(configured.onAuthenticated?.(url));
-  }
+  await awaitCredentialReport(configured.onAuthenticated(url));
 }
 
 /** Preserve the three authority boundaries around both awaited reporters. */
