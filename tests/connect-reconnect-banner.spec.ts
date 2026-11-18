@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { expect, type Page } from '@playwright/test';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
 import { e2eOperatorAuthorizationHeaders } from './helpers/e2e-operator-credential';
@@ -736,6 +737,36 @@ test.describe('compatibility-aware reconnect', () => {
                 ).toBeVisible();
               }
 
+              const toolChecked = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'POST' &&
+                  new URL(response.url()).pathname === `${toolPath}/reconnect`,
+              );
+              await page
+                .getByRole('button', { name: 'Reconnect', exact: true })
+                .tap();
+              expect((await toolChecked).ok()).toBe(true);
+              await expect(
+                page.getByText('Connection check completed.', { exact: true }),
+              ).toBeVisible();
+              await page
+                .getByRole('button', { name: 'Raw JSON', exact: true })
+                .tap();
+              await expect(
+                page.getByRole('heading', {
+                  name: 'Raw configuration',
+                  exact: true,
+                }),
+              ).toBeVisible();
+              await page
+                .getByRole('button', { name: 'Form', exact: true })
+                .tap();
+              await expect(
+                page.getByRole('textbox', {
+                  name: 'Display Name',
+                  exact: true,
+                }),
+              ).toHaveValue(`Renamed tool server ${suffix}`);
               await page
                 .getByRole('button', { name: 'Delete', exact: true })
                 .tap();
@@ -966,6 +997,425 @@ test.describe('compatibility-aware reconnect', () => {
                 .tap();
               await expect(chooser).toBeHidden();
             });
+          });
+
+          test('saves and restores the isolated Knowledge data directory', async ({
+            page,
+          }) => {
+            const home = process.env.STATION_E2E_HOME;
+            if (!home)
+              throw new Error(
+                'Knowledge writes require the runner-owned Station home',
+              );
+            const headers = e2eOperatorAuthorizationHeaders(
+              process.env.STATION_E2E_HOST_CREDENTIAL,
+            );
+            const recordPath = '/api/connections/lancedb-builtin';
+            const readDataDirectory = async () => {
+              const response = await page.request.get(recordPath, { headers });
+              expect(response.ok()).toBe(true);
+              const record = (await response.json()) as {
+                data: { config: { dataDir?: string } };
+              };
+              return record.data.config.dataDir ?? '';
+            };
+            const originalDirectory = await readDataDirectory();
+            await page.goto('/connections/knowledge');
+            const toolbar = page.getByTestId('app-toolbar-connection');
+            await expect(toolbar).toHaveAttribute(
+              'aria-label',
+              identityMismatch
+                ? /Needs re-pairing/
+                : /Choose Station — Connected/,
+            );
+            const db = page.locator('#section-vector-database');
+            const directory = db.getByRole('textbox', {
+              name: 'Data Directory',
+            });
+            const save = db.getByRole('button', { name: 'Save', exact: true });
+            await expect(directory).toHaveValue(originalDirectory);
+            await expect(save).toBeDisabled();
+            const newDirectory = join(
+              home,
+              identityMismatch
+                ? 'phone-notice-knowledge'
+                : 'phone-healthy-knowledge',
+            );
+            for (const nextDirectory of [newDirectory, originalDirectory]) {
+              await directory.fill(nextDirectory);
+              const saved = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'PUT' &&
+                  new URL(response.url()).pathname === recordPath,
+              );
+              await save.tap();
+              expect((await saved).ok()).toBe(true);
+              expect(await readDataDirectory()).toBe(nextDirectory);
+              await page.reload();
+              await expect(directory).toHaveValue(nextDirectory);
+              await expect(save).toBeDisabled();
+            }
+            const tested = page.waitForResponse(
+              (response) =>
+                response.request().method() === 'POST' &&
+                new URL(response.url()).pathname ===
+                  '/api/providers/lancedb-builtin/test-vectordb',
+            );
+            await db
+              .getByRole('button', { name: 'Test connection', exact: true })
+              .tap();
+            expect((await tested).ok()).toBe(true);
+            await expect(
+              db.getByText('Healthy', { exact: true }),
+            ).toBeVisible();
+          });
+
+          test('saves and resets the selected engine setup', async ({
+            page,
+          }) => {
+            const initialName = 'Phone fixture engine';
+            const updatedName = 'Renamed phone fixture engine';
+            const engineFixture = {
+              id: 'codex',
+              kind: 'agent',
+              type: 'codex',
+              name: initialName,
+              enabled: true,
+              capabilities: ['agent-runtime'],
+              config: {
+                executionClass: 'connected',
+                defaultModel: 'codex-mini',
+              },
+              status: 'ready',
+              prerequisites: [],
+              setup: { state: 'ready', detected: true, configured: true },
+            };
+            const failedCheck = {
+              evidenceVersion: 1,
+              level: 'configured',
+              observedAt: '2026-11-18T14:00:00.000Z',
+              freshness: 'fresh',
+              summary: 'The fixture engine did not authorize this check.',
+              smoke: {
+                status: 'failed',
+                testedAt: '2026-11-18T14:00:00.000Z',
+                provider: 'codex',
+                reason: 'The fixture engine did not authorize this check.',
+                freshness: 'fresh',
+                turnLimit: 1,
+              },
+            };
+            let engine:
+              | (typeof engineFixture & {
+                  readinessEvidence?: typeof failedCheck;
+                })
+              | null = engineFixture;
+            await page.route('**/api/connections/agents', (route) =>
+              route.fulfill({
+                json: { success: true, data: engine ? [engine] : [] },
+              }),
+            );
+            await page.route('**/api/connections/codex', async (route) => {
+              const method = route.request().method();
+              if (method === 'PUT') {
+                const request = route.request().postDataJSON() as {
+                  name: string;
+                };
+                if (!engine)
+                  throw new Error(
+                    'The fixture engine cannot be updated after reset',
+                  );
+                engine = { ...engine, name: request.name };
+                await route.fulfill({ json: { success: true, data: engine } });
+              } else if (method === 'DELETE') {
+                engine = null;
+                await route.fulfill({ json: { success: true } });
+              } else if (method === 'GET') {
+                if (engine)
+                  await route.fulfill({
+                    json: { success: true, data: engine },
+                  });
+                else
+                  await route.fulfill({
+                    status: 404,
+                    json: { success: false, error: 'Engine not found' },
+                  });
+              } else {
+                await route.fallback();
+              }
+            });
+            await page.route(
+              '**/api/connections/codex/smoke',
+              async (route) => {
+                if (!engine)
+                  throw new Error(
+                    'The fixture engine cannot be checked after reset',
+                  );
+                engine = { ...engine, readinessEvidence: failedCheck };
+                await route.fulfill({
+                  json: { success: true, data: failedCheck },
+                });
+              },
+            );
+            await page.goto('/connections/engines');
+            await expect(
+              page.getByTestId('app-toolbar-connection'),
+            ).toHaveAttribute(
+              'aria-label',
+              identityMismatch
+                ? /Needs re-pairing/
+                : /Choose Station — Connected/,
+            );
+            await page
+              .getByRole('button', { name: new RegExp(`^${initialName}`) })
+              .tap();
+            await page.getByText('Advanced', { exact: true }).tap();
+            const name = page.getByRole('textbox', {
+              name: 'Name',
+              exact: true,
+            });
+            await name.fill(updatedName);
+            const saved = page.waitForResponse(
+              (response) =>
+                response.request().method() === 'PUT' &&
+                new URL(response.url()).pathname === '/api/connections/codex',
+            );
+            await page.getByRole('button', { name: 'Save', exact: true }).tap();
+            expect((await saved).ok()).toBe(true);
+            expect(engine?.name).toBe(updatedName);
+            await page.getByRole('button', { name: '← Back to list' }).tap();
+            const updated = page.getByRole('button', {
+              name: new RegExp(`^${updatedName}`),
+            });
+            await updated.tap();
+            const check = page.waitForRequest(
+              (request) =>
+                request.method() === 'POST' &&
+                new URL(request.url()).pathname ===
+                  '/api/connections/codex/smoke',
+            );
+            await page
+              .getByRole('button', { name: 'Check connection', exact: true })
+              .tap();
+            expect((await check).postDataJSON()).toEqual({ confirmed: true });
+            await expect(
+              page.getByText(
+                'Couldn’t connect. Check the connection settings, then try again.',
+              ),
+            ).toBeVisible();
+
+            await page.getByText('Advanced', { exact: true }).tap();
+            const reset = page.getByRole('button', {
+              name: 'Reset to defaults',
+              exact: true,
+            });
+            await reset.tap();
+            const confirmation = page.getByRole('dialog', {
+              name: 'Reset this engine',
+            });
+            await confirmation
+              .getByRole('button', { name: 'Cancel', exact: true })
+              .tap();
+            expect(engine?.name).toBe(updatedName);
+            await reset.tap();
+            const deleted = page.waitForResponse(
+              (response) =>
+                response.request().method() === 'DELETE' &&
+                new URL(response.url()).pathname === '/api/connections/codex',
+            );
+            await confirmation
+              .getByRole('button', { name: 'Reset', exact: true })
+              .tap();
+            expect((await deleted).ok()).toBe(true);
+            expect(engine).toBeNull();
+            await expect(confirmation).toBeHidden();
+            await page.getByRole('button', { name: '← Back to list' }).tap();
+            await expect(page).toHaveURL(/\/connections\/engines$/);
+            await expect(updated).toHaveCount(0);
+          });
+
+          test('saves a probed SSH computer and confirms removal', async ({
+            page,
+          }) => {
+            const id = 'phone-ssh-computer';
+            const hostAlias = 'phone-fixture-ssh';
+            const name = 'Phone fixture computer';
+            let stored: {
+              profile: Record<string, unknown>;
+              state: { phase: string } & Record<string, unknown>;
+            } | null = null;
+            let probePassed = false;
+            await page.route('**/api/environments/ssh/probe', async (route) => {
+              expect(route.request().method()).toBe('POST');
+              expect(route.request().postDataJSON()).toMatchObject({
+                hostAlias,
+              });
+              probePassed = true;
+              await route.fulfill({
+                json: {
+                  success: true,
+                  data: {
+                    evidenceVersion: 1,
+                    level: 'discovered',
+                    freshness: 'fresh',
+                    observedAt: '2026-11-18T14:00:00.000Z',
+                    reachable: true,
+                    summary: 'The fixture verified the SSH destination.',
+                    resolved: {
+                      hostname: '127.0.0.1',
+                      user: 'fixture',
+                      port: 2222,
+                      identityAgent: 'default',
+                    },
+                  },
+                },
+              });
+            });
+            await page.route('**/api/environments/ssh', async (route) => {
+              switch (route.request().method()) {
+                case 'GET':
+                  await route.fulfill({
+                    json: { success: true, data: stored ? [stored] : [] },
+                  });
+                  return;
+                case 'POST': {
+                  expect(probePassed).toBe(true);
+                  const input = route.request().postDataJSON() as {
+                    name: string;
+                    hostAlias: string;
+                    remoteProjectPath: string;
+                    remotePort: number;
+                  };
+                  expect(input).toMatchObject({ name, hostAlias });
+                  const timestamp = '2026-11-18T14:00:00.000Z';
+                  stored = {
+                    profile: {
+                      schemaVersion: 1,
+                      ...input,
+                      id,
+                      environmentId: null,
+                      hostIdentity: null,
+                      verifiedProjectPath: null,
+                      workerProtocolVersion: null,
+                      createdAt: timestamp,
+                      updatedAt: timestamp,
+                      lastConnectedAt: null,
+                    },
+                    state: { phase: 'idle' },
+                  };
+                  await route.fulfill({
+                    status: 201,
+                    json: { success: true, data: stored },
+                  });
+                  return;
+                }
+                default:
+                  await route.fallback();
+              }
+            });
+            await page.route(`**/api/environments/ssh/${id}`, async (route) => {
+              expect(route.request().method()).toBe('DELETE');
+              stored = null;
+              await route.fulfill({ json: { success: true } });
+            });
+
+            await page.route(
+              new RegExp(`/api/environments/ssh/${id}/(connect|disconnect)$`),
+              async (route) => {
+                expect(route.request().method()).toBe('POST');
+                if (!stored)
+                  throw new Error(
+                    'The fixture SSH computer must be saved before connecting',
+                  );
+                const connect = new URL(
+                  route.request().url(),
+                ).pathname.endsWith('/connect');
+                if (connect)
+                  stored.profile.lastConnectedAt = '2026-11-18T14:00:05.000Z';
+                stored.state = connect
+                  ? {
+                      phase: 'connected',
+                      localUrl: page.url(),
+                      instanceId: 'phone-ssh-fixture',
+                      sha: '1234567',
+                      bootId: 'phone-ssh-boot',
+                      connectedAt: '2026-11-18T14:00:05.000Z',
+                    }
+                  : { phase: 'disconnected', reason: 'stopped' };
+                await route.fulfill({ json: { success: true, data: stored } });
+              },
+            );
+
+            await page.goto('/connections/computers');
+            await expect(
+              page.getByTestId('app-toolbar-connection'),
+            ).toHaveAttribute(
+              'aria-label',
+              identityMismatch
+                ? /Needs re-pairing/
+                : /Choose Station — Connected/,
+            );
+            await page
+              .getByRole('button', { name: 'Add computer', exact: true })
+              .tap();
+            await page
+              .getByRole('button', {
+                name: /^Run work on another computer over SSH/,
+              })
+              .tap();
+            const ssh = page.getByRole('dialog', {
+              name: 'Run work on another computer over SSH',
+            });
+            const save = ssh.getByRole('button', { name: 'Save computer' });
+            await expect(save).toBeDisabled();
+            await ssh
+              .getByPlaceholder('box-b, or 192.168.1.20')
+              .fill(hostAlias);
+            await ssh.getByPlaceholder('Build box').fill(name);
+            await ssh
+              .getByRole('button', { name: 'Test connection', exact: true })
+              .tap();
+            await expect(
+              ssh.getByText('The fixture verified the SSH destination.'),
+            ).toBeVisible();
+            await expect(save).toBeEnabled();
+            await save.tap();
+            await expect(ssh).toBeHidden();
+            expect(stored).toMatchObject({ profile: { id, name, hostAlias } });
+
+            const row = page
+              .locator('.connections-computers__row')
+              .filter({ hasText: name });
+            await expect(row).toContainText('Not connected');
+            await row
+              .getByRole('button', { name: 'Connect', exact: true })
+              .tap();
+            await row.getByRole('button', { name: 'Stop', exact: true }).tap();
+            await row
+              .getByRole('button', { name: 'Resume', exact: true })
+              .tap();
+            await row.getByRole('button', { name: 'Stop', exact: true }).tap();
+            await expect(
+              row.getByRole('button', { name: 'Resume', exact: true }),
+            ).toBeVisible();
+            await row
+              .getByRole('button', { name: 'Remove this computer' })
+              .tap();
+            const confirmation = page.getByRole('alertdialog', {
+              name: 'Remove computer?',
+            });
+            await confirmation
+              .getByRole('button', { name: 'Cancel', exact: true })
+              .tap();
+            await expect(row).toBeVisible();
+            await row
+              .getByRole('button', { name: 'Remove this computer' })
+              .tap();
+            await confirmation
+              .getByRole('button', { name: 'Remove', exact: true })
+              .tap();
+            await expect(row).toHaveCount(0);
+            expect(stored).toBeNull();
           });
 
           test('Station manager actions and writable profiles', async ({
