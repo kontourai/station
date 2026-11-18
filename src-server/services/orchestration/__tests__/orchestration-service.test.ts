@@ -1258,33 +1258,47 @@ describe('OrchestrationService', () => {
   });
 
   test('credential recovery refuses a recorded inherited policy before stopping or replaying', async () => {
-    const threadId = 'constrained-credential-recovery';
-    await service.dispatch({
-      type: 'startSession',
-      input: { threadId, provider: 'claude' },
+    const adapter = new FakeAdapter('claude');
+    const recoveryService = new RawOrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
     });
-    eventStore.appendEvent({
-      provider: 'claude',
-      threadId,
-      eventId: 'credential-inherited-policy-record',
-      createdAt: new Date().toISOString(),
-      method: 'session.started',
-      sessionId: threadId,
-      metadata: { delegation: { toolAllowlistConstraints: [[]] } },
-    } as CanonicalRuntimeEvent);
-
-    await expect(
-      service['credentialProfileRecovery'].restartRecoverySession({
+    try {
+      const threadId = 'constrained-credential-recovery';
+      await recoveryService.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude' },
+      });
+      eventStore.appendEvent({
+        provider: 'claude',
         threadId,
-        input: 'Continue after recovery',
-        recoveryCorrelationId: 'constrained-credential-recovery',
-        credentialProfileRef: 'credential-profile',
-        signal: new AbortController().signal,
-      }),
-    ).rejects.toMatchObject({ code: 'delegation_lineage_unavailable' });
-    expect(claude.startSession).toHaveBeenCalledTimes(1);
-    expect(claude.stopSession).not.toHaveBeenCalled();
-    expect(claude.sendTurn).not.toHaveBeenCalled();
+        eventId: 'credential-inherited-policy-record',
+        createdAt: new Date().toISOString(),
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { delegation: { toolAllowlistConstraints: [[]] } },
+      } as CanonicalRuntimeEvent);
+
+      await expect(
+        recoveryService['credentialProfileRecovery'].restartRecoverySession({
+          threadId,
+          input: 'Continue after recovery',
+          recoveryCorrelationId: 'constrained-credential-recovery',
+          credentialProfileRef: 'credential-profile',
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toMatchObject({
+        cause: { code: 'delegation_lineage_unavailable' },
+        sessionTouched: false,
+      });
+      expect(adapter.startSession).toHaveBeenCalledTimes(1);
+      expect(adapter.stopSession).not.toHaveBeenCalled();
+      expect(adapter.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      await recoveryService.shutdown();
+    }
   });
 
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
