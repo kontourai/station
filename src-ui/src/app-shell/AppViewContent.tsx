@@ -318,7 +318,10 @@ function AppViewContentBody({
   }
   if (currentView.type === 'connections-engine-edit') {
     return (
-      <ConnectionsSectionFrame sectionId="engines">
+      <ConnectionsSectionFrame
+        sectionId="engines"
+        creating={currentView.id === 'new'}
+      >
         <AgentConnectionView
           selectedRuntimeId={currentView.id}
           agents={agents}
@@ -339,7 +342,7 @@ function AppViewContentBody({
   // the same Add engine flow on that entry's confirm step.
   if (currentView.type === 'connections-engine-new') {
     return (
-      <ConnectionsSectionFrame sectionId="engines">
+      <ConnectionsSectionFrame sectionId="engines" creating>
         <AgentConnectionView
           selectedRuntimeId="new"
           addChoiceId={currentView.providerId}

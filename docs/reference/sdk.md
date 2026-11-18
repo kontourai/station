@@ -6581,6 +6581,31 @@ view lists `social` only for a browser on that computer and otherwise carries
 strictly against `@kontourai/station-contracts/engine-sign-in`, and every
 caller supplies a captured `ApiRequestScope`.
 
+## Guided engine setup queries
+
+`@kontourai/station-sdk/engine-setup` exposes `useEngineInstallTerminal` and
+`useEngineStationTools` for the **Guided engine setup** preview. Both take an
+engine id and captured `ApiRequestScope`; cache keys partition host and
+credential authority. They reuse the canonical feature-preview query. The
+installer hook reads status even when the preview is off, so a reloaded client
+can find and stop a retained installation; the server refuses a new installation
+while it is off. The tool-selection query runs only while the preview is on.
+An older host's 404 reads as unsupported.
+
+The installer hook reads the reviewed command and existing terminal, starts
+with `{ command, operationId }` only after the person confirms, and stops with
+that terminal's id and operation id. Writes are never automatically retried;
+settlement re-reads status to reconcile a lost response. Polling runs only
+while a terminal starts or runs. Terminal attachment uses the server's target
+and id with `attachOnly`; it never opens a second shell.
+
+The tool-selection hook reads the canonical Agent's selection, explicitly adds
+Station Control/Knowledge/Docs, and offers a reviewed launch repair where one
+unambiguous built-in applies. It preserves unrelated authored fields and tool
+restrictions. Responses are parsed against the public shapes in
+`@kontourai/station-contracts/acp`. See the
+[setup journey](../guides/acp.md#set-up-an-engine-from-chat).
+
 ## Engine account queries
 
 The additive `@kontourai/station-sdk/engine-accounts` entry exposes account,

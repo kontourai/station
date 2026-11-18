@@ -67,7 +67,13 @@ server's reason, server-supplied prerequisites and links
 to engine installation instructions, existing account sign-in, or **Add a
 model connection**. For Station's own agent, **Choose AI for Station** opens the
 existing engine chooser, including ready external engines, before requiring a
-new model connection. Installation commands are display guidance, never automatic execution. The
+new model connection. Detection never runs installation commands. With the
+**Guided engine setup** preview enabled, the person can review a built-in
+installer and run it in a host terminal from the focused Add engine journey.
+The journey keeps installation, connection, sign-in and explicit Station-tool
+selection together; Done returns to Engines with a connected engine selected.
+See the [ACP setup guide](../guides/acp.md#set-up-an-engine-from-chat) for
+permissions, retained attempts and evidence limits. The
 existing setup-return owner retains the draft and revalidates the same Station
 access before returning. Choosing a ready replacement in the draft still waits
 for Send; Home’s automatic goal path continues to use a runnable recommendation.

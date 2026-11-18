@@ -1,0 +1,7 @@
+{
+  "revision": "394ae79a88734a5e80a4239147bfb4f4013a787c",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the 394ae79a pairing-route-scopes.test.ts addition against this host design's admission claims. It adds engine-setup cases only; all existing MCP UI host classifiers, GET proxy/SSR cases, principal checks and tests remain unchanged. Explicit read/operate ACP declarations do not modify MCP UI hosting or its threat boundary. The source change adds no new MCP UI runtime evidence; retain this design's existing qualification limits.","inputs":["docs/design/mcp-ui-host.md","src-server/security/__tests__/pairing-route-scopes.test.ts"]}
+  ]
+}

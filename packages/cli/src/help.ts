@@ -1355,9 +1355,11 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Core Workspace',
     summary: 'Manage ACP status, commands, and connections',
     targets: true,
-    actions: ['status', 'commands', 'command-options', 'connections'],
+    actions: ['setup', 'status', 'commands', 'command-options', 'connections'],
     usage: [
+      'station acp setup',
       'station acp connections list',
+      'station acp connections reconnect <id>',
       'station acp connections create --id=<id> --command=<cmd> [--args=<arg>]... [--name=<name>] [--cwd=<path>]',
       'station acp connections create --data=<json>',
       'station acp connections delete <id>',
