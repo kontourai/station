@@ -1044,8 +1044,8 @@ function isHistoricalAcpStop(event: AcpCompletionEvidence): boolean {
   // Native OpenCode shares the id but does not supply an ACP stop reason.
   return (
     event.finishReason === 'other' &&
-    (event.provider === 'acp' ||
-      (event.provider === 'opencode' && Boolean(event.stopReason)))
+    isAcpFamilyEngine(event.provider) &&
+    (event.provider === 'acp' || Boolean(event.stopReason))
   );
 }
 
