@@ -81,7 +81,10 @@ app. A failed app import, or a first render deferred behind a color-theme
 stylesheet whose React root cannot be created or rendered, releases animation
 and provides a reload action. The initial HTML loads only splash styles and the published font/token foundations; full app styles retain their original main-entry import order, so mobile layout overrides continue to win. The
 bundle budget still counts the immediately loaded app's static JS/CSS closure
-through its Vite manifest, in addition to the visible boot assets. The mark begins centered,
+through its Vite manifest, in addition to the visible boot assets. The Models
+connection view and Project Settings load their own styles with their route
+modules, while shared form controls remain available to the shell.
+The mark begins centered,
 then moves left while Fraunces reveals `tation`, using the river as the S. The
 selected wordmark uses the Original spacing from the reviewed motion study.
 Water falls into a track and spreads across it, then remains an indeterminate
