@@ -132,13 +132,15 @@ response contract that distinguishes current pending work from the last notice.
 
 ### A declared namespace and its consumer can name different stores
 
-Enterprise Layout declares `notes` but its
+At the audit baseline, Enterprise Layout declared `notes` but its
 [public SDK hooks](../../examples/enterprise-layout/src/data/notes-hooks.ts)
-read and write `enterprise-notes`. The host preserves those names; fallback
-storage admits the undeclared partition, while unscoped retrieval enumerates
+read and wrote `enterprise-notes`. The host preserved those names; fallback
+storage admitted the undeclared partition, while unscoped retrieval enumerated
 registered RAG namespaces. [#2735](https://github.com/kontourai/station/issues/2735)
-tracks an identity correction with preservation of existing records. Manifest
-validation alone does not prove that a consumer uses the registered resource.
+records the correction. The [Enterprise example](../../examples/enterprise-layout/README.md#knowledge-namespaces)
+now declares `enterprise-notes`. Projects keep the older namespace and its
+records. Manifest validation alone does not prove that a consumer uses the
+registered resource.
 
 ### Board revisions do not establish freshness of linked work
 

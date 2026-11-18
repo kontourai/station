@@ -96,6 +96,12 @@ Station also retains the older per-Project document/namespace API through
 providers. It is not the same interface as the store/index routes described
 here; the migration section explains how their data is related.
 
+The [Enterprise Notes example](../../examples/enterprise-layout/README.md#knowledge-namespaces)
+uses the older document API. Applying its layout registers `enterprise-notes`, the
+same namespace its SDK calls use. An earlier `notes` registration remains a
+separate Project namespace with its existing documents. Unscoped document
+search considers registered RAG namespaces with indexed content.
+
 For a concrete example, [browse Station's repository graph](repository-knowledge-graph.md)
 or see [the captured Knowledge Library](../learn/walkthroughs.md#explore-repository-knowledge).
 That journey uses canonical records and links without an embedding service.
@@ -115,6 +121,7 @@ flowchart LR
   Roots --> Resolve
   Resolve --> Result["Current title/category; excerpt still in the record"]
   Legacy["Older document / namespace API"] --> Service["KnowledgeService"]
+  Namespaces["Registered Project RAG namespaces"] -->|unscoped document search| Service
   Service --> Providers["Configured embedding and vector providers"]
   OldFiles["Older document and vector files"] -->|"explicit migration"| Roots
 ```
