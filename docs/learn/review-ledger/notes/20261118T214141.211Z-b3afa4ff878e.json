@@ -1,0 +1,9 @@
+{
+  "revision": "994126446272527aadcf68352206373c03c226f0",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked setup and retry in the shared repository picker. Provider selection and the direct Git URL path still feed the same repository acquisition flow.","inputs":["src-ui/src/components/modals/RepositoryProviderPicker.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked setup and retry in the shared repository picker. Provider selection and the direct Git URL path still feed the same repository acquisition flow.","inputs":["src-ui/src/components/modals/RepositoryProviderPicker.tsx"]}
+  ]
+}
