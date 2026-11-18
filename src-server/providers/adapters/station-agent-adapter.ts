@@ -809,6 +809,9 @@ export function mapStationAgentStreamEvent(options: {
       requestId,
       requestType: 'approval',
       title: stringField(event.tool) ?? toolName ?? 'Allow tool call',
+      ...(stringField(event.guardianReason)
+        ? { guardianReason: stringField(event.guardianReason) }
+        : {}),
       ...(purpose ? { purpose } : {}),
       ...(stringField(event.toolDescription)
         ? { description: stringField(event.toolDescription) }

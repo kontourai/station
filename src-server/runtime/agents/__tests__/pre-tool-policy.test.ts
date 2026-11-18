@@ -1,6 +1,7 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  createGuardianConversationReader,
   GUARDIAN_ESCALATE_AFTER_CONSECUTIVE,
   GUARDIAN_ESCALATE_AFTER_TOTAL,
   GuardianDenialLedger,
@@ -781,6 +782,51 @@ describe('approval guardian escalation (#4827)', () => {
     return { evaluator, reviewToolCall };
   }
 
+  test.each([
+    'interactive',
+    'task-dispatch',
+    'delegation',
+    'automation',
+    'unknown',
+  ] as const)(
+    'routes an enforce guardian defer according to the admitted %s turn',
+    async (origin) => {
+      const latestTurnDispatchOrigin = vi.fn(() => origin);
+      const evaluator = createEvaluator({
+        approvalGuardian: {
+          isEnabled: () => true,
+          getMode: () => 'enforce',
+          readConversation: createGuardianConversationReader({
+            conversationLineageForThreads: () => new Map(),
+            personAuthoredTurnPrompts: () => [],
+            latestTurnDispatchOrigin,
+          }),
+          reviewToolCall: async () => ({
+            decision: 'defer',
+            reason: 'No confident verdict.',
+          }),
+        },
+      });
+      const decision = await evaluator(tool, invocation, {
+        interaction: 'external',
+      });
+      expect(latestTurnDispatchOrigin).toHaveBeenCalledWith(
+        invocation.conversationId,
+      );
+      if (origin === 'interactive') {
+        expect(decision).toEqual({ behavior: 'defer' });
+      } else {
+        expect(decision).toMatchObject({
+          behavior: 'deny',
+          denial: {
+            policyDenied: true,
+            reason: expect.stringContaining('nobody is present to decide'),
+          },
+        });
+      }
+    },
+  );
+
   const attended = {
     interaction: 'managed' as const,
     hasInteractiveApproval: true,
@@ -819,6 +865,7 @@ describe('approval guardian escalation (#4827)', () => {
     await expect(evaluator(call, invocation, attended)).resolves.toEqual({
       behavior: 'ask',
       required: true,
+      guardianReason: 'guardian says deny',
     });
   });
 

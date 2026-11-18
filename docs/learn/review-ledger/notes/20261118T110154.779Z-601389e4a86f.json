@@ -1,0 +1,7 @@
+{
+  "revision": "dc26ededf6085ed0b4274b00ed52805ab56e8059",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Biome reflowed the Save assertion after removal of the unsupported role option. Checked that its exact name, disabled-property assertion, and setup remain identical.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}
