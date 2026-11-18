@@ -137,6 +137,120 @@ function count(haystack: string, needle: string): number {
 }
 
 describe('terminals as supervisor workloads (real PTYs)', () => {
+  it('ends a bounded setup command while no core is attached and keeps that outcome after restart', async () => {
+    const home = makeTempDir('bounded-workload-');
+    const root = await realpath(makeTempDir('bounded-root-'));
+    const { host, routes } = startHost();
+    const first = connect(host, routes);
+    const before = core(home, root, first);
+    const opened = await before.openInternal(scope, {
+      cwd: root,
+      cols: 80,
+      rows: 24,
+      maxRuntimeMs: 1000,
+      operationId: 'bounded-setup',
+      launch: {
+        file: process.execPath,
+        args: ['-e', 'setInterval(()=>{},1000)'],
+      },
+    });
+    const pid = (await before.read('operator', scope, opened.terminalId)).pid;
+    expect(pid).toEqual(expect.any(Number));
+    await before.dispose();
+    first.close();
+    await vi.waitFor(
+      async () =>
+        expect(
+          await host.handle({ op: 'attach', workloadId: opened.terminalId }),
+        ).toMatchObject({ state: 'exited' }),
+      { timeout: 5_000, interval: 50 },
+    );
+    expect(pidAlive(pid!)).toBe(false);
+    const next = connect(host, routes);
+    const after = core(home, root, next);
+    expect(
+      await after.read('operator', scope, opened.terminalId),
+    ).toMatchObject({ status: 'exited' });
+    expect(await host.handle({ op: 'list' })).toHaveLength(1);
+    await after.dispose();
+    next.close();
+  });
+
+  it('refuses a bounded launch before spawn when the workload host cannot enforce its lifetime', async () => {
+    const calls: WorkloadRequest[] = [];
+    const host = new SupervisorShellHost({
+      requestWorkload: async (request) => {
+        calls.push(request);
+        throw new Error('unknown operation');
+      },
+      onWorkloadEvent: () => () => {},
+    });
+    await expect(
+      host.spawn({
+        terminalId: 'bounded',
+        cwd: makeTempDir('bounded-refusal-'),
+        cols: 80,
+        rows: 24,
+        journal: { directory: makeTempDir('bounded-journal-'), options: {} },
+        maxRuntimeMs: 1000,
+        launch: { file: process.execPath, args: [] },
+      }),
+    ).rejects.toThrow('Update the Station host');
+    expect(calls).toEqual([{ op: 'capabilities' }]);
+  });
+
+  it('rechecks authorization after a suspended lifetime negotiation before spawning', async () => {
+    const calls: WorkloadRequest[] = [];
+    let negotiating!: () => void;
+    const negotiationStarted = new Promise<void>((resolve) => {
+      negotiating = resolve;
+    });
+    let resume!: () => void;
+    const negotiated = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let authorized = true;
+    const host = new SupervisorShellHost({
+      requestWorkload: async (request) => {
+        calls.push(request);
+        if (request.op === 'capabilities') {
+          negotiating();
+          await negotiated;
+          return { maxRuntimeMs: true };
+        }
+        throw new Error(`Unexpected workload request: ${request.op}`);
+      },
+      onWorkloadEvent: () => () => {},
+    });
+    const result = host
+      .spawn({
+        terminalId: 'revoked',
+        cwd: makeTempDir('bounded-revoked-'),
+        cols: 80,
+        rows: 24,
+        journal: {
+          directory: makeTempDir('bounded-revoked-journal-'),
+          options: {},
+        },
+        maxRuntimeMs: 1000,
+        launch: { file: process.execPath, args: [] },
+        authorize: async () => {
+          if (!authorized) throw new Error('Owner authorization withdrawn');
+        },
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    await negotiationStarted;
+    authorized = false;
+    resume();
+    const error = await result;
+    expect(calls).toEqual([{ op: 'capabilities' }]);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toHaveProperty('message', 'Owner authorization withdrawn');
+  });
+
   it('keeps a shell running across a core restart: same pid, every record once, in order', async () => {
     const home = makeTempDir('workload-sessions-');
     const root = await realpath(makeTempDir('workload-root-'));

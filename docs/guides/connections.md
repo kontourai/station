@@ -915,13 +915,15 @@ otherwise. A chat keeps the engine it started with. The connection's engine
 reads `opencode` only while the preview is on. See
 [the decision](../decisions/opencode-native-transport.md).
 
-An engine Station did not find reads **Not installed**. Its card shows the
+An engine Station did not find reads **Not installed**. Choose **Set up** to see the
 vendor's install command for the operating system Station runs on, with a copy
 button and a link to the install guide, and **Check again** repeats the lookup
 after you install it, re-reading your login shell's `PATH` so a directory the
 installer added there is searched too. A paired device needs permission to
 operate Station for that re-read; without it, the card says so and shows what
-Station last found. Station shows the command and never runs it. On a paired
+Station last found. The standard install hint offers a copyable command. With
+**Guided engine setup** enabled on a personal Station, a supported installer can
+run in a reviewed terminal after the person confirms the exact command. On a paired
 device the card says the install belongs on the computer Station runs on.
 
 Some built-in engines carry launch settings that Station sets when it starts
@@ -932,11 +934,11 @@ catalogue sets them, and only engine-scoped names; they never carry
 credentials. A custom connection running the same program, even by full path,
 gets the same settings.
 
-Add engine opens one catalogue in the Engines detail pane, beside your
-engine list: saved engines that are **Not connected yet**, the native apps
+Add engine opens a focused page with a searchable catalogue: saved engines that are **Not connected yet**, the native apps
 Station supports, the built-in command engines (**Found, not connected** or
-**Not installed**), and a custom command. Everything that follows stays in
-that pane; a link to one entry (`/connections/engines/new/<id>`, or `custom`)
+**Not installed**), and a custom command. Search by name or command (for example, **Antigravity** or `agy`).
+Setup stays on this page; **Done** returns to Engines with the new engine selected.
+A deep link to one entry (`/connections/engines/new/<id>`, or `custom`)
 opens on that entry's first step.
 
 1. Choose an engine. An engine that is **Not installed** offers only its
