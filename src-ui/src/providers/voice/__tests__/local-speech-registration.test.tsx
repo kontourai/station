@@ -57,7 +57,29 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('app registration is absent while local-speech is off or unresolved, present while on, and removed on a live disable', () => {
+test('disabling the preview while the provider loads prevents registration', async () => {
+  const view = render(tree());
+  const registrations: string[] = [];
+  const unsubscribe = voiceRegistry.subscribe(() => {
+    const provider = voiceRegistry.getSTT('station-local');
+    if (provider) registrations.push(provider.id);
+  });
+  try {
+    state.previews = [{ id: 'local-speech', enabled: true }];
+    view.rerender(tree());
+    state.previews = [{ id: 'local-speech', enabled: false }];
+    view.rerender(tree());
+
+    await act(async () => {
+      await import('../LocalSpeechSTTProvider');
+    });
+    expect(registrations).toEqual([]);
+  } finally {
+    unsubscribe();
+  }
+});
+
+test('app registration is absent while local-speech is off or unresolved, present while on, and removed on a live disable', async () => {
   const view = render(tree());
   expect(voiceRegistry.getSTT('station-local')).toBeUndefined();
   state.previews = [
@@ -68,7 +90,7 @@ test('app registration is absent while local-speech is off or unresolved, presen
   expect(voiceRegistry.getSTT('station-local')).toBeUndefined();
   state.previews = [{ id: 'local-speech', enabled: true }];
   view.rerender(tree());
-  expect(view.getByText('Station (local) / station-local')).toBeTruthy();
+  expect(await view.findByText('Station (local) / station-local')).toBeTruthy();
   const provider = voiceRegistry.getSTT('station-local');
   expect(provider).toBeDefined();
   state.previews = [{ id: 'local-speech', enabled: false }];
@@ -91,15 +113,18 @@ test('disable and Station switch dispose the old provider including a late micro
   });
   vi.stubGlobal('MediaRecorder', class {});
   const view = render(tree());
+  await view.findByText('Station (local) / station-local');
   const old = voiceRegistry.getSTT('station-local')!;
   act(() => old.startListening());
   state.apiBase = 'http://station-b';
   state.connectionId = 'b';
   view.rerender(tree());
-  expect(voiceRegistry.getSTT('station-local')).not.toBe(old);
+  expect(voiceRegistry.getSTT('station-local')).toBeUndefined();
   expect(old.state).toBe('idle');
   grant({ getTracks: () => [{ stop }] });
   await waitFor(() => expect(stop).toHaveBeenCalledOnce());
+  await view.findByText('Station (local) / station-local');
+  expect(voiceRegistry.getSTT('station-local')).not.toBe(old);
   state.previews = undefined;
   view.rerender(tree());
   expect(voiceRegistry.getSTT('station-local')).toBeUndefined();

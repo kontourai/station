@@ -2544,14 +2544,14 @@ returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
 and the current `branch` reported by Git (which can be `HEAD` when detached),
 or an empty string when the branch read fails or the repository is not owned by
 the Project. Discovery is bounded: the walk stops at 24 repositories and skips
-heavy directories, so an over-broad folder is sampled rather than exhaustively
-enumerated, and identical concurrent asks share one scan. `location` is a
-`ReposLocation`, `{ projectSlug?, workingDir }`: the
-same shape as the git reads, except that `projectSlug` is optional because a
-folder may not be a Project yet. With a Project the server confines the folder
-to it; without one only the operator in person gets an answer. Disabled
-without a `workingDir`. A `success: false` envelope currently becomes an empty
-result, so no repositories is not proof the folder holds none.
+heavy directories, so an over-broad folder is sampled, and identical
+concurrent asks share one scan. For a Project rooted inside a repository,
+the list also includes that enclosing checkout when the same confined Git
+read used by Diff accepts it. It counts toward the 24-repository limit.
+`location` is a `ReposLocation`, `{ projectSlug?, workingDir }`. The existing
+Project read policy governs the named folder. Only the operator in person
+can discover repositories in a prospective folder. The query requires a
+`workingDir`. A `success: false` envelope currently becomes an empty result.
 
 ### `useGitCheckoutMutation(location)`
 

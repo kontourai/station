@@ -4542,6 +4542,10 @@ not SSE**. Its body uses `prompt`, optional `model`, `tools`, `maxSteps`, and
 { "prompt": "Summarize the supplied text: ...", "tools": [], "maxSteps": 5 }
 ```
 
+For VoltAgent, an authored Agent cap bounds this invocation even when the
+request gives a higher `maxSteps`. An omitted request cap uses the Agent or
+Station fallback. Strands uses its own limits.
+
 With an explicit tools array, it builds a temporary Agent with the selected
 loaded tools. With a schema on that branch, it asks for JSON and parses the
 text; this is not JSON Schema validation. Without a tools array it calls the

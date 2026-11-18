@@ -117,6 +117,7 @@ import {
 import {
   assertEngineAllowedByManagedPolicy,
   managedEngineBinaryPath,
+  managedEngineEnvironmentLocked,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
@@ -806,6 +807,7 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  configuredClaudeEndpoint: boolean;
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
@@ -1023,6 +1025,26 @@ function newSessionTitle(threadId: string): string {
 }
 
 const CLAUDE_CONFIG_DIR_ENV_KEY = 'CLAUDE_CONFIG_DIR';
+
+function hasConfiguredClaudeEndpoint(
+  env: Options['env'],
+  configuredBaseUrl: string | undefined,
+): boolean {
+  if (
+    !configuredBaseUrl ||
+    env?.ANTHROPIC_BASE_URL !== configuredBaseUrl ||
+    managedEngineEnvironmentLocked('claude') ||
+    !/^https?:\/\//i.test(configuredBaseUrl)
+  ) {
+    return false;
+  }
+  try {
+    const { hostname } = new URL(configuredBaseUrl);
+    return hostname.replace(/\.$/, '') !== 'api.anthropic.com';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * #3163: the config home a spawn resolves, in `buildOptions`' own env layer
@@ -2730,6 +2752,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       input.threadId,
     );
     let sdkQuery: Query;
+    let configuredClaudeEndpoint: boolean;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
     try {
@@ -2739,28 +2762,30 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ]);
       // After station-control, so the browser server reuses its credential.
       builtinServers = this.resolveStationBrowser(input);
-      sdkQuery = sdk.query({
-        prompt: promptQueue,
-        options: this.buildOptions(
-          input,
-          engineProcess,
-          persistSession,
-          permissionMode,
-          appHomeEnv,
-          connectionEnv,
-          toolServers.mcpServers,
-          skillsOverlayDir,
-          augmentedEnv,
-          preToolPolicy,
-          claudeExecutable,
-          builtinServers,
-          Boolean(seatbelt) ||
-            hostBypassGrant ||
-            permissionMode === 'bypassPermissions',
-          sessionTmpDir,
-          artifactsEnv,
-        ),
-      });
+      const options = this.buildOptions(
+        input,
+        engineProcess,
+        persistSession,
+        permissionMode,
+        appHomeEnv,
+        connectionEnv,
+        toolServers.mcpServers,
+        skillsOverlayDir,
+        augmentedEnv,
+        preToolPolicy,
+        claudeExecutable,
+        builtinServers,
+        Boolean(seatbelt) ||
+          hostBypassGrant ||
+          permissionMode === 'bypassPermissions',
+        sessionTmpDir,
+        artifactsEnv,
+      );
+      configuredClaudeEndpoint = hasConfiguredClaudeEndpoint(
+        options.env,
+        appHomeEnv?.ANTHROPIC_BASE_URL ?? connectionEnv?.ANTHROPIC_BASE_URL,
+      );
+      sdkQuery = sdk.query({ prompt: promptQueue, options });
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
       seatbelt?.launch.cleanup();
@@ -2787,6 +2812,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const probeServer = probeSuffix ? `probe${probeSuffix}` : undefined;
     const record: ClaudeSessionRecord = {
       session,
+      configuredClaudeEndpoint,
       deliveryProbeServerId:
         probeServer &&
         input.agent?.toolServers?.some((server) => server.id === probeServer)

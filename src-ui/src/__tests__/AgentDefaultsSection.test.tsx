@@ -87,6 +87,23 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 }
 
 describe('AgentDefaultsSection', () => {
+  test('shows the built-in prompt and external-engine scope beside the controls', () => {
+    render(
+      <AgentDefaultsSection
+        {...baseProps}
+        config={{ defaultModel: '' }}
+        showRegion={false}
+      />,
+    );
+    expect(
+      screen.getByText(/uses them in place of its built-in prompt/),
+    ).toBeTruthy();
+    expect(screen.getByText(/omits them for external engines/)).toBeTruthy();
+    expect(
+      screen.getByText(/external engines receive the authored placeholders/),
+    ).toBeTruthy();
+  });
+
   test('uses generic default-model hint when no runtime-backed options are available', () => {
     runtimeConnectionsMock = [];
 

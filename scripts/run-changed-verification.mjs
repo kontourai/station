@@ -33,6 +33,7 @@ import {
   CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
   incompleteDiagnosticReasons,
 } from './lib/changed-verification-diagnostics.mjs';
+import { directUiComponentImporterTests } from './lib/dependency-change-scan.mjs';
 import {
   FAST_CHECKS_PLAN_KIND,
   FAST_CHECKS_SHARD_COUNT,
@@ -513,6 +514,7 @@ export async function runOwnedChangedCommand(
   };
   let cleanupPromise;
   let cancellation;
+  let timedOut = false;
   let resolveCancellation;
   const cancellationRequested = new Promise((resolveCancellationPromise) => {
     resolveCancellation = resolveCancellationPromise;
@@ -540,10 +542,10 @@ export async function runOwnedChangedCommand(
   signal?.addEventListener?.('abort', abort, { once: true });
   let timer;
   if (timeoutMs !== undefined)
-    timer = setTimeout(
-      () => void cancel(`timed out after ${timeoutMs}ms`),
-      timeoutMs,
-    );
+    timer = setTimeout(() => {
+      if (cancellation === undefined) timedOut = true;
+      void cancel(`timed out after ${timeoutMs}ms`);
+    }, timeoutMs);
   try {
     if (signal?.aborted) abort();
     const completed = await Promise.race([
@@ -574,6 +576,9 @@ export async function runOwnedChangedCommand(
       stdout: captured.stdout.text,
       stderr: captured.stderr.text,
       launch,
+      ...(timedOut && completed.kind === 'cancelled' && !unsafeOutput
+        ? { timedOut: true }
+        : {}),
       cleanup: treeAlive
         ? // The canonical receipt has no unknown cardinality. One is a
           // conservative nonzero sentinel when settlement cannot establish
@@ -770,8 +775,8 @@ export async function discoverRelatedTestFiles(
     return files;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // Fail closed for every diff alike; name the query an escalated-only
-    // diff (which never started discovery before #5010) now depends on.
+    // Keep the failed preparation distinct from a completed discovery
+    // whose answer contained no test files.
     const discoveryError = new Error(
       escalatedSeeds.length
         ? `${message} (with the escalated-importer query for ${escalatedSeeds.length} path(s))`
@@ -781,6 +786,11 @@ export async function discoverRelatedTestFiles(
     discoveryError.phase = 'related-discovery';
     discoveryError.childStarted = result?.launch?.started === true;
     discoveryError.cleanup = result?.cleanup;
+    discoveryError.timedOut =
+      result?.timedOut === true &&
+      discoveryError.childStarted &&
+      result.cleanup?.status === 'passed' &&
+      result.cleanup.survivingOwnedChildren === 0;
     throw discoveryError;
   }
 }
@@ -2593,24 +2603,61 @@ export async function planChangedVerificationShards(
       discoverRelated: async (discoveryRoot, relatedPaths) => {
         const startedAt = now();
         let timeoutMilliseconds;
-        const files = await discover(discoveryRoot, relatedPaths, {
-          base: changed.mergeBase,
-          deferGlobalTriggers: true,
-          onGlobalTriggeredPaths: (paths) => {
-            for (const path of paths) globalTriggeredPaths.add(path);
-          },
-          onTimeout: (value) => {
-            timeoutMilliseconds = value;
-          },
-          ...(escalatedSeeds.length
-            ? {
-                escalatedSeeds,
-                onEscalatedImporters: (reports) => {
-                  escalatedImporters = decideEscalatedImporters(reports);
-                },
-              }
-            : {}),
-        });
+        let files;
+        try {
+          files = await discover(discoveryRoot, relatedPaths, {
+            base: changed.mergeBase,
+            deferGlobalTriggers: true,
+            onGlobalTriggeredPaths: (paths) => {
+              for (const path of paths) globalTriggeredPaths.add(path);
+            },
+            onTimeout: (value) => {
+              timeoutMilliseconds = value;
+            },
+            ...(escalatedSeeds.length
+              ? {
+                  escalatedSeeds,
+                  onEscalatedImporters: (reports) => {
+                    escalatedImporters = decideEscalatedImporters(reports);
+                  },
+                }
+              : {}),
+          });
+        } catch (error) {
+          if (
+            error?.timedOut !== true ||
+            timeoutMilliseconds === undefined ||
+            signal?.aborted
+          )
+            throw error;
+          relatedDiscovery = {
+            milliseconds: now() - startedAt,
+            timeoutMilliseconds,
+            timedOut: true,
+          };
+          selection = withDeferredLaneReasons(selection, 'ci-fast', [
+            'related discovery timed out; only known exact suites were planned',
+          ]);
+          const components = changed.paths.filter(
+            (path) =>
+              path.startsWith('src-ui/src/components/') &&
+              /\.[cm]?tsx?$/.test(path) &&
+              !VITEST_FILE_PATTERN.test(path) &&
+              pathExists(resolve(root, path)),
+          );
+          const exact = new Set(
+            executionSelection.tests.map(({ path }) => path),
+          );
+          const additional = directUiComponentImporterTests(root, components)
+            .map(({ path }) => path)
+            .filter((path) => !exact.has(path));
+          if (additional.length <= ESCALATED_IMPORTER_TOTAL_CAP)
+            return additional;
+          selection = withDeferredLaneReasons(selection, 'ci-fast', [
+            `direct UI importer fallback omitted: ${additional.length} additions exceed the existing ${ESCALATED_IMPORTER_TOTAL_CAP}-suite bound`,
+          ]);
+          return [];
+        }
         if (escalatedSeeds.length && !escalatedImporters)
           throw new Error(
             'Related Vitest discovery reported no escalated importers',
@@ -2668,7 +2715,7 @@ export async function planChangedVerificationShards(
         relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
       },
     );
-    if (uncovered.length > 0) {
+    if (uncovered.length > 0 && !relatedDiscovery?.timedOut) {
       emptyRelatedSelection = {
         relatedPaths: [...uncovered].sort(),
         remedy: EMPTY_RELATED_SELECTION_REMEDY,
