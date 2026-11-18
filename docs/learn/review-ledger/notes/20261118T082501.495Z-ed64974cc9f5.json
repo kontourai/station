@@ -1,0 +1,7 @@
+{
+  "revision": "b5a58c4f5d322206dc620636aa782c5fcca2c976",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Verified that the composer still defaults to Queue and displays an accepted row without waiting on the inbox refresh. The temporary label and row-filter experiment was removed, leaving the reviewed composer controls and text.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

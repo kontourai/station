@@ -2542,14 +2542,14 @@ returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
 and the current `branch` reported by Git (which can be `HEAD` when detached),
 or an empty string when the branch read fails or the repository is not owned by
 the Project. Discovery is bounded: the walk stops at 24 repositories and skips
-heavy directories, so an over-broad folder is sampled rather than exhaustively
-enumerated, and identical concurrent asks share one scan. `location` is a
-`ReposLocation`, `{ projectSlug?, workingDir }`: the
-same shape as the git reads, except that `projectSlug` is optional because a
-folder may not be a Project yet. With a Project the server confines the folder
-to it; without one only the operator in person gets an answer. Disabled
-without a `workingDir`. A `success: false` envelope currently becomes an empty
-result, so no repositories is not proof the folder holds none.
+heavy directories, so an over-broad folder is sampled, and identical
+concurrent asks share one scan. For a Project rooted inside a repository,
+the list also includes that enclosing checkout when the same confined Git
+read used by Diff accepts it. It counts toward the 24-repository limit.
+`location` is a `ReposLocation`, `{ projectSlug?, workingDir }`. The existing
+Project read policy governs the named folder. Only the operator in person
+can discover repositories in a prospective folder. The query requires a
+`workingDir`. A `success: false` envelope currently becomes an empty result.
 
 ### `useGitCheckoutMutation(location)`
 
@@ -2784,11 +2784,14 @@ accept an explicit API base and current request options.
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
-`resolved`, `fork-ready`, `missing-session`, or `unavailable`. Only `resolved`
+`resolved`, `fork-ready`, `fresh-context-ready`, `missing-session`, or `unavailable`. Only `resolved`
 can carry a current Session identity. `fork-ready` identifies an authorized saved
 fork whose copied transcript is available under `transcript.owner: 'fork-context'`;
-it has no provider Session or runtime execution binding until first send. Both
-successful arms carry the server-derived `canContinue` decision. A pending first
+it has no provider Session or runtime execution binding until first send.
+`fresh-context-ready` identifies an authorized empty-context reservation. It
+exposes `predecessorSessionId` and `reservedSessionId` separately from any
+execution, and its earlier messages remain readable in the runtime transcript.
+Successful arms carry the server-derived `canContinue` decision. A pending first
 start may return `canContinue: false` with `continuationPending: true`; clients
 must wait rather than fabricate a Session identity. A current server also says on
 the `resolved` arm whether the next ordinary turn starts a new Session

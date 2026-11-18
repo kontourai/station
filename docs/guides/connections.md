@@ -906,6 +906,10 @@ recorded per engine in the
 [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts);
 the [ACP guide](acp.md) covers protocol details.
 
+The Agent `maxSteps` field limits model steps on Station’s VoltAgent runtime.
+Strands and external engines use their own limits. The Agent editor presents
+this scope next to the step limit.
+
 OpenCode is still added and saved as an Agent Client Protocol engine. With the
 **OpenCode native engine** Feature Preview on (Settings → Advanced → Feature
 previews), new chats on it run on Station's `opencode` engine instead. That

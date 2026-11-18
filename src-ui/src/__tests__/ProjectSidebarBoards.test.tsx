@@ -128,7 +128,6 @@ vi.mock('../contexts/open-chats-store', () => ({
   }),
   openChatsStore: {
     focus: vi.fn(),
-    openCollection: vi.fn(),
     registerNavigation: () => vi.fn(),
   },
 }));

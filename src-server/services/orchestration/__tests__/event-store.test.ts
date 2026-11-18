@@ -5926,90 +5926,159 @@ describe('EventStore', () => {
     expect(new Set(ids)).toHaveLength(1_020);
   });
 
-  test('backfills bounded history title and message count from persisted events', () => {
-    store.close();
-    const databasePath = join(dir, 'pre-ownership-history.sqlite');
-    const database = new DatabaseSync(databasePath);
-    database.exec('BEGIN IMMEDIATE');
-    try {
-      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-      database
-        .prepare(
-          `INSERT INTO provider_session_state
+  test.each([
+    ['new', false],
+    ['already-projected', true],
+  ] as const)(
+    'backfills typed legacy metadata (%s history row)',
+    (_layout, alreadyProjected) => {
+      store.close();
+      const databasePath = join(dir, 'pre-ownership-history.sqlite');
+      const database = new DatabaseSync(databasePath);
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+        database
+          .prepare(
+            `INSERT INTO provider_session_state
           (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          'thread-backfilled',
-          'claude',
-          'ready',
-          JSON.stringify({ tenantId: 'alpha', source: 'session' }),
-          '2026-08-08T11:00:00.000Z',
-          '2026-08-08T12:00:00.000Z',
-        );
-      const insertEvent = database.prepare(
-        `INSERT INTO orchestration_events
+          )
+          .run(
+            'thread-backfilled',
+            'claude',
+            'ready',
+            JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+            '2026-08-08T11:00:00.000Z',
+            '2026-08-08T12:00:00.000Z',
+          );
+        const insertEvent = database.prepare(
+          `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
-      );
-      insertEvent.run(
-        'backfilled-start',
-        'session.started',
-        JSON.stringify({
-          method: 'session.started',
-          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-        }),
-        '2026-08-08T11:00:00.000Z',
-        1,
-        1,
-      );
-      insertEvent.run(
-        'backfilled-turn-start',
-        'turn.started',
-        JSON.stringify({
-          method: 'turn.started',
-          prompt: 'Accurate history title',
-        }),
-        '2026-08-08T11:01:00.000Z',
-        2,
-        2,
-      );
-      insertEvent.run(
-        'backfilled-turn-complete',
-        'turn.completed',
-        JSON.stringify({ method: 'turn.completed' }),
-        '2026-08-08T12:00:00.000Z',
-        3,
-        3,
-      );
-      database.exec('COMMIT');
-    } catch (error) {
-      database.exec('ROLLBACK');
-      throw error;
-    } finally {
-      database.close();
-    }
+        );
+        insertEvent.run(
+          'backfilled-start',
+          'session.started',
+          JSON.stringify({
+            method: 'session.started',
+            metadata: {
+              userId: 'owner-alpha',
+              agentSlug: 'claude',
+              projectSlug: 'legacy-project',
+            },
+          }),
+          '2026-08-08T11:00:00.000Z',
+          1,
+          1,
+        );
+        insertEvent.run(
+          'backfilled-malformed-config',
+          'session.configured',
+          JSON.stringify({
+            method: 'session.configured',
+            metadata: {
+              userId: { id: 'wrong-owner' },
+              agentSlug: ['wrong-agent'],
+              projectSlug: { slug: 'wrong-project' },
+            },
+          }),
+          '2026-08-08T11:00:01.000Z',
+          2,
+          2,
+        );
+        insertEvent.run(
+          'backfilled-turn-start',
+          'turn.started',
+          JSON.stringify({
+            method: 'turn.started',
+            prompt: 'Accurate history title',
+          }),
+          '2026-08-08T11:01:00.000Z',
+          3,
+          3,
+        );
+        insertEvent.run(
+          'backfilled-turn-complete',
+          'turn.completed',
+          JSON.stringify({ method: 'turn.completed' }),
+          '2026-08-08T12:00:00.000Z',
+          4,
+          4,
+        );
+        if (alreadyProjected) {
+          database
+            .prepare(
+              'INSERT INTO orchestration_conversation_history (thread_id, owner_user_id, tenant_id, agent_slug, title, message_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            )
+            .run(
+              'thread-backfilled',
+              'owner-alpha',
+              'alpha',
+              'claude',
+              'Accurate history title',
+              2,
+              '2026-08-08T11:00:00.000Z',
+              '2026-08-08T12:00:00.000Z',
+            );
+        }
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      } finally {
+        database.close();
+      }
 
-    store = new EventStore(databasePath);
-
-    expect(
-      store.listConversationHistoryPage({
-        ownerUserId: 'owner-alpha',
-        tenantId: 'alpha',
-        limit: 1,
-      }).records,
-    ).toEqual([
-      expect.objectContaining({
-        threadId: 'thread-backfilled',
-        title: 'Accurate history title',
-        messageCount: 2,
-      }),
-    ]);
-    expect(store.readConversationHistoryUpgrade()).toMatchObject({
-      status: 'complete',
-      quarantinedCount: 0,
-    });
-  });
+      const assertHistory = () => {
+        const stored = new DatabaseSync(databasePath);
+        try {
+          expect(
+            stored
+              .prepare(
+                'SELECT owner_user_id, agent_slug, project_slug FROM orchestration_conversation_history WHERE thread_id = ?',
+              )
+              .get('thread-backfilled'),
+          ).toEqual({
+            owner_user_id: 'owner-alpha',
+            agent_slug: 'claude',
+            project_slug: 'legacy-project',
+          });
+        } finally {
+          stored.close();
+        }
+        expect(
+          store.listConversationHistoryPage({
+            ownerUserId: 'owner-alpha',
+            tenantId: 'alpha',
+            limit: 1,
+          }).records,
+        ).toEqual([
+          expect.objectContaining({
+            threadId: 'thread-backfilled',
+            title: 'Accurate history title',
+            messageCount: 2,
+          }),
+        ]);
+        expect(
+          store.listConversationHistoryPage({
+            ownerUserId: 'owner-alpha',
+            tenantId: 'beta',
+            limit: 1,
+          }).records,
+        ).toEqual([]);
+        expect(store.readConversationHistoryUpgrade()).toMatchObject({
+          status: 'complete',
+          quarantinedCount: 0,
+        });
+      };
+      store = new EventStore(databasePath);
+      assertHistory();
+      store.close();
+      store = new EventStore(databasePath);
+      assertHistory();
+    },
+  );
 
   test('#2324 review J1: the history backfill counts a provider turn’s reply but not its start', () => {
     store.close();

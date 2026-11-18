@@ -703,7 +703,10 @@ export function useAgentsViewModel({
       setIsSaving(true);
       setActionError(null);
       const savedSnapshot = structuredClone(form);
-      const payload = buildAgentPayload(form, { isCreating });
+      const payload = buildAgentPayload(form, {
+        isCreating,
+        previousMaxSteps: isCreating ? undefined : savedForm.maxSteps,
+      });
       if (isCreating) {
         // Select the slug the SERVER assigned, not the one typed into the
         // form: the create response carries the persisted identity, and the

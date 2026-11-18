@@ -169,16 +169,26 @@ export function useConversationBoundaryDialogs({
   ).length;
   const contextBoundaryStatus =
     contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
+  const open = activeSession?.conversationOpenState;
   const contextBoundaryLabel =
-    contextBoundaryStatus === 'reserved'
-      ? `Next message: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'starts fresh' : 'continues'}`
-      : contextBoundaryStatus === 'claimed'
-        ? 'Reset in progress'
-        : contextBoundaryStatus === 'indeterminate'
-          ? 'Reset unconfirmed, check the chat'
-          : contextBoundaryStatus === 'failed'
-            ? 'Reset failed, retry available'
-            : undefined;
+    contextBoundaryStatus === undefined &&
+    !activeSession?.orchestrationSessionStarted &&
+    !activeSession?.conversationOpenPending &&
+    !activeSession?.conversationOpenFailed &&
+    open?.status === 'fresh-context-ready' &&
+    open.conversation.id === activeSession?.conversationId &&
+    open.canContinue &&
+    open.callerAccess?.continue !== false
+      ? 'Next message starts fresh'
+      : contextBoundaryStatus === 'reserved'
+        ? `Next message: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'starts fresh' : 'continues'}`
+        : contextBoundaryStatus === 'claimed'
+          ? 'Reset in progress'
+          : contextBoundaryStatus === 'indeterminate'
+            ? 'Reset unconfirmed, check the chat'
+            : contextBoundaryStatus === 'failed'
+              ? 'Reset failed, retry available'
+              : undefined;
   const hasLocalDeferredMessages = Boolean(
     activeSession?.queuedMessages?.length ||
       activeSession?.queuedMessageFailure ||

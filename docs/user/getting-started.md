@@ -788,7 +788,9 @@ you outside the filter, choose **Show all** from the notice; on a computer, a
 count badge on the scope picker does the same. On a computer the scope picker
 sits beside search, **Browse all conversations** is at the end of the list,
 and each row is two lines: its title and time, then the agent's icon, its
-status and its project. Hover the icon to read the agent's name.
+status and its project. Hover the icon to read the agent's name. To browse
+chats from a side dock, open **More dock actions** and choose **Open chat…**.
+The picker opens over the current dock placement.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
 from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
@@ -817,8 +819,8 @@ The Undo button replaces the row's discard shortcut; the Details sheet also
 shows the pending message. Undo keeps
 the Draft; leaving that control or switching Station or account also cancels
 the pending deletion. After the window, Station asks the server to discard it
-and shows any refusal. Discarding an **unsent draft** instead clears the text
-you typed on this device.
+and shows any refusal. On a touch row, the message appears below the row’s
+actions. Discarding an **unsent draft** clears the text you typed on this device.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
@@ -1023,11 +1025,11 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. With a live native steering channel, **Send**
-defaults to **Steer**; otherwise it defaults to **Queue**, which delivers after
-the turn finishes. The dropdown switches between the available modes. For an
-ACP engine without native steering, choosing **Steer** stops its current step
-and continues the task with your additional instruction once cancellation
+Keep typing during a turn. **Send** defaults to **Queue**. Station holds the
+message and delivers it after the turn finishes. The message appears in the
+pending list as soon as Station accepts it. The dropdown switches between the
+available modes. For an ACP engine without native steering, choosing **Steer**
+stops its current step and continues the task with your instruction once cancellation
 finishes. Station-owned steering waits for the next safe boundary. A Muse chat
 on `muse exec` supports Queue only. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
