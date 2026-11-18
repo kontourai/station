@@ -170,6 +170,9 @@ function RepositorySourceCard({
           </span>
         )}
       </div>
+      {resource?.state === 'bound' && (
+        <p className="project-sources__hint">Checkout ready on {stationName}</p>
+      )}
       {resource && resource.state !== 'bound' && (
         <div className="project-repositories__problem">
           <p>{CHECKOUT_PROBLEMS[resource.state]}</p>

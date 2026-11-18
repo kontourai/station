@@ -6,11 +6,11 @@ import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { userFacingErrorMessage } from '../../utils/errorText';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { ForgeMark } from '../icons/ForgeMark';
 import { LinkGlyph } from '../icons/Glyph';
+import { RepositoryProviderRecovery } from './RepositoryProviderRecovery';
 import './RepositoryProviderPicker.css';
 
 const providers = [
@@ -91,7 +91,12 @@ export function RepositoryProviderPicker({
           {catalog.isFetching ? (
             <p role="status">Reading accessible repositories…</p>
           ) : catalog.isError ? (
-            <p role="alert">{userFacingErrorMessage(catalog.error)}</p>
+            <RepositoryProviderRecovery
+              provider={provider}
+              authority={scope}
+              error={catalog.error}
+              onRetry={() => void catalog.refetch()}
+            />
           ) : catalog.data ? (
             <>
               <p>

@@ -1821,6 +1821,11 @@ after Station authority changes, and never reads or returns provider tokens.
 If the CLI or sign-in is unavailable, sign in on the host with `gh auth login`
 or `glab auth login`, retry, or choose **Git URL** and paste the repository URL. Self-hosted forges remain an
 explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
+When Station can identify a missing CLI or a provider sign-in failure, the
+picker shows installation or sign-in steps for that Station. The sign-in
+action displays the command, can copy it, and can open the bottom terminal
+when the dock has a Project on the same Station. Paste and run the command
+yourself, complete the provider authorization, then retry the repository list.
 
 **Find existing checkouts** lists up to 20 retained acquisitions matching the
 entered repository identity, requested ref and subdirectory. These are historical
