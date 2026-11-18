@@ -17,6 +17,7 @@ import {
   type ExecutionMode,
   type ModelOption,
   type RuntimeCatalogSource,
+  readCatalogModelRoute,
 } from '@kontourai/station-contracts/tool';
 import {
   type ConversationActivityCarrier,
@@ -397,14 +398,16 @@ export function resolveEffectiveModel({
 export function acpAdvertisedModels(
   connection:
     | {
-        advertisedModels?: ReadonlyArray<{ id: string; name: string }>;
+        advertisedModels?: ReadonlyArray<
+          Pick<ModelOption, 'id' | 'name' | 'catalogRoute'>
+        >;
         configOptions?: ReadonlyArray<{
           category: string;
           options?: Array<string | { value: string; name?: string }>;
         }>;
       }
     | undefined,
-): Array<{ id: string; name: string }> {
+): Array<Pick<ModelOption, 'id' | 'name' | 'catalogRoute'>> {
   const served =
     connection?.advertisedModels ??
     (connection?.configOptions ?? [])
@@ -444,12 +447,14 @@ function asModelOptions(value: unknown): ModelOption[] {
     ) {
       return [];
     }
+    const catalogRoute = readCatalogModelRoute(entry.catalogRoute);
     return [
       {
         id: entry.id,
         name: entry.name,
         originalId:
           typeof entry.originalId === 'string' ? entry.originalId : entry.id,
+        ...(catalogRoute ? { catalogRoute } : {}),
         ...(typeof entry.resolvedModel === 'string'
           ? { resolvedModel: entry.resolvedModel }
           : {}),

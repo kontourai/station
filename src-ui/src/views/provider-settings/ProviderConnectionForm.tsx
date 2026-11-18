@@ -12,6 +12,7 @@ import {
   updateModelPickerPreferences,
   useModelPickerPreferences,
 } from '../../settings/modelPickerPreferences';
+import { modelOptionLabel } from '../../utils/modelCapabilities';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { PROVIDER_TYPES, resolveProviderPresentation } from './providerCatalog';
 import type { ProviderConnection } from './types';
@@ -74,7 +75,7 @@ export function DefaultModelField({
           <option value="">Choose a model…</option>
           {options.map((model) => (
             <option key={model.id} value={model.id}>
-              {model.name}
+              {modelOptionLabel(model, true)}
             </option>
           ))}
         </select>
@@ -464,14 +465,14 @@ export function ProviderConnectionForm({
               return (
                 <div className="provider-detail__model-row" key={model.id}>
                   <span>
-                    <strong>{model.name}</strong>
+                    <strong>{modelOptionLabel(model, true)}</strong>
                     <small>{model.id}</small>
                   </span>
                   <span className="provider-detail__model-actions">
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`${favorite ? 'Remove' : 'Add'} ${model.name} ${favorite ? 'from' : 'to'} favorites`}
+                      aria-label={`${favorite ? 'Remove' : 'Add'} ${modelOptionLabel(model, true)} ${favorite ? 'from' : 'to'} favorites`}
                       aria-pressed={favorite}
                       onClick={() => updateList('favorites', !favorite)}
                     >
@@ -480,7 +481,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`Move ${model.name} up`}
+                      aria-label={`Move ${modelOptionLabel(model, true)} up`}
                       disabled={index === 0}
                       onClick={() => move(-1)}
                     >
@@ -489,7 +490,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`Move ${model.name} down`}
+                      aria-label={`Move ${modelOptionLabel(model, true)} down`}
                       disabled={index === orderedModels.length - 1}
                       onClick={() => move(1)}
                     >
@@ -498,7 +499,7 @@ export function ProviderConnectionForm({
                     <button
                       type="button"
                       className="button button--ghost"
-                      aria-label={`${hidden ? 'Show' : 'Hide'} ${model.name}`}
+                      aria-label={`${hidden ? 'Show' : 'Hide'} ${modelOptionLabel(model, true)}`}
                       aria-pressed={hidden}
                       onClick={() => updateList('hidden', !hidden)}
                     >
@@ -545,7 +546,7 @@ export function ProviderConnectionForm({
                 <option value="">Choose an installed model…</option>
                 {modelOptions.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name}
+                    {modelOptionLabel(model, true)}
                   </option>
                 ))}
               </select>

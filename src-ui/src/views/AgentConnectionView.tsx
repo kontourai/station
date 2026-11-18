@@ -79,6 +79,7 @@ import {
   runtimeCatalogVisibleModels,
 } from '../utils/execution';
 import { formatBytes } from '../utils/formatBytes';
+import { modelOptionLabel } from '../utils/modelCapabilities';
 import { describeStationFailure } from '../utils/stationFailure';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
 import { CredentialProfileAccess } from './CredentialProfileLoginProfiles';
@@ -735,7 +736,7 @@ export function AgentConnectionView({
                   )}
                 {runtimeCatalogVisibleModels(form).map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name}
+                    {modelOptionLabel(model, true)}
                   </option>
                 ))}
               </select>
@@ -925,7 +926,7 @@ export function AgentConnectionView({
                     <div className="plugins__caps">
                       {visibleModels.map((model) => (
                         <span key={model.id} className="plugins__cap">
-                          {model.name}
+                          {modelOptionLabel(model, true)}
                         </span>
                       ))}
                     </div>
@@ -951,7 +952,7 @@ export function AgentConnectionView({
                         <div className="plugins__caps">
                           {capabilityInventory.models.map((model) => (
                             <span key={model.id} className="plugins__cap">
-                              {model.name}
+                              {modelOptionLabel(model, true)}
                             </span>
                           ))}
                         </div>
