@@ -79,6 +79,35 @@ function app(
   };
 }
 describe('pull request operator gate', () => {
+  test('routes an explicitly configured GitLab host to the GitLab adapter', async () => {
+    vi.stubEnv('STATION_GITLAB_HOSTS', 'git.example.com');
+    try {
+      const routes = createPullRequestRoutes(
+        () => [
+          new GitHubPullRequestProvider(),
+          new GitLabPullRequestProvider(),
+        ],
+        async () => ({
+          available: true,
+          context: {
+            workingDirectory: '/x',
+            repository: {
+              owner: 'o',
+              name: 'r',
+              remote: 'https://git.example.com/o/r.git',
+            },
+          },
+        }),
+        { operatorIdentityForRequest: () => undefined },
+      );
+      const response = await routes.request('/context?project=station');
+      await expect(response.json()).resolves.toMatchObject({
+        data: { available: true, provider: 'gitlab', host: 'git.example.com' },
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   test.each([
     ['github', true],
     ['gitlab', false],

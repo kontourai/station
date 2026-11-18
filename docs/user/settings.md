@@ -114,7 +114,7 @@ without asking you to replace the repository. Stored choices are preserved.
 Today GitHub supports automatic feedback and Task-branch discovery. GitLab.com
 has native merge-request views but no automatic feedback adapter yet. Bitbucket
 and Azure DevOps remain usable as Git repositories; native pull-request
-integration is not implemented. Self-managed GitLab is not auto-detected.
+integration is not implemented. For self-managed GitLab, set the comma-separated hostname list `STATION_GITLAB_HOSTS` on the Station host and sign in with `glab` for each instance.
 A readable checkout is also needed for Station's review of each new head.
 
 **Paired Station chats** lets New Chat use another paired Station. Choose its
