@@ -229,16 +229,6 @@ export function ConnectionManagerModalContent({
     refresh: refreshCandidates,
     cancel: cancelCandidates,
   } = useConnectionCandidates();
-  useLayoutEffect(() => {
-    if (panel === 'discover') {
-      discoveryBackRef.current?.focus();
-    } else if (panel === 'list' && restoreDiscoveryFocusRef.current) {
-      restoreDiscoveryFocusRef.current = false;
-      (discoverTriggerRef.current ?? dialogRef.current)?.focus();
-    } else if (panel === 'request-access' && candidateTarget) {
-      titleRef.current?.focus();
-    }
-  }, [candidateTarget, panel]);
   useEffect(() => {
     if (panel !== 'discover') return;
     refreshCandidates();
@@ -352,6 +342,18 @@ export function ConnectionManagerModalContent({
       returnFocusFrameRef.current = restoreReturnFocus(chain, overlay);
     };
   }, [returnFocusTarget]);
+
+  // Move panel focus after the dialog captures its opener.
+  useLayoutEffect(() => {
+    if (panel === 'discover') {
+      discoveryBackRef.current?.focus();
+    } else if (panel === 'list' && restoreDiscoveryFocusRef.current) {
+      restoreDiscoveryFocusRef.current = false;
+      (discoverTriggerRef.current ?? dialogRef.current)?.focus();
+    } else if (panel === 'request-access' && candidateTarget) {
+      titleRef.current?.focus();
+    }
+  }, [candidateTarget, panel]);
 
   // `checkOne` outlives this component by design: the pairing paths close the
   // manager (`onCloseRef.current()`) and only then start the health check, so

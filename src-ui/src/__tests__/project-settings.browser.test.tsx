@@ -215,7 +215,7 @@ test('project settings remain usable above the dock at phone and desktop widths 
         );
         const name = page.getByRole('textbox', { name: 'Name *' });
         const save = page.getByRole('button', {
-          name: 'Save changes',
+          name: 'Save',
           exact: true,
         });
         const header = page.locator('.detail-header');
@@ -255,7 +255,7 @@ test('project settings remain usable above the dock at phone and desktop widths 
         ).toBe('all');
         expect(await save.isVisible()).toBe(true);
         await page.getByRole('button', { name: 'Back to project' }).click();
-        const discardDraft = page.getByRole('alertdialog', {
+        const discardDraft = page.getByRole('dialog', {
           name: 'Unsaved Changes',
         });
         await discardDraft.getByRole('button', { name: 'Cancel' }).click();

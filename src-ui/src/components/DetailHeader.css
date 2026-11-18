@@ -241,6 +241,15 @@
   flex-wrap: nowrap;
 }
 
+.detail-header--navigable .detail-header__title-row {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+
+.detail-header--navigable .detail-header__badge {
+  line-height: var(--k-leading-tight);
+}
+
 .detail-header__navigation {
   flex: none;
 }

@@ -61,7 +61,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mountModal(returnFocusTarget?: HTMLElement | null) {
+function mountModal(
+  returnFocusTarget?: HTMLElement | null,
+  initialPanel?: 'list' | 'discover',
+) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
   return render(
     <ConnectionsProvider store={store}>
@@ -69,6 +72,7 @@ function mountModal(returnFocusTarget?: HTMLElement | null) {
         onClose={vi.fn()}
         checkHealth={vi.fn(async () => false)}
         returnFocusTarget={returnFocusTarget}
+        initialPanel={initialPanel}
       />
     </ConnectionsProvider>,
   );
@@ -124,23 +128,34 @@ describe('Connection Manager return focus (station#1245)', () => {
     addComputer.remove();
   });
 
-  test('restores focus to the control that opened it', () => {
-    const screenRoot = document.createElement('div');
-    const trigger = document.createElement('button');
-    screenRoot.append(trigger);
-    document.body.append(screenRoot);
-    trigger.focus();
+  test.each(['list', 'discover'] as const)(
+    'restores focus to the launcher after opening directly to %s',
+    (initialPanel) => {
+      const screenRoot = document.createElement('div');
+      const trigger = document.createElement('button');
+      screenRoot.append(trigger);
+      document.body.append(screenRoot);
+      trigger.focus();
 
-    const view = mountModal();
-    view.unmount();
-    act(() => {
-      frame.callback?.(0);
-    });
+      try {
+        const view = mountModal(undefined, initialPanel);
+        if (initialPanel === 'discover') {
+          expect(document.activeElement).toBe(
+            screen.getByRole('button', { name: 'Back to Stations' }),
+          );
+        }
+        view.unmount();
+        act(() => {
+          frame.callback?.(0);
+        });
 
-    expect(document.activeElement).toBe(trigger);
-    expect(trigger.hasAttribute('tabindex')).toBe(false);
-    screenRoot.remove();
-  });
+        expect(document.activeElement).toBe(trigger);
+        expect(trigger.hasAttribute('tabindex')).toBe(false);
+      } finally {
+        screenRoot.remove();
+      }
+    },
+  );
 
   /**
    * The shape that makes this modal's copy of the bug reachable rather than

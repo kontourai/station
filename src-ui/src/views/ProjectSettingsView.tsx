@@ -455,7 +455,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             disabled={!form.name.trim() || !!iconProblem}
             onClick={() => void saveProject()}
           >
-            Save changes
+            Save
           </Button>
         )}
       </DetailHeader>
