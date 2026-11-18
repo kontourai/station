@@ -1,0 +1,323 @@
+{
+  "panels": [
+    {
+      "id": 1,
+      "title": "Primary Chat Requests",
+      "expr": "sum(station_chat_requests_total{agent!=\"\"})",
+      "series": [
+        {
+          "metric": {},
+          "value": [1794982018.654, "4"]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Loaded Agents",
+      "expr": "station_agents_active",
+      "series": []
+    },
+    {
+      "id": 9,
+      "title": "Tracked MCP Server Entries",
+      "expr": "station_mcp_connections",
+      "series": []
+    },
+    {
+      "id": 10,
+      "title": "Chat Route Errors",
+      "expr": "sum(station_chat_errors_total)",
+      "series": []
+    },
+    {
+      "id": 15,
+      "title": "Estimated Primary Chat Cost",
+      "expr": "sum(station_cost_estimated_total)",
+      "series": []
+    },
+    {
+      "id": 3,
+      "title": "Primary Chat p95",
+      "expr": "histogram_quantile(0.95, sum by (le) (rate(station_chat_duration_milliseconds_bucket[5m])))",
+      "series": [
+        {
+          "metric": {},
+          "value": [1794982018.672, "3.721985992996497"]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Primary Chat Request Rate",
+      "expr": "sum by (agent) (rate(station_chat_requests_total{agent!=\"\"}[5m]))",
+      "series": [
+        {
+          "metric": {
+            "agent": "assistant"
+          },
+          "value": [1794982018.676, "0.004263381690845423"]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Reported Primary Chat Token Rate",
+      "expr": "sum(rate(station_tokens_input_total[5m]))",
+      "series": [
+        {
+          "metric": {},
+          "value": [1794982018.68, "0.051200600300150084"]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Reported Primary Chat Token Rate",
+      "expr": "sum(rate(station_tokens_output_total[5m]))",
+      "series": [
+        {
+          "metric": {},
+          "value": [1794982018.684, "0.029890361847590464"]
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Primary Chat Requests by Agent",
+      "expr": "sum by (agent) (station_chat_requests_total{agent!=\"\"})",
+      "series": [
+        {
+          "metric": {
+            "agent": "assistant"
+          },
+          "value": [1794982018.688, "4"]
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Metadata Tool-call Chunks",
+      "expr": "sum by (tool) (station_tool_calls_total)",
+      "series": []
+    },
+    {
+      "id": 21,
+      "title": "Agent Operation Observations",
+      "expr": "sum by (op) (station_agent_operations_total{op!=\"\"})",
+      "series": []
+    },
+    {
+      "id": 21,
+      "title": "Agent Operation Observations",
+      "expr": "sum by (operation) (station_agent_operations_total{operation!=\"\"})",
+      "series": []
+    },
+    {
+      "id": 24,
+      "title": "Project Operation Observations",
+      "expr": "sum by (op, outcome) (station_project_operations_total{op!=\"\"})",
+      "series": []
+    },
+    {
+      "id": 24,
+      "title": "Project Operation Observations",
+      "expr": "sum by (operation, outcome, source) (station_project_operations_total{operation!=\"\"})",
+      "series": []
+    },
+    {
+      "id": 31,
+      "title": "Plugin Lifecycle Observations",
+      "expr": "sum by (plugin) (station_plugin_installs_total)",
+      "series": []
+    },
+    {
+      "id": 31,
+      "title": "Plugin Lifecycle Observations",
+      "expr": "sum by (plugin) (station_plugin_updates_total)",
+      "series": []
+    },
+    {
+      "id": 31,
+      "title": "Plugin Lifecycle Observations",
+      "expr": "sum by (plugin) (station_plugin_uninstalls_total)",
+      "series": []
+    },
+    {
+      "id": 32,
+      "title": "Plugin Lifecycle Rates",
+      "expr": "sum(rate(station_plugin_installs_total[5m]))",
+      "series": []
+    },
+    {
+      "id": 32,
+      "title": "Plugin Lifecycle Rates",
+      "expr": "sum(rate(station_plugin_updates_total[5m]))",
+      "series": []
+    },
+    {
+      "id": 32,
+      "title": "Plugin Lifecycle Rates",
+      "expr": "sum(rate(station_plugin_uninstalls_total[5m]))",
+      "series": []
+    },
+    {
+      "id": 41,
+      "title": "Notification Operation Observations",
+      "expr": "sum by (op) (station_notification_operations_total)",
+      "series": []
+    },
+    {
+      "id": 42,
+      "title": "Confirmed Built-in Job Executions",
+      "expr": "sum by (status) (station_scheduler_job_runs_total{source=\"built-in\"})",
+      "series": [
+        {
+          "metric": {
+            "status": "error"
+          },
+          "value": [1794982018.737, "1"]
+        },
+        {
+          "metric": {
+            "status": "success"
+          },
+          "value": [1794982018.737, "3"]
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "title": "Scheduler Management Requests",
+      "expr": "sum by (op) (station_scheduler_management_operations_total)",
+      "series": [
+        {
+          "metric": {
+            "op": "create_job"
+          },
+          "value": [1794982018.741, "3"]
+        },
+        {
+          "metric": {
+            "op": "run_job"
+          },
+          "value": [1794982018.741, "4"]
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "title": "Confirmed Built-in Job Duration p95",
+      "expr": "histogram_quantile(0.95, sum by (le) (rate(station_scheduler_job_duration_milliseconds_bucket{source=\"built-in\"}[5m])))",
+      "series": [
+        {
+          "metric": {},
+          "value": [1794982018.745, "4.75"]
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "title": "Provider Operation Observations",
+      "expr": "sum by (op, type, outcome) (station_provider_operations_total{op!=\"\"})",
+      "series": []
+    },
+    {
+      "id": 51,
+      "title": "Provider Operation Observations",
+      "expr": "sum by (operation, provider, reason, outcome, status) (station_provider_operations_total{operation!=\"\"})",
+      "series": []
+    },
+    {
+      "id": 52,
+      "title": "MCP Lifecycle Observations",
+      "expr": "sum by (event, server) (station_mcp_lifecycle_total)",
+      "series": []
+    },
+    {
+      "id": 53,
+      "title": "Knowledge Operation Observations",
+      "expr": "sum by (op) (station_knowledge_operations_total)",
+      "series": []
+    },
+    {
+      "id": 12,
+      "title": "Observed Tool Duration p95",
+      "expr": "histogram_quantile(0.95, sum by (tool, le) (rate(station_tool_duration_milliseconds_bucket[5m])))",
+      "series": []
+    },
+    {
+      "id": 13,
+      "title": "Primary Chat Duration Quantiles by Agent",
+      "expr": "histogram_quantile(0.5, sum by (agent, le) (rate(station_chat_duration_milliseconds_bucket[5m])))",
+      "series": [
+        {
+          "metric": {
+            "agent": "assistant"
+          },
+          "value": [1794982018.767, "0"]
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Primary Chat Duration Quantiles by Agent",
+      "expr": "histogram_quantile(0.95, sum by (agent, le) (rate(station_chat_duration_milliseconds_bucket[5m])))",
+      "series": [
+        {
+          "metric": {
+            "agent": "assistant"
+          },
+          "value": [1794982018.771, "3.697223611805903"]
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Primary Chat Duration Quantiles by Agent",
+      "expr": "histogram_quantile(0.99, sum by (agent, le) (rate(station_chat_duration_milliseconds_bucket[5m])))",
+      "series": [
+        {
+          "metric": {
+            "agent": "assistant"
+          },
+          "value": [1794982018.775, "4.739244622311156"]
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Chat Route Errors per Second",
+      "expr": "sum by (agent) (rate(station_chat_errors_total[5m]))",
+      "series": []
+    },
+    {
+      "id": 16,
+      "title": "Estimated Primary Chat Cost by Agent",
+      "expr": "sum by (agent) (station_cost_estimated_total)",
+      "series": []
+    },
+    {
+      "id": 4,
+      "title": "Reported Primary Chat Tokens",
+      "expr": "sum(station_tokens_input_total)",
+      "series": [
+        {
+          "metric": {},
+          "value": [1794982018.788, "24"]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Reported Primary Chat Tokens",
+      "expr": "sum(station_tokens_output_total)",
+      "series": [
+        {
+          "metric": {},
+          "value": [1794982018.791, "14"]
+        }
+      ]
+    }
+  ],
+  "collectorStatuses": ["Error", "Ok", "Unset"]
+}
