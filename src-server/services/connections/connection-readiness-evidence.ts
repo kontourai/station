@@ -64,15 +64,42 @@ function baseCopy(
   }
 }
 
+function modelCheckCopy(
+  enabled: boolean,
+  level: ConnectionEvidenceLevel,
+  check: ConnectionCheckEvidence | null,
+): Pick<ConnectionReadinessEvidence, 'summary' | 'action'> {
+  if (!enabled) return { summary: 'This model connection is disabled.' };
+  if (level === 'discovered') {
+    return {
+      summary:
+        'Complete the required setup before testing this model connection.',
+    };
+  }
+  if (check?.status === 'passed') {
+    return { summary: 'The provider answered the last connection check.' };
+  }
+  return {
+    summary: 'Station has not checked these saved model settings.',
+    action: 'Choose Test connection to check the saved settings.',
+  };
+}
+
 function smokeEvidence(
   result: StoredConnectionSmokeResult | null,
   now: Date,
+  offerSmoke: boolean,
 ): ConnectionSmokeEvidence {
   if (!result) {
     return {
       status: 'not-tested',
       freshness: 'unknown',
-      action: 'Run the explicit one-turn dogfood smoke when you are ready.',
+      ...(offerSmoke
+        ? {
+            action:
+              'Run the explicit one-turn dogfood smoke when you are ready.',
+          }
+        : {}),
       turnLimit: 1,
     };
   }
@@ -87,7 +114,7 @@ function smokeEvidence(
     durationMs: result.durationMs,
     ...(result.reasonCode ? { reasonCode: result.reasonCode } : {}),
     ...(result.reason ? { reason: result.reason } : {}),
-    ...(result.action ? { action: result.action } : {}),
+    ...(offerSmoke && result.action ? { action: result.action } : {}),
     turnLimit: 1,
   };
 }
@@ -134,7 +161,8 @@ export function deriveConnectionReadinessEvidence(
   now = new Date(),
   check: ConnectionCheckEvidence | null = null,
 ): ConnectionReadinessEvidence {
-  const smoke = smokeEvidence(result, now);
+  const offerSmoke = isAgentConnection(connection);
+  const smoke = smokeEvidence(result, now, offerSmoke);
   const base = baseLevel(connection);
   // Delta2 review H3: a fresh passed smoke outranks a check receipt — it is a
   // complete chat turn, the strongest evidence there is — but only a receipt
@@ -155,7 +183,7 @@ export function deriveConnectionReadinessEvidence(
   // these settings".
   const spokenCheck = level === 'smoke-passed' ? null : check;
   const copy =
-    smoke.status === 'failed' && smoke.freshness === 'fresh'
+    offerSmoke && smoke.status === 'failed' && smoke.freshness === 'fresh'
       ? {
           summary: smoke.reason ?? 'The latest bounded chat smoke failed.',
           action:
@@ -183,9 +211,11 @@ export function deriveConnectionReadinessEvidence(
                   spokenCheck.reason ??
                   'The provider answered but offers no model catalog.',
                 action:
-                  'Run Test Connection, or start a chat, to prove this connection can run work.',
+                  'Choose Test connection to check the saved default model.',
               }
-            : baseCopy(level);
+            : offerSmoke || level === 'smoke-passed'
+              ? baseCopy(level)
+              : modelCheckCopy(connection.enabled, level, spokenCheck);
   const catalogFetchedAt = isAgentConnection(connection)
     ? connection.runtimeCatalog?.fetchedAt
     : null;

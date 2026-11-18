@@ -670,8 +670,8 @@ export function resolveProviderPresentation(
      * runs catalogue discovery — so a connection could read "Ready" with
      * `check.status: 'not-checked'`, which is the claim exists to remove.
      * Discovery is now recorded as a real bound check
-     * (`source: 'catalog-discovery'`), so the ONLY things that make a model
-     * connection Ready are a provider that answered and a smoke that passed.
+     * (`source: 'catalog-discovery'`). A model connection reads Ready
+     * with a passed provider check or a matching passed smoke receipt.
      * A level with no receipt behind it means nobody reached the provider —
      * a timeout, an abort, or a fallback to configured selectors.
      */
