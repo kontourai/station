@@ -223,7 +223,6 @@ import {
   inboxPanelMounts,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
-  routeToOpenChatsCollection,
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
 import { ambientChatPaneFailureContext } from './chatPaneFailureContext';
@@ -690,7 +689,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   } = useNavigation();
   const dismissPhoneLayer = useDismissPhoneLayer();
   const showSurface = useShowSurface();
-  // Placement, viewport and placement-commit are shell CHROME (station#4460)
+  // Placement and viewport are shell chrome (station#4460)
   // — read from `chrome` (the shared ambient instance when docked, this
   // placement's own instance when full-screen) rather than a second local
   // derivation, so Chat, Home and Activity never disagree about them.
@@ -700,7 +699,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isMobile,
     visualViewport,
     effectiveDockSlotPlacement,
-    commitDockPlacement,
   } = chrome;
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
@@ -2921,30 +2919,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           `/connections?environment=${encodeURIComponent(sourceInstanceId)}`,
         );
       },
-      openCollection: () => {
-        cancelReaderOpenAndChildren();
-        // The open-chats collection has a DIFFERENT home in each chrome, and
-        // only the dock knows which one is mounted. Routing lives here so a
-        // caller (the sidebar's "Open chats" heading, its "N more") cannot
-        // promise a destination that this chrome has no surface for (#3314
-        // review SF-1: on mobile the drawer used to close and the dock snap
-        // to half, showing the CURRENT chat and no list at all).
-        const route = routeToOpenChatsCollection({
-          isMobile,
-          dockMode: effectiveDockSlotPlacement,
-          isFullscreenPlacement,
-        });
-        if (route.surface === 'mobile-inbox') {
-          setMobileInboxOpen(true);
-          if (!isFullscreenPlacement) applyDockSnap('half');
-          return;
-        }
-        // An edge placement has no panel for `inboxOpen` to reveal, so put the
-        // dock somewhere the destination actually mounts first.
-        if (route.switchToBottomMode) commitDockPlacement('bottom');
-        setDeviceSetting('inboxOpen', true);
-        if (route.snapHalf) applyDockSnap('half');
-      },
     });
     window.addEventListener('station:open-new-chat', openNewChat);
     return () => {
@@ -2954,7 +2928,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   }, [
     hasImmutableProjectScope,
     cancelReaderOpenAndChildren,
-    applyDockSnap,
     collapseDockForNavigation,
     focusSessionInPane,
     navigate,
@@ -2965,15 +2938,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     routeToScopedChatProject,
     scopedProjectSlug,
     setProjectFilter,
-    isFullscreenPlacement,
-    isMobile,
-    effectiveDockSlotPlacement,
-    commitDockPlacement,
-    setDeviceSetting,
     showInboxOpenFailure,
     agentsLoaded,
     showSurface,
-    setMobileInboxOpen,
     requestNewChat,
   ]);
 
