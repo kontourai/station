@@ -17,7 +17,7 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 In **Notifications**, browser Web Push reflects the selected Station’s
 registration. Turning it off removes the local subscription. Station
 reports failed registration cleanup separately.
-[Web Push notifications](../guides/web-push-notifications.md)
+[Web Push notifications](https://github.com/kontourai/station/blob/main/docs/guides/web-push-notifications.md)
 
 ## Project settings
 
