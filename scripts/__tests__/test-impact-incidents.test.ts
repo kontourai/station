@@ -105,6 +105,10 @@ describe('Nightly regressions outside the import graph', () => {
       'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
       'src-server/services/__tests__/privacy-inventory.test.ts',
     ],
+    [
+      'tests/interactive-workspace-performance-bridge.spec.ts',
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
+    ],
   ])('%s selects its executable contract %s', (path, suite) => {
     expect(executed(select([path], head, true))).toContain(suite);
   });
