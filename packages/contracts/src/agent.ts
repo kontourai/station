@@ -434,8 +434,12 @@ export function withoutRetiredAgentConfigFields(value: unknown): unknown {
     ui !== null &&
     typeof ui === 'object' &&
     !Array.isArray(ui) &&
-    Object.hasOwn(ui, 'quickPrompts');
-  if (!Object.hasOwn(record, 'streaming') && !hasQuickPrompts) return value;
+    Object.getOwnPropertyDescriptor(ui, 'quickPrompts') !== undefined;
+  if (
+    Object.getOwnPropertyDescriptor(record, 'streaming') === undefined &&
+    !hasQuickPrompts
+  )
+    return value;
 
   const next = { ...record };
   delete next.streaming;
