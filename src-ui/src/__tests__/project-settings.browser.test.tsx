@@ -22,6 +22,8 @@ const fixtures: Plugin = {
           useMigratePreIndexKnowledgeMutation=mutation,useApplyProjectLayoutMutation=mutation,
           useDeleteProjectLayoutMutation=mutation,useProjectLifecycleMutation=mutation,
           useSetProjectPullRequestWatchMutation=mutation;
+        export const useNotificationPreferencesQuery=()=>query({perProject:{}});
+        export const usePatchNotificationPreferencesMutation=mutation;
         export const useProjectDeletionPreviewQuery=()=>query(undefined);
         export const useProjectIconCandidatesQuery=()=>query([]),useModelConnectionsQuery=()=>query([]),
           useEngineConnectionsQuery=()=>query([]),useAgentsQuery=()=>query(agents),
