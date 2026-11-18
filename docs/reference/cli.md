@@ -1019,16 +1019,36 @@ ownership are ignored. A new imported integration takes Station's own
 classification (trusted, unless Station's bundled curated catalog classifies
 it) and the default ask permission; existing person choices are preserved.
 
-Each completed import writes a ledger under the Station home recording the source path,
-format, what was applied, and any fields that could not be represented, so a
-lossy import is visible after the fact rather than assumed. These writes are
-sequential, not one transaction: a later failure can leave earlier changes
-without a completed import ledger. See the
+An import records its progress locally before applying guidance, Agents, or
+integrations. Each target is pending, applied, or uncertain. An error or
+interruption can leave part of an uncertain target applied. Use
+`station import --status` to inspect the last operation, its target states,
+and its expected receipt path. Review any changes made to unfinished targets
+since the attempt. Retry with the original file bytes and
+`--resume=<operation-id>` to acknowledge possible replacements at uncertain or
+pending targets. Station retains the same receipt identity and skips targets
+recorded as applied. An uncertain integration may already have published
+credentials before its manifest write failed.
+
+After a lost client response, `--status` locates the last operation and its
+receipt. Resuming a completed operation returns that receipt without replaying
+its writes. A missing completion receipt can be republished from the original
+file with the same resume command. A plain file import after completion starts
+a new operation, even if the file is identical.
+
+A completed import writes a ledger recording the source path, format, what
+was applied, and fields that could not be represented. The status output shows
+source and target names and outcomes, and withholds the source fingerprint and
+credential values. Imports publish effects separately and have no
+automatic rollback. Restoring a prior home backup is the recovery path when
+you need to undo the import or cannot recover its source. See the
 [import caller](../../packages/cli/src/commands/import.ts) and
 [local storage owner](../../packages/cli/src/commands/portability-io.ts).
 
 ```
 station import <file>
+station import <file> --resume=<operation-id>
+station import --status
 ```
 
 ```bash
@@ -3764,10 +3784,10 @@ station home reset --confirm [--if-incompatible] [--home=<dir>] [--base=<dir>] [
 | `--json` | Print the result (`{"archived":..., "archivePath"?:..., "projectHome":...}`) as JSON |
 
 Without `--if-incompatible`, this can archive a compatible home too. It checks
-the lifecycle instance records, then holds the home maintenance lease while
-rechecking inactivity and renaming the home. Live or unverifiable runtime
-leases refuse reset. This path does not separately consult the home-scoped
-service registry. Stop every process using the home first; use
+the launcher lifecycle records and the home-scoped instance registry, then
+holds the home maintenance lease while rechecking inactivity and renaming the
+home. Live or unverifiable runtime leases, live registry entries, and corrupt
+or untrusted registries refuse reset. Stop every process using the home first. Use
 `station service stop` for a supervised service. A successful reset
 preserves the old directory but does not itself start or scaffold the new home.
 
