@@ -1034,6 +1034,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // resource classification the manifest gate requires for any direct
   // child_process importer.
   'src-server/services/connections/__tests__/credential-enrolment.integration.test.ts',
+  // #2036: runs a synthetic launcher and a TERM-resistant child in a private profile.
+  'src-server/services/connections/__tests__/device-code-login.process.test.ts',
   // #2787: drives the bounded-capture helper against real single-shot
   // children, one of which writes 64 MiB to prove the rejection path. It
   // imports no child_process itself; the helper under test does.
