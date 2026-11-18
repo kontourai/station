@@ -1,5 +1,4 @@
-import type { ChildProcess, spawn } from 'node:child_process';
-import { EventEmitter } from 'node:events';
+import { ChildProcess, type spawn } from 'node:child_process';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
@@ -23,8 +22,8 @@ const files = [
 ];
 
 function executor(exitCode = 0) {
-  return vi.fn(() => {
-    const child = Object.assign(new EventEmitter(), {
+  return vi.fn((_command: string, _args: string[], _options: object) => {
+    const child = Object.assign(new ChildProcess(), {
       stdout: new PassThrough(),
       stderr: new PassThrough(),
     });
@@ -32,12 +31,12 @@ function executor(exitCode = 0) {
       child.stdout.write(` RUN vfixture ${root}\n`);
       child.emit('close', exitCode, null);
     });
-    return child as unknown as ChildProcess;
+    return child;
   });
 }
 
 describe('connected-agent macro execution boundary', () => {
-  it('delegates the unchanged six suites and 10s deadline to the exclusive focused runner', async () => {
+  it('delegates seven suites, the 10s deadline and in-flight diagnostics to the exclusive focused runner', async () => {
     const spawnProcess = executor();
     const provenance = vi.fn();
     expect(
@@ -48,36 +47,71 @@ describe('connected-agent macro execution boundary', () => {
         testTimeoutMs: 60_000,
       }),
     ).toBe(0);
+    expect(provenance).toHaveBeenCalledTimes(2);
     expect(provenance).toHaveBeenCalledWith({ cwd: root });
-    expect(spawnProcess).toHaveBeenCalledTimes(1);
-    const [command, args, options] = spawnProcess.mock.calls[0] as unknown as [
-      string,
-      string[],
-      object,
-    ];
-    expect(command).toBe(process.execPath);
-    expect(args).toEqual([
-      path.join(root, 'node_modules', 'vitest', 'vitest.mjs'),
-      'run',
-      '--root',
-      root,
-      ...files,
-      '--maxWorkers=1',
-      '--no-file-parallelism',
-      '--testTimeout=10000',
-    ]);
-    expect(options).toMatchObject({ cwd: root, windowsHide: true });
+    expect(spawnProcess).toHaveBeenCalledTimes(2);
+    for (const [index, phase] of [[files[0]], files.slice(1)].entries()) {
+      const [command, args, options] = spawnProcess.mock.calls[index];
+      expect(command).toBe(process.execPath);
+      expect(args).toEqual([
+        path.join(root, 'node_modules', 'vitest', 'vitest.mjs'),
+        'run',
+        '--root',
+        root,
+        ...phase,
+        '--maxWorkers=1',
+        '--no-file-parallelism',
+        '--testTimeout=10000',
+        '--reporter=default',
+        `--reporter=${path.join(root, 'scripts', 'vitest-inflight-reporter.mjs')}`,
+      ]);
+      expect(options).toMatchObject({ cwd: root, windowsHide: true });
+    }
     expect(
       files.filter((file) => PROCESS_EXCLUSIVE_VITEST_FILES.includes(file)),
     ).toContain(
       'src-server/services/orchestration/__tests__/event-store.test.ts',
     );
-    // Supplement the execution proof with the package entry's routing: the real
-    // connected macro is run separately, not six heavyweight suites in this test.
+    // Supplement the execution proof with the package entry's routing: the
+    // test doubles above exercise the macro without running its seven suites.
     expect(packageJson.scripts['test:connected-agents']).toBe(
       'node scripts/run-connected-agent-tests.mjs',
     );
   });
+
+  it.each([
+    [1, 0],
+    [0, 1],
+  ])(
+    'runs both phases sequentially and retains failure when exits are %j',
+    async (firstExit, secondExit) => {
+      let closeFirst!: () => void;
+      const second = executor(secondExit);
+      const spawnProcess = vi.fn(() => {
+        if (spawnProcess.mock.calls.length > 1)
+          return second(process.execPath, [], {});
+        const child = Object.assign(new ChildProcess(), {
+          stdout: new PassThrough(),
+          stderr: new PassThrough(),
+        });
+        closeFirst = () => {
+          child.stdout.write(` RUN vfixture ${root}\n`);
+          child.emit('close', firstExit, null);
+        };
+        return child;
+      });
+      const running = runConnectedAgentTests({
+        root,
+        spawnProcess,
+        assertDependencyProvenance: () => {},
+      });
+      expect(spawnProcess).toHaveBeenCalledOnce();
+      closeFirst();
+      expect(await running).toBe(1);
+      expect(spawnProcess).toHaveBeenCalledTimes(2);
+      expect(second).toHaveBeenCalledOnce();
+    },
+  );
 
   it('propagates a nonzero suite result and preserves provenance refusal before spawn', async () => {
     expect(
