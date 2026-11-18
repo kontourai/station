@@ -590,6 +590,9 @@ holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
 
+The Project conversation list shows its channels and Task rooms. If one of those
+lists is temporarily unavailable, retry that list from the Project page.
+
 With the **Project Overview** [feature preview](settings.md#feature-previews)
 on, Overview lists the Project's Tasks under what each needs next:
 

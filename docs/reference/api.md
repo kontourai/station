@@ -1180,6 +1180,15 @@ routes, so an agent's request is refused (`403`,
 A promoted record is searchable once its store is reindexed
 (`POST /api/knowledge/index/rebuild`); promotion does not index it.
 
+## Legacy Project conversation list
+
+`GET /api/projects/:slug/conversations` returns HTTP 503 with code
+`project_conversations_unavailable` when the Project read is admitted. The
+legacy file-memory inventory lacks an authoritative Project binding; admission
+to the selected Project cannot establish which records belong to it.
+Access refusals still come from the existing Project read guard. The Project UI
+uses the scoped Project Room and Task room endpoints for its conversation list.
+
 ## Shared Project Room
 
 Project Rooms use `/api/projects/:slug/room`. Their identity binds the Station,
@@ -4701,8 +4710,10 @@ or bytes returns 404; a provider fetch failure returns 502.
 ### Search Users
 
 `GET /api/users/search?q=<query>` returns the directory provider's result array.
-An empty query returns `[]`. A caught provider failure also returns `[]` with
-200, so this legacy response cannot distinguish a failed search from no matches.
+An empty query or a successful search with no matches returns `[]` with HTTP
+200. An unavailable provider returns HTTP 503 with `success: false`, code
+`user_directory_unavailable`, and a correlation ID. Station keeps the provider
+failure in its server log.
 
 ### Lookup User by Alias
 
