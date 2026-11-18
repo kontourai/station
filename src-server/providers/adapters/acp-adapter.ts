@@ -1,4 +1,5 @@
 import {
+  interpretAcpTurnStop,
   PROVIDER_TURN_TRIGGER,
   type ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
@@ -39,7 +40,6 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
-  type StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -6237,13 +6237,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       this.publish({ ...base, method: 'turn.aborted', reason: 'interrupted' });
       record.session.status = 'ready';
     } else {
-      this.publish({
-        ...base,
-        method: 'turn.completed',
-        ...mapAcpStopReasonToTurnCompletion(
-          (stopReason ?? 'end_turn') as StopReason,
-        ),
-      });
+      this.publish(
+        interpretAcpTurnStop({
+          ...base,
+          method: 'turn.completed',
+          ...mapAcpStopReasonToTurnCompletion(stopReason),
+        }),
+      );
       record.session.status = 'ready';
     }
     record.session.updatedAt = new Date().toISOString();
@@ -6431,16 +6431,18 @@ export class AcpAdapter implements ProviderAdapterShape {
           turnId,
           response.stopReason === 'cancelled' ? 'cancelled' : 'unresolved',
         );
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId,
-          createdAt: new Date().toISOString(),
-          turnId,
-          ...this.turnOrigin(record, turnId),
-          method: 'turn.completed',
-          ...mapAcpStopReasonToTurnCompletion(response.stopReason),
-        });
+        this.publish(
+          interpretAcpTurnStop({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            ...this.turnOrigin(record, turnId),
+            method: 'turn.completed',
+            ...mapAcpStopReasonToTurnCompletion(response.stopReason),
+          }),
+        );
         record.session.status = 'ready';
         record.session.updatedAt = new Date().toISOString();
         record.activeTurnId = undefined;

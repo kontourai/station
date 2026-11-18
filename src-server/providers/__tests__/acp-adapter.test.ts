@@ -4433,7 +4433,7 @@ describe('AcpAdapter', () => {
     expect(await adapter.hasSession('thread-other')).toBe(false);
   });
 
-  test('#354 a refusal or exhausted request budget completes the turn but keeps the ACP stop reason', async () => {
+  test('#354 refusal and request budget exhaustion settle as non-retryable failures with their provider reason', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
@@ -4458,7 +4458,7 @@ describe('AcpAdapter', () => {
       completions.push(
         (await nextEvent(
           iterator,
-          `turn.completed (${stopReason})`,
+          `terminal (${stopReason})`,
         )) as unknown as Record<string, unknown>,
       );
     }
@@ -4467,14 +4467,16 @@ describe('AcpAdapter', () => {
     expect(ended).toMatchObject({ finishReason: 'stop' });
     expect(ended).not.toHaveProperty('stopReason');
     expect(refused).toMatchObject({
-      method: 'turn.completed',
-      finishReason: 'other',
-      stopReason: 'refusal',
+      method: 'runtime.error',
+      code: 'acp-turn-refused',
+      retryable: false,
+      details: { stopReason: 'refusal' },
     });
     expect(exhausted).toMatchObject({
-      method: 'turn.completed',
-      finishReason: 'other',
-      stopReason: 'max_turn_requests',
+      method: 'runtime.error',
+      code: 'acp-turn-request-limit',
+      retryable: false,
+      details: { stopReason: 'max_turn_requests' },
     });
     await adapter.stopAll();
   });

@@ -1284,6 +1284,15 @@ Station reads the binary's `--version` to tell the two apart
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
 
+The turn outcome follows the engine’s reported stop reason. A refusal or
+request-budget limit ends the turn with a failure explanation. An unrecognized
+or missing stop reason records an unconfirmed result. Station retains the
+bounded provider reason when the engine supplied one, and these outcomes carry
+no automatic retry authority. A person can send a new turn in the same
+attached chat. History with an older ACP `other` completion is interpreted
+using its stored reason at read time. When that reason is absent, the result
+remains unconfirmed.
+
 ### File System and Terminal Tools (Station → Runtime)
 
 The adapter reuses `createACPBridgeClient`'s file-system and terminal callback handlers, so the runtime can read/write files on the Station host and ask it to run commands. A command (`terminal/create`) runs on the host only in a session whose server-derived confinement is `host`, one started by a caller who may grant full access (#2497). A session confined to its workspace is answered `-32600` with the reason and nothing starts, because Station has no sandbox for agent terminal commands. On a personal host the commands are terminal sessions the operator can watch ([terminal design](../design/terminal.md#session-kinds)).

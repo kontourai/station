@@ -422,6 +422,24 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     );
   });
 
+  test('an ACP request-limit stop delivers attention instead of a finished notice', async () => {
+    await emit('orchestration:event', {
+      event: baseEvent({
+        provider: 'acp',
+        method: 'turn.completed',
+        finishReason: 'other',
+        stopReason: 'max_turn_requests',
+      }),
+    });
+    expect(await notificationService.list()).toEqual([
+      expect.objectContaining({
+        category: 'turn-failed',
+        title: 'Your agent needs attention',
+        priority: 'high',
+      }),
+    ]);
+  });
+
   test('schedules a "failed" notification for turn.aborted', async () => {
     await emit('orchestration:event', {
       event: baseEvent({ method: 'turn.aborted', reason: 'crashed' }),

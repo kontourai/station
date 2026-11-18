@@ -53,6 +53,7 @@ import {
 } from '@kontourai/station-contracts/notification';
 import {
   type CanonicalRuntimeEvent,
+  describeAcpTurnStopFailure,
   isProviderTriggeredTurn,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -392,9 +393,13 @@ export function resolveTurnCompletionOutcome(
   event: Pick<CanonicalRuntimeEvent, 'method'> & {
     provider?: CanonicalRuntimeEvent['provider'];
     retriable?: boolean;
+    finishReason?: unknown;
+    stopReason?: unknown;
+    metadata?: unknown;
   },
 ): TurnOutcome | undefined {
-  if (event.method === 'turn.completed') return 'done';
+  if (event.method === 'turn.completed')
+    return describeAcpTurnStopFailure(event) ? 'failed' : 'done';
   // station#2235: a recovery-synthesized abort (`recoveryTerminal`) maps
   // here like any abort — deliberately, not by omission. The needs_input
   // attention path schedules no offline push, so this is the crash's ONLY
@@ -1288,7 +1293,7 @@ export function wireTurnCompletionNotifications(
               });
               return;
             }
-            outcome = 'replied';
+            if (outcome === 'done') outcome = 'replied';
           }
           if (providerTurn && outcome === 'failed') outcome = 'reply-failed';
 

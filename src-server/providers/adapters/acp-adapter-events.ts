@@ -21,7 +21,6 @@ import type {
   PermissionOptionKind,
   RequestPermissionOutcome,
   SessionUpdate,
-  StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
@@ -624,7 +623,7 @@ function splitExtensionMethod(method: string): {
  * vocabulary (Lifecycle Mapping Table row 13).
  */
 export function mapAcpStopReasonToFinishReason(
-  reason: StopReason,
+  reason: string | undefined,
 ): TurnCompletedEvent['finishReason'] {
   switch (reason) {
     case 'end_turn':
@@ -645,16 +644,12 @@ export function mapAcpStopReasonToFinishReason(
 const MAX_ACP_STOP_REASON_LENGTH = 64;
 
 /**
- * The `turn.completed` outcome fields for an ACP `StopReason`. #354: a reason
- * the shared finishReason vocabulary cannot express (`refusal`,
- * `max_turn_requests`, or one a newer agent invents) still folds to
- * `'other'`, but its raw value rides along as `stopReason`, so a refusal and
- * an exhausted request budget stay distinguishable from an ordinary stop.
- * Whether `max_turn_requests` should be retryable is an open product
- * decision; this only preserves the fact.
+ * ACP terminal observations before interpretation. An otherwise
+ * unrepresentable provider reason takes the shared 'other' value and
+ * carries the bounded original for the typed runtime-failure projection.
  */
 export function mapAcpStopReasonToTurnCompletion(
-  reason: StopReason,
+  reason: string | undefined,
 ): Pick<TurnCompletedEvent, 'finishReason' | 'stopReason'> {
   const finishReason = mapAcpStopReasonToFinishReason(reason);
   if (finishReason !== 'other') return { finishReason };

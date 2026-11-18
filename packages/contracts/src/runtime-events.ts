@@ -9,6 +9,7 @@ import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
   type EngineId,
+  isAcpFamilyEngine,
   PROVIDER_CODEX,
 } from './provider.js';
 import type { ProviderFailure } from './provider-failure.js';
@@ -554,7 +555,9 @@ export interface TurnCompletedEvent extends CanonicalRuntimeEventBase {
    * shared vocabulary cannot express it (it then reads `'other'`). Opaque
    * engine text: an ACP agent reports `refusal` or `max_turn_requests` here,
    * which would otherwise be indistinguishable from any other `'other'`
-   * stop. It does not change the turn's outcome: the turn still completed.
+   * stop. Older rows carry this field on the terminal completion; current
+   * ACP producers report unsuccessful stops as runtime.error with the
+   * same bounded reason in details.stopReason.
    */
   stopReason?: string;
   outputText?: SpillableText;
@@ -1010,6 +1013,102 @@ export interface RuntimeErrorEvent
    * on its own (see {@link PROVIDER_TURN_TRIGGER}).
    */
   metadata?: Record<string, unknown>;
+}
+
+const ACP_STOP_FAILURE_CODES = [
+  'acp-turn-refused',
+  'acp-turn-request-limit',
+  'acp-turn-outcome-unknown',
+] as const;
+const ACP_STOP_FAILURE_MESSAGES = [
+  'The engine declined the request.',
+  'The engine reached its request limit.',
+  'The engine did not confirm a result.',
+] as const;
+
+type AcpCompletionEvidence = {
+  provider: string;
+  finishReason?: unknown;
+  stopReason?: unknown;
+};
+
+function acpCompletionFailureIndex(
+  event: AcpCompletionEvidence,
+): 0 | 1 | 2 | undefined {
+  if (event.finishReason !== 'other' || !isAcpFamilyEngine(event.provider))
+    return undefined;
+  return event.stopReason === 'refusal'
+    ? 0
+    : event.stopReason === 'max_turn_requests'
+      ? 1
+      : 2;
+}
+
+/** Fixed transcript copy for an inconclusive historical ACP completion. */
+export function acpCompletionFailureMessage(
+  event: AcpCompletionEvidence,
+): string | undefined {
+  const index = acpCompletionFailureIndex(event);
+  return index === undefined ? undefined : ACP_STOP_FAILURE_MESSAGES[index];
+}
+
+/** Display-safe explanation for both wire shapes at the delegation and notice seams. */
+export function describeAcpTurnStopFailure(event: {
+  method?: unknown;
+  provider?: unknown;
+  finishReason?: unknown;
+  stopReason?: unknown;
+  code?: unknown;
+}): { code: string; message: string } | undefined {
+  if (typeof event.provider !== 'string') return undefined;
+  let index: number | undefined;
+  if (event.method === 'turn.completed') {
+    index = acpCompletionFailureIndex({ ...event, provider: event.provider });
+  } else if (
+    event.method === 'runtime.error' &&
+    isAcpFamilyEngine(event.provider)
+  ) {
+    index = ACP_STOP_FAILURE_CODES.findIndex((code) => code === event.code);
+  }
+  const code = index === undefined ? undefined : ACP_STOP_FAILURE_CODES[index];
+  const message =
+    index === undefined ? undefined : ACP_STOP_FAILURE_MESSAGES[index];
+  return code && message ? { code, message } : undefined;
+}
+
+/**
+ * Use the established runtime failure event for a non-successful ACP stop.
+ * Read projections may interpret older rows through this same function
+ * without modifying the raw event or honoring its former success stamp.
+ */
+export function interpretAcpTurnStop(
+  event: TurnCompletedEvent,
+): TurnCompletedEvent | RuntimeErrorEvent {
+  const index = acpCompletionFailureIndex(event);
+  if (index === undefined) return event;
+  const {
+    finishReason: _finishReason,
+    stopReason,
+    outputText: _outputText,
+    sessionState: _sessionState,
+    previousState: _previousState,
+    transitionReason: _transitionReason,
+    transitionSource: _transitionSource,
+    ...identity
+  } = event;
+  const unknownOutcome = index === 2;
+  return {
+    ...identity,
+    code: ACP_STOP_FAILURE_CODES[index],
+    message: ACP_STOP_FAILURE_MESSAGES[index],
+    method: 'runtime.error',
+    severity: 'error',
+    kind: unknownOutcome ? 'indeterminate' : 'provider_error',
+    failurePhase: unknownOutcome ? 'indeterminate' : 'failed',
+    retryable: false,
+    retriable: false,
+    ...(stopReason ? { details: { stopReason } } : {}),
+  };
 }
 
 /**
