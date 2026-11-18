@@ -687,6 +687,7 @@ describe('TaskWorkspaceView', () => {
           retainedAnchorDigest: 'c'.repeat(64),
         },
         hasMore: false,
+        integrity: 'L0',
         records: [
           {
             actor: { kind: 'agent', label: 'Researcher' },
