@@ -13,6 +13,12 @@ override. Catalog defaults describe the model, not local CLI configuration.
 
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
+`@kontourai/station-contracts/delegation-group` defines the
+[CLI Session group view](../../packages/contracts/src/delegation-group.ts)
+for the dormant server owner. It describes reserved member starts, observed
+Session state and Flow lineage. The dispatch allowance bounds reservations.
+The view carries neither dispatch authority nor a portable Flow envelope.
+
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
 scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
 `LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the

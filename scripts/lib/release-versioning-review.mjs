@@ -20,6 +20,7 @@
  * are accurate or that anything was published.
  */
 import { posix } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import assembleReleasePlan from '@changesets/assemble-release-plan';
 import { validateConfig } from '@changesets/config';
 import { parseChangesetFile } from '@changesets/parse';
@@ -33,6 +34,7 @@ import { readGitObjects } from './review-git.mjs';
 /** A unit that edits any of these recognises nothing (see the guide). */
 const RELEASE_VERSIONING_OWNERS = Object.freeze([
   'scripts/lib/release-versioning-review.mjs',
+  'scripts/lib/changeset-note-commits.mjs',
   'scripts/changeset-changelog.mjs',
   '.changeset/config.json',
 ]);
@@ -97,7 +99,7 @@ function isPendingChangesetNote(file) {
 }
 
 /** The workspace as `@manypkg/get-packages` sees it, from the starting tree. */
-function readWorkspace(read) {
+function readWorkspace(read, prefetch) {
   let listed;
   try {
     listed = parseYaml(decode(read('before', 'pnpm-workspace.yaml')) ?? '');
@@ -115,8 +117,14 @@ function readWorkspace(read) {
   if (!rootJson) return undefined;
   const ROOT = '/workspace';
   const packages = [];
-  for (const dir of dirs) {
-    const relativeDir = posix.normalize(dir).replace(/\/$/, '');
+  const relativeDirs = dirs.map((dir) =>
+    posix.normalize(dir).replace(/\/$/, ''),
+  );
+  prefetch(
+    'before',
+    relativeDirs.map((dir) => `${dir}/package.json`),
+  );
+  for (const relativeDir of relativeDirs) {
     const packageJson = parseJson(
       decode(read('before', `${relativeDir}/package.json`)),
     );
@@ -135,7 +143,7 @@ function readWorkspace(read) {
  * The release plan `changeset version` would apply at the unit's start, or
  * undefined when this unit is not exactly that operation.
  */
-function planRelease({ changes, read, listBefore, addedBy }) {
+function planRelease({ changes, read, listBefore, addedBy, prefetch }) {
   if (
     changes.some(({ file }) => RELEASE_VERSIONING_OWNERS.includes(file)) ||
     changes.some(
@@ -166,7 +174,13 @@ function planRelease({ changes, read, listBefore, addedBy }) {
     )
   )
     return { refused: 'no pending notes, or pre mode' };
-  const workspace = readWorkspace(read);
+  prefetch('before', [
+    'pnpm-workspace.yaml',
+    'package.json',
+    '.changeset/config.json',
+    ...pending,
+  ]);
+  const workspace = readWorkspace(read, prefetch);
   const configJson = parseJson(
     decode(read('before', '.changeset/config.json')),
   );
@@ -213,8 +227,7 @@ function planRelease({ changes, read, listBefore, addedBy }) {
   // The commit each consumed note's changelog line names
   // (@changesets/git getCommitsThatAddFiles on the starting tree).
   const commits = new Map();
-  for (const file of pending) {
-    const commit = addedBy(file);
+  for (const [file, commit] of addedBy(pending)) {
     if (commit === null)
       return { refused: 'a note’s adding commit cannot be resolved' };
     if (commit) commits.set(posix.basename(file).replace(/\.md$/, ''), commit);
@@ -431,7 +444,8 @@ function isGeneratedChangelog(before, after, expected) {
  *   changes: { status: string, file: string }[],
  *   read: (side: 'before' | 'after', file: string) => Buffer | string | undefined,
  *   listBefore: (dir: string) => string[],
- *   addedBy: (file: string) => string | undefined | null,
+ *   addedBy: (files: string[]) => [string, string | undefined | null][],
+ *   prefetch?: (side: 'before' | 'after', files: string[]) => void,
  * }} unit `listBefore` lists tracked files under a directory at the start;
  * `addedBy` gives the full hash of the commit that added a note (undefined
  * when none, null when it cannot be resolved as the CLI would).
@@ -442,6 +456,7 @@ export function releaseVersioningOutputs({
   read,
   listBefore,
   addedBy,
+  prefetch = () => {},
 }) {
   if (
     !changes.some(
@@ -449,7 +464,7 @@ export function releaseVersioningOutputs({
     )
   )
     return NOTHING_CONSUMED;
-  const planned = planRelease({ changes, read, listBefore, addedBy });
+  const planned = planRelease({ changes, read, listBefore, addedBy, prefetch });
   if (planned.refused) return { ...EMPTY, refused: planned.refused };
   const { workspace, releases, notes, commits } = planned;
   const byDir = new Map(
@@ -457,15 +472,27 @@ export function releaseVersioningOutputs({
   );
   const manifests = new Set();
   const changelogs = new Set();
-  for (const { status, file } of changes) {
-    if (status !== 'M') continue;
+  const outputs = changes
+    .filter(({ status, file }) => {
+      if (status !== 'M') return false;
+      const release = releases.get(byDir.get(posix.dirname(file)));
+      return (
+        file === 'package.json' ||
+        (posix.basename(file) === 'package.json' && release) ||
+        (posix.basename(file) === 'CHANGELOG.md' &&
+          release &&
+          release.type !== 'none')
+      );
+    })
+    .map(({ file }) => file);
+  prefetch('before', outputs);
+  prefetch('after', outputs);
+  for (const file of outputs) {
     const dir = posix.dirname(file);
     const base = posix.basename(file);
     if (base === 'package.json') {
       const name = file === 'package.json' ? undefined : byDir.get(dir);
       const release = name && releases.get(name);
-      // Root ranges move too; any other manifest must be a planned package.
-      if (file !== 'package.json' && !release) continue;
       if (
         isPlannedManifest(
           decode(read('before', file)),
@@ -476,7 +503,6 @@ export function releaseVersioningOutputs({
         manifests.add(file);
     } else if (base === 'CHANGELOG.md') {
       const release = releases.get(byDir.get(dir));
-      if (!release || release.type === 'none') continue;
       const expected = expectedSection(release, {
         releases,
         notes,
@@ -521,10 +547,19 @@ export function releaseVersioningOutputsBetween(root, before, after, changes) {
   )
     return NOTHING_CONSUMED;
   const cache = new Map();
+  const objectSpec = (side, file) =>
+    `${side === 'before' ? before : after}:${file}`;
+  const prefetch = (side, files) => {
+    const specs = [
+      ...new Set(files.map((file) => objectSpec(side, file))),
+    ].filter((spec) => !cache.has(spec));
+    const objects = readGitObjects(root, specs);
+    for (const [index, spec] of specs.entries())
+      cache.set(spec, objects[index]);
+  };
   const read = (side, file) => {
-    const spec = `${side === 'before' ? before : after}:${file}`;
-    if (!cache.has(spec)) cache.set(spec, readGitObjects(root, [spec])[0]);
-    return cache.get(spec);
+    prefetch(side, [file]);
+    return cache.get(objectSpec(side, file));
   };
   const listBefore = (dir) =>
     execFileSyncBounded(
@@ -544,21 +579,33 @@ export function releaseVersioningOutputsBetween(root, before, after, changes) {
   // shallow checkout here cannot, so such a note is unresolvable.
   const shallow =
     git(['rev-parse', '--is-shallow-repository']).trim() === 'true';
-  const addedBy = (file) => {
-    const [commit, parent] = git([
-      'log',
-      '--diff-filter=AC',
-      '--follow',
-      '--max-count=1',
-      '--pretty=format:%H:%p',
-      before,
-      '--',
-      file,
-    ])
-      .trim()
-      .split(':');
-    if (!commit) return undefined;
-    return !parent && shallow ? null : commit;
+  const addedBy = (files) => {
+    const results = JSON.parse(
+      execFileSyncBounded(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL('./changeset-note-commits.mjs', import.meta.url),
+          ),
+        ],
+        {
+          cwd: root,
+          input: JSON.stringify({ before, files }),
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      ),
+    );
+    return files.map((file, index) => {
+      const [commit, parent] = results[index].split(':');
+      return [file, commit ? (!parent && shallow ? null : commit) : undefined];
+    });
   };
-  return releaseVersioningOutputs({ changes, read, listBefore, addedBy });
+  return releaseVersioningOutputs({
+    changes,
+    read,
+    listBefore,
+    addedBy,
+    prefetch,
+  });
 }
