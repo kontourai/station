@@ -129,16 +129,16 @@
   padding-bottom: calc(var(--k-space-5) + var(--dock-bottom-clearance));
 }
 
-/* Sources own their scrollport between the header and the shell's dock reserve. */
-.route-transition:has(> .project-settings--sources) {
+/* Sources and Memory scroll within the shell's dock clearance. */
+.route-transition:has(> .project-settings--bounded-list) {
   min-height: 0;
   overflow: hidden;
 }
-.project-settings--sources,
-.project-settings--sources .project-settings__layout {
+.project-settings--bounded-list,
+.project-settings--bounded-list .project-settings__layout {
   overflow: hidden;
 }
-.project-settings--sources .project-settings__body {
+.project-settings--bounded-list .project-settings__body {
   margin-bottom: 0;
   padding-bottom: var(--k-space-5);
   scroll-padding-block: var(--k-space-4);
