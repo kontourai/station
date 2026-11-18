@@ -1,0 +1,9 @@
+{
+  "revision": "608bf90285e6e7abc681e2789dd44b775867cddf",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"The mounted Task thread fixture now includes the existing L0 integrity marker on its history response. The contract and observed navigation are the same, with a complete fixture shape.","inputs":["src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The mounted Task thread fixture now includes the existing L0 integrity marker on its history response. The contract and observed navigation are the same, with a complete fixture shape.","inputs":["src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]}
+  ]
+}
