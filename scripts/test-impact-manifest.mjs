@@ -636,6 +636,15 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
     reason:
       'the browser fixture bundles ProjectSettingsView from a string outside the import graph',
   })),
+  {
+    pattern: 'tests/interactive-workspace-performance-bridge.spec.ts',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
+    ],
+    reason:
+      'the non-reference host guard executes this Playwright spec through a child process',
+  },
   ...[
     'docs/reference/play-data-safety.md',
     'docs/privacy-policy.md',

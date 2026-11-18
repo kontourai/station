@@ -93,6 +93,9 @@ export function parseCoreArgs(args: string[]): ParsedCoreArgs {
     const trimmed = arg.slice(2);
     const equalsIndex = trimmed.indexOf('=');
     if (equalsIndex === -1) {
+      if (trimmed === 'model-option') {
+        throw new Error('--model-option requires --model-option=key=value.');
+      }
       if (trimmed === 'verbose') {
         // A global diagnostic flag: command-specific allow-lists enumerate
         // flags, so keep it readable but non-enumerable everywhere.

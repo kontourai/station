@@ -1,0 +1,19 @@
+{
+  "revision": "353021f91679a8afc8a8d6bff6e227542663473a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the native fieldset used for the named Models group. It groups native model and favorite actions, keeps the current-route state and existing keyboard shortcuts, and preserves calls to the existing model selection, favorite and runtime owners. No user instructions, provider identifiers, or Session contracts change.","inputs":["src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the native fieldset used for the named Models group. It groups native model and favorite actions, keeps the current-route state and existing keyboard shortcuts, and preserves calls to the existing model selection, favorite and runtime owners. No user instructions, provider identifiers, or Session contracts change.","inputs":["src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the native fieldset used for the named Models group. It groups native model and favorite actions, keeps the current-route state and existing keyboard shortcuts, and preserves calls to the existing model selection, favorite and runtime owners. No user instructions, provider identifiers, or Session contracts change.","inputs":["src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the native fieldset used for the named Models group. It groups native model and favorite actions, keeps the current-route state and existing keyboard shortcuts, and preserves calls to the existing model selection, favorite and runtime owners. No user instructions, provider identifiers, or Session contracts change.","inputs":["src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the native fieldset used for the named Models group. It groups native model and favorite actions, keeps the current-route state and existing keyboard shortcuts, and preserves calls to the existing model selection, favorite and runtime owners. No user instructions, provider identifiers, or Session contracts change.","inputs":["src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the native fieldset’s outer box defaults against the existing model list styles. The layout retains the bounded scroll region, model and favorite hit targets, and current model styling. The targeted Gallery and desktop and mobile render evidence cover this scope only.","inputs":["src-ui/src/components/session/SessionModelPicker.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the keyboard group boundary assertion with the outer Models fieldset in place. Model actions in grouped routes still sit inside their route fieldset; ordinary results stay at the results level. Arrow traversal and model identity checks retain their existing behavior.","inputs":["src-ui/src/__tests__/SessionModelPicker.test.tsx"]}
+  ]
+}

@@ -400,6 +400,11 @@ Common fields:
 | `skills` | string[] | no | Skill package IDs contributed by the plugin |
 | `settings` | PluginSettingField[] | no | Configurable settings (see Settings) |
 
+Use the declared ID in SDK document and vault calls for the same Project
+namespace. Applying the [Enterprise Layout example](../../examples/enterprise-layout/README.md#knowledge-namespaces)
+registers `enterprise-notes`, which its Notes pane already uses. A Project's existing
+namespace registrations remain in place when a layout adds another one.
+
 #### Reserved plugin names
 
 `name` is the logical installation identity and the URL segment your server

@@ -1013,8 +1013,13 @@ slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final use it: every canonical phase and Android viewport test must
-succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final
+use it, along with main pushes. Every canonical phase and the Android viewport
+suite must succeed, with bounded exact-source reuse. Pushes that change only
+the two deploy-ledger files are ignored. UI-only pushes qualify their own SHA,
+including the Android viewport job. Qualification completion triggers
+Main: Qualification health, whose result is watched by Main: Health.
+A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour
 minimum publication interval before running lint, all typecheck lanes, native
@@ -1763,9 +1768,8 @@ spec. The job checks out the base without replace refs or hooks, refuses a
 base checkout that is not exactly the base commit and clean, and runs the
 attribution with the `node` resolved before candidate code; that keeps honest
 accidents out, nothing more. Nothing may trust the PR Gallery
-conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
-workflow's contexts, but the capture job skips there: Gallery is not a required
-context, so a candidate's capture could not stop a landing. Combined changes
+conclusion, which is one reason it is not a required check. Merge-queue candidates run the allowlist ceiling and skip both capture and its
+input classifier. GitHub still reports the Gallery job contexts for each candidate. Combined changes
 are otherwise captured after landing by `Nightly: Gallery` once a day, which
 checks capture integrity and reports pixel differences but does not run the
 product assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
