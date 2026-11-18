@@ -411,6 +411,19 @@ test.describe('compatibility-aware reconnect', () => {
               inFlight: 0,
               maxInFlight: 0,
             });
+            await page.route(
+              new URL('/.well-known/station/v1', secondStation).href,
+              (route) =>
+                route.fulfill({
+                  json: {
+                    schemaVersion: 1,
+                    environmentId: '22222222-2222-4222-8222-222222222222',
+                    authentication: { scheme: 'bearer', protocolVersion: 1 },
+                    transports: { http: 1, sse: 1, websocket: 1 },
+                    compatibility: E2E_STATION_COMPATIBILITY,
+                  },
+                }),
+            );
             if (identityMismatch) {
               await page.route(`${baseURL}/.well-known/station/v1`, (route) =>
                 route.fulfill({
@@ -602,6 +615,69 @@ test.describe('compatibility-aware reconnect', () => {
                   });
                 },
               );
+              await expect(
+                page.getByRole('button', { name: 'Load models', exact: true }),
+              ).toHaveCount(0);
+              const hideAll = page.getByRole('button', {
+                name: 'Hide all (1)',
+                exact: true,
+              });
+              const showAll = page.getByRole('button', {
+                name: 'Show all (1)',
+                exact: true,
+              });
+              await expect(showAll).toBeDisabled();
+              await expect(
+                page.getByRole('button', {
+                  name: 'Move fixture-model up',
+                  exact: true,
+                }),
+              ).toBeDisabled();
+              await expect(
+                page.getByRole('button', {
+                  name: 'Move fixture-model down',
+                  exact: true,
+                }),
+              ).toBeDisabled();
+              await hideAll.tap();
+              await expect(
+                page.getByText('0 of 1 visible', { exact: true }),
+              ).toBeVisible();
+              await expect(hideAll).toBeDisabled();
+              await showAll.tap();
+              await expect(
+                page.getByText('1 of 1 visible', { exact: true }),
+              ).toBeVisible();
+              await page
+                .getByRole('button', {
+                  name: 'Add fixture-model to favorites',
+                  exact: true,
+                })
+                .tap();
+              await page
+                .getByRole('button', {
+                  name: 'Remove fixture-model from favorites',
+                  exact: true,
+                })
+                .tap();
+              await page
+                .getByRole('button', {
+                  name: 'Hide fixture-model',
+                  exact: true,
+                })
+                .tap();
+              await expect(
+                page.getByText('0 of 1 visible', { exact: true }),
+              ).toBeVisible();
+              await page
+                .getByRole('button', {
+                  name: 'Show fixture-model',
+                  exact: true,
+                })
+                .tap();
+              await expect(
+                page.getByText('1 of 1 visible', { exact: true }),
+              ).toBeVisible();
               const modelPath = `/api/connections/${modelId}`;
               const updatedModel = page.getByRole('button', {
                 name: new RegExp(`^Renamed model ${suffix}`),
@@ -635,6 +711,12 @@ test.describe('compatibility-aware reconnect', () => {
                 data: { name: `Renamed model ${suffix}` },
               });
               await page.getByRole('button', { name: '← Back to list' }).tap();
+              const modelSearch = page.getByPlaceholder(
+                'Search model connections…',
+              );
+              await modelSearch.fill('nothing-matches-this-model');
+              await expect(updatedModel).toHaveCount(0);
+              await modelSearch.clear();
               await updatedModel.tap();
               await page
                 .getByRole('button', { name: 'Delete', exact: true })
@@ -713,6 +795,10 @@ test.describe('compatibility-aware reconnect', () => {
                 data: { displayName: `Renamed tool server ${suffix}` },
               });
               await page.getByRole('button', { name: '← Back to list' }).tap();
+              const toolSearch = page.getByPlaceholder('Search tool servers…');
+              await toolSearch.fill('nothing-matches-this-tool');
+              await expect(updatedTool).toHaveCount(0);
+              await toolSearch.clear();
               await updatedTool.tap();
               for (const enabled of [true, false]) {
                 const lifecycle = page.waitForResponse(
@@ -737,6 +823,30 @@ test.describe('compatibility-aware reconnect', () => {
                 ).toBeVisible();
               }
 
+              const account = page.getByRole('region', {
+                name: 'Your connected account',
+              });
+              const authorize = page.waitForResponse(
+                (response) =>
+                  response.request().method() === 'POST' &&
+                  new URL(response.url()).pathname ===
+                    `${toolPath}/oauth/authorize`,
+              );
+              await account
+                .getByRole('button', {
+                  name: /^(Sign in|Connect your account)$/,
+                })
+                .tap();
+              expect((await authorize).status()).toBe(400);
+              await expect(
+                account.getByText('Account action failed', { exact: true }),
+              ).toBeVisible();
+              await expect(
+                account.getByRole('button', {
+                  name: 'Open sign-in page',
+                  exact: true,
+                }),
+              ).toHaveCount(0);
               const toolChecked = page.waitForResponse(
                 (response) =>
                   response.request().method() === 'POST' &&
@@ -871,6 +981,7 @@ test.describe('compatibility-aware reconnect', () => {
               for (const [label, section] of [
                 ['Embedding model', 'embedding-model'],
                 ['Vector database', 'vector-database'],
+                ['Usage', 'usage'],
               ]) {
                 await sections.getByRole('link', { name: label }).tap();
                 await expect(page).toHaveURL(
@@ -981,6 +1092,19 @@ test.describe('compatibility-aware reconnect', () => {
                 'href',
                 /machine-relationships\.md$/,
               );
+              const guideURL =
+                'https://github.com/kontourai/station/blob/main/docs/guides/machine-relationships.md';
+              await page
+                .context()
+                .route(guideURL, (route) =>
+                  route.fulfill({ body: 'Machine relationships' }),
+                );
+              const guideTab = page.waitForEvent('popup');
+              await guide.tap();
+              const openedGuide = await guideTab;
+              await expect(openedGuide).toHaveURL(guideURL);
+              await openedGuide.close();
+
               await chooser
                 .getByRole('button', {
                   name: /^Control this Station from another device/,
@@ -1157,6 +1281,15 @@ test.describe('compatibility-aware reconnect', () => {
                 });
               },
             );
+            await page.route('**/api/connections/codex/test', (route) =>
+              route.fulfill({
+                status: 503,
+                json: {
+                  success: false,
+                  error: 'The fixture catalog is temporarily unavailable.',
+                },
+              }),
+            );
             await page.goto('/connections/engines');
             await expect(
               page.getByTestId('app-toolbar-connection'),
@@ -1166,9 +1299,84 @@ test.describe('compatibility-aware reconnect', () => {
                 ? /Needs re-pairing/
                 : /Choose Station — Connected/,
             );
+            const engineSearch = page.getByPlaceholder('Search engines…');
+            const initialRow = page.getByRole('button', {
+              name: new RegExp(`^${initialName}`),
+            });
+            await expect(initialRow).toBeVisible();
+            await engineSearch.fill('nothing-matches-this-engine');
+            await expect(initialRow).toHaveCount(0);
+            await engineSearch.clear();
             await page
               .getByRole('button', { name: new RegExp(`^${initialName}`) })
               .tap();
+            const account = page.getByRole('region', {
+              name: 'Codex account and usage',
+            });
+            await expect(
+              account.getByText('Signed out', { exact: true }),
+            ).toBeVisible();
+            await expect(
+              account.getByText('Add an account to sign in here.', {
+                exact: true,
+              }),
+            ).toBeVisible();
+            await account
+              .getByRole('button', { name: 'Add account', exact: true })
+              .tap();
+            await expect(
+              account.getByRole('textbox', { name: 'Account name' }),
+            ).toBeVisible();
+            await account
+              .getByRole('button', { name: 'Cancel', exact: true })
+              .tap();
+            await expect(
+              account.getByRole('textbox', { name: 'Account name' }),
+            ).toHaveCount(0);
+            const accountsRead = page.waitForResponse(
+              (response) =>
+                response.request().method() === 'GET' &&
+                new URL(response.url()).pathname ===
+                  '/api/connections/agent/codex/accounts',
+            );
+            await account
+              .getByRole('button', { name: 'Refresh', exact: true })
+              .tap();
+            expect((await accountsRead).ok()).toBe(true);
+            const month = account.getByRole('button', {
+              name: '30 days',
+              exact: true,
+            });
+            await month.tap();
+            await expect(month).toHaveAttribute('aria-pressed', 'true');
+            const week = account.getByRole('button', {
+              name: '7 days',
+              exact: true,
+            });
+            await week.tap();
+            await expect(week).toHaveAttribute('aria-pressed', 'true');
+            await page
+              .getByRole('button', {
+                name: 'Manage proxies in Models',
+                exact: true,
+              })
+              .tap();
+            await expect(page).toHaveURL(/\/connections\/models$/);
+            await page.goBack();
+            await expect(page).toHaveURL(/\/connections\/engines\/codex$/);
+            const refreshed = page.waitForResponse(
+              (response) =>
+                response.request().method() === 'POST' &&
+                new URL(response.url()).pathname ===
+                  '/api/connections/codex/test',
+            );
+            await page
+              .getByRole('button', { name: 'Refresh models', exact: true })
+              .tap();
+            expect((await refreshed).status()).toBe(503);
+            await expect(
+              page.getByText('Couldn’t refresh models.', { exact: false }),
+            ).toBeVisible();
             await page.getByText('Advanced', { exact: true }).tap();
             const name = page.getByRole('textbox', {
               name: 'Name',
@@ -1608,6 +1816,34 @@ test.describe('compatibility-aware reconnect', () => {
                 name: `View details for ${label}`,
               });
               await row.tap();
+              const activeId = () =>
+                page.evaluate(() =>
+                  localStorage.getItem('station-connect-connections-active'),
+                );
+              await stations
+                .getByRole('button', {
+                  name: `Switch to ${label}`,
+                  exact: true,
+                })
+                .tap();
+              await expect.poll(activeId).toBe('c2');
+              await stations
+                .getByRole('button', {
+                  name: 'View details for Dev Server',
+                  exact: true,
+                })
+                .tap();
+              await stations
+                .getByRole('button', {
+                  name: 'Switch to Dev Server',
+                  exact: true,
+                })
+                .tap();
+              await expect.poll(activeId).toBe('c1');
+              await expect(row).toHaveAttribute('aria-expanded', 'true');
+              await row.tap({ position: { x: 20, y: 14 } });
+              await expect(row).toHaveAttribute('aria-expanded', 'false');
+              await row.tap();
               const rowDetails = stations
                 .locator('.station-connect-row')
                 .filter({
@@ -1706,6 +1942,19 @@ test.describe('compatibility-aware reconnect', () => {
                 name: 'Pair a Device',
               });
               await expect(invite).toBeVisible();
+              await invite
+                .getByRole('textbox', { name: 'Pairing endpoint', exact: true })
+                .fill(new URL(page.url()).origin);
+              await invite
+                .getByRole('button', {
+                  name: 'Create pairing code',
+                  exact: true,
+                })
+                .tap();
+              await expect(
+                invite.getByText(/This address only works on this computer/),
+              ).toBeVisible();
+
               await invite
                 .getByRole('button', { name: 'Back', exact: true })
                 .tap();

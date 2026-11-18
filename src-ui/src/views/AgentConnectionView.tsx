@@ -748,8 +748,15 @@ export function AgentConnectionView({
                 onClick={() => refreshMutation.mutate(form.id)}
                 disabled={dirty || refreshMutation.isPending}
               >
-                Refresh models
+                {refreshMutation.isPending ? 'Refreshing…' : 'Refresh models'}
               </button>
+              {refreshMutation.variables === form.id &&
+                refreshMutation.error && (
+                  <p className="editor-error" role="status">
+                    Couldn’t refresh models.{' '}
+                    {describeStationFailure(refreshMutation.error).body}
+                  </p>
+                )}
             </div>
 
             <details className="provider-detail__advanced">
