@@ -38,7 +38,6 @@ installVisualViewportInset();
 installFoldGeometry();
 
 import App from './App';
-import { MobileWelcomeBoundary } from './components/MobileWelcomeBoundary';
 import { NativeConnectionStartup } from './components/NativeConnectionStartup';
 import { OfflineReadingBoundary } from './components/OfflineReadingBoundary';
 import { WebOfflineShell } from './components/WebOfflineShell';
@@ -123,14 +122,17 @@ const loadOnboardingGate = () =>
   }));
 
 const loadMobileConnectionStartup = async () => {
-  const { OnboardingGate } = await loadConnectionOwner();
+  const [{ OnboardingGate }, { MobileWelcomeBoundary }] = await Promise.all([
+    loadConnectionOwner(),
+    import('./components/MobileWelcomeBoundary'),
+  ]);
   return {
     default: ({ children }: { children: React.ReactNode }) => (
       <>
         <RecoveryQueryBoundary>
           <OnboardingGate>{null}</OnboardingGate>
         </RecoveryQueryBoundary>
-        {children}
+        <MobileWelcomeBoundary>{children}</MobileWelcomeBoundary>
       </>
     ),
   };
@@ -383,77 +385,75 @@ function renderApp(): void {
                               </RecoveryQueryBoundary>
                             }
                           >
-                            <MobileWelcomeBoundary>
-                              <AuthorityQueryProvider
-                                localUiApiBase={localUiApiBase}
-                              >
-                                <TranscriptAppWorkspaceProvider>
-                                  <AccountPreferencesProvider>
-                                    <ManagedPolicyProvider>
-                                      <SyntaxHighlighterProvider>
-                                        <AuthProvider>
-                                          {/* extension-registry stays in the protected
+                            <AuthorityQueryProvider
+                              localUiApiBase={localUiApiBase}
+                            >
+                              <TranscriptAppWorkspaceProvider>
+                                <AccountPreferencesProvider>
+                                  <ManagedPolicyProvider>
+                                    <SyntaxHighlighterProvider>
+                                      <AuthProvider>
+                                        {/* extension-registry stays in the protected
                             query/auth boundary: PluginRegistryBootstrap
                             invalidates ['layouts'] on the authority client
                             and must never run against the observation
                             bootstrap client. Navigation/toast read from
                             the stable providers above. */}
-                                          <PermissionManager>
-                                            <KeyboardShortcutsProvider>
-                                              <ConversationsProvider>
-                                                <ActiveChatsProvider>
-                                                  <VoiceProviderContext>
-                                                    <MessageContextContext>
-                                                      <AnalyticsProvider>
-                                                        <PreviewProvider>
-                                                          <LocaleProvider
-                                                            developmentLocale={
-                                                              developmentLocale
-                                                            }
-                                                          >
-                                                            <RegionModelProvider>
-                                                              <PaneRelationsProvider>
-                                                                <BrandingThemeBridge />
-                                                                <CustomAppearanceBridge />
-                                                                <WorkClaimsProvider>
-                                                                  <ConversationWorkStateProvider>
-                                                                    <InboxDismissUndo>
-                                                                      <UndoableActionShortcut>
-                                                                        <App />
-                                                                      </UndoableActionShortcut>
-                                                                    </InboxDismissUndo>
-                                                                  </ConversationWorkStateProvider>
-                                                                </WorkClaimsProvider>
-                                                              </PaneRelationsProvider>
-                                                            </RegionModelProvider>
-                                                            <NotificationContainer />
-                                                          </LocaleProvider>
-                                                        </PreviewProvider>
-                                                      </AnalyticsProvider>
-                                                    </MessageContextContext>
-                                                  </VoiceProviderContext>
-                                                </ActiveChatsProvider>
-                                              </ConversationsProvider>
-                                            </KeyboardShortcutsProvider>
-                                          </PermissionManager>
-                                          <DeferredCapabilityBoundary
-                                            id="extension-registry"
-                                            failurePresentation="notification"
-                                            load={loadPluginRegistryBootstrap}
-                                            copy={{
-                                              failureTitle:
-                                                EXTENSIONS_UNAVAILABLE_LABEL,
-                                              failure:
-                                                'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
-                                            }}
-                                          />
-                                        </AuthProvider>
-                                      </SyntaxHighlighterProvider>
-                                    </ManagedPolicyProvider>
-                                  </AccountPreferencesProvider>
-                                </TranscriptAppWorkspaceProvider>
-                              </AuthorityQueryProvider>
-                            </MobileWelcomeBoundary>
+                                        <PermissionManager>
+                                          <KeyboardShortcutsProvider>
+                                            <ConversationsProvider>
+                                              <ActiveChatsProvider>
+                                                <VoiceProviderContext>
+                                                  <MessageContextContext>
+                                                    <AnalyticsProvider>
+                                                      <PreviewProvider>
+                                                        <LocaleProvider
+                                                          developmentLocale={
+                                                            developmentLocale
+                                                          }
+                                                        >
+                                                          <RegionModelProvider>
+                                                            <PaneRelationsProvider>
+                                                              <BrandingThemeBridge />
+                                                              <CustomAppearanceBridge />
+                                                              <WorkClaimsProvider>
+                                                                <ConversationWorkStateProvider>
+                                                                  <InboxDismissUndo>
+                                                                    <UndoableActionShortcut>
+                                                                      <App />
+                                                                    </UndoableActionShortcut>
+                                                                  </InboxDismissUndo>
+                                                                </ConversationWorkStateProvider>
+                                                              </WorkClaimsProvider>
+                                                            </PaneRelationsProvider>
+                                                          </RegionModelProvider>
+                                                          <NotificationContainer />
+                                                        </LocaleProvider>
+                                                      </PreviewProvider>
+                                                    </AnalyticsProvider>
+                                                  </MessageContextContext>
+                                                </VoiceProviderContext>
+                                              </ActiveChatsProvider>
+                                            </ConversationsProvider>
+                                          </KeyboardShortcutsProvider>
+                                        </PermissionManager>
+                                        <DeferredCapabilityBoundary
+                                          id="extension-registry"
+                                          failurePresentation="notification"
+                                          load={loadPluginRegistryBootstrap}
+                                          copy={{
+                                            failureTitle:
+                                              EXTENSIONS_UNAVAILABLE_LABEL,
+                                            failure:
+                                              'Station could not start the extension registry. Plugin-provided panes and capabilities remain unavailable until Station is reloaded.',
+                                          }}
+                                        />
+                                      </AuthProvider>
+                                    </SyntaxHighlighterProvider>
+                                  </ManagedPolicyProvider>
+                                </AccountPreferencesProvider>
+                              </TranscriptAppWorkspaceProvider>
+                            </AuthorityQueryProvider>
                           </NativeConnectionStartup>
                         </ScopedToastProvider>
                       </NavigationProvider>
