@@ -80,10 +80,11 @@ if (process.argv[3] === '--help') {
 
       expect(manager.cancel(profile)?.phase).toBe('cancelled');
       await vi.waitFor(
-        () => expect(pids.map(processAlive)).toEqual([false, false]),
-        {
-          timeout: 8000,
+        async () => {
+          const alive = await Promise.all(pids.map(processAlive));
+          expect(alive).toEqual([false, false]);
         },
+        { interval: 100, timeout: 8000 },
       );
     } finally {
       manager.cancelAll();
