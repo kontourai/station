@@ -839,7 +839,11 @@ function buildProgram(
     ) {
       throw new Error('Usage: station import <file> [--resume=<operation-id>]');
     }
-    await importConfig(file, { resumeId: resume?.slice(resumePrefix.length) });
+    if (resume !== undefined) {
+      await importConfig(file, { resumeId: resume.slice(resumePrefix.length) });
+    } else {
+      await importConfig(file);
+    }
   });
   register('stations', async (rawArgs) => {
     await runStationsCommand(rawArgs);
