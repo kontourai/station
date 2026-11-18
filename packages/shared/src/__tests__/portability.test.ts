@@ -148,6 +148,47 @@ ${'<!-- STATION:EXPORT:END -->'}
     expect(plan.ledgerEntry.notesPath).toBe('/tmp/import-note.md');
   });
 
+  test('exports and imports canonical Agent configuration from legacy metadata without changing the source object', () => {
+    const legacy = {
+      name: 'Writer',
+      prompt: 'Write clearly.',
+      streaming: null,
+      ui: {
+        component: 'writer-pane',
+        workflowShortcuts: ['review'],
+        quickPrompts: [{ id: 'hello', label: 'Hello', prompt: 'Hello.' }],
+      },
+    };
+    const canonical = {
+      name: 'Writer',
+      prompt: 'Write clearly.',
+      ui: { component: 'writer-pane', workflowShortcuts: ['review'] },
+    };
+    const document = buildAgentsMdDocument({
+      appConfig: {},
+      agents: [{ slug: 'writer', spec: legacy }],
+      integrations: [],
+      generatedAt: '2026-04-12T06:00:00.000Z',
+    });
+    expect(document.guidance.agents).toEqual([
+      { slug: 'writer', spec: canonical },
+    ]);
+    const historical = serializeAgentsMd({
+      ...document,
+      guidance: {
+        ...document.guidance,
+        agents: [{ slug: 'writer', spec: legacy }],
+      },
+    });
+    const plan = buildAgentsMdImportPlan({
+      sourcePath: '/tmp/AGENTS.md',
+      parsed: parseAgentsMd(historical),
+    });
+    expect(plan.agents).toEqual([{ slug: 'writer', spec: canonical }]);
+    expect(legacy.streaming).toBeNull();
+    expect(legacy.ui.quickPrompts).toHaveLength(1);
+  });
+
   test('records a manifest icon as an omitted-field PortabilityLoss instead of silently dropping it (issue #691)', () => {
     const integration: ToolDef = {
       id: 'survey-mcp',

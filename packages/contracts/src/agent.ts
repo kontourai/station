@@ -139,7 +139,6 @@ export interface AgentQuickPrompt {
 
 export interface AgentUIConfig {
   component?: string;
-  quickPrompts?: AgentQuickPrompt[];
   workflowShortcuts?: string[];
 }
 
@@ -412,18 +411,6 @@ export interface AgentSpec {
   /** VoltAgent model steps per turn (1–100). Null or absent uses the fallback. */
   maxSteps?: number | null;
   guardrails?: AgentGuardrails;
-  /**
-   * @deprecated Nothing reads this block. It stays declared because the
-   * agent schema rejects unknown keys, so removing it would stop existing
-   * agent files that carry it from loading.
-   * SUNSET(#3879): remove from this type and `schemas/agent.schema.json` once
-   * agent files no longer carry it.
-   */
-  streaming?: {
-    useNewPipeline?: boolean;
-    enableThinking?: boolean;
-    debugStreaming?: boolean;
-  };
   tools?: AgentTools;
   skills?: string[];
   commands?: Record<string, SlashCommand>;
@@ -434,6 +421,30 @@ export interface AgentSpec {
     engineId: string;
     detectedAt: string;
   };
+}
+
+/** Remove only the retired fields at legacy configuration boundaries. */
+export function withoutRetiredAgentConfigFields(value: AgentSpec): AgentSpec;
+export function withoutRetiredAgentConfigFields(value: unknown): unknown;
+export function withoutRetiredAgentConfigFields(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  const ui = record.ui;
+  const hasQuickPrompts =
+    ui !== null &&
+    typeof ui === 'object' &&
+    !Array.isArray(ui) &&
+    Object.hasOwn(ui, 'quickPrompts');
+  if (!Object.hasOwn(record, 'streaming') && !hasQuickPrompts) return value;
+
+  const next = { ...record };
+  delete next.streaming;
+  if (hasQuickPrompts) {
+    const nextUi = { ...ui } as Record<string, unknown>;
+    delete nextUi.quickPrompts;
+    next.ui = nextUi;
+  }
+  return next;
 }
 
 export interface AgentMetadata {

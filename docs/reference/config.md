@@ -713,24 +713,18 @@ show where token and sampling values are passed.
 | `topP` | number | Nucleus sampling probability. On VoltAgent it is ignored, with a warning, when `temperature` is also set: several providers reject both together, so `temperature` wins. Strands passes both through. |
 | `stopSequences` | string[] | Not currently applied. Typed and accepted, but no engine reads it today — do not rely on it to constrain output. |
 
-### ui / quickPrompts
+### Retired Agent fields
 
-`ui.quickPrompts` is a retained configuration shape. The file loader validates
-its prompt text, but the current UI does not consume it. Saving these entries
-does not create chat buttons or route a prompt to another Agent.
-
-| field | type | description |
-|---|---|---|
-| `id` | string | Unique identifier |
-| `label` | string | Intended button label; no current renderer |
-| `prompt` | string | Stored prompt text |
-| `agent` | string | Retained optional routing field; no current UI consumer |
+Remove `streaming` and `ui.quickPrompts` from new Agent definitions. The current
+authoring schema rejects both fields. Existing Agents load with those fields
+omitted while their source files stay intact. An ordinary save writes the
+current shape. Station also omits the fields when importing or exporting
+Agent guidance. `ui.component` and `ui.workflowShortcuts` remain supported.
 
 ### complete example
 
 This is a file-shape example. Replace connection, model, integration, and tool
-IDs with configured values. Quick prompts are retained metadata as described
-above; they do not currently appear as buttons.
+IDs with configured values.
 
 ```json
 {
@@ -750,20 +744,6 @@ above; they do not currently appear as buttons.
   "guardrails": {
     "maxTokens": 8192,
     "temperature": 0.3
-  },
-  "ui": {
-    "quickPrompts": [
-      {
-        "id": "review-pr",
-        "label": "Review open PR",
-        "prompt": "Review the most recently opened pull request and summarize findings."
-      },
-      {
-        "id": "security-scan",
-        "label": "Security scan",
-        "prompt": "Scan the current directory for common security vulnerabilities."
-      }
-    ]
   }
 }
 ```

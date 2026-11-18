@@ -1946,13 +1946,14 @@ by plugin code.
     }
   },
   "ui": {
-    "component": "my-plugin-chat",
-    "quickPrompts": [
-      { "id": "help", "label": "Help", "prompt": "What can you help me with?" }
-    ]
+    "component": "my-plugin-chat"
   }
 }
 ```
+
+Remove `streaming` and `ui.quickPrompts` from Agent source definitions when
+updating to the current schema. Older Agent definitions still load. Layouts
+can continue passing an explicit `AgentQuickPrompt` to `onLaunchPrompt`.
 
 Installed Agent IDs remain clean and globally unique; the installer refuses an
 existing ID rather than adding a namespace prefix. Choose a unique ID if the
