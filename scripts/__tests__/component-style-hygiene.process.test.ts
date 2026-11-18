@@ -104,7 +104,7 @@ test('the CLI advises on new literal styles across the UI while preserving the r
     '{"version":1,"files":{}}',
   );
   const row = 'src-ui/src/SettingsRow.css';
-  write(row, '.previous { padding: 4px; color: currentColor; }\n');
+  write(row, '.previous { padding: 4px; gap: 6px; color: currentColor; }\n');
   const discovery = 'packages/connect/src/react/Discovery.tsx';
   const action = '  <ActionControl style={{ padding: "8px 14px" }} />';
   write(discovery, ['<div>', action, '</div>', ''].join('\n'));
@@ -114,7 +114,8 @@ test('the CLI advises on new literal styles across the UI while preserving the r
   write(
     row,
     [
-      '.previous { padding: 4px; color: inherit; }',
+      '.new { padding: 4px; }',
+      '.previous { padding: 4px; gap: 6px; color: inherit; } .left { gap: 6px; } .right { gap: 6px; }',
       '/* comment with font-size: 20px; */',
       '[data-density="compact"] .label {',
       '  font-size: 12.5px;',
@@ -151,7 +152,16 @@ test('the CLI advises on new literal styles across the UI while preserving the r
       '',
     ].join('\n'),
   );
-  write(discovery, ['<div>', action, action, '</div>', ''].join('\n'));
+  write(
+    discovery,
+    [
+      '<div>',
+      action.replace(' style=', ' title="Discover" style='),
+      action.replace(' style=', ' title="Pair" style='),
+      '</div>',
+      '',
+    ].join('\n'),
+  );
   const theme = 'src-ui/public/device-theme.css';
   write(theme, '.device { row-gap: 10px!important; }\n');
   write(
@@ -168,11 +178,17 @@ test('the CLI advises on new literal styles across the UI while preserving the r
   expect(result.error).toBeUndefined();
   expect(result.status, result.stderr).toBe(0);
   const findings = result.stderr.trim().split('\n');
-  expect(findings).toHaveLength(6);
+  expect(findings).toHaveLength(8);
   expect(findings).toEqual(
     expect.arrayContaining([
       expect.stringContaining(
-        `${row}:4: literal style advisory: font-size uses 12.5px.`,
+        `${row}:5: literal style advisory: font-size uses 12.5px.`,
+      ),
+      expect.stringContaining(
+        `${row}: literal style advisory: 1 new padding declaration using 4px among changed lines 1, 2.`,
+      ),
+      expect.stringContaining(
+        `${row}:2: literal style advisory: 2 new gap declarations using 6px.`,
       ),
       expect.stringContaining(
         `${sdk}:1: literal style advisory: padding-inline uses 8px.`,
@@ -184,7 +200,7 @@ test('the CLI advises on new literal styles across the UI while preserving the r
         `${board}:2: literal style advisory: font-size uses 13px.`,
       ),
       expect.stringContaining(
-        `${discovery}:3: literal style advisory: padding uses 8px 14px.`,
+        `${discovery}: literal style advisory: 1 new padding declaration using 8px 14px among changed lines 2, 3.`,
       ),
       expect.stringContaining(
         `${theme}:1: literal style advisory: row-gap uses 10px.`,

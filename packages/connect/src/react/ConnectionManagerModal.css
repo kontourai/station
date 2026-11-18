@@ -164,6 +164,7 @@
 
 .station-connect-discovery__candidate-details {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .station-connect-discovery__candidate-name {
@@ -179,7 +180,6 @@
 .station-connect-discovery__candidate-meta {
   margin-top: 2px;
   font-size: var(--k-text-xs, 11px);
-  overflow-wrap: anywhere;
 }
 
 .station-connect-discovery__saved {

@@ -143,20 +143,27 @@ function newLiteralStyles(current, previous, lines) {
     const key = keyOf(declaration);
     inherited.set(key, (inherited.get(key) ?? 0) + 1);
   }
-  const added = [];
+  const candidates = new Map();
   for (const declaration of current) {
     let line = declaration.first;
     while (lines && !lines.has(line) && line <= declaration.last) line += 1;
     const key = keyOf(declaration);
-    if (line <= declaration.last) added.push({ ...declaration, line });
-    else inherited.set(key, (inherited.get(key) ?? 0) - 1);
+    if (line > declaration.last) {
+      inherited.set(key, (inherited.get(key) ?? 0) - 1);
+      continue;
+    }
+    const group = candidates.get(key) ?? [];
+    group.push({ ...declaration, line });
+    candidates.set(key, group);
   }
-  // Consume unchanged occurrences first so only a net-new duplicate can warn.
-  return added.filter((declaration) => {
-    const key = keyOf(declaration);
-    const count = inherited.get(key) ?? 0;
-    inherited.set(key, count - 1);
-    return count <= 0;
+  // Unchanged occurrences consume inheritance first. Several changed lines
+  // can still share a signature, so the remaining count may be ambiguous.
+  return [...candidates].flatMap(([key, group]) => {
+    const remaining = Math.max(0, inherited.get(key) ?? 0);
+    if (remaining >= group.length) return [];
+    if (remaining === 0) return group;
+    const candidateLines = [...new Set(group.map(({ line }) => line))];
+    return [{ ...group[0], candidateLines, count: group.length - remaining }];
   });
 }
 
@@ -217,18 +224,32 @@ export function reportLiteralStyles(root = process.cwd()) {
     const previous = oldPath
       ? literalStyles(oldPath, git(['show', `${base}:${oldPath}`]))
       : [];
-    for (const { line, property, value } of newLiteralStyles(
-      current,
-      previous,
-      lines,
-    )) {
+    for (const {
+      line,
+      property,
+      value,
+      candidateLines,
+      count,
+    } of newLiteralStyles(current, previous, lines)) {
       const guidance =
         property === 'font-size'
           ? 'Check the shared text role or published --k-text-* size token in both density modes.'
           : 'Check the owning component’s spacing recipe or published --k-space-* token.';
-      console.warn(
-        `${file}:${line}: literal style advisory: ${property} uses ${value}. ${guidance}`,
-      );
+      if (candidateLines) {
+        const noun = count === 1 ? 'declaration' : 'declarations';
+        const singleLine = candidateLines.length === 1;
+        const location = singleLine ? `${file}:${line}` : file;
+        const candidates = singleLine
+          ? ''
+          : ` among changed lines ${candidateLines.join(', ')}`;
+        console.warn(
+          `${location}: literal style advisory: ${count} new ${property} ${noun} using ${value}${candidates}. ${guidance}`,
+        );
+      } else {
+        console.warn(
+          `${file}:${line}: literal style advisory: ${property} uses ${value}. ${guidance}`,
+        );
+      }
     }
   }
 }
