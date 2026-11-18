@@ -27,15 +27,24 @@ async function processAlive(pid: number): Promise<boolean> {
 afterEach(() => vi.unstubAllEnvs());
 
 test.runIf(process.platform !== 'win32')(
-  'cancelling device-code login reaps the launcher and its TERM-resistant child',
+  'device-code login fences a replacement while a TERM-resistant child can still write',
   async () => {
     const bin = makeTempDir('station-device-login-bin-');
     const profile = makeTempDir('station-device-login-profile-');
+    const credentialFile = join(profile, 'fixture-credential');
     const workerProgram = `
-      process.on('SIGTERM', () => {});
+      const { existsSync, writeFileSync } = require('node:fs');
+      const { join } = require('node:path');
+      const approval = join(process.env.CODEX_HOME, 'approve-' + process.pid);
+      let terminating = false;
+      process.on('SIGTERM', () => { terminating = true; });
       process.send('ready');
       setTimeout(() => process.exit(1), 20000).unref();
-      setInterval(() => {}, 1000);
+      setInterval(() => {
+        if (terminating && existsSync(approval)) {
+          writeFileSync(${JSON.stringify(credentialFile)}, 'approved');
+        }
+      }, 20);
     `;
     await writeFile(
       join(bin, 'codex'),
@@ -43,8 +52,12 @@ test.runIf(process.platform !== 'win32')(
 if (process.argv[3] === '--help') {
   console.log('Usage: codex login --device-auth');
 } else if (process.argv[3] === 'status') {
-  console.log('Not logged in');
-  process.exitCode = 1;
+  if (require('node:fs').existsSync(${JSON.stringify(credentialFile)})) {
+    console.log('Logged in using ChatGPT');
+  } else {
+    console.log('Not logged in');
+    process.exitCode = 1;
+  }
 } else if (process.argv[3] === '--device-auth') {
   const { spawn } = require('node:child_process');
   const { writeFileSync } = require('node:fs');
@@ -79,12 +92,27 @@ if (process.argv[3] === '--help') {
       expect(await Promise.all(pids.map(processAlive))).toEqual([true, true]);
 
       expect(manager.cancel(profile)?.phase).toBe('cancelled');
+      const replacement = await manager.start('codex', profile);
+      await writeFile(join(profile, `approve-${pids[1]}`), '');
+      await vi.waitFor(
+        async () =>
+          expect(await readFile(credentialFile, 'utf8')).toBe('approved'),
+        { timeout: 2000 },
+      );
+      expect(replacement.kind).toBe('busy');
       await vi.waitFor(
         async () => {
           const alive = await Promise.all(pids.map(processAlive));
           expect(alive).toEqual([false, false]);
         },
         { interval: 100, timeout: 8000 },
+      );
+      await vi.waitFor(
+        async () => {
+          const next = await manager.start('codex', profile);
+          expect(next.kind).toBe('already-signed-in');
+        },
+        { timeout: 4000 },
       );
     } finally {
       manager.cancelAll();

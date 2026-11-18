@@ -1174,7 +1174,7 @@ describe('device-code enrolment routes', () => {
 
   function fakeChild() {
     let onData: ((chunk: unknown) => void) | undefined;
-    const stop = vi.fn();
+    const stop = vi.fn<() => Promise<void>>(async () => undefined);
     const stream = {
       on(_event: 'data', listener: (chunk: unknown) => void) {
         onData = listener;
@@ -1467,21 +1467,36 @@ describe('device-code enrolment routes', () => {
     expect(spawnLogin).not.toHaveBeenCalled();
   });
 
-  test('cancelling kills the login process', async () => {
-    const { app, spawned } = routes();
-    await app.request('/agent/codex/enrolment/profile-a/device-code', {
-      method: 'POST',
-    });
+  test('DELETE acknowledges cancellation and a replacement POST is busy until the process stops', async () => {
+    const { app, spawned, spawnLogin } = routes();
+    const stopGate: { release?: () => void } = {};
+    spawned.stop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          stopGate.release = resolve;
+        }),
+    );
+    const path = '/agent/codex/enrolment/profile-a/device-code';
+    await app.request(path, { method: 'POST' });
     spawned.emitPrompt();
 
-    const res = await app.request(
-      '/agent/codex/enrolment/profile-a/device-code',
-      { method: 'DELETE' },
-    );
-    const body = await readJson<{ data: { login: { phase: string } } }>(res);
+    try {
+      const cancelled = await app.request(path, { method: 'DELETE' });
+      expect(cancelled.status).toBe(200);
+      expect(await cancelled.json()).toMatchObject({
+        data: { login: { phase: 'cancelled' } },
+      });
+      expect(spawned.stop).toHaveBeenCalledOnce();
 
-    expect(body.data.login.phase).toBe('cancelled');
-    expect(spawned.stop).toHaveBeenCalledOnce();
+      const replacement = await app.request(path, { method: 'POST' });
+      expect(replacement.status).toBe(429);
+      expect(await replacement.json()).toMatchObject({
+        data: { outcome: 'busy' },
+      });
+      expect(spawnLogin).toHaveBeenCalledOnce();
+    } finally {
+      stopGate.release?.();
+    }
   });
 
   test('reading a login nobody started is a 404, not an invented record', async () => {

@@ -105,7 +105,7 @@ export interface DeviceCodeChildProcess {
   readonly stderr: NodeJS.ReadableStream | null;
   on(event: 'exit', listener: (code: number | null) => void): unknown;
   on(event: 'error', listener: (error: Error) => void): unknown;
-  stop(): void;
+  stop(): Promise<void>;
 }
 
 export interface DeviceCodeLoginDeps {
@@ -143,14 +143,9 @@ function defaultDeviceCodeLoginDeps(): DeviceCodeLoginDeps {
         on: proc.on.bind(proc),
         stop: () => {
           stopping = true;
-          void terminateProcessTree(proc, {
+          return terminateProcessTree(proc, {
             graceMs: DEVICE_CODE_KILL_GRACE_MS,
-          }).then(release, (error: unknown) => {
-            logger.warn('Device login process tree did not confirm exit', {
-              pid: proc.pid,
-              error: String(error),
-            });
-          });
+          }).then(release);
         },
       };
     },
@@ -324,6 +319,7 @@ export class DeviceCodeLoginManager {
   readonly #deps: DeviceCodeLoginDeps;
   readonly #sessions = new Map<string, LoginSession>();
   readonly #pending = new Set<PendingStart>();
+  readonly #stopping = new Map<string, 'stopping' | 'unconfirmed'>();
   #closed = false;
 
   constructor(deps: DeviceCodeLoginDeps = defaultDeviceCodeLoginDeps()) {
@@ -352,6 +348,11 @@ export class DeviceCodeLoginManager {
     isCurrent: () => boolean = () => true,
   ): Promise<DeviceCodeStartResult> {
     this.#prune();
+    if (this.#closed) {
+      return { kind: 'closed', reason: CLOSED_REASON };
+    }
+    const stopRefusal = this.#stopRefusal(profileDir);
+    if (stopRefusal) return stopRefusal;
     const existing = this.#sessions.get(profileDir);
     if (existing && isLive(existing.record)) {
       return { kind: 'existing', record: existing.record };
@@ -359,10 +360,6 @@ export class DeviceCodeLoginManager {
     if (this.#liveCount() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
       return { kind: 'busy', reason: busyReason() };
     }
-    if (this.#closed) {
-      return { kind: 'closed', reason: CLOSED_REASON };
-    }
-
     const pending: PendingStart = { profileDir, engine };
     this.#pending.add(pending);
     try {
@@ -384,8 +381,8 @@ export class DeviceCodeLoginManager {
     isCurrent: () => boolean,
   ): Promise<DeviceCodeStartResult> {
     const capabilities = await this.#deps.capabilities(engine);
-    const cancelledDuringProbe = this.#startCancellation(pending, isCurrent);
-    if (cancelledDuringProbe) return cancelledDuringProbe;
+    const interruptedDuringProbe = this.#startInterruption(pending, isCurrent);
+    if (interruptedDuringProbe) return interruptedDuringProbe;
     const evidence = mechanismEvidence(capabilities, 'device-code');
     if (!evidence) {
       return {
@@ -401,11 +398,11 @@ export class DeviceCodeLoginManager {
     // from the credential that was already there. Refusing here is what lets
     // `#onExit` read `authenticated` as this login's own result.
     const current = await this.#currentAuthState(engine, profileDir);
-    const cancelledDuringVerification = this.#startCancellation(
+    const interruptedDuringVerification = this.#startInterruption(
       pending,
       isCurrent,
     );
-    if (cancelledDuringVerification) return cancelledDuringVerification;
+    if (interruptedDuringVerification) return interruptedDuringVerification;
     if (current === 'authenticated') {
       return {
         kind: 'already-signed-in',
@@ -565,7 +562,7 @@ export class DeviceCodeLoginManager {
     return { engine, phase: 'cancelled', startedAt: now, expiresAt: now };
   }
 
-  #startCancellation(
+  #startInterruption(
     pending: PendingStart,
     isCurrent: () => boolean,
   ): DeviceCodeStartResult | undefined {
@@ -577,7 +574,19 @@ export class DeviceCodeLoginManager {
         record: this.#cancelledStartRecord(pending.engine),
       };
     }
-    return undefined;
+    return this.#stopRefusal(pending.profileDir);
+  }
+
+  #stopRefusal(profileDir: string): DeviceCodeStartResult | undefined {
+    const state = this.#stopping.get(profileDir);
+    if (!state) return undefined;
+    return {
+      kind: 'busy',
+      reason:
+        state === 'stopping'
+          ? 'Station is still stopping the previous sign-in process for this profile.'
+          : 'Station could not confirm that the previous sign-in process for this profile stopped.',
+    };
   }
 
   /**
@@ -670,8 +679,20 @@ export class DeviceCodeLoginManager {
 
   #stop(session: LoginSession): void {
     const child = session.child;
+    if (!child) return;
     session.child = undefined;
-    child?.stop();
+    const { profileDir } = session;
+    this.#stopping.set(profileDir, 'stopping');
+    void child.stop().then(
+      () => this.#stopping.delete(profileDir),
+      (error: unknown) => {
+        this.#stopping.set(profileDir, 'unconfirmed');
+        logger.warn('Device login process tree did not confirm exit', {
+          engine: session.record.engine,
+          error: String(error),
+        });
+      },
+    );
   }
 
   #prune(): void {

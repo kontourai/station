@@ -37,7 +37,7 @@ class FakeChild implements DeviceCodeChildProcess {
   readonly stderr = new FakeStream() as unknown as NodeJS.ReadableStream & {
     write(text: string): void;
   };
-  readonly stop = vi.fn();
+  readonly stop = vi.fn<() => Promise<void>>(async () => undefined);
   #exit?: (code: number | null) => void;
   #error?: (error: Error) => void;
 
@@ -521,16 +521,43 @@ describe('cancelling', () => {
     expect(manager.cancel(PROFILE_DIR)).toBeUndefined();
   });
 
-  test('a cancelled profile can start a new login', async () => {
+  test('allows a replacement after the prior process tree confirms exit', async () => {
     const { manager, children, spawnLogin } = harness();
     await manager.start('codex', PROFILE_DIR);
+    let confirmExit: (() => void) | undefined;
+    children[0].stop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          confirmExit = resolve;
+        }),
+    );
     manager.cancel(PROFILE_DIR);
+    expect((await manager.start('codex', PROFILE_DIR)).kind).toBe('busy');
+    expect(spawnLogin).toHaveBeenCalledOnce();
+    confirmExit?.();
 
-    const restarted = await manager.start('codex', PROFILE_DIR);
-
-    expect(restarted.kind).toBe('started');
+    await vi.waitFor(async () => {
+      expect((await manager.start('codex', PROFILE_DIR)).kind).toBe('started');
+    });
     expect(spawnLogin).toHaveBeenCalledTimes(2);
-    expect(children).toHaveLength(2);
+  });
+
+  test('an unconfirmed stop blocks only the affected credential profile', async () => {
+    const { manager, children, spawnLogin } = harness();
+    await manager.start('codex', PROFILE_DIR);
+    children[0].stop.mockRejectedValueOnce(new Error('synthetic stop failure'));
+    expect(manager.cancel(PROFILE_DIR)?.phase).toBe('cancelled');
+
+    await vi.waitFor(async () => {
+      expect(await manager.start('codex', PROFILE_DIR)).toMatchObject({
+        kind: 'busy',
+        reason: expect.stringContaining('could not confirm'),
+      });
+    });
+    expect(spawnLogin).toHaveBeenCalledOnce();
+    const other = await manager.start('codex', `${PROFILE_DIR}-other`);
+    expect(other.kind).toBe('started');
+    expect(spawnLogin).toHaveBeenCalledTimes(2);
   });
 });
 

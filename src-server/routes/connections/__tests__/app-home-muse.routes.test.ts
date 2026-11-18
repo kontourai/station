@@ -59,7 +59,7 @@ function museConnectionService() {
 
 function fakeChild() {
   let onData: ((chunk: unknown) => void) | undefined;
-  const stop = vi.fn();
+  const stop = vi.fn(async () => undefined);
   const stream = {
     on(_event: 'data', listener: (chunk: unknown) => void) {
       onData = listener;
