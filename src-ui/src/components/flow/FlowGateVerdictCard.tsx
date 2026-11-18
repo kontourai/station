@@ -1,4 +1,5 @@
 import type { FlowGateVerdictInfo } from '../../contexts/active-chats-state';
+import { FlowGateDiagnostics } from './FlowGateDiagnostics';
 import './flow-events.css';
 
 const VERDICT_TITLES: Record<FlowGateVerdictInfo['verdict'], string> = {
@@ -6,6 +7,7 @@ const VERDICT_TITLES: Record<FlowGateVerdictInfo['verdict'], string> = {
   'route-back': 'Flow gate routed work back',
   block: 'Flow gate blocked completion',
   wait: 'Flow gate waiting on expectations',
+  'not-evaluated': 'No gate evaluation',
 };
 
 interface FlowGateVerdictCardProps {
@@ -42,6 +44,8 @@ export function FlowGateVerdictCard({
         <p className="flow-gate-card__summary">{verdict.summary}</p>
       )}
 
+      <FlowGateDiagnostics details={verdict.diagnostics} />
+
       {verdict.verdict === 'route-back' && (
         <>
           {verdict.nextAction && (
@@ -74,20 +78,21 @@ export function FlowGateVerdictCard({
           </>
         )}
 
-      {verdict.verdict === 'pass' && verdict.reportPaths && (
-        <div className="flow-gate-card__reports">
-          <ReportPathRow
-            label="Run report (markdown)"
-            path={verdict.reportPaths.markdown}
-            onCopy={onCopy}
-          />
-          <ReportPathRow
-            label="Run report (json)"
-            path={verdict.reportPaths.json}
-            onCopy={onCopy}
-          />
-        </div>
-      )}
+      {(verdict.verdict === 'pass' || verdict.verdict === 'not-evaluated') &&
+        verdict.reportPaths && (
+          <div className="flow-gate-card__reports">
+            <ReportPathRow
+              label="Run report (markdown)"
+              path={verdict.reportPaths.markdown}
+              onCopy={onCopy}
+            />
+            <ReportPathRow
+              label="Run report (json)"
+              path={verdict.reportPaths.json}
+              onCopy={onCopy}
+            />
+          </div>
+        )}
 
       {verdict.gateId && (
         <div className="flow-gate-card__meta">Gate: {verdict.gateId}</div>

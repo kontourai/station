@@ -42,6 +42,8 @@ function buildFlowGateVerdictSummary(info: FlowGateVerdictInfo) {
   switch (info.verdict) {
     case 'pass':
       return info.summary || 'Flow gates passed.';
+    case 'not-evaluated':
+      return info.summary || 'No gate outcome was recorded.';
     case 'route-back':
       return (
         info.nextAction ||
@@ -135,6 +137,7 @@ export function handleFlowGateVerdictEvent(
     runId: event.runId,
     verdict: event.verdict,
     gateId: event.gateId,
+    ...(event.diagnostics ? { diagnostics: event.diagnostics } : {}),
     summary: event.summary,
     nextAction: event.nextAction,
     routeBackTo: event.routeBackTo,

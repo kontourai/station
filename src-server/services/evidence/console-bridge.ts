@@ -97,14 +97,17 @@ const TERMINAL_SESSION_STATES: ReadonlySet<SessionState> = new Set([
   'errored',
 ]);
 
-const GATE_EVENT_TYPE: Record<FlowGateVerdict, string> = {
+const GATE_EVENT_TYPE: Record<
+  Exclude<FlowGateVerdict, 'not-evaluated'>,
+  string
+> = {
   pass: 'gate.passed',
   block: 'gate.failed',
   'route-back': 'gate.routed_back',
   wait: 'gate.opened',
 };
 
-const GATE_STATUS: Record<FlowGateVerdict, string> = {
+const GATE_STATUS: Record<Exclude<FlowGateVerdict, 'not-evaluated'>, string> = {
   pass: 'passed',
   block: 'failed',
   'route-back': 'routed_back',
@@ -257,6 +260,7 @@ export function deriveConsoleEventRecords(
         break;
       }
       case 'flow.gate-verdict': {
+        if (event.verdict === 'not-evaluated') break;
         const gateId = event.gateId ?? 'completion';
         records.push({
           ...base,

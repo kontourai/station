@@ -443,11 +443,11 @@ export function createFlowRunRoutes(
   app.post('/runs/:runId/evaluate', validate(flowEvaluateSchema), async (c) => {
     try {
       const { gate } = getBody(c);
-      const data = await flowRunService.evaluate(
-        c.get('cwd'),
-        param(c, 'runId'),
-        gate,
-      );
+      const isCurrent = deps.isRequestPrincipalCurrent;
+      const args = [c.get('cwd'), param(c, 'runId'), gate] as const;
+      const data = isCurrent
+        ? await flowRunService.evaluate(...args, () => isCurrent(c.req.raw))
+        : await flowRunService.evaluate(...args);
       return c.json({ success: true, data });
     } catch (error: unknown) {
       return c.json(

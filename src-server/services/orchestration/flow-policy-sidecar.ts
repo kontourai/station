@@ -460,7 +460,10 @@ export class FlowPolicySidecar {
       definition: binding.definitionId,
     });
 
-    if (verdictEvent.verdict !== 'pass') {
+    if (
+      verdictEvent.verdict !== 'pass' &&
+      verdictEvent.verdict !== 'not-evaluated'
+    ) {
       // The verdict's guidance outlives this session: a task-bound sidecar
       // records it as the durable next_action before the transition is
       // rejected, so the NEXT session (any runtime kind) resumes from it.
