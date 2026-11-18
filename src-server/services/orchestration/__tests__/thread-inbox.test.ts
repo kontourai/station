@@ -107,6 +107,7 @@ class CountingAdapter extends GateTestAdapter {
     this.metadata = { ...this.metadata, durability };
   }
   readonly entered: OwningTurn[] = [];
+  nextProviderTurnId?: string;
   private readonly liveSessions = new Set<string>();
   override async startSession(input: ProviderSessionStartInput) {
     const session = await super.startSession(input);
@@ -139,7 +140,9 @@ class CountingAdapter extends GateTestAdapter {
       nextSend = 'answer';
       return new Promise(() => {});
     }
-    return { threadId: input.threadId, turnId: `turn-${sends.length}` };
+    const turnId = this.nextProviderTurnId ?? `turn-${sends.length}`;
+    this.nextProviderTurnId = undefined;
+    return { threadId: input.threadId, turnId };
   }
 }
 
@@ -337,6 +340,19 @@ function queueFollowUp(world: World, key = 'follow-up-1') {
     conversationId: THREAD,
     clientTurnId: key,
     payload,
+  });
+}
+
+function queueLegacySteer(world: World, clientTurnId: string) {
+  const expectedHead = world.inbox.currentHead(THREAD);
+  return world.store.threadInboxStore().submit({
+    conversationId: THREAD,
+    clientTurnId,
+    kind: 'steer',
+    payload,
+    expectedHead,
+    now: Date.now(),
+    readHead: () => world.inbox.currentHead(THREAD),
   });
 }
 
@@ -1166,15 +1182,17 @@ describe('thread inbox (#3568)', () => {
       if (held) {
         await startSession(second);
         await settle(second);
-        expect(followUpSends()).toEqual([FOLLOW_UP]);
-      } else expect(followUpSends()).toEqual([]);
+        expect(second.inbox.list(THREAD)).toMatchObject([
+          { state: 'refused', reasonCode: 'steer_turn_ended' },
+        ]);
+      }
+      expect(followUpSends()).toEqual([]);
     },
   );
 
   test.each(['admission', 'native-race', 'fallback-race'] as const)(
     'a typed steer conflict at %s cannot become another engine effect',
     async (phase) => {
-      let reads = 0;
       const steer = vi.fn(async () => {
         throw new ClientTurnInputConflictError();
       });
@@ -1182,9 +1200,7 @@ describe('thread inbox (#3568)', () => {
         steerFidelity: () =>
           phase === 'fallback-race' ? 'emulated' : 'native',
         inspectSteer: () => {
-          reads += 1;
-          if (phase === 'admission' || (phase === 'fallback-race' && reads > 1))
-            throw new ClientTurnInputConflictError();
+          if (phase !== 'native-race') throw new ClientTurnInputConflictError();
           return undefined;
         },
         steer,
@@ -1201,7 +1217,11 @@ describe('thread inbox (#3568)', () => {
         expect(submit).toThrow(ClientTurnInputConflictError);
         expect(world.inbox.list(THREAD)).toEqual([]);
       } else {
-        expect(submit().outcome).toBe('queued');
+        if (phase === 'fallback-race')
+          expect(queueLegacySteer(world, 'typed-conflict').kind).toBe(
+            'accepted',
+          );
+        else expect(submit().outcome).toBe('queued');
         await world.inbox.idle();
         if (phase === 'fallback-race') {
           await emit(
@@ -1310,6 +1330,75 @@ describe('thread inbox (#3568)', () => {
       }),
     );
   });
+
+  test.each(['turn-2', 'turn-1'])(
+    'a steer awaiting the engine profile cannot enter a successor named %s',
+    async (turnId) => {
+      let resolveFidelity!: (value: 'native') => void;
+      const fidelity = new Promise<'native'>((resolve) => {
+        resolveFidelity = resolve;
+      });
+      let observed!: () => void;
+      const reading = new Promise<void>((resolve) => {
+        observed = resolve;
+      });
+      const steer = vi.fn(async ({ turnId }: { turnId: string }) => ({
+        outcome: 'steered',
+        turnId,
+      }));
+      const world = boot(path(), {
+        steerFidelity: () => {
+          observed();
+          return fidelity;
+        },
+        inspectSteer: () => undefined,
+        steer,
+      });
+      const original = await runningFirstTurn(world);
+      const accepted = world.inbox.submitSteer({
+        conversationId: THREAD,
+        clientTurnId: 'old-turn-steer',
+        payload,
+        expectedHead: world.inbox.currentHead(THREAD),
+      });
+      try {
+        expect(accepted.outcome).toBe('queued');
+        await reading;
+        await emit(world, 'turn.completed', { turnId: 'turn-1' }, original);
+        world.adapter.nextProviderTurnId = turnId;
+        await world.service.dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: THREAD,
+            input: 'new work',
+            clientTurnId: 'second',
+          },
+        });
+        const successor = world.adapter.entered[1];
+        if (!successor?.invocationId)
+          throw new Error('The next turn did not start.');
+        await emit(
+          world,
+          'turn.started',
+          { turnId, prompt: 'new work' },
+          successor,
+        );
+        expect(
+          world.store.listEventPayloads(THREAD, ['turn.started']).at(-1),
+        ).toMatchObject({
+          turnId,
+          invocationId: successor.invocationId,
+        });
+      } finally {
+        resolveFidelity('native');
+      }
+      await world.inbox.idle();
+      expect(steer).not.toHaveBeenCalled();
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        { state: 'refused', kind: 'steer', reasonCode: 'steer_turn_ended' },
+      ]);
+    },
+  );
 
   test.each(['before-claim', 'after-claim'] as const)(
     'native steer restart at %s preserves text and head without replaying a claim',
@@ -1421,38 +1510,53 @@ describe('thread inbox (#3568)', () => {
     },
   );
 
-  test('an emulated steer waits across restart and starts once after the turn boundary', async () => {
-    const file = path();
-    const ports: Partial<ThreadInboxDeliveryPorts> = {
-      steerFidelity: () => 'emulated',
-      inspectSteer: () => undefined,
-      steer: vi.fn(async () => ({ outcome: 'steered', turnId: 'wrong' })),
-    };
-    const first = boot(file, ports);
-    await runningFirstTurn(first);
-    const expectedHead = first.inbox.currentHead(THREAD);
-    expect(
-      first.inbox.submitSteer({
+  test.each(['captured turn', 'legacy row'] as const)(
+    'emulated steering with a %s across restart',
+    async (binding) => {
+      const file = path();
+      const ports: Partial<ThreadInboxDeliveryPorts> = {
+        steerFidelity: () => 'emulated',
+        inspectSteer: () => undefined,
+        steer: vi.fn(async () => ({ outcome: 'steered', turnId: 'wrong' })),
+      };
+      const first = boot(file, ports);
+      await runningFirstTurn(first);
+      const expectedHead = first.inbox.currentHead(THREAD);
+      const input = {
         conversationId: THREAD,
         clientTurnId: 'steer-fallback',
         payload,
         expectedHead,
-      }).outcome,
-    ).toBe('queued');
-    await first.inbox.idle();
-    expect(followUpSends()).toEqual([]);
-    await crash(first);
-    const second = boot(file, ports);
-    await second.inbox.reconcile();
-    expect(followUpSends()).toEqual([]);
-    await startSession(second);
-    await settle(second);
-    expect(followUpSends()).toEqual([FOLLOW_UP]);
-    expect(ports.steer).not.toHaveBeenCalled();
-    expect(second.inbox.list(THREAD)).toMatchObject([
-      { state: 'sent', kind: 'steer' },
-    ]);
-  });
+      };
+      if (binding === 'legacy row') {
+        expect(queueLegacySteer(first, input.clientTurnId).kind).toBe(
+          'accepted',
+        );
+      } else {
+        expect(first.inbox.submitSteer(input).outcome).toBe('queued');
+      }
+      await first.inbox.idle();
+      expect(followUpSends()).toEqual([]);
+      await crash(first);
+      const second = boot(file, ports);
+      await second.inbox.reconcile();
+      expect(followUpSends()).toEqual([]);
+      await startSession(second);
+      await settle(second);
+      expect(ports.steer).not.toHaveBeenCalled();
+      if (binding === 'legacy row') {
+        expect(followUpSends()).toEqual([FOLLOW_UP]);
+        expect(second.inbox.list(THREAD)).toMatchObject([
+          { state: 'sent', kind: 'steer' },
+        ]);
+      } else {
+        expect(followUpSends()).toEqual([]);
+        expect(second.inbox.list(THREAD)).toMatchObject([
+          { state: 'refused', kind: 'steer', reasonCode: 'steer_turn_ended' },
+        ]);
+      }
+    },
+  );
 
   test('a possibly handed-off steer is surfaced and never repeated after restart', async () => {
     const file = path();

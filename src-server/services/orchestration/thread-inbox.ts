@@ -134,12 +134,34 @@ export interface ThreadInboxAttachment extends QueuedChatAttachmentDescriptor {
   readonly blobRef: string;
 }
 
+interface InboxSteerTarget {
+  readonly threadId: string;
+  readonly turnId: string;
+  readonly openingSequence: number;
+}
+
+function isInboxSteerTarget(value: unknown): value is InboxSteerTarget {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'threadId' in value &&
+    typeof value.threadId === 'string' &&
+    'turnId' in value &&
+    typeof value.turnId === 'string' &&
+    'openingSequence' in value &&
+    typeof value.openingSequence === 'number' &&
+    Number.isSafeInteger(value.openingSequence)
+  );
+}
+
 /** What a queued follow-up sends: the continuation's input, and its sender. */
 export interface ThreadInboxPayload {
   readonly message: string;
   /** Files sent with the message, read back from the blob store at placement. */
   readonly attachments?: readonly ThreadInboxAttachment[];
   readonly expectedHead?: string;
+  /** Server-captured turn for an admitted steer. Older rows lack this field. */
+  readonly steerTarget?: InboxSteerTarget;
   /** Server-created Automation intent, revalidated against its private ledger at placement. */
   readonly serverAutomationIntentId?: string;
   /** Original server-captured identity; older queued entries have unknown proof. */
@@ -340,6 +362,9 @@ export function decodePayload(raw: string): ThreadInboxPayload | undefined {
     return undefined;
   const attachments = decodeAttachments(value.attachments);
   if (attachments === null) return undefined;
+  const steerTarget = value.steerTarget;
+  if (steerTarget !== undefined && !isInboxSteerTarget(steerTarget))
+    return undefined;
   const attribution = actor.ownerAttribution;
   return {
     message: value.message,
@@ -350,6 +375,7 @@ export function decodePayload(raw: string): ThreadInboxPayload | undefined {
     ...(typeof value.expectedHead === 'string'
       ? { expectedHead: value.expectedHead }
       : {}),
+    ...(steerTarget ? { steerTarget } : {}),
     ...(typeof value.serverAutomationIntentId === 'string'
       ? { serverAutomationIntentId: value.serverAutomationIntentId }
       : {}),
@@ -921,6 +947,11 @@ const STEER_CONFLICT_OUTCOME: PlacementOutcome = {
     'That steer key names different input. Review the conversation before resending.',
 };
 
+const STEER_TURN_ENDED: PlacementOutcome = {
+  reasonCode: 'steer_turn_ended',
+  reason: 'The turn ended before Station could steer it.',
+};
+
 function errorText(error: unknown): string {
   return errorMessage(error);
 }
@@ -1071,6 +1102,37 @@ export class ThreadInboxDelivery {
     );
   }
 
+  private observeSteerTurn(threadId: string): InboxSteerTarget | undefined {
+    const events = this.ports.foldEvents(threadId);
+    const lifecycle = events.map(({ event }) => event);
+    const turnId = activeTurnIdForEvents(lifecycle);
+    if (!turnId) return undefined;
+    const anchor = turnIdentityAnchorForEvents(lifecycle);
+    const invocationId =
+      typeof anchor === 'object' ? anchor.invocationId : undefined;
+    const opening = events.findLast(
+      ({ event }) =>
+        event.method === 'turn.started' &&
+        event.turnId === turnId &&
+        event.invocationId === invocationId &&
+        event.inputKind !== 'steer',
+    );
+    if (opening) return { threadId, turnId, openingSequence: opening.sequence };
+  }
+
+  private ownsSteerTurn(
+    conversationId: string,
+    target: InboxSteerTarget,
+  ): boolean {
+    if (this.ports.currentSessionId(conversationId) !== target.threadId)
+      return false;
+    const live = this.observeSteerTurn(target.threadId);
+    return (
+      live?.turnId === target.turnId &&
+      live.openingSequence === target.openingSequence
+    );
+  }
+
   private deliverPostTool(
     threadId: string,
     turnId: string,
@@ -1080,6 +1142,14 @@ export class ThreadInboxDelivery {
     for (;;) {
       const head = inboxHead(this.ports.store.list(conversationId));
       if (this.stopped || head?.kind !== 'steer' || head.state !== 'queued')
+        return;
+      const target = decodePayload(head.payload)?.steerTarget;
+      if (
+        target &&
+        (target.threadId !== threadId ||
+          target.turnId !== turnId ||
+          !this.ownsSteerTurn(conversationId, target))
+      )
         return;
       const recordPostToolSteer = this.ports.recordPostToolSteer;
       if (
@@ -1093,6 +1163,10 @@ export class ThreadInboxDelivery {
         this.now(),
       );
       if (claimed.kind !== 'claimed') return;
+      if (claimed.entry.key !== head.key || claimed.entry.kind !== 'steer') {
+        this.ports.store.release(claimed.entry, false, this.now());
+        return;
+      }
       const payload = decodePayload(claimed.entry.payload);
       const refusal = payload
         ? this.refusalFor(conversationId, payload, claimed.entry.createdAt)
@@ -1347,26 +1421,34 @@ export class ThreadInboxDelivery {
       return { outcome: 'not-permitted' };
     this.inspectDelivery(inbox, input.clientTurnId, input.payload);
     const prior = this.ports.store.read(inbox, input.clientTurnId);
+    const priorPayload = prior ? decodePayload(prior.payload) : undefined;
+    let steerTarget = priorPayload?.steerTarget;
     if (
       kind === 'steer' &&
       (!prior ||
         prior.state === 'refused' ||
         (prior.state === 'cancelled' && prior.placement === null))
     ) {
+      if (prior && !priorPayload) return { outcome: 'conflict' };
       const threadId = this.ports.currentSessionId(inbox);
+      const observed = this.observeSteerTurn(threadId);
+      if (!prior) {
+        if (!observed)
+          return {
+            outcome: 'stale-head',
+            currentHead: this.currentHead(inbox),
+          };
+        steerTarget = observed;
+      }
       this.assertSteerKeyUnclaimed({
-        threadId,
+        threadId: steerTarget?.threadId ?? threadId,
         clientInputId: input.clientTurnId,
         input: input.payload.message,
-        turnId: activeTurnIdForEvents(
-          this.ports.foldEvents(threadId).map(({ event }) => event),
-        ),
+        turnId: steerTarget?.turnId ?? observed?.turnId,
       });
     }
 
-    const priorDigest = prior
-      ? decodePayload(prior.payload)?.inputDigest
-      : undefined;
+    const priorDigest = priorPayload?.inputDigest;
     if (
       priorDigest !== undefined &&
       input.payload.inputDigest !== undefined &&
@@ -1375,6 +1457,7 @@ export class ThreadInboxDelivery {
       throw new ClientTurnInputConflictError();
     const result = this.ports.store.submit({
       ...input,
+      ...(steerTarget ? { payload: { ...input.payload, steerTarget } } : {}),
       conversationId: inbox,
       kind,
       now,
@@ -1845,6 +1928,13 @@ export class ThreadInboxDelivery {
       );
       return;
     }
+    if (
+      payload.steerTarget &&
+      !this.ownsSteerTurn(conversationId, payload.steerTarget)
+    ) {
+      store.settle(entry, 'refused', STEER_TURN_ENDED, this.now());
+      return;
+    }
     let refusal = this.refusalFor(conversationId, payload, entry.createdAt);
     if (!refusal && this.ports.placementRefusal) {
       try {
@@ -2004,9 +2094,19 @@ export class ThreadInboxDelivery {
           );
           continue;
         }
-        if (head.state === 'queued' && this.isBusy(current)) {
-          const fidelity = await this.ports.steerFidelity?.(current);
-          if (fidelity === 'none') {
+        const target =
+          head.state === 'queued'
+            ? decodePayload(head.payload)?.steerTarget
+            : undefined;
+        if (head.state === 'queued' && (target || this.isBusy(current))) {
+          const stillCurrent = () =>
+            !target || this.ownsSteerTurn(conversationId, target);
+          const matchedBefore = stillCurrent();
+          const fidelity = matchedBefore
+            ? await this.ports.steerFidelity?.(current)
+            : undefined;
+          const ended = !matchedBefore || !stillCurrent();
+          if (ended || fidelity === 'none') {
             const claimed = store.claimNext(
               conversationId,
               current,
@@ -2023,11 +2123,13 @@ export class ThreadInboxDelivery {
             settle(
               claimed.entry,
               'refused',
-              {
-                reasonCode: 'unsupported-engine',
-                reason:
-                  'The engine has no declared steering support. Nothing was sent.',
-              },
+              ended
+                ? STEER_TURN_ENDED
+                : {
+                    reasonCode: 'unsupported-engine',
+                    reason:
+                      'The engine has no declared steering support. Nothing was sent.',
+                  },
               this.now(),
             );
             continue;
@@ -2040,9 +2142,11 @@ export class ThreadInboxDelivery {
             this.scheduleRetry(conversationId);
             return;
           }
-          const turnId = activeTurnIdForEvents(
-            this.ports.foldEvents(current).map(({ event }) => event),
-          );
+          const turnId =
+            target?.turnId ??
+            activeTurnIdForEvents(
+              this.ports.foldEvents(current).map(({ event }) => event),
+            );
           if (!turnId) {
             this.scheduleRetry(conversationId);
             return;
