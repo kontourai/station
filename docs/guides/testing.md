@@ -1768,9 +1768,8 @@ spec. The job checks out the base without replace refs or hooks, refuses a
 base checkout that is not exactly the base commit and clean, and runs the
 attribution with the `node` resolved before candidate code; that keeps honest
 accidents out, nothing more. Nothing may trust the PR Gallery
-conclusion, which is one reason it is not a required check. Merge-queue candidates still report the
-workflow's contexts, but the capture job skips there: Gallery is not a required
-context, so a candidate's capture could not stop a landing. Combined changes
+conclusion, which is one reason it is not a required check. Merge-queue candidates run the allowlist ceiling and skip both capture and its
+input classifier. GitHub still reports the Gallery job contexts for each candidate. Combined changes
 are otherwise captured after landing by `Nightly: Gallery` once a day, which
 checks capture integrity and reports pixel differences but does not run the
 product assertions below. Pixel differences are advisory in both workflows: `--report-only` retains the
