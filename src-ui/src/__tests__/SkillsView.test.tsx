@@ -1069,20 +1069,14 @@ describe('SkillsView', () => {
       const { updateLocalSkill } = await vi.importActual<
         typeof import('@kontourai/station-sdk/client')
       >('@kontourai/station-sdk/client');
-      vi.stubGlobal(
-        'fetch',
-        vi
-          .fn()
-          .mockResolvedValue(
-            new Response(
-              JSON.stringify({
-                success: false,
-                error: 'Session expired. Visit author-copy.example.',
-              }),
-              { status: 400, headers: { 'Content-Type': 'application/json' } },
-            ),
-          ),
+      const response = new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Session expired. Visit author-copy.example.',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
       );
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
       updateLocalSkillMock.mockImplementationOnce(({ name, ...data }) =>
         updateLocalSkill('http://localhost', name, data),
       );
