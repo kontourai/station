@@ -1,6 +1,8 @@
 import {
   mcpToolApprovalKey,
   mcpToolIdentities,
+  normalizeToolName,
+  resolveAuthoredToolApproval,
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import type { Tool } from '../../types';
@@ -22,6 +24,19 @@ export function getIntegrationToolKey(
   tool: Pick<Tool, 'toolName' | 'name'>,
 ): string {
   return `${integrationId}_${tool.toolName || tool.name}`;
+}
+
+function isIntegrationApproval(
+  pattern: string,
+  integrationId: string,
+): boolean {
+  if (pattern.startsWith('mcp/')) {
+    return pattern.startsWith(mcpToolApprovalKey(integrationId, ''));
+  }
+  const prefix = `${integrationId}_`;
+  return (
+    pattern.startsWith(prefix) || pattern.startsWith(normalizeToolName(prefix))
+  );
 }
 
 export function removeIntegration(
@@ -46,7 +61,7 @@ export function removeIntegration(
           !entry.startsWith(prefix) && !entry.startsWith(approvalPrefix),
       ),
       unattendedAutoApprove: form.tools.unattendedAutoApprove.filter(
-        (entry) => !entry.startsWith(prefix),
+        (entry) => !isIntegrationApproval(entry, integrationId),
       ),
       askBeforeUse: form.tools.askBeforeUse?.filter(
         (entry) =>
@@ -182,12 +197,37 @@ export function selectIntegrationTools(
             entry,
       ));
 
+  const unattendedAutoApprove =
+    names === 'all'
+      ? added.tools.unattendedAutoApprove
+      : [
+          ...new Set(
+            added.tools.unattendedAutoApprove.flatMap((pattern) => {
+              if (!isIntegrationApproval(pattern, integrationId))
+                return [pattern];
+              return names.flatMap((key) => {
+                const name = key.slice(prefix.length);
+                const approvalKey = mcpToolApprovalKey(integrationId, name);
+                const matches = resolveAuthoredToolApproval(
+                  [key, normalizeToolName(key)],
+                  [pattern],
+                  [],
+                  approvalKey,
+                );
+                if (matches !== 'always') return [];
+                return [pattern.includes('*') ? approvalKey : pattern];
+              });
+            }),
+          ),
+        ];
+
   return {
     ...added,
     toolsAvailableEdited: true,
     tools: {
       ...added.tools,
       available,
+      unattendedAutoApprove,
       askBeforeUse: added.tools.askBeforeUse?.flatMap((entry) => {
         if (
           names !== 'all' &&
