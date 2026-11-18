@@ -1,5 +1,44 @@
 [
   {
+    "timestampUtc": "2026-11-18T05:42:00Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261118.44244686750",
+    "sha": "c5837006326ca67e716f433f15180cd7da5922a7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44244686750",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261118.44244686750 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e1976d9e1f8a160fe9a78954c89448920ab7f37e",
+      "groups": {
+        "feat": [
+          "[#5185](https://github.com/kontourai/station/pull/5185) feat(orchestration): add dormant CLI Session group owner",
+          "[#5173](https://github.com/kontourai/station/pull/5173) feat: report paired multi-turn request overhead"
+        ],
+        "fix": [
+          "[#5184](https://github.com/kontourai/station/pull/5184) fix(scripts): sequence connected-agent projection and retain diagnostics",
+          "[#5169](https://github.com/kontourai/station/pull/5169) fix(orchestration): derive owned child activity from shared lifecycle",
+          "[#5183](https://github.com/kontourai/station/pull/5183) fix(tasks): capture launch intent before target discovery"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5190](https://github.com/kontourai/station/pull/5190) perf(docs): bound release history replay time",
+          "[#5187](https://github.com/kontourai/station/pull/5187) perf(orchestration): avoid duplicate session inventory scans",
+          "[#5171](https://github.com/kontourai/station/pull/5171) perf(sessions): bound repeated transcript prefix reads",
+          "[#5166](https://github.com/kontourai/station/pull/5166) perf(auth): defer bundled WebAuthn initialization until first use"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
     "timestampUtc": "2026-11-18T03:01:15Z",
     "channel": "nightly-npm",
     "version": "0.12.0-nightly.20261118.44226098011",
