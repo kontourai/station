@@ -274,6 +274,8 @@ function useInboxRowHoverCard() {
   };
 }
 
+const loadInboxRowApproval = () => import('./InboxRowApproval');
+
 const loadChatInboxHoverCard = () =>
   import('./ChatInboxHoverCard').then((module) => ({
     default: module.ChatInboxHoverCard,
@@ -416,6 +418,7 @@ function InboxCommandButton({
 }
 
 interface InboxRowProps {
+  inlineApproval?: boolean;
   item: HomeWorkItem;
   isCurrent: boolean;
   isSnoozed: boolean;
@@ -565,6 +568,7 @@ function InboxRowTitle({ title }: { title: string }) {
 
 export function InboxRow({
   item,
+  inlineApproval,
   isCurrent,
   isSnoozed,
   isOpenChat,
@@ -1117,6 +1121,18 @@ export function InboxRow({
             )}
         </div>
       )}
+      {inlineApproval &&
+        status.rung === 'approval' &&
+        !remoteProject &&
+        facts?.hostDetails !== false &&
+        item.controlMode !== 'read-only-attached' &&
+        item.orchestrationThreadId && (
+          <LazyBoundary
+            load={loadInboxRowApproval}
+            pending={null}
+            componentProps={{ threadId: item.orchestrationThreadId }}
+          />
+        )}
       {tooltip && hover.anchor && (
         <LazyBoundary
           load={loadChatInboxHoverCard}
@@ -1422,6 +1438,7 @@ export function InboxGroupList({
     ) : (
       <InboxRow
         key={item.id}
+        inlineApproval={group.id === 'needsYou'}
         item={item}
         isCurrent={isCurrent(item)}
         isSnoozed={group.id === 'snoozed'}

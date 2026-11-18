@@ -25,7 +25,7 @@ const ANSWER = 'The stored answer is back on screen.';
  * A conversation the Station keeps, with no chat open for it in this
  * browser: only the inventory names it.
  */
-async function storeConversation(page: Page) {
+async function storeConversation(page: Page, awaitingApproval = false) {
   // The inbox row is the Station's session; nothing in this browser has a
   // chat open for it.
   await page.route('**/api/orchestration/sessions/read-model', (route) =>
@@ -35,13 +35,15 @@ async function storeConversation(page: Page) {
         data: [
           {
             threadId: THREAD_ID,
+            conversationId: THREAD_ID,
             provider: 'bedrock',
             model: 'model-selected',
             cwd: '/repo/project',
             projectSlug: 'default',
             assignedAgentSlug: 'station',
             status: 'ready',
-            lifecycleState: 'idle',
+            lifecycleState: awaitingApproval ? 'review_pending' : 'idle',
+            answerability: { answerable: true },
             createdAt: CREATED_AT,
             updatedAt: UPDATED_AT,
             isLoaded: true,
@@ -61,6 +63,7 @@ async function storeConversation(page: Page) {
             {
               id: THREAD_ID,
               source: 'runtime',
+              lifecycleState: awaitingApproval ? 'review_pending' : 'idle',
               agentSlug: 'station',
               provider: 'bedrock',
               model: 'model-selected',
@@ -145,6 +148,38 @@ async function storeConversation(page: Page) {
           )
         : rejectUnexpectedFixtureRequest(route),
   );
+  await page.route(
+    (url) =>
+      url.pathname ===
+      `/api/orchestration/session-reads/${THREAD_ID}/turn-directory`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill(
+            json({
+              success: true,
+              data: {
+                session: {
+                  conversationId: THREAD_ID,
+                  ...(new URL(route.request().url()).searchParams.get(
+                    'includeCount',
+                  ) === 'false'
+                    ? {}
+                    : { turnCount: 1 }),
+                },
+                turns: [
+                  {
+                    turnId: 'turn-0',
+                    startedAt: '2026-07-19T10:00:00.000Z',
+                    request: 'Transcript fixture 0: prompt.',
+                    outcome: 'completed',
+                  },
+                ],
+                nextCursor: null,
+              },
+            }),
+          )
+        : rejectUnexpectedFixtureRequest(route),
+  );
   await mockRuntimeConversation(page, {
     id: THREAD_ID,
     agentSlug: 'station',
@@ -190,3 +225,128 @@ test('an inbox row for a stored conversation with no open chat opens its transcr
     .poll(() => new URL(page.url()).searchParams.get('chat'))
     .not.toBeNull();
 });
+
+const APPROVAL_REFERENCE = {
+  threadId: THREAD_ID,
+  requestId: 'approval-stored-1',
+  requestEventId: 'approval-open-event-1',
+};
+const APPROVAL_BODY = 'Allow the agent to write the report to pricing.txt.';
+
+for (const [mode, width, theme, decision] of [
+  ['permitted', 390, 'light', 'accept'],
+  ['permitted', 390, 'dark', 'accept'],
+  ['permitted', 1440, 'light', 'accept'],
+  ['permitted', 1440, 'dark', 'decline'],
+  ['read-only', 390, 'dark', 'accept'],
+  ['missing body', 390, 'dark', 'accept'],
+] as const) {
+  test(`an Inbox row uses the exact approval inspection when ${mode} (${width}, ${theme})`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    await mockChatShell(page);
+    await installMockOrchestrationSse(page);
+    await storeConversation(page, true);
+    await page.route('**/api/attention', (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            items: [
+              {
+                id: 'approval:item-1',
+                kind: 'approval',
+                title: 'Allow file write',
+                requestReference: APPROVAL_REFERENCE,
+                source: {
+                  notificationId: 'notification-1',
+                  notificationSource: 'approval-inbox',
+                },
+                actions: [],
+              },
+            ],
+            pendingCount: 1,
+          },
+        }),
+      ),
+    );
+    let attempted = 0;
+    await page.route('**/api/orchestration/commands', (route) => {
+      const command = route.request().postDataJSON();
+      expect(command).toMatchObject({
+        type: 'respondToRequest',
+        threadId: THREAD_ID,
+        requestId: APPROVAL_REFERENCE.requestId,
+        expectedRequestEventId: APPROVAL_REFERENCE.requestEventId,
+        decision,
+      });
+      attempted += 1;
+      return route.fulfill(json({ success: true }));
+    });
+    const inspectionPath = `/api/orchestration/sessions/${THREAD_ID}/requests/${APPROVAL_REFERENCE.requestId}`;
+    await page.route(
+      (url) => url.pathname === inspectionPath,
+      (route) => {
+        expect(new URL(route.request().url()).searchParams.get('eventId')).toBe(
+          APPROVAL_REFERENCE.requestEventId,
+        );
+        return route.fulfill(
+          json({
+            success: true,
+            data: {
+              state: 'open',
+              reference: APPROVAL_REFERENCE,
+              openedAt: UPDATED_AT,
+              requestType: 'approval',
+              provider: 'bedrock',
+              title: 'Allow file write',
+              ...(mode === 'missing body' ? {} : { body: APPROVAL_BODY }),
+              answerability: { answerable: true },
+              canRespond: mode !== 'read-only',
+            },
+          }),
+        );
+      },
+    );
+    const inspected = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === inspectionPath,
+    );
+    await page.goto('/?dock=open&maximize=true');
+    await dismissSetupLauncher(page);
+    const row = page
+      .getByRole('region', {
+        name: width === 390 ? 'Inbox' : 'Inbox chats',
+        exact: true,
+      })
+      .getByTestId('inbox-row')
+      .filter({ hasText: 'Needs approval' });
+    await expect(row).toBeVisible();
+    await (await inspected).finished();
+    await page.locator('.station-startup').first().waitFor({ state: 'hidden' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    if (mode !== 'permitted') {
+      await expect(
+        row.getByRole('button', { name: /Approve once|Deny/ }),
+      ).toHaveCount(0);
+      await expect(row.getByText(APPROVAL_BODY)).toHaveCount(0);
+      await row
+        .getByRole('button', { name: 'Station session, default', exact: true })
+        .click();
+      await expect(page.getByText(ANSWER, { exact: true })).toBeVisible();
+      expect(attempted).toBe(0);
+      return;
+    }
+    await expect(row.getByText(APPROVAL_BODY)).toBeVisible();
+    await row.screenshot({ path: testInfo.outputPath('approval-row.png') });
+    await row
+      .getByRole('button', {
+        name: decision === 'accept' ? 'Approve once' : 'Deny',
+        exact: true,
+      })
+      .click();
+    await expect(row.getByText('Decision sent.')).toBeVisible();
+    expect(attempted).toBe(1);
+  });
+}

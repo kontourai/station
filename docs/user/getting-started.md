@@ -1636,6 +1636,11 @@ request version, once. A review request with recorded evidence offers
 A row's ⋯ menu holds **Dismiss**, and **Snooze** when the Attention snooze
 preview is on.
 
+A conversation’s Inbox row also shows the request and **Approve once** or
+**Deny** when Station can inspect one exact request and you can answer it.
+Open the chat from its row to review an approval when those controls are
+unavailable.
+
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station
 checks that the request is still open and makes the decision. When the paired

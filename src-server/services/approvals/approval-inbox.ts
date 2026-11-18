@@ -133,6 +133,12 @@ export class ApprovalInboxNotificationProvider
   }
 
   remember(notification: Notification): void {
+    this.forget(notification.id);
+    if (
+      notification.status !== 'delivered' &&
+      notification.status !== 'pending'
+    )
+      return;
     const target = parseInboxTarget(notification);
     if (!target) {
       return;
@@ -188,6 +194,14 @@ export class ApprovalInboxNotificationProvider
   isLiveApproval(notification: Notification): boolean {
     const { state } = this.observe(notification);
     return state === 'open' || state === 'unavailable';
+  }
+
+  hasOrchestrationRequest(requestKey: string): boolean {
+    const id = this.notificationIdByRequestKey.get(requestKey);
+    return (
+      id !== undefined &&
+      this.targetsByNotificationId.get(id)?.kind === 'orchestration'
+    );
   }
 
   completeRequest(requestKey: string): string | null {
@@ -653,13 +667,14 @@ export function wireApprovalInboxNotifications(
   const unsubscribe = eventBus.subscribe((message) => {
     notificationService.dispatch('approval-inbox-event', async () => {
       if (message.event === SERVER_EVENTS.APPROVAL_OPENED) {
-        // #2589: a Station-agent relay's approval, which the adapter also
-        // opens as the thread's orchestration request: on the card only when
-        // it is the relayed conversation's own and that thread is listed.
+        // The Station Agent relay and adapter share one approval identity.
+        // Keep the registry route until the exact orchestration record arrives.
         const relayThread = message.data?.orchestrationThreadId;
+        const relayKey = relayedRegistryRequestKey(message.data);
+        if (relayKey && provider.hasOrchestrationRequest(relayKey)) return;
         const onActivityCard =
+          relayKey &&
           typeof relayThread === 'string' &&
-          relayThread === message.data?.conversationId &&
           provider.isListedSession(relayThread);
         const notification = await notificationService.schedule(
           APPROVAL_INBOX_SOURCE,
@@ -672,7 +687,8 @@ export function wireApprovalInboxNotifications(
               { id: 'accept', label: 'Allow Once', variant: 'primary' },
               { id: 'decline', label: 'Deny', variant: 'danger' },
             ],
-            dedupeTag: `approval:${message.data?.approvalId ?? 'unknown'}`,
+            dedupeTag:
+              relayKey ?? `approval:${message.data?.approvalId ?? 'unknown'}`,
             metadata: {
               agentName: message.data?.agentName,
               agentSlug: message.data?.agentSlug,
@@ -804,6 +820,19 @@ async function convergeHydratedOrchestrationApprovals(
     status: ['delivered', 'pending'],
   });
 
+  const relayTwins = new Map<string, string>();
+  for (const notification of hydrated) {
+    const target = parseInboxTarget(notification);
+    if (
+      notification.source !== APPROVAL_INBOX_SOURCE ||
+      target?.kind !== 'registry' ||
+      notification.metadata?.dedupeTag !== `approval:${target.approvalId}`
+    )
+      continue;
+    const relayKey = relayedRegistryRequestKey(notification.metadata);
+    if (relayKey) relayTwins.set(relayKey, notification.id);
+  }
+
   for (const notification of hydrated) {
     const target = parseInboxTarget(notification);
     // Registry-kind approvals have no orchestration session to replay —
@@ -822,6 +851,16 @@ async function convergeHydratedOrchestrationApprovals(
         error: errorMessage(error),
       });
       continue;
+    }
+
+    if (
+      outcome.state === 'open' &&
+      outcome.request.provider === 'station-agent' &&
+      notification.source === APPROVAL_INBOX_SOURCE &&
+      target.requestEventId === outcome.request.eventId
+    ) {
+      const twin = relayTwins.get(target.requestKey);
+      if (twin) await notificationService.markStatus(twin, 'dismissed');
     }
 
     // `open` — still genuinely outstanding. `undetermined` — nothing could
@@ -847,6 +886,7 @@ async function convergeHydratedOrchestrationApprovals(
 }
 
 function parseInboxTarget(notification: Notification): InboxTarget | null {
+  if (notification.source !== APPROVAL_INBOX_SOURCE) return null;
   const requestKind = notification.metadata?.requestKind;
   const requestKey = notification.metadata?.requestKey;
   if (typeof requestKind !== 'string' || typeof requestKey !== 'string') {
@@ -917,6 +957,21 @@ function mapRegistryApprovalDecision(actionId: string): boolean {
     return false;
   }
   throw new Error(`Unsupported registry approval action: ${actionId}`);
+}
+
+function relayedRegistryRequestKey(
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  const threadId = metadata?.orchestrationThreadId;
+  const requestId = metadata?.approvalId;
+  if (
+    typeof threadId === 'string' &&
+    threadId === metadata?.conversationId &&
+    typeof requestId === 'string'
+  ) {
+    return buildOrchestrationRequestKey({ threadId, requestId });
+  }
+  return undefined;
 }
 
 function buildOrchestrationRequestKey(
