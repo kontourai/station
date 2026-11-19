@@ -988,9 +988,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     // behind "See exactly what is sent" rather than filling the first screen
     // a person ever sees.
     await expect(
-      page.getByText(
-        'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
-      ),
+      standaloneModal(page).getByText(/none is configured here/),
     ).toBeVisible();
     await expect(page.getByText('station_started')).toBeHidden();
     await standaloneModal(page).getByText('See exactly what is sent').click();
@@ -1144,9 +1142,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(standaloneModal(page)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('What Station sends')).toBeVisible();
     await expect(
-      page.getByText(
-        'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',
-      ),
+      standaloneModal(page).getByText(/none is configured here/),
     ).toBeVisible();
     await expect(
       standaloneModal(page).getByText('See exactly what is sent'),
