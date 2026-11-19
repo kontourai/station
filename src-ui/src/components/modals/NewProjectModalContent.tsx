@@ -1,4 +1,3 @@
-import type { ProjectStartIntent } from '@kontourai/station-contracts/project';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useActiveStationName } from '../../hooks/useActiveStationName';
@@ -9,6 +8,7 @@ import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { Button } from '../Button';
 import { useDialogHistoryHost } from '../DialogHistoryHost';
 import { registerDialogHistory } from '../dialog-history';
+import { FolderGlyph, PlusGlyph } from '../icons/Glyph';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -37,7 +37,6 @@ function NewProjectModalHeader({
   return (
     <div className="new-project-modal__header">
       <div>
-        <p className="new-project-modal__eyebrow">Project Setup</p>
         <h3
           ref={headingRef}
           className="new-project-modal__title"
@@ -65,6 +64,7 @@ function NewProjectFormActions({
   hasCreatedProject,
   hasRecoveryIntent,
   openCreatedProject,
+  selectForDraft,
   submitting,
   onClose,
 }: {
@@ -72,6 +72,7 @@ function NewProjectFormActions({
   hasCreatedProject: boolean;
   hasRecoveryIntent: boolean;
   openCreatedProject: boolean;
+  selectForDraft: boolean;
   submitting: boolean;
   onClose: () => void;
 }) {
@@ -94,7 +95,9 @@ function NewProjectFormActions({
         pending={submitting}
         pendingLabel={
           openCreatedProject
-            ? 'Opening…'
+            ? selectForDraft
+              ? 'Selecting…'
+              : 'Opening…'
             : hasCreatedProject
               ? 'Applying layout…'
               : 'Creating…'
@@ -102,7 +105,9 @@ function NewProjectFormActions({
         disabled={!canSubmit}
       >
         {openCreatedProject
-          ? 'Open Project'
+          ? selectForDraft
+            ? 'Select Project'
+            : 'Open Project'
           : hasCreatedProject
             ? 'Retry layout'
             : hasRecoveryIntent
@@ -113,30 +118,36 @@ function NewProjectFormActions({
   );
 }
 
-function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
+function NewProjectExistingFolder({ state }: { state: NewProjectModalState }) {
   const { draft, starter, submission } = state;
   const profile = usePlatformProfile();
   const stationName = useActiveStationName() ?? 'the connected Station';
   if (!hasLocalStationForProfile(profile)) return null;
   return (
-    <NewProjectDirectoryField
-      directory={draft.directory}
-      stationName={stationName}
-      error={submission.directoryError}
-      notice={submission.directoryNotice}
-      onDirectoryChange={(directory) => {
-        if (
-          normalizeWorkingDirectory(directory) !== draft.normalizedDirectory
-        ) {
-          starter.resetForDirectory();
-        }
-        draft.setIcon('');
-        draft.setIconDisabled(false);
-        draft.setShowIconChoices(false);
-        draft.setDirectory(directory);
-        draft.setRepositoryAcquisition(null);
-      }}
-    />
+    <details
+      className="new-project-modal__options"
+      open={Boolean(draft.directory && !draft.repositoryAcquisition)}
+    >
+      <summary>Use an existing folder</summary>
+      <NewProjectDirectoryField
+        directory={draft.directory}
+        stationName={stationName}
+        error={submission.directoryError}
+        notice={submission.directoryNotice}
+        onDirectoryChange={(directory) => {
+          if (
+            normalizeWorkingDirectory(directory) !== draft.normalizedDirectory
+          ) {
+            starter.resetForDirectory();
+          }
+          draft.setIcon('');
+          draft.setIconDisabled(false);
+          draft.setShowIconChoices(false);
+          draft.setDirectory(directory);
+          draft.setRepositoryAcquisition(null);
+        }}
+      />
+    </details>
   );
 }
 
@@ -198,48 +209,48 @@ function NewProjectDetails({
   const { draft, starter, submission } = state;
   const authority = useHostRequestAuthorityScope();
   const intentId = useId();
-  const intents: {
-    value: ProjectStartIntent;
-    title: string;
-    description: string;
-  }[] = [
-    {
-      value: 'workspace',
-      title: 'Repository or folder',
-      description: 'Clone a Git link or use a folder on this Station.',
-    },
-    {
-      value: 'knowledge',
-      title: 'Documents and knowledge',
-      description: 'Add documents or knowledge sources. No repository needed.',
-    },
-    {
-      value: 'connections',
-      title: 'Connected tools',
-      description: 'Choose existing tool connections and accounts.',
-    },
+  const workspaceSelected = draft.startIntent === 'workspace';
+  const intents = [
     {
       value: 'blank',
-      title: 'Blank Project',
-      description: 'Start with a name and add sources when you need them.',
+      title: 'Blank workspace',
+      description: 'Start with an empty workspace on this Station.',
+      Icon: PlusGlyph,
     },
-  ];
+    {
+      value: 'workspace',
+      title: 'From a repository',
+      description: 'Acquire a Git checkout or use an existing folder.',
+      Icon: FolderGlyph,
+    },
+  ] as const;
+  const layoutPicker =
+    workspaceSelected || draft.startIntent === 'blank' ? (
+      <NewProjectStarterPicker
+        codingStarter={starter.codingStarter}
+        gitWorkspaceDetected={starter.gitWorkspaceDetected}
+        recentLayouts={starter.recentLayouts}
+        selectedLayoutId={starter.selectedLayoutId}
+        onSelect={starter.selectLayout}
+        onBrowse={() => starter.setShowLayoutBrowser(true)}
+      />
+    ) : null;
   return (
     <>
       <NewProjectIdentityInput state={state} inputRef={nameRef} />
       <fieldset className="new-project-modal__intents">
-        <legend>What would you like to start with?</legend>
+        <legend>Workspace</legend>
         <div className="new-project-modal__intent-grid">
-          {intents.map((intent) => (
-            <label key={intent.value} className="new-project-modal__intent">
+          {intents.map(({ value, title, description, Icon }) => (
+            <label key={value} className="new-project-modal__intent">
               <input
                 type="radio"
                 name={intentId}
-                value={intent.value}
-                checked={draft.startIntent === intent.value}
+                value={value}
+                checked={workspaceSelected === (value === 'workspace')}
                 onChange={() => {
-                  draft.setStartIntent(intent.value);
-                  if (intent.value !== 'workspace') {
+                  draft.setStartIntent(value);
+                  if (value === 'blank') {
                     if (draft.resolvedName) {
                       draft.setName(draft.resolvedName);
                       draft.setNameTouched(true);
@@ -251,55 +262,39 @@ function NewProjectDetails({
                   }
                 }}
               />
+              <Icon className="new-project-modal__intent-icon" />
               <span>
-                <strong>{intent.title}</strong>
-                <small>{intent.description}</small>
+                <strong>{title}</strong>
+                <small>{description}</small>
               </span>
             </label>
           ))}
         </div>
       </fieldset>
-      {draft.startIntent === 'workspace' && (
-        <NewProjectRepositorySource
-          onBusyChange={onAcquisitionBusy}
-          onUseCheckout={(path, name, acquisitionId) => {
-            if (!authority?.isCurrent()) return;
-            draft.setRepositoryAcquisition({
-              id: acquisitionId,
-              directory: path,
-              recoveryKey: JSON.stringify([
-                authority.apiBase,
-                authority.draftRecoveryKey ?? authority.authorityKey,
-              ]),
-            });
-            starter.resetForDirectory();
-            draft.setDirectory(path);
-            if (!draft.nameTouched) {
-              draft.setName(name);
-              draft.setNameTouched(true);
-            }
-          }}
-        />
-      )}
-      {draft.startIntent === 'workspace' && (
-        <NewProjectDirectoryInput state={state} />
-      )}
-      {draft.startIntent === 'workspace' && (
-        <p className="editor-hint">
-          Start with one repository. Add more in Project Sources after creation.
-        </p>
-      )}
-      {draft.startIntent === 'knowledge' && (
-        <p>
-          After creation, Sources lets you create a managed knowledge store and
-          preview documents before importing them.
-        </p>
-      )}
-      {draft.startIntent === 'connections' && (
-        <p>
-          After creation, choose the tools this Project's Agents may use. Each
-          person's account retains its own authorization.
-        </p>
+      {workspaceSelected && (
+        <>
+          <NewProjectRepositorySource
+            onBusyChange={onAcquisitionBusy}
+            onUseCheckout={(path, name, acquisitionId) => {
+              if (!authority?.isCurrent()) return;
+              draft.setRepositoryAcquisition({
+                id: acquisitionId,
+                directory: path,
+                recoveryKey: JSON.stringify([
+                  authority.apiBase,
+                  authority.draftRecoveryKey ?? authority.authorityKey,
+                ]),
+              });
+              starter.resetForDirectory();
+              draft.setDirectory(path);
+              if (!draft.nameTouched) {
+                draft.setName(name);
+                draft.setNameTouched(true);
+              }
+            }}
+          />
+          <NewProjectExistingFolder state={state} />
+        </>
       )}
       <details className="new-project-modal__options">
         <summary>More options</summary>
@@ -312,17 +307,9 @@ function NewProjectDetails({
           value={draft.defaultEnvironment}
           onChange={draft.setDefaultEnvironment}
         />
+        {!workspaceSelected && layoutPicker}
       </details>
-      {(draft.startIntent === 'workspace' || draft.startIntent === 'blank') && (
-        <NewProjectStarterPicker
-          codingStarter={starter.codingStarter}
-          gitWorkspaceDetected={starter.gitWorkspaceDetected}
-          recentLayouts={starter.recentLayouts}
-          selectedLayoutId={starter.selectedLayoutId}
-          onSelect={starter.selectLayout}
-          onBrowse={() => starter.setShowLayoutBrowser(true)}
-        />
-      )}
+      {workspaceSelected && layoutPicker}
       {submission.error && (
         <div className="new-project-modal__error">{submission.error}</div>
       )}
@@ -335,14 +322,21 @@ function NewProjectForm({
   onClose,
   nameRef,
   hidden,
+  selectForDraft,
 }: {
   state: NewProjectModalState;
   onClose: () => void;
   nameRef: RefObject<HTMLInputElement | null>;
   hidden: boolean;
+  selectForDraft: boolean;
 }) {
   const { canSubmit, submit, sourceError } = useNewProjectFormSubmit(state);
   const [acquisitionBusy, setAcquisitionBusy] = useState(false);
+  const needsCheckout =
+    state.draft.startIntent === 'workspace' &&
+    !state.draft.normalizedDirectory &&
+    !state.submission.hasCreatedProject &&
+    !state.submission.hasRecoveryIntent;
 
   return (
     <form
@@ -351,7 +345,7 @@ function NewProjectForm({
       inert={hidden}
       style={hidden ? { display: 'none' } : undefined}
       onSubmit={(event) => {
-        if (acquisitionBusy) {
+        if (acquisitionBusy || needsCheckout) {
           event.preventDefault();
           return;
         }
@@ -372,68 +366,74 @@ function NewProjectForm({
             onAcquisitionBusy={setAcquisitionBusy}
           />
         </fieldset>
-      </div>
-      {sourceError && <p role="alert">{sourceError}</p>}
-      {state.submission.hasRecoveryIntent && (
-        <div className="new-project-modal__recovery">
-          <p role={state.submission.recovery.corrupt ? 'alert' : 'status'}>
-            {state.submission.recovery.corrupt
-              ? 'The saved Project setup could not be read.'
-              : `Saved setup: ${state.submission.recovery.pending?.draft.name}. Station checks the same request before continuing.`}
-          </p>
-          {state.submission.recovery.pending && (
-            <p>
-              Starter:{' '}
-              {state.submission.recovery.pending.starterLayoutId
-                ? (state.starter.eligibleLayouts.find(
-                    (layout) =>
-                      layout.id ===
-                      state.submission.recovery.pending?.starterLayoutId,
-                  )?.name ?? 'Selected starter unavailable')
-                : 'No starter layout'}
+        {sourceError && <p role="alert">{sourceError}</p>}
+        {state.submission.hasRecoveryIntent && (
+          <div className="new-project-modal__recovery">
+            <p role={state.submission.recovery.corrupt ? 'alert' : 'status'}>
+              {state.submission.recovery.corrupt
+                ? 'The saved Project setup could not be read.'
+                : `Saved setup: ${state.submission.recovery.pending?.draft.name}. Station checks the same request before continuing.`}
             </p>
-          )}
-          {state.submission.recovery.statusMessage && (
-            <p role="status">{state.submission.recovery.statusMessage}</p>
-          )}
-          {state.submission.recovery.pending && (
+            {state.submission.recovery.pending && (
+              <p>
+                Starter:{' '}
+                {state.submission.recovery.pending.starterLayoutId
+                  ? (state.starter.eligibleLayouts.find(
+                      (layout) =>
+                        layout.id ===
+                        state.submission.recovery.pending?.starterLayoutId,
+                    )?.name ?? 'Selected starter unavailable')
+                  : 'No starter layout'}
+              </p>
+            )}
+            {state.submission.recovery.statusMessage && (
+              <p role="status">{state.submission.recovery.statusMessage}</p>
+            )}
+            {state.submission.recovery.pending && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={
+                  state.submission.recoveryBusy || state.submission.submitting
+                }
+                onClick={() =>
+                  void state.submission.recovery.operation.refetch()
+                }
+              >
+                Check setup
+              </Button>
+            )}
             <Button
               type="button"
               variant="secondary"
-              disabled={
-                state.submission.recoveryBusy || state.submission.submitting
-              }
-              onClick={() => void state.submission.recovery.operation.refetch()}
+              disabled={state.submission.submitting}
+              onClick={state.submission.setAsideRecovery}
             >
-              Check setup
+              Set aside this setup
             </Button>
-          )}
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={state.submission.submitting}
-            onClick={state.submission.setAsideRecovery}
-          >
-            Set aside this setup
-          </Button>
-          <p className="editor-hint">
-            Anything already created, such as the Project or checkout, is kept.
-          </p>
-        </div>
-      )}
+            <p className="editor-hint">
+              Anything already created, such as the Project or checkout, is
+              kept.
+            </p>
+          </div>
+        )}
 
-      {state.submission.hasCreatedProject && (
-        <p className="new-project-modal__recovery" role="status">
-          {state.submission.canOpenCreatedProject
-            ? 'Project created. Continue to open it.'
-            : 'Project created. Retry the selected starter layout to finish setup.'}
-        </p>
-      )}
+        {state.submission.hasCreatedProject && (
+          <p className="new-project-modal__recovery" role="status">
+            {state.submission.canOpenCreatedProject
+              ? selectForDraft
+                ? 'Project created. Select it for this draft.'
+                : 'Project created. Continue to open it.'
+              : 'Project created. Retry the selected starter layout to finish setup.'}
+          </p>
+        )}
+      </div>
       <NewProjectFormActions
-        canSubmit={canSubmit && !acquisitionBusy}
+        canSubmit={canSubmit && !acquisitionBusy && !needsCheckout}
         hasCreatedProject={state.submission.hasCreatedProject}
         hasRecoveryIntent={state.submission.hasRecoveryIntent}
         openCreatedProject={state.submission.canOpenCreatedProject}
+        selectForDraft={selectForDraft}
         submitting={state.submission.submitting}
         onClose={onClose}
       />
@@ -444,9 +444,13 @@ function NewProjectForm({
 export function NewProjectModalContent({
   state,
   onClose,
+  historyMode,
+  returnFocusTarget,
 }: {
   state: NewProjectModalState;
   onClose: () => void;
+  historyMode: 'route' | 'entry';
+  returnFocusTarget?: HTMLElement | null;
 }) {
   const { starter } = state;
   const browsingLayouts = starter.showLayoutBrowser;
@@ -454,17 +458,8 @@ export function NewProjectModalContent({
 
   const browseHistoryId = useId();
   const browseHistoryHost = useDialogHistoryHost();
-  // Hardware/browser Back while browsing must return to the draft form, not
-  // exit the whole New Project flow (archive#1825 2).
-  // The outer `ResponsiveDialogSurface` below intentionally does NOT push a
-  // history layer of its own (`historyMode="route"`: the modal's overall
-  // open/close is driven by the app's own `/projects/new` route, mounting
-  // and unmounting `NewProjectModal` directly — see `AppViewContent.tsx`'s
-  // `ProjectNewViewGate`), so without this, a Back press falls straight
-  // through to that route level and discards the whole draft. The old
-  // nested dialog got this for free from its own default `historyMode
-  // ="entry"`; this recreates exactly that registration, scoped to the
-  // browsing sub-state, using the same primitive.
+  // Back from the layout browser returns to the form before the enclosing
+  // route or inline dialog handles its own Back entry.
   useEffect(() => {
     if (!browsingLayouts) return;
     return registerDialogHistory(
@@ -504,7 +499,8 @@ export function NewProjectModalContent({
     <ResponsiveDialogSurface
       layer="dialog"
       onClose={dismiss}
-      historyMode="route"
+      historyMode={historyMode}
+      returnFocusTarget={returnFocusTarget}
       initialFocusRef={nameRef}
       initialFocusPolicy="desktop"
       ariaLabelledBy={
@@ -523,6 +519,7 @@ export function NewProjectModalContent({
         onClose={onClose}
         nameRef={nameRef}
         hidden={browsingLayouts}
+        selectForDraft={historyMode === 'entry'}
       />
       {browsingLayouts && (
         <NewProjectLayoutBrowserBody

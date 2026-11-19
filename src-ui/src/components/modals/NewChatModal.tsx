@@ -93,6 +93,7 @@ import {
   StartComposer,
   type StartProjectChip,
 } from '../chat-start/StartComposer';
+import type { StartPickerMenu } from '../chat-start/StartPickerMenus';
 import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
@@ -386,11 +387,7 @@ export function NewChatModal({
   // The Station list (for "on <Station>" and the Station control) is read
   // only while the composer shows; a fork's Agent list does not use it.
   // Which chip menu is open, and the control that opened it.
-  const [chipMenu, setChipMenu] = useState<{
-    kind: 'agents' | 'project' | 'model' | 'station';
-    trigger: HTMLElement | null;
-    agentSlug?: string;
-  } | null>(null);
+  const [chipMenu, setChipMenu] = useState<StartPickerMenu | null>(null);
   const taskScope = useHostRequestAuthorityScope();
   const [remoteLaunch, setRemoteLaunch] = useState<{
     profile: AgentData;
