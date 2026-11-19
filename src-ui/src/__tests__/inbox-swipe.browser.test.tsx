@@ -617,9 +617,9 @@ test('an engine-list swipe reveals Remove without selecting the engine or invoki
       await page.evaluate(() => Reflect.get(window, 'removalRequests')),
     ).toBe(0);
     await remove.tap({ timeout: 4000 });
-    expect(
-      await page.evaluate(() => Reflect.get(window, 'removalRequests')),
-    ).toBe(1);
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, 'removalRequests')))
+      .toBe(1);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
