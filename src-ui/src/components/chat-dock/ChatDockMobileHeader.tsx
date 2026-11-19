@@ -23,6 +23,8 @@ import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { MobileDockHeaderLeadingContext } from './MobileDockHeaderLeading';
 import { MobileSheetPending } from './MobileSheetPending';
 
+const chatActionsSurface = { id: 'chat-actions', label: 'Chat actions' };
+
 const loadChatDockMobileOverflowSheet = () =>
   import('./ChatDockMobileOverflowSheet').then((module) => ({
     default: module.ChatDockMobileOverflowSheet,
@@ -239,7 +241,7 @@ export function ChatDockMobileHeader({
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
             aria-haspopup="dialog"
             aria-expanded={isOverflowOpen}
-            aria-label="Chat actions"
+            aria-label={chatActionsSurface.label}
             aria-describedby={
               activitySummary ? activityDescriptionId : undefined
             }
@@ -332,9 +334,10 @@ export function ChatDockMobileHeader({
       {isOverflowOpen && (
         <LazyBoundary
           load={loadChatDockMobileOverflowSheet}
+          surface={chatActionsSurface}
           pending={
             <MobileSheetPending
-              label="Chat actions"
+              label={chatActionsSurface.label}
               onClose={() => setIsOverflowOpen(false)}
               returnFocusTarget={chatActionsTriggerRef.current}
             />

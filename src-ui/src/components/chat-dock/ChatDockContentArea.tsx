@@ -210,7 +210,10 @@ function ChatDockContentAreaImpl({
                   </div>
                 </div>
                 <div className="conversation-history__list">
-                  <LazyBoundaryError onRetry={onRetry} />
+                  <LazyBoundaryError
+                    onRetry={onRetry}
+                    surface={{ id: 'conversation-history', label: 'History' }}
+                  />
                 </div>
               </div>
             )}
