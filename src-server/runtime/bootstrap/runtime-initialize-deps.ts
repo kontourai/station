@@ -166,7 +166,6 @@ interface RuntimeInitializationContext {
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
   configureRoutes: (app: any) => void;
-  reloadAgents: () => Promise<void>;
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
@@ -262,7 +261,6 @@ export function createRuntimeInitializationDeps(
     ollamaAdapter: context.ollamaAdapter,
     createVoltAgentInstance: context.createVoltAgentInstance,
     configureRoutes: context.configureRoutes,
-    reloadAgents: context.reloadAgents,
     captureAgentConfigurationRevisions:
       context.captureAgentConfigurationRevisions,
     registryTrustPolicyAuthority: context.registryTrustPolicyAuthority,

@@ -241,9 +241,18 @@ test('waits for the registered unsaved-work decision before switching', async ()
     }),
   );
   const { select, close } = openMenu();
-  fireEvent.click(row(/^Laptop/));
+  const laptopRow = row(/^Laptop/);
+  laptopRow.focus();
+  fireEvent.click(laptopRow);
   expect(proceed).toBeTypeOf('function');
   expect(select).not.toHaveBeenCalled();
+  await act(async () => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+  });
+  expect(close).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(laptopRow);
   await act(async () => proceed?.());
   expect(select).toHaveBeenCalledExactlyOnceWith(laptop);
   expect(close).toHaveBeenCalledOnce();

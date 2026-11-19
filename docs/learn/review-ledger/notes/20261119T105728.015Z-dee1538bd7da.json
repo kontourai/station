@@ -1,0 +1,7 @@
+{
+  "revision": "b0ace7c3e7a34fff5c459cc2ee850f143bb1d8ed",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Updated the Xcode 27 prerequisite to include rustup llvm-tools, matching swift-rs symbol globalization. Reviewed existing SDK 27 enforcement, channel identities, manual signing and staged IPA/provider boundaries; no other claim changes.","inputs":["docs/guides/mobile-release.md"]}
+  ]
+}

@@ -87,6 +87,34 @@ function enterSource() {
   fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
 }
 
+test('missing provider CLI offers setup and can retry in the same picker', async () => {
+  const fetch = vi.fn(async (url: string) => {
+    if (!url.endsWith('/repository-providers/github?page=1'))
+      throw new Error(`Unexpected fixture request: ${url}`);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        code: 'repository_cli_missing',
+        error: 'CLI missing',
+      }),
+      { status: 503 },
+    );
+  });
+  vi.stubGlobal('fetch', fetch);
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'GitHub' }));
+  expect(
+    await screen.findByRole('button', { name: 'Set up GitHub CLI' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry repositories' }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByRole('button', { name: 'Git URL' }));
+  expect(screen.getByLabelText('Repository URL')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Set up GitHub CLI' }),
+  ).toBeNull();
+});
+
 test.each(['github', 'gitlab'] as const)(
   '%s account selection keeps the chosen provider transport and branch through actual acquisition dispatch',
   async (provider) => {
@@ -139,10 +167,11 @@ test.each(['github', 'gitlab'] as const)(
       }),
     );
     mount();
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'Repository provider' }),
-      { target: { value: provider } },
-    );
+    const tile = screen.getByRole('button', {
+      name: provider === 'github' ? 'GitHub' : 'GitLab',
+    });
+    fireEvent.click(tile);
+    expect(tile.getAttribute('aria-pressed')).toBe('true');
     await screen.findByText(/Signed in as operator/);
     expect(acquired).toBeUndefined();
     fireEvent.change(screen.getByLabelText('Clone protocol'), {

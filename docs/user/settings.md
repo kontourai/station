@@ -418,6 +418,9 @@ Open **Updates** in the sidebar to review an app or server update. **What’s
 new** shows release notes for the installed server and any offered update. **Previous versions and
 changelogs** lets you browse published releases without starting an update.
 The circle around the sidebar update icon fills as a download progresses.
+The source update check belongs to the selected Station. When you switch
+Stations or reconnect with different credentials, the earlier check cannot
+supply the new connection's result.
 
 After an app or connected-server upgrade, its changelog opens once on this device.
 A browser served by the updated server shows one popup for that upgrade.

@@ -1050,12 +1050,16 @@ test('host commands use typed catalog requests, reducer operations, and declared
 
 test('pop-out retains a bounded failure and returns focus to the invoking command', async () => {
   const nativeDetails = 'native route /private/path rejected';
+  let rejectPopOut!: () => void;
   render(
     <WorkspacePaneHost
       document={flatHostDocument()}
       popOut={{
         state: 'supported',
-        request: async () => ({ status: 'failed' }),
+        request: () =>
+          new Promise((resolve) => {
+            rejectPopOut = () => resolve({ status: 'failed' });
+          }),
       }}
       renderPane={(pane) => <div>{pane.descriptorId}</div>}
     />,
@@ -1069,10 +1073,17 @@ test('pop-out retains a bounded failure and returns focus to the invoking comman
   const command = screen.getByRole('menuitem', { name: 'Pop out pane' });
   command.focus();
   expect(globalThis.document.activeElement).toBe(command);
+  fireEvent.click(command);
+  expect((command as HTMLButtonElement).disabled).toBe(true);
   await act(async () => {
-    fireEvent.click(command);
-    await Promise.resolve();
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
   });
+  // Older DOM implementations leave focus on a disabled element.
+  if (document.activeElement === command) command.blur();
+  expect(document.activeElement).toBe(document.body);
+  await act(async () => rejectPopOut());
   // Commit the pending-state unlock before the browser's return-focus frame.
   await act(async () => {
     await new Promise<void>((resolve) =>

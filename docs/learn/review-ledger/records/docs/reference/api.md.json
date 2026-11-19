@@ -674,6 +674,8 @@
 
     "src-server/routes/evidence/flow-runs.ts",
 
+    "src-server/routes/chat/conversation-work-search.ts",
+
     "src-server/services/knowledge/knowledge-storage.ts"
   ],
 

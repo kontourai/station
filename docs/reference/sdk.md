@@ -49,8 +49,11 @@ native shell's host-owned transport), and `requestTicket`, `createSocket` and
 
 - `open(target, {cols, rows, launch?, legacyTerminalId?})` asks the server for a
   new session in `target` (`{projectId, bindingKey}`). `launch` names a
-  server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
-  mode}`); no executable, argument or directory is sent. `legacyTerminalId`
+  server-resolved program (`{kind: 'shell'}`, `{kind: 'agent', connectionId,
+  mode}`, or `{kind: 'repository-sign-in', provider}`). The repository sign-in
+  profile runs a fixed GitHub or GitLab browser login in an interactive terminal
+  when the Station operator has command authority. The client supplies no executable
+  or arguments. `legacyTerminalId`
   imports a pre-socket Coding terminal's owned history once.
 - `attach(target, terminalId)` views an existing session; repeated calls share
   one view until it is detached.
@@ -803,6 +806,10 @@ this Station does not have (`project_room_project_not_found`, also read by
 opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
+The newest live window rolls within the 500-message span. Ordinary refetch
+reads that range in bounded 25-message spans and pages earlier from its
+actual start. The Room keeps recently departed rows through its retained
+history reader. A contiguous live rollover does not start a history request.
 The hook follows forward continuations when the server's byte limit splits a
 window, then loads older windows; it retains up to 20 windows.
 `useProjectRoomRetainedHistory` re-reads the rows a caller still shows from
@@ -6281,20 +6288,16 @@ update functions:
 `scopeKey` is present it joins the query key. The caller must derive a distinct
 key for each connection/boot it wants to keep separate; the hook does not derive
 that identity.
-`assertCurrent` is checked immediately before the request is issued and again
-after it resolves — throwing rejects the fetch, so an obsolete or superseded
-scope's completion never resolves as current data. Both fields are
-secret-free: credentials and credential-evidence objects must never enter a
-query key or these callbacks. Existing two-argument callers are unaffected.
+`assertCurrent` runs before dispatch and after the response. Return `false`
+to reject with `StationRequestAuthorityError`, or throw to reject with your
+own error. Returning `true` or nothing allows the check to proceed. The query
+keeps its per-scope key and abort signal. Both fields are secret-free.
+Existing two-argument callers are unaffected.
 
-The current Settings callers pass `context.isCurrent` directly, which returns
-a boolean. The hook ignores that return value, so `false` alone does not reject
-the query through this guard. Other scope keys, transport checks and UI
-availability checks still apply. Callers needing this pre/post refusal must
-supply a callback that throws when stale. See the
-[hook](../../packages/sdk/src/query-domains/systemRuntime.ts),
-[host predicate](../../src-ui/src/hooks/useConnectedServerUpdateContext.ts),
-and [Settings caller](../../src-ui/src/views/settings/CoreUpdateCheck.tsx).
+The [update check](../../src-ui/src/views/settings/CoreUpdateCheck.tsx) and
+[source installer](../../src-ui/src/views/settings/SourceInstallerDisclosure.tsx)
+both pass the [host predicate](../../src-ui/src/hooks/useConnectedServerUpdateContext.ts)
+to the [shared hook](../../packages/sdk/src/query-domains/systemRuntime.ts).
 
 ## Saved answer quotations
 

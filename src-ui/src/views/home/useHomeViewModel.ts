@@ -44,6 +44,7 @@ import {
   openRemoteSessionReader,
   resolveWorkItemOpenAction,
 } from './work-item-open-policy';
+import { hasUnseenDelegationResult } from './work-status';
 
 export type HomeViewNavigation = Extract<
   NavigationView,
@@ -300,6 +301,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
       (task) =>
         task.kind !== 'remote-session' &&
         task.lifecycleLabel !== 'Draft' &&
+        !hasUnseenDelegationResult(task, data.workFacts?.get(task.id)) &&
         !data.workFacts?.get(task.id)?.runRootId,
     ),
     continueWork: createContinueWork(

@@ -1,0 +1,49 @@
+{
+  "revision": "2b39b36984b48853ca2a025ebd2426111fa19281",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the default Home and Inbox shelves against the shared status and partition code. A confirmed completed local delegation with a ready Session stays in Just finished while the server reports its result unread. A read result returns to open work with the conversation and Done status intact.","inputs":["docs/glossary.md","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the glossary addition against the context map. It describes placement of a completed delegation result while its ready Session remains available for follow-up.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the glossary addition against the context map. It describes placement of a completed delegation result while its ready Session remains available for follow-up.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the one Done rung's shelf choice for ready delegations with server read evidence. Its status vocabulary, live child-work precedence and request-state handling still follow the shared ladder.","inputs":["src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the one Done rung's shelf choice for ready delegations with server read evidence. Its status vocabulary, live child-work precedence and request-state handling still follow the shared ladder.","inputs":["src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the one Done rung's shelf choice for ready delegations with server read evidence. Its status vocabulary, live child-work precedence and request-state handling still follow the shared ladder.","inputs":["src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the one Done rung's shelf choice for ready delegations with server read evidence. Its status vocabulary, live child-work precedence and request-state handling still follow the shared ladder.","inputs":["src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the one Done rung's shelf choice for ready delegations with server read evidence. Its status vocabulary, live child-work precedence and request-state handling still follow the shared ladder.","inputs":["src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the one Done rung's shelf choice for ready delegations with server read evidence. Its status vocabulary, live child-work precedence and request-state handling still follow the shared ladder.","inputs":["src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the one Done rung's shelf choice for ready delegations with server read evidence. Its status vocabulary, live child-work precedence and request-state handling still follow the shared ladder.","inputs":["src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the one Done rung's shelf choice for ready delegations with server read evidence. Its status vocabulary, live child-work precedence and request-state handling still follow the shared ladder.","inputs":["src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the host-scoped WorkFacts derivation. The ready local delegation completion comes from the recorded lifecycle outcome. The granted Home projection retains its existing shape and the conversation keeps its identity and open action.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the host-scoped WorkFacts derivation. The ready local delegation completion comes from the recorded lifecycle outcome. The granted Home projection retains its existing shape and the conversation keeps its identity and open action.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the host-scoped WorkFacts derivation. The ready local delegation completion comes from the recorded lifecycle outcome. The granted Home projection retains its existing shape and the conversation keeps its identity and open action.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the host-scoped WorkFacts derivation. The ready local delegation completion comes from the recorded lifecycle outcome. The granted Home projection retains its existing shape and the conversation keeps its identity and open action.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the host-scoped WorkFacts derivation. The ready local delegation completion comes from the recorded lifecycle outcome. The granted Home projection retains its existing shape and the conversation keeps its identity and open action.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the host-scoped WorkFacts derivation. The ready local delegation completion comes from the recorded lifecycle outcome. The granted Home projection retains its existing shape and the conversation keeps its identity and open action.","inputs":["src-ui/src/views/home/work-facts.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed Home's Continue selection against the shared default shelf. The unseen ready delegation remains in Recent work until its current result is read, then it is available to Continue.","inputs":["src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed Home's Continue selection against the shared default shelf. The unseen ready delegation remains in Recent work until its current result is read, then it is available to Continue.","inputs":["src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the mounted Home result test and the cited UI and plugin guidance. The added case drives the existing inventory fixture from unread to read and checks the visible shelves.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the mounted Home result test and the cited UI and plugin guidance. The added case drives the existing inventory fixture from unread to read and checks the visible shelves.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the mounted Home result test and the cited UI and plugin guidance. The added case drives the existing inventory fixture from unread to read and checks the visible shelves.","inputs":["src-ui/src/__tests__/HomeView.test.tsx"]}
+  ]
+}

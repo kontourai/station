@@ -60,8 +60,9 @@ without adding a model API key:
    Station-managed directory when your workspace mode allows it. Choose
    **From a repository** to acquire a Git checkout or, on the Station host,
    choose **Use an existing folder** to reuse one. For Git acquisition, open
-   **Start from a Git repository**, paste an HTTPS or SSH URL, or browse with
-   the GitHub or GitLab account on the Station host. Choose **Acquire
+   **Start from a Git repository**. Choose **Git URL** to paste an HTTPS or
+   SSH URL, or use the **GitHub** or **GitLab** tile to browse with a signed-in
+   account on the Station host. Choose **Acquire
    repository**, then **Use this checkout**. Station suggests a name until
    you edit it. Creation rechecks the acquisition and retains its source and
    exact commit. Station recommends **Coding** when the folder is a Git
