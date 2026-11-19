@@ -4061,7 +4061,7 @@ function projectRepositorySourceScreens(): Screen[] {
               ]) {
                 const summary = section
                   .locator('summary')
-                  .filter({ hasText: new RegExp(`^${label}$`) });
+                  .and(section.getByText(label, { exact: true }));
                 await summary.click();
                 await expect(
                   section
@@ -4069,6 +4069,20 @@ function projectRepositorySourceScreens(): Screen[] {
                     .filter({ hasText: label }),
                 ).toHaveCount(1);
                 await expect(summary).toBeInViewport({ ratio: 1 });
+                if (label === 'Add a repository') {
+                  await expect(
+                    section.getByRole('button', {
+                      name: 'GitHub',
+                      exact: true,
+                    }),
+                  ).toBeVisible();
+                  await expect(
+                    section.getByRole('button', {
+                      name: 'Git URL',
+                      exact: true,
+                    }),
+                  ).toBeVisible();
+                }
                 await summary.click();
               }
               await sources
@@ -4088,7 +4102,7 @@ function projectRepositorySourceScreens(): Screen[] {
             const target = accessDetails
               ? first.locator('.project-repositories__access')
               : sources.getByRole('heading', {
-                  name: 'Repositories and folders',
+                  name: 'Repositories',
                   exact: true,
                 });
             const header = await page.locator('.detail-header').boundingBox();
