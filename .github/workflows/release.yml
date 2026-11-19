@@ -381,15 +381,17 @@ jobs:
           $config = @{ bundle = @{ windows = @{ certificateThumbprint = $imported.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = 'http://timestamp.digicert.com' } } } | ConvertTo-Json -Compress -Depth 5
           $config | Set-Content -Path "$env:RUNNER_TEMP/tauri.windows.release.conf.json" -Encoding utf8
       - name: Build signed Windows staging candidate
-        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        shell: bash
         env:
           STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
           STATION_CHANNEL: ${{ needs.preflight.outputs.channel }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
-        with:
-          args: --target x86_64-pc-windows-msvc --config ${{ runner.temp }}/tauri.windows.release.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
+        run: |
+          npm run build:desktop -- --target x86_64-pc-windows-msvc \
+            --config "$RUNNER_TEMP/tauri.windows.release.conf.json" \
+            --config "$RUNNER_TEMP/tauri.release.conf.json"
       # Observation only: this step records what Get-AuthenticodeSignature
       # returned for the MSI. Which status and signer each mode accepts is
       # decided by scripts/lib/windows-release-signing.mjs, here and again when
@@ -735,8 +737,6 @@ jobs:
           workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
           create_credentials_file: true
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
       - name: Fetch Android upload signing material
         id: android_signing
         uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3
@@ -842,14 +842,34 @@ jobs:
           releaseFiles: release-assets/station-${{ env.RELEASE_TAG }}-android-universal.aab
           track: internal
           status: completed
+      - name: Authenticate for Play bundle observation
+        id: play_observation_auth
+        if: needs.preflight.outputs.release_kind == 'rc'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
+          create_credentials_file: false
+          export_environment_variables: false
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
       - name: Observe exact candidate Play bundle after upload
+        id: play_observation
         if: needs.preflight.outputs.release_kind == 'rc'
         env:
           RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
-          GOOGLE_PLAY_ACCESS_TOKEN: ${{ steps.google_auth.outputs.access_token }}
+          GOOGLE_PLAY_ACCESS_TOKEN: ${{ steps.play_observation_auth.outputs.access_token }}
         run: |
           mkdir -p provider-receipts
           node scripts/promote-store-release.mjs observe-android --producer-tag "$RELEASE_TAG" --source-sha "$RELEASE_SHA" --aab "release-assets/station-${RELEASE_TAG}-android-universal.aab" --source-track internal --output provider-receipts/android-store-authority.json
+      - name: Retain failed Play observation journal
+        if: ${{ !cancelled() && steps.play_observation.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: station-android-play-observation-${{ needs.preflight.outputs.android_version_code }}
+          path: provider-receipts/android-store-authority.json.observation.json
+          if-no-files-found: warn
+          retention-days: 30
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: needs.preflight.outputs.release_kind == 'rc'
         with:

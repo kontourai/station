@@ -138,6 +138,11 @@ claims, a Windows claim that differs from its receipt, missing bytes, duplicate
 variants, source/tag disagreement, invalid checksums, and missing updater
 signatures.
 
+Release Stage invokes the same `npm run build:desktop` wrapper as Windows
+Nightly. It supplies the Stable signing and version overlays. The wrapper
+appends the generated WiX resource overlay, which uses shallow source paths
+while preserving the installed Node dependency layout.
+
 The release tag is also the native application version authority. The root
 `package.json` records one stable release-train base (`X.Y.Z`); preflight
 requires both `vX.Y.Z-rc.N` and `vX.Y.Z` to match that base, then creates a
