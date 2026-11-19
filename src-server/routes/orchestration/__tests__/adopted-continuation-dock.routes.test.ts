@@ -543,13 +543,8 @@ async function fixture(options: {
           ),
         acceptStagedAttachments: (principal, refs, binding) =>
           staging.acceptBinding({ principalId: principal.id }, refs, binding),
-        releaseStagedAttachments: (principal, refs, binding, attemptId) =>
-          staging.releaseBinding(
-            { principalId: principal.id },
-            refs,
-            binding,
-            attemptId,
-          ),
+        releaseStagedAttachments: (principal, refs, binding) =>
+          staging.releaseBinding({ principalId: principal.id }, refs, binding),
       }
     : {};
   app.route(

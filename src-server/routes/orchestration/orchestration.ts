@@ -179,8 +179,8 @@ import {
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import {
-  type AttachmentBindingOptions,
   AttachmentStageError,
+  type AttachmentTurnBinding,
 } from '../../services/orchestration/attachment-staging-service.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
@@ -2165,8 +2165,8 @@ export function createOrchestrationRoutes(
     hydrateStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
-      binding: { threadId: string; clientTurnId: string },
-      options?: AttachmentBindingOptions,
+      binding: AttachmentTurnBinding,
+      options?: { inspectOnly?: true },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
       owner: PrincipalRef,
@@ -2177,8 +2177,7 @@ export function createOrchestrationRoutes(
     releaseStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
-      binding: { threadId: string; clientTurnId: string },
-      attemptId?: string,
+      binding: AttachmentTurnBinding,
     ) => void;
     handoffConversation?: (
       input: ConversationHandoffRequest,
@@ -2851,11 +2850,8 @@ export function createOrchestrationRoutes(
     let stagedAttachmentsForRelease:
       | readonly StagedAttachmentReference[]
       | undefined;
-    let stagedBindingForRelease:
-      | { threadId: string; clientTurnId: string }
-      | undefined;
+    let stagedBindingForRelease: AttachmentTurnBinding | undefined;
     let releasePrincipal: PrincipalRef | undefined;
-    let stagedAttemptId: string | undefined;
     let releaseDeliveryReceipt: (() => void) | undefined;
     // #3568: set once this send may wait in its conversation's inbox; a
     // busy refusal from the dispatch below then queues it instead.
@@ -3080,7 +3076,9 @@ export function createOrchestrationRoutes(
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
         | undefined;
-      if (stagedAttachments?.length) stagedAttemptId = randomUUID();
+      const stagedAttemptId = stagedAttachments?.length
+        ? randomUUID()
+        : undefined;
       if (stagedAttachments?.length && !principal) {
         throw new PrincipalUnresolvedError(
           'Attachment staging requires a resolved request principal.',
@@ -3112,7 +3110,7 @@ export function createOrchestrationRoutes(
       );
       const delegation = resolvedDelegation?.context;
       assertInheritedDelegationToolPolicy(delegation);
-      let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
+      let stagedBinding: AttachmentTurnBinding | undefined;
       const foregroundRequest = {
         ...body,
         ...(verifiedMcpPromptOrigin
@@ -3156,15 +3154,14 @@ export function createOrchestrationRoutes(
                       binding,
                       options,
                     );
-                  stagedBinding = binding;
-                  stagedBindingForRelease = binding;
+                  stagedBinding = { ...binding, attemptId: stagedAttemptId };
+                  stagedBindingForRelease = stagedBinding;
                   stagedAttachmentsForRelease = stagedAttachments;
                   releasePrincipal = principal;
                   return deps.hydrateStagedAttachments!(
                     principal!,
                     stagedAttachments,
-                    binding,
-                    { attemptId: stagedAttemptId },
+                    stagedBinding,
                   );
                 })(),
             }
@@ -3274,6 +3271,7 @@ export function createOrchestrationRoutes(
             ? (stagedBinding ?? {
                 threadId: followUp.conversationId,
                 clientTurnId: followUp.clientTurnId,
+                attemptId: stagedAttemptId,
               })
             : undefined;
           const settleStage = (queued: boolean) => {
@@ -3289,7 +3287,6 @@ export function createOrchestrationRoutes(
                 principal!,
                 stagedAttachments,
                 filesBinding,
-                stagedAttemptId,
               );
           };
           if (stagedAttachments?.length) {
@@ -3317,7 +3314,6 @@ export function createOrchestrationRoutes(
                   principal!,
                   stagedAttachments!,
                   filesBinding,
-                  { attemptId: stagedAttemptId },
                 )
               : (body.attachments as ChatAttachmentInput[]);
             attachments = [];
@@ -3589,7 +3585,6 @@ export function createOrchestrationRoutes(
           releasePrincipal,
           stagedAttachmentsForRelease,
           stagedBindingForRelease,
-          stagedAttemptId,
         );
       }
       // A refusal with no closed code reaches the client only as generic

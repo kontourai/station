@@ -8019,7 +8019,7 @@ export function configureRuntimeRoutes(
           binding,
           options,
         ),
-      releaseStagedAttachments: (principal, references, binding, attemptId) =>
+      releaseStagedAttachments: (principal, references, binding) =>
         attachmentStaging.releaseBinding(
           {
             principalId: principal.id,
@@ -8029,7 +8029,6 @@ export function configureRuntimeRoutes(
           },
           references,
           binding,
-          attemptId,
         ),
       acceptStagedAttachments: (principal, references, binding) =>
         attachmentStaging.acceptBinding(

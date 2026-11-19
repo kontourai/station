@@ -38,8 +38,9 @@ export interface AttachmentStageOwner {
   tenantId?: string;
 }
 
-export interface AttachmentBindingOptions {
-  inspectOnly?: true;
+export interface AttachmentTurnBinding {
+  threadId: string;
+  clientTurnId: string;
   attemptId?: string;
 }
 
@@ -291,8 +292,7 @@ export class AttachmentStagingService {
   releaseBinding(
     owner: AttachmentStageOwner,
     references: readonly StagedAttachmentReference[],
-    binding: { threadId: string; clientTurnId: string },
-    attemptId?: string,
+    { threadId, clientTurnId, attemptId }: AttachmentTurnBinding,
   ): void {
     for (const reference of references) {
       const record = this.#stages.get(reference.stageId);
@@ -300,8 +300,8 @@ export class AttachmentStagingService {
         !record ||
         !sameOwner(record.owner, owner) ||
         record.state !== 'complete' ||
-        record.binding?.threadId !== binding.threadId ||
-        record.binding?.clientTurnId !== binding.clientTurnId
+        record.binding?.threadId !== threadId ||
+        record.binding?.clientTurnId !== clientTurnId
       ) {
         continue;
       }
@@ -331,8 +331,8 @@ export class AttachmentStagingService {
   bindAndHydrate(
     owner: AttachmentStageOwner,
     references: readonly StagedAttachmentReference[],
-    binding: { threadId: string; clientTurnId: string },
-    options?: AttachmentBindingOptions,
+    { threadId, clientTurnId, attemptId }: AttachmentTurnBinding,
+    options?: { inspectOnly?: true },
   ): ChatAttachmentInput[] {
     this.cleanup();
     const records = references.map((reference) => {
@@ -360,8 +360,8 @@ export class AttachmentStagingService {
       }
       if (
         record.binding &&
-        (record.binding.threadId !== binding.threadId ||
-          record.binding.clientTurnId !== binding.clientTurnId)
+        (record.binding.threadId !== threadId ||
+          record.binding.clientTurnId !== clientTurnId)
       ) {
         throw new AttachmentStageError(
           'stage_forbidden',
@@ -375,10 +375,11 @@ export class AttachmentStagingService {
     if (!options?.inspectOnly)
       for (const record of records) {
         record.binding ??= {
-          ...binding,
-          ...(options?.attemptId ? { attempts: new Set<string>() } : {}),
+          threadId,
+          clientTurnId,
+          ...(attemptId ? { attempts: new Set<string>() } : {}),
         };
-        if (options?.attemptId) record.binding.attempts?.add(options.attemptId);
+        if (attemptId) record.binding.attempts?.add(attemptId);
         record.bindingExpiresAt = this.now() + this.ttlMs;
       }
     // Exactly `ChatAttachmentInput`. The stage's `clientAttachmentId` is a
