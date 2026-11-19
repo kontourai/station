@@ -669,6 +669,9 @@ function App({
     <DialogHistoryHostBoundary>
       <AppViewContent
         currentView={displayCurrentView}
+        stationUnavailable={
+          connectionStatus === 'error' || connectionStatus === 'idle'
+        }
         agents={agents}
         apiBase={API_BASE}
         availableModels={availableModels}

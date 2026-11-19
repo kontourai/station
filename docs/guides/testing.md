@@ -1947,19 +1947,20 @@ screen's own assertion.
 
 Detected surfaces (`tests/helpers/gallery-app-error-state.ts`): the
 `LazyBoundary` row (`.lazy-boundary__error`), the extension-registry
-notification (a `toast-card` carrying `EXTENSIONS_UNAVAILABLE_LABEL`), and the
+notification (a `toast-card` carrying `EXTENSIONS_UNAVAILABLE_LABEL`), the
 route boundary's chunk failure (an `.error-state` titled with the catalog's
-`route.chunk.title` or `route.chunk.offlineTitle`). A surface means a lazily
-loaded part failed, not that a download failed: `LazyBoundary` shows its row for
-any error its child throws, a render error included. NOT detected, because none
+`route.chunk.title` or `route.chunk.offlineTitle`), and a route still suspended
+after its loading window (`.route-pending-recovery`). A surface can appear
+while a script request is still pending or after a render error. The Gallery
+records failed requests independently. NOT detected, because none
 has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
 `RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
 `DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
 their own `unavailable` slot (several render nothing). The route boundary's
 other error states, its authority failure (`route.authority.title`) and its
 render failure (`route.generic.title`), are not detected either. The route
-surface is matched by its en-US titles only, so a capture in another locale
-does not detect it. No screen shows a detected surface on purpose, checked by
+chunk failure is matched by its en-US titles. The stalled route is matched
+by class in every locale. No screen shows a detected surface on purpose, checked by
 grep; no full capture has been run since route-chunk detection was added. A
 screen that starts to must be exempted by name in
 `APP_ERROR_SURFACE_EXEMPT_SCREENS`.
