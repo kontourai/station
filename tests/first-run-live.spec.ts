@@ -333,6 +333,8 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await page
       .locator('input[placeholder="~/code/my-project"]')
       .fill(`${REPO_ROOT}/`);

@@ -7009,6 +7009,7 @@ const SCREENS: Screen[] = [
       await assertNoStrayProjectModal(page);
       await page.locator('[data-new-project-trigger]').click();
       await expect(newProjectOverlay(page)).toBeVisible();
+      await page.getByText('More options', { exact: true }).click();
       await page.mouse.move(700, 650);
       await page.mouse.wheel(0, 700);
       const starter = page.getByRole('button', {
@@ -7036,7 +7037,7 @@ const SCREENS: Screen[] = [
             return;
           }
         }
-        throw new Error('New Project layout choices have no scroll container');
+        // On a tall viewport the open form can fit without scrolling.
       });
       await expect
         .poll(

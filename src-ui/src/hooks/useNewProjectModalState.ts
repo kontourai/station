@@ -75,11 +75,7 @@ export function useNewProjectModalState(
         authority.draftRecoveryKey ?? authority.authorityKey,
       ])
     : undefined;
-  const draft = useNewProjectDraft(
-    isOpen,
-    partition,
-    onCreated ? 'blank' : 'workspace',
-  );
+  const draft = useNewProjectDraft(isOpen, partition);
   // Local artwork discovery reads the folder's own files, so it stays on the
   // deliberate "the user finished a folder path" signal. Repo discovery owns
   // its own, wider gate (`useNewProjectStarter`), because its answer is what

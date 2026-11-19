@@ -21,20 +21,19 @@ without adding a model API key:
    engine** opens Connections when no agent is runnable. On Home, open the Agent/model control beside **Start**. Choose
    **Agent**, then **Codex**, write a request, and choose **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
-4. Choose **New Project** on Home, enter a name, and choose **Repository or
-   folder**, **Documents and knowledge**, **Connected tools**, or **Blank
-   Project**. Documents opens Files & connections after creation; connected tools opens
-   the Project's Tools section. Neither asks for a folder or repository.
-   Blank also permits an optional installed layout. For a repository, open
-   **Start from a Git repository**, paste its HTTPS/SSH URL or choose **GitHub** or **GitLab**
-   under **Repository provider**, using an account signed in on the Station host. Choose
-   **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
-   that working copy and retains its source and exact commit. Acquisition currently
-   requires the Station operator and uses that host's Git credentials.
-   Station recommends **Coding** for a Git repository; you can choose another
-   layout or none. Choose **Create** to open
-   the Project. Operator setup is saved across reloads; reopen **New Project** to
-   check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
+4. Choose **New Project** on Home. **Blank workspace** creates an empty
+   Station-managed directory when your workspace mode allows it. Choose
+   **From a repository** to acquire a Git checkout or, on the Station host,
+   choose **Use an existing folder** to reuse one. For Git acquisition, open
+   **Start from a Git repository**, paste an HTTPS or SSH URL, or browse with
+   the GitHub or GitLab account on the Station host. Choose **Acquire
+   repository**, then **Use this checkout**. Station suggests a name until
+   you edit it. Creation rechecks the acquisition and retains its source and
+   exact commit. Station recommends **Coding** when the folder is a Git
+   workspace. Choose **Create** to open the Project, then add documents or
+   connected tools in **Files & connections**.
+   Operator setup is saved across reloads. Reopen **New Project** to continue
+   the same creation and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
    and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
    From a chat draft, open its Project picker and choose **Create project**.
    Enter a name for a blank Project or choose what to start with. Station
