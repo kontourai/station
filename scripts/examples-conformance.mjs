@@ -54,10 +54,7 @@ export const CREDENTIAL_GATED = new Map([
     'elevenlabs-voice',
     'live ElevenLabs and microphone/playback acceptance remain unverified',
   ],
-  [
-    'station-sessions-mcp',
-    'live Station read credential and external MCP host acceptance remain unverified',
-  ],
+  ['station-sessions-mcp', 'external MCP host rendering remains unverified'],
 ]);
 
 /**

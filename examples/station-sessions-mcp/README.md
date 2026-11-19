@@ -43,8 +43,10 @@ redirects. A response deadline and size limit also apply to the response body.
    }
    ```
 
-   Supply the read credential separately in the child environment. Attach the
-   integration to an Agent so its tools are discovered.
+   For a Station-managed child, bind an instance-owned secret to
+   `STATION_API_CREDENTIAL` using the integration's secret environment
+   bindings. The integration uses this credential's read scope for all its
+   tool and resource calls. Attach it where that scope is intended.
 
 2. **Reference it from a layout** as an `mcp-tool-ui` component:
 
@@ -79,5 +81,8 @@ host-side approval + audit machinery.
 npm run test:focused -- examples/station-sessions-mcp/__tests__/render.test.mjs examples/station-sessions-mcp/__tests__/server.process.test.mjs
 ```
 
-The stdio test uses a loopback fixture with synthetic credentials. Live Station
-and external-host rendering remain unverified.
+The stdio test uses a loopback fixture with synthetic credentials. An
+independent run against an isolated Station also verified a paired Device's
+empty snapshot and then verified refusal from the same connected stdio
+client after Device revocation. External-host rendering remains unverified.
+[Real Station receipt](https://github.com/kontourai/station/issues/2785#issuecomment-6995173513)
