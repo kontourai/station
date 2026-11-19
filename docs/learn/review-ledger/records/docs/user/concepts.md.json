@@ -60,7 +60,9 @@
 
     "src-ui/src/hooks/outboundQueueProjection.ts",
 
-    "src-ui/src/__tests__/useOutboundQueueFlush.test.ts"
+    "src-ui/src/__tests__/useOutboundQueueFlush.test.ts",
+
+    "src-ui/src/views/project-settings/KnowledgeSection.tsx"
   ],
 
   "checks": [
