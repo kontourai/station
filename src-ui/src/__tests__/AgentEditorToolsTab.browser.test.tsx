@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, test } from 'vitest';
 import type { Tool } from '../types';
@@ -124,6 +124,7 @@ test('added sources use one compact row and can be removed without changing anot
   let latest = createEmptyAgentForm();
   latest.tools.mcpServers = ['docs', 'reports'];
   latest.tools.available = ['docs_read', 'reports_read'];
+  latest.tools.unattendedAutoApprove = ['*', 'mcp/docs/*', 'reports_read'];
   render(
     <Harness
       initial={latest}
@@ -137,7 +138,16 @@ test('added sources use one compact row and can be removed without changing anot
     />,
   );
   expect(screen.queryByText('Select shown')).toBeNull();
+  const approvals = within(
+    screen.getByRole('region', { name: 'Unattended approvals' }),
+  );
+  expect(
+    approvals.getAllByRole('listitem').map((item) => item.textContent),
+  ).toEqual(['* (all tools)', 'mcp/docs/*', 'reports_read']);
+  expect(approvals.getByText('mcp/docs/*')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Remove Docs' }));
+  expect(approvals.queryByText('mcp/docs/*')).toBeNull();
+  expect(approvals.getByText('reports_read')).toBeTruthy();
   expect(latest.tools.mcpServers).toEqual(['reports']);
   expect(latest.tools.available).toEqual(['reports_read']);
 });

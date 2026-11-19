@@ -6,6 +6,7 @@ import type {
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { expect } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { contrastRatio } from './helpers/color-contrast';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
@@ -72,7 +73,10 @@ const childEntries: ChildWorkTranscriptEntry[] = [
 ];
 /** An earlier session of the parent's conversation (before a restart). */
 const earlier = 'conv-running-earlier';
-async function seed(page: import('@playwright/test').Page) {
+async function seed(
+  page: import('@playwright/test').Page,
+  { includeTool = false } = {},
+) {
   await seedOrchestrationRoutes(page);
   await seedActiveChats(page, [
     {
@@ -103,6 +107,35 @@ async function seed(page: import('@playwright/test').Page) {
     method: 'child-work.updated',
     delta: { kind: 'upsert', item: child },
   });
+  if (includeTool) {
+    const tool = {
+      provider: 'codex',
+      threadId: parent,
+      turnId: 'turn-0',
+      itemId: 'read-parent',
+      toolCallId: 'read-parent',
+      toolName: 'Read',
+    };
+    turns[0]!.splice(
+      1,
+      0,
+      {
+        ...tool,
+        eventId: 'read-parent-started',
+        method: 'tool.started',
+        createdAt: '2026-07-19T10:00:00.100Z',
+        arguments: { file_path: 'guide.md' },
+      },
+      {
+        ...tool,
+        eventId: 'read-parent-completed',
+        method: 'tool.completed',
+        createdAt: '2026-07-19T10:00:00.200Z',
+        status: 'success',
+        output: 'The parent file is readable.',
+      },
+    );
+  }
   await installMockOrchestrationEventWindow(page, 'codex', {
     [parent]: turns.flat(),
   });
@@ -300,6 +333,67 @@ for (const viewport of [
     });
   }
 }
+test('tool success has readable contrast in active, parent and child chat cards', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seed(page, { includeTool: true });
+  await page.route('**/api/me/preferences', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: { schemaVersion: 1, values: { theme: 'light' } },
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'station-device-settings-v1',
+      JSON.stringify({ version: 2, values: { theme: 'light' } }),
+    ),
+  );
+  const successContrast = async () => {
+    const transcript = page.getByRole('log', {
+      name: 'Conversation transcript',
+    });
+    const call = transcript.locator('.tool-call').first();
+    await expect(call).toBeVisible();
+    const toggle = call.getByRole('button').first();
+    if ((await toggle.getAttribute('aria-expanded')) === 'false')
+      await toggle.click();
+    const footer = call.locator('.tool-call__status-footer');
+    await expect(footer).toContainText('Success');
+    return contrastRatio(footer);
+  };
+  await page.goto(`/?dock=open&chat=${parent}`);
+  await dismissSetupLauncher(page);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  const activeContrast = await successContrast();
+
+  await page.goto(
+    `/?dock=open&chat=${parent}&surface=chat&session=${parent}&child=child-review&childTitle=Review+files`,
+  );
+  await dismissSetupLauncher(page);
+  const trail = page.getByRole('navigation', { name: 'Chat breadcrumb' });
+  await expect(trail).toContainText('Review files');
+  const childContrast = await successContrast();
+  await trail.getByRole('button', { name: parentTitle, exact: true }).click();
+  await expect(trail).toBeHidden();
+  const parentContrast = await successContrast();
+
+  for (const [surface, ratio] of Object.entries({
+    active: activeContrast,
+    child: childContrast,
+    parent: parentContrast,
+  })) {
+    expect
+      .soft(ratio, `${surface} chat Success text contrast`)
+      .toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 test('a child an earlier session of the working conversation reported opens over the working chat, and back lands on it', async ({
   page,
 }) => {

@@ -1,3 +1,4 @@
+import { createHash, webcrypto } from 'node:crypto';
 /**
  * @vitest-environment jsdom
  */
@@ -187,7 +188,21 @@ vi.mock('@kontourai/station-sdk', () => ({
   useQueryClient: () => ({ invalidateQueries }),
   DevicePairingRequiredError: class DevicePairingRequiredError extends Error {},
   unsubscribePushNotifications,
-  fetchVapidPublicKey: vi.fn().mockResolvedValue('AQAB'),
+  fetchWebPushRegistration: async () => ({
+    publicKey: 'AQAB',
+    registration: {
+      status: 'paired',
+      fingerprint: createHash('sha256')
+        .update(
+          JSON.stringify([
+            'https://push.test/home-subscription',
+            'p-home',
+            'a-home',
+          ]),
+        )
+        .digest('hex'),
+    },
+  }),
   subscribePushNotifications: vi.fn(),
   // App raises OS alerts for blocking requests (#1912); this route's subject
   // is navigation, so an empty notification list keeps it silent.
@@ -625,6 +640,10 @@ describe('App home route resolution', () => {
     );
     const subscription = {
       endpoint: 'https://push.test/home-subscription',
+      toJSON: () => ({
+        endpoint: 'https://push.test/home-subscription',
+        keys: { p256dh: 'p-home', auth: 'a-home' },
+      }),
       options: {
         userVisibleOnly: true,
         applicationServerKey: new Uint8Array([1, 0, 1]).buffer,
@@ -638,6 +657,11 @@ describe('App home route resolution', () => {
     const registration = {
       pushManager: { getSubscription: async () => current },
     };
+    const cryptoDescriptor = Object.getOwnPropertyDescriptor(window, 'crypto');
+    Object.defineProperty(window, 'crypto', {
+      configurable: true,
+      value: webcrypto,
+    });
     const requestPermission = vi.fn();
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
@@ -667,9 +691,16 @@ describe('App home route resolution', () => {
       await waitFor(() =>
         expect(subscription.unsubscribe).toHaveBeenCalledOnce(),
       );
-      expect(unsubscribePushNotifications).toHaveBeenCalledWith(
-        subscription.endpoint,
-        homeConnection.apiBase,
+      await waitFor(() =>
+        expect(unsubscribePushNotifications).toHaveBeenCalledWith(
+          subscription.endpoint,
+          homeConnection.apiBase,
+          {
+            requestScope: expect.objectContaining({
+              authorityKey: 'app-home-route:test-authority',
+            }),
+          },
+        ),
       );
       expect(requestPermission).not.toHaveBeenCalled();
     } finally {
@@ -680,6 +711,7 @@ describe('App home route resolution', () => {
         [navigator, 'serviceWorker', workerDescriptor],
         [window, 'PushManager', pushDescriptor],
         [window, 'Notification', notificationDescriptor],
+        [window, 'crypto', cryptoDescriptor],
       ] as const) {
         if (descriptor) Object.defineProperty(target, key, descriptor);
         else Reflect.deleteProperty(target, key);

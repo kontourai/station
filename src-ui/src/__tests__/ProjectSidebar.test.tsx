@@ -928,7 +928,7 @@ test('an open project popup is retired when the rail becomes a closed mobile dra
     projects.push({ id: 'p1', slug: 'station', name: 'Station' });
     deviceSettingsStore.set('projectSidebarCollapsed', true);
     renderSidebar(<ProjectSidebar />);
-    fireEvent.click(screen.getByRole('button', { name: 'Station views' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Station views/ }));
     expect(screen.getByRole('dialog', { name: 'Station views' })).toBeTruthy();
     act(() => {
       presentation.isMobile = true;
@@ -941,7 +941,7 @@ test('an open project popup is retired when the rail becomes a closed mobile dra
     });
     expect(
       screen
-        .getByRole('button', { name: 'Station views' })
+        .getByRole('button', { name: /^Station views/ })
         .getAttribute('aria-expanded'),
     ).toBe('false');
   } finally {

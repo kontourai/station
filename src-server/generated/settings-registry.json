@@ -78,6 +78,14 @@
       "configKey": "logLevel"
     },
     {
+      "id": "local-accounts",
+      "label": "Accounts and sign-in",
+      "help": "Manage who can sign in to this Station when local accounts are enabled.",
+      "scope": "station",
+      "section": "system",
+      "route": "/settings?view=system&highlight=local-accounts"
+    },
+    {
       "id": "backup-restore",
       "label": "Settings Export & Import",
       "scope": "mixed",
@@ -333,6 +341,14 @@
       "section": "telemetry",
       "route": "/settings?view=telemetry&highlight=usage-telemetry",
       "configKey": "telemetryTier"
+    },
+    {
+      "id": "usage-disclosure",
+      "label": "What usage sharing includes",
+      "help": "Review the fields this Station reports for each usage sharing choice.",
+      "scope": "informational",
+      "section": "telemetry",
+      "route": "/settings?view=telemetry&highlight=usage-disclosure"
     },
     {
       "id": "telemetry-destination",
@@ -595,6 +611,15 @@
       "configKey": "defaultChatFontSize"
     },
     {
+      "id": "model-picker-preferences",
+      "label": "Model picker preferences",
+      "help": "The model picker in your interface orders, hides, and highlights models as you arranged them.",
+      "scope": "account",
+      "section": "chat",
+      "route": "/settings?view=chat&highlight=model-picker-preferences",
+      "configKey": "modelPickerPreferences"
+    },
+    {
       "id": "chat-title-model",
       "label": "Chat title model",
       "help": "Choose the model that names a chat after its first reply.",
@@ -710,6 +735,15 @@
       "section": "appearance",
       "route": "/settings?view=appearance&highlight=accent-color",
       "configKey": "accentColor"
+    },
+    {
+      "id": "skill-shortcuts",
+      "label": "Skill shortcuts",
+      "help": "Skills on this device run from the keys assigned to them here.",
+      "scope": "device",
+      "section": "keyboard-shortcuts",
+      "route": "/settings?view=keyboard-shortcuts&highlight=skill-shortcuts",
+      "configKey": "skillShortcuts"
     },
     {
       "id": "keyboard-shortcuts",

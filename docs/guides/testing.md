@@ -3110,6 +3110,28 @@ ports, temporary home, instance build roots, and `test-results/<instance>`
 directory. `STATION_E2E_CAPACITY` is bounded and is for measured,
 deliberately-provisioned hosts—not an edit-loop speed knob.
 
+The first-run Chromium journey records `first-run-surface-timing` samples
+in the suite log. The sample distinguishes the visible surface wait from
+same-origin JavaScript resource timing. A negative resource start offset
+means the browser started that resource before the timed interaction. A
+zero transfer size does not establish a network fetch. A missing resource
+entry is recorded separately from a slow surface.
+
+Each receipt records the checkout revision and whether tracked files differ.
+Only an observed timing entry contributes to a resource conclusion. An
+unavailable observation names the stage and failure class. Keep the existing
+20-second allowances until a slow-host sample establishes the tail.
+
+A clean run at `cbfd9227ce19297fb1ba090e2463c579ff5e154d` with one-minute host
+load 7.1–7.9 observed both setup launchers at 168–169 ms, the unconfigured
+composer at 4 ms, the Connections Models action at 338 ms, the Station Agent
+row at 1.08 s, and Chat actions at 812 ms. Inbox opened in 40–51 ms. The
+browser returned resource durations of 5.0 ms for the Connections frame,
+4.2 ms for the provider view, and 3.6 ms for the Chat actions sheet. Each
+had a zero transfer size. The Agent picker row's recorded script request
+preceded the timed picker interaction, and the Inbox recorded no new
+same-origin script entries during those opens.
+
 `tests/mobile-chat-composer.spec.ts` owns the mobile task-switcher journey:
 at 320px and 390px it covers the header trigger, visual-viewport sheet
 containment, dismissal/focus return, chat restore, and delegated Sessions
