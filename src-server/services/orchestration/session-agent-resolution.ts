@@ -29,6 +29,7 @@
  */
 
 import {
+  type AgentDelegationContext,
   type AgentSpec,
   BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
 } from '@kontourai/station-contracts/agent';
@@ -60,6 +61,7 @@ import {
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { stationEnablesClaudeToolSearch } from '../../runtime/agents/claude-tool-search.js';
+import { isDelegatedToolAllowed } from '../../runtime/agents/delegation.js';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
 import {
   composeStationInstructions,
@@ -364,11 +366,22 @@ async function resolveStationInstructions(args: {
   // Device tools are bound-only, so they are in `controlTools` exactly when
   // the session's station-control is `bound` (Claude, or Codex's bound
   // catalog), narrowed by the same allow/disable lists.
+  const delegation = input.metadata?.delegation as
+    | AgentDelegationContext
+    | undefined;
   const composed = composeStationInstructions({
     controlTools,
     browser: browserAllowed && (provider === 'claude' || boundChannel),
     devices: controlTools.has('device_open'),
-    delegated: Boolean(input.metadata?.delegation),
+    delegated: Boolean(delegation),
+    canDelegateFromChild:
+      delegation?.mode === 'isolated-child' &&
+      delegation.depth < delegation.maxDepth &&
+      isDelegatedToolAllowed({
+        delegation,
+        toolName: 'station-control_delegate_task',
+        toolNameMapping: new Map(),
+      }),
     harness,
     // Only when Station itself turns tool search on: under the harness
     // default, Claude Code decides and names the tools it defers.

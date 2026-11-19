@@ -360,13 +360,13 @@ describe('delegated child fan-out (delegated_tool_blocked)', () => {
     delegationAttestation: 'ignored-for-a-verified-caller',
   };
 
-  test('a delegated child calling /delegations (delegate_task) is refused 403 before dispatch', async () => {
+  test('nested delegation without a bound route caller is refused before dispatch', async () => {
     const { app, delegateTask } = appFor(childStarted);
     const res = await post(app, '/delegations', delegationBody);
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({
       success: false,
-      code: 'delegated_tool_blocked',
+      code: 'delegation_nested_out_of_scope',
     });
     expect(delegateTask).not.toHaveBeenCalled();
   });

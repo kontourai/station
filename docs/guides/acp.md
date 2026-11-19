@@ -1735,6 +1735,26 @@ server’s `ACPProbe` diagnostics instead of looking for a connection-level
 `src-server/services/acp/acp-manager-orchestration.ts` and
 `src-server/services/acp/acp-manager-view.ts`.
 
+### Delegate from a connected engine
+
+An Agent connected over ACP can use Station Control to call `list_delegation_targets` to see
+available Agents, their engines, and the model IDs this Station offers for
+them. Use those IDs with `delegate_task` when the work needs a separate Agent.
+Station records the returned Task and Session under the caller and delivers the
+child's result. The caller can also use `wait_session` with
+`until: "turn-settled"` and read `get_task_events` for the recorded outcome.
+
+A delegated Agent can start a child in its current Project on this Station
+when its inherited tool policy and depth permit. Approval requirements still
+apply. If the engine could not receive Station Control, review its launch
+arguments and start a fresh chat after repairing the connection.
+
+If a connection's execution configuration changes, Station refuses to resume
+a Session bound to the previous configuration. In the chat, open **Reset
+agent context** and choose **Continue with chat history**. The next message
+starts a new Session with the current connection settings and carries the
+retained transcript.
+
 ### When delegation reports an unavailable ACP connection
 
 A discovered model catalogue does not establish that an ACP engine can accept
