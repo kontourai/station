@@ -1,0 +1,33 @@
+{
+  "revision": "9a9e5e60e86b7ef691a6630eb9f907c5aa673b3f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the shared Station query defaults and their bootstrap, authority and recovery clients. The paired-work helper classifies an optional remote read and wraps explicit refetches without changing client defaults, retry policy or cache ownership.","inputs":["docs/architecture/module-map.md","src-ui/src/lib/queryDefaults.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed Inbox search and controls, mobile reader switching and Home starter placement. The toolbar feedback and list read action do not alter composer submission, shortcuts, draft ownership or reader Back behavior.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked dock selection, relationship publication and panel placement. Refresh re-reads list inputs and leaves the current source and follow destination to their existing owners.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked that the mobile Inbox stays mounted and retains scope and position, and that the desktop refresh action folds into the existing dock overflow only for an available open Inbox. Pane placement and return routes are unaffected.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked the query defaults and their route/authority boundary. Optional remote inventory refusal and unsupported-endpoint handling belong to the shell's read action; transport admission and native verification claims are unchanged.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/lib/queryDefaults.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the existing overflow and touch-target owners, list scroll boundaries and reduced motion. Shared touch refresh observes the list's own scroll top and leaves horizontal row gestures to Inbox.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the Project Tasks action header, list, board and starter entry points. Refresh calls existing read queries and leaves the starter correlation, task creation and dispatch actions in their existing owners.","inputs":["docs/guides/starter-work.md","src-ui/src/__tests__/ProjectTasksSection.test.tsx","src-ui/src/views/project-page/ProjectTasksSection.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the list refresh example contract against Inbox, Recent work and Project Tasks. Confirmed local scope, scoped React Query reads, single in-flight refresh, and separate Inbox stream recovery.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/reference/api.md","note":"Checked Inbox manual and recovery actions against the existing sessions, inventory, tasks and optional remote reads. No API route, payload, permission or execution effect changed.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Checked dock header action construction and Inbox data inputs. The UI action uses existing Station read scope and adds no settings, config defaults, overrides or persisted preference.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked Home and Inbox row inputs, authority partition and remote-reader handling. The UI does not add polling or alter the underlying work identity, lifecycle or permissions.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced mobile Inbox, Recent work and Project Tasks list touch and menu actions and desktop Inbox overflow. Verified that chat drafts and selection remain mounted and documented the three opted-in reading surfaces.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/home/HomeActionSection.tsx","src-ui/src/views/home/HomeSurface.tsx","src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked dock route and pane inputs. Refresh targets the Inbox reads and does not alter Personal Board layout, editing, persistence or publication.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/work-board.md","note":"Checked shared query defaults and Tasks board callers. The list gesture applies to the Project Tasks list without changing board refresh, drag, or state-transition rules.","inputs":["docs/user/work-board.md","src-ui/src/lib/queryDefaults.ts"]}
+  ]
+}
