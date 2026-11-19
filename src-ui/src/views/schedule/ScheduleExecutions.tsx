@@ -1,6 +1,6 @@
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import { Button } from '../../components/Button';
-import { SkeletonBlock } from '../../components/state';
+import { Empty, SkeletonBlock } from '../../components/state';
 import { useFetchRunOutputRef } from '../../hooks/useScheduler';
 
 export function ScheduleExecutions({
@@ -18,7 +18,7 @@ export function ScheduleExecutions({
 }) {
   if (loading) return <SkeletonBlock label="Loading executions" />;
   if (unavailable)
-    return <p role="status">Execution receipts are unavailable.</p>;
+    return <p role="status">Execution history is unavailable.</p>;
   const scheduled = runs
     .filter((run) => run.source === 'schedule')
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
@@ -26,7 +26,7 @@ export function ScheduleExecutions({
   return (
     <>
       {scheduled.length === 0 ? (
-        <p>No executions recorded.</p>
+        <Empty variant="compact" label="Executions appear after an automation runs" />
       ) : (
         <ul className="schedule__executions" aria-label="Scheduled executions">
           {scheduled.map((run) => (
@@ -36,7 +36,7 @@ export function ScheduleExecutions({
                 size="sm"
                 onClick={() => onSelect(run.runId)}
               >
-                View receipt for {run.sourceId ?? run.providerId}
+                View run for {run.sourceId ?? run.providerId}
               </Button>{' '}
               <time dateTime={run.startedAt}>
                 {new Date(run.startedAt).toLocaleString()}
@@ -44,7 +44,7 @@ export function ScheduleExecutions({
               {run.status}
               {!run.outputRef &&
                 run.status !== 'running' &&
-                ' · No result available'}
+                ' · Result unavailable'}
             </li>
           ))}
         </ul>
@@ -52,7 +52,7 @@ export function ScheduleExecutions({
       {selected && (
         <section
           className="schedule__execution-receipt"
-          aria-label="Selected execution receipt"
+          aria-label="Selected run details"
         >
           <h3>{selected.sourceId ?? 'Scheduled execution'}</h3>
           <p>

@@ -11,7 +11,7 @@ to see scheduled times in another zone. The automation keeps its stored
 schedule and time zone. Frequent jobs can have more occurrences than the
 calendar displays.
 
-**Executions** shows the recorded runs. Choose **View receipt** to see a run's
+**Executions** shows the recorded runs. Choose **View run** to see a run's
 status and attempt, and **Load result** when that receipt has a saved result.
 
 A job whose stored record needs repair appears separately for the Station

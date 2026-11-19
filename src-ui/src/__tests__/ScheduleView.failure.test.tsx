@@ -280,16 +280,16 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     });
     render(<ScheduleView />);
     fireEvent.click(screen.getByRole('tab', { name: 'Executions' }));
-    expect(screen.getByText(/No result available/)).toBeTruthy();
+    expect(screen.getByText(/Result unavailable/)).toBeTruthy();
     fireEvent.click(
-      screen.getByRole('button', { name: 'View receipt for healthy' }),
+      screen.getByRole('button', { name: 'View run for healthy' }),
     );
     expect(
-      screen.getByRole('region', { name: 'Selected execution receipt' }),
+      screen.getByRole('region', { name: 'Selected run details' }),
     ).toBeTruthy();
     expect(screen.getByText('failed · Attempt 2')).toBeTruthy();
     fireEvent.click(
-      screen.getByRole('button', { name: 'View receipt for second' }),
+      screen.getByRole('button', { name: 'View run for second' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Load result' }));
     expect(loadOutput).toHaveBeenCalledExactlyOnceWith(outputRef);

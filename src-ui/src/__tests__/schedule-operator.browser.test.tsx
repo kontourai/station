@@ -144,11 +144,9 @@ test('Schedule calendar and executions fit phone and desktop in both themes', as
         expect(await week.locator('time').count()).toBe(56);
         await page.getByRole('tab', { name: 'Calendar' }).press('ArrowRight');
         await page.getByRole('tab', { name: 'Executions' }).press('Enter');
-        await page
-          .getByRole('button', { name: 'View receipt for daily' })
-          .click();
+        await page.getByRole('button', { name: 'View run for daily' }).click();
         const receipt = page.getByRole('region', {
-          name: 'Selected execution receipt',
+          name: 'Selected run details',
         });
         await receipt.getByText('failed · Attempt 2').waitFor();
         expect(
