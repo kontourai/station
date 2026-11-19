@@ -327,7 +327,8 @@ The `@kontourai/station-contracts/terminal-transport` subpath exports the
 terminal binary frame codec (with the version 2 resize frame and its size
 codec), limits, the socket's `restart` request
 (`TerminalRestartRequest`, with `TERMINAL_SUBDIRECTORY_MAX_LENGTH`) and the
-observe/operate scope predicate. The
+observe/operate scope predicate. It also exposes the fixed GitHub and GitLab
+repository sign-in launch profiles and their displayed commands. The
 frame limit bounds unacknowledged output records independently of byte credit,
 including records sanitized to an empty payload. The
 [API reference](api.md#terminal-socket-operator-transport) owns the
@@ -864,13 +865,13 @@ Execution, and the reader shows it as "No result recorded". Clients of protocol
 rows as before (never folding them into `cancelled`). An `unresolved`
 completion is listed only while the conversation transcript still shows it:
 a later result of the same call can replace that row (station#1569), and the
-transcript projection (`projectRuntimeEventsToMessages`) decides, over the
-thread's events at or below the read's frozen high-water mark. The projection
-runs only when a listing meets an unresolved row, at most once per thread and
-high-water mark per process while cached; continuation pages reuse it, and a
-thread deleted and recreated under the same id is projected afresh. A page cursor records the owner
-events a page read, not the rows it kept, so paging past an omitted row resumes
-at the right event. Inventory
+shared transcript fold decides using events at or below the read's frozen
+high-water mark. When a listing meets an unresolved row, a cold read folds
+compact event data in pages. A later live read resumes a cached fold from its
+verified event identity and loads only the new suffix. Continuations reuse
+frozen results when cached. Deleting and recreating a thread under the same ID
+forces a fresh fold. A page cursor records the owner events a page read, so
+paging past an omitted row resumes at the right event. Inventory
 continuations bind the client dialect as well as scope and authority. Output
 pages filter the durable declaration index by the exact turn before paging,
 and their signed cursors cannot be reused for another turn or Whole Session.
@@ -3035,6 +3036,18 @@ The conversation-open contract represents a reserved empty-context reset as
 earlier transcript and the successor that can start on the next send. The
 current Session and execution binding become available only with an observed
 Session.
+
+The reset dialog saves the request key and selected policy before sending the
+reservation. It stores each attempt under the verified Station, author,
+conversation and predecessor Session. A competing attempt can only clear
+its own key. After a lost reply or a conflict from replaying the POST,
+reopening checks the original key with Station. Cancellation requires a
+matching reserved status. An older
+unscoped browser record can supply a status lookup key. The dialog offers an
+action only after Station confirms the same reservation and current author
+and predecessor. If verification fails, the record stays a hint. The
+conversation-open read can still expose the durable fresh-context continuation
+under its own authorization.
 
 `@kontourai/station-contracts/project-supervision` names opt-in supervision,
 Task incarnation, checkpoint, coordinator and known wait facts. The server

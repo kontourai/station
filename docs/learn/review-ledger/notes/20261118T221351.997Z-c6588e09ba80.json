@@ -1,0 +1,39 @@
+{
+  "revision": "30f2fe320f567a488548748f2b9779bf75e7b147",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked actual repository links, the Project overview repository entry point, the one-step Add a repository flow, and the matching-Station bottom terminal action.","inputs":["docs/guides/connections.md","src-ui/src/components/modals/NewProjectRepositorySource.tsx","src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx","src-ui/src/views/project-settings/ProjectRepositorySources.tsx","src-ui/src/views/project-settings/ProjectSourcesSection.tsx","src-ui/src/views/project-settings/__tests__/ProjectRepositorySources.test.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the Project overview and Sources links. Both use one repository acquisition and checkout owner.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the default Project overview now mounts a compact repository section, and that Files and connections remains the destination for detailed source management. Project navigation and task entry points retain their documented routes. Historical captures predate these controls.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the default Project overview now mounts a compact repository section, and that Files and connections remains the destination for detailed source management. Project navigation and task entry points retain their documented routes. Historical captures predate these controls.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked the default Project overview now mounts a compact repository section, and that Files and connections remains the destination for detailed source management. Project navigation and task entry points retain their documented routes. Historical captures predate these controls.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked the default Project overview now mounts a compact repository section, and that Files and connections remains the destination for detailed source management. Project navigation and task entry points retain their documented routes. Historical captures predate these controls.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Checked the default Project overview now mounts a compact repository section, and that Files and connections remains the destination for detailed source management. Project navigation and task entry points retain their documented routes. Historical captures predate these controls.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the default Project overview now mounts a compact repository section, and that Files and connections remains the destination for detailed source management. Project navigation and task entry points retain their documented routes. Historical captures predate these controls.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the default Project overview now mounts a compact repository section, and that Files and connections remains the destination for detailed source management. Project navigation and task entry points retain their documented routes. Historical captures predate these controls.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the default Project overview now mounts a compact repository section, and that Files and connections remains the destination for detailed source management. Project navigation and task entry points retain their documented routes. Historical captures predate these controls.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the shared repository section calls in the overview and Sources. Only the current Project destination mounts its repository controls. Local checkout diagnostics still reside in Sources.","inputs":["src-ui/src/views/project-settings/ProjectSourcesSection.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the shared repository section calls in the overview and Sources. Only the current Project destination mounts its repository controls. Local checkout diagnostics still reside in Sources.","inputs":["src-ui/src/views/project-settings/ProjectSourcesSection.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked explicit repository links and visible checkout status. The overview omits checkout diagnostics, which Sources still exposes.","inputs":["src-ui/src/views/project-settings/ProjectRepositorySources.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked that Add a repository opens the acquisition controls directly while preserving authorization and checkout binding.","inputs":["src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked that Add a repository opens the acquisition controls directly while preserving authorization and checkout binding.","inputs":["src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked that New Project retains the repository disclosure and Sources can render the shared acquisition controls directly.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that New Project retains the repository disclosure and Sources can render the shared acquisition controls directly.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]}
+  ]
+}

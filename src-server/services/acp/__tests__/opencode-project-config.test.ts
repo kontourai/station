@@ -349,6 +349,18 @@ describe('#3924 findOpenCodeProjectCode', () => {
     expect(await findOpenCodeProjectCode(cwd, home)).toEqual([]);
   });
 
+  test.each([{ parts: ['.opencode'] }, { parts: ['.opencode', 'tools'] }])(
+    'an inert file at expected directory $parts refuses the project scan',
+    async ({ parts }) => {
+      const { cwd, repo, home } = project();
+      const configPath = join(repo, ...parts);
+      put(configPath, 'ordinary text');
+      expect(await findOpenCodeProjectCode(cwd, home)).toEqual([
+        `${configPath} (Station could not inspect it)`,
+      ]);
+    },
+  );
+
   test('a file too large to check is found, not skipped', async () => {
     const { cwd, repo, home } = project();
     put(

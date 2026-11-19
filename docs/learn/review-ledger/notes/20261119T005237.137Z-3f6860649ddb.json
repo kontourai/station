@@ -1,0 +1,11 @@
+{
+  "revision": "33e78a61ca3e1b329f656749660076149ea3c342",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked the current Repositories heading and mobile disclosures. All four Sources captures passed in Chromium. Opening Add a repository exposes the GitHub and Git URL tiles directly; checkout repair remains reachable.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the current Repositories heading and mobile disclosures. All four Sources captures passed in Chromium. Opening Add a repository exposes the GitHub and Git URL tiles directly; checkout repair remains reachable.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the current Repositories heading and mobile disclosures. All four Sources captures passed in Chromium. Opening Add a repository exposes the GitHub and Git URL tiles directly; checkout repair remains reachable.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

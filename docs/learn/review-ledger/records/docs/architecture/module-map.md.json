@@ -1784,7 +1784,9 @@
 
     "src-server/runtime/routes/project-room-agent-runtime.ts",
 
-    "packages/shared/src/station-home-store-registry.ts"
+    "packages/shared/src/station-home-store-registry.ts",
+
+    "packages/sdk/src/query-domains/projectRooms.ts"
   ],
 
   "checks": [

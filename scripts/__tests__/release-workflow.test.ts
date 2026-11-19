@@ -1589,7 +1589,10 @@ describe('native release workflow topology', () => {
     expect(release).toContain('environment: native-release');
     expect(release).toContain('ios-simulator:');
     expect(release).toContain('--no-sign');
-    expect(release).toContain('ios-device:');
+    expect(workflowJob(release, 'ios-device')).toMatchObject({
+      uses: './.github/workflows/testflight-delivery.yml',
+      secrets: 'inherit',
+    });
     expect(testFlightDelivery).toContain('APPLE_PROVISIONING_PROFILE_BASE64');
     expect(testFlightDelivery).toContain(
       'npx tauri ios build --export-method app-store-connect',
@@ -1625,11 +1628,30 @@ describe('native release workflow topology', () => {
     expect(stableMacos.macOS.hardenedRuntime).toBe(true);
     expect(testFlightDelivery).toContain('embedded.mobileprovision');
     expect(macosArtifacts).toContain("'DMG staple validation'");
-    // Names the APK signature proof by its flags rather than by `apksigner`:
-    // the binary lives in build-tools and is resolved by path, not reached
-    // through PATH (#1322). This assertion is about the proof being present,
-    // not about how the binary is spelled at the call site.
-    expect(release).toContain('verify --verbose --print-certs');
+    const stableAndroid = workflowJob(release, 'android');
+    expect(stableAndroid.env).toMatchObject({
+      ANDROID_UPLOAD_CERT_SHA256: githubExpression(
+        'vars.ANDROID_UPLOAD_CERT_SHA256',
+      ),
+    });
+    expectStepOrder(stableAndroid, [
+      'Verify Android package version and platform signatures',
+      'Stage canonical Android artifacts',
+      'Upload to Play internal testing track',
+    ]);
+    const verification = namedStep(
+      stableAndroid,
+      'Verify Android package version and platform signatures',
+    );
+    expect(verification.if).toBeUndefined();
+    expect(verification['continue-on-error']).toBeUndefined();
+    const commands = verification.run?.split('\n').map((line) => line.trim());
+    expect(commands).toContain(
+      'node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"',
+    );
+    expect(commands).toContain(
+      'node scripts/verify-android-aab-signature.mjs "$aab" "$ANDROID_UPLOAD_CERT_SHA256"',
+    );
     expect(release).toContain('station-ios-simulator-verification');
   });
 

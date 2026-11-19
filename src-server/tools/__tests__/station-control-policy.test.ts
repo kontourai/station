@@ -57,7 +57,6 @@ const DECISION_1_BOUND_OPERATOR = [
   'connect_ssh_environment',
   'disconnect_ssh_environment',
   'remove_ssh_environment',
-  'list_delegation_targets',
   'reindex_knowledge',
   'migrate_knowledge',
   // Guides are shared server state; the first slice keeps bound operator authority.
@@ -415,10 +414,6 @@ describe('station-control authority table: shared leaves', () => {
     (route) => `${route.method} ${route.path}`,
   );
   const EXPECTED_WEAKENED: Record<string, readonly string[]> = {
-    // Every dispatch leaf it reaches is shared with dispatch (slice C). Its
-    // remote-target leaves are the operator's alone since slice C2a, so they
-    // no longer loosen it.
-    list_delegation_targets: DISPATCH_LEAVES,
     // Its own respond leaf is strict; the rest is the dispatch plumbing it
     // shares (slice C). The respond COMMAND on /commands is held to a bound
     // operator by the leaf's own rule, not by this entry.

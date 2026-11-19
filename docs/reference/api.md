@@ -3837,6 +3837,8 @@ The page contains `schemaVersion: 1`, `stationId`, `streamEpoch`, `highWater`,
 `scope`, `window`, `observations: [{globalSequence, receipts}]`, optional
 `nextCursor`, and unknown `coverage`. Canonical token and provider-cost receipts
 remain distinct; no page total or provider-completeness claim is manufactured.
+The version 1 receipt shape omits reasoning-token counts and serving-route
+observations. These fields remain available in local usage receipts.
 One event can yield multiple receipts. The continuation binds the source,
 verified request person, tenant, owner set, scope and dates; it is not a grant.
 

@@ -16,12 +16,12 @@
     "mustNotName": []
   },
   {
-    "id": "delegate-without-targets-tool",
+    "id": "delegate-from-header-token",
     "kind": "bad",
     "shape": "codex-custody",
-    "scenario": "A Codex session must pick an Agent. list_delegation_targets is bound-only, so the text must fall back to list_agents.",
-    "expectNamed": ["delegate_task", "list_agents"],
-    "mustNotName": ["list_delegation_targets"]
+    "scenario": "A Codex session uses its local target catalog to choose an Agent and model.",
+    "expectNamed": ["delegate_task", "list_delegation_targets"],
+    "mustNotName": ["list_delegation_environments"]
   },
   {
     "id": "simulator-run",
@@ -108,8 +108,12 @@
     "kind": "guard",
     "shape": "acp-custody",
     "scenario": "An ACP session messages another Session in the Project.",
-    "expectNamed": ["send_to_session", "wait_session"],
-    "mustNotName": ["list_delegation_targets", "device_open"]
+    "expectNamed": [
+      "send_to_session",
+      "wait_session",
+      "list_delegation_targets"
+    ],
+    "mustNotName": ["list_delegation_environments", "device_open"]
   },
   {
     "id": "ordinary-coding",

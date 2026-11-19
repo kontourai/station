@@ -316,11 +316,13 @@ export async function fetchConversationContextBoundaryStatus(
   conversationId: string,
   idempotencyKey: string,
   apiBase?: string,
+  request?: Pick<ClientRequestOptions, 'signal' | 'requestScope'>,
 ): Promise<ConversationContextBoundaryProjection> {
   return getConversationContextBoundaryStatus(
     await resolveApiBase(apiBase),
     conversationId,
     idempotencyKey,
+    request,
   );
 }
 
@@ -328,19 +330,29 @@ export function useConversationContextBoundaryStatusQuery(
   conversationId: string,
   idempotencyKey: string,
   apiBase?: string,
-  config?: QueryConfig<ConversationContextBoundaryProjection>,
+  config?: QueryConfig<ConversationContextBoundaryProjection> &
+    Pick<ClientRequestOptions, 'requestScope'>,
 ) {
   const query = orchestrationQueries.contextBoundary(
     conversationId,
     idempotencyKey,
   );
+  const requestScope = config?.requestScope;
   return useApiQuery(
-    [...query.queryKey, apiBase ?? 'default'],
-    () =>
+    [
+      ...query.queryKey,
+      apiBase ?? 'default',
+      ...(requestScope ? [requestScope.authorityKey] : []),
+    ],
+    (signal) =>
       fetchConversationContextBoundaryStatus(
         conversationId,
         idempotencyKey,
         apiBase,
+        {
+          signal,
+          requestScope,
+        },
       ),
     {
       enabled:

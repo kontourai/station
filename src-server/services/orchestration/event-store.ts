@@ -119,7 +119,7 @@ import {
   exactProcessIdentity,
   probeExactProcessIdentity,
 } from '@kontourai/station-shared/process-identity';
-import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
+import { createStandingUnresolvedCompletionProjection } from '@kontourai/station-shared/runtime-event-projection';
 import {
   corruptionMarkerFromError,
   recordCorruptionObserved,
@@ -1160,6 +1160,7 @@ const UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION =
   'station_unresolved_completion_stands';
 /** Distinct (thread, high-water) transcript checks kept for paging reuse. */
 const STANDING_UNRESOLVED_CACHE_MAX = 8;
+const STANDING_UNRESOLVED_SCAN_PAGE_SIZE = 512;
 /**
  * Threads whose session projection facts and event count are kept between
  * reads (#4992). Each entry holds a thread's handful of folded facts, without
@@ -2836,7 +2837,11 @@ interface NativeForkNoticeCapture {
 export class EventStore {
   private nativeForkNoticeCapture?: NativeForkNoticeCapture;
   /** The Session inventory listing currently executing, for its SQL filter. */
-  private inventoryTranscriptRead?: { threadId: string; highWater: number };
+  private inventoryTranscriptRead?: {
+    threadId: string;
+    highWater: number;
+    standing?: ReadonlySet<string>;
+  };
   /**
    * Unresolved completions the transcript still shows, per thread and frozen
    * high-water mark. Keyed also by the high-water row's \`global_sequence\`:
@@ -2846,7 +2851,20 @@ export class EventStore {
    * an entry stays true; continuation pages of one read reuse it. Small LRU,
    * per process.
    */
-  private readonly standingUnresolvedCache = new Map<string, Set<string>>();
+  private readonly standingUnresolvedCache = new Map<
+    string,
+    ReadonlySet<string>
+  >();
+  private readonly unresolvedProjectionHeads = new Map<
+    string,
+    {
+      highWater: number;
+      globalSequence: number;
+      projection: ReturnType<
+        typeof createStandingUnresolvedCompletionProjection
+      >;
+    }
+  >();
   /**
    * Per-thread session projection facts and event count, keyed by the
    * thread's highest `global_sequence` (#4992). Every write that can change a
@@ -3097,12 +3115,11 @@ export class EventStore {
       (id) => {
         const read = this.inventoryTranscriptRead;
         if (!read || typeof id !== 'string') return 1;
-        return this.standingUnresolvedCompletionIds(
+        read.standing ??= this.standingUnresolvedCompletionIds(
           read.threadId,
           read.highWater,
-        ).has(id)
-          ? 1
-          : 0;
+        );
+        return read.standing.has(id) ? 1 : 0;
       },
     );
     this.db = watchForSqliteCorruption(connection, {
@@ -3838,53 +3855,110 @@ export class EventStore {
     };
   }
 
-  /**
-   * The ids of \`unresolved\` tool completions that still stand as a row in
-   * the thread's transcript, up to \`highWater\` (#4178 review). Computed by
-   * the transcript's own projection, so the inventory lists a command with no
-   * result exactly when the transcript shows one: a late result that replaced
-   * the row (station#1569 H1) leaves the replaced completion out. One linear
-   * pass over the thread's events, the same work as reading its transcript,
-   * done only when a listing meets an unresolved row and cached per read.
-   */
+  /** The unresolved tool rows visible in the transcript at this frozen mark. */
   standingUnresolvedCompletionIds(
     threadId: string,
     highWater: number,
   ): ReadonlySet<string> {
-    const head = this.readStatement(
-      `SELECT global_sequence FROM orchestration_events
-        WHERE thread_id = ? AND sequence = ?`,
-    ).get(threadId, highWater) as { global_sequence?: number } | undefined;
-    const key = `${threadId}\u0000${highWater}\u0000${head?.global_sequence ?? 'none'}`;
-    const cached = this.cachesDisabled
-      ? undefined
-      : this.standingUnresolvedCache.get(key);
+    const readAnchor = (sequence: number) => {
+      const row = this.readStatement(
+        `SELECT global_sequence FROM orchestration_events
+          WHERE thread_id = ? AND sequence = ?`,
+      ).get(threadId, sequence) as { global_sequence: number } | undefined;
+      return row?.global_sequence;
+    };
+    const globalSequence = readAnchor(highWater);
+    const cacheable =
+      !this.cachesDisabled &&
+      !this.db.isTransaction &&
+      globalSequence !== undefined;
+    const key = `${threadId}\u0000${highWater}\u0000${globalSequence ?? 'none'}`;
+    const cached = cacheable
+      ? this.standingUnresolvedCache.get(key)
+      : undefined;
     if (cached) {
       this.standingUnresolvedCache.delete(key);
       this.standingUnresolvedCache.set(key, cached);
       return cached;
     }
-    const rows = this.readStatement(
-      `SELECT payload FROM orchestration_events
-        WHERE thread_id = ? AND sequence <= ?
-        ORDER BY sequence ASC`,
-    ).all(threadId, highWater) as Array<{ payload: string }>;
-    const standing = new Set<string>();
-    for (const message of projectRuntimeEventsToMessages(
-      rows.map((row) => JSON.parse(row.payload) as CanonicalRuntimeEvent),
-    ))
-      for (const part of message.parts)
+
+    const previous = cacheable
+      ? this.unresolvedProjectionHeads.get(threadId)
+      : undefined;
+    const canResume =
+      previous &&
+      previous.highWater <= highWater &&
+      (previous.highWater === highWater
+        ? globalSequence
+        : readAnchor(previous.highWater)) === previous.globalSequence;
+    // Remove the mutable fold before advancing it. A read or decode error
+    // cannot leave a partially advanced projection published at an old mark.
+    if (canResume) this.unresolvedProjectionHeads.delete(threadId);
+    const projection = canResume
+      ? previous.projection
+      : createStandingUnresolvedCompletionProjection();
+    let sequence = canResume ? previous.highWater : -1;
+    // Nonempty text can establish an assistant row's turn ownership. Keep
+    // that distinction when omitting the display body from the projection.
+    const page = this.readStatement(
+      `SELECT sequence, CASE
+        WHEN method IN ('content.text-delta', 'content.reasoning-delta')
+          AND json_extract(payload, '$.method') = method
+          THEN json_object('method', method, 'threadId', json_extract(payload, '$.threadId'),
+            'createdAt', json_extract(payload, '$.createdAt'), 'delta',
+            CASE WHEN json_extract(payload, '$.delta') <> '' THEN 'x' ELSE '' END)
+        WHEN method = 'turn.completed' AND json_type(payload, '$.outputText') = 'text'
+          THEN json_set(payload, '$.outputText',
+            CASE WHEN json_extract(payload, '$.outputText') <> '' THEN 'x' ELSE '' END)
+        ELSE json_remove(payload, '$.prompt', '$.attachments', '$.arguments', '$.output')
+        END AS payload
+        FROM orchestration_events
+        WHERE thread_id = ? AND sequence > ? AND sequence <= ?
+        ORDER BY sequence ASC LIMIT ?`,
+    );
+    while (sequence < highWater) {
+      const rows = page.all(
+        threadId,
+        sequence,
+        highWater,
+        STANDING_UNRESOLVED_SCAN_PAGE_SIZE,
+      ) as { sequence: number; payload: string }[];
+      for (const row of rows)
+        projection.append(JSON.parse(row.payload) as CanonicalRuntimeEvent);
+      if (rows.length < STANDING_UNRESOLVED_SCAN_PAGE_SIZE) break;
+      sequence = rows[rows.length - 1]!.sequence;
+    }
+
+    const standing = projection.snapshot();
+    if (cacheable) {
+      this.standingUnresolvedCache.set(key, standing);
+      const oldestSnapshot = this.standingUnresolvedCache.keys().next().value;
+      if (
+        this.standingUnresolvedCache.size > STANDING_UNRESOLVED_CACHE_MAX &&
+        oldestSnapshot !== undefined
+      )
+        this.standingUnresolvedCache.delete(oldestSnapshot);
+
+      // A frozen continuation may need its own fold. Preserve the newer
+      // cached head for the next current read when that head still exists.
+      if (
+        !previous ||
+        previous.highWater <= highWater ||
+        readAnchor(previous.highWater) !== previous.globalSequence
+      ) {
+        this.unresolvedProjectionHeads.delete(threadId);
+        this.unresolvedProjectionHeads.set(threadId, {
+          highWater,
+          globalSequence,
+          projection,
+        });
+        const oldestHead = this.unresolvedProjectionHeads.keys().next().value;
         if (
-          part.type === 'tool-invocation' &&
-          part.state === 'unresolved' &&
-          typeof part.sourceEventId === 'string'
+          this.unresolvedProjectionHeads.size > STANDING_UNRESOLVED_CACHE_MAX &&
+          oldestHead !== undefined
         )
-          standing.add(part.sourceEventId);
-    if (!this.cachesDisabled) this.standingUnresolvedCache.set(key, standing);
-    while (this.standingUnresolvedCache.size > STANDING_UNRESOLVED_CACHE_MAX) {
-      const oldest = this.standingUnresolvedCache.keys().next().value;
-      if (oldest === undefined) break;
-      this.standingUnresolvedCache.delete(oldest);
+          this.unresolvedProjectionHeads.delete(oldestHead);
+      }
     }
     return standing;
   }

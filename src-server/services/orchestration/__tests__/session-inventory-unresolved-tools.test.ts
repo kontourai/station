@@ -623,6 +623,86 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
     },
   );
 
+  test('a cold inventory fold keeps one SQLite snapshot across event pages while another connection recreates the thread', () => {
+    const path = join(
+      tempRoot('station-inventory-unresolved-'),
+      'orchestration.sqlite',
+    );
+    const store = new EventStore(path);
+    const writer = new EventStore(path);
+    const base = {
+      provider: 'claude',
+      threadId: THREAD,
+      turnId: 'turn-1',
+      createdAt: '2026-10-24T16:00:00.000Z',
+    } as const;
+    const writeUnresolved = (owner: EventStore, eventId: string) =>
+      owner.appendEvent({
+        ...base,
+        eventId,
+        itemId: eventId,
+        method: 'tool.completed',
+        toolCallId: eventId,
+        toolName: 'Bash',
+        status: 'unresolved',
+      });
+    try {
+      store.appendEvent({
+        ...base,
+        method: 'turn.started',
+        eventId: 'old-turn',
+        prompt: 'Run it',
+      });
+      for (let index = 0; index < 520; index++)
+        store.appendEvent({
+          ...base,
+          method: 'content.text-delta',
+          eventId: `delta-${index}`,
+          itemId: 'assistant',
+          delta: 'x',
+        });
+      writeUnresolved(store, 'old-result');
+      const { db } = store as unknown as {
+        db: import('../sqlite-database.js').SqliteDatabase;
+      };
+      const originalPrepare = db.prepare.bind(db);
+      let readPages = 0;
+      const prepare = vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+        const statement = originalPrepare(sql);
+        if (
+          sql.includes('SELECT sequence, CASE') &&
+          sql.includes('sequence <= ?')
+        ) {
+          const read = statement.all.bind(statement);
+          vi.spyOn(statement, 'all').mockImplementation((...params) => {
+            const rows = read(...params);
+            if (++readPages === 1) {
+              writer.deleteThread(THREAD);
+              writeUnresolved(writer, 'new-result');
+            }
+            return rows;
+          });
+        }
+        return statement;
+      });
+      const first = store.listSessionInventoryEvents(THREAD, {
+        group: 'execution',
+      });
+      prepare.mockRestore();
+      expect(readPages).toBeGreaterThan(1);
+      expect(first.events.map((row) => row.id)).toContain('old-result');
+      expect(first.events.map((row) => row.id)).not.toContain('new-result');
+
+      const next = store.listSessionInventoryEvents(THREAD, {
+        group: 'execution',
+      });
+      expect(next.events.map((row) => row.id)).toEqual(['new-result']);
+    } finally {
+      writer.close();
+      store.close();
+    }
+  });
+
   test('the transcript check reads only events at or below the frozen mark, even with nothing cached', () => {
     const store = new EventStore(
       join(tempRoot('station-inventory-unresolved-'), 'orchestration.sqlite'),
@@ -647,9 +727,12 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
         output: 'ok',
       } as never);
       // Model an eviction: the answer must be re-derived, not remembered.
-      (
-        store as unknown as { standingUnresolvedCache: Map<string, unknown> }
-      ).standingUnresolvedCache.clear();
+      const caches = store as unknown as {
+        standingUnresolvedCache: Map<string, unknown>;
+        unresolvedProjectionHeads: Map<string, unknown>;
+      };
+      caches.standingUnresolvedCache.clear();
+      caches.unresolvedProjectionHeads.clear();
       const atMark = store.standingUnresolvedCompletionIds(THREAD, highWater);
       const openOne = store
         .listEventPayloads(THREAD)
@@ -673,6 +756,7 @@ describe('Session inventory commands with no recorded result (#4178)', () => {
           )
           .has(openOne.eventId),
       ).toBe(false);
+      expect(atMark.has(openOne.eventId)).toBe(true);
     } finally {
       store.close?.();
     }

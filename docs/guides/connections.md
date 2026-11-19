@@ -1823,7 +1823,7 @@ working directory while the receipt retains the repository root and exact commit
 The directory must exist inside the checkout; traversal, Git metadata directories
 and symlink redirects are refused and rechecked at Project creation. It does not install dependencies or execute repository setup.
 
-**Choose from GitHub** and **Choose from GitLab** list accessible public/private
+The **GitHub** and **GitLab** tiles in New Project and **Sources → Add a repository** list accessible public/private
 repositories through this host's signed-in `gh` or `glab` account. A page holds
 at most 30 entries and shows the observed account, visibility and default branch.
 Choose HTTPS or SSH explicitly; selection fills editable URL/ref fields using
@@ -1832,8 +1832,18 @@ establish that the host's separate Git credentials can access that repository.
 Discovery checks the account before and after listing, withholds late results
 after Station authority changes, and never reads or returns provider tokens.
 If the CLI or sign-in is unavailable, sign in on the host with `gh auth login`
-or `glab auth login`, retry, or paste a Git URL. Self-hosted forges remain an
+or `glab auth login`, retry, or choose **Git URL** and paste the repository URL. Self-hosted forges remain an
 explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
+When Station can identify a missing CLI or a provider sign-in failure, the
+picker shows installation or sign-in steps for that Station. The sign-in
+card shows the exact command and the Station. **Copy command** puts it on the
+clipboard. **Run in terminal** starts the fixed provider command in a fresh
+interactive terminal when this Station and the current dock Project allow it.
+Complete provider authorization, then retry the repository list.
+
+The Project overview and Sources open the repository tiles directly.
+Repository names link to their Git host. The overview marks which repository
+new chats start in with **Default**.
 
 **Find existing checkouts** lists up to 20 retained acquisitions matching the
 entered repository identity, requested ref and subdirectory. These are historical

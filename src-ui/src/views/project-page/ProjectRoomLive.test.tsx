@@ -228,6 +228,38 @@ async function mount() {
   return screen.findByRole('list', { name: 'Conversation' });
 }
 
+test('a live rollover keeps the previously shown row without an immediate history read', async () => {
+  const first = message(1, 'Earlier message still on screen');
+  messages.push(first);
+  const list = await mount();
+  await within(list).findByText('Earlier message still on screen');
+  const historyReads = () =>
+    vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) =>
+          String(input).includes('/messages?') && init?.method !== 'POST',
+      ).length;
+  await waitFor(() => expect(historyReads()).toBeGreaterThanOrEqual(2));
+  const before = historyReads();
+  await act(async () => {
+    for (let seq = 2; seq <= 502; seq++) {
+      const next = message(seq, `Live message ${seq}`);
+      messages.push(next);
+      push('append', { message: next });
+    }
+  });
+  // jsdom does not measure the scrollport. The production virtualizer's row
+  // count includes the 500 live messages and the earlier row already shown.
+  const history = await within(list).findByTestId(
+    'virtualized-transcript-spacer',
+  );
+  await waitFor(() =>
+    expect(history.getAttribute('data-transcript-row-count')).toBe('501'),
+  );
+  expect(historyReads()).toBe(before);
+}, 20_000);
+
 test('a mention renders by person id with their current name, and the reader’s own stands out', async () => {
   messages.push(
     message(1, '@Ada can you check the copy?', {
