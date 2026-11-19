@@ -274,11 +274,12 @@ export async function listJobs(
   apiBase: string,
   opts?: ClientRequestOptions,
   weekStart?: string,
+  displayZone?: string,
 ): Promise<SchedulerJob[]> {
   const suffix =
     weekStart === undefined
       ? ''
-      : `?weekStart=${encodeURIComponent(weekStart)}`;
+      : `?${new URLSearchParams({ weekStart, ...(displayZone ? { displayZone } : {}) })}`;
   const response = await getJson(`${apiBase}/scheduler/jobs${suffix}`, opts);
   return unwrapSchedulerResponse<SchedulerJob[]>(response);
 }

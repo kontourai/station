@@ -24,6 +24,7 @@ import {
   nextOccurrence,
   type Schedule,
   type ScheduledJob,
+  validateSchedule,
 } from '@kontourai/ephemeris';
 import type {
   ExternalMonitorConfig,
@@ -1351,7 +1352,15 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     for (const row of rows) {
       try {
         const job = freezeJob(parseStoredJob(row.data));
-        if (job.name !== row.name)
+        const schedule = toScheduledJob(job)?.schedule;
+        if (
+          job.name !== row.name ||
+          (job.cron !== undefined && typeof job.cron !== 'string') ||
+          (job.schedule !== undefined &&
+            (!job.schedule ||
+              !['at', 'every', 'cron'].includes(job.schedule.kind))) ||
+          (schedule && validateSchedule(schedule) !== null)
+        )
           throw new MalformedSchedulerJob('invalid-job');
         jobs.push({ jobId: row.job_id, job });
       } catch (error) {

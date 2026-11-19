@@ -5913,7 +5913,7 @@ and reason. Healthy jobs continue to appear and can still be run or edited.
 SQLite file integrity failures keep their separate recovery outcome.
 
 The Schedule calendar uses the same authorized job list. An optional
-`weekStart=YYYY-MM-DD` Monday adds a bounded `weekOccurrences` forecast in UTC
+`weekStart=YYYY-MM-DD` Monday and optional `displayZone` add a per-day bounded `weekOccurrences` forecast in UTC
 to each returned job. The display time zone only groups and formats these
 instants. The scheduler's stored time zone continues to govern execution.
 

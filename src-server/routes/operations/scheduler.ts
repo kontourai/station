@@ -243,7 +243,6 @@ export function createSchedulerRoutes(
   options: {
     /** Runtime composition derives this only from trusted request ingress. */
     readAuthorityForRequest?: (request: Request) => SessionReadAuthority;
-    mayReadSchedulerRowIssues?: (request: Request) => boolean;
     /**
      * Approving an agent's job proposal: decides whether this request may
      * create the job a proposal names. Absent: a body naming a proposal is
@@ -446,7 +445,11 @@ export function createSchedulerRoutes(
       const data =
         weekStart === undefined
           ? jobs
-          : schedulerService.projectWeek(jobs, weekStart);
+          : schedulerService.projectWeek(
+              jobs,
+              weekStart,
+              c.req.query('displayZone'),
+            );
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to list scheduler jobs', { error });
@@ -533,12 +536,7 @@ export function createSchedulerRoutes(
           (job) => job.provider === provider,
         ).length;
       }
-      if (
-        (options.mayReadSchedulerRowIssues ?? isOperatorInPersonNotAgent)(
-          c.req.raw,
-        ) &&
-        data.providers['built-in']
-      ) {
+      if (isOperatorInPersonNotAgent(c.req.raw) && data.providers['built-in']) {
         data.providers['built-in'].rowIssues =
           schedulerService.readBuiltinRowIssues();
       }

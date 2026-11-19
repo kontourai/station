@@ -45,14 +45,14 @@ export const runsQueries = {
   }),
 };
 
-export function useSchedulerJobs(weekStart?: string) {
+export function useSchedulerJobs(weekStart?: string, displayZone?: string) {
   return useApiQuery(
     weekStart === undefined
       ? ['scheduler', 'jobs']
-      : ['scheduler', 'jobs', weekStart],
+      : ['scheduler', 'jobs', weekStart, displayZone],
     async () => {
       const apiBase = await _getApiBase();
-      return listJobs(apiBase, undefined, weekStart);
+      return listJobs(apiBase, undefined, weekStart, displayZone);
     },
     { staleTime: 30_000 },
   );

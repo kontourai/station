@@ -1190,6 +1190,18 @@ describe('SchedulerLedger', () => {
   test.each([
     ['invalid-json', Buffer.from('{"name":"damaged","prompt":"private-cue"}')],
     ['invalid-job', Buffer.from('{"name":"damaged","prompt":42}')],
+    [
+      'invalid-job',
+      Buffer.from(
+        '{"name":"damaged","prompt":"private-cue","enabled":true,"schedule":{"kind":"every","everyMs":-1}}',
+      ),
+    ],
+    [
+      'invalid-job',
+      Buffer.from(
+        '{"name":"damaged","prompt":"private-cue","enabled":true,"schedule":{"kind":"other"}}',
+      ),
+    ],
   ] as const)(
     'isolates a damaged %s job from healthy reads and commands',
     (reason, bytes) => {

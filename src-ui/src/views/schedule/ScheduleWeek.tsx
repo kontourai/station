@@ -29,7 +29,7 @@ export function ScheduleWeek() {
   const today = new Date(`${dateKey(new Date(), dayKey)}T00:00:00.000Z`);
   const monday = today.getTime() - ((today.getUTCDay() + 6) % 7) * DAY_MS;
   const weekStart = new Date(monday).toISOString().slice(0, 10);
-  const week = useSchedulerJobs(weekStart);
+  const week = useSchedulerJobs(weekStart, zone);
   const days = Array.from(
     { length: 7 },
     (_, index) => new Date(monday + index * DAY_MS),

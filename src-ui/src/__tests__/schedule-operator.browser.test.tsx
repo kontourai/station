@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
+import { SchedulerService } from '../../../src-server/services/scheduling/scheduler-service.js';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
 const run = {
@@ -15,12 +16,40 @@ const run = {
   attempt: 2,
 };
 
+const dailyJob = {
+  name: 'Daily check',
+  provider: 'built-in',
+  prompt: 'fixture',
+  enabled: true,
+};
+const calendar = {
+  'America/New_York': SchedulerService.prototype.projectWeek(
+    [
+      {
+        ...dailyJob,
+        schedule: {
+          kind: 'at',
+          timeMs: Date.parse('2026-03-08T00:30:00.000Z'),
+        },
+      },
+    ],
+    '2026-03-02',
+    'America/New_York',
+  ),
+  'Pacific/Kiritimati': SchedulerService.prototype.projectWeek(
+    [{ ...dailyJob, cron: '* * * * *' }],
+    '2026-03-02',
+    'Pacific/Kiritimati',
+  ),
+};
+
 const data: Plugin = {
   name: 'schedule-operator-fixtures',
   setup(builder) {
     const modules = {
       useScheduler: `
-        export const useSchedulerJobs=()=>({data:[{name:'Daily check',provider:'built-in',weekOccurrences:{times:['2026-03-08T00:30:00.000Z'],truncated:false}}]});
+        const calendar = ${JSON.stringify(calendar)};
+        export const useSchedulerJobs=(_,zone)=>({data:calendar[zone] ?? calendar['America/New_York']});
         export const useRunsQuery=()=>({data:${JSON.stringify([run])},isLoading:false});
         export const useFetchRunOutputRef=()=>({mutateAsync:async()=>({content:''})});
         export const useRestartJobMonitor=()=>({mutateAsync:async()=>{}});
@@ -104,6 +133,15 @@ test('Schedule calendar and executions fit phone and desktop in both themes', as
         await page.screenshot({
           path: `${out}/calendar-${width}-${theme}.png`,
         });
+        expect(await week.getByText('None scheduled').count()).toBe(6);
+        await page
+          .getByRole('combobox', { name: 'Display time zone' })
+          .selectOption('Pacific/Kiritimati');
+        await week
+          .getByText('Some frequent schedules have additional occurrences.')
+          .waitFor();
+        expect(await week.getByText('None scheduled').count()).toBe(0);
+        expect(await week.locator('time').count()).toBe(56);
         await page.getByRole('tab', { name: 'Calendar' }).press('ArrowRight');
         await page.getByRole('tab', { name: 'Executions' }).press('Enter');
         await page
