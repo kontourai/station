@@ -5063,9 +5063,12 @@ inventory at 256 and materialize the newest 512 receipts. They may repair the
 reference index under its lock. Unreadable/contended Projects are reported;
 a missing workspace contributes no receipts rather than proving it has none.
 
-Confirmed-start shutdown failure, executor timeout and an unconfirmed Session
-start retain the workspace. A start invocation whose reply throws or lacks a
-confirmed Session does not classify its checkout as safe to remove.
+A definitive start refusal with an exact persisted rejection receipt can release
+the workspace. If the start was accepted but the receipt is unavailable, the
+executor attempts bounded Stop only for the exact Session returned by the
+dispatch owner. Confirmed Stop permits release. Unknown Session identity,
+failed shutdown and a Stop that exceeds the cleanup deadline retain the
+workspace. A repeated review request returns its original recorded cleanup.
 
 **Task association.** [TaskCodeReviewModule](../../src-server/services/evidence/task-code-review-module.ts)
 projects the submission owner's server-derived Task/Project incarnation binding.
