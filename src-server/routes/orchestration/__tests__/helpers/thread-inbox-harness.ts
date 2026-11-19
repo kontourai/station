@@ -651,11 +651,17 @@ export function createInboxHarness() {
                   binding,
                   options,
                 ),
-              releaseStagedAttachments: (principal, references, binding) =>
+              releaseStagedAttachments: (
+                principal,
+                references,
+                binding,
+                attemptId,
+              ) =>
                 staging.releaseBinding(
                   { principalId: principal.id },
                   references,
                   binding,
+                  attemptId,
                 ),
               acceptStagedAttachments: (principal, references, binding) =>
                 staging.acceptBinding(

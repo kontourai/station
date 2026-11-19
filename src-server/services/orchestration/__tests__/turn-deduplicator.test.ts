@@ -476,6 +476,42 @@ describe('TurnDeduplicator', () => {
     restarted.close();
   });
 
+  test('a SQLite row with only a stage witness cannot prove a staged replay', () => {
+    const first = open();
+    const input = {
+      threadId: 'thread',
+      clientTurnId: 'witness-only',
+      inputDigest: witnessedTurnInputDigest('original-content', 'stage-A'),
+    };
+    const claim = first.ledger.claim(input);
+    if (claim.kind !== 'owner') throw new Error('expected owner');
+    claim.claim.beginInvocation();
+    claim.claim.resolve('turn');
+    first.store.close();
+    const database = new DatabaseSync(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      database
+        .prepare(
+          "UPDATE orchestration_turn_dedup SET input_digest = NULL, owner_json = json_remove(owner_json, '$.inputDigest') WHERE dedup_key = ?",
+        )
+        .run(turnDedupKey(input.threadId, input.clientTurnId));
+    } finally {
+      database.close();
+    }
+    const reopened = restartWithDeadOwners(first.directory);
+    try {
+      const ledger = reopened.createTurnDeduplicator();
+      expect(() => ledger.inspect(input)).toThrow(
+        expect.objectContaining({ code: 'client_turn_input_conflict' }),
+      );
+      expect(ledger.claim(input)).toEqual({ kind: 'conflict' });
+    } finally {
+      reopened.close();
+    }
+  });
+
   // #3559: inverted. A dead owner that began invoking may already have handed
   // the turn to the engine, so its claim is never reclaimed.
   test('never reclaims a dead owner claim that began invoking; every retry is indeterminate', () => {

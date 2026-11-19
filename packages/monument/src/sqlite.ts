@@ -1222,7 +1222,7 @@ function decodeDedup(
     ...(preparedUpdatedAt !== undefined ? { preparedUpdatedAt } : {}),
     ...(settlement !== undefined ? { settlement } : {}),
     ...(digest !== undefined ? { inputDigest: digest } : {}),
-    ...(inputWitness !== undefined && digest === inputDigest
+    ...(inputWitness !== undefined && digest !== undefined
       ? { inputWitness }
       : {}),
   };

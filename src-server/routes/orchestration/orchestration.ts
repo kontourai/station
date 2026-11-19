@@ -178,7 +178,10 @@ import {
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
-import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
+import {
+  type AttachmentBindingOptions,
+  AttachmentStageError,
+} from '../../services/orchestration/attachment-staging-service.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -2163,7 +2166,7 @@ export function createOrchestrationRoutes(
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
-      options?: { inspectOnly?: true },
+      options?: AttachmentBindingOptions,
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
       owner: PrincipalRef,
@@ -2175,6 +2178,7 @@ export function createOrchestrationRoutes(
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
       binding: { threadId: string; clientTurnId: string },
+      attemptId?: string,
     ) => void;
     handoffConversation?: (
       input: ConversationHandoffRequest,
@@ -2851,6 +2855,7 @@ export function createOrchestrationRoutes(
       | { threadId: string; clientTurnId: string }
       | undefined;
     let releasePrincipal: PrincipalRef | undefined;
+    let stagedAttemptId: string | undefined;
     let releaseDeliveryReceipt: (() => void) | undefined;
     // #3568: set once this send may wait in its conversation's inbox; a
     // busy refusal from the dispatch below then queues it instead.
@@ -3075,6 +3080,7 @@ export function createOrchestrationRoutes(
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
         | undefined;
+      if (stagedAttachments?.length) stagedAttemptId = randomUUID();
       if (stagedAttachments?.length && !principal) {
         throw new PrincipalUnresolvedError(
           'Attachment staging requires a resolved request principal.',
@@ -3158,6 +3164,7 @@ export function createOrchestrationRoutes(
                     principal!,
                     stagedAttachments,
                     binding,
+                    { attemptId: stagedAttemptId },
                   );
                 })(),
             }
@@ -3271,13 +3278,19 @@ export function createOrchestrationRoutes(
             : undefined;
           const settleStage = (queued: boolean) => {
             if (!filesBinding || !stagedAttachments?.length) return;
-            (queued
-              ? deps.acceptStagedAttachments
-              : deps.releaseStagedAttachments)?.(
-              principal!,
-              stagedAttachments,
-              filesBinding,
-            );
+            if (queued)
+              deps.acceptStagedAttachments?.(
+                principal!,
+                stagedAttachments,
+                filesBinding,
+              );
+            else
+              deps.releaseStagedAttachments?.(
+                principal!,
+                stagedAttachments,
+                filesBinding,
+                stagedAttemptId,
+              );
           };
           if (stagedAttachments?.length) {
             const pending =
@@ -3304,6 +3317,7 @@ export function createOrchestrationRoutes(
                   principal!,
                   stagedAttachments!,
                   filesBinding,
+                  { attemptId: stagedAttemptId },
                 )
               : (body.attachments as ChatAttachmentInput[]);
             attachments = [];
@@ -3562,11 +3576,11 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
-      // The engine refused these attachments before anything reached it, so
-      // their binding to this turn proves nothing: release it, or a resend
-      // of the same (restored) chips anywhere else is refused as bound.
+      // This attempt provably sent no files. Release only its lease in case
+      // the winner is still sending a shared stage under the same key.
       if (
-        errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE &&
+        (errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE ||
+          errorCode(error) === 'client_turn_input_conflict') &&
         stagedAttachmentsForRelease?.length &&
         stagedBindingForRelease &&
         releasePrincipal
@@ -3575,6 +3589,7 @@ export function createOrchestrationRoutes(
           releasePrincipal,
           stagedAttachmentsForRelease,
           stagedBindingForRelease,
+          stagedAttemptId,
         );
       }
       // A refusal with no closed code reaches the client only as generic

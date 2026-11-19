@@ -54,14 +54,14 @@ export function compareTurnInput(
 ): 'compatible' | 'unwitnessed' | 'conflict' {
   if (inputDigest === undefined) return 'compatible';
   const input = turnInputProof(inputDigest);
+  const witness =
+    record.inputDigest === undefined ? undefined : record.inputWitness;
   if (
     (record.inputDigest !== undefined && record.inputDigest !== input.digest) ||
-    (record.inputWitness !== undefined && record.inputWitness !== input.witness)
+    (witness !== undefined && witness !== input.witness)
   )
     return 'conflict';
-  return input.witness && record.inputWitness === undefined
-    ? 'unwitnessed'
-    : 'compatible';
+  return input.witness && witness === undefined ? 'unwitnessed' : 'compatible';
 }
 
 /**
@@ -193,6 +193,8 @@ export function decideTurnDedupClaim(
       };
     if (!turnClaimIsReclaimable(current))
       return { write: NO_WRITE, result: { kind: 'indeterminate' } };
+    if (proof.witness !== undefined && current.inputDigest === undefined)
+      return { write: NO_WRITE, result: { kind: 'conflict' } };
     const witness = current.inputWitness ?? owned.inputWitness;
     return {
       write: {

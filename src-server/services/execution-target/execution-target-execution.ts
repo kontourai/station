@@ -1051,7 +1051,7 @@ export async function executeForegroundMessage(
         Boolean(input.stagedSubmission),
       );
       if (
-        queued.inputDigest !== undefined &&
+        (input.stagedSubmission || queued.inputDigest !== undefined) &&
         queued.inputDigest !== submissionDigest
       )
         throw new ClientTurnInputConflictError();

@@ -198,6 +198,49 @@ describe('a busy follow-up holds its files (followUpAttachments)', () => {
     expect(world.prompts()).toEqual(['read the file']);
   });
 
+  test('a staged retry cannot acknowledge an older queued entry with no submission proof', async () => {
+    const world = station({ queuedFiles: true, stagedAttachments: true });
+    await world.busy();
+    const clientTurnId = 'legacy-queued';
+    const message = 'review this';
+    expect(
+      world.inbox.submit({
+        conversationId: CONVERSATION,
+        clientTurnId,
+        payload: { message, actor: { userId: OWNER } },
+      }),
+    ).toMatchObject({ outcome: 'queued' });
+    const owner = { principalId: OWNER };
+    const prepared = world.staging.prepare(owner, {
+      clientAttachmentId: 'new-chip',
+      kind: NOTE.kind,
+      name: NOTE.name,
+      mimeType: NOTE.mimeType,
+      size: NOTE.size,
+    });
+    const reference = world.staging.upload(
+      prepared.stageId,
+      prepared.uploadGrant,
+      NOTE.dataUrl,
+    );
+    const retry = await world.send(clientTurnId, message, {
+      attachmentRefs: [reference],
+    });
+    expect(retry.status, await retry.clone().text()).toBe(409);
+    expect(await retry.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(
+      world.staging.bindAndHydrate(
+        owner,
+        [reference],
+        { threadId: CONVERSATION, clientTurnId: 'other-key' },
+        { inspectOnly: true },
+      ),
+    ).toEqual([NOTE]);
+    expect(world.prompts()).toEqual(['read the file']);
+  });
+
   test('the same key with different files is a different message', async () => {
     const world = station({ queuedFiles: true });
     await world.busy();

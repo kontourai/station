@@ -543,8 +543,13 @@ async function fixture(options: {
           ),
         acceptStagedAttachments: (principal, refs, binding) =>
           staging.acceptBinding({ principalId: principal.id }, refs, binding),
-        releaseStagedAttachments: (principal, refs, binding) =>
-          staging.releaseBinding({ principalId: principal.id }, refs, binding),
+        releaseStagedAttachments: (principal, refs, binding, attemptId) =>
+          staging.releaseBinding(
+            { principalId: principal.id },
+            refs,
+            binding,
+            attemptId,
+          ),
       }
     : {};
   app.route(
@@ -790,6 +795,169 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       staging.dispose();
     }
   });
+
+  test.each([
+    'identical',
+    'reordered',
+    'replacement',
+    'inline winner',
+  ] as const)(
+    '#3678: simultaneous foreground sends with %s attachments',
+    async (scenario) => {
+      const gate = () => {
+        let resolve!: () => void;
+        const promise = new Promise<void>((release) => {
+          resolve = release;
+        });
+        return { promise, resolve };
+      };
+      const staging = new AttachmentStagingService();
+      const runFirst = gate();
+      const runSecond = gate();
+      const finishProvider = gate();
+      const requests: Promise<unknown>[] = [];
+      try {
+        const f = await fixture({ engineAgent: true, staging });
+        const threadId = await f.adopt(f.attached('claude'));
+        const owner = { principalId: f.userId };
+        const file = {
+          kind: 'file' as const,
+          name: 'same.txt',
+          mimeType: 'text/plain' as const,
+          size: 2,
+          dataUrl: 'data:text/plain;base64,aGk=',
+        };
+        const stage = (clientAttachmentId: string) => {
+          const prepared = staging.prepare(owner, {
+            clientAttachmentId,
+            kind: file.kind,
+            name: file.name,
+            mimeType: file.mimeType,
+            size: file.size,
+          });
+          return staging.upload(
+            prepared.stageId,
+            prepared.uploadGrant,
+            file.dataUrl,
+          );
+        };
+        const left = stage('left');
+        const right = stage('right');
+        const replacement = stage('replacement');
+        const firstRefs = [left, right];
+        const secondRefs =
+          scenario === 'reordered'
+            ? [right, left]
+            : scenario === 'replacement'
+              ? [replacement, right]
+              : firstRefs;
+        const input = dockFollowUp(
+          'claude',
+          threadId,
+          'station',
+          'Read the files',
+        );
+
+        const dispatch = f.service.dispatchWithReceipt.bind(f.service);
+        let arrivals = 0;
+        vi.spyOn(f.service, 'dispatchWithReceipt').mockImplementation(
+          async (...args) => {
+            if (args[0].type === 'sendTurn') {
+              arrivals += 1;
+              await (arrivals === 1 ? runFirst.promise : runSecond.promise);
+            }
+            return dispatch(...args);
+          },
+        );
+        const engine = f.engines.claude;
+        const send = engine.sendTurn.bind(engine);
+        const sends = vi
+          .spyOn(engine, 'sendTurn')
+          .mockImplementation(async (turn) => {
+            await finishProvider.promise;
+            return send(turn);
+          });
+        const accept = vi.spyOn(staging, 'acceptBinding');
+        const first = f.request('/api/orchestration/chat', {
+          ...input,
+          ...(scenario === 'inline winner'
+            ? { attachments: [file, file] }
+            : { attachmentRefs: firstRefs }),
+        });
+        requests.push(first);
+        await vi.waitFor(() => expect(arrivals).toBe(1));
+        const second = f.request('/api/orchestration/chat', {
+          ...input,
+          attachmentRefs: secondRefs,
+        });
+        requests.push(second);
+        await vi.waitFor(() => expect(arrivals).toBe(2));
+        expect(
+          f.store.createTurnDeduplicator().inspect({
+            threadId,
+            clientTurnId: input.clientTurnId,
+          }),
+        ).toEqual({ state: 'absent' });
+
+        runFirst.resolve();
+        await vi.waitFor(() => expect(sends).toHaveBeenCalledTimes(1));
+        runSecond.resolve();
+        if (scenario !== 'identical') {
+          const settled = vi.fn();
+          void second.then(settled, settled);
+          await vi.waitFor(() => expect(settled).toHaveBeenCalledOnce());
+          const refused = await second;
+          expect(refused.status, refused.text).toBe(409);
+          expect(refused.body).toMatchObject({
+            code: 'client_turn_input_conflict',
+          });
+          const unused =
+            scenario === 'replacement'
+              ? [replacement]
+              : scenario === 'inline winner'
+                ? firstRefs
+                : [];
+          if (unused.length) {
+            expect(
+              staging.bindAndHydrate(
+                owner,
+                unused,
+                { threadId, clientTurnId: 'unused-stage-control' },
+                { inspectOnly: true },
+              ),
+            ).toEqual(unused.map(() => file));
+          }
+        }
+        finishProvider.resolve();
+        const accepted = await first;
+        expect(accepted.status, accepted.text).toBe(200);
+        if (scenario === 'identical') {
+          const replay = await second;
+          expect(replay.status, replay.text).toBe(200);
+          expect(replay.body.data.providerTurnId).toBe(
+            accepted.body.data.providerTurnId,
+          );
+          expect(accept).toHaveBeenCalledTimes(2);
+        }
+        if (scenario !== 'inline winner') {
+          expect(
+            staging.reconcile(
+              owner,
+              firstRefs.map(({ stageId }) => stageId),
+            ),
+          ).toMatchObject(firstRefs.map(() => ({ state: 'accepted' })));
+        }
+        expect(sends).toHaveBeenCalledTimes(1);
+        expect(engine.turnAttachments).toEqual([[file, file]]);
+      } finally {
+        runFirst.resolve();
+        runSecond.resolve();
+        finishProvider.resolve();
+        await Promise.allSettled(requests);
+        staging.dispose();
+      }
+    },
+  );
 
   test('#3567: an implicit conversation create replays its original handle and conflicts on changed input', async () => {
     const f = await fixture({ engineAgent: true });

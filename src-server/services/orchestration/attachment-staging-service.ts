@@ -38,6 +38,11 @@ export interface AttachmentStageOwner {
   tenantId?: string;
 }
 
+export interface AttachmentBindingOptions {
+  inspectOnly?: true;
+  attemptId?: string;
+}
+
 interface StageRecord extends AttachmentStageDescriptor {
   owner: AttachmentStageOwner;
   /** SHA-256 of the sole bearer capability; plaintext never rests in memory. */
@@ -46,7 +51,7 @@ interface StageRecord extends AttachmentStageDescriptor {
   state: 'pending' | 'complete' | 'accepted' | 'cancelled';
   bytes?: Buffer;
   digest?: `sha256-${string}`;
-  binding?: { threadId: string; clientTurnId: string };
+  binding?: { threadId: string; clientTurnId: string; attempts?: Set<string> };
   bindingExpiresAt?: number;
   retainedUntil?: number;
 }
@@ -243,9 +248,8 @@ export class AttachmentStagingService {
   }
 
   /**
-   * Called only after the provider accepted the exact bound turn. The raw
-   * bytes are no longer active staging capacity; the bounded tombstone keeps
-   * the binding visible for idempotency/reconnect without retaining content.
+   * The bound turn or its durable inbox entry took ownership. Discard the
+   * bytes once and retain the binding so a concurrent join can settle it.
    */
   acceptBinding(
     owner: AttachmentStageOwner,
@@ -256,7 +260,7 @@ export class AttachmentStagingService {
     const records = references.map((reference) => {
       const record = this.require(owner, reference.stageId);
       if (
-        record.state !== 'complete' ||
+        (record.state !== 'complete' && record.state !== 'accepted') ||
         !record.binding ||
         record.binding.threadId !== binding.threadId ||
         record.binding.clientTurnId !== binding.clientTurnId ||
@@ -271,24 +275,24 @@ export class AttachmentStagingService {
     });
     const retainedUntil = this.now() + ACCEPTED_TOMBSTONE_TTL_MS;
     for (const record of records) {
+      if (record.state === 'accepted') continue;
       record.bytes = undefined;
       record.grantDigest = '';
       record.state = 'accepted';
       record.retainedUntil = retainedUntil;
+      if (record.binding) record.binding.attempts = undefined;
     }
   }
 
   /**
-   * Undo a binding for a send the engine provably never received (a
-   * pre-effect refusal of its attachments). The stages stay complete and
-   * owned by the caller, so a later send — to another engine or session —
-   * can use them instead of being refused as "bound to another turn"; the
-   * owner still frees capacity by removing them.
+   * Release a refused attempt that provably sent nothing. An overlapping
+   * attempt can still hold the binding until it settles.
    */
   releaseBinding(
     owner: AttachmentStageOwner,
     references: readonly StagedAttachmentReference[],
     binding: { threadId: string; clientTurnId: string },
+    attemptId?: string,
   ): void {
     for (const reference of references) {
       const record = this.#stages.get(reference.stageId);
@@ -301,6 +305,10 @@ export class AttachmentStagingService {
       ) {
         continue;
       }
+      if (record.binding.attempts) {
+        if (!attemptId || !record.binding.attempts.delete(attemptId)) continue;
+        if (record.binding.attempts.size) continue;
+      } else if (attemptId) continue;
       record.binding = undefined;
       record.bindingExpiresAt = undefined;
     }
@@ -324,7 +332,7 @@ export class AttachmentStagingService {
     owner: AttachmentStageOwner,
     references: readonly StagedAttachmentReference[],
     binding: { threadId: string; clientTurnId: string },
-    options?: { inspectOnly?: true },
+    options?: AttachmentBindingOptions,
   ): ChatAttachmentInput[] {
     this.cleanup();
     const records = references.map((reference) => {
@@ -366,7 +374,11 @@ export class AttachmentStagingService {
     // sibling cannot leave a legal partial batch attached to a turn.
     if (!options?.inspectOnly)
       for (const record of records) {
-        record.binding = { ...binding };
+        record.binding ??= {
+          ...binding,
+          ...(options?.attemptId ? { attempts: new Set<string>() } : {}),
+        };
+        if (options?.attemptId) record.binding.attempts?.add(options.attemptId);
         record.bindingExpiresAt = this.now() + this.ttlMs;
       }
     // Exactly `ChatAttachmentInput`. The stage's `clientAttachmentId` is a
