@@ -25,6 +25,30 @@
           <article class="docs-content">
             <h1 id="getting-started">Getting Started</h1>
 <p>Run Station on your computer and connect an agent such as Claude Code or Codex. This guide covers installation, your first chat and Project, connecting a phone, and keeping Station updated. To share a Project with someone, read the <a href="https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md">sharing setup and current limits</a>.</p>
+<h2 id="quickstart">Quickstart</h2>
+<ol>
+<li><a href="#install-nightly">Install Nightly</a> on the computer that will run Station. Open the app or use the single-use sign-in link printed by the installer.
+</li>
+<li>On Home, open the Agent control beside <strong>Start</strong> and choose an Agent that is ready. If Home offers <strong>Set up an agent engine</strong>, use that action to open Connections. For an existing Codex account, follow <a href="#first-chat-with-codex">First chat with Codex</a>.
+</li>
+<li>Try a small request such as “Give me three questions to check before I review a documentation change. Use no tools.” Choose <strong>Start</strong> to open a direct chat.
+</li>
+<li>Read the answer in the chat. If an approval or question appears, inspect it before responding. When the answer has a <strong>Basis</strong> chip, open it to inspect the recorded inputs behind that answer.
+</li>
+<li>Keep talking in the same chat, create a Project for shared context, or track a deliverable in a Task. <a href="concepts.html#choose-a-project-task-or-direct-chat">Choose what fits</a>.
+</li>
+</ol>
+<h3 id="how-a-turn-works">How a turn works</h3>
+<pre><code>
+Write a request and choose Start or Send
+                    ↓
+The selected Agent runs one turn in a Session
+                    ↓
+It may ask you a question or request approval
+                    ↓
+Station shows the answer, stop, or failure
+</code></pre>
+<p>A follow-up can add another turn to the same Session. See the <a href="https://github.com/kontourai/station/blob/main/docs/learn/walkthroughs.md">visual walkthroughs</a> for Gallery captures of the interface. The <a href="https://github.com/kontourai/station/blob/main/docs/learn/README.md">Learn Station atlas</a> explains how the parts fit together.</p>
 <h2 id="first-chat-with-codex">First chat with Codex</h2>
 <p>If Codex is installed and signed in on this computer, you can use that account without adding a model API key:</p>
 <ol>

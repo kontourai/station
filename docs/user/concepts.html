@@ -28,6 +28,86 @@
 <h2 id="start-with-a-computer-ai-and-a-conversation">Start with a computer, AI, and a conversation</h2>
 <p>Your computer runs Station and your AI apps. Choose an AI and send a message. A phone connects to that computer to use the same conversations and files.</p>
 <p>Add a <strong>Project</strong> when you want to work in a folder or share context. Save a custom <strong>Agent</strong> when you want reusable instructions and tools. Choose <strong>Run a task…</strong> when you want tracked work you can return to. These choices can wait until you need them; starting a chat does not require creating each one.</p>
+<h2 id="choose-a-project-task-or-direct-chat">Choose a Project, Task, or direct chat</h2>
+<p>Start a <strong>Project</strong> when several conversations need the same files, instructions or tools. Add a <strong>Task</strong> when a particular outcome needs a plan, work chats or evidence you can reopen. A <strong>direct chat</strong> is enough for a standalone request you can finish in one conversation.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Use a Project when you want to…</th><th>What stays together</th></tr></thead><tbody><tr><td>Hold p95 API latency under 200 ms through the next release</td><td>The API repository, benchmark instructions and separate investigations</td></tr>
+<tr><td>Retire the v1 endpoint across API, web and mobile</td><td>Migration instructions, the repositories or folders you connect, and a Task for each rollout</td></tr>
+<tr><td>Maintain onboarding docs for three services</td><td>Source documents, terminology and repeatable review instructions</td></tr>
+<tr><td>Review weekly changes to a shared release checklist</td><td>The checklist, Project context and recurring review Tasks</td></tr></tbody></table></div>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Start somewhere else when you want to…</th><th>Use</th></tr></thead><tbody><tr><td>Find out what an error means before deciding whether to investigate</td><td>A direct chat</td></tr>
+<tr><td>Ask an Agent to suggest three names for a command</td><td>A direct chat</td></tr>
+<tr><td>Ship one migration in a Project you already have</td><td>A Task in that Project</td></tr>
+<tr><td>Review a pull request in the same context as a tracked bug</td><td>The existing Task and its work chats</td></tr></tbody></table></div>
+<h3 id="example-project-brief">Example Project brief</h3>
+<p>Enable <strong>Project brief, memory and models</strong> in <strong>Settings → Advanced → Feature previews</strong>, then open <strong>Brief</strong> in Project settings. Put one line in <strong>Goal</strong> and the fuller instructions in <strong>Instructions</strong>. Save the brief for new Sessions in the Project.</p>
+<p><strong>Goal</strong></p>
+<p>Keep p95 API latency under 200 ms through the next release.</p>
+<p><strong>Instructions</strong></p>
+<ul>
+<li><strong>What this Project is for</strong> Investigate latency spikes and keep benchmark results with each change.
+</li>
+<li><strong>Where work happens</strong> Use the API repository, start from <code>main</code>, and prefix pull request titles with <code>perf(api)</code>.
+</li>
+<li><strong>How to check your work</strong> Run the existing latency benchmark against the same recorded workload. Include the command, workload and before/after p95 results in the Task.
+</li>
+<li><strong>When something is missing</strong> Say which environment or benchmark data you need and stop until it is available.
+</li>
+<li><strong>What needs my go-ahead</strong> Ask before changing the benchmark workload, running a production load test or merging a pull request.
+</li>
+</ul>
+<h3 id="troubleshoot-projects-and-tasks">Troubleshoot Projects and Tasks</h3>
+<p>Some messages include details from the Station. Start with the action shown next to the message. When a button name starts with <strong>Retry</strong>, use the one in the panel that reported the error.</p>
+<h4 id="open-a-project-or-task">Open a Project or Task</h4>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Message</th><th>Next step</th></tr></thead><tbody><tr><td><strong>Could not load Projects</strong></td><td>In the board's Projects section, select <strong>Retry Projects</strong>.</td></tr>
+<tr><td><strong>Station connection unavailable</strong></td><td>In <strong>Connections → Computers</strong>, connect to a Station with access to the Project.</td></tr>
+<tr><td><strong>Could not load project</strong></td><td>Select <strong>Retry</strong> on the Project page.</td></tr>
+<tr><td><strong>Project is taking longer than expected</strong></td><td>Select <strong>Retry</strong> to reload the Project.</td></tr>
+<tr><td><strong>Could not load Tasks</strong></td><td>Select <strong>Retry Tasks</strong> in the Project overview.</td></tr>
+<tr><td><strong>Unable to verify Task project</strong></td><td>Select <strong>Retry</strong> to check the Project again.</td></tr>
+<tr><td><strong>Unable to load task</strong></td><td>Select <strong>Retry</strong> in the Task workspace.</td></tr>
+<tr><td><strong>Task not found</strong></td><td>Open the Task from its Project's Tasks list to confirm it is still available to you.</td></tr>
+<tr><td><strong>Project deleted</strong></td><td>Use the Task's existing chats and details to recover context for new work.</td></tr>
+<tr><td><strong>Task workspace is unavailable</strong></td><td>Open the Project and check its working folder before starting new work.</td></tr></tbody></table></div>
+<h4 id="project-tools-files-and-rooms">Project tools, files and rooms</h4>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Message</th><th>Next step</th></tr></thead><tbody><tr><td><strong>Search unavailable</strong>, <strong>Channels unavailable</strong>, <strong>Room unavailable. Check your connection and Project access.</strong>, <strong>This thread could not be loaded.</strong>, <strong>History could not be loaded.</strong></td><td>Select <strong>Retry</strong> in the search, channel, room or history panel.</td></tr>
+<tr><td><strong>Could not load layouts</strong>, <strong>Couldn't load the Library</strong>, <strong>Couldn't open this file</strong></td><td>Select <strong>Retry</strong> in the affected panel.</td></tr>
+<tr><td><strong>Couldn't load project knowledge</strong>, <strong>Couldn't load project rules</strong>, <strong>Could not load stores</strong>, <strong>Could not load records</strong></td><td>Select <strong>Retry</strong> in the affected knowledge panel.</td></tr>
+<tr><td><strong>Could not load document categories</strong></td><td>Select <strong>Retry categories</strong>.</td></tr>
+<tr><td><strong>Could not load indexing status</strong></td><td>Select <strong>Retry indexing status</strong>.</td></tr>
+<tr><td><strong>Couldn't index the working directory</strong></td><td>Read the reason shown, correct it, then choose <strong>Index Files</strong> again.</td></tr>
+<tr><td><strong>Unable to load document content</strong></td><td>Close the knowledge document and reopen it from the Project.</td></tr>
+<tr><td><strong>Unable to check Task sharing</strong></td><td>Select <strong>Retry</strong> in Task sharing.</td></tr>
+<tr><td><strong>Tool access unavailable</strong></td><td>Select <strong>Retry tool access</strong>.</td></tr>
+<tr><td><strong>Project tools unavailable</strong></td><td>Select <strong>Retry Project tools</strong>.</td></tr></tbody></table></div>
+<h4 id="task-work-and-results">Task work and results</h4>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Message</th><th>Next step</th></tr></thead><tbody><tr><td><strong>Unable to load tasks</strong>, <strong>Couldn’t read agent runs.</strong>, <strong>Couldn’t refresh pull requests</strong></td><td>Select <strong>Retry</strong> in the Project's Tasks list or board.</td></tr>
+<tr><td><strong>Subtasks unavailable.</strong>, <strong>Work chats unavailable.</strong>, <strong>Unable to load kept answers</strong>, <strong>Couldn’t read the Task memory</strong>, <strong>Could not load the pull request watch</strong></td><td>Select <strong>Retry</strong> in the Task panel that reported the error.</td></tr>
+<tr><td><strong>Chat selection unavailable.</strong></td><td>Select <strong>Retry selection</strong> to reload the recent chat choices.</td></tr>
+<tr><td><strong>Chat link unavailable. Select a chat and try again.</strong></td><td>Select a chat again before retrying the link.</td></tr>
+<tr><td><strong>Couldn’t load Task outputs:</strong></td><td>Select <strong>Retry outputs</strong>.</td></tr>
+<tr><td><strong>Some results could not be loaded.</strong></td><td>Select <strong>Retry results</strong> in <strong>Ready to review</strong>.</td></tr>
+<tr><td><strong>Couldn’t refresh Timeline.</strong></td><td>Select <strong>Retry Timeline</strong>.</td></tr>
+<tr><td><strong>Some Screens are unavailable.</strong></td><td>Select <strong>Retry unavailable Screens</strong>.</td></tr>
+<tr><td><strong>Couldn’t refresh Review.</strong></td><td>Select <strong>Retry Review</strong>.</td></tr>
+<tr><td><strong>Couldn’t load this Screen.</strong></td><td>Select <strong>Retry Screen</strong> in the Screen detail.</td></tr>
+<tr><td><strong>Couldn’t load this item.</strong></td><td>Select <strong>Retry item</strong>.</td></tr>
+<tr><td><strong>Couldn’t load clips.</strong> or <strong>Couldn’t load this clip.</strong></td><td>Select <strong>Retry clips</strong> for the list or <strong>Retry clip</strong> for the open clip.</td></tr>
+<tr><td><strong>This Screen is unavailable. Capture it again.</strong></td><td>Make another capture from the Project's Browser or Device session.</td></tr>
+<tr><td><strong>This item is unavailable. Refresh and try again.</strong></td><td>Refresh the Review panel before retrying the action.</td></tr></tbody></table></div>
+<h4 id="sharing-and-changes-to-work">Sharing and changes to work</h4>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Message</th><th>Next step</th></tr></thead><tbody><tr><td><strong>Shared work is unavailable</strong></td><td>Select <strong>Retry</strong> in <strong>Shared work</strong>. If your access changed, ask the Project owner what is still shared with you.</td></tr>
+<tr><td><strong>Publication is unavailable for this account.</strong></td><td>Choose <strong>Refresh publication status</strong> to check the shared Task with the current account.</td></tr>
+<tr><td><strong>Shared document is unavailable.</strong></td><td>Check <strong>Refresh publication status</strong> first. If the Task is still published, reopen it to check the document. There is no separate retry on this document message.</td></tr>
+<tr><td><strong>Could not change watching</strong></td><td>Read the error, check the current watching mode, then choose the intended action again if it is still needed.</td></tr>
+<tr><td><strong>Write-back history unavailable</strong></td><td>Check the Task connection, then select <strong>Retry</strong> under <strong>Written to the issue</strong>. This reloads the history.</td></tr>
+<tr><td><strong>Could not create store</strong></td><td>Read the error and inspect the Project's store list before choosing <strong>Create store</strong> again.</td></tr>
+<tr><td><strong>Couldn't save project rules</strong></td><td>Check the error and your draft, then choose <strong>Save Rules</strong> if the change is still needed.</td></tr>
+<tr><td><strong>Couldn’t keep “TITLE” as an output:</strong> or <strong>Couldn’t delete “TITLE”:</strong></td><td>Reopen the Task's outputs and check whether the file is present before attempting the change again. The message includes the actual title.</td></tr>
+<tr><td><strong>Output content is unavailable:</strong></td><td>Check the error and reopen the output. Keep the existing output while checking access and content availability.</td></tr>
+<tr><td><strong>Feedback could not be confirmed. Retry the same statement.</strong></td><td>Use <strong>Retry same statement</strong> to resend the same review text.</td></tr>
+<tr><td><strong>Couldn’t load capture sessions.</strong> or <strong>Some capture sessions could not be loaded.</strong></td><td>Select <strong>Refresh sessions</strong> in the capture dialog.</td></tr>
+<tr><td><strong>Still couldn’t link it. Your task is safe; try again later and it won’t create a second task.</strong></td><td>Use <strong>Link it now</strong> later on that Task.</td></tr></tbody></table></div>
+<p>For more on recovery and access boundaries, see <a href="https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md">sharing setup</a>, <a href="https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md">Project knowledge</a>, and <a href="https://github.com/kontourai/station/blob/main/docs/decisions/task-owned-pull-requests.md">Task-owned pull requests</a>.</p>
 <h2 id="station-and-device">Station And Device</h2>
 <ul>
 <li>A <strong>Station</strong> is the host you connect to and work on.
