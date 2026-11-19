@@ -245,6 +245,30 @@ describe('operate/state: reduce — (4)/(5) flow gate folding', () => {
     },
   );
 
+  it.each([
+    { verdict: 'not-evaluated', summary: 'No gate outcome was recorded.' },
+    { verdict: 'pass', summary: 'all gates passed' },
+  ])(
+    'preserves missing gate evaluation instead of a positive verdict',
+    (observation) => {
+      const state = reduce(initialState({ focusedThreadId: 'thread-1' }), {
+        type: 'event',
+        event: {
+          threadId: 'thread-1',
+          provider: 'claude',
+          createdAt: '2026-07-05T00:00:01.000Z',
+          method: 'flow.gate-verdict',
+          runId: 'run-1',
+          ...observation,
+        },
+      });
+      expect(state.sessions['thread-1'].gateState.latestVerdict).toMatchObject({
+        verdict: 'not-evaluated',
+        summary: 'No gate outcome was recorded.',
+      });
+    },
+  );
+
   it('(5) no flow.run-attached ever -> gate state is bound:false', () => {
     const state = reduce(initialState({ focusedThreadId: 'thread-1' }), {
       type: 'event',
