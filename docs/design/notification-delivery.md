@@ -36,7 +36,9 @@ visibility; it does not detect an overlapping dialog or another occluding surfac
 Actions that transfer from Station details close that dialog before reporting their
 outcome in a toast. Failed actions stay available to retry; an action can name
 why it failed instead of the generic line. A toast's dismissal callback runs once
-when it leaves the screen, which
+when the toast is dismissed. A dismissed transient card stays inert while its
+exit animation finishes. A card displaced by stack overflow returns to the queue
+immediately so its reading timer pauses. The dismissal callback is what
 [General Undo](../../src-ui/src/components/undo/undoable-actions.tsx) uses to
 commit a deferred write, or to drop it when Station changes.
 [NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx)
