@@ -1,0 +1,7 @@
+{
+  "revision": "618e046c4a496d465394759f054f4777815f3d97",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Re-reviewed after making the GitHub automations section's CLI reference link absolute for Pages (docs:public:hygiene). The section text was written against AutomationsSection.tsx, settings-pages.ts (Advanced) and AutomationsSection.test.tsx, and checked against the rendered section at 390 and 1440 px in light and dark themes on an isolated instance.","inputs":["docs/user/settings.md"]}
+  ]
+}

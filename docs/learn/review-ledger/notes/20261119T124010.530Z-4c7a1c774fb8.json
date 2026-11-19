@@ -1,0 +1,63 @@
+{
+  "revision": "d4de12d71593a6fa593c94edc80edff601f63acc",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"The reviewer observation comes from the current built-in Codex adapter, through existing thread and process routing. Producer selection and attestation remain as described.","inputs":["docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"The additive reviewer field comes from a bounded Session fact. The existing read-time answerability inputs and action eligibility remain as described.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced the reported reviewer through Session state, the composer and replacement bindings. The approval sheet displays reviewer and mode separately and restores the latest snapshot for the active thread.","inputs":["docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the explicit workspace startup refusal against contradictory automatic reviewer reports and the separate Codex reviewer disclosure. Host and default approval modes retain their behavior. Focused fixtures establish the adapter and UI behavior.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/codex-adapter-notifications.ts","src-server/providers/adapters/codex-adapter.ts","src-server/providers/adapters/codex-approval-mode.ts","src-ui/src/components/badges/ApprovalModeChip.tsx","src-ui/src/components/badges/ComposerModeSheet.tsx"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked the explicit workspace startup refusal against contradictory automatic reviewer reports and the separate Codex reviewer disclosure. Host and default approval modes retain their behavior. Focused fixtures establish the adapter and UI behavior.","inputs":["docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/design/automations.md","note":"The updated linked confinement design describes Codex reviewer observation and startup refusal. Automation authority and approval policy stay as documented.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced the reported reviewer through Session state, the composer and replacement bindings. The approval sheet displays reviewer and mode separately and restores the latest snapshot for the active thread.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/contexts/active-chats-state.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts","src-ui/src/hooks/useDerivedSessions.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed adapter startup and the inherited configuration paths. Station checks an explicit workspace conflict before session announcement, and preserves the configured host/default approval behavior.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"The additive reviewer event carries one normalized setting from Codex. MCP UI resource rendering and bridge authority are outside this event.","inputs":["docs/design/mcp-ui-host.md","packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Traced the reported reviewer through Session state, the composer and replacement bindings. The approval sheet displays reviewer and mode separately and restores the latest snapshot for the active thread.","inputs":["docs/design/placement.md","packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"The live observation is scoped to the native thread and updates the approval sheet without changing lifecycle or transcript content. Reload uses the current binding’s bounded Session fact.","inputs":["docs/design/session-tape-replay.md","src-server/providers/adapters/codex-adapter.ts","src-ui/src/contexts/active-chats-state.ts","src-ui/src/hooks/orchestration/eventHandlers.ts"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Traced the reported reviewer through Session state, the composer and replacement bindings. The approval sheet displays reviewer and mode separately and restores the latest snapshot for the active thread.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Traced the reported reviewer through Session state, the composer and replacement bindings. The approval sheet displays reviewer and mode separately and restores the latest snapshot for the active thread.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed adapter startup and the inherited configuration paths. Station checks an explicit workspace conflict before session announcement, and preserves the configured host/default approval behavior.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/codex-adapter.ts","src-server/providers/adapters/codex-approval-mode.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed adapter startup and the inherited configuration paths. Station checks an explicit workspace conflict before session announcement, and preserves the configured host/default approval behavior.","inputs":["docs/guides/connections.md","src-server/providers/adapters/codex-adapter.ts","src-server/providers/adapters/codex-approval-mode.ts"]},
+
+    {"path":"docs/guides/development.md","note":"The connected Codex fixtures exercise start, resume, reported settings, and thread correlation. The SQLite and browser checks cover restore and disclosure at their own boundaries.","inputs":["docs/guides/development.md","src-server/providers/adapters/codex-adapter.ts","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed adapter startup and the inherited configuration paths. Station checks an explicit workspace conflict before session announcement, and preserves the configured host/default approval behavior.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/orchestration.ts","src-server/providers/adapters/codex-adapter.ts","src-server/providers/adapters/codex-approval-mode.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed adapter startup and the inherited configuration paths. Station checks an explicit workspace conflict before session announcement, and preserves the configured host/default approval behavior.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The connected Codex fixtures exercise start, resume, reported settings, and thread correlation. The SQLite and browser checks cover restore and disclosure at their own boundaries.","inputs":["docs/reference/agent-smoke-confidence.md","packages/contracts/src/provider.ts","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the additive normalized reviewer contract, bounded latest fact, and current Session binding fence. A reviewer is a provider report distinct from applied mode and request delivery.","inputs":["docs/reference/api.md","packages/contracts/src/provider.ts","packages/contracts/src/runtime-events.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive normalized reviewer contract, bounded latest fact, and current Session binding fence. A reviewer is a provider report distinct from applied mode and request delivery.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts","packages/contracts/src/provider.ts","packages/contracts/src/runtime-events.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts","src-ui/src/hooks/useDerivedSessions.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the additive normalized reviewer contract, bounded latest fact, and current Session binding fence. A reviewer is a provider report distinct from applied mode and request delivery.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/components/chat-dock/conversationOpenController.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the additive normalized reviewer contract, bounded latest fact, and current Session binding fence. A reviewer is a provider report distinct from applied mode and request delivery.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/codex-adapter-types.ts","src-server/providers/adapters/codex-adapter.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/hooks/orchestration/snapshotHandlers.ts","src-ui/src/hooks/useDerivedSessions.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the additive normalized reviewer contract, bounded latest fact, and current Session binding fence. A reviewer is a provider report distinct from applied mode and request delivery.","inputs":["docs/reference/shared.md","packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the additive normalized reviewer contract, bounded latest fact, and current Session binding fence. A reviewer is a provider report distinct from applied mode and request delivery.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Traced the reported reviewer through Session state, the composer and replacement bindings. The approval sheet displays reviewer and mode separately and restores the latest snapshot for the active thread.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/conversationOpenController.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced the reported reviewer through Session state, the composer and replacement bindings. The approval sheet displays reviewer and mode separately and restores the latest snapshot for the active thread.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/contexts/active-chats-state.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed adapter startup and the inherited configuration paths. Station checks an explicit workspace conflict before session announcement, and preserves the configured host/default approval behavior.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/codex-adapter.ts","src-server/providers/adapters/codex-approval-mode.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Traced the reported reviewer through Session state, the composer and replacement bindings. The approval sheet displays reviewer and mode separately and restores the latest snapshot for the active thread.","inputs":["src-ui/AGENTS.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

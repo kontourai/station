@@ -1,0 +1,7 @@
+{
+  "revision": "71230143c613a2fa80b2a111ffaddf215b9d5baa",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Compared the guide JSON with the shipped self-configuring Agent manifest and ran the 31 examples conformance tests, including the real Agent loader comparison. Reviewed delegate_task dispatch authority in station-control-policy and recorded depth and inherited policy in request-delegation. The example still auto-approves four reads. No live delegation was exercised.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

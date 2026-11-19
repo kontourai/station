@@ -64,10 +64,8 @@ const DISPATCH_KEYS = [
   'approvalMode',
   'budget',
 ] as const;
-const NOTIFY_KEYS = ['kind', 'priority'] as const;
 const BUDGET_KEYS = ['maxTurns', 'maxTokens', 'maxWallRuntimeMs'] as const;
 const RATE_LIMIT_KEYS = ['maxStartsPerHour'] as const;
-const NOTIFY_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 
 function nonBlank(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -325,13 +323,8 @@ function validateAction(
     problems.push(`${where}: must be an object`);
     return;
   }
-  if (value.kind === 'notify') {
-    unknownKeys(value, NOTIFY_KEYS, where, problems);
-    if (!NOTIFY_PRIORITIES.includes(value.priority as string)) {
-      problems.push(`${where}: unknown priority`);
-    }
-    return;
-  }
+  // #4513: `notify` was validated but never executed, so it is refused like
+  // any other unknown kind instead of being stored as a promise.
   if (value.kind !== 'dispatch-task' && value.kind !== 'isolated-repair') {
     problems.push(`${where}: unknown action kind`);
     return;
@@ -391,17 +384,13 @@ function validateAction(
 
 /**
  * The two-keys rule: the rule's own action must also be granted by its
- * source. `dispatch-task` needs a grant naming the same Project and Agent;
- * `notify` needs the source to grant `notify` at all. This structural check
+ * source, by a grant naming the same Project and Agent. This structural check
  * ignores revocation so that revoking a source never invalidates the stored
  * file; {@link sourceGrantsRuleAction} is the run-time answer.
  */
 function grantsAction(source: AutomationSource, rule: AutomationRule): boolean {
   const grants = source.grants ?? [];
   const action = rule.action;
-  if (action.kind === 'notify') {
-    return grants.some((grant) => grant.actions.includes('notify'));
-  }
   return grants.some(
     (grant) =>
       grant.projectId === action.projectId &&

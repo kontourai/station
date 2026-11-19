@@ -4,7 +4,7 @@
  *
  * Server-backed providers that are `configured: true` get a proxy STT/TTS
  * object registered so VoiceProviderContext can surface them in the UI.
- * Re-fetches when `apiBase` changes (i.e. connection switches).
+ * The selected authority owns the query. Each observation owns its stub registrations.
  */
 
 import type {
@@ -17,7 +17,7 @@ import {
   useServerCapabilitiesQuery,
   voiceRegistry,
 } from '@kontourai/station-sdk';
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 
 /** Shared base for server-backed provider stubs. */
 function makeStubBase(cap: ProviderCapability) {
@@ -61,22 +61,27 @@ function makeServerTTSStub(cap: ProviderCapability): TTSProvider {
 
 export function useServerCapabilities(): void {
   const { data, error } = useServerCapabilitiesQuery();
+  const voice = error ? undefined : data?.voice;
 
-  useEffect(() => {
-    for (const cap of data?.voice?.stt ?? []) {
+  useLayoutEffect(() => {
+    const dispose: Array<() => void> = [];
+    for (const cap of voice?.stt ?? []) {
       if (cap.clientOnly) continue;
       if (cap.configured && !voiceRegistry.getSTT(cap.id)) {
-        voiceRegistry.registerSTT(makeServerSTTStub(cap));
+        dispose.push(voiceRegistry.registerSTT(makeServerSTTStub(cap)));
       }
     }
 
-    for (const cap of data?.voice?.tts ?? []) {
+    for (const cap of voice?.tts ?? []) {
       if (cap.clientOnly) continue;
       if (cap.configured && !voiceRegistry.getTTS(cap.id)) {
-        voiceRegistry.registerTTS(makeServerTTSStub(cap));
+        dispose.push(voiceRegistry.registerTTS(makeServerTTSStub(cap)));
       }
     }
-  }, [data]);
+    return () => {
+      for (const release of dispose) release();
+    };
+  }, [voice]);
 
   useEffect(() => {
     if (!error) return;

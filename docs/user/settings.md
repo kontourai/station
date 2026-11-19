@@ -1,6 +1,6 @@
 # Settings you may not have found
 
-Most Settings rows explain themselves. This page covers five sections that
+Most Settings rows explain themselves. This page covers six sections that
 change what Station offers rather than how it looks. Open **Settings**, pick a
 page in the left rail, or search for a setting by name. You can also find any
 Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-palette)
@@ -9,6 +9,7 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Section | Page | Saved |
 | --- | --- | --- |
 | Feature previews | **Advanced** | On this Station |
+| GitHub automations | **Advanced** | On this Station |
 | Developer tools | **Advanced** | To your account when you are signed in, otherwise on this device |
 | Shared answers | **Privacy & sharing** | On this Station |
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
@@ -132,6 +133,16 @@ own automations. See
 
 ## Feature previews
 
+Project settings → **Pull requests** uses the Project's repository and the
+connected Station's provider capabilities. A missing repository offers
+**Open Sources**; a valid remote without automatic feedback shows that limit
+without asking you to replace the repository. Stored choices are preserved.
+Today GitHub supports automatic feedback and Task-branch discovery. GitLab.com
+has native merge-request views but no automatic feedback adapter yet. Bitbucket
+and Azure DevOps remain usable as Git repositories; native pull-request
+integration is not implemented. For self-managed GitLab, set the comma-separated hostname list `STATION_GITLAB_HOSTS` on the Station host and sign in with `glab` for each instance.
+A readable checkout is also needed for Station's review of each new head.
+
 **Paired Station chats** lets New Chat use another paired Station. Choose its
 Project; the chat header says **Via <Station>**. Full access, folder selection,
 mentions, offline copies and local integrations are unavailable over relay.
@@ -180,7 +191,7 @@ only when this Station's build can run it; if none is, the section says
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
 | `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
-| `pull-request-agent-feedback` | Pull request agent feedback | Sends a chat's agent one message when a pull request it owns has failing checks, unresolved review threads or a merge conflict. Turn it on per pull request from the pull request's ⋯ in a chat's Details, or once for a Project in its settings' Agent feedback. Tasks can also watch the pull requests they keep (Project settings → **Pull requests**, or **Watch pull requests** on a Task). | Uses the host's `gh` login and one GitHub API request per pull request every few minutes. Off by default, personal Stations only. Waits while the agent works or waits on you; pauses after 3 rounds on one push. A watching Task gets a set number of fix attempts, then waits for you; its agent may not merge, arm auto-merge or force-push, and asks you before changing CI configuration. |
+| `pull-request-agent-feedback` | Pull request agent feedback | Sends a chat's agent one message when a pull request it owns has failing checks, unresolved review threads or a merge conflict. Turn it on per pull request from the pull request's ⋯ in a chat's Details, or once for a Project in **Pull requests**. Tasks can also watch the pull requests they keep (Project settings → **Pull requests**, or **Watch pull requests** on a Task). | Uses the host's `gh` login and one GitHub API request per pull request every few minutes. Off by default, personal Stations only. Waits while the agent works or waits on you; pauses after 3 rounds on one push. A watching Task gets a set number of fix attempts, then waits for you; its agent may not merge, arm auto-merge or force-push, and asks you before changing CI configuration. |
 | `pull-request-head-review` | Pull request head review | Runs Station's independent review once on each new head of a pull request a chat owns, and sends its required findings to the agent. Turn it on per pull request with "Review each new head". | Needs Pull request agent feedback. Uses reviewer agents (provider charges may apply); at most one review per Project at a time and 10 per day. Reviews the Project's checkout and never fetches. Pull requests already set to review resume when you turn this on. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
@@ -315,6 +326,10 @@ and cleanup remain available. See [setup and recovery](https://github.com/kontou
 
 Turning a preview on affects everyone who uses this Station.
 
+**Settings → Voice** shows the providers available for this Station and this
+device. If a saved choice disappears after a Station switch or a failed
+capability check, the control shows an available provider or an empty list.
+
 For **Local speech**, choose **Station (local)** in **Settings → Voice →
 Speech-to-text** after enabling the preview. Click the composer microphone to
 record and click again to stop; final text appears after transcription. Missing
@@ -357,6 +372,15 @@ added. While connected, the app also learns the LAN, Tailscale and Tailscale
 HTTPS addresses the Station reports, marked "found automatically". The app saved on a phone or desktop
 lists those addresses but still connects only through its saved one; see
 [Station routes](https://github.com/kontourai/station/blob/main/docs/design/station-routes.md).
+
+## GitHub automations
+
+With **GitHub automation observations** on, this section lists the Automation
+sources, rules, open episodes and recent deliveries. Each count is the number
+of rows listed under it. A delivery held by a limit shows `suppressed` with the
+reason. An exhausted episode offers **Retry episode**, which allows exactly one
+more attempt under the rule as it is now. Creating and editing rules uses
+`station automation`; see the [CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#automation).
 
 ## Shared answers
 

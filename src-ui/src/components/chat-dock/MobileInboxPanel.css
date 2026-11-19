@@ -4,6 +4,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  padding-block-start: var(--notification-stack-clearance, 0px);
   color: var(--k-text);
   background: var(--k-panel);
 }

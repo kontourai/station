@@ -1,0 +1,10 @@
+{
+  "baselineCommit": "60a0f52b1ad444b028dcc4d343708e40186479db",
+  "candidateCommit": "aafa10eaa9506be3986bfc39c28081c4432e7ea0",
+  "files": {
+    "after-dark-mobile.png": "7a8b7fb53ab94f8a8b74c0959a14bd38ac365b7d32e502ff55e4c2ed150fd598",
+    "after-light-desktop.png": "cc4afa750ae0c15709735d0c8f4cf98fae4088d721856af153da7020066df766",
+    "before-dark-mobile.png": "2d80596f93df7ac5ed624cb94c2316287b9b1a6e763da1cc6b23a8a00d062823",
+    "before-light-desktop.png": "f97bdc3b8df9b4e481f5771a2ceec1b82eb51df2b37ad341afbce7d71b8cdacf"
+  }
+}

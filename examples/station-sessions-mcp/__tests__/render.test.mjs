@@ -37,13 +37,15 @@ describe('renderSessionsPanel', () => {
 
   test('renders an empty state for no sessions', () => {
     const html = renderSessionsPanel([]);
-    expect(html).toContain('No active sessions.');
+    expect(html).toContain('No sessions in this snapshot.');
     expect(html).toContain('(0)');
   });
 
   test('is tolerant of non-array / missing fields', () => {
     expect(() => renderSessionsPanel(undefined)).not.toThrow();
-    expect(renderSessionsPanel(undefined)).toContain('No active sessions.');
+    expect(renderSessionsPanel(undefined)).toContain(
+      'The Station session list is unavailable.',
+    );
     const html = renderSessionsPanel([{ threadId: 'bare' }]);
     expect(html).toContain('bare');
     expect(html).toContain('unknown'); // state fallback

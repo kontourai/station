@@ -93,6 +93,33 @@ export class MonitorTaskTurnSupervisor {
     }
   }
 
+  /**
+   * #4511: an adopted amendment changes a supervised Session's budget in
+   * place. A narrower budget already exceeded stops the turn at the next
+   * observation, exactly as if it had been the original limit.
+   */
+  update(
+    sessionId: string,
+    next: {
+      deadlineAt: number;
+      limits: { maxTurns: number; maxTokens: number };
+    },
+  ): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.limits = next.limits;
+    if (next.deadlineAt !== session.deadlineAt) {
+      session.deadlineAt = next.deadlineAt;
+      if (session.deadlineTimer) clearTimeout(session.deadlineTimer);
+      session.deadlineTimer = Number.isFinite(next.deadlineAt)
+        ? setTimeout(
+            () => this.stop(session),
+            Math.max(0, next.deadlineAt - Date.now()),
+          )
+        : undefined;
+    }
+  }
+
   abandon(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (session?.deadlineTimer) clearTimeout(session.deadlineTimer);

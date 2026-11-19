@@ -4,6 +4,7 @@ import { navigationStore } from '../contexts/navigation-store';
 interface SectionNavigationOptions {
   queryKey?: string;
   legacyQueryKey?: string;
+  sectionAliases?: Readonly<Record<string, string>>;
   /** A leaf reveal is consumed when someone intentionally chooses a section. */
   clearHighlightOnNavigate?: boolean;
   /** Selected panels can take focus without scrolling the page chrome away. */
@@ -15,12 +16,14 @@ function currentSection(
   fallback: string,
   queryKey: string,
   legacyQueryKey?: string,
+  aliases: Readonly<Record<string, string>> = {},
 ) {
   const params = new URLSearchParams(window.location.search);
   const value =
     params.get(queryKey) ??
     (legacyQueryKey ? params.get(legacyQueryKey) : null);
-  return value && allowed.includes(value) ? value : fallback;
+  const section = value ? (aliases[value] ?? value) : null;
+  return section && allowed.includes(section) ? section : fallback;
 }
 
 function focusSection(section: string, scroll = true) {
@@ -68,6 +71,11 @@ export function useSectionNavigation(
 ) {
   const queryKey = options.queryKey ?? 'section';
   const legacyQueryKey = options.legacyQueryKey;
+  const aliasesKey = JSON.stringify(options.sectionAliases ?? {});
+  const aliases = useMemo<Record<string, string>>(
+    () => JSON.parse(aliasesKey),
+    [aliasesKey],
+  );
   const clearHighlightOnNavigate = options.clearHighlightOnNavigate ?? false;
   const scrollOnNavigate = options.scrollOnNavigate ?? true;
   const allowedKey = allowedSections.join('\u0000');
@@ -76,7 +84,7 @@ export function useSectionNavigation(
     [allowedKey],
   );
   const [activeSection, setActiveSection] = useState(() =>
-    currentSection(allowed, fallbackSection, queryKey, legacyQueryKey),
+    currentSection(allowed, fallbackSection, queryKey, legacyQueryKey, aliases),
   );
   const cancelFocusRef = useRef<(() => void) | undefined>(undefined);
 
@@ -90,21 +98,24 @@ export function useSectionNavigation(
       fallbackSection,
       queryKey,
       legacyQueryKey,
+      aliases,
     );
 
     const hasHighlight = params.has('highlight');
-    if (requested && !allowed.includes(requested)) {
+    if (requested && !allowed.includes(aliases[requested] ?? requested)) {
       const url = new URL(window.location.href);
       url.searchParams.delete(queryKey);
       if (legacyQueryKey) url.searchParams.delete(legacyQueryKey);
       window.history.replaceState(window.history.state, '', url);
-    } else if (requested && legacyQueryKey && params.has(legacyQueryKey)) {
-      // `section` was the old Settings spelling. Fold it into the canonical
-      // `view` key without adding a Back entry or disturbing shell/locale
-      // params owned by other surfaces.
+    } else if (
+      requested &&
+      ((legacyQueryKey && params.has(legacyQueryKey)) || aliases[requested])
+    ) {
+      // Fold published section aliases into the current destination without
+      // adding a Back entry or disturbing other query parameters.
       const url = new URL(window.location.href);
       url.searchParams.set(queryKey, next);
-      url.searchParams.delete(legacyQueryKey);
+      if (legacyQueryKey) url.searchParams.delete(legacyQueryKey);
       window.history.replaceState(window.history.state, '', url);
     }
 
@@ -113,10 +124,19 @@ export function useSectionNavigation(
     // A catalog leaf owns focus for `highlight`; section focus must never
     // race it and steal the final destination.
     cancelFocusRef.current =
-      requested && allowed.includes(requested) && !hasHighlight
+      requested &&
+      allowed.includes(aliases[requested] ?? requested) &&
+      !hasHighlight
         ? focusSection(next, scrollOnNavigate)
         : undefined;
-  }, [allowed, fallbackSection, legacyQueryKey, queryKey, scrollOnNavigate]);
+  }, [
+    aliases,
+    allowed,
+    fallbackSection,
+    legacyQueryKey,
+    queryKey,
+    scrollOnNavigate,
+  ]);
 
   useEffect(() => {
     syncFromLocation();

@@ -225,6 +225,7 @@ export class PullRequestRepositoryContextResolver {
       return {
         available: false,
         reason: `Checkout uses unsupported forge ${unsupportedForge}`,
+        cause: 'unsupported-forge',
       };
     const branchState = await this.readBranchState(
       git,
@@ -538,7 +539,13 @@ function distinctRepositories(
 
 function knownUnsupportedForge(url: string): string | undefined {
   const host = remoteHost(url);
-  return host === 'bitbucket.org' ? host : undefined;
+  return host &&
+    (host === 'bitbucket.org' ||
+      host === 'dev.azure.com' ||
+      host === 'ssh.dev.azure.com' ||
+      host.endsWith('.visualstudio.com'))
+    ? host
+    : undefined;
 }
 
 function remoteHost(url: string): string | undefined {

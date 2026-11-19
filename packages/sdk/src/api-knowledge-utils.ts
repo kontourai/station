@@ -1,5 +1,6 @@
 import { _getApiBase, getPluginHeaders } from './api-core';
-import { authenticatedFetch } from './client/http';
+import { envelopeError } from './client/api-error-message';
+import { authenticatedFetch, rethrowDeadline } from './client/http';
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -19,7 +20,7 @@ interface KnowledgeJsonRequestOptions {
   method?: string;
   body?: unknown;
   errorPrefix: string;
-  allowFailure?: boolean;
+  validateData?: (data: unknown) => boolean;
   responseMode?: 'data' | 'void';
 }
 
@@ -50,40 +51,25 @@ export async function requestKnowledgeJson<T>(
     body: hasBody ? JSON.stringify(options?.body) : undefined,
   });
 
-  if (!res.ok) {
-    if (options?.allowFailure) {
-      return [] as T;
-    }
-    throw new Error(`${options?.errorPrefix}: ${res.statusText}`);
+  const prefix = options?.errorPrefix ?? 'Knowledge request failed';
+  const invalid = `${prefix}: invalid response`;
+  const fallback = res.ok
+    ? invalid
+    : `${prefix}: ${res.statusText || res.status}`;
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch (error) {
+    rethrowDeadline(error);
+    throw envelopeError(res, undefined, fallback);
+  }
+  if (!res.ok || !isJsonRecord(json) || json.success !== true) {
+    throw envelopeError(res, json, fallback);
   }
 
-  const json: unknown = await res.json();
-  if (!isJsonRecord(json) || typeof json.success !== 'boolean') {
-    if (options?.allowFailure) {
-      return [] as T;
-    }
-    throw new Error(`${options?.errorPrefix}: invalid response`);
-  }
-
-  if (!json.success) {
-    if (options?.allowFailure) {
-      return [] as T;
-    }
-    if (typeof json.error === 'string') {
-      throw new Error(json.error);
-    }
-    throw new Error(`${options?.errorPrefix}: invalid response`);
-  }
-
-  if (options?.responseMode === 'void') {
-    return;
-  }
-
-  if (!('data' in json)) {
-    if (options?.allowFailure) {
-      return [] as T;
-    }
-    throw new Error(`${options?.errorPrefix}: invalid response`);
+  if (options?.responseMode === 'void') return;
+  if (!('data' in json) || options?.validateData?.(json.data) === false) {
+    throw envelopeError(res, undefined, invalid);
   }
 
   return json.data as T;

@@ -31,6 +31,7 @@ import {
   type PullRequestWatchRefusalKind,
   resolveTaskPullRequestWatch,
   type TaskPullRequestWatchPullRequest,
+  type TaskPullRequestWatchReviewHold,
   type TaskPullRequestWatchState,
   type TaskPullRequestWatchView,
 } from '@kontourai/station-contracts/pull-request-watch';
@@ -63,6 +64,7 @@ const WATCH_SETTINGS = Object.freeze({
 export interface PullRequestWatchPorts {
   /** The `pull-request-agent-feedback` preview's live choice. */
   enabled(): boolean;
+  headReviewHold?(prKey: string): TaskPullRequestWatchReviewHold | undefined;
   /** Opened on first write. */
   store(): PullRequestFeedbackStore | undefined;
   /** Undefined until something was written. */
@@ -412,6 +414,8 @@ export class PullRequestWatch {
         headSha: condition.headSha,
       };
     const observation = store.observation(claim.prKey)?.observation;
+    const reviewHold = this.ports.headReviewHold?.(claim.prKey);
+    if (reviewHold) return reviewHold;
     const report = store.latestWatchReport(claim.prKey);
     if (
       report?.kind === 'ready' &&

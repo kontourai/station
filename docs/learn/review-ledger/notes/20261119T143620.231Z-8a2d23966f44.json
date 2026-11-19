@@ -1,0 +1,13 @@
+{
+  "revision": "e24072bf2cf5aa6534aacc4cfb3e9a73aa0b743d",
+
+  "notes": [
+    {"path":"docs/learn/media/project-invitation-after-1440-dark.png","note":"Reviewed the four invitation captures against the Project settings browser fixture. The added repository-context SDK export lets unrelated settings tabs load with the correct offline repository result. It does not change invitation setup, layout, or controls. The browser fixture passed at both widths and themes.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-after-390-light.png","note":"Reviewed the four invitation captures against the Project settings browser fixture. The added repository-context SDK export lets unrelated settings tabs load with the correct offline repository result. It does not change invitation setup, layout, or controls. The browser fixture passed at both widths and themes.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-1440-dark.png","note":"Reviewed the four invitation captures against the Project settings browser fixture. The added repository-context SDK export lets unrelated settings tabs load with the correct offline repository result. It does not change invitation setup, layout, or controls. The browser fixture passed at both widths and themes.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-390-light.png","note":"Reviewed the four invitation captures against the Project settings browser fixture. The added repository-context SDK export lets unrelated settings tabs load with the correct offline repository result. It does not change invitation setup, layout, or controls. The browser fixture passed at both widths and themes.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]}
+  ]
+}

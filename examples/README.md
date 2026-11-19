@@ -54,7 +54,7 @@ prove.
 | Example | Focus |
 | --- | --- |
 | [MCP UI Demo](mcp-ui-demo/README.md) | Sandboxed MCP App resource |
-| [Station Sessions MCP](station-sessions-mcp/README.md) | Read-only session panel over MCP UI; its reader is broken ([#2785](https://github.com/kontourai/station/issues/2785)), and an empty panel is not evidence |
+| [Station Sessions MCP](station-sessions-mcp/README.md) | Authenticated read-only session snapshot with distinct empty and unavailable states |
 | [Self-Configuring Agent](self-configuring-agent/README.md) | Agent-authored configuration pattern |
 | [Example Registry](registry/README.md) | Reproducible local registry manifest |
 
@@ -62,7 +62,7 @@ prove.
 
 | Example | Focus |
 | --- | --- |
-| [ElevenLabs Voice](elevenlabs-voice/README.md) | Legacy voice protocol under repair; injected realtime adapter |
+| [ElevenLabs Voice](elevenlabs-voice/README.md) | Single-use-token Scribe and TTS examples; separately injected realtime adapter |
 | [OpenAI-Compatible Realtime Voice](openai-realtime-voice/README.md) | Realtime-compatible voice Provider |
 | [Nova Sonic Voice](nova-sonic-voice/README.md) | Preview provider with an unimplemented relay |
 | [Meeting Transcription](meeting-transcription/README.md) | Speech-to-text plugin boundary |
@@ -79,8 +79,7 @@ npm run typecheck:examples
 `examples:conformance` validates every manifest path and documented npm script,
 then builds every example that declares a build. Example unit tests run in the
 normal test corpus. Credential-gated live-provider examples are reported as
-`NOT PROVEN AT RUNTIME`, and examples that cannot work as shipped (Nova Sonic,
-ElevenLabs, Station Sessions MCP) as `KNOWN BROKEN`. A successful static build
+`NOT PROVEN AT RUNTIME`, and examples that cannot work as shipped, such as Nova Sonic, as `KNOWN BROKEN`. A successful static build
 does not prove an external service or credential path.
 
 `typecheck:examples` compiles every example that ships TypeScript, including

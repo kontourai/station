@@ -1,0 +1,9 @@
+{
+  "revision": "ce4db6a75c53b2053e4b30e775583d03cab1f82e",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Checked both API-reference consumers against its Automation proposal confirmation amendment. The Terminal design links to its terminal routes, and the integrating guide uses the endpoint reference for integrations. Their API paths and behavior have no dependency on Agent incarnation or the confirmation result.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked both API-reference consumers against its Automation proposal confirmation amendment. The Terminal design links to its terminal routes, and the integrating guide uses the endpoint reference for integrations. Their API paths and behavior have no dependency on Agent incarnation or the confirmation result.","inputs":["docs/reference/api.md"]}
+  ]
+}

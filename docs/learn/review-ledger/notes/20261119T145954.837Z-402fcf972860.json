@@ -1,0 +1,7 @@
+{
+  "revision": "970b89fa6fb18bf06f14b8914a56be3b37ff30de",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed the one-entry JSON correction against examples/self-configuring-agent/agent.json and the real Agent loader. delegate_task remains an available mutation subject to normal approval; the four auto-approved read tools and authority/delegation rules are unchanged.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

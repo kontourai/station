@@ -1973,12 +1973,15 @@ connection. It creates nothing. The chat schedule read lists open proposals
 as `automationProposals`, with the conversation's current untrusted mark
 (`untrustedContentNow`). A person's Confirm also needs the operator in
 person. It reruns the scope rule for the recorded proposer and requires each
-recorded Agent binding (slug, Project, definition digest) to be unchanged,
-before claiming and again inside the store's creation and enabling locks.
-It creates through `AutomationStore` under an id derived from the proposal
-(`automationIdForProposal`), so retries and startup reconciliation adopt
-rather than duplicate. It creates disabled or `observe` unless the
-confirmation sets `enable`, and records the mark at confirm. The
+recorded Agent binding (slug, Project, definition digest and incarnation) to
+match. The Agent identity lock holds across the store's creation and activation
+writes. Confirm refuses an older proposal whose target lacks the incarnation
+binding. It creates through `AutomationStore` under an id derived from the
+proposal (`automationIdForProposal`), so retries and startup reconciliation
+adopt rather than duplicate. It creates sources disabled and rules observing,
+then attempts activation if the confirmation sets `enable`. The chat displays
+the distinct save and activation outcomes after the open list refreshes.
+Confirm also records the untrusted-content mark. The
 [authority test](../../src-server/security/__tests__/automation-proposal-authority.routes.test.ts)
 drives the composition through the real boundary, guard, `EventStore`,
 `AutomationStore` and untrusted-content ledger.
@@ -2464,7 +2467,9 @@ does not redact engine history or establish engine acknowledgement.
 Each `turn.started` a send produces records who caused the turn
 (`dispatchOrigin`, #4512): `interactive`, `task-dispatch`, `delegation`,
 `automation` or `unknown`. Station classifies it when it admits the
-`sendTurn`, never from a request body or an engine. A server caller passes
+`sendTurn`, never from a request body or an engine. The same classification is
+passed to server-owned turn admission observers, which is how the Automation
+runtime admits a person's own turn into an automation Session (#4511). A server caller passes
 its own classification in the dispatch's internal options
 (`dispatchOrigin`); without one, `classifyTurnDispatchOrigin` in the
 [orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
@@ -5624,7 +5629,11 @@ claims or attempts
 ([observe mode](../design/automations.md#per-rule-observe-mode)). Separately enabled native Task actions and
 isolated repairs consume retained intents after source/rule/grant and `live`-mode checks; the
 scheduler invokes both consumers and awaits their shutdown before closing the
-shared ledger.
+shared ledger. Both compare an authority-only policy fingerprint, and the native
+runtime adopts an instructions/budget amendment or stops a revoked action with
+a reason on its Session and Task ([policy changes](../design/automations.md#policy-changes-and-the-start-mandate)).
+The [operator routes](../../src-server/routes/operations/automations.ts) serve
+`AUTOMATION_OPERATOR_SURFACE` ([operator surface](../design/automations.md#operator-surface)).
 
 [Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
 [execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),

@@ -56,6 +56,11 @@ capability flag, so hosted Stations do not offer it.
    forge shows the pull request open, not a draft, not conflicting, every
    check finished with none failing (all read), no unresolved current thread
    and no change request, the Task's watch reads **Ready for you**.
+   When **Review each new head** is on, it also waits for that head's
+   completed Station review with no required findings. The Task panel shows
+   pending review or the next recovery step, including dismissed findings,
+   a pause or a review owner who can no longer send to the chat. Changing
+   review settings in the same chat keeps the watch and its fix budget.
 6. **Refusals are enforced, not prompted.** A pre-tool policy stage, ahead of
    every grant (full access included), reads each shell and file-write call a
    watching Task's agent makes. `gh pr merge` (with or without `--auto`),

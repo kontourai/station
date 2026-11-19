@@ -35,67 +35,70 @@ export function FullAccessRefusalCard({
             }`
           : 'Your pick was not applied. This chat keeps its current approval mode.'}
       </p>
-      {requester?.kind === 'agent' || (details && !grant) ? (
-        <p style={{ margin: '8px 0 0' }}>
-          An agent can never put itself, or any session, at full access. A
-          person must choose it in Station, from a device the operator has
-          allowed full access.
-        </p>
-      ) : grant?.groupLimited ? (
-        // #3557: the person's group stops it. Making them Admin comes first;
-        // the device grant, when still needed, is the SECOND step.
-        <>
+      <details className="chat-error-details">
+        <summary>Full access recovery</summary>
+        {requester?.kind === 'agent' || (details && !grant) ? (
           <p style={{ margin: '8px 0 0' }}>
-            <DeviceLabel requester={requester} capitalized /> belongs to a
-            person in the Member group, which doesn&apos;t allow full access.
+            An agent can never put itself, or any session, at full access. A
+            person must choose it in Station, from a device the operator has
+            allowed full access.
           </p>
-          <p style={{ margin: '8px 0 4px' }}>
-            Ask the operator to make them Admin on People:
-          </p>
-          <ol style={{ margin: 0, paddingLeft: '20px' }}>
-            {groupLimitedPeopleSteps(grant).map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-          {grant.groupLimited.cli && (
-            <>
-              <p style={{ margin: '8px 0 4px' }}>
-                Then, on the Station&apos;s host, the operator runs:
-              </p>
-              <CommandBlock command={grant.groupLimited.cli} />
-            </>
-          )}
-        </>
-      ) : (
-        <>
-          <p style={{ margin: '8px 0 0' }}>
-            Ask the operator to allow full access for{' '}
-            <DeviceLabel requester={requester} />.
-          </p>
-          {command && (
-            <>
-              <p style={{ margin: '8px 0 4px' }}>
-                On the Station&apos;s host, the operator runs:
-              </p>
-              <CommandBlock command={command} />
-            </>
-          )}
-          {grant && grant.uiSteps.length > 0 && (
-            <>
-              <p style={{ margin: '8px 0 4px' }}>
-                {command
-                  ? 'Or, in the Station desktop app:'
-                  : 'In the Station desktop app:'}
-              </p>
-              <ol style={{ margin: 0, paddingLeft: '20px' }}>
-                {grant.uiSteps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </>
-          )}
-        </>
-      )}
+        ) : grant?.groupLimited ? (
+          // #3557: the person's group stops it. Making them Admin comes first;
+          // the device grant, when still needed, is the SECOND step.
+          <>
+            <p style={{ margin: '8px 0 0' }}>
+              <DeviceLabel requester={requester} capitalized /> belongs to a
+              person in the Member group, which doesn&apos;t allow full access.
+            </p>
+            <p style={{ margin: '8px 0 4px' }}>
+              Ask the operator to make them Admin on People:
+            </p>
+            <ol style={{ margin: 0, paddingLeft: '20px' }}>
+              {groupLimitedPeopleSteps(grant).map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            {grant.groupLimited.cli && (
+              <>
+                <p style={{ margin: '8px 0 4px' }}>
+                  Then, on the Station&apos;s host, the operator runs:
+                </p>
+                <CommandBlock command={grant.groupLimited.cli} />
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <p style={{ margin: '8px 0 0' }}>
+              Ask the operator to allow full access for{' '}
+              <DeviceLabel requester={requester} />.
+            </p>
+            {command && (
+              <>
+                <p style={{ margin: '8px 0 4px' }}>
+                  On the Station&apos;s host, the operator runs:
+                </p>
+                <CommandBlock command={command} />
+              </>
+            )}
+            {grant && grant.uiSteps.length > 0 && (
+              <>
+                <p style={{ margin: '8px 0 4px' }}>
+                  {command
+                    ? 'Or, in the Station desktop app:'
+                    : 'In the Station desktop app:'}
+                </p>
+                <ol style={{ margin: 0, paddingLeft: '20px' }}>
+                  {grant.uiSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              </>
+            )}
+          </>
+        )}
+      </details>
     </div>
   );
 }

@@ -45,12 +45,11 @@ import { useDecisionSurface } from '../../lib/custom-appearance/decision-surface
  * Settings › People (#3557): everyone with a device tied to them, the Station
  * group that caps those devices, and their personal access tokens.
  *
- * Operator-only, gated by the SERVER like plugin visibility: the read is
- * admitted for the operator credential and the desktop's local grant, and
- * a denied read is explained when someone opens People directly.
- * Changes need the operator credential itself, so the local grant
- * can list but its changes come back 401 — answered with what to do, not a
- * dead control.
+ * The server admits People reads for the operator credential and the
+ * desktop's local grant. A direct People link explains a denied read.
+ * Changes require the host operator credential or an operator passkey
+ * session with step-up. A valid local grant receives operator guidance
+ * when a group or token change requires that authority.
  */
 
 /** A refused group change, said as what to do next. */

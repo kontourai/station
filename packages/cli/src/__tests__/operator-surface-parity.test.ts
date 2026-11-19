@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import {
   AUTOMATION_OPERATOR_OPERATIONS,
   AUTOMATION_OPERATOR_SURFACE,
+  type AutomationOperatorOperation,
 } from '@kontourai/station-contracts/automation';
 import {
   REVIEW_EVIDENCE_OPERATOR_SURFACE,
@@ -66,6 +67,41 @@ function concretePath(template: string): string {
     .replace(':target', 'daily-report');
 }
 
+const FINGERPRINT = 'f'.repeat(64);
+const RULE_BODY =
+  '{"name":"Diagnose","match":{"type":"github.workflow_run.completed","where":{"run.conclusion":"failure"}},"action":{"kind":"dispatch-task","projectId":"station","agentId":"repairer","instructions":"Diagnose.","budget":{"maxTurns":2,"maxTokens":1000,"maxWallRuntimeMs":60000}},"rateLimit":{"maxStartsPerHour":1}}';
+const AUTOMATION_ARGS: Record<AutomationOperatorOperation, string[]> = {
+  'list-sources': [],
+  'create-source': [
+    '--data={"kind":"github-poll","name":"Main","repository":"kontourai/station"}',
+  ],
+  'enable-source': ['source-1'],
+  'disable-source': ['source-1'],
+  'delete-source': ['source-1'],
+  'list-rules': [],
+  'create-rule': [
+    `--data=${RULE_BODY.replace('{', '{"sourceId":"source-1",')}`,
+  ],
+  'update-rule': ['rule-1', `--data=${RULE_BODY}`],
+  'enable-rule': ['rule-1'],
+  'disable-rule': ['rule-1'],
+  'delete-rule': ['rule-1'],
+  deliveries: ['--limit=5'],
+  episodes: [],
+  'retry-episode': ['rule-1', '42'],
+};
+const AUTOMATION_TARGETS: Partial<Record<AutomationOperatorOperation, string>> =
+  {
+    'enable-source': 'source-1',
+    'disable-source': 'source-1',
+    'delete-source': 'source-1',
+    'update-rule': 'rule-1',
+    'enable-rule': 'rule-1',
+    'disable-rule': 'rule-1',
+    'delete-rule': 'rule-1',
+    'retry-episode': encodeURIComponent('rule-1:42'),
+  };
+
 const automationPage = {
   deliveries: [
     {
@@ -105,7 +141,10 @@ const server = createServer(async (req, res) => {
   const data = !reviews
     ? url.pathname === '/automations/deliveries'
       ? automationPage
-      : {}
+      : url.pathname === '/automations/rules' ||
+          url.pathname === '/automations/sources'
+        ? { configurationFingerprint: FINGERPRINT, rules: [], sources: [] }
+        : {}
     : reviews[1]?.startsWith('/requests/') || req.method === 'POST'
       ? completedReviewRequest
       : reviews[1]
@@ -191,25 +230,29 @@ describe('scheduler operator surface', () => {
 });
 
 describe('automation operator surface', () => {
-  // Slice S2 ships `deliveries` only; each later slice adds its verbs here
-  // with the route that serves them, until the set equals the contract.
-  const SHIPPED = ['deliveries'] as const;
-
-  it('help advertises exactly the shipped contract CLI actions', () => {
+  it('help advertises exactly the contract CLI actions (#4513)', () => {
     expect(actionsFor('automation')).toEqual(
-      SHIPPED.map((operation) => AUTOMATION_OPERATOR_SURFACE[operation].cli),
+      AUTOMATION_OPERATOR_OPERATIONS.map(
+        (operation) => AUTOMATION_OPERATOR_SURFACE[operation].cli,
+      ),
     );
-    for (const operation of SHIPPED) {
-      expect(AUTOMATION_OPERATOR_OPERATIONS).toContain(operation);
-    }
   });
 
-  it('automation deliveries dispatches to its contract route', async () => {
-    const entry = AUTOMATION_OPERATOR_SURFACE.deliveries;
-    expect(await dispatch('automation', [entry.cli, '--limit=5'])).toEqual([
-      `${entry.method} ${entry.path}`,
-    ]);
-  });
+  it.each(AUTOMATION_OPERATOR_OPERATIONS)(
+    'automation %s dispatches to its contract route',
+    async (operation) => {
+      const entry = AUTOMATION_OPERATOR_SURFACE[operation];
+      const target = AUTOMATION_TARGETS[operation];
+      const path = target ? entry.path.replace(':target', target) : entry.path;
+      const sent = await dispatch('automation', [
+        entry.cli,
+        ...AUTOMATION_ARGS[operation],
+      ]);
+      // A fingerprinted change reads the current fingerprint first; the
+      // change itself is always the last request.
+      expect(sent.at(-1)).toBe(`${entry.method} ${path}`);
+    },
+  );
 
   it('prints each delivery rule mode and decision (#4509)', async () => {
     await dispatch('automation', ['deliveries']);

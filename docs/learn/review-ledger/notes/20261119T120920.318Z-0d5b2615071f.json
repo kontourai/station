@@ -1,0 +1,35 @@
+{
+  "revision": "8e4785a905b1c38077319b75afa18c75e2d2ef43",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Reviewed selected installed manifest reads against the common native canonical resolver and bounded descriptor reader. Inventory and update readers accept contained manifest references. Installed dependency build keeps its regular-root-manifest rule. The documented call-time boundary and the unqualified Windows and concurrent parent-retarget cases reflect the evidence.","inputs":["docs/guides/plugins.md","src-server/services/plugins/plugin-source.ts"]},
+
+    {"path":"README.md","note":"The new paragraph describes the installed dependency and update reader boundary. Existing introductory plugin, installation, and integration guidance remains accurate.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The new paragraph describes the installed dependency and update reader boundary. Existing introductory plugin, installation, and integration guidance remains accurate.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"The new paragraph describes the installed dependency and update reader boundary. Existing introductory plugin, installation, and integration guidance remains accurate.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The inventory resolves the package owner before reading the manifest and consumes the contained bounded file. Existing directory inventory and rejected-install recovery semantics still apply.","inputs":["src-server/services/plugins/installed-plugin-inventory.ts"]},
+
+    {"path":"docs/design/plugin-authority-model.md","note":"The legacy update uses the contained manifest of the selected installed package before creating the backup. Reviewed lifecycle, API and example installation claims. Installed package authority, consent, staging, and backup recovery remain at their existing owners.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"The legacy update uses the contained manifest of the selected installed package before creating the backup. Reviewed lifecycle, API and example installation claims. Installed package authority, consent, staging, and backup recovery remain at their existing owners.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The legacy update uses the contained manifest of the selected installed package before creating the backup. Reviewed lifecycle, API and example installation claims. Installed package authority, consent, staging, and backup recovery remain at their existing owners.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"The legacy update uses the contained manifest of the selected installed package before creating the backup. Reviewed lifecycle, API and example installation claims. Installed package authority, consent, staging, and backup recovery remain at their existing owners.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"The legacy update uses the contained manifest of the selected installed package before creating the backup. Reviewed lifecycle, API and example installation claims. Installed package authority, consent, staging, and backup recovery remain at their existing owners.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"The legacy update uses the contained manifest of the selected installed package before creating the backup. Reviewed lifecycle, API and example installation claims. Installed package authority, consent, staging, and backup recovery remain at their existing owners.","inputs":["src-server/routes/plugins/plugin-lifecycle-routes.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Dependency selection uses the installed physical package root and a bounded manifest read. Feature classification uses the same parsed document and existing dependency lifecycle checks. The dependency build uses the selected root while holding the existing lock and verifies its generation before build and publication. The public malformed-manifest refusal exposes a bounded message.","inputs":["src-server/services/plugins/plugin-source.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Dependency selection uses the installed physical package root and a bounded manifest read. Feature classification uses the same parsed document and existing dependency lifecycle checks. The dependency build uses the selected root while holding the existing lock and verifies its generation before build and publication. The public malformed-manifest refusal exposes a bounded message.","inputs":["src-server/services/plugins/plugin-source.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"The installed package selector uses the common native canonical path owner. It still recognizes the exact managed pointer layout with selected generation and data identity. The Agent Plugins retained generation explanation remains accurate.","inputs":["src-server/services/plugins/plugin-incarnation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The Git update check uses the same physical package root for the contained manifest and Git calls. Checked the operator read and managed-policy response claims. The update report still distinguishes per-source failure from a complete empty check.","inputs":["src-server/services/plugins/plugin-update-check.ts"]}
+  ]
+}

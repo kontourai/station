@@ -170,6 +170,7 @@ import {
 import { CODEX_APPROVAL_ACKNOWLEDGEMENT } from './codex-approval-delivery.js';
 import {
   codexSandboxModeOfPolicy,
+  mapCodexApprovalReviewer,
   mapCodexKnobsToApprovalMode,
   planCodexTurnSandbox,
   readCodexSandboxPolicy,
@@ -2615,6 +2616,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         );
       }
 
+      const reportedReviewer = mapCodexApprovalReviewer(
+        extractStringField(result, 'approvalsReviewer'),
+      );
+      if (input.confinement === 'workspace' && reportedReviewer === 'automatic')
+        throw new ConfinementRefusedError(
+          'confinement_not_observed',
+          'Codex reported automatic approval review, but this workspace session requires a person to review escalations. Check the Codex approval reviewer requirements before restarting the session.',
+        );
+
       const codexThread = extractThread(result);
       const offeredNames = new Set(offeredTools.map((tool) => tool.name));
       if (!boundTools && catalogWithdrawn)
@@ -2792,6 +2802,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           this.provider,
           describeCodexSandboxGap(sandboxEvidence),
         );
+      record.reportedApprovalReviewer = reportedReviewer;
       this.transport.setCodexThreadId(record, codexThread.id);
       this.options.nativeSessionOwnership?.claim(
         nativeSessionIdentityKey(
@@ -2871,6 +2882,7 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
             : undefined,
           codexThreadId: codexThread.id,
+          reportedApprovalReviewer: reportedReviewer,
           ...(confinementRecord
             ? { [STATION_CONFINEMENT_RECORD_METADATA_KEY]: confinementRecord }
             : {}),

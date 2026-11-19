@@ -23519,6 +23519,29 @@ describe('OrchestrationService', () => {
     await guardedService.shutdown();
   });
 
+  async function runScriptedSmoke(
+    input: Parameters<OrchestrationService['runConnectionSmoke']>[0],
+  ) {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const terminal = deferred<void>();
+    const unsubscribe = eventBus.subscribe((frame) => {
+      if (frame.event !== 'orchestration:event') return;
+      const event = frame.data?.event as CanonicalRuntimeEvent | undefined;
+      if (event?.method === 'turn.completed' && event.threadId.startsWith(`station-smoke-${input.provider}-`))
+        terminal.resolve();
+    });
+    try {
+      const result = service.runConnectionSmoke(input);
+      // Advance the smoke's poll after the fixture's terminal is published.
+      await Promise.race([terminal.promise, result]);
+      await vi.advanceTimersByTimeAsync(100);
+      return await result;
+    } finally {
+      unsubscribe();
+      vi.useRealTimers();
+    }
+  }
+
   test('completes one smoke turn and deletes its ephemeral session artifacts', async () => {
     claude.sendTurn.mockImplementationOnce(async (input) => {
       const turnId = 'claude-smoke-turn';
@@ -23537,7 +23560,7 @@ describe('OrchestrationService', () => {
       return { threadId: input.threadId, turnId };
     });
 
-    const result = await service.runConnectionSmoke({
+    const result = await runScriptedSmoke({
       connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
@@ -23594,7 +23617,7 @@ describe('OrchestrationService', () => {
       return { threadId: input.threadId, turnId };
     });
 
-    const result = await service.runConnectionSmoke({
+    const result = await runScriptedSmoke({
       connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
@@ -23646,14 +23669,10 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
-        // The assertion is about reasoning-only content classification, not a
-        // one-second latency SLA. The complete related corpus can delay this
-        // synthetic event loop on a two-core runner, so retain a bounded but
-        // non-racy operation window.
         timeoutMs: 5_000,
       }),
     ).resolves.toMatchObject({ ok: true });
@@ -23678,7 +23697,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23865,7 +23884,7 @@ describe('OrchestrationService', () => {
         return { threadId: input.threadId, turnId };
       });
 
-      const result = await service.runConnectionSmoke({
+      const result = await runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23914,7 +23933,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23952,7 +23971,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -23993,7 +24012,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -24030,7 +24049,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -24077,7 +24096,7 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      service.runConnectionSmoke({
+      runScriptedSmoke({
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
@@ -29429,6 +29448,8 @@ describe('OrchestrationService', () => {
     > = {
       'session.started': 'non-fold',
       'session.configured': 'non-fold',
+      'session.approval-reviewer-observed': 'non-fold',
+      'session.engine-mode-observed': 'non-fold',
       'session.state-changed': 'non-fold',
       'session.stop-settled': 'non-fold',
       'session.cancellation-requested': 'non-fold',

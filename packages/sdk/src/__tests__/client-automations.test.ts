@@ -1,7 +1,11 @@
 import type { AutomationDeliveryPage } from '@kontourai/station-contracts/automation';
 import { afterEach, expect, test, vi } from 'vitest';
 import { StationHttpError } from '../client/api-error-message';
-import { listAutomationDeliveries } from '../client/automations';
+import {
+  enableAutomationRule,
+  listAutomationDeliveries,
+  retryAutomationEpisode,
+} from '../client/automations';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -124,4 +128,51 @@ test('returns per-rule modes and decisions on each delivery (#4509)', async () =
   expect(result.deliveries[0]?.decisions).toEqual(
     page.deliveries[0]?.decisions,
   );
+});
+
+test('a deliberate not-found is reported as such; any other 404 means an older host (#4513)', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            success: false,
+            error: 'Automation rule not found',
+            code: 'automation_not_found',
+          },
+          { status: 404 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ success: false, error: 'Not found' }, { status: 404 }),
+      ),
+  );
+  await expect(
+    enableAutomationRule('http://station.test', 'rule-1', 'f'.repeat(64)),
+  ).rejects.toThrow('Automation rule not found');
+  await expect(
+    enableAutomationRule('http://station.test', 'rule-1', 'f'.repeat(64)),
+  ).rejects.toThrow('not supported on this Station');
+});
+
+test('retry-episode sends the rule and episode as one encoded target (#4513)', async () => {
+  const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    Response.json({
+      success: true,
+      data: { ruleId: 'rule-1', episodeId: '42.2', retry: 1 },
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  expect(
+    await retryAutomationEpisode('http://station.test', {
+      ruleId: 'rule-1',
+      episodeId: '42.2',
+    }),
+  ).toEqual({ ruleId: 'rule-1', episodeId: '42.2', retry: 1 });
+  expect(String(fetcher.mock.calls[0]?.[0])).toBe(
+    'http://station.test/automations/episodes/rule-1%3A42.2/retry',
+  );
+  expect(fetcher.mock.calls[0]?.[1]?.method).toBe('POST');
 });

@@ -14,6 +14,7 @@ import { AuthorityObservationRejected } from '../../services/identity/authority-
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { authOps } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
+import { RouteError } from '../../utils/route-error.js';
 import { errorMessage, param } from '../schemas/schemas.js';
 
 const logger = createLogger({ name: 'auth' });
@@ -221,9 +222,11 @@ export function createUserRoutes() {
     if (!q) return c.json([]);
     try {
       return c.json(await getUserDirectoryProvider().searchPeople(q));
-    } catch (e) {
-      logger.debug('Failed to search people directory', { q, error: e });
-      return c.json([]);
+    } catch (error) {
+      throw new RouteError(503, 'People directory is unavailable', {
+        code: 'user_directory_unavailable',
+        cause: error,
+      });
     }
   });
 

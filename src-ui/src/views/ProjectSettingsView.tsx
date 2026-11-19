@@ -51,7 +51,6 @@ import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { useProjectOverviewPreview } from './project-page/projectOverviewPreview';
 import { AccessSection } from './project-settings/AccessSection';
-import { AgentFeedbackDefaultsSection } from './project-settings/AgentFeedbackDefaultsSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { BriefSection } from './project-settings/BriefSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
@@ -62,10 +61,10 @@ import { OverviewNotificationsSection } from './project-settings/OverviewNotific
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
 import { ProjectLifecycleSection } from './project-settings/ProjectLifecycleSection';
 import { ProjectModelsSection } from './project-settings/ProjectModelsSection';
+import { ProjectPullRequestSettings } from './project-settings/ProjectPullRequestSettings';
 import { ProjectSchedulesSection } from './project-settings/ProjectSchedulesSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { ProjectUsageSection } from './project-settings/ProjectUsageSection';
-import { PullRequestWatchSection } from './project-settings/PullRequestWatchSection';
 import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
@@ -91,7 +90,6 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
-  ['agent-feedback', 'Agent feedback'],
   ['pull-requests', 'Pull requests'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
@@ -110,7 +108,6 @@ const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
 
 const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
   overview: 'Changes in this section save automatically.',
-  'agent-feedback': 'Changes in this section save automatically.',
   'pull-requests': 'Changes in this section save automatically.',
   brief: 'Saved changes reach new Sessions, not ones already running.',
   models: 'Saved changes reach new Sessions, not ones already running.',
@@ -222,14 +219,20 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   // offered in the list and rendered only with its Feature Preview, which a
   // Station that cannot serve agent feedback never registers.
   const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
-  const { activeSection, hrefForSection, navigateToSection } =
-    // Every section stays navigable, so a link to a preview's section
+  const {
+    activeSection,
+    hrefForSection,
+    navigateToSection,
+  } = // Every section stays navigable, so a link to a preview's section
     // survives a reload before the preview flags load; the list and the
     // panels show it only with its preview (like agent feedback).
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
       'workspace',
-      { scrollOnNavigate: false },
+      {
+        scrollOnNavigate: false,
+        sectionAliases: { 'agent-feedback': 'pull-requests' },
+      },
     );
 
   const {
@@ -465,11 +468,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           label="Project settings sections"
           pickerLabel="Project settings section"
           items={settingsSections
-            .filter(
-              ([id]) =>
-                (id !== 'overview' || projectOverviewOn) &&
-                (id !== 'agent-feedback' || agentFeedback),
-            )
+            .filter(([id]) => id !== 'overview' || projectOverviewOn)
             .map(([id, label]) => ({
               key: id,
               label,
@@ -924,23 +923,17 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <LayoutsSection slug={slug} />
           </div>
 
-          {agentFeedback && (
-            <div
-              className="project-settings__panel"
-              hidden={activeSection !== 'agent-feedback'}
-            >
-              <AgentFeedbackDefaultsSection slug={slug} />
-            </div>
-          )}
-
           <div
             className="project-settings__panel"
             hidden={activeSection !== 'pull-requests'}
           >
-            <PullRequestWatchSection
+            <ProjectPullRequestSettings
+              project={project}
               slug={slug}
-              settings={project?.pullRequestWatch}
+              active={activeSection === 'pull-requests'}
+              feedbackAvailable={agentFeedback}
               onSaved={refetchProject}
+              onSources={() => navigateToSection('resources')}
             />
           </div>
 

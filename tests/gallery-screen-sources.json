@@ -1100,6 +1100,18 @@
     "project-pull-requests-dark-desktop": [
       "src-ui/src/views/ProjectSettingsView.tsx"
     ],
+    "project-pull-requests-no-repository-dark-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-dark-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-light-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-pull-requests-no-repository-light-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
     "task-pr-watch-dark-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],
     "project-pull-requests-dark-mobile": [
       "src-ui/src/views/ProjectSettingsView.tsx"
