@@ -237,6 +237,16 @@ async function seedProjectRoutes(page: Page) {
       return;
     }
 
+    if (path === '/api/projects/run-locations' && method === 'GET') {
+      await route.fulfill(json({ success: true, data: {} }));
+      return;
+    }
+
+    if (path === '/api/projects/creation-requests' && method === 'GET') {
+      await route.fulfill(json({ success: true, data: { available: false } }));
+      return;
+    }
+
     if (path === '/api/projects/layouts/available') {
       await route.fulfill(json({ success: true, data: [] }));
       return;
@@ -380,21 +390,6 @@ test('project header path suggestions dismiss before an outside navigation actio
   await expect(options).toHaveCount(0);
 });
 
-async function fillStable(page: Page, selector: string, value: string) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const locator = page.locator(selector).first();
-    try {
-      await locator.fill(value, { timeout: 1000 });
-      if ((await locator.inputValue().catch(() => '')) === value) {
-        return;
-      }
-    } catch {}
-    await locator.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
-  }
-
-  throw new Error(`Failed to fill stable input: ${selector}`);
-}
-
 test.describe('Project lifecycle', () => {
   test.beforeEach(async ({ page }) => {
     await seedProjectRoutes(page);
@@ -493,8 +488,13 @@ test.describe('Project lifecycle', () => {
       );
     });
 
-    await page.goto('/projects/new');
-    await fillStable(page, 'input[placeholder="My Project"]', 'Git Project');
+    await page.goto('/');
+    await page.locator('[data-new-project-trigger]').click();
+    await expect(page).toHaveURL(/\/projects\/new$/);
+    const dialog = page.getByRole('dialog', { name: 'New Project' });
+    await dialog
+      .getByRole('textbox', { name: 'Project name' })
+      .fill('Git Project');
     await page.getByRole('radio', { name: /^From a repository/ }).check();
     await page.getByText('Use an existing folder', { exact: true }).click();
     await page.getByPlaceholder('~/code/my-project').fill('/tmp/git-project/');
@@ -509,7 +509,7 @@ test.describe('Project lifecycle', () => {
     await expect
       .poll(() => applyBodies)
       .toEqual([{ layoutId: 'builtin:coding' }]);
-    await expect(page).toHaveURL(/\/projects\/git-project$/);
+    await expect(page).toHaveURL(/\/projects\/git-project\/layouts\/coding$/);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
   });
