@@ -39,12 +39,18 @@ function formatTimestamp(value) {
  *   assignedAgentSlug?, lastEventAt?, updatedAt?). Tolerant of missing fields.
  * @returns {string} a complete, self-contained HTML document.
  */
-export function renderSessionsPanel(sessions) {
-  const rows = Array.isArray(sessions) ? sessions : [];
+export function renderSessionsPanel(
+  sessions,
+  error = 'The Station session list is unavailable.',
+) {
+  const available = Array.isArray(sessions);
+  const rows = available ? sessions : [];
   const count = rows.length;
 
-  const body = count
-    ? `<table>
+  const body = !available
+    ? `<p class="empty">${escapeHtml(error)}</p>`
+    : count
+      ? `<table>
       <thead>
         <tr>
           <th>Session</th><th>Agent</th><th>Provider</th>
@@ -67,7 +73,7 @@ export function renderSessionsPanel(sessions) {
           .join('\n        ')}
       </tbody>
     </table>`
-    : `<p class="empty">No active sessions.</p>`;
+      : `<p class="empty">No sessions in this snapshot.</p>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -101,8 +107,8 @@ export function renderSessionsPanel(sessions) {
   </style>
 </head>
 <body>
-  <h1>Station sessions <span class="sub">(${count})</span></h1>
-  <p class="sub">Live orchestration sessions, rendered natively by the MCP-UI host.</p>
+  <h1>Station sessions ${available ? `<span class="sub">(${count})</span>` : ''}</h1>
+  <p class="sub">Latest Station orchestration sessions.</p>
   ${body}
 </body>
 </html>`;

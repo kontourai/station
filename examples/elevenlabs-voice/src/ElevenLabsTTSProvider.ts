@@ -1,21 +1,19 @@
-// Legacy authorization path; provider compatibility is tracked in #2784.
 import type { TTSOptions, TTSProvider } from '@kontourai/station-sdk';
+import { requestVoiceAuthorization } from './authorization';
+
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
 export class ElevenLabsTTSProvider implements TTSProvider {
   readonly id = 'elevenlabs';
   readonly name = 'ElevenLabs TTS';
 
   private _speaking = false;
+  private _attempt: AbortController | null = null;
   private _ws: WebSocket | null = null;
   private _audioCtx: AudioContext | null = null;
-  private _keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private _listeners = new Set<() => void>();
-  private _apiBase: string;
-  private _mp3Chunks: Uint8Array[] = [];
 
-  constructor(apiBase: string) {
-    this._apiBase = apiBase;
-  }
+  constructor(private readonly apiBase: string) {}
 
   get isSupported(): boolean {
     return (
@@ -34,121 +32,102 @@ export class ElevenLabsTTSProvider implements TTSProvider {
 
   async speak(text: string, _opts?: TTSOptions): Promise<void> {
     this.cancel();
-    this._speaking = true;
-    this._notify();
-    this._mp3Chunks = [];
-
+    if (!text.trim()) return;
+    const attempt = new AbortController();
+    this._attempt = attempt;
+    this._setSpeaking(true);
+    const finish = () => {
+      if (!attempt.signal.aborted) this.cancel();
+    };
     try {
-      const res = await fetch(
-        `${this._apiBase}/api/plugins/elevenlabs-voice/signed-url`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'tts',
-            sessionId: crypto.randomUUID(),
-          }),
-        },
+      const url = await requestVoiceAuthorization(
+        this.apiBase,
+        'tts',
+        attempt.signal,
       );
-      if (!res.ok) throw new Error('Failed to get TTS signed URL');
-      const { url } = await res.json();
-
+      if (attempt.signal.aborted) return;
+      const audio = new AudioContext();
+      this._audioCtx = audio;
       const ws = new WebSocket(url);
       this._ws = ws;
-      this._audioCtx = new AudioContext();
-
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      let final = false;
       ws.onopen = () => {
-        ws.send(
-          JSON.stringify({
-            text,
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.8,
-            },
-            xi_api_key: undefined, // using signed URL, no key needed in payload
-          }),
-        );
-
-        // Flush signal
-        ws.send(JSON.stringify({ text: '' }));
-
-        this._keepaliveTimer = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN)
-            ws.send(JSON.stringify({ text: ' ' }));
-        }, 20_000);
-      };
-
-      ws.onmessage = async (evt) => {
+        if (attempt.signal.aborted) return;
         try {
-          const msg = JSON.parse(evt.data);
-          if (msg.audio) {
-            const binary = atob(msg.audio);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++)
-              bytes[i] = binary.charCodeAt(i);
-            this._mp3Chunks.push(bytes);
-          }
-          if (msg.isFinal) {
-            const total = this._mp3Chunks.reduce((a, c) => a + c.length, 0);
-            const merged = new Uint8Array(total);
-            let offset = 0;
-            for (const chunk of this._mp3Chunks) {
-              merged.set(chunk, offset);
-              offset += chunk.length;
-            }
-            const audioBuffer = await this._audioCtx!.decodeAudioData(
-              merged.buffer,
-            );
-            const source = this._audioCtx!.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(this._audioCtx!.destination);
-            source.onended = () => {
-              this._speaking = false;
-              this._notify();
-            };
-            source.start();
-          }
+          ws.send(JSON.stringify({ text: ' ' }));
+          ws.send(JSON.stringify({ text: `${text.trim()} ` }));
+          ws.send(JSON.stringify({ text: '' }));
         } catch {
-          // ignore parse errors
+          finish();
         }
       };
-
+      ws.onerror = finish;
       ws.onclose = () => {
-        this._clearKeepalive();
+        if (!final) finish();
       };
-
-      ws.onerror = () => {
-        this._speaking = false;
-        this._notify();
-        this._clearKeepalive();
+      ws.onmessage = async ({ data }) => {
+        if (attempt.signal.aborted || final) return;
+        try {
+          const message = JSON.parse(data);
+          if (!message || typeof message !== 'object' || 'error' in message) {
+            finish();
+            return;
+          }
+          if (typeof message.audio === 'string') {
+            const bytes = Uint8Array.from(atob(message.audio), (char) =>
+              char.charCodeAt(0),
+            );
+            size += bytes.length;
+            if (size > MAX_AUDIO_BYTES) {
+              finish();
+              return;
+            }
+            chunks.push(bytes);
+          }
+          if (message.isFinal !== true && message.is_final !== true) return;
+          final = true;
+          ws.close();
+          if (size === 0) {
+            finish();
+            return;
+          }
+          const merged = new Uint8Array(size);
+          let offset = 0;
+          for (const chunk of chunks) {
+            merged.set(chunk, offset);
+            offset += chunk.length;
+          }
+          const buffer = await audio.decodeAudioData(merged.buffer);
+          if (attempt.signal.aborted) return;
+          const source = audio.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audio.destination);
+          source.onended = finish;
+          source.start();
+        } catch {
+          finish();
+        }
       };
     } catch {
-      this._speaking = false;
-      this._notify();
+      finish();
     }
   }
 
   cancel(): void {
-    this._clearKeepalive();
+    this._attempt?.abort();
+    this._attempt = null;
     this._ws?.close();
     this._ws = null;
-    this._audioCtx?.close();
+    void this._audioCtx?.close().catch(() => {});
     this._audioCtx = null;
-    this._mp3Chunks = [];
-    if (this._speaking) {
-      this._speaking = false;
-      this._notify();
-    }
+    this._setSpeaking(false);
   }
 
-  private _clearKeepalive(): void {
-    if (this._keepaliveTimer !== null) {
-      clearInterval(this._keepaliveTimer);
-      this._keepaliveTimer = null;
-    }
-  }
-
-  private _notify(): void {
-    this._listeners.forEach((fn) => fn());
+  private _setSpeaking(next: boolean): void {
+    if (this._speaking === next) return;
+    this._speaking = next;
+    for (const listener of this._listeners) listener();
   }
 }

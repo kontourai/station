@@ -4431,6 +4431,11 @@ interface ConversationalOptions {
 }
 ```
 
+The [ElevenLabs example](../../examples/elevenlabs-voice/README.md) uses a
+server-held API key to mint browser WebSocket authorization and closes active
+resources when its registrations retire. Its scripted protocol checks and
+live provider acceptance are tracked separately.
+
 ### `ProviderCapability`
 
 Shape used in the voice lists returned by `GET /api/system/capabilities`.

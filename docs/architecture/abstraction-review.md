@@ -327,10 +327,12 @@ browser evidence alongside their state/contract tests.
 
 ### Examples need the same caller contracts as the product
 
-The standalone sessions MCP reader hides failed unauthenticated reads behind
-an empty panel ([#2785](https://github.com/kontourai/station/issues/2785)). The
-ElevenLabs example uses an older token/audio/transcript protocol
-([#2784](https://github.com/kontourai/station/issues/2784)). The registry CLI
+The Sessions MCP example exercises authenticated list reads and distinct
+failure snapshots through real stdio against a fixture API. The ElevenLabs
+example exercises the documented single-use token and audio protocols with a
+scripted transport. An isolated Station verified the Sessions example's
+empty snapshot and refusal after Device revocation. External-host rendering
+and live voice provider execution remain unverified. The registry CLI
 submits an install ID without the preview consent required by the installer
 ([#2809](https://github.com/kontourai/station/issues/2809)). A manifest, build or
 render test does not establish these end-to-end journeys.

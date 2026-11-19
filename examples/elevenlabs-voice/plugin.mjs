@@ -13,6 +13,7 @@
 const VOICE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/;
 const AUTHORIZATION_WINDOW_MS = 60_000;
+const TOKEN_TTL_MS = 15 * 60_000;
 const AUTHORIZATION_RESERVATION_MS = 30_000;
 const MAX_AUTHORIZATIONS_PER_WINDOW = 12;
 const MAX_OUTSTANDING_AUTHORIZATIONS = 6;
@@ -27,7 +28,16 @@ export default function register(app, { config, logger }) {
 
     const parsed = await c.req.json().catch(() => ({}));
     const body = parsed && typeof parsed === 'object' ? parsed : {};
-    const type = body.type === 'tts' ? 'tts' : 'stt';
+    const { type } = body;
+    if (type !== 'stt' && type !== 'tts')
+      return c.json({ error: 'Invalid voice type' }, 400);
+    const voiceId =
+      body.voiceId ?? config.get('voiceId') ?? '21m00Tcm4TlvDq8ikWAM';
+    if (
+      type === 'tts' &&
+      (typeof voiceId !== 'string' || !VOICE_ID_PATTERN.test(voiceId))
+    )
+      return c.json({ error: 'Invalid ElevenLabs voice ID' }, 400);
     if (
       typeof body.sessionId !== 'string' ||
       !SESSION_ID_PATTERN.test(body.sessionId)
@@ -46,65 +56,56 @@ export default function register(app, { config, logger }) {
     }
 
     try {
-      return type === 'stt'
-        ? await mintSttAuthorization(c, apiKey, logger, reservation)
-        : await mintTtsAuthorization(c, apiKey, config, body, reservation);
+      const expiresAt = Date.now() + TOKEN_TTL_MS;
+      const tokenType = type === 'stt' ? 'realtime_scribe' : 'tts_websocket';
+      const upstream = await fetch(
+        `https://api.elevenlabs.io/v1/single-use-token/${tokenType}`,
+        {
+          method: 'POST',
+          headers: { 'xi-api-key': apiKey },
+          redirect: 'error',
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (!upstream.ok) {
+        reservation.releaseFailure();
+        logger.warn('ElevenLabs voice authorization rejected', {
+          status: upstream.status,
+        });
+        return c.json({ error: 'ElevenLabs authorization failed' }, 502);
+      }
+      const data = await upstream.json().catch(() => null);
+      if (typeof data?.token !== 'string' || !data.token.trim()) {
+        reservation.releaseFailure();
+        return c.json({ error: 'Invalid ElevenLabs authorization' }, 502);
+      }
+      const url = new URL(
+        type === 'stt'
+          ? 'wss://api.elevenlabs.io/v1/speech-to-text/realtime'
+          : `wss://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream-input`,
+      );
+      if (type === 'stt') {
+        url.search = new URLSearchParams({
+          token: data.token,
+          model_id: 'scribe_v2_realtime',
+          audio_format: 'pcm_16000',
+          commit_strategy: 'vad',
+        }).toString();
+      } else {
+        url.search = new URLSearchParams({
+          single_use_token: data.token,
+          model_id: 'eleven_multilingual_v2',
+          output_format: 'mp3_44100_128',
+        }).toString();
+      }
+      return c.json({ url: url.href, expiresAt }, 200, {
+        'Cache-Control': 'no-store',
+      });
     } catch {
       reservation.releaseFailure();
-      logger.error('ElevenLabs signed-url error');
+      logger.error('ElevenLabs voice authorization transport failed');
       return c.json({ error: 'Internal error' }, 500);
     }
-  });
-}
-
-async function mintSttAuthorization(c, apiKey, logger, reservation) {
-  const res = await fetch(
-    'https://api.elevenlabs.io/v1/speech-to-text/stream/auth',
-    {
-      method: 'POST',
-      headers: {
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model_id: 'scribe_v2' }),
-    },
-  );
-  if (!res.ok) {
-    reservation.releaseFailure();
-    logger.warn('ElevenLabs STT auth failed', { status: res.status });
-    return c.json({ error: 'ElevenLabs auth failed' }, 502);
-  }
-  return signedUrlResponse(c, await res.json());
-}
-
-async function mintTtsAuthorization(c, apiKey, config, body, reservation) {
-  const voiceId =
-    body.voiceId || config.get('voiceId') || '21m00Tcm4TlvDq8ikWAM';
-  if (typeof voiceId !== 'string' || !VOICE_ID_PATTERN.test(voiceId)) {
-    reservation.releaseFailure();
-    return c.json({ error: 'Invalid ElevenLabs voice ID' }, 400);
-  }
-  const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream-input/auth`,
-    {
-      method: 'POST',
-      headers: {
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-    },
-  );
-  if (!res.ok) {
-    reservation.releaseFailure();
-    return c.json({ error: 'ElevenLabs TTS auth failed' }, 502);
-  }
-  return signedUrlResponse(c, await res.json());
-}
-
-function signedUrlResponse(c, data) {
-  return c.json({
-    url: data.signed_url,
-    expiresAt: Date.now() + 180_000,
   });
 }
 
