@@ -65,6 +65,7 @@ function NewProjectFormActions({
   hasCreatedProject,
   hasRecoveryIntent,
   openCreatedProject,
+  selectForDraft,
   submitting,
   onClose,
 }: {
@@ -72,6 +73,7 @@ function NewProjectFormActions({
   hasCreatedProject: boolean;
   hasRecoveryIntent: boolean;
   openCreatedProject: boolean;
+  selectForDraft: boolean;
   submitting: boolean;
   onClose: () => void;
 }) {
@@ -94,7 +96,9 @@ function NewProjectFormActions({
         pending={submitting}
         pendingLabel={
           openCreatedProject
-            ? 'Opening…'
+            ? selectForDraft
+              ? 'Selecting…'
+              : 'Opening…'
             : hasCreatedProject
               ? 'Applying layout…'
               : 'Creating…'
@@ -102,7 +106,9 @@ function NewProjectFormActions({
         disabled={!canSubmit}
       >
         {openCreatedProject
-          ? 'Open Project'
+          ? selectForDraft
+            ? 'Select Project'
+            : 'Open Project'
           : hasCreatedProject
             ? 'Retry layout'
             : hasRecoveryIntent
@@ -335,11 +341,13 @@ function NewProjectForm({
   onClose,
   nameRef,
   hidden,
+  selectForDraft,
 }: {
   state: NewProjectModalState;
   onClose: () => void;
   nameRef: RefObject<HTMLInputElement | null>;
   hidden: boolean;
+  selectForDraft: boolean;
 }) {
   const { canSubmit, submit, sourceError } = useNewProjectFormSubmit(state);
   const [acquisitionBusy, setAcquisitionBusy] = useState(false);
@@ -425,7 +433,9 @@ function NewProjectForm({
       {state.submission.hasCreatedProject && (
         <p className="new-project-modal__recovery" role="status">
           {state.submission.canOpenCreatedProject
-            ? 'Project created. Continue to open it.'
+            ? selectForDraft
+              ? 'Project created. Select it for this draft.'
+              : 'Project created. Continue to open it.'
             : 'Project created. Retry the selected starter layout to finish setup.'}
         </p>
       )}
@@ -434,6 +444,7 @@ function NewProjectForm({
         hasCreatedProject={state.submission.hasCreatedProject}
         hasRecoveryIntent={state.submission.hasRecoveryIntent}
         openCreatedProject={state.submission.canOpenCreatedProject}
+        selectForDraft={selectForDraft}
         submitting={state.submission.submitting}
         onClose={onClose}
       />
@@ -458,17 +469,8 @@ export function NewProjectModalContent({
 
   const browseHistoryId = useId();
   const browseHistoryHost = useDialogHistoryHost();
-  // Hardware/browser Back while browsing must return to the draft form, not
-  // exit the whole New Project flow (archive#1825 2).
-  // The outer `ResponsiveDialogSurface` below intentionally does NOT push a
-  // history layer of its own (`historyMode="route"`: the modal's overall
-  // open/close is driven by the app's own `/projects/new` route, mounting
-  // and unmounting `NewProjectModal` directly — see `AppViewContent.tsx`'s
-  // `ProjectNewViewGate`), so without this, a Back press falls straight
-  // through to that route level and discards the whole draft. The old
-  // nested dialog got this for free from its own default `historyMode
-  // ="entry"`; this recreates exactly that registration, scoped to the
-  // browsing sub-state, using the same primitive.
+  // Back from the layout browser returns to the form before the enclosing
+  // route or inline dialog handles its own Back entry.
   useEffect(() => {
     if (!browsingLayouts) return;
     return registerDialogHistory(
@@ -528,6 +530,7 @@ export function NewProjectModalContent({
         onClose={onClose}
         nameRef={nameRef}
         hidden={browsingLayouts}
+        selectForDraft={historyMode === 'entry'}
       />
       {browsingLayouts && (
         <NewProjectLayoutBrowserBody

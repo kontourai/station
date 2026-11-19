@@ -106,7 +106,7 @@ export function useNewProjectDraft(
   // `/projects/new?directory=<folder>`, with that folder already chosen.
   // biome-ignore lint/correctness/useExhaustiveDependencies: read once per opening.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || window.location.pathname !== '/projects/new') return;
     const params = new URLSearchParams(window.location.search);
     const requested = params.get('directory');
     if (requested) {

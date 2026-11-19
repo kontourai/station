@@ -404,12 +404,28 @@ test.describe('Project lifecycle', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 360, height: 480 });
+    let creations = 0;
+    let blockCatalog = true;
+    await page.route('**/api/projects', async (route) => {
+      const method = route.request().method();
+      if (method === 'POST') creations += 1;
+      if (method === 'GET' && creations && blockCatalog) {
+        await route.fulfill(json({ success: true, data: [] }));
+        return;
+      }
+      await route.fallback();
+    });
     await page.goto('/');
     const draft = page.getByRole('form', { name: 'Start work' });
     const prompt = draft.getByRole('textbox', {
       name: 'What would you like done?',
     });
     await prompt.fill('Keep this first message');
+    await draft.locator('input[type="file"]').setInputFiles({
+      name: 'notes.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Draft notes'),
+    });
     const chooseProject = async () => {
       await draft.getByRole('button', { name: 'Project: No project' }).click();
       await page
@@ -431,12 +447,18 @@ test.describe('Project lifecycle', () => {
     const create = dialog.getByRole('button', { name: 'Create', exact: true });
     await expect(create).toBeInViewport({ ratio: 1 });
     await create.click();
+    const select = dialog.getByRole('button', { name: 'Select Project' });
+    await expect(select).toBeEnabled();
+    blockCatalog = false;
+    await select.click();
     await expect(dialog).toHaveCount(0);
+    expect(creations).toBe(1);
     await expect(page).toHaveURL(/\/$/);
     await expect(
       draft.getByRole('button', { name: 'Project: Draft Project' }),
     ).toBeVisible();
     await expect(prompt).toHaveValue('Keep this first message');
+    await expect(draft.getByText('notes.txt', { exact: true })).toBeVisible();
   });
 
   test('Git recommendation applies one canonical starter request before landing the project', async ({

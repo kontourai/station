@@ -14,6 +14,7 @@ import {
   useScopedProjectsQuery,
 } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
+import { effectiveExecutionStationId } from '../../hooks/useExecutionStationCatalog';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useNewChatStartContext } from '../../hooks/useNewChatStartContext';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
@@ -37,6 +38,7 @@ import {
   StartComposer,
   type StartProjectChip,
 } from '../chat-start/StartComposer';
+import type { StartPickerMenu } from '../chat-start/StartPickerMenus';
 import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
@@ -164,12 +166,6 @@ export function resetHeldHomeDraftsForTests() {
 export function reloadHeldHomeDraftsForTests() {
   homeDraftStore.reload();
 }
-
-type ChipMenu = {
-  kind: 'agents' | 'project' | 'model' | 'station';
-  trigger: HTMLElement | null;
-  agentSlug?: string;
-};
 
 /**
  * Home's start: the same `StartComposer`, chips and memory as the dock's
@@ -347,7 +343,7 @@ export function HomeStartComposer({
     return draftStore.subscribe(restoreIfEmpty);
   }, [draftStore]);
   const [pending, setPending] = useState(false);
-  const [menu, setMenu] = useState<ChipMenu | null>(null);
+  const [menu, setMenu] = useState<StartPickerMenu | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -757,7 +753,11 @@ export function HomeStartComposer({
               onModels={() =>
                 handOff(
                   agent
-                    ? { kind: 'repair', agentSlug: agent.slug, route: 'models' }
+                    ? {
+                        kind: 'repair',
+                        agentSlug: agent.slug,
+                        route: 'models',
+                      }
                     : { kind: 'connections' },
                 )
               }
@@ -784,6 +784,12 @@ export function HomeStartComposer({
             onRepair={repair}
             enablePending={enabler.inFlight}
             onChooseProject={bindProject}
+            canCreateProject={
+              effectiveExecutionStationId(
+                agent ? start.modelChoiceFor(agent)?.environmentId : undefined,
+                viewModel.selectedProject?.defaultEnvironment,
+              ) === 'current'
+            }
             icons={icons}
             accents={accents}
           />

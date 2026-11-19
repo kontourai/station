@@ -18,7 +18,7 @@ import { useNewProjectSubmit } from './useNewProjectSubmit';
 interface ProjectsQueryResult {
   data?: ProjectMetadata[];
   isSuccess: boolean;
-  refetch: () => Promise<{ data?: ProjectMetadata[] }>;
+  refetch: () => Promise<{ data?: ProjectMetadata[]; isError?: boolean }>;
 }
 
 /**
@@ -151,7 +151,10 @@ export function useNewProjectModalState(
           throw new Error(
             'Station access changed. Return to the account that created this Project.',
           );
-        if (!result?.data?.some((project) => project.slug === slug))
+        if (
+          result?.isError ||
+          !result?.data?.some((project) => project.slug === slug)
+        )
           throw new Error(
             'Project created. Try again to select it in the draft.',
           );

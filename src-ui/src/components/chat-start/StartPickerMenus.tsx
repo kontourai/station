@@ -15,6 +15,7 @@ import {
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
 } from '../modals/new-chat-modal-utils';
+import { SkeletonBlock } from '../state';
 import {
   StartAgentMenu,
   StartModelPicker,
@@ -48,6 +49,7 @@ export function StartPickerMenus({
   enablePending,
   interactionDisabled,
   onChooseProject,
+  canCreateProject = true,
   projectOverride,
   icons,
   accents,
@@ -66,6 +68,7 @@ export function StartPickerMenus({
   enablePending: boolean;
   interactionDisabled?: boolean;
   onChooseProject: (context: string) => void;
+  canCreateProject?: boolean;
   projectOverride?: {
     options: ComponentProps<typeof StartProjectMenu>['options'];
     context: string;
@@ -100,6 +103,7 @@ export function StartPickerMenus({
     return (
       <LazyBoundary
         load={loadNewProjectModal}
+        pending={<SkeletonBlock label="Loading Project setup" />}
         componentProps={{
           isOpen: true,
           onClose: close,
@@ -174,7 +178,7 @@ export function StartPickerMenus({
           })
         }
         onCreate={
-          projectOverride || interactionDisabled
+          !canCreateProject || projectOverride || interactionDisabled
             ? undefined
             : () => setMenu({ ...menu, kind: 'create-project' })
         }

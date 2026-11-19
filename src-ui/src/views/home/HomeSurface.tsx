@@ -6,6 +6,7 @@ import { HomeCoordinatorCard } from '../../components/home/HomeCoordinatorCard';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
 import { HomeStartComposer } from '../../components/home/HomeStartComposer';
 import { SkeletonBlock } from '../../components/state';
+import { useNavigation } from '../../contexts/NavigationContext';
 import { OVERVIEW_PRODUCT_NAME } from '../../lib/productNames';
 import type { NavigationView } from '../../types';
 import {
@@ -77,6 +78,7 @@ export function HomeSurface({
   const heatRows = buildHeatRows(visible, lanes.now);
   const openProject = projectOpener(model, onNavigate);
   const hasWork = model.workItems.length > 0;
+  const { isDockOpen } = useNavigation();
 
   // The skeleton stands where the cards will stand. It used to sit under the
   // start form, which put a 150px placeholder above the work it had nothing
@@ -177,6 +179,11 @@ export function HomeSurface({
         >
           Skip to recent work
         </a>
+      )}
+      {model.firstSession && isDockOpen && (
+        <header className="home-view__welcome">
+          <h1>Start your first conversation</h1>
+        </header>
       )}
       {!model.firstSession && (
         <h1 className="sr-only">{OVERVIEW_PRODUCT_NAME}</h1>
