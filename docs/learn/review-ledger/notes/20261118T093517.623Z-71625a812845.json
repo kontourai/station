@@ -1,0 +1,7 @@
+{
+  "revision": "6118cb155edadd276cc21525c00f3c9b1d5e4826",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the browser pointer path after the preview scroll. Chromium crossed into the card, scrolled to Basis, and dismissed the preview when the pointer left both card and row. Escape and the existing dock controls remain separately exercised.","inputs":["tests/chat-dock-inbox-open.spec.ts"]}
+  ]
+}

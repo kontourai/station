@@ -1,0 +1,7 @@
+{
+  "revision": "dd839e4b331ee818beb859686b42af1a6ccce155",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the Git fixture process options against the late exit test and cited telemetry cold-start fixture. Hiding child process windows applies only to the temporary Git repository setup. The exit publication, real Git settlement, and telemetry assertions keep their prior behavior.","inputs":["src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]}
+  ]
+}

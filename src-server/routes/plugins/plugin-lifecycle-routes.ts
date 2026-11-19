@@ -461,7 +461,7 @@ export function registerPluginLifecycleRoutes(
         logger.error('Failed to check for updates', {
           error: errorMessage(error),
         });
-        return c.json({ updates: [] });
+        return c.json({ error: 'Could not check for plugin updates' }, 500);
       }
     }),
   );

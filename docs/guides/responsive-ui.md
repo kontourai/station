@@ -364,6 +364,13 @@ A header, toolbar or action row shows at most two labelled actions. Further
 actions go into an overflow menu; an icon-only button with an accessible name
 does not count.
 
+Check action placement in the clean, edited and pending states. In Project
+settings, Back stays beside the Project name and Save appears at the
+trailing edge for a pending draft, including while viewing an autosaving
+section. In a wizard, keep Continue in the same place across steps. Verify
+the actual clickable area of adjacent compact actions and the keyboard focus
+destination after an action disappears.
+
 Write a row with [`ActionRow`](../../src-ui/src/components/ActionRow.tsx). It
 takes a `primary` action, a `secondary` action and `overflow` items, so there
 is no slot for a third labelled button. `overflowLabel` names the `⋯` trigger
@@ -512,6 +519,9 @@ instead of Dismiss, and Hide records a third-party Session on the host for the
 person rather than in the browser; the action keeps the same row, tray and
 Details placement.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
+On desktop, move the pointer from an Inbox row into its preview to scroll
+long content such as Basis. The preview stays inside the window as late
+details arrive. Escape or scrolling the Inbox closes it.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
 and renders 390px and 1440px in both themes. Physical-device behavior remains

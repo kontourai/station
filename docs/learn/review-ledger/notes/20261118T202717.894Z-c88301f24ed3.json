@@ -1,0 +1,15 @@
+{
+  "revision": "1ae660af6c0c93758d0b74b2c2fe237f0ef56e85",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The public MCP Client exercised the real HTTP tool endpoint and the production scoped Agent catalog. It received the member projection for an admitted stored Agent and an identical not-found result for a nonexistent slug and a stored operator-only Agent. The actual catalog received the same minted caller credential on all three requests. The former detail-path fault failed the catalog path assertion, and restoration passed the affected suites.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The public MCP Client exercised the real HTTP tool endpoint and the production scoped Agent catalog. It received the member projection for an admitted stored Agent and an identical not-found result for a nonexistent slug and a stored operator-only Agent. The actual catalog received the same minted caller credential on all three requests. The former detail-path fault failed the catalog path assertion, and restoration passed the affected suites.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"The public MCP Client exercised the real HTTP tool endpoint and the production scoped Agent catalog. It received the member projection for an admitted stored Agent and an identical not-found result for a nonexistent slug and a stored operator-only Agent. The actual catalog received the same minted caller credential on all three requests. The former detail-path fault failed the catalog path assertion, and restoration passed the affected suites.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The public MCP Client exercised the real HTTP tool endpoint and the production scoped Agent catalog. It received the member projection for an admitted stored Agent and an identical not-found result for a nonexistent slug and a stored operator-only Agent. The actual catalog received the same minted caller credential on all three requests. The former detail-path fault failed the catalog path assertion, and restoration passed the affected suites.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The public MCP Client exercised the real HTTP tool endpoint and the production scoped Agent catalog. It received the member projection for an admitted stored Agent and an identical not-found result for a nonexistent slug and a stored operator-only Agent. The actual catalog received the same minted caller credential on all three requests. The former detail-path fault failed the catalog path assertion, and restoration passed the affected suites.","inputs":["src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts"]}
+  ]
+}

@@ -89,12 +89,20 @@ function start(
   script: string,
   env: NodeJS.ProcessEnv = process.env,
   args: string[] = [],
+  input: 'pipe' | 'ignore' = 'ignore',
 ) {
-  const child = spawn(process.execPath, ['-e', script, ...args], {
-    env,
-    stdio: ['ignore', 'pipe', 'ignore'],
-    windowsHide: true,
-  });
+  const nodeArgs = ['-e', script, ...args];
+  const options = { env, windowsHide: true };
+  const child =
+    input === 'pipe'
+      ? spawn(process.execPath, nodeArgs, {
+          ...options,
+          stdio: ['pipe', 'pipe', 'ignore'],
+        })
+      : spawn(process.execPath, nodeArgs, {
+          ...options,
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
   children.push(child);
   const firstLine = new Promise<string>((resolveLine) =>
     child.stdout.once('data', (chunk) => resolveLine(String(chunk).trim())),
@@ -159,6 +167,38 @@ describe.skipIf(!posix)('station-weight test daemons', () => {
     await exited(owner);
     expect(await exitsWithin(child, 2_000)).toBe(true);
     expect(child.exitCode).toBe(0);
+  });
+
+  test('checking owner birth adds no processes to the measured tree', async () => {
+    const observeFirstCheck = `
+      const childProcess = require('node:child_process');
+      const execFileSync = childProcess.execFileSync;
+      let probes = 0;
+      childProcess.execFileSync = (...args) => {
+        probes++;
+        return execFileSync(...args);
+      };
+      const interval = globalThis.setInterval;
+      globalThis.setInterval = (callback, ms) => {
+        let reported = false;
+        return interval(() => {
+          callback();
+          if (reported) return;
+          reported = true;
+          process.stdout.write(String(probes) + '\\n');
+        }, ms);
+      };
+    `;
+    const { child, firstLine } = start(
+      observeFirstCheck +
+        boundedDaemonSource({ owner: WORKER, lease, birthCheckMs: 0 }),
+    );
+    const probes = await firstLine;
+    const root = identity(child.pid as number);
+    expect(ownedTree(processTable(), [root]).map((row) => row.pid)).toEqual([
+      child.pid,
+    ]);
+    expect(probes, 'child processes created during the birth check').toBe('0');
   });
 
   test('a daemon exits when its owner pid has another birth', async () => {
@@ -408,7 +448,7 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
       expect(ended.leftRunning).toEqual([
         expect.objectContaining({
           pid: daemon,
-          command: expect.stringContaining('setInterval'),
+          command: expect.stringContaining(lease),
         }),
       ]);
       await wait(200);
@@ -684,32 +724,49 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
 
 describe.skipIf(!posix)('station-weight idle CPU', () => {
   test('counts a worker that does its work and exits inside the window', async () => {
-    // The root idles; 400 ms in, it runs a worker that burns 600 ms of CPU
-    // and exits well before the window ends.
     const { child: root, firstLine } = start(
       `const { spawn } = require('node:child_process');
+       process.stdin.once('data', () => {
+         const worker = spawn(process.execPath, ['-e', 'const t0 = process.cpuUsage(); for (;;) { const u = process.cpuUsage(t0); if (u.user + u.system >= 600000) break; } process.stdin.resume();'], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
+         process.stdin.once('end', () => worker.stdin.end());
+       });
        process.stdout.write('ready\\n');
-       setTimeout(() => {
-         const worker = spawn(process.execPath, ['-e', 'const t0 = process.cpuUsage(); for (;;) { const u = process.cpuUsage(t0); if (u.user + u.system >= 600000) break; }'], { stdio: 'ignore' });
-         worker.once('exit', () => process.stdout.write('worker-exited\\n'));
-       }, 400);
        setInterval(() => {}, 1000);`,
+      process.env,
+      [],
+      'pipe',
     );
     expect(await firstLine).toBe('ready');
+    const input = root.stdin;
+    if (!input) throw new Error('CPU worker input pipe was not opened');
     const roots = [identity(root.pid as number)];
-    const workerExited = new Promise((resolveExit) =>
-      root.stdout.on('data', (chunk) => {
-        if (String(chunk).includes('worker-exited')) resolveExit(true);
-      }),
-    );
+    let started = false;
+    let released = false;
     const sampled = await sampleTreeCpu(
-      () => ownedTree(processTable(), roots),
+      (final) => {
+        const rows = ownedTree(processTable(), roots);
+        if (!started) {
+          started = true;
+          input.write('start');
+        } else if (
+          !final &&
+          !released &&
+          rows.some((row) => row.pid !== root.pid && row.cpuSeconds >= 0.55)
+        ) {
+          // Keep the worker alive until the sampler reads its CPU time.
+          released = true;
+          input.end();
+        }
+        return rows;
+      },
       { windowMs: 4_000, intervalMs: 100 },
     );
-    expect(await workerExited).toBe(true);
+    expect(released, 'worker CPU was observed inside the sample window').toBe(
+      true,
+    );
     expect(sampled.endRows.map((row) => row.pid)).toEqual([root.pid]);
     expect(sampled.exitedDuringWindow).toBeGreaterThanOrEqual(1);
-    // 600 ms of worker CPU, less at most one 100 ms interval it was not seen.
+    // The final sample no longer contains the worker. Its CPU still counts.
     expect(sampled.cpuSeconds).toBeGreaterThanOrEqual(0.45);
   });
 });

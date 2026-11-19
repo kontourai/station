@@ -2993,6 +2993,11 @@ export function configureRuntimeRoutes(
     '/api/spatial-board/resolved',
     bindConversationReadAuthority,
   );
+  context.app.on(
+    'POST',
+    '/api/spatial-board/cleanup',
+    bindConversationReadAuthority,
+  );
   context.app.use(
     '/api/analytics/source-enrollments/*',
     bindConversationReadAuthority,
@@ -3426,6 +3431,10 @@ export function configureRuntimeRoutes(
           { type: 'answer-basis', threadId: sessionId, turnId },
           authority,
         ) ?? Promise.resolve({ status: 'unavailable' as const }),
+      readProjectScope: (sessionId) =>
+        context.orchestrationEventStore?.readConversationProjectScope(
+          sessionId,
+        ),
     },
     new FlowAgentsRetainedNarrativeOwner(resolveWorkspacePath),
     ({ sessionId, turnId, revision, active }) =>

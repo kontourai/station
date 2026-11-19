@@ -13,7 +13,7 @@ import { claudeAttachedThreadId } from '../src-server/providers/sessions/claude-
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { buildCodexRolloutFixture } from './helpers/codex-rollout-fixture';
 import { resolveE2EApiBase } from './helpers/e2e-target';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   installMockOrchestrationSse,
   seedOrchestrationRoutes,
@@ -171,14 +171,17 @@ test('enables external Codex continuation only after a completed source turn is 
     expect(completedFixture.content.startsWith(initial)).toBe(true);
     const appended = completedFixture.content.slice(initial.length);
     appendFileSync(sourcePath, appended);
-    await expect(detail).toContainText('Appended Codex activity is visible.', {
-      timeout: 15_000,
-    });
+    await expect(
+      detail.getByText('Appended Codex activity is visible.', { exact: true }),
+    ).toHaveCount(1, { timeout: 15_000 });
     await expect(
       detail.getByRole('textbox', { name: 'Message' }),
     ).toBeEnabled();
     expect(readFileSync(sourcePath, 'utf8')).toBe(initial + appended);
     await page.setViewportSize({ width: 320, height: 720 });
+    await page
+      .getByRole('button', { name: 'Back to chat', exact: true })
+      .click();
     const mobileComposer = detail.getByRole('textbox', { name: 'Message' });
     await expect(mobileComposer).toBeInViewport();
     await expect(mobileComposer).toBeEnabled();
@@ -324,6 +327,51 @@ async function mockMobileAdoption(page: Page) {
     });
   });
 
+  // The mounted attachment uses the bounded history reader, even before it
+  // has a Station-owned conversation. Model the authored source's window.
+  await page.route(
+    `**/api/orchestration/sessions/${encodeURIComponent(ATTACHED_MOBILE_THREAD_ID)}/event-window**`,
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      const events = [
+        { method: 'turn.started', prompt: 'Inspect the mobile fixture.' },
+        {
+          method: 'content.text-delta',
+          itemId: 'mobile-answer',
+          delta: 'Imported mobile answer.',
+        },
+        {
+          method: 'turn.completed',
+          finishReason: 'stop',
+          outputText: 'Imported mobile answer.',
+        },
+      ];
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            protocolVersion: 1,
+            session: source,
+            events: events.map((event, index) => ({
+              sequence: index + 1,
+              event: {
+                ...event,
+                provider: 'claude',
+                threadId: ATTACHED_MOBILE_THREAD_ID,
+                turnId: 'mobile-source-turn',
+                eventId: `mobile-source-${index + 1}`,
+                createdAt: '2026-07-22T12:00:00.000Z',
+              },
+            })),
+            hasMore: false,
+            watermark: events.length,
+          },
+        },
+      });
+    },
+  );
+
   return {
     commands,
     flowRequestCount: () => flowRequests,
@@ -409,10 +457,13 @@ test.describe
       await page.goto(
         `/?surface=activity&session=${encodeURIComponent(THREAD_ID)}`,
       );
-      await expect(page).toHaveURL(/\/$/);
+      await expect(page).toHaveURL(
+        (url) =>
+          url.pathname === '/' && url.searchParams.get('dock') === 'open',
+      );
 
       const detail = page.getByTestId('session-detail');
-      await expect(detail).toContainText('Started in Claude Code · Read only');
+      await expect(detail).toHaveClass(/sessions-detail--read-only/);
       await expect(detail).toContainText('Inspect the workspace');
       await expect(detail).toContainText('The workspace is ready.');
       await expect(page.getByTestId('session-transcript')).toBeVisible();
@@ -463,12 +514,15 @@ test.describe
           .join(''),
       );
 
-      await expect(detail).toContainText('The appended turn is visible.', {
-        timeout: 15_000,
-      });
+      await expect(
+        detail.getByText('The appended turn is visible.', { exact: true }),
+      ).toHaveCount(1, { timeout: 15_000 });
       expect(page.url()).toBe(urlBeforeAppend);
 
       await page.setViewportSize({ width: 320, height: 720 });
+      await page
+        .getByRole('button', { name: 'Back to chat', exact: true })
+        .click();
       await expect(detail).toBeVisible();
       // Read only: Continue in Station is the one action; nothing here
       // acts on the source session.
@@ -497,7 +551,11 @@ test('opens an attached session in the normal mobile chat without adopting befor
     `/?surface=activity&session=${encodeURIComponent(ATTACHED_MOBILE_THREAD_ID)}`,
   );
   const detail = page.getByTestId('session-detail');
-  await expect(detail).toContainText('Started in Claude Code · Read only');
+  await expect(detail).toHaveClass(/sessions-detail--read-only/);
+  await expect(
+    detail.getByText('Imported mobile answer.', { exact: true }),
+  ).toHaveCount(1);
+  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
   const composer = detail.getByPlaceholder('Message…', { exact: true });
   await expect(composer).toBeVisible();
   await composer.fill('UI audit draft — do not send.');

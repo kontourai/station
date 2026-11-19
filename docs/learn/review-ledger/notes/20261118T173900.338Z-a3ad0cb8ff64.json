@@ -1,0 +1,11 @@
+{
+  "revision": "92ca489446297991259a76305df174801ef2d46f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Inspected both historical New Chat redesign captures. They depict the older split layout and retain their original capture revision. Current Start alignment was verified separately with the shared composer in Chromium at phone and desktop widths.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Inspected both historical New Chat redesign captures. They depict the older split layout and retain their original capture revision. Current Start alignment was verified separately with the shared composer in Chromium at phone and desktop widths.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Inspected both historical New Chat redesign captures. They depict the older split layout and retain their original capture revision. Current Start alignment was verified separately with the shared composer in Chromium at phone and desktop widths.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]}
+  ]
+}

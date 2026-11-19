@@ -11,6 +11,12 @@ An absent Codex tier leaves the session's speed unchanged on continuation;
 `serviceTier: null` explicitly clears it. Legacy `fastMode: false` supplies no
 override. Catalog defaults describe the model, not local CLI configuration.
 
+A `ModelOption` can carry `catalogRoute` when the engine reports separate
+provider and model IDs. Compact labels use the route's display name or model ID
+and can show the provider as secondary detail. Selection uses the exact
+`ModelOption.id`. The catalog route describes an available choice. Turn and
+usage records carry their own serving evidence.
+
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
 `@kontourai/station-contracts/delegation-group` defines the
@@ -2365,8 +2371,10 @@ runtime files. Since #3851 it also carries:
 - the staging phase (`ServiceStagePhase`) and its byte counts.
 
 The module also owns the server's own view of its update:
-`ServerUpdateState`, `ServerUpdateRunningTurns` and
-`ServerUpdateDownloadPolicy`. `GET /api/system/core-update/state` serves that
+`ServerUpdateState` and `ServerUpdateRunningTurns`. Its shared
+`UpdateDownloadPolicy` defines the choices and default for desktop and server
+updates. The desktop and server policy names remain available as aliases.
+`GET /api/system/core-update/state` serves that
 view, and the `runtime-events` `server-update:changed` event carries it.
 Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.

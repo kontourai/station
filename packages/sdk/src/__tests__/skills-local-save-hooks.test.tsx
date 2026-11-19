@@ -13,6 +13,7 @@ vi.mock('../api', async (importOriginal) => ({
 import { StationHttpError } from '../client/http';
 import {
   useCreateLocalSkillMutation,
+  useUninstallSkillMutation,
   useUpdateLocalSkillMutation,
 } from '../query-domains/skills';
 
@@ -146,4 +147,41 @@ describe('local skill save hooks', () => {
       expect(failure).toMatchObject({ status: 400, details });
     },
   );
+});
+
+test('registry remove keeps a typed ownership refusal and its separate path', async () => {
+  const details = {
+    reason: 'served-in-place',
+    detail: 'A plugin serves it in place.',
+    packageDirectory: '/plugins/vendor',
+  };
+  fetchMock.mockResolvedValue(
+    jsonResponse(
+      {
+        success: false,
+        code: 'skill-not-owned',
+        message: details.detail,
+        details,
+      },
+      409,
+    ),
+  );
+  const { result } = renderHook(() => useUninstallSkillMutation(), { wrapper });
+  let failure: unknown;
+  await act(async () => {
+    failure = await result.current
+      .mutateAsync('vendor skill')
+      .catch((error: unknown) => error);
+  });
+  expect(failure).toBeInstanceOf(StationHttpError);
+  expect(failure).toMatchObject({
+    status: 409,
+    code: 'skill-not-owned',
+    details,
+  });
+  expect(sent(fetchMock.mock.calls[0])).toEqual({
+    url: 'http://example.test/api/registry/skills/vendor%20skill',
+    method: 'DELETE',
+    body: undefined,
+  });
 });

@@ -162,10 +162,16 @@ test.describe('Fieldwork Review plugin', () => {
     await page.getByLabel('Task file').focus();
     await expect(page.getByLabel('Task file')).toBeFocused();
 
+    const outputRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/reviewed-output')) {
+        outputRequests.push(request.url());
+      }
+    });
     await page.getByTestId('fieldwork-launch').click();
     await expect(page.getByText('1 proposal')).toBeVisible({ timeout: 20_000 });
     await expect(
-      page.getByText('Reviewed output becomes available'),
+      page.getByText('Reviewed output has not been checked.'),
     ).toBeVisible();
 
     await page.getByRole('button', { name: 'Open review' }).click();
@@ -197,6 +203,14 @@ test.describe('Fieldwork Review plugin', () => {
     await expect(fieldwork.getByLabel('Fieldwork status')).toContainText(
       'Saved',
     );
+    expect(outputRequests).toHaveLength(0);
+    const outputResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/reviewed-output'),
+    );
+    await page.getByRole('button', { name: 'Check reviewed output' }).click();
+    const output = await outputResponse;
+    expect(output.ok()).toBe(true);
+    expect(await output.json()).toEqual({ success: true, available: true });
     await expect(page.getByText('Reviewed output is available.')).toBeVisible({
       timeout: 20_000,
     });
@@ -219,6 +233,7 @@ test.describe('Fieldwork Review plugin', () => {
     await expect(page.getByTestId('fieldwork-review-placeholder')).toBeVisible({
       timeout: 15_000,
     });
+    expect(outputRequests).toHaveLength(1);
   });
 
   test('uninstall disposes an open Fieldwork capability service', async ({

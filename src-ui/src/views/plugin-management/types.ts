@@ -3,6 +3,7 @@ import type {
   PluginInstallationReadiness,
   PluginInstallationRevision,
   PluginPreview,
+  PluginUpdateRecord,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
 import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-trust';
@@ -114,6 +115,7 @@ export interface PreviewData extends PluginPreview {
     status: string;
     components?: Array<{ type: string; id: string }>;
     git?: GitInfo;
+    registryTrust?: PluginRegistryTrust;
     consent?: {
       grantRevision?: string;
       registryTrustRevision?: string;
@@ -126,12 +128,7 @@ export interface PreviewData extends PluginPreview {
   git?: GitInfo;
 }
 
-export interface PluginUpdateSummary {
-  name: string;
-  currentVersion: string;
-  latestVersion: string;
-  source: string;
-}
+export type PluginUpdateSummary = PluginUpdateRecord;
 
 export interface PluginMessage {
   type: 'success' | 'error';

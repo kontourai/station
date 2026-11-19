@@ -71,6 +71,7 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { Dialog } from '../Dialog';
+import { FlowGateDiagnostics } from '../flow/FlowGateDiagnostics';
 import { LazyBoundary } from '../LazyBoundary';
 import { DecisionError } from '../notifications/DecisionError';
 import {
@@ -85,6 +86,7 @@ import { NoticeAction } from '../notifications/NoticeAction';
 import { RowMenu, type RowMenuItem } from '../notifications/RowMenu';
 import { SkeletonList } from '../state';
 import { ExactRequestInline } from './ExactRequestInline';
+import { GuardianApprovalReason } from './GuardianApprovalReason';
 import './AttentionCard.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
@@ -189,6 +191,9 @@ export function AttentionCard({
             item.body && (
               <div className="attention-item__detail">{item.body}</div>
             )
+          )}
+          {item.kind === 'approval' && !item.requestReference && (
+            <GuardianApprovalReason reason={item.guardianReason} />
           )}
           {item.kind === 'gate-route-back' && (
             <GateRouteBackDetail item={item} />
@@ -1253,6 +1258,21 @@ function GateReEvaluateAction({
       </div>
       <OpenFlowConsoleLink href={item.openHref} />
       <MutationError error={mutation.error} />
+      {mutation.data?.reopened && (
+        <div className="attention-item__detail" role="status">
+          <p>
+            The completed run reopened after {mutation.data.reopened.gateId}{' '}
+            returned {mutation.data.reopened.verdict}.
+          </p>
+          {mutation.data.reopened.missing.length > 0 && (
+            <p>
+              Evidence still needed for{' '}
+              {mutation.data.reopened.missing.join(', ')}.
+            </p>
+          )}
+          <FlowGateDiagnostics details={mutation.data.reopened.diagnostics} />
+        </div>
+      )}
     </>
   );
 }

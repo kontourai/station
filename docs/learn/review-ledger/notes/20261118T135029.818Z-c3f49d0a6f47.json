@@ -1,0 +1,7 @@
+{
+  "revision": "ca247ebfdb70946024bca5ff855924d12ed191e4",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Rechecked the active Station notice and access-repair action at 390 pixels. The reconnect suite exercises the ordinary transient recheck and independent saved-Station switch, while the identity repair case taps Pair again within a visible condition.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-reconnect-banner.spec.ts"]}
+  ]
+}

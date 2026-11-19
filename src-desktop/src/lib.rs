@@ -2558,6 +2558,36 @@ fn write_profile_store_genesis_marker(root: &std::path::Path) -> Result<(), Stri
     }
 }
 
+/// Android denies hard links in the app sandbox. Publish the already-synced
+/// file in the same directory, without the overwrite semantics of rename.
+#[cfg(target_os = "android")]
+fn publish_android_profile_genesis(
+    temporary: &std::path::Path,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let source = CString::new(temporary.as_os_str().as_bytes())?;
+    let destination = CString::new(path.as_os_str().as_bytes())?;
+    // SAFETY: both paths are live NUL-terminated C strings for this call.
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            source.as_ptr(),
+            libc::AT_FDCWD,
+            destination.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
 fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
@@ -2593,7 +2623,11 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
             .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
         drop(file);
         // A completed inode is published without replacing an existing store.
-        match std::fs::hard_link(&temporary, path) {
+        #[cfg(target_os = "android")]
+        let publication = publish_android_profile_genesis(&temporary, path);
+        #[cfg(not(target_os = "android"))]
+        let publication = std::fs::hard_link(&temporary, path);
+        match publication {
             Ok(()) => {
                 sync_profile_store_directory(parent)?;
                 Ok(())
@@ -22398,6 +22432,34 @@ mod tests {
             .unwrap_err()
             .contains("refusing to recreate"));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn mobile_profile_genesis_preserves_an_existing_legacy_document() {
+        let root = tempfile::tempdir().unwrap();
+        let path = secure_mobile_station_profiles_path(root.path()).unwrap();
+        let existing = r#"{
+          "schemaVersion": 1,
+          "revision": 7,
+          "defaultProfile": "paired",
+          "profiles": [
+            {"schemaVersion":1,"name":"paired","endpoint":"http://127.0.0.1:3842","credentialRef":{"kind":"station-bearer","id":"fixture-ref"},"setupSource":"hosted","configurationState":"configured","createdAt":1,"updatedAt":1}
+          ],
+          "projectProfiles": {}
+        }"#;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(&path).unwrap().write_all(existing.as_bytes()).unwrap();
+
+        ensure_mobile_profile_store_genesis(&path).unwrap();
+        write_empty_station_profile_store(&path).unwrap();
+        assert_eq!(read_station_profile_store(&path).unwrap(), existing);
+        assert!(path.with_file_name(".profiles-initialized").is_file());
     }
 
     #[test]

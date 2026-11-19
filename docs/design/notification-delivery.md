@@ -119,7 +119,9 @@ follow-up expiring) and every `FINISHED_ALERT_RECHECK_MS` (10 s) while held.
 A hold that cannot be read fails open and the alert is sent.
 
 Failures, stops, approvals and questions are not held: a failure or stop ends
-the episode and is pushed at once, and the held finish is never sent. A
+the episode and is pushed at once, and the held finish is never sent. The
+listener retains the reported Stop for the existing settlement window so a
+duplicate terminal for that turn cannot announce a finish. A
 Station-delegated child whose result returns to its parent conversation
 (#3158's owner record) announces no finish of its own. The parent's own
 completion covers it, and the parent's finish is held while the child runs.

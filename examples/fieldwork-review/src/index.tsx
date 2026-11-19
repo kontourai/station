@@ -113,11 +113,7 @@ function useProjectReviewModel(apiBase: string, projectSlug: string) {
       'Review surface closed. The project-local run remains available.',
     );
   });
-  const output = useReviewedOutput(
-    context,
-    state.selectedRunId,
-    Boolean(state.reviewUrl),
-  );
+  const output = useReviewedOutput(context, state.selectedRunId);
   useOpenedRunCleanup(context, state.openedRunId);
   const selectedRun =
     runs.data?.find((run) => run.id === state.selectedRunId) ?? null;
@@ -150,7 +146,10 @@ function ReviewWorkspace({ model }: { model: ReviewModel }) {
         selectRun={model.selectRun}
       />
       <ReviewCard
-        available={Boolean(model.output.data?.available)}
+        checkOutput={() => void model.output.refetch()}
+        checkingOutput={model.output.isFetching}
+        outputError={model.output.isError}
+        outputAvailable={model.output.data?.available === true}
         close={() =>
           model.selectedRun && model.close.mutate(model.selectedRun.id)
         }
@@ -205,7 +204,7 @@ export function FieldworkReview(_props: LayoutComponentProps) {
   const projectSlug = navigation.selectedProject ?? null;
   return projectSlug ? (
     <ProjectReview
-      key={projectSlug}
+      key={JSON.stringify([apiBase, projectSlug])}
       apiBase={apiBase}
       projectSlug={projectSlug}
     />

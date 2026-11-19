@@ -262,7 +262,9 @@
 
     "packages/cli/src/__tests__/telemetry-command.test.ts",
 
-    "packages/sdk/src/client/request-inspection.ts"
+    "packages/sdk/src/client/request-inspection.ts",
+
+    "packages/cli/src/commands/import-progress.ts"
   ],
 
   "checks": [

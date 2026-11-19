@@ -1,0 +1,7 @@
+{
+  "revision": "aec1cffce5388e70651a653b8da69057c03b4ca7",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the check-updates body reader after the scoped catch repair. A mid-body deadline remains a typed timeout for successful and refused headers, ordinary HTTP refusals retain their status, and partial, unavailable and legacy unknown results retain their documented values.","inputs":["packages/sdk/src/client/plugins.ts"]}
+  ]
+}

@@ -243,15 +243,7 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // the Nightly that was supposed to find them had itself been red since
   // 2026-09-12 on an unrelated stale test, so nothing surfaced either one.
   Object.freeze(['npm', Object.freeze(['run', 'proof:repo-governance'])]),
-  // ~7s: biome over every source root. The pre-push hook has run this since
-  // #3141, but a hook is per-machine — it requires `core.hooksPath` to be
-  // configured, `--no-verify` bypasses it, and nothing in a pull request or a
-  // merge-queue candidate re-runs it. So formatting and organized imports were
-  // enforced pre-merge only by whoever's checkout happened to be armed, and
-  // otherwise first by `verify:static` inside the nightly full-regression
-  // gate — where, as that hook's own header says, the cost is a whole gate
-  // cycle for whoever finds it instead of three seconds for whoever wrote it.
-  Object.freeze(['npm', Object.freeze(['run', 'lint:check'])]),
+  // Readiness executes full-repository lint as its required style-standard check.
   // ~35s (15s on an idle host, 75s on this one at load 48). Repository
   // governance readiness: required artifacts, the AI instruction-file sync,
   // the protected-standards attestation, and the evidence-checks it routes.
@@ -259,11 +251,6 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // hook, and not full:regression either, so the "run `veritas readiness` and
   // address any FAIL lines" instruction every AGENTS.md carries rested
   // entirely on the contributor remembering.
-  //
-  // Last of the three, and after `verification:policy:gate`, because it
-  // re-executes both as routed evidence-checks. When one of those is what
-  // broke, the direct gate above reports it in seconds under its own name
-  // rather than half a minute later inside a readiness report.
   //
   // Not redundant with the proof above, measured rather than assumed:
   // `proof:repo-governance` evaluates three of the nine repo-standards rules

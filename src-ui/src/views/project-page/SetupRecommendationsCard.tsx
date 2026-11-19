@@ -1,8 +1,6 @@
 import {
-  taskQueries,
   useCreateTaskMutation,
   useCreateTaskReferenceMutation,
-  useQueryClient,
   useTasksQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
@@ -13,9 +11,13 @@ import { Checkbox } from '../../components/Checkbox';
 import { ErrorState } from '../../components/state';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import {
-  clearPendingContinuation,
-  readPendingContinuation,
+  clearProjectContinuation,
+  readProjectContinuation,
 } from '../../lib/continue-in-project';
+import {
+  type ProjectRecoveryScope,
+  projectCreationRecoveryIdentity,
+} from '../../lib/project-onboarding-recovery';
 import { errorText } from '../../utils/errorText';
 import {
   type SetupRecommendation,
@@ -25,32 +27,42 @@ import {
 } from './setup-recommendations';
 import './SetupRecommendationsCard.css';
 
-/**
- * #5071: a new Project starts with Setup recommendations instead of an empty
- * page. Each is toggled on and visible; Apply creates what is still on, and
- * nothing is created before that. Shown while the Project has no Tasks and
- * the person has neither applied nor dismissed it.
- */
+type SetupRequestScope = ProjectRecoveryScope & { isCurrent: () => boolean };
+
+/** Setup recommendations start on an empty Project and stay available while its setup is in progress. */
 export function SetupRecommendationsCard(props: {
   project: { id: string; slug: string; name: string; description?: string };
   hasRepository: boolean;
+  requestScope: SetupRequestScope;
 }) {
   const enabled = useSurfaceVisibilityFlags().has('continue-in-project');
-  return enabled ? <SetupRecommendations {...props} /> : null;
+  const { requestScope } = props;
+  return enabled && requestScope.isCurrent() ? (
+    <SetupRecommendations
+      key={JSON.stringify([
+        projectCreationRecoveryIdentity(requestScope),
+        requestScope.authorityKey,
+        props.project.id,
+      ])}
+      {...props}
+    />
+  ) : null;
 }
 
 function SetupRecommendations({
   project,
   hasRepository,
-}: {
-  project: { id: string; slug: string; name: string; description?: string };
-  hasRepository: boolean;
-}) {
-  const tasks = useTasksQuery(project.slug);
+  requestScope,
+}: Parameters<typeof SetupRecommendationsCard>[0]) {
+  const tasks = useTasksQuery(project.slug, { requestScope });
+  const [startedRecommendations, setStartedRecommendations] =
+    useState<SetupRecommendation[]>();
   const [settled, setSettled] = useState(() =>
     setupRecommendationsSettled(project.id),
   );
-  const [continuation] = useState(() => readPendingContinuation(new Date()));
+  const [continuation] = useState(() =>
+    readProjectContinuation(requestScope, project.id),
+  );
   // Recomputed as facts arrive (the repository check answers after paint);
   // a recommendation that appears later starts on, like the rest.
   const recommendations = useMemo(
@@ -67,18 +79,24 @@ function SetupRecommendations({
   );
   if (
     settled ||
-    !tasks.isSuccess ||
-    (tasks.data?.length ?? 0) > 0 ||
-    recommendations.length === 0
+    (!startedRecommendations &&
+      (!tasks.isSuccess ||
+        tasks.data?.length !== 0 ||
+        recommendations.length === 0))
   )
     return null;
   return (
     <SetupRecommendationsForm
       project={project}
-      recommendations={recommendations}
+      recommendations={startedRecommendations ?? recommendations}
+      requestScope={requestScope}
+      onStarted={() =>
+        setStartedRecommendations((started) => started ?? recommendations)
+      }
       onSettled={(outcome) => {
+        if (!requestScope.isCurrent()) return;
         settleSetupRecommendations(project.id, outcome);
-        if (continuation) clearPendingContinuation();
+        if (continuation) clearProjectContinuation(requestScope, project.id);
         setSettled(true);
       }}
     />
@@ -88,15 +106,18 @@ function SetupRecommendations({
 function SetupRecommendationsForm({
   project,
   recommendations,
+  requestScope,
+  onStarted,
   onSettled,
 }: {
   project: { id: string; slug: string; name: string };
   recommendations: SetupRecommendation[];
+  requestScope: SetupRequestScope;
+  onStarted(): void;
   onSettled(outcome: 'applied' | 'dismissed'): void;
 }) {
   const headingId = useId();
   const briefId = useId();
-  const queryClient = useQueryClient();
   const createTask = useCreateTaskMutation();
   const createReference = useCreateTaskReferenceMutation();
   const updateProject = useUpdateProjectMutation();
@@ -117,18 +138,22 @@ function SetupRecommendationsForm({
   const chosen = recommendations.filter((item) => isOn(item.id));
 
   async function apply() {
+    if (!requestScope.isCurrent()) return;
+    onStarted();
     setPending(true);
     setFailure(undefined);
     const done = { ...applied };
     const created = { ...createdTasks };
     try {
       for (const item of chosen) {
+        if (!requestScope.isCurrent()) return;
         if (done[item.id]) continue;
         if (item.kind === 'brief') {
           if (brief.trim())
             await updateProject.mutateAsync({
               slug: project.slug,
               description: brief.trim(),
+              requestScope,
             });
         } else {
           const taskId =
@@ -139,8 +164,10 @@ function SetupRecommendationsForm({
                 title: item.task.title,
                 description: item.task.description,
                 createdBy: 'user',
+                requestScope,
               })
             ).id;
+          if (!requestScope.isCurrent()) return;
           created[item.id] = taskId;
           setCreatedTasks({ ...created });
           if (item.task.reference)
@@ -150,17 +177,15 @@ function SetupRecommendationsForm({
               sessionId: item.task.reference.sessionId,
               turnId: item.task.reference.turnId,
               sourceSurface: 'chat',
+              requestScope,
             });
         }
         done[item.id] = true;
         setApplied({ ...done });
       }
-      await queryClient.invalidateQueries({
-        queryKey: taskQueries.list(project.slug).queryKey,
-      });
       onSettled('applied');
     } catch (error) {
-      setFailure(errorText(error));
+      if (requestScope.isCurrent()) setFailure(errorText(error));
     } finally {
       setPending(false);
     }

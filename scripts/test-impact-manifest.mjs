@@ -248,6 +248,18 @@ export const FALLOW_BASELINE_FILES = Object.freeze([
 ]);
 
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
+  ...[
+    'packages/contracts/src/execution-preparation.ts',
+    'packages/contracts/src/execution-target.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: [
+      'src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts',
+    ],
+    reason:
+      'shared execution schema changes can add dispatch posture fields outside the bounded importer set (#3335)',
+  })),
   {
     // #2458: the same overflow class as SDK_TRANSPORT_EDGES (#2301). The
     // matrix is imported by `contracts/agent.ts`, `config.ts` and `tool.ts`,
@@ -616,6 +628,16 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  ...[
+    'src-ui/src/pages/AppearancePage.tsx',
+    'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/appearance-page-keyboard.test.ts'],
+    reason:
+      'the keyboard fixture bundles AppearancePage from a string outside the import graph',
+  })),
   ...[
     'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
     'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',

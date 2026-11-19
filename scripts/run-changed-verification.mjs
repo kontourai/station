@@ -88,6 +88,7 @@ import {
 } from './workspace-dependency-provenance.mjs';
 
 const receiptValidator = new Ajv2020({ strict: true }).compile(receiptSchema);
+const LOCAL_DEFERRED_TEST_CAP = 32;
 const FAILURE_IDENTITY_LIMIT = 20;
 const FAILURE_NAME_LIMIT = 512;
 const FAILURE_EXCERPT_LIMIT = CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES;
@@ -1972,6 +1973,11 @@ export function renderChangedVerificationSummary(result) {
           `[test:changed] remedy: ${result.emptyRelatedSelection.remedy ?? EMPTY_RELATED_SELECTION_REMEDY}`,
         ]
       : []),
+    ...(result.localUiImporters
+      ? [
+          `[test:changed] direct UI component importer suites: ${result.localUiImporters.tests.length} ${result.localUiImporters.disposition === 'cap-exceeded' ? `omitted (combined selection exceeds ${result.localUiImporters.cap})` : 'selected'}`,
+        ]
+      : []),
     `[test:changed] lanes: ${lanes.rendered}`,
     `[test:changed] product laws: ${laws.rendered}`,
     `[test:changed] detail: ${CHANGED_SELECTION_ARTIFACT}${truncated ? ' (terminal names truncated; full selection is in the artifact)' : ''}`,
@@ -2236,7 +2242,43 @@ export function prepareChangedSelection(
       ),
   );
   const localTests =
-    selection.tests.length <= 32 ? selection.tests : withoutNativeOnly;
+    selection.tests.length <= LOCAL_DEFERRED_TEST_CAP
+      ? selection.tests
+      : withoutNativeOnly;
+  const existingLocalTests =
+    localTests.length <= LOCAL_DEFERRED_TEST_CAP
+      ? localTests.filter((entry) => pathExists(resolve(root, entry.path)))
+      : [];
+  const droppedComponents =
+    preserveMappedTargets || !selection.lanes.length
+      ? []
+      : changed.paths.filter(
+          (path) =>
+            path.startsWith('src-ui/src/components/') &&
+            /\.[cm]?tsx?$/.test(path) &&
+            !VITEST_FILE_PATTERN.test(path) &&
+            pathExists(resolve(root, path)) &&
+            (!deferredOnly ||
+              deferredOnly.has(path) ||
+              !selection.relatedPaths.includes(path)),
+        );
+  const localTestPaths = new Set(localTests.map(({ path }) => path));
+  const addedImporters = directUiComponentImporterTests(
+    root,
+    droppedComponents,
+  ).filter(({ path }) => !localTestPaths.has(path));
+  const importersFit =
+    localTests.length <= LOCAL_DEFERRED_TEST_CAP &&
+    existingLocalTests.length + addedImporters.length <=
+      LOCAL_DEFERRED_TEST_CAP;
+  const localUiImporters = addedImporters.length
+    ? {
+        disposition: importersFit ? 'selected' : 'cap-exceeded',
+        cap: LOCAL_DEFERRED_TEST_CAP,
+        components: droppedComponents,
+        tests: addedImporters,
+      }
+    : undefined;
   // An escalated path the importer query cannot see is named, not dropped.
   const escalatedQueries = (paths) => {
     const queried = (path) =>
@@ -2278,14 +2320,18 @@ export function prepareChangedSelection(
             ? selection.tests.filter((entry) =>
                 pathExists(resolve(root, entry.path)),
               )
-            : localTests.length <= 32
-              ? localTests.filter((entry) =>
-                  pathExists(resolve(root, entry.path)),
-                )
-              : [],
+            : importersFit
+              ? [...existingLocalTests, ...addedImporters]
+              : existingLocalTests,
           ...(preserveMappedTargets ? escalatedQueries(escalationPaths) : {}),
         };
-  return { changed, selection, productLawRouting, executionSelection };
+  return {
+    changed,
+    selection,
+    productLawRouting,
+    executionSelection,
+    localUiImporters,
+  };
 }
 
 /**
@@ -2345,7 +2391,8 @@ export async function runChangedVerification(
     changedPathsFn,
     pathExists,
   });
-  const { changed, productLawRouting, executionSelection } = prepared;
+  const { changed, productLawRouting, executionSelection, localUiImporters } =
+    prepared;
   let { selection } = prepared;
   // Capture the request identity before any child process can modify outputs.
   const before = collectProvenance({ cwd: root });
@@ -2358,6 +2405,7 @@ export async function runChangedVerification(
     base,
     ...changed,
     productLaws: productLawRouting.productLaws,
+    ...(localUiImporters ? { localUiImporters } : {}),
     selection,
     nextCommands: nextCommands(selection),
     executed: [],
