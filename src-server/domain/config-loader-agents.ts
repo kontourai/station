@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, renameSync } from 'node:fs';
 import { mkdir, open, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
-import type {
-  AgentMetadata,
-  AgentSpec,
+import {
+  type AgentMetadata,
+  type AgentSpec,
+  withoutRetiredAgentConfigFields,
 } from '@kontourai/station-contracts/agent';
 import {
   agentId,
@@ -218,7 +219,8 @@ async function loadAgentConfigAsStored(
 }
 
 function parseAgentConfigContent(content: string, slug: string): AgentSpec {
-  const data = JSON.parse(content);
+  const decoded: unknown = JSON.parse(content);
+  const data = withoutRetiredAgentConfigFields(decoded);
   dropRetiredToolAliases(slug, data);
   validator.validateAgentSpec(data, slug);
   assertSafeAgentSpec(slug, data);
@@ -400,10 +402,11 @@ async function saveAgentConfigWithOwnedLock(
 ): Promise<AgentSpec> {
   assertCustomAgentIdentity(slug);
   assertRegistryIntegrityAtHomeSync(projectHomeDir);
+  const canonical = withoutRetiredAgentConfigFields(spec);
   const persisted = isStationAgentIdentity(slug)
-    ? withoutReservedStationBinding(spec)
-    : spec;
-  if (persisted !== spec) {
+    ? withoutReservedStationBinding(canonical)
+    : canonical;
+  if (persisted !== canonical) {
     logger.debug(
       'Dropped the engine binding from the Station Agent record; the app-level selection owns it',
       { agent: slug },
@@ -997,19 +1000,6 @@ function assertSafeAgentSpec(slug: string, spec: AgentSpec): void {
   if (typeof spec.prompt === 'string' && spec.prompt.length > 0) {
     assertSafeContextText(spec.prompt, {
       source: `agent '${slug}' prompt`,
-    });
-  }
-
-  for (const quickPrompt of spec.ui?.quickPrompts || []) {
-    if (
-      typeof quickPrompt.prompt !== 'string' ||
-      quickPrompt.prompt.length === 0
-    ) {
-      continue;
-    }
-
-    assertSafeContextText(quickPrompt.prompt, {
-      source: `agent '${slug}' quick prompt '${quickPrompt.id}'`,
     });
   }
 }
