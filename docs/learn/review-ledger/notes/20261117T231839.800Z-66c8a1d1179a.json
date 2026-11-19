@@ -1,0 +1,11 @@
+{
+  "revision": "337fc4dc4ee1d6df94043af373cc4ba235757418",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the PR watch scene addition against the recorded motion, telemetry, and testing claims: it adds only a review recovery row and assertion. Existing motion sampling, consent choices, screenshot capture, and control audit remain unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the PR watch scene addition against the recorded motion, telemetry, and testing claims: it adds only a review recovery row and assertion. Existing motion sampling, consent choices, screenshot capture, and control audit remain unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the PR watch scene addition against the recorded motion, telemetry, and testing claims: it adds only a review recovery row and assertion. Existing motion sampling, consent choices, screenshot capture, and control audit remain unchanged.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

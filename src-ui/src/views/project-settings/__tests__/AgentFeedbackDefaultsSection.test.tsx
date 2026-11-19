@@ -43,8 +43,7 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', () => ({
 
 import { AgentFeedbackDefaultsSection } from '../AgentFeedbackDefaultsSection';
 
-const CONSENT =
-  "A pull request opened from a Task's own branch gets feedback without asking.";
+const CONSENT = 'Existing pull requests keep their settings.';
 
 function defaults(
   overrides: Partial<ProjectPullRequestFeedbackDefaults> = {},
@@ -88,7 +87,7 @@ describe('Agent feedback defaults', () => {
     renderSection();
     expect(
       await screen.findByText(
-        "For pull requests a Task opens from its branch and doesn't watch. Existing ones keep theirs.",
+        'Automatically send feedback for new pull requests from Task branches.',
       ),
     ).toBeTruthy();
     expect((await fixChecks()).getAttribute('aria-checked')).toBe('false');

@@ -231,7 +231,8 @@ export function ConversationPullRequestLinks({
                         },
                       ]
                     : []),
-                  ...(link.source === 'branch-derived' && feedback.available
+                  ...(link.source === 'branch-derived' &&
+                  feedback.viewerMayChange
                     ? [
                         {
                           key: 'remove-derived',
@@ -260,10 +261,12 @@ export function ConversationPullRequestLinks({
         title="Remove from this chat"
         message={removing ? removalMessage(removing) : ''}
         confirmLabel="Remove"
+        confirmDisabled={!feedback.viewerMayChange}
         onConfirm={() => {
           const link = removing;
           setRemoving(null);
-          if (link) void mutate('remove-derived', link);
+          if (link && feedback.viewerMayChange)
+            void mutate('remove-derived', link);
         }}
         onCancel={() => setRemoving(null)}
       />

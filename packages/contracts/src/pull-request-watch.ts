@@ -157,6 +157,7 @@ export type TaskPullRequestWatchState =
   | { state: 'watching' }
   /** Feedback went to the agent, which is working on it. */
   | { state: 'fixing' }
+  | TaskPullRequestWatchReviewHold
   /** Checks pass and reviews are answered: the person's turn. */
   | { state: 'ready'; headSha: string; at: string }
   /** Every fix attempt was used; the named checks still fail. */
@@ -166,6 +167,13 @@ export type TaskPullRequestWatchState =
   /** The forge could not be read. */
   | { state: 'unavailable' }
   | { state: 'closed' };
+
+/** Why a watched head cannot yet be reported ready. */
+export interface TaskPullRequestWatchReviewHold {
+  state: 'reviewing' | 'review-needed';
+  headSha: string;
+  detail: string;
+}
 
 export interface TaskPullRequestWatchPullRequest {
   identity: PullRequestLinkIdentity;

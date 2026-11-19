@@ -88,15 +88,19 @@ export interface PullRequestAvailability {
  * state cannot classify by prose. `no-remote` is the ordinary local repository
  * — nothing is broken and nothing is missing that the operator asked for — and
  * the panel rendered it as a warning-triangle error card, indistinguishable
- * from a forge that refused. Absent means "no cause was reported", never
+ * from a forge that refused. `unsupported-forge` means the repository has a
+ * recognized remote whose PR integration is not implemented. Absent means "no cause was reported", never
  * "some other cause".
  */
-export type PullRequestUnavailableCause = 'no-remote';
+export type PullRequestUnavailableCause = 'no-remote' | 'unsupported-forge';
 
 export type PullRequestClientContext =
   | {
       available: true;
       provider: string;
+      providerLabel?: string;
+      /** Actual operations supplied by this host's registered forge adapter. */
+      automation?: { feedback: boolean; taskBranchDiscovery: boolean };
       host: string;
       repository: { owner: string; name: string };
       /**

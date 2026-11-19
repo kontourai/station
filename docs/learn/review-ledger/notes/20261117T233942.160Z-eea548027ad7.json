@@ -1,0 +1,11 @@
+{
+  "revision": "b9a53e7a6546b505c71dec39d8279f14ece3f61e",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed only the Project PR settings scene: it seeds both existing settings and their preview, uses the actual Project checkout context, and asserts the unified controls. Existing motion sampling, sharing choices, screenshot capture and control auditing are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed only the Project PR settings scene: it seeds both existing settings and their preview, uses the actual Project checkout context, and asserts the unified controls. Existing motion sampling, sharing choices, screenshot capture and control auditing are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed only the Project PR settings scene: it seeds both existing settings and their preview, uses the actual Project checkout context, and asserts the unified controls. Existing motion sampling, sharing choices, screenshot capture and control auditing are unchanged.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}
