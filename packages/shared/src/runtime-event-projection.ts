@@ -257,9 +257,13 @@ export interface ProjectRuntimeEventsOptions {
 export function withoutCompletedTurnRecovery(
   events: readonly CanonicalRuntimeEvent[],
 ): CanonicalRuntimeEvent[] {
+  return events.filter(completedTurnRecoveryFilter());
+}
+
+function completedTurnRecoveryFilter() {
   const starts = new Map<string, string | undefined>();
   const completed = new Map<string, string | undefined>();
-  return events.filter((event) => {
+  return (event: CanonicalRuntimeEvent) => {
     const turnId =
       event.method === 'session.state-changed'
         ? event.interruptedTurnBoundary?.providerTurnId
@@ -285,14 +289,45 @@ export function withoutCompletedTurnRecovery(
         (event.method === 'session.state-changed' &&
           event.interruptedTurnBoundary))
     );
-  });
+  };
 }
 
 export function projectRuntimeEventsToMessages(
   events: CanonicalRuntimeEvent[],
   options: ProjectRuntimeEventsOptions = {},
 ): ConversationMessage[] {
-  events = withoutCompletedTurnRecovery(events);
+  const filtered = withoutCompletedTurnRecovery(events);
+  const projection = createRuntimeMessageProjection(filtered, options);
+  for (const event of filtered) projection.append(event);
+  return projection.finish();
+}
+
+interface StandingUnresolvedCompletions {
+  ids: Set<string>;
+  snapshot?: ReadonlySet<string>;
+}
+
+/** Track standing completion ids without closing the open turn at a read boundary. */
+export function createStandingUnresolvedCompletionProjection() {
+  const standing: StandingUnresolvedCompletions = { ids: new Set() };
+  const filter = completedTurnRecoveryFilter();
+  const projection = createRuntimeMessageProjection([], {}, standing);
+  return {
+    snapshot() {
+      standing.snapshot ??= new Set(standing.ids);
+      return standing.snapshot;
+    },
+    append(event: CanonicalRuntimeEvent) {
+      if (filter(event)) projection.append(event);
+    },
+  };
+}
+
+function createRuntimeMessageProjection(
+  events: readonly CanonicalRuntimeEvent[],
+  options: ProjectRuntimeEventsOptions,
+  standingUnresolved?: StandingUnresolvedCompletions,
+) {
   const messages: ConversationMessage[] = [];
   const turnKey = (
     sessionId: string | undefined,
@@ -565,7 +600,7 @@ export function projectRuntimeEventsToMessages(
             ? `${turnAnchorEventId}:${role}`
             : `proj-${messages.length}`,
       role,
-      parts: p,
+      parts: standingUnresolved ? [] : p,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     });
     // station#1558: only an assistant row carries a turn's activity, and only
@@ -591,18 +626,20 @@ export function projectRuntimeEventsToMessages(
   let pendingSpilledText: MessagePart['spilledText'];
   const flushText = () => {
     if (textBuf) {
-      parts.push({
-        type: 'text',
-        text: textBuf,
-        ...(pendingSpilledText ? { spilledText: pendingSpilledText } : {}),
-      });
+      if (!standingUnresolved || parts.length === 0)
+        parts.push({
+          type: 'text',
+          text: textBuf,
+          ...(pendingSpilledText ? { spilledText: pendingSpilledText } : {}),
+        });
       textBuf = '';
     }
     pendingSpilledText = undefined;
   };
   const flushReasoning = () => {
     if (reasoningBuf) {
-      parts.push({ type: 'reasoning', text: reasoningBuf });
+      if (!standingUnresolved || parts.length === 0)
+        parts.push({ type: 'reasoning', text: reasoningBuf });
       reasoningBuf = '';
     }
   };
@@ -828,7 +865,28 @@ export function projectRuntimeEventsToMessages(
     }
   }
 
-  for (const ev of events) {
+  const recordStandingCompletion = (
+    eventId: string,
+    isUnresolved: boolean,
+    previous?: MessagePart,
+  ) => {
+    if (!standingUnresolved) return;
+    const priorId = previous?.sourceEventId;
+    if (
+      previous?.state === 'unresolved' &&
+      priorId !== undefined &&
+      (!isUnresolved || priorId !== eventId) &&
+      standingUnresolved.ids.delete(priorId)
+    ) {
+      standingUnresolved.snapshot = undefined;
+    }
+    if (isUnresolved && !standingUnresolved.ids.has(eventId)) {
+      standingUnresolved.ids.add(eventId);
+      standingUnresolved.snapshot = undefined;
+    }
+  };
+
+  const append = (ev: CanonicalRuntimeEvent) => {
     if (
       ev.method === 'turn.completed' ||
       ev.method === 'turn.aborted' ||
@@ -992,14 +1050,18 @@ export function projectRuntimeEventsToMessages(
         turnSessionId ??= ev.threadId;
         turnOpen = true;
         flushReasoning();
-        textBuf += ev.delta ?? '';
+        textBuf = standingUnresolved
+          ? textBuf || (ev.delta ? 'x' : '')
+          : textBuf + (ev.delta ?? '');
         break;
       }
       case 'content.reasoning-delta': {
         turnSessionId ??= ev.threadId;
         turnOpen = true;
         flushText();
-        reasoningBuf += ev.delta ?? '';
+        reasoningBuf = standingUnresolved
+          ? reasoningBuf || (ev.delta ? 'x' : '')
+          : reasoningBuf + (ev.delta ?? '');
         break;
       }
       case 'tool.started': {
@@ -1186,6 +1248,7 @@ export function projectRuntimeEventsToMessages(
             existing.toolName = ev.toolName;
           }
           if (ev.toolKind !== undefined) existing.toolKind = ev.toolKind;
+          recordStandingCompletion(ev.eventId, isUnresolved, existing);
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.spilledContent) existing.contentThreadId = ev.threadId;
@@ -1303,6 +1366,7 @@ export function projectRuntimeEventsToMessages(
             ...(text !== undefined ? { result: text } : {}),
           };
           terminalToolsByEventId.set(ev.eventId, part);
+          recordStandingCompletion(ev.eventId, isUnresolved);
           if (namedTurnIndex !== undefined) {
             messages[namedTurnIndex]!.parts.push(part);
           } else {
@@ -1702,53 +1766,57 @@ export function projectRuntimeEventsToMessages(
     // then cannot place it. It takes the time of the event that opened it;
     // a turn that did start keeps that start (or its terminal) time.
     if (turnOpen && turnTimestamp === undefined) stamp(ev.createdAt);
-  }
+  };
 
-  if (turnOpen) {
-    const live = options.liveOpenTurn;
-    if (
-      live &&
-      !openTurnSessionExited &&
-      (turnSessionId ?? live.threadId) === live.threadId &&
-      // Exact identity: a turn the window cannot name is not claimed live.
-      (live.turnId === undefined || turnIdentity === live.turnId)
-    ) {
-      // `toolsByCallId` holds only this turn's calls with no terminal yet
-      // (the terminal branch retires the slot), so these are exactly the
-      // calls still executing. An approval-bound call keeps its own state.
-      for (const part of toolsByCallId.values()) {
-        if (part.state === 'call') part.state = 'running';
+  const finish = () => {
+    if (turnOpen) {
+      const live = options.liveOpenTurn;
+      if (
+        live &&
+        !openTurnSessionExited &&
+        (turnSessionId ?? live.threadId) === live.threadId &&
+        // Exact identity: a turn the window cannot name is not claimed live.
+        (live.turnId === undefined || turnIdentity === live.turnId)
+      ) {
+        // `toolsByCallId` holds only this turn's calls with no terminal yet
+        // (the terminal branch retires the slot), so these are exactly the
+        // calls still executing. An approval-bound call keeps its own state.
+        for (const part of toolsByCallId.values()) {
+          if (part.state === 'call') part.state = 'running';
+        }
       }
+      emitAssistantTurn(openTurnSessionExited);
     }
-    emitAssistantTurn(openTurnSessionExited);
-  }
-  return messages.map((projected) => {
-    const message =
-      projected.metadata?.turnId &&
-      rewoundTurns.has(
-        turnKey(projected.metadata.sessionId, projected.metadata.turnId) ?? '',
-      )
-        ? {
-            ...projected,
-            metadata: { ...projected.metadata, rewound: true as const },
-          }
-        : projected;
-    if (
-      message.role !== 'assistant' ||
-      !message.metadata?.turnId ||
-      !revokedAnswerTurns.has(
-        turnKey(message.metadata.sessionId, message.metadata.turnId) ?? '',
-      )
-    ) {
-      return message;
-    }
-    const {
-      answerEligible: _eligible,
-      provenance: _provenance,
-      ...metadata
-    } = message.metadata;
-    return { ...message, metadata };
-  });
+    return messages.map((projected) => {
+      const message =
+        projected.metadata?.turnId &&
+        rewoundTurns.has(
+          turnKey(projected.metadata.sessionId, projected.metadata.turnId) ??
+            '',
+        )
+          ? {
+              ...projected,
+              metadata: { ...projected.metadata, rewound: true as const },
+            }
+          : projected;
+      if (
+        message.role !== 'assistant' ||
+        !message.metadata?.turnId ||
+        !revokedAnswerTurns.has(
+          turnKey(message.metadata.sessionId, message.metadata.turnId) ?? '',
+        )
+      ) {
+        return message;
+      }
+      const {
+        answerEligible: _eligible,
+        provenance: _provenance,
+        ...metadata
+      } = message.metadata;
+      return { ...message, metadata };
+    });
+  };
+  return { append, finish };
 }
 
 /**
