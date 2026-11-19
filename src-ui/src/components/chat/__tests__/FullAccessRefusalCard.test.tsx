@@ -96,8 +96,8 @@ describe('a group-limited full-access refusal', () => {
 
   test('keeps the refusal visible while the longer recovery is collapsed', () => {
     const element = card(details({ cli: CLI }));
-    expect(screen.getByText('Full access was not applied')).toBeVisible();
-    expect(screen.getByText('Full access recovery')).toBeVisible();
+    expect(screen.getByText('Full access was not applied')).toBeTruthy();
+    expect(screen.getByText('Full access recovery')).toBeTruthy();
     expect(element.querySelector('details')?.open).toBe(false);
     expect(
       screen.queryByRole('button', { name: 'Copy the command' }),

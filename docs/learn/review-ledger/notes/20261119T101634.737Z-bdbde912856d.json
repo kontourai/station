@@ -1,0 +1,9 @@
+{
+  "revision": "205a986576b6f525cd49bf05f40ceca64bcc6c0a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the explicit Full access confirmation and refusal presentation. Confirmation closes the existing Run Setup panel. The refusal keeps the outcome in view with a keyboard and touch disclosure for the operator instructions. The current access decision and recovery instructions keep their existing authorities.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the confirmation path against the tool-policy disclosure contract. Only explicit confirmation of Full access closes Run Setup. Grant evaluation, the approval selection callback, and the advertised coverage of Station approvals are unchanged.","inputs":["src-ui/src/components/badges/ApprovalModeChip.tsx"]}
+  ]
+}
