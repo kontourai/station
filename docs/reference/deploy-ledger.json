@@ -1,5 +1,43 @@
 [
   {
+    "timestampUtc": "2026-11-19T15:17:06Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261119.44548231154",
+    "sha": "8ad9f364f84680d954072e329f1f4f45f13f7f03",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44548231154",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261119.44548231154 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "4ff27ef00bcaff986dfa1fb9d0718421815615e8",
+      "groups": {
+        "feat": [
+          "[#5281](https://github.com/kontourai/station/pull/5281) feat(projects): improve repository setup and review defaults"
+        ],
+        "fix": [
+          "[#5318](https://github.com/kontourai/station/pull/5318) fix(native): satisfy the delivery Rust formatting gate",
+          "[#5312](https://github.com/kontourai/station/pull/5312) fix(ci): install LLVM tools for Xcode 27 Swift bridge linking",
+          "[#5311](https://github.com/kontourai/station/pull/5311) fix(chat,settings): recover resets and guard status reads",
+          "[#5310](https://github.com/kontourai/station/pull/5310) fix(history): bound long-running Room and Session refreshes",
+          "[#5313](https://github.com/kontourai/station/pull/5313) fix(release): restore Stable mobile staging",
+          "[#5308](https://github.com/kontourai/station/pull/5308) fix(qualification): restore source guardrail verdicts"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5314](https://github.com/kontourai/station/pull/5314) build(deps-dev): adopt jsdom 31 with focus compatibility"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-11-19T12:21:25Z",
     "channel": "nightly-npm",
     "version": "0.12.0-nightly.20261119.44521362145",
