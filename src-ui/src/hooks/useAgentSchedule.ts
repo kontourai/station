@@ -2,6 +2,7 @@ import type {
   AgentJobProposal,
   ConversationAgentSchedule,
 } from '@kontourai/station-contracts/agent-schedule';
+import type { AutomationProposal } from '@kontourai/station-contracts/automation';
 import {
   getJson,
   mutateJson,
@@ -45,7 +46,11 @@ async function readData<T>(response: Response): Promise<T> {
     body = undefined;
   }
   if (!response.ok || body?.success !== true || body.data === undefined)
-    throw new Error(body?.error ?? `Request failed (${response.status})`);
+    throw new Error(
+      typeof body?.error === 'string'
+        ? body.error
+        : `Request failed (${response.status})`,
+    );
   return body.data;
 }
 
@@ -185,16 +190,40 @@ export function useAgentSchedule(
    * #4830: a person answers an agent's Automation proposal. Confirm creates
    * it disabled (a source) or observing (a rule) unless `enable` is set.
    */
+  const confirmationScope = JSON.stringify(key);
   const confirmAutomationProposal = useMutation({
-    mutationFn: async (input: { id: string; enable: boolean }) =>
-      readData(
+    mutationKey: [...key, 'confirm-automation'],
+    onMutate: () => confirmationScope,
+    mutationFn: async (input: {
+      id: string;
+      kind: AutomationProposal['kind'];
+      enable: boolean;
+    }) => {
+      const result = await readData<{
+        createdId: string;
+        enabled: boolean;
+        message?: string;
+      }>(
         await mutateJson(
           `${base}/automation-proposals/${encodeURIComponent(input.id)}/confirm`,
           'POST',
           options(),
           { enable: input.enable },
         ),
-      ),
+      );
+      if (
+        typeof result?.createdId !== 'string' ||
+        result.createdId.length === 0 ||
+        typeof result.enabled !== 'boolean'
+      )
+        throw new Error('Station did not report the confirmation outcome.');
+      return {
+        createdId: result.createdId,
+        enabled: result.enabled,
+        message:
+          typeof result.message === 'string' ? result.message : undefined,
+      };
+    },
     onSettled: settle,
   });
   const declineAutomationProposal = useMutation({
@@ -223,6 +252,10 @@ export function useAgentSchedule(
       void client.invalidateQueries({ queryKey: ['usage-limit-recovery'] });
     },
   });
+  const currentConfirmation =
+    enabled && confirmAutomationProposal.context === confirmationScope
+      ? confirmAutomationProposal
+      : undefined;
   return {
     schedule: data,
     /** The server's list has been read (what is shown is not a placeholder). */
@@ -233,6 +266,16 @@ export function useAgentSchedule(
     declineProposal,
     approveProposal,
     confirmAutomationProposal,
+    automationConfirmation:
+      currentConfirmation?.data && currentConfirmation.variables
+        ? {
+            ...currentConfirmation.data,
+            proposalId: currentConfirmation.variables.id,
+            kind: currentConfirmation.variables.kind,
+            requestedEnable: currentConfirmation.variables.enable,
+          }
+        : undefined,
+    automationConfirmationError: currentConfirmation?.error,
     declineAutomationProposal,
     holdResume,
   };

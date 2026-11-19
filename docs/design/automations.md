@@ -535,9 +535,16 @@ text. The agent fetches logs itself with `gh`.
   what authority. Nothing is created until a person confirms the card in that
   chat. Confirming needs the Station operator in person. It decides the
   proposing chat's scope again, and requires each Agent named to be
-  unchanged (slug, Project, definition digest), inside the store's lock. It
-  creates the source or rule through the ordinary store, under an id derived
-  from the proposal so a retry never duplicates it
+  unchanged (slug, Project, definition digest and incarnation). Station
+  holds the Agent identity lock through the creation and activation writes.
+  Older proposals that did not record the incarnation can be declined and
+  proposed again. A refusal before creation leaves the proposal open. If
+  creation succeeds but activation fails, the chat shows the saved source
+  or rule, its initial state, and the reason after the proposal leaves the
+  open list. The person can review the saved object with the Station
+  operator.
+  Station uses the ordinary store, with an id derived from the proposal so
+  a retry never duplicates it
   ([routes](../../src-server/routes/orchestration/automation-proposals.ts),
   [validation](../../src-server/services/automation/automation-proposals.ts)).
   A proposal never grants more than the proposing chat holds:

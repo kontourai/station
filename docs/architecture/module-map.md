@@ -1973,12 +1973,15 @@ connection. It creates nothing. The chat schedule read lists open proposals
 as `automationProposals`, with the conversation's current untrusted mark
 (`untrustedContentNow`). A person's Confirm also needs the operator in
 person. It reruns the scope rule for the recorded proposer and requires each
-recorded Agent binding (slug, Project, definition digest) to be unchanged,
-before claiming and again inside the store's creation and enabling locks.
-It creates through `AutomationStore` under an id derived from the proposal
-(`automationIdForProposal`), so retries and startup reconciliation adopt
-rather than duplicate. It creates disabled or `observe` unless the
-confirmation sets `enable`, and records the mark at confirm. The
+recorded Agent binding (slug, Project, definition digest and incarnation) to
+match. The Agent identity lock holds across the store's creation and activation
+writes. Confirm refuses an older proposal whose target lacks the incarnation
+binding. It creates through `AutomationStore` under an id derived from the
+proposal (`automationIdForProposal`), so retries and startup reconciliation
+adopt rather than duplicate. It creates sources disabled and rules observing,
+then attempts activation if the confirmation sets `enable`. The chat displays
+the distinct save and activation outcomes after the open list refreshes.
+Confirm also records the untrusted-content mark. The
 [authority test](../../src-server/security/__tests__/automation-proposal-authority.routes.test.ts)
 drives the composition through the real boundary, guard, `EventStore`,
 `AutomationStore` and untrusted-content ledger.
