@@ -8,7 +8,10 @@ import {
 } from '../components/modals/project-form-utils';
 import { useProjectDraftState } from './useProjectDraftState';
 
-function useProjectDraftValues(partition?: string) {
+function useProjectDraftValues(
+  initialIntent: ProjectStartIntent,
+  partition?: string,
+) {
   const [name, setName] = useProjectDraftState('', partition);
   const [icon, setIcon] = useProjectDraftState('', partition);
   const [iconDisabled, setIconDisabled] = useProjectDraftState(
@@ -17,8 +20,10 @@ function useProjectDraftValues(partition?: string) {
   );
   const [description, setDescription] = useProjectDraftState('', partition);
   const [directory, setDirectory] = useProjectDraftState('', partition);
-  const [startIntent, setStartIntent] =
-    useProjectDraftState<ProjectStartIntent>('workspace', partition);
+  const [startIntent, setStartIntent] = useProjectDraftState(
+    initialIntent,
+    partition,
+  );
   const [repositoryAcquisition, setRepositoryAcquisition] =
     useProjectDraftState<{
       id: string;
@@ -75,8 +80,12 @@ function useDerivedProjectName(
 }
 
 /** Form-only state. Starter selection and submission live in dedicated hooks. */
-export function useNewProjectDraft(isOpen: boolean, partition?: string) {
-  const draft = useProjectDraftValues(partition);
+export function useNewProjectDraft(
+  isOpen: boolean,
+  partition?: string,
+  initialIntent: ProjectStartIntent = 'workspace',
+) {
+  const draft = useProjectDraftValues(initialIntent, partition);
   const normalizedDirectory = normalizeWorkingDirectory(draft.directory);
   const derivedName = inferProjectNameFromPath(normalizedDirectory);
   const reset = () => {
@@ -86,7 +95,7 @@ export function useNewProjectDraft(isOpen: boolean, partition?: string) {
     draft.setDescription('');
     draft.setDefaultEnvironment({ kind: 'current' });
     draft.setDirectory('');
-    draft.setStartIntent('workspace');
+    draft.setStartIntent(initialIntent);
     draft.setRepositoryAcquisition(null);
     draft.setNameTouched(false);
     draft.setShowIconChoices(false);
@@ -100,7 +109,10 @@ export function useNewProjectDraft(isOpen: boolean, partition?: string) {
     if (!isOpen) return;
     const params = new URLSearchParams(window.location.search);
     const requested = params.get('directory');
-    if (requested) draft.setDirectory(requested);
+    if (requested) {
+      draft.setDirectory(requested);
+      draft.setStartIntent('workspace');
+    }
     // #5071: Continue in Project opens New project with a name and brief
     // drafted from a chat. They are a draft: the person edits them here, and
     // nothing is created until they choose Create.

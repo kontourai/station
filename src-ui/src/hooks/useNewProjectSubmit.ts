@@ -88,7 +88,7 @@ interface UseNewProjectSubmitOptions {
     slug: string,
     layoutSlug?: string,
     startIntent?: ProjectStartIntent,
-  ) => void;
+  ) => void | Promise<void>;
 }
 
 /**
@@ -129,6 +129,7 @@ export function useNewProjectSubmit({
     false,
     livePartition,
   );
+  const [finishing, setFinishing] = useProjectDraftState(false, livePartition);
   const [checkingSlug, setCheckingSlug] = useProjectDraftState(
     false,
     livePartition,
@@ -143,7 +144,7 @@ export function useNewProjectSubmit({
     useProjectDraftState<RejectedSlug | null>(null, livePartition);
   const recovery = useProjectCreationRecovery(
     isOpen,
-    createProjectMutation.isPending || applyingStarter,
+    createProjectMutation.isPending || applyingStarter || finishing,
   );
   const outcome = recovery.outcome;
   const recoveredProject: CreatedProject | null =
@@ -334,10 +335,20 @@ export function useNewProjectSubmit({
         throw new Error(
           'Station access changed after setup. Return to the Station account that created this Project.',
         );
-      if (project.creationRequestId) recovery.clear(project.creationRequestId);
-      if (project.startIntent && project.startIntent !== 'workspace')
-        onComplete(project.slug, project.layoutSlug, project.startIntent);
-      else onComplete(project.slug, project.layoutSlug);
+      setFinishing(true);
+      try {
+        if (project.startIntent && project.startIntent !== 'workspace')
+          await onComplete(
+            project.slug,
+            project.layoutSlug,
+            project.startIntent,
+          );
+        else await onComplete(project.slug, project.layoutSlug);
+        if (project.creationRequestId)
+          recovery.clear(project.creationRequestId);
+      } finally {
+        setFinishing(false);
+      }
     } catch (err: unknown) {
       setError(userFacingErrorMessage(err));
     }
@@ -398,6 +409,7 @@ export function useNewProjectSubmit({
       createProjectMutation.isPending ||
       applyingStarter ||
       checkingDirectory ||
-      checkingSlug,
+      checkingSlug ||
+      finishing,
   };
 }

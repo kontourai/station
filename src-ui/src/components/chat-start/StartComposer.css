@@ -19,14 +19,14 @@
   padding-block: var(--k-space-5);
   text-align: center;
 }
-.start-composer__destination h2 {
+.start-composer__destination :is(h1, h2) {
   flex-basis: 100%;
   margin: 0;
   color: var(--k-text);
   font-size: var(--k-text-2xl);
   font-weight: 500;
 }
-.start-composer__destination h2 .start-composer__project {
+.start-composer__destination :is(h1, h2) .start-composer__project {
   display: inline-flex;
   vertical-align: baseline;
   padding-inline: 0;
@@ -34,8 +34,11 @@
   text-decoration: underline;
   text-underline-offset: var(--k-space-1);
 }
-.start-composer__destination h2 .start-composer__project > svg,
-.start-composer__destination h2 .start-composer__project > .project-icon {
+.start-composer__destination :is(h1, h2) .start-composer__project > svg,
+.start-composer__destination
+  :is(h1, h2)
+  .start-composer__project
+  > .project-icon {
   display: none;
 }
 .start-composer__without-project {
@@ -133,15 +136,6 @@
 .start-composer__box .start-composer__input:focus-visible {
   /* Match the global focus rule's priority; the box draws the ring. */
   outline: none !important;
-}
-.start-composer--compact .start-composer__destination {
-  justify-content: flex-start;
-  padding-block: 0;
-  text-align: left;
-}
-.start-composer--compact .start-composer__destination h2 {
-  flex-basis: auto;
-  font-size: var(--k-text-md);
 }
 .start-composer__input {
   width: 100%;

@@ -175,9 +175,17 @@ only an explicit Agent request starts Agent work. Files & connections contains
 source and workspace controls, with specialist management still in Settings.
 
 Home and the chat dock share one start composer (`StartComposer`, driven in
-the dock by `NewChatModal`). Both use a heading with the inline Project picker,
-a compact Run setup control beside Start inside the message box, and a Station/location
-line below it.
+the dock by `NewChatModal`). Both use a centered heading, a compact Run setup
+control beside Start inside the message box, and a Station/location line below
+it. First-run Home uses **Start your first conversation** with the Project picker
+beneath it. Other drafts put the selected Project in **What would you like to do?**
+and keep **No project** available. Compact Home drafts shorten the message box.
+
+On the current Station, **Create project** in the Project picker opens the
+standard Project form with **Blank Project** selected. After creation, the draft
+selects that Project and keeps its message and attachments. Canceling keeps the
+previous Project. A draft targeting another Station uses that Station's existing
+Project list.
 
 **New chat** is not a dialog. It opens a draft in the chat dock's body, in place
 of the chat on screen, in any dock region or placement (full screen on a phone):

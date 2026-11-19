@@ -400,6 +400,45 @@ test.describe('Project lifecycle', () => {
     await seedProjectRoutes(page);
   });
 
+  test('the compact Project form returns to the same Home draft', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 360, height: 480 });
+    await page.goto('/');
+    const draft = page.getByRole('form', { name: 'Start work' });
+    const prompt = draft.getByRole('textbox', {
+      name: 'What would you like done?',
+    });
+    await prompt.fill('Keep this first message');
+    const chooseProject = async () => {
+      await draft.getByRole('button', { name: 'Project: No project' }).click();
+      await page
+        .getByRole('dialog', { name: 'Choose project' })
+        .getByRole('button', { name: 'Create project' })
+        .click();
+    };
+
+    await chooseProject();
+    const dialog = page.getByRole('dialog', { name: 'New Project' });
+    await expect(
+      dialog.getByRole('radio', { name: 'Blank Project' }),
+    ).toBeChecked();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(prompt).toHaveValue('Keep this first message');
+
+    await chooseProject();
+    await dialog.getByPlaceholder('My Project').fill('Draft Project');
+    const create = dialog.getByRole('button', { name: 'Create', exact: true });
+    await expect(create).toBeInViewport({ ratio: 1 });
+    await create.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      draft.getByRole('button', { name: 'Project: Draft Project' }),
+    ).toBeVisible();
+    await expect(prompt).toHaveValue('Keep this first message');
+  });
+
   test('Git recommendation applies one canonical starter request before landing the project', async ({
     page,
   }) => {

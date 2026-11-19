@@ -188,9 +188,11 @@ type ChipMenu = {
  */
 export function HomeStartComposer({
   compact = false,
+  firstSession = false,
   projectSlug,
 }: {
   compact?: boolean;
+  firstSession?: boolean;
   /** A Project page fixes its context without rebinding Home or the dock. */
   projectSlug?: string;
 }) {
@@ -548,6 +550,8 @@ export function HomeStartComposer({
     <div hidden={!projectSlug && isDockOpen}>
       <StartComposer
         compact={compact}
+        heading={firstSession ? 'Start your first conversation' : undefined}
+        headingLevel={firstSession ? 1 : 2}
         textareaRef={textareaRef}
         prompt={prompt}
         onPromptChange={(value) => {

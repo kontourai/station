@@ -444,9 +444,13 @@ function NewProjectForm({
 export function NewProjectModalContent({
   state,
   onClose,
+  historyMode,
+  returnFocusTarget,
 }: {
   state: NewProjectModalState;
   onClose: () => void;
+  historyMode: 'route' | 'entry';
+  returnFocusTarget?: HTMLElement | null;
 }) {
   const { starter } = state;
   const browsingLayouts = starter.showLayoutBrowser;
@@ -504,7 +508,8 @@ export function NewProjectModalContent({
     <ResponsiveDialogSurface
       layer="dialog"
       onClose={dismiss}
-      historyMode="route"
+      historyMode={historyMode}
+      returnFocusTarget={returnFocusTarget}
       initialFocusRef={nameRef}
       initialFocusPolicy="desktop"
       ariaLabelledBy={

@@ -36,6 +36,9 @@ without adding a model API key:
    the Project. Operator setup is saved across reloads; reopen **New Project** to
    check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
    and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
+   From a chat draft, open its Project picker and choose **Create project**.
+   Enter a name for a blank Project or choose what to start with. Station
+   selects the created Project and keeps the draft ready to send.
 5. To talk to the built-in **Station Assistant** using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Open the Agent/model control beside **Start** or **Send**. Under **Agent**,
