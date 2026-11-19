@@ -1,10 +1,11 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { ensureInvocationTerminalRetirement } from '../../../domain/migrations/018-invocation-terminal-retirement.js';
 import {
   EventStore,
   NativeInvocationStartupUnavailableError,
@@ -12,15 +13,22 @@ import {
 import { RunService } from '../run-service.js';
 
 const require = createRequire(import.meta.url);
-const { DatabaseSync } = require('node:sqlite') as {
-  DatabaseSync: new (
-    path: string,
-  ) => {
-    close(): void;
-    exec(sql: string): void;
-    prepare(sql: string): { all(...args: unknown[]): unknown[] };
-  };
-};
+const { constants, DatabaseSync } =
+  require('node:sqlite') as typeof import('node:sqlite');
+
+function createLegacyPreparedTurns(db: InstanceType<typeof DatabaseSync>) {
+  db.exec(`CREATE TABLE orchestration_prepared_turns (
+    invocation_id TEXT PRIMARY KEY, boundary_id TEXT NOT NULL UNIQUE,
+    thread_id TEXT NOT NULL, client_turn_id TEXT,
+    input_digest TEXT NOT NULL, intent_digest TEXT NOT NULL,
+    envelope_json TEXT NOT NULL, byte_length INTEGER NOT NULL CHECK(byte_length >= 0),
+    prepared_at TEXT NOT NULL
+  );
+  INSERT INTO orchestration_prepared_turns VALUES (
+    'legacy-invocation','legacy-boundary','legacy-thread',NULL,
+    'legacy-input','legacy-intent','{}',2,'2026-08-14T00:00:00.000Z'
+  );`);
+}
 
 const stores: EventStore[] = [];
 
@@ -63,6 +71,7 @@ async function spawnNativeInvocationOwner(
 
 async function constructNativeInvocationStore(
   databasePath: string,
+  raceDirectory: string,
 ): Promise<'constructed'> {
   const eventStorePath = new URL('../event-store.ts', import.meta.url).pathname;
   const child = spawn(
@@ -73,9 +82,29 @@ async function constructNativeInvocationStore(
       '--input-type=module',
       '-e',
       `import { EventStore } from ${JSON.stringify(eventStorePath)};
+       import { DatabaseSync } from 'node:sqlite';
+       import { readdirSync, writeFileSync } from 'node:fs';
+       import { join } from 'node:path';
+       const originalExec = DatabaseSync.prototype.exec;
+       const sleep = new Int32Array(new SharedArrayBuffer(4));
+       DatabaseSync.prototype.exec = function (sql) {
+         // Expose an unprotected check/ALTER race deterministically. A
+         // transactional migration goes straight to the real SQLite driver.
+         if (sql === 'ALTER TABLE orchestration_prepared_turns ADD COLUMN terminal_retirement TEXT'
+             && !this.isTransaction) {
+           writeFileSync(join(process.argv[2], String(process.pid)), '');
+           const deadline = Date.now() + 2500;
+           while (readdirSync(process.argv[2]).length < 2) {
+             if (Date.now() >= deadline) throw new Error('Both unprotected ALTERs must arrive');
+             Atomics.wait(sleep, 0, 0, 10);
+           }
+         }
+         return originalExec.call(this, sql);
+       };
        const store = new EventStore(process.argv[1]);
        store.close();`,
       databasePath,
+      raceDirectory,
     ],
     { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
   );
@@ -315,11 +344,13 @@ describe('native invocation runs', () => {
     });
   });
 
-  test('upgrades a legacy database before adding the terminal retention index under concurrent constructors', async () => {
-    const path = join(
-      mkdtempSync(join(tmpdir(), 'native-invocation-legacy-sequence-')),
-      'events.sqlite',
+  test('upgrades legacy prepared turns and retirement indexes under two concurrent constructors', async () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'native-invocation-legacy-sequence-'),
     );
+    const path = join(directory, 'events.sqlite');
+    const raceDirectory = join(directory, 'unprotected-alters');
+    mkdirSync(raceDirectory);
     const legacy = new DatabaseSync(path);
     legacy.exec(`CREATE TABLE native_invocation_runs (
       run_id TEXT PRIMARY KEY,
@@ -335,15 +366,14 @@ describe('native invocation runs', () => {
       completed_at TEXT,
       failure_message TEXT
     )`);
+    createLegacyPreparedTurns(legacy);
     legacy.close();
 
     const outcomes = await Promise.all([
-      constructNativeInvocationStore(path),
-      constructNativeInvocationStore(path),
+      constructNativeInvocationStore(path, raceDirectory),
+      constructNativeInvocationStore(path, raceDirectory),
     ]);
-    // At least one must have completed, or the migration assertions below
-    // would be proving nothing.
-    expect(outcomes).toContain('constructed');
+    expect(outcomes).toEqual(['constructed', 'constructed']);
     const upgraded = new DatabaseSync(path);
     const columns = upgraded
       .prepare('PRAGMA table_info(native_invocation_runs)')
@@ -351,11 +381,58 @@ describe('native invocation runs', () => {
     const indexes = upgraded
       .prepare('PRAGMA index_list(native_invocation_runs)')
       .all() as Array<{ name: string }>;
+    const retained = upgraded
+      .prepare(
+        'SELECT invocation_id, envelope_json, terminal_retirement FROM orchestration_prepared_turns',
+      )
+      .get();
     upgraded.close();
+    expect(retained).toEqual({
+      invocation_id: 'legacy-invocation',
+      envelope_json: '{}',
+      terminal_retirement: null,
+    });
     expect(columns.map((column) => column.name)).toContain('terminal_sequence');
     expect(indexes.map((index) => index.name)).toContain(
       'idx_native_invocation_runs_terminal_sequence',
     );
+  });
+
+  test('a refused retirement-schema commit rolls back its ALTER and permits retry', () => {
+    const db = new DatabaseSync(':memory:');
+    try {
+      createLegacyPreparedTurns(db);
+      db.setAuthorizer((action, name) =>
+        action === constants.SQLITE_TRANSACTION && name === 'COMMIT'
+          ? constants.SQLITE_DENY
+          : constants.SQLITE_OK,
+      );
+      expect(() => ensureInvocationTerminalRetirement(db)).toThrow(
+        /not authorized/,
+      );
+      expect(db.isTransaction).toBe(false);
+      const columns = () =>
+        db
+          .prepare('PRAGMA table_info(orchestration_prepared_turns)')
+          .all()
+          .map((row) => row.name);
+      expect(columns()).not.toContain('terminal_retirement');
+
+      db.setAuthorizer(null);
+      ensureInvocationTerminalRetirement(db);
+      expect(
+        columns().filter((name) => name === 'terminal_retirement'),
+      ).toHaveLength(1);
+      expect(
+        db
+          .prepare('SELECT invocation_id FROM orchestration_prepared_turns')
+          .get(),
+      ).toEqual({
+        invocation_id: 'legacy-invocation',
+      });
+    } finally {
+      db.close();
+    }
   });
 
   test('retains every active run and only the newest 1,000 durable terminals across restart', () => {
