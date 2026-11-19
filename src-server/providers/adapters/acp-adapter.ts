@@ -4860,6 +4860,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           outcome: mapAcpDecisionToOutcome('decline', params.options),
         };
       }
+      let guardianReason: string | undefined;
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -4910,8 +4911,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             outcome: mapAcpDecisionToOutcome('decline', params.options),
           };
         }
-        if (decision.behavior === 'ask' && decision.required)
+        if (decision.behavior === 'ask' && decision.required) {
           needsPerson = true;
+          guardianReason = decision.guardianReason;
+        }
         // `defer` and `ask` use ACP's existing approval flow below.
       } else if (
         toolName &&
@@ -4992,6 +4995,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         method: 'request.opened',
         requestType: 'approval',
         title: params.toolCall?.title ?? 'Allow tool call',
+        ...(guardianReason ? { guardianReason } : {}),
         payload: {
           toolCallId: params.toolCall?.toolCallId,
           // The programmatic name, when the engine reports one: it is what

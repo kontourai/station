@@ -4077,6 +4077,9 @@ export class CodexAdapter implements ProviderAdapterShape {
         method: 'request.opened',
         requestType: 'approval',
         title: `Allow ${tool}`,
+        ...(decision.behavior === 'ask' && decision.guardianReason
+          ? { guardianReason: decision.guardianReason }
+          : {}),
         payload: { toolName: name, toolInput: args },
       });
     });

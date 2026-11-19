@@ -1963,6 +1963,78 @@ setInterval(() => {}, 1000);`,
       new Set(['explicit']),
     );
   });
+  test.each([30, 31])(
+    'keeps direct UI importers only when all fit alongside %i explicit suites',
+    (explicitCount) => {
+      const root = makeTempDir('station-deferred-ui-importers-');
+      const component = 'src-ui/src/components/modals/NewChatModal.tsx';
+      const directPaths = [
+        'src-ui/src/__tests__/NewChatModalEngineChips.test.tsx',
+        'src-ui/src/__tests__/NewChatModalWorkspaceHint.test.tsx',
+      ];
+      const write = (path: string, source: string) => {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), source);
+      };
+      write(component, 'export const NewChatModal = () => null;');
+      write('src-ui/src/__tests__/NewChatModal.tsx', 'export {};');
+      write(
+        directPaths[0],
+        "import { NewChatModal } from '@/components/modals/NewChatModal';",
+      );
+      write(
+        directPaths[1],
+        "const modal = await import('../components/modals/NewChatModal.js');",
+      );
+      write(
+        'src-ui/src/__tests__/DifferentModal.test.tsx',
+        "import './NewChatModal'; // This name resolves to a different file.",
+      );
+      write(
+        'config/product-laws.json',
+        JSON.stringify(loadProductLawManifest()),
+      );
+      const git = (args: string[]) =>
+        execFileSyncBounded('git', args, { cwd: root, windowsHide: true });
+      git(['init', '--quiet']);
+      git(['add', '.']);
+      git([
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '--quiet',
+        '-m',
+        'local selector fixture',
+      ]);
+      appendFileSync(join(root, component), '\n');
+      write('docs-private/notes.bin', 'genuinely unrouted path');
+      const explicit = Array.from({ length: explicitCount }, (_, index) => {
+        const path = `src-ui/src/__tests__/Explicit-${index}.test.ts`;
+        write(path, 'export {};');
+        return path;
+      });
+
+      const { selection, executionSelection, localUiImporters } =
+        prepareChangedSelection('HEAD', { root });
+      expect(selection.lanes).toContainEqual(
+        expect.objectContaining({ id: 'ci-fast' }),
+      );
+      expect(executionSelection.relatedPaths).toEqual([]);
+      expect(localUiImporters?.tests.map(({ path }) => path)).toEqual(
+        directPaths,
+      );
+      const fits = explicitCount === 30;
+      expect(localUiImporters?.disposition).toBe(
+        fits ? 'selected' : 'cap-exceeded',
+      );
+      expect(executionSelection.tests.map(({ path }) => path).sort()).toEqual(
+        [...explicit, ...(fits ? directPaths : [])].sort(),
+      );
+    },
+  );
+
   test('keeps broad related-test expansion deferred', async () => {
     const run = vi.fn();
     const result = await runChangedVerification(['--base=origin/main'], {
