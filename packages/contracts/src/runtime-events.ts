@@ -1292,9 +1292,11 @@ export type FlowGateVerdict =
   | 'not-evaluated';
 
 /** The older empty-outcome fallback looked like a pass without naming a gate. */
-export function isUnevaluatedFlowGateObservation(
-  event: Pick<FlowGateVerdictEvent, 'verdict' | 'gateId' | 'summary'>,
-): boolean {
+export function isUnevaluatedFlowGateObservation(event: {
+  verdict?: unknown;
+  gateId?: unknown;
+  summary?: unknown;
+}): boolean {
   return (
     event.verdict === 'not-evaluated' ||
     (event.verdict === 'pass' &&

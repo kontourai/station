@@ -11,12 +11,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { attachEvidence } from '@kontourai/flow';
 import { Hono } from 'hono';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { FlowGateVerdictCard } from '../../../../src-ui/src/components/flow/FlowGateVerdictCard';
+import { readJson } from '../../../__test-utils__/read-json.js';
+import {
+  PINNED_CONFIG,
+  READINESS_DEFINITION,
+  readinessBundle,
+} from '../../../__test-utils__/readiness-bundle.js';
 import { createFlowRunRoutes } from '../../../routes/evidence/flow-runs.js';
 import { buildSyntheticTrustBundle } from '../../evidence/trust-bundle.js';
+import type { FlowEvaluationResult } from '../flow-run-service.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   flowRunsStarted: { add: vi.fn() },
@@ -140,87 +144,6 @@ describe('FlowRunService', () => {
         ? readinessBundle('veritas')
         : buildSyntheticTrustBundle({ claimType, subjectId: 'run-1', value });
     return writeEvidenceFile(cwd, name, bundle);
-  }
-
-  function readinessBundle(
-    producerId: string,
-    authorityRef = 'authority:readiness',
-  ) {
-    const now = '2026-08-25T00:00:00.000Z';
-    return {
-      schemaVersion: 7,
-      source: 'fixture',
-      producerId,
-      claims: [
-        {
-          id: 'claim.readiness',
-          subjectType: 'change',
-          subjectId: 'r1',
-          facet: 'governance',
-          claimType: 'governance.merge-readiness',
-          fieldOrBehavior: 'readiness',
-          value: 'pass',
-          createdAt: now,
-          updatedAt: now,
-          currentIntegrityRef: 'commit:fixture',
-          verificationPolicyId: 'policy.readiness',
-        },
-      ],
-      evidence: [
-        {
-          id: 'evidence.readiness',
-          claimId: 'claim.readiness',
-          evidenceType: 'test_output',
-          method: 'validation',
-          sourceRef: 'fixture:readiness',
-          excerptOrSummary: 'Readiness checks passed for the fixture commit.',
-          observedAt: now,
-          collectedBy: producerId,
-          integrityRef: 'commit:fixture',
-          supportStrength: 'entails',
-          passing: true,
-        },
-      ],
-      policies: [
-        {
-          id: 'policy.readiness',
-          claimType: 'governance.merge-readiness',
-          requiredEvidence: ['test_output'],
-          requiredMethods: ['validation'],
-          requiresCorroboration: false,
-          acceptanceCriteria: ['readiness checks pass for this commit'],
-          reviewAuthority: 'veritas',
-          validityRule: { kind: 'commit' },
-          stalenessTriggers: ['commit changes'],
-          conflictRules: [],
-          impactLevel: 'high',
-        },
-      ],
-      events: [
-        {
-          id: 'event.readiness',
-          claimId: 'claim.readiness',
-          status: 'verified',
-          actor: 'veritas',
-          method: 'review',
-          evidenceIds: ['evidence.readiness'],
-          createdAt: now,
-          verifiedAt: now,
-        },
-      ],
-      authorityTrace: [
-        {
-          id: 'trace.readiness',
-          subject: { subjectType: 'change', subjectId: 'r1' },
-          actorRef: 'veritas',
-          authorityType: 'system',
-          authorityRef,
-          sourceRef: 'policy:readiness',
-          observedAt: now,
-          claimIds: ['claim.readiness'],
-        },
-      ],
-    };
   }
 
   describe('detectWorkspace', () => {
@@ -1071,43 +994,6 @@ describe('FlowRunService', () => {
 
   describe('trusted producer pinning via .flow/config.json', () => {
     /** Flow owns trusted producer and rich authority policy in Flow 5.1. */
-    const PINNED_CONFIG = {
-      schema_version: '0.1',
-      trusted_producers: {
-        'governance.merge-readiness': { producers: ['veritas'] },
-      },
-      gate_overrides: {},
-    };
-
-    /** Single readiness-gated step, same shape as station-delivery's last step. */
-    const READINESS_DEFINITION = {
-      id: 'pinned-readiness',
-      version: '1',
-      steps: [{ id: 'readiness', next: null }],
-      gates: {
-        'readiness-gate': {
-          step: 'readiness',
-          expects: [
-            {
-              id: 'merge-readiness',
-              kind: 'trust.bundle',
-              required: true,
-              description: 'Veritas merge readiness for the working tree.',
-              bundle_claim: {
-                claimType: 'governance.merge-readiness',
-                accepted_statuses: ['verified'],
-              },
-            },
-          ],
-          on_route_back: {
-            missing_evidence: 'readiness',
-            default: 'readiness',
-          },
-          route_back_policy: { max_attempts: 2, on_exceeded: 'block' },
-        },
-      },
-    };
-
     function createPinnedWorkspace(): string {
       const cwd = createWorkspace();
       writeFileSync(
@@ -1166,60 +1052,6 @@ describe('FlowRunService', () => {
       ).resolves.toBeNull();
       expect(emitWarning).not.toHaveBeenCalled();
     });
-
-    test.each([
-      'policy_unresolved',
-      'check_failed',
-      'required_evidence_missing',
-    ] as const)(
-      'renders the actual %s evidence diagnostic from the Flow receipt',
-      async (reason) => {
-        const cwd = createPinnedWorkspace();
-        const flowRunService = new FlowRunService();
-        const binding = { cwd, runId: 'r1', definitionId: 'pinned-readiness' };
-        await flowRunService.startRun(cwd, {
-          definition: binding.definitionId,
-          runId: binding.runId,
-        });
-        const bundle = readinessBundle('veritas');
-        if (reason === 'policy_unresolved') {
-          bundle.policies = [];
-          Reflect.deleteProperty(bundle.claims[0], 'verificationPolicyId');
-        } else if (reason === 'check_failed') {
-          bundle.evidence[0].passing = false;
-        } else {
-          bundle.evidence = [];
-          bundle.events[0].evidenceIds = [];
-        }
-        await flowRunService.attachEvidence(cwd, binding.runId, {
-          gate: 'readiness-gate',
-          file: writeEvidenceFile(cwd, 'fixture-bundle.json', bundle),
-          kind: 'trust.bundle',
-          producer: 'veritas',
-        });
-        const verdict = await evaluateFlowCompletionGate({
-          flowRunService,
-          binding,
-          provider: 'codex',
-          threadId: 'thread',
-        });
-        expect(verdict.verdict).toBe('route-back');
-        expect(verdict.diagnostics?.claims).toEqual([
-          expect.objectContaining({
-            expectationId: 'merge-readiness',
-            specificReason: reason,
-            surfaceGaps: expect.any(Array),
-          }),
-        ]);
-        const visible = renderToStaticMarkup(
-          createElement(FlowGateVerdictCard, { verdict }),
-        );
-        expect(visible).toContain(reason);
-        expect(visible).toContain('merge-readiness');
-        expect(visible).not.toContain('policy:readiness');
-        expect(visible).not.toContain('Flow gate passed');
-      },
-    );
 
     test('a claimed gate with unavailable routing inventory warns at attach', async () => {
       const cwd = createPinnedWorkspace();
@@ -1284,9 +1116,11 @@ describe('FlowRunService', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ gate: 'readiness-gate' }),
       });
-      const result = await reply.json();
+      const result = await readJson<{ data: FlowEvaluationResult }>(reply);
       expect(reply.status, JSON.stringify(result)).toBe(200);
-      expect(result.data.reopened).toMatchObject({
+      const reopened = result.data.reopened;
+      if (!reopened) throw new Error('Expected an observed reopen receipt');
+      expect(reopened).toMatchObject({
         gateId: 'readiness-gate',
         verdict: 'route-back',
         missing: ['merge-readiness'],
@@ -1308,7 +1142,7 @@ describe('FlowRunService', () => {
             expect.objectContaining({
               id: 'readiness-gate',
               status: 'route-back',
-              display_diagnostics: result.data.reopened.diagnostics,
+              display_diagnostics: reopened.diagnostics,
             }),
           ],
         },
