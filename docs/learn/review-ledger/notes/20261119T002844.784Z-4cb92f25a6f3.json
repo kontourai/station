@@ -1,0 +1,101 @@
+{
+  "revision": "e9df404c4f80d2a1f8e6d83481d196ac4da81ce2",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the workspace-first creation and shared start-composer callers. Blank selects managed workspace provisioning. Repository setup uses a verified acquired checkout or an explicit existing folder. Create from the Project picker preserves the current draft and selects the created Project.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat-start/StartMenus.tsx","src-ui/src/components/chat-start/StartPickerMenus.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked the workspace-first creation and shared start-composer callers. Blank selects managed workspace provisioning. Repository setup uses a verified acquired checkout or an explicit existing folder. Create from the Project picker preserves the current draft and selects the created Project.","inputs":["docs/design/portable-project-identity.md","src-ui/src/hooks/useNewProjectModalState.ts","src-ui/src/hooks/useNewProjectSubmit.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the workspace-first creation and shared start-composer callers. Blank selects managed workspace provisioning. Repository setup uses a verified acquired checkout or an explicit existing folder. Create from the Project picker preserves the current draft and selects the created Project.","inputs":["docs/guides/connections.md","src-ui/src/hooks/useNewProjectSubmit.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the workspace-first creation and shared start-composer callers. Blank selects managed workspace provisioning. Repository setup uses a verified acquired checkout or an explicit existing folder. Create from the Project picker preserves the current draft and selects the created Project.","inputs":["docs/guides/starter-work.md","src-ui/src/hooks/useNewProjectModalState.ts","src-ui/src/hooks/useNewProjectSubmit.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the workspace-first creation and shared start-composer callers. Blank selects managed workspace provisioning. Repository setup uses a verified acquired checkout or an explicit existing folder. Create from the Project picker preserves the current draft and selects the created Project.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useNewProjectModalState.ts","src-ui/src/hooks/useNewProjectSubmit.ts","src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the documented Project acquisition and start-composer entry points against the shared picker, creation form and Station workspace behavior.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the documented Project acquisition and start-composer entry points against the shared picker, creation form and Station workspace behavior.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared Home and New Chat composition and the inline Project heading. The first-run heading remains accessible when the dock hides the draft. Historical captures keep their original revision.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Checked the shared Home and New Chat composition and the inline Project heading. The first-run heading remains accessible when the dock hides the draft. Historical captures keep their original revision.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Checked the shared Home and New Chat composition and the inline Project heading. The first-run heading remains accessible when the dock hides the draft. Historical captures keep their original revision.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartMenus.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/chat-start/StartPickerMenus.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/hooks/useNewProjectModalState.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/hooks/useNewProjectModalState.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/hooks/useNewProjectModalState.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/hooks/useNewProjectSubmit.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/hooks/useNewProjectSubmit.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/hooks/useNewProjectSubmit.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["src-ui/src/hooks/useNewProjectSubmit.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared Home and New Chat composition and the inline Project heading. The first-run heading remains accessible when the dock hides the draft. Historical captures keep their original revision.","inputs":["src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the shared Home and New Chat composition and the inline Project heading. The first-run heading remains accessible when the dock hides the draft. Historical captures keep their original revision.","inputs":["src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["tests/project-architecture.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the shared composer, picker and Project selection handoff. It keeps the current draft and attachments mounted; successful creation selects one Project after the Station returns it in the catalog.","inputs":["tests/project-forms.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked blank and repository creation, routed prefill, and catalog selection recovery. The standalone route still opens its Project; the inline flow selects it after the catalog observes it and retains a completed create for retry.","inputs":["tests/project-lifecycle.spec.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the shared Home and New Chat composition and the inline Project heading. The first-run heading remains accessible when the dock hides the draft. Historical captures keep their original revision.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the shared Home and New Chat composition and the inline Project heading. The first-run heading remains accessible when the dock hides the draft. Historical captures keep their original revision.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the shared Home and New Chat composition and the inline Project heading. The first-run heading remains accessible when the dock hides the draft. Historical captures keep their original revision.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}
