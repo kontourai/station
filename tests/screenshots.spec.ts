@@ -4955,12 +4955,15 @@ function roomConversationScreens(): Screen[] {
  * collapsed), a channel opened by its address, and a thread. Unread state
  * comes from the read-marker fixture.
  *
- * The phone list is shot in a tall phone frame, the whole page at once: the
- * collapsed dock overlays the bottom band of the page's scrollport, and in
- * a 844px frame some control of this page always sits behind it.
+ * The channel list is captured in a frame tall enough to show the Project's
+ * overview and its Room preview above the collapsed dock.
  */
 const CHANNEL_NAV_SCENES = ['list', 'conversation', 'thread'] as const;
 const PHONE_PAGE = { width: MOBILE.width, height: 1200 } as const;
+const DESKTOP_CHANNEL_LIST_PAGE = {
+  width: DESKTOP.width,
+  height: 1500,
+} as const;
 
 function channelNavigationScreens(): Screen[] {
   return CHANNEL_NAV_SCENES.flatMap((scene) =>
@@ -4984,7 +4987,8 @@ function channelNavigationScreens(): Screen[] {
             name: `channel-nav-${scene}-${theme}-${width}`,
             title: `Channel navigation, ${scene} — ${theme}, ${viewport.width}px`,
             path: `/projects/${slug}${query}`,
-            viewport,
+            viewport:
+              scene === 'list' && !phone ? DESKTOP_CHANNEL_LIST_PAGE : viewport,
             async beforeGoto(page) {
               request = createAuthenticatedE2ERequest(page.request);
               const createProject = async (
@@ -5143,12 +5147,13 @@ function channelNavigationScreens(): Screen[] {
 const PROJECT_LIBRARY_SCENES = ['library', 'setup'] as const;
 const PROJECT_LIBRARY_DESKTOP_PAGE = {
   width: DESKTOP.width,
-  height: 2500,
+  height: 3000,
 } as const;
 const PROJECT_SETUP_DESKTOP_PAGE = {
   width: DESKTOP.width,
-  height: 1000,
+  height: 1350,
 } as const;
+const PROJECT_SETUP_PHONE_PAGE = { width: MOBILE.width, height: 1520 } as const;
 
 function projectLibraryScreens(): Screen[] {
   return PROJECT_LIBRARY_SCENES.flatMap((scene) =>
@@ -5167,7 +5172,7 @@ function projectLibraryScreens(): Screen[] {
               : device
             : device === DESKTOP
               ? PROJECT_SETUP_DESKTOP_PAGE
-              : PHONE_PAGE;
+              : PROJECT_SETUP_PHONE_PAGE;
         const slug = `gallery-${scene}-${theme}-${device.width}`;
         const previewId =
           scene === 'library' ? 'project-library' : 'continue-in-project';
