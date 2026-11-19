@@ -1774,7 +1774,9 @@
 
     "src-ui/src/components/chat/BrowserTurnActivity.tsx",
 
-    "src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx"
+    "src-ui/src/__tests__/shortcuts-cheatsheet-layout.browser.test.tsx",
+
+    "packages/sdk/src/query-domains/projectRooms.ts"
   ],
 
   "checks": [
