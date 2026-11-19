@@ -617,6 +617,16 @@ const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
   ...[
+    'src-ui/src/pages/AppearancePage.tsx',
+    'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
+  ].map((pattern) => ({
+    pattern,
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/appearance-page-keyboard.test.ts'],
+    reason:
+      'the keyboard fixture bundles AppearancePage from a string outside the import graph',
+  })),
+  ...[
     'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
     'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
   ].map((pattern) => ({

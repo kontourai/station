@@ -1,0 +1,7 @@
+{
+  "revision": "1f87a650e9b8b9fc45438e701b0686af95292ae5",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the stopped-sidecar row after the fallback copy change. It still requires the main shell, Station details, the Restart action, and the Manage Stations route. The fixture still supplies an empty host message and asserts the current fallback.","inputs":["src-ui/src/__tests__/OnboardingGate.test.tsx"]}
+  ]
+}

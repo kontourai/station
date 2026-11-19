@@ -2748,7 +2748,7 @@ describe('OnboardingGate', () => {
       [
         'while stopped',
         bundled({ phase: 'stopped' }),
-        /local Station is stopped/,
+        'Local Station stopped. Restart it to use local server actions.',
       ],
       [
         'after a service error',

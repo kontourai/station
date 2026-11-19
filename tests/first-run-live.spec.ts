@@ -1,12 +1,15 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import type { Server } from 'node:http';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { expect, test } from './helpers/authenticated-request';
-import { LAZY_CHUNK_ALLOWANCE_MS } from './helpers/lazy-chunk-allowance';
+import type { Page } from '@playwright/test';
 import {
-  countVisibleLazyBoundaryErrors,
-  waitForLazySurface,
-} from './helpers/lazy-surface-readiness';
+  type AuthenticatedE2ERequest,
+  expect,
+  test,
+} from './helpers/authenticated-request';
+import { monitorBrowserHealth } from './helpers/browser-health';
+import { LAZY_CHUNK_ALLOWANCE_MS } from './helpers/lazy-chunk-allowance';
+import { waitForLazySurface } from './helpers/lazy-surface-readiness';
 import { waitForLocalUiAccessReadiness } from './helpers/local-ui-access-readiness';
 import {
   closeFixtureServer,
@@ -22,7 +25,6 @@ import {
   waitForRouteViewTarget,
 } from './helpers/route-view-readiness';
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MODEL = 'station-dogfood:latest';
 const REPLY = 'First live Station chat works on mobile.';
 
@@ -72,6 +74,42 @@ const CHAT_REQUEST_RECORDED_TIMEOUT_MS = STREAMED_REPLY_TIMEOUT_MS;
 
 test.use({ actionTimeout: 15_000 });
 
+async function openSetupWithoutTelemetryEndpoint(
+  page: Page,
+  request: AuthenticatedE2ERequest,
+) {
+  const [disclosure, status] = await Promise.all([
+    request.get('/api/usage-telemetry/disclosure'),
+    request.get('/api/usage-telemetry/status'),
+  ]);
+  await expect(disclosure).toBeOK();
+  await expect(status).toBeOK();
+  expect(await disclosure.json()).toMatchObject({
+    data: { endpointConfigured: false },
+  });
+  expect((await status.json()).data.authorEndpoint ?? null).toBeNull();
+
+  // A dormant fresh home presents setup as an optional Home action.
+  await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
+  await page
+    .getByTestId('first-run-home-card')
+    .getByRole('button', { name: 'Open setup' })
+    .click();
+  await expect(page.getByTestId('first-run-engines')).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
+  await expect(
+    page.getByTestId('usage-telemetry-disclosure-modal'),
+  ).toHaveCount(0);
+}
+
+function newProjectAction(page: Page) {
+  return page
+    .getByRole('region', { name: 'Work actions' })
+    .getByRole('button', { name: /New Project/ });
+}
+
 // archive#1628: a short, dedicated desktop check that a fresh temp-home server
 // boots to Home's zero-project empty state with no dead end — deliberately
 // not a full chat round-trip (no ollama fixture) so the 'first-run' bucket's
@@ -86,9 +124,21 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   page,
   authenticatedRequest,
 }) => {
-  const consoleErrors: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+  const browserHealth = await monitorBrowserHealth(page);
+  const unexpectedRejections: string[] = [];
+  page.on('response', (response) => {
+    const status = response.status();
+    if (status < 400 || status >= 500) return;
+    const method = response.request().method();
+    const { pathname } = new URL(response.url());
+    // The paired browser lacks orchestration:operate on cross-host SSH inventory.
+    if (
+      status === 403 &&
+      method === 'GET' &&
+      pathname === '/api/environments/ssh/sessions'
+    )
+      return;
+    unexpectedRejections.push(`${method} ${pathname}: ${status}`);
   });
 
   if (!baseURL) throw new Error('First-run suite requires a UI base URL');
@@ -113,34 +163,9 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
 
   await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
 
-  // UX audit RT-02, live and un-intercepted: this home was created by this
-  // run, so its `config/app.json` genuinely carries `firstRun: {status:
-  // 'pending'}` and the guided chapter opens on Home — the exact case the old
-  // `sawSetupLauncher` rule failed, twice, on a machine with a CLI installed.
-  // Nothing here patches a route; the only reason the chapter is on screen is
-  // what the server wrote when it made this home.
-  // STEP ONE IS THE DISCLOSURE, and it is the only thing on screen — the real
-  // server's real inventory, in the chapter's own dialog, with no second modal
-  // over it. Acknowledging goes to the real
-  // `/api/usage-telemetry/disclosure/acknowledgements` on this home.
-  const disclosure = page.getByTestId('first-run-disclosure');
-  await expect(disclosure).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByText('Step 1 of 1')).toBeVisible();
-  await expect(
-    page.getByTestId('usage-telemetry-disclosure-modal'),
-  ).toHaveCount(0);
-  await expect(page.locator('.responsive-surface-overlay')).toHaveCount(1);
-  await disclosure
-    .getByRole('button', { name: 'Keep usage telemetry on' })
-    .click();
-
+  await openSetupWithoutTelemetryEndpoint(page, authenticatedRequest);
   const chapter = page.getByTestId('first-run-engines');
-  await expect(chapter).toHaveCount(0);
-  await page
-    .getByTestId('first-run-home-card')
-    .getByRole('button', { name: 'Open setup' })
-    .click();
-  await expect(chapter).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('dialog')).toHaveCount(1);
   await expect(page.getByText('Step 1 of 3')).toBeVisible();
   await expect(page.getByRole('dialog').filter({ has: chapter })).toBeVisible();
 
@@ -170,10 +195,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
     timeout: 20_000,
   });
   await expect(chapter).toHaveCount(0);
-  // This home is no longer `pending`, so the standalone modal is mounted again
-  // — and stays silent, because the receipt written above is what stops it
-  // coming back. Placement decides WHERE the disclosure is made; the receipt
-  // still decides whether it is made at all.
+  // Deferring setup keeps both telemetry disclosure surfaces absent.
   await expect(
     page.getByTestId('usage-telemetry-disclosure-modal'),
   ).toHaveCount(0);
@@ -188,21 +210,19 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   await expect(startAgent).toBeDisabled();
   await goal.fill('Help me get started');
   await expect(startAgent).toBeEnabled();
-  const openLocalProject = page.getByRole('button', {
-    name: /Open local project/i,
-  });
-  await expect(openLocalProject).toBeVisible();
-  await expect(openLocalProject).toBeEnabled();
+  await expect(newProjectAction(page)).toBeVisible();
+  await expect(newProjectAction(page)).toBeEnabled();
 
   await expect(page.getByText(/^Error:/)).toHaveCount(0);
-  expect(consoleErrors).toEqual([]);
+  browserHealth.assertHealthy();
+  expect(unexpectedRejections).toEqual([]);
 });
 
 test('phone first run recovers from no provider to a real streamed reply', async ({
   baseURL,
   page,
   authenticatedRequest,
-}) => {
+}, testInfo) => {
   // Measured, not guessed (#1617). On a host under sibling load this journey
   // spent 62.3 s reaching its last step — the streamed reply — with that step's
   // own 30 s budget still ahead, so 90 s could not cover a slow reply even
@@ -301,17 +321,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await authenticatedRequest.get('/config/app')
     ).json()) as { data?: { firstRun?: { status?: string } } };
     if (firstRunStatus.data?.firstRun?.status === 'pending') {
-      const disclosure = page.getByTestId('first-run-disclosure');
-      await expect(disclosure).toBeVisible();
-      await disclosure
-        .getByRole('button', { name: 'Keep usage telemetry on' })
-        .click();
-      await expect(chapter).toHaveCount(0);
-      await page
-        .getByTestId('first-run-home-card')
-        .getByRole('button', { name: 'Open setup' })
-        .click();
-      await expect(chapter).toBeVisible();
+      await openSetupWithoutTelemetryEndpoint(page, authenticatedRequest);
       await chapter.getByRole('button', { name: 'Not now' }).click();
       await expect
         .poll(
@@ -328,16 +338,22 @@ test('phone first run recovers from no provider to a real streamed reply', async
       expect(firstRunStatus.data?.firstRun?.status).toBe('skipped');
       await expect(chapter).toHaveCount(0);
     }
-    await page.getByRole('button', { name: /Open local project/i }).click();
+    await newProjectAction(page).click();
 
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
     await page.getByRole('radio', { name: /^From a repository/ }).check();
     await page.getByText('Use an existing folder', { exact: true }).click();
+    const projectFolder = testInfo.outputPath('project-workspace');
+    mkdirSync(projectFolder, { recursive: true, mode: 0o700 });
+    execFileSync('git', ['init', '--initial-branch=main', projectFolder], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
     await page
       .locator('input[placeholder="~/code/my-project"]')
-      .fill(`${REPO_ROOT}/`);
+      .fill(projectFolder);
     await page
       .locator('input[placeholder="My Project"]')
       .fill('Mobile Dogfood');
@@ -346,7 +362,9 @@ test('phone first run recovers from no provider to a real streamed reply', async
       'true',
     );
     await page.getByRole('button', { name: 'Create', exact: true }).click();
-    await expect(page).toHaveURL(/\/projects\/mobile-dogfood$/);
+    await expect(page).toHaveURL(
+      /\/projects\/mobile-dogfood\/layouts\/coding$/,
+    );
 
     await page.evaluate(() => {
       sessionStorage.setItem(
@@ -416,12 +434,12 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // action too — and the URL and the "Connections" heading both settle OUTSIDE
     // that boundary, which is why every signal this step had was already green.
     //
-    // Scoped to `.page__actions` with an exact name, as the other Connections
-    // specs do: the picker route this click opens has a HEADING of the same name,
-    // and an unscoped substring match is one product change away from ambiguity.
-    const addModelConnection = page
-      .locator('.page__actions')
-      .getByRole('button', { name: 'Add model connection', exact: true });
+    // The phone moves this page action out of the desktop header's slot.
+    // The exact button name identifies the real action in either placement.
+    const addModelConnection = page.getByRole('button', {
+      name: 'Add model connection',
+      exact: true,
+    });
     await waitForRouteViewTarget(
       {
         viewName: 'The Connections → Models view',
@@ -469,16 +487,6 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await page.goto(
       `${baseURL}/projects/mobile-dogfood/layouts/coding?dock=open`,
     );
-    // archive#3309 pulled New chat out of the "Chat actions" overflow to a
-    // pinned far-right header icon; #1512 deleted that icon from
-    // `ChatDockMobileHeader` and handed `onNewChat` to the sheet again, so on a
-    // phone the sheet is where the affordance now is (#1606).
-    // Assert it there, then open the selection surface via the deterministic
-    // event — clicking the item takes the one-click direct path whenever
-    // exactly one runtime is chat-ready, which is this fixture once the Ollama
-    // connection above is healthy, and this live spec must land on the picker
-    // to choose `station` by id (same pattern as
-    // new-chat-mobile-context-sheet.spec.ts's openNewChat).
     // #1642: this goto re-mounts the dock, so it passes through the same layout
     // gate as the first one and gets the same wait. Waiting for the region before
     // the header control inside it also puts the two in the order they can
@@ -503,30 +511,33 @@ test('phone first run recovers from no provider to a real streamed reply', async
       },
       PROJECT_LAYOUT_READINESS_TIMEOUT_MS,
     );
+    // The mobile dock opens on Inbox without an active conversation.
+    // Selecting the seeded chat reveals that conversation's actions.
+    const taskDialog = page.getByRole('region', { name: 'Inbox', exact: true });
+    await waitForLazySurface(
+      page,
+      {
+        surfaceName: 'The Inbox on the reopened Coding layout',
+        surface: taskDialog,
+        surfaceId: 'mobile-inbox',
+      },
+      LAZY_CHUNK_ALLOWANCE_MS,
+    );
+    await taskDialog
+      .getByRole('button', {
+        name: 'Station Assistant Chat, Mobile Dogfood',
+        exact: true,
+      })
+      .click();
+    await expect(taskDialog).toBeHidden();
     const chatActions = page.getByRole('button', {
       name: 'Chat actions',
       exact: true,
     });
     await expect(chatActions).toBeVisible();
-    // Counted BEFORE the click: `LazyBoundary`'s failure text is the same constant
-    // everywhere, so only a failure that APPEARS across this interaction can be
-    // attributed to this sheet. The dock's own prewarmed boundary rejects exactly
-    // when the host is unreachable, and it sorts before these portaled sheets.
-    const boundaryErrorsBeforeChatActions =
-      await countVisibleLazyBoundaryErrors(page);
     await chatActions.click();
     const chatActionsMenu = page.getByRole('menu', { name: 'Chat actions' });
-    // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`,
-    // kept out of the entry bundle), so its FIRST open is a module fetch that
-    // renders nothing while it is in flight. Playwright's 5s expect default is
-    // not a budget for that on a loaded host — observed pending at 5s with the
-    // trigger already `aria-expanded`.
-    //
-    // #1642: 15 s did not settle it either, and a bare wait on the menu cannot
-    // say why — a chunk that REJECTS looks exactly like a chunk that is slow.
-    // Watch the boundary's failure state alongside the menu so the two are
-    // different reports, and hand the wait the trigger's `aria-expanded` so its
-    // timeout can at least say whether the click was taken.
+    // Report a rejected Chat actions boundary separately from a delayed open.
     await waitForLazySurface(
       page,
       {
@@ -535,90 +546,29 @@ test('phone first run recovers from no provider to a real streamed reply', async
         openIndicator: page.locator(
           'button[aria-label="Chat actions"][aria-expanded="true"]',
         ),
-        baselineUnavailableCount: boundaryErrorsBeforeChatActions,
+        surfaceId: 'chat-actions',
       },
       LAZY_CHUNK_ALLOWANCE_MS,
     );
-    await expect(
-      chatActionsMenu.getByRole('menuitem', { name: 'New chat', exact: true }),
-    ).toBeVisible();
-    await page.keyboard.press('Escape');
-    // The picker must open over a closed sheet, not under its overlay.
+    await chatActionsMenu
+      .getByRole('menuitem', { name: 'New chat', exact: true })
+      .click();
     await expect(chatActionsMenu).toHaveCount(0);
-    await page.evaluate(() =>
-      window.dispatchEvent(new Event('station:open-new-chat')),
-    );
-    // The row also contains an engine chip, so rendered text is not a unique
-    // identity. Select the stable agent id exposed by the picker instead.
-    const stationAgent = page.locator(
-      '.new-chat-modal__agent[data-agent-slug="station"]',
-    );
-    await expect(stationAgent).toBeVisible({ timeout: 20_000 });
-    await stationAgent.click();
-    const currentChat = new URL(page.url()).searchParams.get('chat');
-    expect(currentChat).toBeTruthy();
-    const taskSwitcher = page.getByRole('button', {
-      name: /^(Inbox|Back to chat)$/,
-    });
-    const taskDialog = page.getByRole('region', { name: 'Inbox', exact: true });
-    // Await the inbox's lazy boundary before acting on its rows.
-    const openTaskSwitcher = async (occasion: string) => {
-      // Counted before each click, for the same reason as the sheet above: only a
-      // boundary failure that appears across THIS interaction is this sheet's.
-      const boundaryErrorsBefore = await countVisibleLazyBoundaryErrors(page);
-      await taskSwitcher.click();
-      await waitForLazySurface(
-        page,
-        {
-          surfaceName: `The Inbox (${occasion})`,
-          surface: taskDialog,
-          baselineUnavailableCount: boundaryErrorsBefore,
-        },
-        LAZY_CHUNK_ALLOWANCE_MS,
-      );
-    };
-    await openTaskSwitcher('first open');
-    const taskRows = taskDialog.locator('.chat-dock-inbox__item');
-    // NOT given a budget, on purpose, and #1690 is why: the sheet renders
-    // `Empty label="No chats yet."` whenever it has no rows, with no pending
-    // branch beside it, while the three reads behind `taskItems` all default to
-    // an empty array in flight. "Still asking" and "there are none" are the same
-    // pixels, so no number can be right here — too small and the query has not
-    // answered, too large and it waits out a genuine empty result. The wait has
-    // nothing to wait on until the product derives the distinction. Leaving the
-    // runner default in place keeps that visible instead of dressing it up.
-    await expect(taskRows).toHaveCount(2);
+    const draft = page
+      .getByRole('region', { name: 'New chat', exact: true })
+      .getByRole('form', { name: 'Start work' });
+    // The single runnable engine is selected by the real draft composer.
     await expect(
-      taskDialog.locator('.chat-dock-inbox__item[aria-current="true"]'),
-    ).toHaveCount(1);
-    const currentTaskIndex = await taskRows.evaluateAll((rows) =>
-      rows.findIndex((row) => row.getAttribute('aria-current') === 'true'),
-    );
-    expect(currentTaskIndex).toBeGreaterThanOrEqual(0);
-    await taskDialog
-      .locator('.chat-dock-inbox__item:not([aria-current="true"])')
-      .click();
-    await expect(taskDialog).toBeHidden();
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('chat'))
-      .not.toBe(currentChat);
-    await openTaskSwitcher('reopened to return to the first task');
-    await taskRows.nth(currentTaskIndex).click();
-    await expect(taskDialog).toBeHidden();
-    await openTaskSwitcher('reopened to read back the restored selection');
-    await expect(taskRows.nth(currentTaskIndex)).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
-    await page
-      .getByRole('button', { name: 'Back to chat', exact: true })
-      .click();
-
-    const composer = page.locator('textarea[placeholder*="Type a message"]');
-    await expect(composer).toBeVisible();
-    await composer.fill('Confirm the live first-run path');
-    await expect(composer).toHaveValue('Confirm the live first-run path');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
+      draft.getByRole('button', {
+        name: `Station Assistant · ${MODEL}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    const goal = draft.getByRole('textbox', {
+      name: 'What would you like done?',
+    });
+    await goal.fill('Confirm the live first-run path');
+    await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await expect
       .poll(() => chatRequests.length, {
         timeout: CHAT_REQUEST_RECORDED_TIMEOUT_MS,
@@ -637,6 +587,69 @@ test('phone first run recovers from no provider to a real streamed reply', async
         }),
       ]),
     });
+
+    const currentChat = new URL(page.url()).searchParams.get('chat');
+    expect(currentChat).toBeTruthy();
+    const taskSwitcher = page.getByRole('button', {
+      name: /^(Inbox|Back to chat)$/,
+    });
+    // Await the inbox's lazy boundary before acting on its rows.
+    const openTaskSwitcher = async (occasion: string) => {
+      await taskSwitcher.click();
+      await waitForLazySurface(
+        page,
+        {
+          surfaceName: `The Inbox (${occasion})`,
+          surface: taskDialog,
+          surfaceId: 'mobile-inbox',
+        },
+        LAZY_CHUNK_ALLOWANCE_MS,
+      );
+    };
+    await openTaskSwitcher('first open');
+    const taskRows = taskDialog.locator('.chat-dock-inbox__item');
+    // NOT given a budget, on purpose, and #1690 is why: the sheet renders
+    // `Empty label="No chats yet."` whenever it has no rows, with no pending
+    // branch beside it, while the three reads behind `taskItems` all default to
+    // an empty array in flight. "Still asking" and "there are none" are the same
+    // pixels, so no number can be right here — too small and the query has not
+    // answered, too large and it waits out a genuine empty result. The wait has
+    // nothing to wait on until the product derives the distinction. Leaving the
+    // runner default in place keeps that visible instead of dressing it up.
+    await expect(taskRows).toHaveCount(2);
+    const selectedRow = taskDialog.locator(
+      '.chat-dock-inbox__item[aria-current="true"]',
+    );
+    await expect(selectedRow).toHaveCount(1);
+    // Activation can reorder the collection. Track the row's identity.
+    const currentRowKey = await selectedRow.evaluate((button) =>
+      button.closest('[data-row-key]')?.getAttribute('data-row-key'),
+    );
+    expect(currentRowKey).toBeTruthy();
+    const originalChat = taskDialog
+      .locator(`[data-row-key=${JSON.stringify(currentRowKey)}]`)
+      .locator('.chat-dock-inbox__item');
+    await taskDialog
+      .locator('.chat-dock-inbox__item:not([aria-current="true"])')
+      .click();
+    await expect(taskDialog).toBeHidden();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('chat'))
+      .not.toBe(currentChat);
+    await openTaskSwitcher('reopened to return to the first task');
+    await originalChat.click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('chat'))
+      .toBe(currentChat);
+    await expect(taskDialog).toBeHidden();
+    await openTaskSwitcher('reopened to read back the restored selection');
+    await expect(originalChat).toHaveAttribute('aria-current', 'true');
+    await page
+      .getByRole('button', { name: 'Back to chat', exact: true })
+      .click();
+
+    await expect(page.getByText(REPLY, { exact: true })).toBeVisible();
+    expect(chatRequests).toHaveLength(1);
 
     expect(
       await page.evaluate(
