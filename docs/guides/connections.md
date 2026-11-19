@@ -56,7 +56,16 @@ settings from a check that actually reached the provider:
 - **Unreachable** — configured, but Station cannot reach it.
 
 The engine page's Status, its **Ready** step and its readiness notice show the
-same state as its row. A section tab carries an attention mark when an engine
+same state as its row. If a saved ACP engine is still checking access, wait for
+the check to finish and retry. The current list describes the latest observation.
+Starting a Session checks readiness again. A live model catalog alone does not
+verify a completed turn.
+
+If the Engine inventory cannot finish in time, try Connections again shortly.
+A CLI shown in system diagnostics is a separate PATH observation. An unavailable
+check retains the last observed presence or reports it as unknown.
+
+A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check

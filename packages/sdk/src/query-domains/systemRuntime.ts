@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { isTerminalConnectionStatus } from '@kontourai/station-contracts/http';
 import type {
+  CliPresenceEvidence,
   DevicePresentation,
   ExternalEngineReadinessProjection,
   HomeRecoveryDisclosure,
@@ -147,6 +148,7 @@ export interface SystemStatus {
     };
   };
   clis: Record<string, boolean>;
+  cliPresence?: Record<string, CliPresenceEvidence>;
   /**
    * Which machine is reading this status (station#3843 §1). Optional only
    * because an older route host does not serve it; a consumer that gets

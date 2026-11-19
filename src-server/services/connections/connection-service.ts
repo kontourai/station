@@ -224,6 +224,7 @@ class InventorySiblingAbort extends Error {
 
 /** What a runtime inventory read may start; both default to included. */
 interface RuntimeConnectionInspectionOptions {
+  signal?: AbortSignal;
   includeModelCatalog?: boolean;
   includeCommands?: boolean;
 }
@@ -1083,14 +1084,18 @@ export class ConnectionService {
     }
   }
 
-  async listConnections(): Promise<ConnectionConfig[]> {
-    const discoveryPromise = this.discoverModelConnections();
+  async listConnections(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<ConnectionConfig[]> {
+    const discoveryPromise = this.discoverModelConnections({
+      signal: options.signal,
+    });
     const modelsPromise = discoveryPromise.then((discovery) =>
       discovery.sources.map((item) => item.connection),
     );
     const [models, runtimes] = await Promise.all([
       modelsPromise,
-      this.listRuntimeConnectionsForModels(modelsPromise),
+      this.listRuntimeConnectionsForModels(modelsPromise, options),
     ]);
     return [...models, ...runtimes];
   }
@@ -1109,11 +1114,11 @@ export class ConnectionService {
    * archive#3748: `failures` travels with the rows so a caller can never mistake
    * "could not read this" for "you have none of these".
    */
-  async listModelConnectionInventory(): Promise<{
+  async listModelConnectionInventory(signal?: AbortSignal): Promise<{
     connections: ConnectionConfig[];
     failures: ConnectionInventoryFailure[];
   }> {
-    const discovery = await this.discoverModelConnections();
+    const discovery = await this.discoverModelConnections({ signal });
     return {
       connections: discovery.sources
         .map((item) => item.connection)
@@ -1122,8 +1127,10 @@ export class ConnectionService {
     };
   }
 
-  async listModelConnections(): Promise<ConnectionConfig[]> {
-    return (await this.listModelConnectionInventory()).connections;
+  async listModelConnections(
+    signal?: AbortSignal,
+  ): Promise<ConnectionConfig[]> {
+    return (await this.listModelConnectionInventory(signal)).connections;
   }
 
   /**
@@ -1283,7 +1290,7 @@ export class ConnectionService {
     connections: AgentConnectionView[];
     failures: ConnectionInventoryFailure[];
   }> {
-    const inventoryPromise = this.listModelConnectionInventory();
+    const inventoryPromise = this.listModelConnectionInventory(options.signal);
     const connections = await this.listRuntimeConnectionsForModels(
       inventoryPromise.then((inventory) => inventory.connections),
       options,
@@ -1438,10 +1445,13 @@ export class ConnectionService {
    * unregistered adapters, but still projects their clean public
    * EngineConnectionId paired with each Adapter's canonical EngineId.
    */
-  async listRuntimeConnectionCatalog(): Promise<AgentConnectionView[]> {
-    return this.listRuntimeConnectionsForModels(this.listModelConnections(), {
-      registryAuthoritative: false,
-    });
+  async listRuntimeConnectionCatalog(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<AgentConnectionView[]> {
+    return this.listRuntimeConnectionsForModels(
+      this.listModelConnections(options.signal),
+      { ...options, registryAuthoritative: false },
+    );
   }
 
   private async listRuntimeConnectionsForModels(
@@ -1461,15 +1471,18 @@ export class ConnectionService {
       registryAuthoritative?: boolean;
     } = {},
   ): Promise<AgentConnectionView[]> {
-    const [appConfig, acpConnections, models] = await Promise.all([
-      options.appConfig ?? this.getAppConfig(),
-      options.acpConnections ?? this.getACPConnections(),
-      modelsInput,
-    ]);
+    const [appConfig, acpConnections, models] = await raceWithSignal(
+      Promise.all([
+        options.appConfig ?? this.getAppConfig(),
+        options.acpConnections ?? this.getACPConnections(),
+        modelsInput,
+      ]),
+      options.signal,
+    );
     const adapters = options.adapters ?? this.getProviderAdapters();
     const registry =
       this.agentRegistry && options.registryAuthoritative !== false
-        ? await this.agentRegistry.load()
+        ? await raceWithSignal(this.agentRegistry.load(), options.signal)
         : undefined;
     const inspector = createConnectionInspector({
       adapters: () => adapters,

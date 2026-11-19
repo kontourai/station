@@ -80,6 +80,14 @@ export interface DevicePresentation {
  * unavailable, never served as one. `shaSource` names what computed `sha`: a
  * checkout-derived value must not read as the build's identity.
  */
+/** Last measured CLI presence, separate from permission to launch an engine. */
+export interface CliPresenceEvidence {
+  state: 'present' | 'absent' | 'unknown';
+  freshness: 'observed' | 'retained' | 'unknown';
+  observedAt: string | null;
+  source: 'path' | null;
+}
+
 export interface SystemRuntimeIdentity {
   instanceId: string;
   bootId: string;

@@ -70,7 +70,7 @@ describe('runtime adapter readiness', () => {
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'installed',
           category: 'required',
         },

@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 
 /**
@@ -18,15 +18,26 @@ import { readJson as json } from '../../../__test-utils__/read-json.js';
  */
 const cliDetection = vi.hoisted(() => ({
   calls: [] as Array<[string, { signal?: AbortSignal; timeoutMs?: number }?]>,
+  plan: new Map<string, () => Promise<boolean | undefined>>(),
 }));
 vi.mock('../../../utils/cli-detection.js', () => ({
-  detectCliOnPath: (
+  observeCliOnPath: (
     command: string,
     options?: { signal?: AbortSignal; timeoutMs?: number },
   ) => {
     cliDetection.calls.push([command, options]);
-    return Promise.resolve(false);
+    return cliDetection.plan.get(command)?.() ?? Promise.resolve(false);
   },
+}));
+
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  execFile: (
+    _command: string,
+    _args: string[],
+    _options: unknown,
+    callback: (error: null) => void,
+  ) => callback(null),
 }));
 
 const prerequisites = vi.hoisted(() => ({
@@ -51,7 +62,8 @@ vi.mock('../../../services/agents/skill-service.js', () => ({
   SkillService: vi.fn(),
 }));
 
-const { createSystemStatusRoutes } = await import('../system-status-routes.js');
+const { createSystemStatusRoutes, STATUS_PREREQUISITES_CACHE_TTL_MS } =
+  await import('../system-status-routes.js');
 
 function deps() {
   return {
@@ -70,6 +82,80 @@ function deps() {
 }
 
 describe('/status CLI-presence probes (station#1815)', () => {
+  beforeEach(() => {
+    cliDetection.calls.length = 0;
+    cliDetection.plan.clear();
+    prerequisites.signals.length = 0;
+  });
+  afterEach(() => vi.useRealTimers());
+
+  test('a timed-out check preserves the prior observation without renewing freshness', async () => {
+    vi.useFakeTimers();
+    cliDetection.plan.set('codex', async () => true);
+    const app = createSystemStatusRoutes(deps());
+    const read = async () => json(await app.request('/status'));
+    await read();
+    await vi.advanceTimersByTimeAsync(0);
+    const observed = await read();
+    expect(observed.prerequisitesState).toBe('ready');
+    expect(observed.cliPresence.codex).toMatchObject({
+      state: 'present',
+      freshness: 'observed',
+      source: 'path',
+    });
+    expect(observed.cliPresence.claude.state).toBe('absent');
+    const measuredAt = observed.cliPresence.codex.observedAt;
+
+    vi.setSystemTime(Date.now() + STATUS_PREREQUISITES_CACHE_TTL_MS + 1);
+    cliDetection.plan.set('codex', () => new Promise(() => {}));
+    await read();
+    await vi.advanceTimersByTimeAsync(2_000);
+    const timedOut = await read();
+    expect(timedOut.prerequisitesState).toBe('stale');
+    expect(timedOut.clis.codex).toBe(true);
+    expect(timedOut.cliPresence.codex).toEqual({
+      state: 'present',
+      freshness: 'retained',
+      source: 'path',
+      observedAt: measuredAt,
+    });
+    expect(prerequisites.signals.at(-1)?.aborted).toBe(true);
+    const callsAfterDeadline = cliDetection.calls.length;
+    await read();
+    expect(cliDetection.calls).toHaveLength(callsAfterDeadline);
+
+    cliDetection.plan.set('codex', async () => false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await read();
+    await vi.advanceTimersByTimeAsync(0);
+    const recovered = await read();
+    expect(recovered.prerequisitesState).toBe('ready');
+    expect(recovered.clis.codex).toBe(false);
+    expect(recovered.cliPresence.codex).toMatchObject({
+      state: 'absent',
+      freshness: 'observed',
+    });
+    expect(recovered.cliPresence.codex.observedAt).not.toBe(measuredAt);
+  });
+
+  test('a first failed locator has unknown presence and no observation time', async () => {
+    vi.useFakeTimers();
+    cliDetection.plan.set('codex', async () => {
+      throw new Error('locator unavailable');
+    });
+    const app = createSystemStatusRoutes(deps());
+    await app.request('/status');
+    await vi.advanceTimersByTimeAsync(0);
+    const body = await json(await app.request('/status'));
+    expect(body.prerequisitesState).toBe('stale');
+    expect(body.cliPresence.codex).toEqual({
+      state: 'unknown',
+      freshness: 'unknown',
+      source: null,
+      observedAt: null,
+    });
+  });
+
   test('carries the refresh controller into every probe, and no ceiling', async () => {
     const app = createSystemStatusRoutes(deps());
     // The refresh is fired by the request and reported through the body, so

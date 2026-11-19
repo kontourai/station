@@ -171,6 +171,11 @@ a credential, or an inference endpoint on this type. It is a display model.
 
 ### 2.3 Station already has a capability manifest — `station.model-inventory/v2`
 
+The ordinary Connections inventory has its own request deadline and may report
+a live catalog beside an unavailable observation for another engine. Fleet
+contribution reads retain their separate completeness and admission checks.
+
+
 This is the most important existing asset for #98 and it is easy to miss.
 `LaunchableModelInventory` (`packages/contracts/src/model-inventory.ts:64-71`)
 already carries, per model:

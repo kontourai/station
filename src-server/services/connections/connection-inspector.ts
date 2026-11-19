@@ -335,6 +335,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
             ? { icon: config.icon }
             : {}),
           ...(gatePartial.has(config.id) ? { inspectionPartial: true } : {}),
+          ...(liveStatus ? { acpProbeStatus: liveStatus.status } : {}),
           // `readinessReason` mirrors what `inspectAdapter` projects for
           // runtime adapters: WHY this connection is not ready, from the
           // engine's own observation. For ACP that is the probe's actual
@@ -370,7 +371,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         providerRouting: acpProviderRoutingStatus(liveStatus),
         prerequisites,
         status,
-        lastCheckedAt: null,
+        lastCheckedAt: liveStatus?.handshakeObservedAt ?? null,
       });
     }
     return connections;

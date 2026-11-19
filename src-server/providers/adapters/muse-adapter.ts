@@ -1211,8 +1211,8 @@ export class MuseAdapter implements ProviderAdapterShape {
         : EXTERNAL_ENGINE_DURABILITY,
 
       description: options.serve
-        ? 'Muse Code runtime over the local muse CLI: one `muse serve` host per session, `muse exec` per turn as the fallback.'
-        : 'Muse Code runtime over the local muse CLI, one `muse exec` per turn.',
+        ? 'Muse Code engine over the local muse CLI: one `muse serve` host per session, `muse exec` per turn as the fallback.'
+        : 'Muse Code engine over the local muse CLI, one `muse exec` per turn.',
       capabilities: [
         'agent-runtime',
         'session-lifecycle',
