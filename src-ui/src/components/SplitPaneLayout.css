@@ -1083,3 +1083,34 @@
   > .split-pane__right {
   margin-left: var(--fold-split-gap, 0px);
 }
+
+.split-pane__swipe-row {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.split-pane__swipe-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--k-panel);
+  transform: translateX(var(--swipe-action-offset, 0px));
+  transition: transform var(--motion-base) var(--ease-spring);
+}
+
+.split-pane__swipe-row[data-dragging] .split-pane__swipe-content {
+  transition: none;
+}
+
+.split-pane__swipe-actions:not([hidden]) {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  width: var(--swipe-action-width);
+}
+
+.split-pane__swipe-actions > button {
+  flex: 1;
+}

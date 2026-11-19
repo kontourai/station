@@ -51,6 +51,7 @@ export interface FileSystemBrowseResult {
 
 export interface ACPConnectionInfo {
   id: string;
+  registryId?: string;
   installerId?: string;
   installerDetected?: boolean;
   name: string;

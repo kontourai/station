@@ -990,9 +990,13 @@ export class AcpToolUpdateSupervisor {
     this.schedule();
   }
   private complete(id: string, call: CallState, status: string): void {
-    const projectedOutput = call.content?.length
-      ? call.content
-      : (call.rawOutput ?? call.content);
+    const fallBackToRenderResult =
+      stationControlToolName(call.name ?? call.title) === 'html_render' &&
+      !call.content?.length;
+    const projectedOutput =
+      call.hasContent && !fallBackToRenderResult
+        ? call.content
+        : (call.rawOutput ?? call.content);
     // What was not kept is stated wherever the result renders: in the output
     // for every output shape, and in the error text of a failed call.
     const omissions = summarizeImageOmissions(call.imageOmissions);

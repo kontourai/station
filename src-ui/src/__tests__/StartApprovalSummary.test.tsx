@@ -15,10 +15,6 @@ const connections: {
   stationApprovalRequests?: true;
 }[] = [];
 
-vi.mock('../hooks/useACPConnections', () => ({
-  useACPConnections: () => ({ data: connections }),
-}));
-
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agents,
 }));
@@ -64,7 +60,11 @@ describe('StartApprovalSummary on the engine default', () => {
     });
     render(
       <DialogHistoryHostBoundary>
-        <StartApprovalSummary agent={agent} onPick={vi.fn()} />
+        <StartApprovalSummary
+          acpConnections={connections}
+          agent={agent}
+          onPick={vi.fn()}
+        />
       </DialogHistoryHostBoundary>,
     );
     fireEvent.click(screen.getByRole('button', { name: /^Permissions: / }));

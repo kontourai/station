@@ -6060,7 +6060,7 @@ export class StationRuntime {
         resolveSessionActingPrincipal: (threadId) =>
           this.orchestrationService.resolveSessionActingPrincipal(threadId),
         delegatedAppearanceOwner: (threadId) =>
-          this.orchestrationService.delegatedAppearanceOwner(threadId),
+          this.orchestrationService.delegatedAppearanceOwner?.(threadId),
         firstStartedMetadataOfThread: (threadId) =>
           this.orchestrationService.firstStartedMetadataOfThread(threadId),
       },

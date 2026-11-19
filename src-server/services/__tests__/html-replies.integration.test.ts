@@ -130,16 +130,18 @@ test('the ACP render route records the page with its transcript event before any
   const adapter = new AcpAdapter({
     getConnections: async () => [
       {
-        id: 'agy',
-        command: 'agy',
+        id: 'fixture-acp',
+        command: 'fixture-acp',
         args: ['acp', '--process-per-session'],
-        name: 'Antigravity',
+        name: 'Fixture ACP',
         enabled: true,
       },
     ],
     processFactory: (options) =>
       new FakeAcpProcess(options) as unknown as ACPProcess,
   });
+  // The engine is scripted. Local installation and login are separate from publication.
+  vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus,
@@ -147,7 +149,7 @@ test('the ACP render route records the page with its transcript event before any
     logger: { debug: vi.fn(), warn: vi.fn() },
     resolveSessionAgent: async (input) => ({
       ...input,
-      agent: { slug: 'agy' },
+      agent: { slug: 'fixture-acp' },
     }),
   });
   const threadId = 'agy:visual';
@@ -177,7 +179,7 @@ test('the ACP render route records the page with its transcript event before any
         threadId,
         provider: 'acp',
         cwd,
-        metadata: { connectionId: 'agy', agentSlug: 'agy' },
+        metadata: { connectionId: 'fixture-acp', agentSlug: 'fixture-acp' },
       },
     });
     expect((await publish()).status).toBe(409);

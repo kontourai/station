@@ -17,6 +17,7 @@ export interface ConversationOpenRecoveryNoticeProps {
    * which.
    */
   state?:
+    | 'engine-disconnected'
     | 'missing-session'
     | 'resolved'
     | 'fork-ready'
@@ -24,6 +25,7 @@ export interface ConversationOpenRecoveryNoticeProps {
     | 'unavailable'
     | 'error'
     | 'unverified';
+  onContinue?: () => void;
   onRetry?: () => void;
   onStartNew?: () => void;
 }
@@ -35,24 +37,28 @@ export interface ConversationOpenRecoveryNoticeProps {
 export function ConversationOpenRecoveryNotice({
   title,
   state,
+  onContinue,
   onRetry,
   onStartNew,
 }: ConversationOpenRecoveryNoticeProps) {
   const verdict =
+    state === 'engine-disconnected' ||
     state === 'missing-session' ||
     state === 'resolved' ||
     state === 'fork-ready' ||
     state === 'fresh-context-ready';
   const detail =
-    state === 'missing-session'
-      ? 'Its execution session is no longer available.'
-      : verdict
-        ? 'Station could not prove this chat can continue.'
-        : // Names Retry only when Retry is on screen: a caller that cannot
-          // re-check passes no `onRetry`, and the sentence must not point at it.
-          onRetry
-          ? 'Sending is paused. Retry to check again.'
-          : 'Sending is paused.';
+    state === 'engine-disconnected'
+      ? 'Its engine is disconnected.'
+      : state === 'missing-session'
+        ? 'Its execution session is no longer available.'
+        : verdict
+          ? 'Station could not prove this chat can continue.'
+          : // Names Retry only when Retry is on screen: a caller that cannot
+            // re-check passes no `onRetry`, and the sentence must not point at it.
+            onRetry
+            ? 'Sending is paused. Retry to check again.'
+            : 'Sending is paused.';
 
   return (
     <div className="conversation-open-recovery" role="status">
@@ -62,8 +68,17 @@ export function ConversationOpenRecoveryNotice({
         </strong>{' '}
         {detail}
       </span>
-      {onRetry || onStartNew ? (
+      {onContinue || onRetry || onStartNew ? (
         <span className="conversation-open-recovery__actions">
+          {onContinue ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={onContinue}
+            >
+              Continue with another agent
+            </button>
+          ) : null}
           {onRetry ? (
             <button
               type="button"

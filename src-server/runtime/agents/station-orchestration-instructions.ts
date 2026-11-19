@@ -128,7 +128,7 @@ function orchestrationSection(
   }
   lines.push(
     'Report unavailable targets with catalog options. Change Agent or model only with user approval. Never delegate through a shell.',
-    'Brief the child on one outcome. To hand off an appearance proposal for the person, use `appearanceProposal: true` on a new local task.',
+    'Brief one outcome. Pass `appearanceProposal: true` for local appearance handoffs.',
     'Use a fresh `clientTurnId` except for identical retries. Start a new task for re-review.',
   );
   const follow: string[] = [];
@@ -148,7 +148,7 @@ function orchestrationSection(
   if (follow.length > 0) lines.push(follow.join(' '));
   if (has('wait_session')) {
     lines.push(
-      'Use `wait_session` with `sessionId` and `until: "turn-settled"`; repeat on timeout. Report the child’s actual result or blocker to the person.',
+      'Use `wait_session` until turn-settled; repeat on timeout. Report the result or blocker.',
     );
   }
   if (has('interrupt_task')) {

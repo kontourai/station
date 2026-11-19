@@ -2767,7 +2767,7 @@ export function configureRuntimeRoutes(
               threadId,
             ),
           delegatedAppearanceOwner: (threadId) =>
-            context.orchestrationService.delegatedAppearanceOwner(threadId),
+            context.orchestrationService.delegatedAppearanceOwner?.(threadId),
           firstStartedMetadataOfThread: (threadId) =>
             context.orchestrationService.firstStartedMetadataOfThread(threadId),
         },

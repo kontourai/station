@@ -625,6 +625,60 @@ describe('ACP Routes', () => {
     expect(body.data[0].hostInstall).toEqual({ command: 'official goose' });
   });
 
+  test('a saved Grok launch satisfies the built-in catalog entry without changing its id', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'grok-build',
+              name: 'Grok Build',
+              command: 'grok',
+              args: ['agent', 'stdio'],
+              icon: 'brand:grok-build',
+            },
+          ],
+        },
+      },
+    ];
+    const ctx = createMockRuntimeContext();
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [
+        {
+          id: 'grok',
+          name: 'My Grok',
+          command: '/local/bin/grok',
+          args: ['agent', 'stdio'],
+          icon: '🔌',
+        },
+      ],
+    });
+    const app = asOperator(createACPRoutes(ctx as any));
+    const catalog = await json(await app.request('/registry'));
+    expect(catalog.data).toEqual([
+      expect.objectContaining({
+        id: 'grok-build',
+        installed: true,
+        installedSource: 'user',
+      }),
+    ]);
+    const connected = await json(await app.request('/connections'));
+    expect(connected.data).toEqual([
+      expect.objectContaining({
+        id: 'grok',
+        registryId: 'grok-build',
+        icon: 'brand:grok-build',
+      }),
+    ]);
+    const install = await app.request('/registry/grok-build/install', {
+      method: 'POST',
+    });
+    expect(install.status).toBe(409);
+    expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+  });
+
   test('GET /registry reports an entry as not detected on a platform it does not launch on', async () => {
     const other = process.platform === 'darwin' ? 'linux' : 'darwin';
     providerEntries = [

@@ -72,6 +72,7 @@ import {
 import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { builtInAcpEntries, builtInAcpEntryFor } from '../acp/engine-setup.js';
 import {
   type EngineProxyRoute,
   resolveEngineProxy,
@@ -1320,6 +1321,7 @@ export class ConnectionService {
       id: EngineConnectionId;
       engineId: EngineId;
       type: string;
+      icon?: string;
     }>
   > {
     const acpConnections = await this.getACPConnections();
@@ -1331,6 +1333,7 @@ export class ConnectionService {
       id: EngineConnectionId;
       engineId: EngineId;
       type: string;
+      icon?: string;
     }> = [];
     for (const adapter of adapters) {
       // Per Adapter, never total: an Adapter whose identity cannot be read
@@ -1361,6 +1364,7 @@ export class ConnectionService {
       }
     }
     const nativeIds = nativeRuntimeConnectionIds(adapters);
+    const builtIns = builtInAcpEntries();
     for (const config of acpConnections) {
       // Parsed, never assumed: a config id that is not a clean identity has
       // no public connection, and must not abort its siblings' attribution.
@@ -1384,12 +1388,14 @@ export class ConnectionService {
       // The inspector's projection: an ACP-backed adapter claiming the
       // connection names the engine, otherwise ACP.
       const runtimeAdapter = acpConnectionRuntimeAdapter(adapters, config);
+      const icon = builtInAcpEntryFor(config, builtIns)?.icon;
       identities.push({
         id: identity.id,
         engineId: runtimeAdapter
           ? engineIdForAdapter(runtimeAdapter)
           : engineId('acp'),
         type: 'acp',
+        ...(icon && icon !== '🔌' ? { icon } : {}),
       });
     }
     return identities;

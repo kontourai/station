@@ -3198,6 +3198,19 @@ export class AcpAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    const configured = (await this.connections()).some(
+      (connection) => connection.id === record.connectionId,
+    );
+    if (
+      !configured ||
+      this.sessions.get(input.threadId) !== record ||
+      record.stopping
+    ) {
+      throw new SendTurnRefusedError(
+        'This engine is disconnected. Continue with another agent.',
+        'session_gone',
+      );
+    }
     // Orchestration waits in `whenSessionReady` before claiming the turn; a
     // caller that did not (or a start that began since) is refused
     // retryably rather than racing the start.

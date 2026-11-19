@@ -489,6 +489,7 @@ export function HomeStartComposer({
         approvalProjectDefaultUnavailable:
           selection.projectChatDefaultsUnavailable,
         approvalPick,
+        approvalConnections: acpConnections,
         onApprovalPick: setApprovalPick,
       };
   // The sidebar's colours, from the one project list it shows.

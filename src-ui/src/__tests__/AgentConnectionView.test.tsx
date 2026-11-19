@@ -1,3 +1,7 @@
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 /**
  * @vitest-environment jsdom
  */
@@ -17,6 +21,8 @@ import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { hostActionCopy } from '../components/host-action/host-action-copy';
+
+const removeAcp = vi.hoisted(() => ({ mutate: vi.fn(), reset: vi.fn() }));
 
 const operatorScope = {
   apiBase: 'https://operator.example.test',
@@ -240,6 +246,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   useDeleteACPConnectionMutation: () => ({
+    ...removeAcp,
     mutateAsync: vi.fn(),
     isPending: false,
   }),
@@ -2165,6 +2172,47 @@ describe('AgentConnectionView', () => {
     expect(clearMutate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(clearMutate).toHaveBeenCalledWith('claude');
+  });
+
+  test('removing a connected ACP engine requires confirmation and names affected Agents', async () => {
+    removeAcp.mutate.mockClear();
+    connectionQueryData = {
+      id: 'agy',
+      kind: 'agent',
+      type: 'acp',
+      name: 'Antigravity',
+      enabled: true,
+      status: 'ready',
+      capabilities: [],
+      prerequisites: [],
+      config: { icon: 'brand:antigravity' },
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    acpBridgeConnections = [{ id: 'agy', name: 'Antigravity' }];
+    await render(
+      <AgentConnectionView
+        selectedRuntimeId="agy"
+        onNavigate={vi.fn()}
+        agents={[
+          {
+            slug: agentId('drafting'),
+            name: 'Drafting',
+            execution: { agentConnectionId: engineConnectionId('agy') },
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Antigravity' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove engine' }));
+    const confirmation = screen.getByRole('alertdialog', {
+      name: 'Remove engine',
+    });
+    expect(confirmation.textContent).toContain('Drafting');
+    expect(removeAcp.mutate).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(confirmation).getByRole('button', { name: 'Remove' }),
+    );
+    expect(removeAcp.mutate).toHaveBeenCalledWith('agy');
   });
 
   test('credential recovery is manual-first, safely exposes credential entry labels, and requires explicit enrollment', async () => {

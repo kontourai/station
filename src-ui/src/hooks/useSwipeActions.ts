@@ -1,19 +1,21 @@
 import type { CSSProperties, MouseEvent, PointerEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-interface InboxSwipeOptions {
+interface SwipeActionsOptions {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   actionWidth?: number;
+  triggerSelector: string;
 }
 
-export function useInboxSwipe(
+export function useSwipeActions(
   enabled: boolean,
   {
     open: controlledOpen,
     onOpenChange,
     actionWidth = 144,
-  }: InboxSwipeOptions = {},
+    triggerSelector,
+  }: SwipeActionsOptions,
 ) {
   const [ownOpen, setOwnOpen] = useState(false);
   const [dragOffset, setDragOffset] = useState<number | null>(null);
@@ -73,11 +75,11 @@ export function useInboxSwipe(
 
   const offset = enabled ? (dragOffset ?? (open ? -actionWidth : 0)) : 0;
   const style: CSSProperties & {
-    '--inbox-swipe-offset': string;
-    '--inbox-swipe-width': string;
+    '--swipe-action-offset': string;
+    '--swipe-action-width': string;
   } = {
-    '--inbox-swipe-offset': `${offset}px`,
-    '--inbox-swipe-width': `${actionWidth}px`,
+    '--swipe-action-offset': `${offset}px`,
+    '--swipe-action-width': `${actionWidth}px`,
   };
   return {
     open,
@@ -93,7 +95,7 @@ export function useInboxSwipe(
         event.button !== 0 ||
         event.pointerType === 'mouse' ||
         !(event.target instanceof Element) ||
-        !event.target.closest('.inbox-row__open') ||
+        !event.target.closest(triggerSelector) ||
         !event.currentTarget.contains(event.target)
       )
         return;

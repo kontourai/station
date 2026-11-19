@@ -9,6 +9,7 @@ interface AgentIconProps {
   agent: {
     name: string;
     icon?: string;
+    engineIcon?: string;
     slug?: string;
     id?: string;
     iconUrl?: string;
@@ -54,7 +55,7 @@ export function AgentIcon({
     <BrandIcon
       name={agent.name}
       id={agent.slug ?? agent.id}
-      icon={agent.icon}
+      icon={agent.icon ?? (agent.iconUrl ? undefined : agent.engineIcon)}
       iconUrl={agent.iconUrl}
       engineId={agentIconEngineId(agent)}
       allowSafeImageIcon

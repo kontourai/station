@@ -4,6 +4,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
+  isAcpFamilyEngine,
   isSteerConflictCode,
 } from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -716,9 +717,8 @@ function LiveConversationBody({
           credentialState: mentionCredentialEvidence.credentialState,
         })
       : null;
-  const { data: acpConnections = [] } = useACPConnections(
-    !station || station.routeKind === 'host',
-  );
+  const { data: acpConnections = [], isSuccess: acpConnectionsVerified } =
+    useACPConnections(!station || station.routeKind === 'host');
   const activeAcpConnection = useMemo(
     () =>
       acpConnections.find(
@@ -756,7 +756,15 @@ function LiveConversationBody({
   // #2424: `unverified` refuses writes and shows the same recovery notice, but
   // is a failed check rather than a verdict — only `read-only` may say so.
   const unverifiedOpen = openPhase === 'unverified';
-  const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
+  const removedEngine =
+    (!station || station.routeKind === 'host') &&
+    acpConnectionsVerified &&
+    isAcpFamilyEngine(activeOrchestrationSession?.provider) &&
+    Boolean(activeSession.agentConnectionId) &&
+    !activeAcpConnection &&
+    !turnInFlight;
+  const recoveryOpen =
+    openPhase === 'read-only' || unverifiedOpen || removedEngine;
   const busyOpen = openPhase === 'busy';
   // A chat reopened mid-turn resolves `busy`: it cannot start a continuation,
   // but its open turn still takes Steer or Queue, as it does in the tab that
@@ -2800,9 +2808,20 @@ function LiveConversationBody({
             title:
               activeSession.conversationOpenState?.conversation.title ??
               activeSession.title,
-            state: unverifiedOpen
-              ? 'unverified'
-              : activeSession.conversationOpenState?.status,
+            state: removedEngine
+              ? 'engine-disconnected'
+              : unverifiedOpen
+                ? 'unverified'
+                : activeSession.conversationOpenState?.status,
+            onContinue:
+              !unverifiedOpen &&
+              !turnInFlight &&
+              !busyOpen &&
+              !secondaryActions?.handoffDisabled &&
+              callerMayContinue &&
+              (!station || station.routeKind === 'host')
+                ? (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
+                : undefined,
             // Retry re-reads the open (`GET /api/conversations/:id/open`),
             // the read this client already makes to see the chat. Start new
             // chat follows the server's `callerAccess.startChat` (`onNewChat`

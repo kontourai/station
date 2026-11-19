@@ -1003,7 +1003,7 @@ export function registerOperationsTools(
 
   server.tool(
     'delegate_task',
-    'Start a resumable task here or on a verified SSH Station. Local tasks default to your Project folder, if set, and stay in your Project or global space.',
+    'Start a task here or on verified SSH. Defaults to your Project.',
     {
       prompt: z.string().min(1).describe('Work to delegate'),
       clientTurnId: z
@@ -1020,9 +1020,7 @@ export function registerOperationsTools(
         .string()
         .min(1)
         .optional()
-        .describe(
-          'Project slug. Omit it and the path to use your own Project.',
-        ),
+        .describe('Defaults to your Project.'),
       projectPath: z
         .string()
         .min(1)
@@ -1044,9 +1042,7 @@ export function registerOperationsTools(
       appearanceProposal: z
         .boolean()
         .optional()
-        .describe(
-          'Let a new local child read your appearance and submit a proposal. The person previews and keeps it.',
-        ),
+        .describe('Allow a local appearance proposal.'),
       _delegation: delegationContextSchema.optional(),
       _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),

@@ -1399,6 +1399,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         : result;
     }
     const record = this.requireNative(input.threadId);
+    const configured = (await this.options.getConnections()).some(
+      (connection) => connection.id === record.cursor.connectionId,
+    );
+    if (!configured || this.requireNative(input.threadId) !== record)
+      throw new SendTurnRefusedError(
+        'This engine is disconnected. Continue with another agent.',
+        'session_gone',
+      );
     // Images go as prompt files, data URIs, as OpenCode's own ACP layer
     // sends them (`cli/src/acp/turn.ts`); other files are refused, as on ACP.
     let decoded: ReturnType<typeof decodeChatAttachments>;

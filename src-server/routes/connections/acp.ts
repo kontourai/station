@@ -43,6 +43,9 @@ import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.
 import { forgetEngineAuthStatus } from '../../services/acp/engine-auth-status.js';
 import { engineCredentials } from '../../services/acp/engine-credentials.js';
 import {
+  acpConnectionIcon,
+  builtInAcpEntries,
+  builtInAcpEntryFor,
   engineInstallerFor,
   engineSetupEntries,
 } from '../../services/acp/engine-setup.js';
@@ -229,12 +232,25 @@ function getRegistryCatalog(
     }
   }
 
+  const listings = listValidatedACPRegistryEntries();
+  const builtIns = listings
+    .filter(({ builtin }) => builtin)
+    .map(({ entry }) => entry);
+  for (const connection of installedConnections) {
+    const variant = builtInAcpEntryFor(connection, builtIns);
+    if (variant && !installedSources.has(variant.id)) {
+      installedSources.set(
+        variant.id,
+        connection.source === 'plugin' ? 'plugin' : 'user',
+      );
+    }
+  }
   const entriesById = new Map<string, ACPConnectionRegistryEntry>();
   for (const {
     entry: registryEntry,
     builtin,
     source: providerSource,
-  } of listValidatedACPRegistryEntries()) {
+  } of listings) {
     const hostInstall = installRecipeForPlatform(
       registryEntry.install,
       process.platform,
@@ -666,12 +682,19 @@ export function createACPRoutes(
   app.get('/connections', async (c) => {
     const allConnections = await installedACPConnections(ctx.configLoader);
     const status = ctx.acpBridge.getStatus();
-    const connections = allConnections.map((cfg) => ({
-      ...connectionStatusView(cfg, status),
-      ...(acpApprovalControl(cfg.command) === 'requests'
-        ? { stationApprovalRequests: true as const }
-        : {}),
-    }));
+    const builtIns = builtInAcpEntries();
+    const connections = allConnections.map((cfg) => {
+      const entry = builtInAcpEntryFor(cfg, builtIns);
+      return {
+        ...connectionStatusView(cfg, status),
+        ...(entry
+          ? { registryId: entry.id, icon: acpConnectionIcon(cfg.icon, entry) }
+          : {}),
+        ...(acpApprovalControl(cfg.command) === 'requests'
+          ? { stationApprovalRequests: true as const }
+          : {}),
+      };
+    });
     return c.json({ success: true, data: connections });
   });
 
@@ -906,6 +929,21 @@ export function createACPRoutes(
               : {}),
           });
           const existing = config.connections.find((conn) => conn.id === id);
+          if (!existing && entry.source === 'core') {
+            const builtIns = builtInAcpEntries();
+            const alias = config.connections.find(
+              (connection) =>
+                builtInAcpEntryFor(connection, builtIns)?.id === id,
+            );
+            if (alias)
+              return c.json(
+                {
+                  success: false,
+                  error: `${alias.name || alias.id} already uses this engine. Open its saved setup.`,
+                },
+                409,
+              );
+          }
           if (existing && !isDeepStrictEqual(existing, newConn)) {
             return c.json(
               {

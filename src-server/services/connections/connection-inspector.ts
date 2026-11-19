@@ -39,6 +39,11 @@ import {
 } from '../../utils/bounded-async.js';
 import { stationOwnsEngineSignIn } from '../acp/acp-engine-descriptors.js';
 import {
+  acpConnectionIcon,
+  builtInAcpEntries,
+  builtInAcpEntryFor,
+} from '../acp/engine-setup.js';
+import {
   type ACPConnectionStatus,
   acpProviderRoutingStatus,
   acpRuntimeCatalogStatus,
@@ -264,6 +269,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       ),
     );
     throwIfAborted(request.signal);
+    const builtIns = builtInAcpEntries();
     for (const config of acpConnections) {
       const engineIdValue = engineId(config.id);
       const identity = this.dependencies.publicConnection(engineIdValue);
@@ -300,6 +306,10 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       // adapter that claims it now (OpenCode, behind its Feature Preview),
       // otherwise ACP. A chat keeps the provider it started with.
       const runtimeAdapter = acpConnectionRuntimeAdapter(adapters, config);
+      const icon = acpConnectionIcon(
+        config.icon,
+        builtInAcpEntryFor(config, builtIns),
+      );
       connections.push({
         id: identity.id,
         kind: 'agent',
@@ -331,9 +341,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           // The connection's saved icon (a built-in's `brand:kiro`), so the
           // engines list draws the same mark for it connected as it does
           // while it is not connected yet.
-          ...(typeof config.icon === 'string' && config.icon
-            ? { icon: config.icon }
-            : {}),
+          ...(icon ? { icon } : {}),
           ...(gatePartial.has(config.id) ? { inspectionPartial: true } : {}),
           // `readinessReason` mirrors what `inspectAdapter` projects for
           // runtime adapters: WHY this connection is not ready, from the

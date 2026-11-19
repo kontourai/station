@@ -4,7 +4,6 @@ import { useAccountPreferences } from '../../contexts/AccountPreferencesContext'
 import { type AgentData, useAgents } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
-import { useACPConnections } from '../../hooks/useACPConnections';
 import {
   type ApprovalMode,
   acpApprovalFor,
@@ -35,6 +34,7 @@ const loadComposerModeSheet = () =>
 export function StartApprovalSummary({
   agent,
   executionAgentId,
+  acpConnections,
   projectDefault,
   projectDefaultUnavailable = false,
   pick,
@@ -42,6 +42,11 @@ export function StartApprovalSummary({
 }: {
   agent: AgentData;
   executionAgentId?: string;
+  acpConnections?: readonly {
+    id: string;
+    command?: string | null;
+    stationApprovalRequests?: true;
+  }[];
   /** The selected Project's approval layer, as the server resolved it. */
   projectDefault?: ProjectChatApprovalDefault;
   /** A Project is selected but its layer could not be read. */
@@ -59,7 +64,6 @@ export function StartApprovalSummary({
     (entry) => entry.slug === (executionAgentId ?? agent.slug),
   );
   const connectionId = actual?.execution?.agentConnectionId;
-  const { data: acpConnections } = useACPConnections(Boolean(connectionId));
   const acp = acpApprovalFor(
     acpConnections?.find((connection) => connection.id === connectionId),
   );

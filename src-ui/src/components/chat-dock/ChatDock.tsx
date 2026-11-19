@@ -4958,10 +4958,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                     startSendWaitsForUploads
                                   }
                                   secondaryActions={secondaryActions}
-                                  onOpenAgentHandoff={() =>
-                                    openConversationHandoff(
-                                      composerAgentTriggerRef.current,
-                                    )
+                                  onOpenAgentHandoff={
+                                    handoffDisabledReason
+                                      ? undefined
+                                      : () =>
+                                          openConversationHandoff(
+                                            composerAgentTriggerRef.current,
+                                          )
                                   }
                                   agentHandoffTriggerRef={
                                     composerAgentTriggerRef

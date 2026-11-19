@@ -800,6 +800,10 @@ export async function initializeRuntime(
     // approval rules Station sets at launch.
     acpApprovalControl: (connectionId) =>
       acpBridge.approvalControl(connectionId),
+    isAcpConnectionConfigured: async (connectionId) =>
+      (await getAcpConnections()).some(
+        (connection) => connection.id === connectionId,
+      ),
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,

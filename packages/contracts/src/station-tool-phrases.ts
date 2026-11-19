@@ -665,7 +665,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   ),
   task_record: entry('Recorded', 'Recording', 'Record', ({ args }) => {
     const kind = text(args, 'kind');
-    return kind ? `a ${kind.replaceAll('_', ' ')} on the Task` : 'a Task note';
+    return kind ? `a ${kind.replace(/_/g, ' ')} on the Task` : 'a Task note';
   }),
   task_thread_list: listed('review threads'),
   task_thread_reply: entry(
@@ -849,7 +849,7 @@ export function stationToolPhrase(
   phase: StationToolPhase,
   input: StationToolPhraseInput = {},
 ): string | undefined {
-  const phrase = Object.hasOwn(STATION_TOOL_PHRASES, tool)
+  const phrase = Object.getOwnPropertyDescriptor(STATION_TOOL_PHRASES, tool)
     ? STATION_TOOL_PHRASES[tool]
     : undefined;
   if (!phrase) return undefined;

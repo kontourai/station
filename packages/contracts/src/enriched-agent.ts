@@ -44,6 +44,8 @@ export interface EnrichedAgentProjection {
   guardrails?: AgentGuardrails;
   maxSteps?: AgentSpec['maxSteps'];
   icon?: string;
+  /** Display fallback for an Agent bound to a built-in app. */
+  engineIcon?: string;
   updatedAt?: string;
   commands?: Record<string, SlashCommand>;
   ui?: AgentUIConfig;

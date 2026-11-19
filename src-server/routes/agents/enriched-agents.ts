@@ -67,6 +67,7 @@ export interface RuntimeConnectionSummary {
 export interface EngineConnectionIdentity {
   id: EngineConnectionId;
   engineId: EngineId;
+  icon?: string;
   /** The connection's type as the inspector projects it (`'acp'` or the engine id). */
   type: string;
 }
@@ -494,6 +495,12 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       guardrails: spec.guardrails,
       maxSteps: spec.maxSteps,
       icon: spec.icon,
+      ...((engineDefault ||
+        (agentConnectionId &&
+          spec.provenance?.engineId === agentConnectionId)) &&
+      identity?.icon
+        ? { engineIcon: identity.icon }
+        : {}),
       commands: spec.commands,
       toolsConfig: spec.tools,
       execution: spec.execution,
