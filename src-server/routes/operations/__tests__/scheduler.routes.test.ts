@@ -6,12 +6,16 @@ import {
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { SSE_KEEPALIVE_INTERVAL_MS } from '../../../constants.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { SchedulerJobConflictError } from '../../../services/scheduling/builtin-scheduler.js';
 import {
   SchedulerStorageCorruptError,
   SchedulerStorageUnavailableError,
 } from '../../../services/scheduling/scheduler-ledger.js';
-import { SchedulerScheduleInvalidError } from '../../../services/scheduling/scheduler-service.js';
+import {
+  SchedulerScheduleInvalidError,
+  SchedulerService,
+} from '../../../services/scheduling/scheduler-service.js';
 
 const metricMocks = vi.hoisted(() => ({ schedulerJobRunsAdd: vi.fn() }));
 
@@ -237,6 +241,109 @@ describe('Scheduler Routes', () => {
       name: 'daily-report',
       cron: '0 9 * * *',
       enabled: true,
+    });
+  });
+
+  test('GET /status diagnoses bad rows only for the current operator', async () => {
+    const svc = {
+      ...createMockService(),
+      readBuiltinRowIssues: vi.fn(() => [
+        { jobId: 'damaged-id', name: 'damaged', reason: 'invalid-json' },
+      ]),
+    };
+    svc.getStatus = vi.fn().mockResolvedValue({
+      providers: {
+        'built-in': { ...mockStatus.providers.builtin, id: 'built-in' },
+      },
+    });
+    const app = createSchedulerRoutes(svc as any, logger as any);
+    for (const kind of ['credential', 'internal'] as const) {
+      const request = new Request('http://station.test/status', {
+        headers: { 'x-fixture-operator': 'yes', 'x-station-operator': 'yes' },
+      });
+      setRuntimeAuthenticatedRequestPrincipal(request, {
+        kind,
+        credential: 'synthetic',
+        source: 'bearer',
+        authority:
+          kind === 'internal' ? 'operator-credential' : 'device-credential',
+      });
+      const ordinary = await json(await app.fetch(request));
+      expect(ordinary.data.providers['built-in']).not.toHaveProperty(
+        'rowIssues',
+      );
+    }
+    expect(svc.readBuiltinRowIssues).not.toHaveBeenCalled();
+    const operatorRequest = new Request('http://station.test/status');
+    setRuntimeAuthenticatedRequestPrincipal(operatorRequest, {
+      kind: 'credential',
+      credential: 'synthetic-operator',
+      source: 'bearer',
+      authority: 'operator-credential',
+    });
+    const operator = await json(await app.fetch(operatorRequest));
+    expect(operator.data.providers['built-in'].rowIssues).toEqual([
+      { jobId: 'damaged-id', name: 'damaged', reason: 'invalid-json' },
+    ]);
+    expect(svc.readBuiltinRowIssues).toHaveBeenCalledOnce();
+  });
+
+  test('GET /jobs forecasts a Monday week with the stored cron zone through the DST change', async () => {
+    const svc = {
+      ...createMockService(),
+      projectWeek: SchedulerService.prototype.projectWeek,
+    };
+    svc.listJobs.mockResolvedValue([
+      {
+        ...mockJob,
+        cron: undefined,
+        schedule: {
+          kind: 'cron',
+          expr: '0 9 * * *',
+          timezone: 'America/New_York',
+        },
+      },
+    ] as any);
+    const app = createSchedulerRoutes(svc as any, logger as any);
+    const response = await app.request('/jobs?weekStart=2026-03-02');
+    expect(response.status).toBe(200);
+    const jobs = (await json(response)).data;
+    expect(jobs[0].weekOccurrences.times).toContain('2026-03-07T14:00:00.000Z');
+    expect(jobs[0].weekOccurrences.times).toContain('2026-03-08T13:00:00.000Z');
+    expect(jobs[0].schedule.timezone).toBe('America/New_York');
+    expect((await app.request('/jobs?weekStart=2026-03-08')).status).toBe(400);
+  });
+
+  test('a frequent job keeps a bounded occurrence on each visible UTC+14 day', async () => {
+    const svc = {
+      ...createMockService(),
+      projectWeek: SchedulerService.prototype.projectWeek,
+    };
+    svc.listJobs.mockResolvedValueOnce([
+      { ...mockJob, cron: '* * * * *' },
+      { ...mockJob, name: 'Monday only', cron: '0 12 * * 1' },
+    ]);
+    const app = createSchedulerRoutes(svc as any, logger as any);
+    const response = await app.request(
+      '/jobs?weekStart=2026-03-02&displayZone=Pacific%2FKiritimati',
+    );
+    expect(response.status).toBe(200);
+    const jobs = (await json(response)).data;
+    expect(jobs[0].weekOccurrences.truncated).toBe(true);
+    expect(jobs[0].weekOccurrences.times).toHaveLength(56);
+    expect(
+      jobs[0].weekOccurrences.times.filter(
+        (_: string, index: number) => index % 8 === 0,
+      ),
+    ).toEqual(
+      Array.from(
+        { length: 7 },
+        (_, index) => `2026-03-0${index + 1}T10:00:00.000Z`,
+      ),
+    );
+    expect(jobs[1].weekOccurrences).toEqual({
+      times: ['2026-03-02T12:00:00.000Z'],
+      truncated: false,
     });
   });
 

@@ -469,12 +469,21 @@ may leave them in the operating system's temporary directory, outside upload
 roots. CI and scheduled scans retain the bounded diagnostics even after failure.
 This instrumentation does not change scan scopes, concurrency, retries,
 deadlines, or the advisory floor. Missing diagnostic storage is reported without
-changing the audit outcome. The current root manifest selects the pnpm branch
-in [`collectAudits`](../../scripts/dependency-advisory-policy.mjs), whose
-[`runPnpmAudit`](../../scripts/lib/pnpm-advisory.mjs) uses bounded owned-process
-capture and a 240-second deadline. It does not call the npm phase-diagnostics
-adapter. Do not expect structured npm phase files from the normal pnpm audit
-or interpret their absence as a completed phase.
+changing the audit outcome.
+
+The current root manifest selects the pnpm branch in
+[`collectAudits`](../../scripts/dependency-advisory-policy.mjs).
+[`runPnpmAudit`](../../scripts/lib/pnpm-advisory.mjs) retains separate started
+and terminal receipts per workspace attempt in the same diagnostics directory.
+It records the wrapper's observed toolchain, launch, process, cleanup, output,
+and decode times, plus the child status or signal when observed. The terminal
+receipt lists operational failure phases, including deadline expiry.
+A decoded exit-one response can carry advisories for policy evaluation.
+Policy evaluation separately validates the decoded schema and advisory rules.
+Registry phases inside pnpm remain unknown to the wrapper. The JSON receipts
+contain bounded metadata only. Owned-process
+capture, the 240-second attempt deadline and the two-attempt operational
+retry cap retain their existing values.
 
 ## Local CodeQL SARIF policy
 

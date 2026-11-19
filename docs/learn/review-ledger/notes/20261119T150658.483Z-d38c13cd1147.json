@@ -1,0 +1,81 @@
+{
+  "revision": "ee274bb9f7602c5627b88a0f82cfc749e5e923f4",
+
+  "notes": [
+    {"path":"docs/reference/contributor-commands.md","note":"Reviewed the actual guarded pnpm install path and the contributor command generator. The hand-authored recovery section explains the configured inert deadline, retained guard, independent process settlement and tree isolation before retry. The disposable package manager exercised timeout, guarded refusal and a fresh verified retry.","inputs":["docs/reference/contributor-commands.md"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the one-response pnpm workspace audit, the legacy npm receipt path and scheduled artifact upload. New pnpm receipts contain observed wrapper timing, terminal status and operational phases. The advisory rules, exceptions, deadline and retry cap keep their existing values.","inputs":["docs/guides/dependency-security.md","scripts/__tests__/pnpm-advisory-command.test.ts","scripts/dependency-advisory-policy.mjs","scripts/dependency-lifecycle.mjs","scripts/lib/dependency-audit-diagnostics.mjs","scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":".veritas/README.md","note":"Reviewed managed setup, prebuild and workflow gate guidance against the production pnpm install owner. The timeout reports the budget and override at the existing subprocess deadline; the cooperative guard, pinned invocation, approved hooks and verification still own admission and completion.","inputs":["scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"AGENTS.md","note":"Reviewed managed setup, prebuild and workflow gate guidance against the production pnpm install owner. The timeout reports the budget and override at the existing subprocess deadline; the cooperative guard, pinned invocation, approved hooks and verification still own admission and completion.","inputs":["scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed managed setup, prebuild and workflow gate guidance against the production pnpm install owner. The timeout reports the budget and override at the existing subprocess deadline; the cooperative guard, pinned invocation, approved hooks and verification still own admission and completion.","inputs":["scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed managed setup, prebuild and workflow gate guidance against the production pnpm install owner. The timeout reports the budget and override at the existing subprocess deadline; the cooperative guard, pinned invocation, approved hooks and verification still own admission and completion.","inputs":["scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed managed setup, prebuild and workflow gate guidance against the production pnpm install owner. The timeout reports the budget and override at the existing subprocess deadline; the cooperative guard, pinned invocation, approved hooks and verification still own admission and completion.","inputs":["scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed managed setup, prebuild and workflow gate guidance against the production pnpm install owner. The timeout reports the budget and override at the existing subprocess deadline; the cooperative guard, pinned invocation, approved hooks and verification still own admission and completion.","inputs":["scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed managed setup, prebuild and workflow gate guidance against the production pnpm install owner. The timeout reports the budget and override at the existing subprocess deadline; the cooperative guard, pinned invocation, approved hooks and verification still own admission and completion.","inputs":["scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the new controlled pnpm timeout and recovery fixture alongside the prebuild test coverage. The real guard blocks a second install child until the known-settled disposable tree is isolated. Existing native prebuild controls retain their assertions.","inputs":["scripts/__tests__/dependency-lifecycle.test.ts"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Reviewed the new controlled pnpm timeout and recovery fixture alongside the prebuild test coverage. The real guard blocks a second install child until the known-settled disposable tree is isolated. Existing native prebuild controls retain their assertions.","inputs":["scripts/__tests__/dependency-lifecycle.test.ts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed actual owned child controls for decoded exit-one output, operational exit, invalid JSON, deadline expiry, separate retries and storage refusal. The fixtures use local subprocesses and verify that bounded receipts omit the injected credential and host path.","inputs":["scripts/__tests__/pnpm-advisory-command.test.ts"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the workspace audit caller, approval records and cited verification guide claims. The caller now passes each existing retry index to the pnpm owner. Scopes, findings, timeout, exceptions and refusal behavior retain their existing rules.","inputs":["scripts/dependency-advisory-policy.mjs"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed bounded atomic receipts and input redaction for both package-manager paths. Existing npm timing observations keep their schema and private-log cleanup. The pnpm receipt contains fixed wrapper phases, timing and status metadata with no child payload.","inputs":["scripts/lib/dependency-audit-diagnostics.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed bounded atomic receipts and input redaction for both package-manager paths. Existing npm timing observations keep their schema and private-log cleanup. The pnpm receipt contains fixed wrapper phases, timing and status metadata with no child payload.","inputs":["scripts/lib/dependency-audit-diagnostics.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed bounded atomic receipts and input redaction for both package-manager paths. Existing npm timing observations keep their schema and private-log cleanup. The pnpm receipt contains fixed wrapper phases, timing and status metadata with no child payload.","inputs":["scripts/lib/dependency-audit-diagnostics.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed bounded atomic receipts and input redaction for both package-manager paths. Existing npm timing observations keep their schema and private-log cleanup. The pnpm receipt contains fixed wrapper phases, timing and status metadata with no child payload.","inputs":["scripts/lib/dependency-audit-diagnostics.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed bounded atomic receipts and input redaction for both package-manager paths. Existing npm timing observations keep their schema and private-log cleanup. The pnpm receipt contains fixed wrapper phases, timing and status metadata with no child payload.","inputs":["scripts/lib/dependency-audit-diagnostics.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed bounded atomic receipts and input redaction for both package-manager paths. Existing npm timing observations keep their schema and private-log cleanup. The pnpm receipt contains fixed wrapper phases, timing and status metadata with no child payload.","inputs":["scripts/lib/dependency-audit-diagnostics.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed bounded atomic receipts and input redaction for both package-manager paths. Existing npm timing observations keep their schema and private-log cleanup. The pnpm receipt contains fixed wrapper phases, timing and status metadata with no child payload.","inputs":["scripts/lib/dependency-audit-diagnostics.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed bounded atomic receipts and input redaction for both package-manager paths. Existing npm timing observations keep their schema and private-log cleanup. The pnpm receipt contains fixed wrapper phases, timing and status metadata with no child payload.","inputs":["scripts/lib/dependency-audit-diagnostics.mjs"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the owned pnpm process, output bound, four-minute process deadline, settlement and parse behavior. The real pinned-toolchain fixture exercised an operational first exit followed by an exit-one advisory response projected across six scope views. Scope normalization and release behavior retain their rules.","inputs":["scripts/lib/pnpm-advisory.mjs"]}
+  ]
+}

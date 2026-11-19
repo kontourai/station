@@ -837,6 +837,16 @@ separate two-minute bound — the earlier `node-pty` compile measurement was abo
 handset. Re-measure the current graph and host rather than treating it as a
 present build-time guarantee.
 
+An interrupted install retains `.station-dependency-install` with its receipt
+and any incomplete `node_modules` tree. A retry refuses while that guard
+exists. Recover the checkout only when you control it and have confirmed that
+the installer and its child processes stopped. Preserve any incomplete tree
+in an owned inspection directory while the guard still holds. Move the
+failed guard to the same directory last, then run `npm run dependencies:ci`
+to install and verify a fresh tree. Use a fresh sibling checkout when the
+original install's state is uncertain.
+
+
 ## Project Structure
 
 See [Repository layout](repository-layout.md) for directory ownership, naming,

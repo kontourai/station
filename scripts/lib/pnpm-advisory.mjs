@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 import { pnpmInvocation } from '../dependency-lifecycle.mjs';
+import { createPnpmAuditAttemptDiagnostics } from './dependency-audit-diagnostics.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -102,80 +104,126 @@ export function normalizePnpmAudit(raw, graph, importer, productionOnly) {
   };
 }
 
-export async function runPnpmAudit(root) {
-  const invocation = pnpmInvocation({ cwd: root });
-  const execution = executeOwnedCommand(
-    invocation.command,
-    [...invocation.args, 'audit', '--json'],
-    spawn,
-    'pnpm audit',
-    {
-      cwd: root,
-      argv0: invocation.argv0,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  );
-  let rejectBoundary;
-  const boundary = new Promise((_, reject) => {
-    rejectBoundary = reject;
+const AUDIT_TIMEOUT_MS = 240_000;
+
+export async function runPnpmAudit(
+  root,
+  {
+    attempt = 1,
+    diagnosticsRoot = join(
+      root,
+      '.kontourai/verification-output/dependency-audit',
+    ),
+  } = {},
+) {
+  const diagnostics = createPnpmAuditAttemptDiagnostics({
+    attempt,
+    outputRoot: diagnosticsRoot,
+    timeoutMs: AUDIT_TIMEOUT_MS,
   });
-  const capture = captureOwnedProcessOutput(execution, {
-    maxBytes: 50 * 1024 * 1024,
-    onOverflow: () =>
-      rejectBoundary(new Error('pnpm audit output exceeded its bound')),
-  });
-  const timer = setTimeout(
-    () =>
-      rejectBoundary(new Error('pnpm audit exceeded its 240000ms deadline')),
-    240_000,
-  );
-  let completion;
+  const failurePhases = [];
   const failures = [];
-  try {
-    completion = await Promise.race([execution.completion, boundary]);
-    if (
-      completion.error ||
-      completion.signal ||
-      ![0, 1].includes(completion.status)
-    )
-      throw new Error(
-        `pnpm audit operational failure: ${completion.signal ? `signal ${completion.signal}` : `exit ${completion.status}`}`,
-        { cause: completion.error },
-      );
-  } catch (error) {
+  const recordFailure = (phase, error) => {
+    failurePhases.push(phase);
     failures.push(error);
-  } finally {
-    clearTimeout(timer);
+  };
+  let completion;
+  try {
+    const invocation = pnpmInvocation({ cwd: root });
+    diagnostics.enter('launch');
+    const execution = executeOwnedCommand(
+      invocation.command,
+      [...invocation.args, 'audit', '--json'],
+      spawn,
+      'pnpm audit',
+      {
+        cwd: root,
+        argv0: invocation.argv0,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const processResult = execution.completion.then((result) => {
+      completion = result;
+      return result;
+    });
+    let capture;
+    let timer;
+    let boundaryFailure;
+    diagnostics.enter('process');
     try {
-      const retired = await terminateSuiteExecution(execution, {
-        waitForSuiteSettlement,
-        terminationGraceMs: 5_000,
-        terminationForceMs: 5_000,
-        processLabel: 'pnpm audit',
+      let rejectBoundary;
+      const boundary = new Promise((_, reject) => {
+        rejectBoundary = reject;
       });
-      if (!retired.settled || retired.errors.length)
-        failures.push(
-          new Error('pnpm audit cleanup did not settle its process tree', {
-            cause: retired.errors,
-          }),
+      capture = captureOwnedProcessOutput(execution, {
+        maxBytes: 50 * 1024 * 1024,
+        onOverflow: () => {
+          boundaryFailure ??= 'output';
+          rejectBoundary(new Error('pnpm audit output exceeded its bound'));
+        },
+      });
+      timer = setTimeout(() => {
+        boundaryFailure ??= 'deadline';
+        rejectBoundary(new Error('pnpm audit exceeded its 240000ms deadline'));
+      }, AUDIT_TIMEOUT_MS);
+      const result = await Promise.race([processResult, boundary]);
+      if (result.error || result.signal || ![0, 1].includes(result.status))
+        recordFailure(
+          result.error ? 'launch' : 'process',
+          new Error(
+            `pnpm audit operational failure: ${result.signal ? `signal ${result.signal}` : `exit ${result.status}`}`,
+            { cause: result.error },
+          ),
         );
     } catch (error) {
-      failures.push(error);
+      recordFailure(boundaryFailure ?? (capture ? 'process' : 'output'), error);
+    } finally {
+      clearTimeout(timer);
+      diagnostics.enter('cleanup');
+      try {
+        const retired = await terminateSuiteExecution(execution, {
+          waitForSuiteSettlement,
+          terminationGraceMs: 5_000,
+          terminationForceMs: 5_000,
+          processLabel: 'pnpm audit',
+        });
+        if (!retired.settled || retired.errors.length)
+          recordFailure(
+            'cleanup',
+            new Error('pnpm audit cleanup did not settle its process tree', {
+              cause: retired.errors,
+            }),
+          );
+      } catch (error) {
+        recordFailure('cleanup', error);
+      }
     }
-  }
-  const output = capture.finish();
-  if (output.truncated || output.invalidUtf8)
-    failures.push(
-      new Error('pnpm audit returned oversized or invalid UTF-8 output'),
-    );
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1)
-    throw new AggregateError(failures, 'pnpm audit failed');
-  try {
-    return JSON.parse(output.stdout.text);
-  } catch {
-    throw new Error('pnpm audit did not return valid JSON');
+    diagnostics.enter('output');
+    const output = capture?.finish();
+    if (output?.truncated || output?.invalidUtf8)
+      recordFailure(
+        'output',
+        new Error('pnpm audit returned oversized or invalid UTF-8 output'),
+      );
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(failures, 'pnpm audit failed');
+    diagnostics.enter('decode');
+    try {
+      return JSON.parse(output.stdout.text);
+    } catch {
+      throw new Error('pnpm audit did not return valid JSON');
+    }
+  } catch (error) {
+    if (!failurePhases.length) failurePhases.push(diagnostics.currentPhase);
+    throw error;
+  } finally {
+    diagnostics.settle({
+      status: completion?.status,
+      signal: completion?.signal ?? null,
+      failurePhases,
+    });
   }
 }
 
