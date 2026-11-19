@@ -167,7 +167,6 @@ import { acpResumeCursorSupport } from './acp-resume-cursor-support.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
 import { credentialPrincipal } from './orchestration-request-principal.js';
 import {
-  scheduleRuntimeDailyReload,
   scheduleRuntimeEngineSpawnTmpReaping,
   scheduleRuntimePluginUpdateCheck,
   startRuntimeACPConnections,
@@ -337,7 +336,6 @@ export interface InitializeRuntimeDeps {
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
   configureRoutes: (app: any) => void;
-  reloadAgents: () => Promise<void>;
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
@@ -458,7 +456,6 @@ export async function initializeRuntime(
     ollamaAdapter,
     createVoltAgentInstance,
     configureRoutes,
-    reloadAgents,
     replaceTemplateVariables,
     checkBedrockCredentials,
     createDefaultSkillRegistryProvider,
@@ -1129,11 +1126,6 @@ export async function initializeRuntime(
         : checkOllamaAvailability,
     registerSkillRegistryProvider,
     createDefaultSkillRegistryProvider,
-  });
-
-  scheduleRuntimeDailyReload({
-    timers,
-    reloadAgents,
   });
 
   // `new VoltAgent(...)` synchronously invokes configureFullApp. Publish every

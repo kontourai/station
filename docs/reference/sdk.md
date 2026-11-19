@@ -4835,6 +4835,16 @@ list route reports that person notifications are unsupported and suggests an
 update. A mutation's 404 can also mean the notification was not found, so it
 reports both possibilities. See [person notification routes](api.md#person-notifications).
 
+### `fetchWebPushRegistration(apiBase?, options?)`
+
+Reads the selected Station's VAPID public key and its optional paired-device
+registration status. The status contains an opaque fingerprint of the
+subscription or a null fingerprint when the current device is unregistered.
+Older Stations can omit the status. Request options can carry a bound
+`requestScope` and an abort signal, including when subscribing or
+unsubscribing. The discovery read retains HTTP status and raises
+`DevicePairingRequiredError` for an explicit pairing refusal.
+
 ### `NotificationsAPI`
 
 Imperative REST wrapper with `schedule`, `list`, `dismiss`, `action`, `snooze`,
@@ -4853,11 +4863,9 @@ await api.dismiss(notificationId);
 const notifications = await api.list({ status: ['pending'] });
 ```
 
-Known scheduling limit: a `scheduledAt` more than about 24.9 days ahead exceeds
-Node's native timer range. The current service can then retain the notification
-as pending without a live wakeup until it is rescheduled or the service starts
-again. See [#2810](https://github.com/kontourai/station/issues/2810); successful
-creation alone does not establish future delivery.
+Scheduled deliveries and expiries beyond the native timer range retain their
+persisted deadlines. The server wakes at bounded intervals, rechecks the
+current record, and arms the remaining time when needed.
 
 ---
 

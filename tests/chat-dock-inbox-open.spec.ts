@@ -437,7 +437,7 @@ test('an inbox row for a stored conversation with no open chat opens its transcr
   await expect(inbox).toBeVisible();
   // The Station's session row; no chat for it is open in this browser.
   await inbox
-    .getByRole('button', { name: 'Station session, default', exact: true })
+    .getByRole('button', { name: /^Station session.*default/ })
     .click();
 
   await expect(page.getByText(ANSWER, { exact: true })).toBeVisible();

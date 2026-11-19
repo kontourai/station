@@ -18,7 +18,7 @@ import { useNewProjectSubmit } from './useNewProjectSubmit';
 interface ProjectsQueryResult {
   data?: ProjectMetadata[];
   isSuccess: boolean;
-  refetch: () => Promise<{ data?: ProjectMetadata[] }>;
+  refetch: () => Promise<{ data?: ProjectMetadata[]; isError?: boolean }>;
 }
 
 /**
@@ -54,7 +54,18 @@ function useCachedSlugConflictNotice(
   return `A project called '${resolvedName}' may already exist. Station checks with the server when you create it.`;
 }
 
-export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
+export function useNewProjectModalState(
+  isOpen: boolean,
+  onClose: () => void,
+  onCreated?: (slug: string) => void,
+) {
+  const completionActive = useRef(isOpen);
+  useEffect(() => {
+    completionActive.current = isOpen;
+    return () => {
+      completionActive.current = false;
+    };
+  }, [isOpen]);
   const { apiBase } = useApiBase();
   const { setProject, setLayout, navigate } = useNavigation();
   const requestScope = useHostRequestAuthorityScope();
@@ -130,8 +141,23 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     starterLayoutId: starter.selectedLayoutId,
     startIntent: draft.startIntent,
     verifySlugAvailability,
-    onComplete: (slug, layoutSlug, intent) => {
-      if (intent === 'knowledge' || intent === 'connections') {
+    onComplete: async (slug, layoutSlug, intent) => {
+      if (onCreated) {
+        const result = await projects.refetch();
+        if (!completionActive.current) return;
+        if (authority && !authority.isCurrent())
+          throw new Error(
+            'Station access changed. Return to the account that created this Project.',
+          );
+        if (
+          result?.isError ||
+          !result?.data?.some((project) => project.slug === slug)
+        )
+          throw new Error(
+            'Project created. Try again to select it in the draft.',
+          );
+        onCreated(slug);
+      } else if (intent === 'knowledge' || intent === 'connections') {
         setProject(slug);
         navigate(`/projects/${slug}/edit`, {
           section: intent === 'knowledge' ? 'resources' : 'tools',

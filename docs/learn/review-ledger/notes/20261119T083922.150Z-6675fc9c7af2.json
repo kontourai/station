@@ -1,0 +1,7 @@
+{
+  "revision": "bbb71829dffaddf513f695e4fb3e85c7bd0a6157",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Followed governed start refusal after a clean preflight. The refusal releases only the matching cached lease that was held when the start began. Wire replay confirms release before session creation and a new start after restoring the benign fixture. The checks evaluate the filesystem as observed at inspection time.","inputs":["docs/guides/acp.md","src-server/providers/adapters/opencode-adapter.ts"]}
+  ]
+}

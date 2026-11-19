@@ -273,6 +273,7 @@ export function StartComposer({
   compact = false,
   layout = 'hero',
   heading,
+  headingLevel = 2,
   agent,
   onOpenAgents,
   onOpenModel,
@@ -305,6 +306,7 @@ export function StartComposer({
    */
   layout?: 'hero' | 'draft';
   heading?: string;
+  headingLevel?: 1 | 2;
   agent: StartAgentChip;
   onOpenAgents: (trigger: HTMLElement) => void;
   onOpenModel?: (trigger: HTMLElement) => void;
@@ -366,6 +368,7 @@ export function StartComposer({
       ? (agent.agent?.name ?? 'Choose agent')
       : startAgentChipText(agent);
   const draft = layout === 'draft';
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
   const projectControl = (
     <>
       {project.status === 'ready' && (
@@ -419,23 +422,23 @@ export function StartComposer({
       }}
     >
       <div className="start-composer__destination">
-        <h2>
-          {heading ?? (compact ? 'Start work' : 'What would you like to do')}
-          {!compact && (
+        <Heading>
+          {heading ?? 'What would you like to do'}
+          {!heading && (
             <>
               {project.status === 'ready' && !project.isGlobal && (
                 <> in {projectControl}</>
               )}
-              {!heading && '?'}
+              ?
             </>
           )}
-        </h2>
-        {compact ||
+        </Heading>
+        {heading ||
         project.status === 'loading' ||
         (project.status === 'ready' && project.isGlobal)
           ? projectControl
           : null}
-        {!compact &&
+        {!heading &&
           !projectFixed &&
           project.status === 'ready' &&
           !project.isGlobal &&

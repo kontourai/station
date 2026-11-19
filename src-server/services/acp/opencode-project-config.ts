@@ -21,7 +21,7 @@
  * The user's own home directory and above are the user's scope, as are
  * OpenCode's global configuration directories: they are not scanned.
  */
-import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import {
@@ -343,12 +343,20 @@ function commandEntries(value: unknown, key: string): string[] {
     .map(([name]) => `${key} "${name}"`);
 }
 
+function configPathIsMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
 async function configFileFindings(path: string): Promise<string[]> {
   let size: number;
   try {
-    size = (await stat(path)).size;
-  } catch {
-    return [];
+    const info = await stat(path);
+    if (!info.isFile()) return [`${path} (Station could not inspect it)`];
+    size = info.size;
+  } catch (error) {
+    return configPathIsMissing(error)
+      ? []
+      : [`${path} (Station could not inspect it)`];
   }
   if (size > OPENCODE_CONFIG_SCAN_MAX_BYTES) {
     return [`${path} (too large for Station to check)`];
@@ -382,7 +390,9 @@ async function codeDirFindings(dotDir: string): Promise<string[]> {
     let entries: string[];
     try {
       entries = await readdir(dir);
-    } catch {
+    } catch (error) {
+      if (!configPathIsMissing(error))
+        found.push(`${dir} (Station could not inspect it)`);
       continue;
     }
     if (entries.length > 0) found.push(dir);
@@ -416,8 +426,12 @@ export async function findOpenCodeProjectCode(
     const dotDir = join(dir, '.opencode');
     let isDir = false;
     try {
-      isDir = statSync(dotDir).isDirectory();
-    } catch {}
+      isDir = (await stat(dotDir)).isDirectory();
+      if (!isDir) findings.push(`${dotDir} (Station could not inspect it)`);
+    } catch (error) {
+      if (!configPathIsMissing(error))
+        findings.push(`${dotDir} (Station could not inspect it)`);
+    }
     if (isDir) {
       findings.push(...(await codeDirFindings(dotDir)));
       for (const name of CONFIG_FILE_NAMES) {
@@ -438,5 +452,5 @@ export function openCodeProjectCodeRefusal(
 ): string {
   const shown = findings.slice(0, 5).join('; ');
   const more = findings.length > 5 ? `; and ${findings.length - 5} more` : '';
-  return `this project's OpenCode configuration runs its own code when OpenCode starts, which no approval mode covers (${shown}${more})`;
+  return `this project's OpenCode configuration runs its own code when OpenCode starts or could not be inspected safely (${shown}${more})`;
 }

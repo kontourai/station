@@ -1774,13 +1774,12 @@ describe('Station orchestration instructions (resolution receipt)', () => {
         { codexBound: () => true },
       )(baseInput({ provider: 'codex' })),
     );
-    // `list_delegation_targets` is bound-only: the bound catalog offers it,
-    // the header token cannot call it.
+    // Both channels expose local target discovery.
     expect(
       effectiveStationControlTools({}, catalog(), 'delegated-custody').has(
         'list_delegation_targets',
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(bound.firstTurnText).toContain('`list_delegation_targets`');
     const header = receiptOf(
       await resolverFor(
@@ -1788,7 +1787,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
         { codexBound: () => false },
       )(baseInput({ provider: 'codex' })),
     );
-    expect(header.firstTurnText).not.toContain('list_delegation_targets');
+    expect(header.firstTurnText).toContain('`list_delegation_targets`');
     expect(header.firstTurnText).toContain('`list_agents`');
   });
 

@@ -1,0 +1,9 @@
+{
+  "revision": "dd7bc63df9db1cb1dbba0cec4d15fe7ebb891364",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Checked the ACP terminology correction against the same Station Control target-discovery and child dispatch paths. Behavior and capability limits are unchanged.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked the ACP terminology correction against the same Station Control target-discovery and child dispatch paths. Behavior and capability limits are unchanged.","inputs":["docs/guides/acp.md"]}
+  ]
+}

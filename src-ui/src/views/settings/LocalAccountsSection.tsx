@@ -17,15 +17,31 @@ import { ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { settingsRow } from './settings-catalog';
 
 export function LocalAccountsSection() {
   const authority = useHostRequestAuthorityScope();
-  return authority ? (
-    <AccountControls
-      key={`${authority.apiBase}:${authority.authorityKey}`}
-      authority={authority}
-    />
-  ) : null;
+  const row = settingsRow('local-accounts');
+  return (
+    <div {...row} tabIndex={-1}>
+      <PageSection
+        className="settings__section local-accounts"
+        title={row.title}
+        description="Operators manage account sign-in here."
+      >
+        {authority ? (
+          <AccountControls
+            key={`${authority.apiBase}:${authority.authorityKey}`}
+            authority={authority}
+          />
+        ) : (
+          <p role="status">
+            Connect to this Station to review accounts and sign-in.
+          </p>
+        )}
+      </PageSection>
+    </div>
+  );
 }
 function AccountControls({
   authority,
@@ -81,11 +97,7 @@ function AccountControls({
     }
   }
   return (
-    <PageSection
-      className="settings__section local-accounts"
-      title="Accounts and sign-in"
-      description="Operators manage account sign-in here."
-    >
+    <>
       {query.isPending ? (
         <SkeletonList count={2} />
       ) : query.isError ? (
@@ -207,6 +219,6 @@ function AccountControls({
         onConfirm={() => void apply()}
         onCancel={() => setPending(undefined)}
       />
-    </PageSection>
+    </>
   );
 }

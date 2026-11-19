@@ -45,7 +45,10 @@ import { ProjectSidebar } from './components/project-sidebar/ProjectSidebar';
 import { Empty, ErrorState, useRetainedReadFailure } from './components/state';
 import { StationConnectionsProvider } from './connections/StationConnectionsContext';
 import { useAgents } from './contexts/AgentsContext';
-import { useApiBase } from './contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
 import { KERNEL_RESERVED_SHORTCUTS } from './contexts/kernelReservedShortcuts';
 import { useModels } from './contexts/ModelsContext';
@@ -257,6 +260,7 @@ function App({
   const pushNotifications = usePushNotifications({
     enabled: featureSettings.pushNotificationsEnabled,
     apiBase: API_BASE,
+    requestScope: useHostRequestAuthorityScope() ?? null,
   });
   const [showShortcutsCheatsheet, setShowShortcutsCheatsheet] = useState(false);
   const [currentView, setCurrentView] = useState<NavigationView>(() => {

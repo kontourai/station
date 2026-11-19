@@ -14,9 +14,30 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+In **Notifications**, browser Web Push reflects the selected Station’s
+registration. Turning it off removes the local subscription. Station
+reports failed registration cleanup separately.
+[Web Push notifications](https://github.com/kontourai/station/blob/main/docs/guides/web-push-notifications.md)
+
 Use **Keyboard shortcuts** to inspect focus conditions and change bindings
 on this device. On small screens the list is read-only. See the
 [keyboard shortcut guide](../guides/keyboard-shortcuts.md).
+
+Use Settings search or the command palette to jump to **Accounts and sign-in**,
+**What usage sharing includes**, **Skill shortcuts**, or **Model picker preferences**.
+Accounts and sign-in describes any access restriction on the connected Station.
+The usage disclosure lists what the Station reports for each sharing choice.
+
+**Skill shortcuts** shows the saved bindings for command skills. Open a context
+that makes a skill available to edit its binding. Bindings for unavailable
+skills stay saved on this device.
+
+**Model picker preferences** in Chat shows saved favorites, hidden models,
+manual order and recent models. Clear recent models there, or open model
+connections and select a connection to edit favorites, visibility and order.
+Clearing recents keeps the other preferences. Model picker preferences sync
+when account preferences are available. If previous choices are saved on this
+device, review them through **Import previous preferences**.
 
 ## Project settings
 

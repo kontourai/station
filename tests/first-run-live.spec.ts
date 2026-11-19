@@ -1,6 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import type { Server } from 'node:http';
+import { loadavg } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Page } from '@playwright/test';
 import {
   type AuthenticatedE2ERequest,
@@ -24,9 +27,151 @@ import {
   SETTLED_ERROR_STATE_SELECTOR,
   waitForRouteViewTarget,
 } from './helpers/route-view-readiness';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: REPO_ROOT,
+  encoding: 'utf8',
+  windowsHide: true,
+}).trim();
+const trackedFilesDirty = !!execFileSync(
+  'git',
+  ['status', '--porcelain', '-uno'],
+  {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    windowsHide: true,
+  },
+).trim();
 
 const MODEL = 'station-dogfood:latest';
 const REPLY = 'First live Station chat works on mobile.';
+
+// Preserve the existing ceilings until repeated measurements cover the slow hosts.
+const SETUP_LAUNCHER_TIMEOUT_MS = 20_000;
+const SETUP_CHAPTER_TIMEOUT_MS = 20_000;
+const UNCONFIGURED_COMPOSER_TIMEOUT_MS = 20_000;
+const STATION_AGENT_PICKER_TIMEOUT_MS = 20_000;
+
+async function readBrowserTiming<T>(
+  page: Page,
+  stage: 'start' | 'end',
+  read: () => Promise<T>,
+) {
+  try {
+    return { state: 'observed' as const, value: await read() };
+  } catch (error) {
+    return {
+      state: 'unavailable' as const,
+      stage,
+      failure: page.isClosed()
+        ? 'page-closed'
+        : error instanceof Error && error.name === 'TimeoutError'
+          ? 'timeout'
+          : 'evaluation-error',
+    };
+  }
+}
+
+async function recordSurfaceTiming(
+  page: Page,
+  name: string,
+  observe: () => Promise<void>,
+): Promise<void> {
+  const start = await readBrowserTiming(page, 'start', () =>
+    page.evaluate(() => ({
+      timeOrigin: performance.timeOrigin,
+      at: performance.now(),
+    })),
+  );
+  const wallStart = performance.now();
+  const startLoad = loadavg()[0];
+  let settled = false;
+  try {
+    await observe();
+    settled = true;
+  } finally {
+    const elapsedMs = performance.now() - wallStart;
+    const browser =
+      start.state === 'observed'
+        ? await readBrowserTiming(page, 'end', () =>
+            page.evaluate((start) => {
+              const sameDocument = performance.timeOrigin === start.timeOrigin;
+              const at = sameDocument ? start.at : 0;
+              const resources = (
+                performance.getEntriesByType(
+                  'resource',
+                ) as PerformanceResourceTiming[]
+              ).flatMap((entry) => {
+                const url = new URL(entry.name);
+                return url.origin === location.origin &&
+                  url.pathname.endsWith('.js')
+                  ? [
+                      {
+                        asset: url.pathname,
+                        startMs: entry.startTime - at,
+                        durationMs: entry.duration,
+                        responseEndMs: entry.responseEnd - at,
+                        transferBytes: entry.transferSize,
+                      },
+                    ]
+                  : [];
+              });
+              return {
+                documentChanged: !sameDocument,
+                elapsedMs: performance.now() - at,
+                resources,
+              };
+            }, start.value),
+          )
+        : start;
+    const timing = {
+      surface: name,
+      sourceRevision,
+      trackedFilesDirty,
+      settled,
+      elapsedMs,
+      hostLoadOneMinuteStart: startLoad,
+      hostLoadOneMinuteEnd: loadavg()[0],
+      browser,
+    };
+    // The suite runner removes successful Playwright reports. Keep a compact
+    // sample in its log, with the full observation attached when retained.
+    const observed = browser.state === 'observed' ? browser.value : undefined;
+    console.log(
+      '[first-run-surface-timing]',
+      JSON.stringify({
+        ...timing,
+        browser: observed
+          ? {
+              state: 'observed',
+              ...observed,
+              freshScriptCount: observed.resources.filter(
+                (resource) => resource.startMs >= 0,
+              ).length,
+              resources: observed.resources.filter((resource) =>
+                /ConnectionsSectionFrame|ProviderSettings|ChatDockMobileOverflowSheet|MobileTaskSwitcher|ChatDockInbox|AgentPicker/.test(
+                  resource.asset,
+                ),
+              ),
+            }
+          : browser,
+      }),
+    );
+    await test
+      .info()
+      .attach(`first-run-${name}-timing`, {
+        body: JSON.stringify(timing),
+        contentType: 'application/json',
+      })
+      .catch(() => {
+        // The log retains the receipt even when the reporter cannot attach it.
+        // An attachment error must not replace the interaction's assertion.
+        console.log('[first-run-surface-timing-attachment-unavailable]', name);
+      });
+  }
+}
 
 /**
  * How long the streamed reply may take to appear.
@@ -74,6 +219,12 @@ const CHAT_REQUEST_RECORDED_TIMEOUT_MS = STREAMED_REPLY_TIMEOUT_MS;
 
 test.use({ actionTimeout: 15_000 });
 
+test.beforeEach(async ({ page }) => {
+  // The startup resource graph can fill Chromium's default buffer before
+  // these interactions run. Keep the entries on both sides of each wait.
+  await page.addInitScript(() => performance.setResourceTimingBufferSize(1500));
+});
+
 async function openSetupWithoutTelemetryEndpoint(
   page: Page,
   request: AuthenticatedE2ERequest,
@@ -87,7 +238,29 @@ async function openSetupWithoutTelemetryEndpoint(
   expect(await disclosure.json()).toMatchObject({
     data: { endpointConfigured: false },
   });
-  expect((await status.json()).data.authorEndpoint ?? null).toBeNull();
+  const { data: telemetry } = (await status.json()) as {
+    data: {
+      authorEndpoint?: string;
+      publishers: Record<
+        string,
+        { tier: string; reason?: string; userChoice?: string }
+      >;
+      liteInventoryRevision: string;
+      liteNotices?: Record<string, { inventoryRevision: string }>;
+    };
+  };
+  expect(telemetry.authorEndpoint ?? null).toBeNull();
+  for (const id of ['kontour', 'operator']) {
+    const publisher = telemetry.publishers[id];
+    expect(publisher).toBeDefined();
+    expect(['off', 'lite']).toContain(publisher?.tier);
+    expect(publisher?.reason).not.toBe('DNT');
+    expect(publisher?.userChoice).not.toBe('full');
+    if (publisher?.tier === 'lite')
+      expect(telemetry.liteNotices?.[id]?.inventoryRevision).toBe(
+        telemetry.liteInventoryRevision,
+      );
+  }
 
   // A dormant fresh home presents setup as an optional Home action.
   await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
@@ -96,7 +269,7 @@ async function openSetupWithoutTelemetryEndpoint(
     .getByRole('button', { name: 'Open setup' })
     .click();
   await expect(page.getByTestId('first-run-engines')).toBeVisible({
-    timeout: 20_000,
+    timeout: SETUP_CHAPTER_TIMEOUT_MS,
   });
   await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
   await expect(
@@ -143,15 +316,17 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
 
   if (!baseURL) throw new Error('First-run suite requires a UI base URL');
 
-  await page.goto(baseURL);
-  // The launcher is reachable on the FIRST click now. The usage-telemetry
-  // disclosure used to render over it — `OnboardingGate` mounts it after its
-  // children, so it lands on top of whatever else is up — and this spec had to
-  // find and answer it before it could touch anything. On a `pending` home
-  // that modal is not mounted at all; the disclosure is a step of the run,
-  // below.
-  await expect(page.getByTestId('setup-launcher')).toBeVisible({
-    timeout: 20_000,
+  await recordSurfaceTiming(page, 'desktop-setup-launcher', async () => {
+    await page.goto(baseURL);
+    // The launcher is reachable on the FIRST click now. The usage-telemetry
+    // disclosure used to render over it — `OnboardingGate` mounts it after its
+    // children, so it lands on top of whatever else is up — and this spec had to
+    // find and answer it before it could touch anything. On a `pending` home
+    // that modal is not mounted at all; the disclosure is a step of the run,
+    // below.
+    await expect(page.getByTestId('setup-launcher')).toBeVisible({
+      timeout: SETUP_LAUNCHER_TIMEOUT_MS,
+    });
   });
   await expect(
     page.getByTestId('usage-telemetry-disclosure-modal'),
@@ -296,9 +471,11 @@ test('phone first run recovers from no provider to a real streamed reply', async
     ollamaServer = ollama.server;
 
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(baseURL);
-    await expect(page.getByTestId('setup-launcher')).toBeVisible({
-      timeout: 20_000,
+    await recordSurfaceTiming(page, 'phone-setup-launcher', async () => {
+      await page.goto(baseURL);
+      await expect(page.getByTestId('setup-launcher')).toBeVisible({
+        timeout: SETUP_LAUNCHER_TIMEOUT_MS,
+      });
     });
     await expect(
       page.getByText('Choose what powers Station', { exact: true }),
@@ -343,6 +520,8 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     const projectFolder = testInfo.outputPath('project-workspace');
     mkdirSync(projectFolder, { recursive: true, mode: 0o700 });
     execFileSync('git', ['init', '--initial-branch=main', projectFolder], {
@@ -410,14 +589,15 @@ test('phone first run recovers from no provider to a real streamed reply', async
       PROJECT_LAYOUT_READINESS_TIMEOUT_MS,
     );
     const emptyState = chatDock.getByTestId('chat-empty-state-unconfigured');
-    await expect(emptyState).toBeVisible({ timeout: 20_000 });
+    await recordSurfaceTiming(page, 'unconfigured-composer', async () => {
+      await expect(emptyState).toBeVisible({
+        timeout: UNCONFIGURED_COMPOSER_TIMEOUT_MS,
+      });
+    });
     await expect(page.getByText(/^Error:/)).toHaveCount(0);
     // Dismissing first-run is durable. Recovery remains available where it is
     // relevant without covering the project workspace with the launcher again.
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
-    await emptyState.getByRole('button', { name: 'Open Connections' }).click();
-    await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
-
     // archive#3733 gave every Connections section ONE add action, named for what it
     // adds; the picker it opens is a route now, not a dialog (archive#3877 —
     // same structural staleness, a different shipped change).
@@ -438,24 +618,31 @@ test('phone first run recovers from no provider to a real streamed reply', async
       name: 'Add model connection',
       exact: true,
     });
-    await waitForRouteViewTarget(
-      {
-        viewName: 'The Connections → Models view',
-        target: addModelConnection,
-        failures: [
-          // `RouteViewBoundary`'s three settled failures — a rejected chunk, a
-          // refused read, a broken view — all render `ErrorState`.
-          page.locator(SETTLED_ERROR_STATE_SELECTOR),
-          // A code-split surface failing INSIDE the mounted view is a different
-          // finding from the route failing, and says so.
-          page.locator(LAZY_BOUNDARY_ERROR_SELECTOR),
-        ],
-        pending: [
-          page.getByRole('status', { name: ROUTE_PENDING_STATUS_NAME }),
-        ],
-      },
-      LAZY_CHUNK_ALLOWANCE_MS,
-    );
+    await recordSurfaceTiming(page, 'connections-models', async () => {
+      await emptyState
+        .getByRole('button', { name: 'Open Connections' })
+        .click();
+      await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
+
+      await waitForRouteViewTarget(
+        {
+          viewName: 'The Connections → Models view',
+          target: addModelConnection,
+          failures: [
+            // `RouteViewBoundary`'s three settled failures — a rejected chunk, a
+            // refused read, a broken view — all render `ErrorState`.
+            page.locator(SETTLED_ERROR_STATE_SELECTOR),
+            // A code-split surface failing INSIDE the mounted view is a different
+            // finding from the route failing, and says so.
+            page.locator(LAZY_BOUNDARY_ERROR_SELECTOR),
+          ],
+          pending: [
+            page.getByRole('status', { name: ROUTE_PENDING_STATUS_NAME }),
+          ],
+        },
+        LAZY_CHUNK_ALLOWANCE_MS,
+      );
+    });
     await addModelConnection.click();
     await expect(page).toHaveURL(/\/connections\/models\/new(?:\?|$)/);
     // Scope inside the picker — the background stack overview also renders an
@@ -523,7 +710,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     );
     await taskDialog
       .getByRole('button', {
-        name: 'Station Assistant Chat, Mobile Dogfood',
+        name: 'Station Assistant Chat Idle Station Assistant Mobile Dogfood',
         exact: true,
       })
       .click();
@@ -533,28 +720,32 @@ test('phone first run recovers from no provider to a real streamed reply', async
       exact: true,
     });
     await expect(chatActions).toBeVisible();
-    await chatActions.click();
     const chatActionsMenu = page.getByRole('menu', { name: 'Chat actions' });
-    // Report a rejected Chat actions boundary separately from a delayed open.
-    await waitForLazySurface(
-      page,
-      {
-        surfaceName: 'The Chat actions sheet',
-        surface: chatActionsMenu,
-        openIndicator: page.locator(
-          'button[aria-label="Chat actions"][aria-expanded="true"]',
-        ),
-        surfaceId: 'chat-actions',
-      },
-      LAZY_CHUNK_ALLOWANCE_MS,
-    );
-    await chatActionsMenu
-      .getByRole('menuitem', { name: 'New chat', exact: true })
-      .click();
-    await expect(chatActionsMenu).toHaveCount(0);
+    await recordSurfaceTiming(page, 'chat-actions', async () => {
+      await chatActions.click();
+      await waitForLazySurface(
+        page,
+        {
+          surfaceName: 'The Chat actions sheet',
+          surface: chatActionsMenu,
+          openIndicator: page.locator(
+            'button[aria-label="Chat actions"][aria-expanded="true"]',
+          ),
+          surfaceId: 'chat-actions',
+        },
+        LAZY_CHUNK_ALLOWANCE_MS,
+      );
+    });
     const draft = page
       .getByRole('region', { name: 'New chat', exact: true })
       .getByRole('form', { name: 'Start work' });
+    await recordSurfaceTiming(page, 'new-chat-draft', async () => {
+      await chatActionsMenu
+        .getByRole('menuitem', { name: 'New chat', exact: true })
+        .click();
+      await expect(chatActionsMenu).toHaveCount(0);
+      await expect(draft).toBeVisible();
+    });
     // The single runnable engine is selected by the real draft composer.
     await expect(
       draft.getByRole('button', {
@@ -562,10 +753,27 @@ test('phone first run recovers from no provider to a real streamed reply', async
         exact: true,
       }),
     ).toBeVisible();
+    const stationAgent = page
+      .getByRole('dialog', { name: 'Choose agent' })
+      .getByRole('button', { name: /^Station Assistant(?: |$)/ })
+      .first();
+    await recordSurfaceTiming(page, 'station-agent-picker', async () => {
+      await (
+        await runSetupControl(draft, (panel) =>
+          panel.getByRole('button', { name: /^Agent:/ }),
+        )
+      ).click();
+      await expect(stationAgent).toBeVisible({
+        timeout: STATION_AGENT_PICKER_TIMEOUT_MS,
+      });
+    });
+    await stationAgent.click();
+    await closeRunSetup(draft);
     const goal = draft.getByRole('textbox', {
       name: 'What would you like done?',
     });
     await goal.fill('Confirm the live first-run path');
+    await expect(goal).toHaveValue('Confirm the live first-run path');
     await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await expect
       .poll(() => chatRequests.length, {
@@ -593,16 +801,18 @@ test('phone first run recovers from no provider to a real streamed reply', async
     });
     // Await the inbox's lazy boundary before acting on its rows.
     const openTaskSwitcher = async (occasion: string) => {
-      await taskSwitcher.click();
-      await waitForLazySurface(
-        page,
-        {
-          surfaceName: `The Inbox (${occasion})`,
-          surface: taskDialog,
-          surfaceId: 'mobile-inbox',
-        },
-        LAZY_CHUNK_ALLOWANCE_MS,
-      );
+      await recordSurfaceTiming(page, `inbox-${occasion}`, async () => {
+        await taskSwitcher.click();
+        await waitForLazySurface(
+          page,
+          {
+            surfaceName: `The Inbox (${occasion})`,
+            surface: taskDialog,
+            surfaceId: 'mobile-inbox',
+          },
+          LAZY_CHUNK_ALLOWANCE_MS,
+        );
+      });
     };
     await openTaskSwitcher('first open');
     const taskRows = taskDialog.locator('.chat-dock-inbox__item');

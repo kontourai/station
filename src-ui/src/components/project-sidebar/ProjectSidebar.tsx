@@ -1,4 +1,6 @@
+import { attentionProjectCounts } from '@kontourai/station-contracts/attention';
 import {
+  useAttentionQuery,
   useOrchestrationSessionsQuery,
   useReorderProjectsMutation,
 } from '@kontourai/station-sdk';
@@ -175,6 +177,15 @@ function ProjectSidebarImpl() {
   // optimistic write/rollback/settle target THIS authority's list cache and
   // never another home's.
   const hostRequestAuthority = useHostRequestAuthorityScope();
+  const canReadAttention = !!hostRequestAuthority?.isCurrent();
+  const { data: attention } = useAttentionQuery(hostRequestAuthority, {
+    enabled: canReadAttention && projects.length > 0,
+  });
+  const attentionItems = canReadAttention ? attention?.items : undefined;
+  const attentionByProject = useMemo(
+    () => attentionProjectCounts(attentionItems ?? []),
+    [attentionItems],
+  );
   const { namespace: durableAuthorityNamespace } = useAuthorityPersistence();
   const reorderProjectsMutation = useReorderProjectsMutation();
   const { rowReorderProps, announcement: reorderAnnouncement } =
@@ -454,6 +465,7 @@ function ProjectSidebarImpl() {
                   accent={accentBySlug.get(project.slug)}
                   liveCount={projectLiveCount(liveLanes)}
                   liveLabel={projectLiveLabel(liveLanes)}
+                  attentionCount={attentionByProject.get(project.slug) ?? 0}
                   waitingOnYou={waitingOnYouBySlug.get(project.slug) ?? 0}
                 />
               );

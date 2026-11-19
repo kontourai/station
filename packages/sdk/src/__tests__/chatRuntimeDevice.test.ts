@@ -7,6 +7,7 @@ vi.mock('../api', () => ({
 import {
   DevicePairingRequiredError,
   fetchVapidPublicKey,
+  fetchWebPushRegistration,
   subscribePushNotifications,
   unsubscribePushNotifications,
 } from '../query-domains/chatRuntimeDevice';
@@ -35,6 +36,42 @@ describe('chatRuntimeDevice', () => {
       { headers: { 'X-Station-Client-Protocol': '4' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('parses the opaque selected-device registration without exposing an endpoint', async () => {
+    mockJsonResponse({
+      publicKey: 'key',
+      registration: { status: 'paired', fingerprint: 'f'.repeat(64) },
+    });
+    await expect(fetchWebPushRegistration()).resolves.toEqual({
+      publicKey: 'key',
+      registration: { status: 'paired', fingerprint: 'f'.repeat(64) },
+    });
+    mockJsonResponse({
+      publicKey: 'key',
+      registration: {
+        status: 'paired',
+        fingerprint: 'https://push.test/device',
+      },
+    });
+    await expect(fetchWebPushRegistration()).rejects.toThrow(
+      'Malformed Web Push registration',
+    );
+  });
+
+  it.each([401, 403, 404, 503])(
+    'preserves HTTP %s from the VAPID discovery request',
+    async (status) => {
+      mockJsonResponse({ error: 'unavailable' }, status);
+      await expect(fetchVapidPublicKey()).rejects.toMatchObject({ status });
+    },
+  );
+
+  it('identifies an explicit pairing-required VAPID refusal', async () => {
+    mockJsonResponse({ error: 'device_pairing_required' }, 403);
+    await expect(fetchWebPushRegistration()).rejects.toBeInstanceOf(
+      DevicePairingRequiredError,
+    );
   });
 
   it('rejects when the server does not return a public key', async () => {

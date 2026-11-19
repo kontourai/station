@@ -50,12 +50,18 @@ import { composeWebPushPayload } from './push-payload-composer.js';
 import type { WebPushPayload, WebPushService } from './web-push-service.js';
 
 /** The subset of DevicePairingService this channel needs. */
+type WebPushRegistration = {
+  deviceId: string;
+  subscription: WebPushSubscription;
+  generation?: symbol;
+};
+
 export interface WebPushDeliveryDevicePairing {
-  listPushSubscriptions(): Array<{
-    deviceId: string;
-    subscription: WebPushSubscription;
-  }>;
-  clearPushSubscription(deviceId: string): unknown;
+  listPushSubscriptions(): WebPushRegistration[];
+  clearPushSubscription(
+    deviceId: string,
+    observed: { generation: symbol | undefined },
+  ): unknown;
 }
 
 interface WebPushDeliveryLogger {
@@ -76,7 +82,7 @@ export class WebPushChannel implements DeliveryChannel {
     wakesClosedApp: true,
   };
   /** Subscriptions as of the last `registrations()`, by device id. */
-  #subscriptions = new Map<string, WebPushSubscription>();
+  #subscriptions = new Map<string, WebPushRegistration>();
 
   constructor(
     private readonly devicePairing: WebPushDeliveryDevicePairing,
@@ -92,10 +98,7 @@ export class WebPushChannel implements DeliveryChannel {
   }
 
   registrations(): Array<{ surface: SurfaceId; ref: string }> {
-    let subscriptions: Array<{
-      deviceId: string;
-      subscription: WebPushSubscription;
-    }>;
+    let subscriptions: WebPushRegistration[];
     try {
       subscriptions = this.devicePairing.listPushSubscriptions();
     } catch (error) {
@@ -106,9 +109,9 @@ export class WebPushChannel implements DeliveryChannel {
       return [];
     }
     this.#subscriptions = new Map(
-      subscriptions.map(({ deviceId, subscription }) => [
-        deviceId,
-        subscription,
+      subscriptions.map((registration) => [
+        registration.deviceId,
+        registration,
       ]),
     );
     return subscriptions.map(({ deviceId }) => ({
@@ -132,18 +135,20 @@ export class WebPushChannel implements DeliveryChannel {
     return Promise.all(
       to.map(
         async ({ ref: deviceId, hideContent }): Promise<DeliveryOutcome> => {
-          const subscription = this.#subscriptions.get(deviceId);
-          if (!subscription) return { ref: deviceId, result: 'suppressed' };
+          const registration = this.#subscriptions.get(deviceId);
+          if (!registration) return { ref: deviceId, result: 'suppressed' };
           try {
             const result = await this.webPushService.send(
-              subscription,
+              registration.subscription,
               hideContent ? hiddenPayload(payload) : payload,
               ttlSeconds,
             );
             webPushSends.add(1, { result });
             if (result === 'gone') {
               try {
-                this.devicePairing.clearPushSubscription(deviceId);
+                this.devicePairing.clearPushSubscription(deviceId, {
+                  generation: registration.generation,
+                });
               } catch (error) {
                 this.logger.warn(
                   'web-push: failed to self-heal gone subscription',
