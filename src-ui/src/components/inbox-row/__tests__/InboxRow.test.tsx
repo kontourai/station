@@ -886,7 +886,7 @@ describe('shared inbox actions', () => {
   });
 });
 
-test('owned running chats can be dismissed while idle chats can be settled', () => {
+it('owned running chats can be dismissed while idle chats can be settled', () => {
   const running = { ...rowFor().item, conversationId: 'running-chat' };
   const idle = {
     ...rowFor({ hasActiveTurn: false }).item,

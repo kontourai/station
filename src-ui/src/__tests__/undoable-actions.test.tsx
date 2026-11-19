@@ -24,6 +24,7 @@ import {
 } from '../components/undo/undoable-actions';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
+import { PRESENCE_FALLBACK_MS } from '../hooks/usePresenceList';
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigationActions: () => ({ navigate: vi.fn() }),
@@ -125,6 +126,7 @@ test('the write waits for the window, then commits once when it expires', async 
   await flush();
   expect(commit).toHaveBeenCalledTimes(1);
   expect(pendingUndoKeys().has('record:a')).toBe(false);
+  advance(PRESENCE_FALLBACK_MS);
   expect(screen.queryByText('Deleted Alpha')).toBeNull();
 });
 

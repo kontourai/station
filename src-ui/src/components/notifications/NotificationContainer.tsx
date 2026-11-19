@@ -524,6 +524,10 @@ export function NotificationContainer() {
     notificationKey,
     PRESENCE_FALLBACK_MS,
   );
+  const activeToastIds = new Set(transientNotifications.map(notificationKey));
+  const renderedToasts = toastPresence.list.filter(
+    ({ key, phase }) => phase !== 'exiting' || !activeToastIds.has(key),
+  );
   useEffect(() => {
     if (!approvalQueueOpen) return;
 
@@ -633,7 +637,7 @@ export function NotificationContainer() {
    * `/notifications` is a routed destination reachable at zero notifications.
    * An overlay with nothing to show must render nothing.
    */
-  if (activeNotifications.length === 0 && toastPresence.list.length === 0)
+  if (activeNotifications.length === 0 && renderedToasts.length === 0)
     return null;
 
   const approvalCountLabel = `${approvals.length} pending approval${approvals.length === 1 ? '' : 's'}`;
@@ -733,14 +737,14 @@ export function NotificationContainer() {
         </button>
       )}
 
-      {toastPresence.list.length > 0 && (
+      {renderedToasts.length > 0 && (
         <div
           className="toast-stack"
           data-testid="toast-stack"
           data-count={stackedTransients.length}
           data-exit-only={stackedTransients.length === 0 || undefined}
         >
-          {toastPresence.list.map(({ key, item: notification, phase }) => {
+          {renderedToasts.map(({ key, item: notification, phase }) => {
             const exiting = phase === 'exiting';
             const canNavigate =
               Boolean(notification.onNavigate) ||
