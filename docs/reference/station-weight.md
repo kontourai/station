@@ -154,9 +154,10 @@ signalled only when it is affirmatively shown to qualify.
   outlives its timeout, the run sends SIGKILL to that group, untagged members
   included, but only while Node has not reaped the launcher. A session
   leader cannot change its group, and an unreaped pid cannot be reused, so
-  until then the group id names the group this run created. Node records the
-  exit status in the same libuv callback that reaps the child, and the
-  timeout runs from a timer, so it reads that state accurately. Once the
+  until then the group id names the group this run created. Libuv can reap
+  several children before Node receives their exit callbacks. The strict
+  signal waits until the current batch of callbacks finishes and then
+  checks the leader's status immediately before sending the signal. Once the
   launcher has been reaped, the group may have ended and its id been reused,
   and no POSIX call signals a group only if it is still a given one, so the
   group is not signalled: the command fails with that reason, and anything
