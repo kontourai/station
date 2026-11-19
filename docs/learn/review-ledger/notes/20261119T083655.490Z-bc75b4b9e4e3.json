@@ -1,0 +1,19 @@
+{
+  "revision": "69c928b3756d07ba31226801007a4b257de771d3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced CanonicalUsageExport from authenticated source selection through fixed-head paging and the version 1 receipt projection. The projection runs after source selection and leaves local receipt ownership and richer usage data intact.","inputs":["docs/architecture/module-map.md","src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the linked API delta. The usage receipt shape repair leaves terminal socket transport, ownership and bounded-credit behavior untouched.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the linked API contract. Existing schema-1 receivers keep their closed grammar and can read pages containing source events with richer local observations. Existing request authority and scope checks still apply.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the canonical export source, cursor and authority guarantees against the writer change. The mounted route and in-process producer tests both decode the version 1 shape, preserving input measurement and omitting unsupported local fields and explicit undefined keys.","inputs":["docs/guides/monitoring.md","src-server/analytics/usage-export-reader.ts","src-server/routes/operations/__tests__/usage-export.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the receipt shape to the mounted analytics endpoint and unchanged shared decoder. An actual richer event returned HTTP 200 but failed version 1 decoding before the fix. Both serialized and direct source pages decode after the bounded export projection.","inputs":["docs/reference/api.md","src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed canonical usage-export receiver behavior against the unchanged strict parser. The source projects richer observations at the existing version 1 boundary, without changing SDK request options or cursor handling.","inputs":["docs/reference/sdk.md","src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the existing usage-export leaf, person/session authority, source scope checks and release revalidation. Receipt projection happens after authorized row selection and adds no permission, identity or route disclosure.","inputs":["docs/security/remote-access-threat-model.md","src-server/analytics/usage-export-reader.ts"]}
+  ]
+}
