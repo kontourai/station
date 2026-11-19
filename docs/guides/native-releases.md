@@ -740,6 +740,34 @@ workflow and its signing secrets remain `NOT_VERIFIED` until GitHub Actions can
 run that exact release lane; local test signing proves neither protected
 signing nor draft-release publication.
 
+## Rehearse the Mac App Store sandbox locally
+
+Build with the rehearsal overlay, then stage a separate ad-hoc signed copy.
+Use a fresh output directory. The stage command checks the rehearsal bundle
+identity and signs its private Node executable and process birth helper to
+inherit the app's sandbox.
+
+```sh
+npm run dependencies:ci
+npm run build:sdk && npm run build:connect
+npm run build:desktop -- --no-sign --bundles app \
+  --config "$PWD/src-desktop/tauri.macos-store-rehearsal.conf.json"
+node ops/release/macos-store-stage.mjs \
+  "src-desktop/target/release/bundle/macos/Station Store Rehearsal.app" \
+  "$PWD/dist-macos-store-rehearsal"
+```
+
+The rehearsal uses a separate bundle identifier and pairing scheme. It has
+no direct-download updater configuration. The bundled process birth probe
+uses a PID-specific macOS query and emits the same UTC start-time fingerprint
+as normal desktop Station. An unavailable birth still stops lock admission.
+
+Verify the packaged app's startup with an isolated home in its app container.
+Store delivery also needs the production bundle identity, Apple installer
+signing, and acceptance of agent tools, workspace access, credential storage
+and pairing in the sandbox. The rehearsal's ad-hoc signature is for local
+testing.
+
 ## Required protected environments and secrets
 
 The workflow declarations require these GitHub Environments. Their current
