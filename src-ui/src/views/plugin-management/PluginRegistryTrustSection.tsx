@@ -11,17 +11,22 @@ import './PluginRegistryTrustSection.css';
 export function PluginRegistryTrustSection({
   trust,
   context,
+  dependency,
 }: {
   trust: PluginRegistryTrust | undefined;
   /** A preview binds a fresh check; an installation shows its stored receipt. */
   context: 'preview' | 'installed';
+  dependency?: string;
 }) {
+  const label = dependency
+    ? `Registry verification for ${dependency}`
+    : 'Registry verification';
   return (
     <section
       className="detail-panel__section plugin-registry-trust"
-      aria-label="Registry verification"
+      aria-label={label}
     >
-      <div className="plugins__settings-header">Registry verification</div>
+      <div className="plugins__settings-header">{label}</div>
       <RegistryTrustBody trust={trust} context={context} />
     </section>
   );

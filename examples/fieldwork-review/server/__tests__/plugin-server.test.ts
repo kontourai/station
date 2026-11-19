@@ -457,8 +457,11 @@ describe('fieldwork-review server module', () => {
     const output = await harness.app.request(
       `/projects/${PROJECT}/runs/${launched.run.id}/reviewed-output`,
     );
-    expect(output.status).toBe(200);
-    expect(await output.json()).toEqual({ success: true, available: false });
+    expect(output.status).toBe(500);
+    expect(await output.json()).toEqual({
+      success: false,
+      error: 'Fieldwork request could not be completed',
+    });
 
     const closed = await harness.app.request(
       `/projects/${PROJECT}/runs/${launched.run.id}/close`,

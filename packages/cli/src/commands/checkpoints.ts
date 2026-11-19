@@ -24,7 +24,11 @@ import { execFile, spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { authenticatedFetch } from '@kontourai/station-sdk/client';
+import {
+  type CheckpointRestoreClientError,
+  confirmCheckpointRestore,
+  previewCheckpointRestore,
+} from '@kontourai/station-sdk/client/checkpoint-restore';
 import {
   type CheckpointGitRunner,
   enumerateThreadCheckpointRefs,
@@ -38,6 +42,7 @@ import {
   resolveRuntimeHome,
 } from '@kontourai/station-shared/runtime-path-resolver';
 import {
+  cliRequestScope,
   configureApiCredential,
   parseCoreArgs,
   resolveApiBase,
@@ -57,17 +62,11 @@ interface IndexTurnRecord {
   settle?: IndexTurnPhase;
 }
 
-/** The part of the restore-preview reply the confirmation is built from. */
-interface RestorePreviewEnvelope {
-  data?: { previewId?: unknown; currentTreeSha?: unknown };
-}
-
 export interface CheckpointsCommandDeps {
   stdout?: (line: string) => void;
   stderr?: (line: string) => void;
   env?: NodeJS.ProcessEnv;
   runGit?: CheckpointGitRunner;
-  fetch?: typeof fetch;
 }
 
 function gitEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -323,9 +322,13 @@ export async function runCheckpointsCommand(
   const out = deps.stdout ?? ((line: string) => console.log(line));
   const err = deps.stderr ?? ((line: string) => console.error(line));
   const runGit = deps.runGit ?? defaultRunner(env);
-  const home = resolveStationHome(env);
   const json = rawArgs.includes('--json');
   const sub = rawArgs.find((arg) => !arg.startsWith('--'));
+  if (sub === 'restore') {
+    await restoreCheckpoint(rawArgs, out, err);
+    return;
+  }
+  const home = resolveStationHome(env);
 
   if (sub === 'status' || sub === undefined) {
     const statuses = await collectStatus(home, runGit);
@@ -536,102 +539,162 @@ export async function runCheckpointsCommand(
     return;
   }
 
-  if (sub === 'restore') {
-    const thread = rawArgs
-      .find((arg) => arg.startsWith('--thread='))
-      ?.slice('--thread='.length);
-    const turn = rawArgs
-      .find((arg) => arg.startsWith('--turn='))
-      ?.slice('--turn='.length);
-    const phase =
-      rawArgs
-        .find((arg) => arg.startsWith('--phase='))
-        ?.slice('--phase='.length) ?? 'settle';
-    if (
-      !thread ||
-      !turn ||
-      !isSafeCheckpointRefSegment(thread) ||
-      !isSafeCheckpointRefSegment(turn) ||
-      !['baseline', 'settle'].includes(phase)
-    ) {
-      err(
-        'station checkpoints restore requires safe --thread=<id> --turn=<id> [--phase=baseline|settle]',
-      );
-      process.exitCode = 1;
-      return;
-    }
-    if (!rawArgs.includes('--confirm')) {
-      err('station checkpoints restore is destructive and requires --confirm');
-      process.exitCode = 1;
-      return;
-    }
-    // The same target, credential and deadline as every other command that
-    // calls a Station (#2734): `--api-base`/`--station`/`STATION_TARGET`, the
-    // saved or active-local Station, then the loopback default; the credential
-    // that goes with it; and the shared request deadline, which
-    // `authenticatedFetch` applies.
-    const parsed = parseCoreArgs(rawArgs);
-    const apiBase = resolveApiBase(parsed);
-    configureApiCredential(parsed, apiBase);
-    const request: (url: string, init: RequestInit) => Promise<Response> =
-      deps.fetch ?? authenticatedFetch;
-    const baseUrl = `${apiBase}/api/orchestration/sessions/${encodeURIComponent(thread)}/checkpoints/${encodeURIComponent(turn)}`;
-    // The whole envelope is kept, not just `data`: a refusal carries its
-    // `reason` beside `error`, and `--json` prints the reply as received. A
-    // reply that is not JSON (a proxy's error page) is reported with its
-    // status instead of surfacing as a parse error.
-    const post = async (
-      path: string,
-      payload: unknown,
-    ): Promise<{ status: number; ok: boolean; body: unknown }> => {
-      const response = await request(`${baseUrl}/${path}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const text = await response.text();
-      let body: unknown;
-      try {
-        body = JSON.parse(text);
-      } catch {
-        return { status: response.status, ok: false, body: undefined };
-      }
-      return { status: response.status, ok: response.ok, body };
-    };
-
-    const preview = await post('restore-preview', { phase });
-    const previewData = (preview.body as RestorePreviewEnvelope | null)?.data;
-    if (!preview.ok || !previewData?.previewId) {
-      err(
-        `station checkpoints restore preview failed (${preview.status}): ${preview.body === undefined ? 'the reply was not JSON' : JSON.stringify(preview.body)}`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-    const restored = await post('restore', {
-      confirmed: true,
-      previewId: previewData.previewId,
-      expectedCurrentTreeSha: previewData.currentTreeSha,
-    });
-    if (!restored.ok) {
-      // A reply that cannot be read says nothing about whether the restore
-      // ran, so it must not be worded as "nothing changed".
-      err(
-        `station checkpoints restore failed (${restored.status}): ${restored.body === undefined ? 'the reply was not JSON, so the outcome is unknown; inspect the workspace before retrying' : JSON.stringify(restored.body)}`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-    const { body } = restored;
-    out(
-      json
-        ? JSON.stringify(body, null, 2)
-        : `restored thread ${thread} to turn ${turn} (${phase})`,
-    );
-    return;
-  }
-
   err(`Unknown checkpoints action: ${sub}`);
   err('Valid actions: status, prune, history, retention, restore');
   process.exitCode = 1;
+}
+
+const treeShaPattern = /^[0-9a-f]{40,64}$/;
+const previewIdPattern = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
+
+async function restoreCheckpoint(
+  args: string[],
+  out: (line: string) => void,
+  err: (line: string) => void,
+): Promise<void> {
+  const parsed = parseCoreArgs(args);
+  const {
+    thread,
+    turn,
+    phase = 'settle',
+    confirm,
+    'preview-id': previewId,
+    'expected-current-tree-sha': currentTreeSha,
+  } = parsed.flags;
+  const fail = (message: string) => {
+    err(`station checkpoints restore: ${message}`);
+    process.exitCode = 1;
+  };
+  if (
+    typeof thread !== 'string' ||
+    typeof turn !== 'string' ||
+    !isSafeCheckpointRefSegment(thread) ||
+    !isSafeCheckpointRefSegment(turn) ||
+    (phase !== 'baseline' && phase !== 'settle')
+  ) {
+    fail('requires safe --thread=<id> --turn=<id> [--phase=baseline|settle]');
+    return;
+  }
+  if (
+    confirm !== undefined ||
+    previewId !== undefined ||
+    currentTreeSha !== undefined
+  ) {
+    if (
+      confirm !== true ||
+      typeof previewId !== 'string' ||
+      !previewIdPattern.test(previewId) ||
+      typeof currentTreeSha !== 'string' ||
+      !treeShaPattern.test(currentTreeSha) ||
+      parsed.flags.phase !== undefined
+    ) {
+      fail(
+        'review a preview first, then pass --confirm --preview-id=<id> --expected-current-tree-sha=<sha> without --phase',
+      );
+      return;
+    }
+  }
+
+  const apiBase = resolveApiBase(parsed);
+  configureApiCredential(parsed, apiBase);
+  const requestScope = cliRequestScope(apiBase);
+
+  try {
+    if (typeof previewId === 'string' && typeof currentTreeSha === 'string') {
+      const receipt = await confirmCheckpointRestore(
+        apiBase,
+        thread,
+        turn,
+        { previewId, currentTreeSha },
+        requestScope,
+      );
+      if (
+        !receipt ||
+        typeof receipt !== 'object' ||
+        !('restored' in receipt) ||
+        typeof receipt.restored !== 'boolean' ||
+        !('previewId' in receipt) ||
+        receipt.previewId !== previewId ||
+        !('threadId' in receipt) ||
+        receipt.threadId !== thread ||
+        !('turnId' in receipt) ||
+        receipt.turnId !== turn ||
+        !('previousTreeSha' in receipt) ||
+        receipt.previousTreeSha !== currentTreeSha
+      )
+        throw new Error('Station returned no matching restore receipt');
+      out(
+        parsed.flags.json
+          ? JSON.stringify({ success: true, data: receipt }, null, 2)
+          : receipt.restored
+            ? `Restored thread ${thread} to turn ${turn} on ${apiBase}.`
+            : `The workspace for thread ${thread} already matched turn ${turn} on ${apiBase}.`,
+      );
+      return;
+    }
+
+    const preview = await previewCheckpointRestore(
+      apiBase,
+      thread,
+      turn,
+      requestScope,
+      phase,
+    );
+    if (
+      !preview ||
+      preview.threadId !== thread ||
+      preview.turnId !== turn ||
+      preview.phase !== phase ||
+      typeof preview.previewId !== 'string' ||
+      !previewIdPattern.test(preview.previewId) ||
+      typeof preview.currentTreeSha !== 'string' ||
+      !treeShaPattern.test(preview.currentTreeSha) ||
+      typeof preview.targetTreeSha !== 'string' ||
+      !treeShaPattern.test(preview.targetTreeSha) ||
+      typeof preview.repoRoot !== 'string' ||
+      typeof preview.expiresAt !== 'string' ||
+      !Number.isFinite(Date.parse(preview.expiresAt)) ||
+      typeof preview.pathsTruncated !== 'boolean' ||
+      !Array.isArray(preview.paths) ||
+      !preview.paths.every(
+        (item) =>
+          item &&
+          typeof item.path === 'string' &&
+          typeof item.status === 'string',
+      )
+    )
+      throw new Error('Station returned an invalid restore preview');
+
+    if (parsed.flags.json) {
+      out(JSON.stringify({ success: true, data: preview }, null, 2));
+      return;
+    }
+    out(`Preview for thread ${thread}, turn ${turn} (${phase}) on ${apiBase}`);
+    out(`Workspace: ${JSON.stringify(preview.repoRoot)}`);
+    out(`Current tree: ${preview.currentTreeSha}`);
+    out(`Checkpoint tree: ${preview.targetTreeSha}`);
+    for (const { path, status } of preview.paths) {
+      out(`  ${JSON.stringify(status)} ${JSON.stringify(path)}`);
+    }
+    if (preview.pathsTruncated) out('More paths are affected than shown.');
+    else if (preview.paths.length === 0)
+      out('No file differences in the preview.');
+    out(`Preview expires: ${new Date(preview.expiresAt).toISOString()}`);
+    out('Confirm on the same Station with the same thread and turn:');
+    out(
+      `  --confirm --preview-id=${preview.previewId} --expected-current-tree-sha=${preview.currentTreeSha}`,
+    );
+  } catch (error) {
+    const failure = error as Partial<CheckpointRestoreClientError> | null;
+    const status =
+      typeof failure?.status === 'number' ? ` (HTTP ${failure.status})` : '';
+    const reason =
+      typeof failure?.reason === 'string' ? ` [${failure.reason}]` : '';
+    const message = error instanceof Error ? error.message : String(error);
+    fail(
+      confirm
+        ? `confirmation failed${status}: ${message}${reason}. Inspect the workspace before attempting another restore.`
+        : `preview failed${status}: ${message}${reason}`,
+    );
+  }
 }

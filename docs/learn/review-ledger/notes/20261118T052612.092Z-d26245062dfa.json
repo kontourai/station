@@ -1,0 +1,43 @@
+{
+  "revision": "50bca5abcf3c54f209da1db3116845c948020b68",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the SkillService mutation and storage owners against canonical PUT, DELETE, and registry removal. Read and write now reuse the same package refusal projection. Path containment, lock ownership, discovery ordering, and successful writes are unchanged.","inputs":["docs/architecture/module-map.md","src-server/domain/config-loader-storage.ts","src-server/routes/plugins/registry.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the cited HTTP reference delta. It describes Skill package writes and changes no terminal transport, route, or product contract.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked installed Skill availability, declaration and command guidance against the route and service modifications. Command naming and clash validation stay with their existing owner. Read-only package changes now carry a structured conflict.","inputs":["docs/guides/agent-configuration.md","src-server/routes/agents/skills.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the Skills and connection dependency from the guide. Package refusal shapes change only Skill writes; connection setup, credential paths and Skill discovery behavior are unchanged.","inputs":["docs/guides/connections.md","src-server/routes/agents/skills.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Checked the registry lifecycle badges and profile selection claims. The new structured registry DELETE refusal does not change installation, package selection, or the lifecycle displayed for successful removals.","inputs":["docs/guides/distribution-profiles.md","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked links and client compatibility guidance against the API and SDK documentation updates. Structured Skill refusal is additive and older plain failures still reject a mutation.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked the served-in-place plugin Skill and Registry lifecycle claims. Skill mutations now report refusal through the existing owned-package predicate with separate path data. Plugin activation and removal ownership stay unchanged.","inputs":["docs/guides/plugins.md","src-server/routes/plugins/registry.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the installed Skill tooling and provenance paths. PUT preserves the internal author context; the same package refusal is now identified by a code. No change to tool admission or what Agent edits are allowed.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/agents/skills.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Checked package-owned Skill discovery and usage against SkillService and config load. The new typed absence is used at the write route, with no change to read projection or plugin provenance.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader-storage.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the Skill create, get and delete rows against their route owners. Successful operations and the owned-package requirement are unchanged. PUT and DELETE now report the same structured ownership conflict. No provider smoke evidence is claimed.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/agents/skills.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Updated the public Skill write and registry remove response contract. Actual route tests check body and metadata PUT and DELETE return 409 with the typed refusal, malformed names stay 400, missing Skills stay 404, and the served path appears only in details.","inputs":["docs/reference/api.md","src-server/routes/plugins/registry.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked SDK mutation fetchers and tests. Local save and registry uninstall retain status, code and separate refusal details through StationHttpError. A plain legacy refusal still rejects.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/skills.ts","src-server/routes/plugins/registry.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked the Skill experience listing and registry generation claims. The structured rejection is limited to package writes and does not change experience identity, list scope, or launch.","inputs":["docs/reference/skill-experiences.md","src-server/routes/agents/skills.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed Skill discovery and registry examples against the mutation change. The request paths still discover and use the same Skill packages; the new refusal changes no lookup or invocation behavior.","inputs":["docs/reference/station-docs.md","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the Skill editing, unsaved changes, and package read-only guidance. Mounted editor and Chromium checks verified a write refused after editing preserves the draft, shows reason-specific recovery, and labels the path separately. Existing read-only controls remain.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SkillsView.test.tsx","src-ui/src/views/SkillsView.tsx"]},
+
+    {"path":"examples/registry/README.md","note":"Checked Registry list, preview and install examples against the changed route module. Only the ownership refusal for Skill DELETE changes; Registry source selection and install examples retain the same behavior.","inputs":["examples/registry/README.md","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"examples/registry/integrations/README.md","note":"Checked disabled Integration setup and registry installation against the cited modules. The new Skill refusal and typed Skill absence do not change Integration config or install behavior.","inputs":["examples/registry/integrations/README.md","src-server/domain/config-loader-storage.ts","src-server/routes/plugins/registry.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the example's local Skill update and approval behavior. Authorship stamping and command admission are unchanged; refused packages now return the typed response and their paths are data.","inputs":["examples/self-configuring-agent/README.md","src-server/routes/agents/skills.ts","src-server/services/agents/skill-service.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked the SDK scope and reference link. The documented Skill refusal follows the SDK's existing envelope owner and supported compatibility guidance.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

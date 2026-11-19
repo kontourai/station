@@ -152,7 +152,10 @@ function ReviewFrame({ reviewUrl }: { reviewUrl: string | null }) {
 }
 
 export function ReviewCard({
-  available,
+  checkOutput,
+  checkingOutput,
+  outputError,
+  outputAvailable,
   close,
   closePending,
   open,
@@ -160,7 +163,10 @@ export function ReviewCard({
   reviewUrl,
   selectedRun,
 }: {
-  available: boolean;
+  checkOutput: () => void;
+  checkingOutput: boolean;
+  outputError: boolean;
+  outputAvailable: boolean;
   close: () => void;
   closePending: boolean;
   open: () => void;
@@ -170,9 +176,13 @@ export function ReviewCard({
 }) {
   const status = !selectedRun
     ? 'Select a run to open its review surface.'
-    : available
-      ? 'Reviewed output is available.'
-      : 'Reviewed output becomes available after Fieldwork review is complete.';
+    : checkingOutput
+      ? 'Checking reviewed output…'
+      : outputError
+        ? 'Could not read reviewed output.'
+        : outputAvailable
+          ? 'Reviewed output is available.'
+          : 'Reviewed output has not been checked.';
   return (
     <section
       className="fieldwork-review__card fieldwork-review__review"
@@ -181,7 +191,9 @@ export function ReviewCard({
       <div className="fieldwork-review__section-heading">
         <div>
           <h3 id="fieldwork-review-title">Review surface</h3>
-          <p className="fieldwork-review__muted">{status}</p>
+          <p className="fieldwork-review__muted" role="status">
+            {status}
+          </p>
         </div>
         {selectedRun ? (
           <div className="fieldwork-review__actions">
@@ -195,6 +207,14 @@ export function ReviewCard({
               disabled={closePending || !selectedRun.open}
             >
               Close review
+            </button>
+            <button
+              type="button"
+              className="fieldwork-review__secondary"
+              onClick={checkOutput}
+              disabled={checkingOutput}
+            >
+              Check reviewed output
             </button>
           </div>
         ) : null}

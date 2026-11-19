@@ -1,0 +1,11 @@
+{
+  "revision": "58cfd2a7fc27b8de2abe0c3ad544782f5aeb4978",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"The Project Setup gallery opens a personal chat fixture and creates a blank Project from Save to Project before checking the suggested Task on desktop and phone. The four captures pass their product assertions. Motion settling, screenshot hygiene and the telemetry fixtures retain the same behavior.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The Project Setup gallery opens a personal chat fixture and creates a blank Project from Save to Project before checking the suggested Task on desktop and phone. The four captures pass their product assertions. Motion settling, screenshot hygiene and the telemetry fixtures retain the same behavior.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The Project Setup gallery opens a personal chat fixture and creates a blank Project from Save to Project before checking the suggested Task on desktop and phone. The four captures pass their product assertions. Motion settling, screenshot hygiene and the telemetry fixtures retain the same behavior.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

@@ -10,6 +10,7 @@ export type {
 export {
   type AgentId,
   agentId,
+  STATION_AGENT_ID,
 } from '@kontourai/station-contracts/agent-identity';
 export type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 export {

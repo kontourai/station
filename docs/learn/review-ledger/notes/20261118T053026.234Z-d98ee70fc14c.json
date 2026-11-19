@@ -1,0 +1,7 @@
+{
+  "revision": "85d4791ee4372b62ee30063b47f5bbcd5c8e65fa",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the older-server fixture after simplifying its Response setup. Its 400 response, rejection and draft/refusal assertions are unchanged.","inputs":["src-ui/src/__tests__/SkillsView.test.tsx"]}
+  ]
+}

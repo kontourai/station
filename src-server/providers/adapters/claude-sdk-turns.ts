@@ -69,6 +69,8 @@ export interface ClaudeSdkTurn {
 }
 
 export interface ClaudeSdkTurnLedger {
+  /** Recent stop identities still valid as attribution for buffered frames. */
+  stoppedTurnIds?: Set<string>;
   /** The turn the SDK is running now. Frames and results attribute to it. */
   running?: ClaudeSdkTurn;
   /** Dispatched turns whose prompt is queued in the SDK, not yet started. */
@@ -388,14 +390,33 @@ export function recordClaudeTurnStopRequested(
 ): boolean {
   const ledger = claudeSdkTurns(record);
   const running = ledger.running;
-  if (running?.turnId === turnId && running.kind !== 'untracked') {
-    running.stopRequested = true;
-    return true;
+  const turn =
+    running?.turnId === turnId && running.kind !== 'untracked'
+      ? running
+      : ledger.queued.find((queued) => queued.turnId === turnId);
+  if (!turn) return false;
+  turn.stopRequested = true;
+  ledger.stoppedTurnIds ??= new Set();
+  const stopped = ledger.stoppedTurnIds;
+  stopped.delete(turnId);
+  stopped.add(turnId);
+  if (stopped.size > 32) {
+    const oldest = stopped.values().next().value;
+    if (oldest !== undefined) stopped.delete(oldest);
   }
-  const queued = ledger.queued.find((turn) => turn.turnId === turnId);
-  if (!queued) return false;
-  queued.stopRequested = true;
   return true;
+}
+
+/** Whether this reply frame belongs to a stopped turn. */
+export function claudeReplyWasStopped(
+  record: ClaudeSdkTurnState,
+  message: unknown,
+): boolean {
+  const ledger = record.sdkTurns;
+  if (!ledger) return false;
+  const uuid = claudeMessageUserUuids(message).at(-1);
+  if (!uuid) return ledger.running?.stopRequested === true;
+  return ledger.stoppedTurnIds?.has(ledger.steers.get(uuid) ?? uuid) === true;
 }
 
 function turnMetadata(turn: ClaudeSdkTurn): Record<string, unknown> {
@@ -614,7 +635,8 @@ export function observeClaudeReplyFrame(
 
 export type ClaudeResultTarget =
   | { kind: 'turn'; turn: ClaudeSdkTurn; folded: ClaudeSdkTurn[] }
-  | { kind: 'none' };
+  | { kind: 'none' }
+  | { kind: 'stale-stop' };
 
 /**
  * Which turn a `result` closes. Its user uuids name the turn(s) it answers;
@@ -641,6 +663,13 @@ export function resolveClaudeResultTarget(
     const turn = named[named.length - 1];
     return { kind: 'turn', turn, folded: named.slice(0, -1) };
   }
+  const uuid = uuids.at(-1);
+  if (
+    uuid &&
+    uuid !== ledger.running?.turnId &&
+    ledger.stoppedTurnIds?.has(uuid)
+  )
+    return { kind: 'stale-stop' };
   if (ledger.running) return { kind: 'turn', turn: ledger.running, folded: [] };
   // With lifecycle messages a queued send has provably not started, so a
   // result naming nobody is not its result (#2324 delta review).

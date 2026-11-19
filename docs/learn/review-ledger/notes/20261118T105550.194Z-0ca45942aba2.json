@@ -1,0 +1,7 @@
+{
+  "revision": "83911b03766638e007c7fb95e89ab8c5cdd46040",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed additive Appearance keyboard fixture selection edges against supplemental selector behavior and the focused/hosted verification route. Existing instructions remain accurate; no product, authority, publication, timeout, or broad-gate semantics change.","inputs":["scripts/test-impact-manifest.mjs"]}
+  ]
+}

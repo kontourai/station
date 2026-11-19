@@ -1,0 +1,7 @@
+{
+  "revision": "88f507c3859d7119d2f3d472e72943fa52940183",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed the added SDK guidance against the shared TestFlight build, SDK preflight and exported Info.plist audit. Regression tests reject iOS 26.5 and 26.6 and accept an iOS 27 device SDK. Hosted signing and App Store Connect remain unverified.","inputs":["docs/guides/mobile-release.md"]}
+  ]
+}

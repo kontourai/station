@@ -572,6 +572,8 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Import a previously exported configuration file',
     usage: [
       'station import <file>  (requiredEnvNames is an untrusted informational hint; Station fails closed when a configured stored credential reference is missing during hydration)',
+      'station import --status  (show local progress and the expected receipt path)',
+      'station import <file> --resume=<operation-id>  (acknowledge retry or recover a completed receipt)',
     ],
   },
   plugin: {
@@ -1412,7 +1414,8 @@ const VERBS: Record<string, VerbSpec> = {
       'station checkpoints prune --all [--gc]',
       'station checkpoints history --thread=<threadId> [--json]',
       'station checkpoints retention --thread=<threadId> [--json]',
-      'station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baseline|settle] --confirm',
+      'station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baseline|settle] [--station=<name>|--api-base=<url>] [--json]',
+      'station checkpoints restore --thread=<threadId> --turn=<turnId> --confirm --preview-id=<id> --expected-current-tree-sha=<sha> [--station=<name>|--api-base=<url>] [--json]',
     ],
     detail: [
       'Workspace checkpoints (the workspaceCheckpoints setting) snapshot a',
@@ -1421,11 +1424,9 @@ const VERBS: Record<string, VerbSpec> = {
       'this command reports per-thread disk usage across checkpointed',
       'repositories and prunes them. prune --gc also runs the git gc that',
       'actually frees the space.',
-      'restore currently bypasses shared target/credential handling and sends',
-      'no authorization, so a protected Station refuses it. It defaults to',
-      '127.0.0.1:3141 unless --api-base is given and has no SDK deadline.',
-      'It also does not display its preview before submitting confirmation.',
-      'Use the authenticated checkpoint UI/API; see issue #2734.',
+      'Restore uses the selected Station and its credential. Run without',
+      '--confirm to review the paths. Confirm separately using the preview ID',
+      'and current-tree hash from the same Station, thread and turn.',
     ],
   },
   link: {

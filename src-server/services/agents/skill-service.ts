@@ -53,7 +53,10 @@ import {
   validateSkillContent,
 } from 'agent-skills-ts-sdk';
 import type { ConfigLoader, SkillConfig } from '../../domain/config-loader.js';
-import { skillRecordClaimsName } from '../../domain/config-loader-storage.js';
+import {
+  SkillNotFoundError,
+  skillRecordClaimsName,
+} from '../../domain/config-loader-storage.js';
 import type { SkillPackageDirectoryCondition } from '../../domain/skill-paths.js';
 import {
   canonicalSkillsDiscovered,
@@ -76,6 +79,7 @@ import { withLocalSkillMutation } from './skill-local-mutation.js';
 import {
   assertSafeSkillName,
   assertSkillPackageDirectory,
+  isSafeSkillName,
   readSkillCommand,
   readSkillLegacyIds,
   readSkillOrigin,
@@ -251,16 +255,22 @@ export interface SkillListing {
   writeRefusal?: SkillWriteRefusal;
 }
 
-/**
- * What a remove answers, with WHY it refused where the reason changes how a
- * caller must respond. `not-owned` is a package Station does not own — the
- * skill exists and the request is understood, which is a different answer from
- * a name nothing knows.
- */
-export interface SkillRemovalResult {
+export interface SkillPackageWriteResult {
   success: boolean;
   message: string;
   reason?: 'not-owned';
+  writeRefusal?: SkillWriteRefusal;
+}
+
+function refusedPackageWrite(
+  writeRefusal: SkillWriteRefusal,
+): SkillPackageWriteResult {
+  return {
+    success: false,
+    reason: 'not-owned',
+    message: writeRefusal.detail,
+    writeRefusal,
+  };
 }
 
 /**
@@ -305,24 +315,6 @@ export interface SkillDetail extends Omit<SkillConfig, 'source'> {
  * decorate, so a fifth answer cannot be added that forgets to.
  */
 type SkillDetailBody = Omit<SkillDetail, 'writable' | 'writeRefusal'>;
-
-/**
- * The writability rule's answer in BOTH shapes its callers need, from one call.
- *
- * `refusal` is the published projection: a reason code plus prose Station owns,
- * with the author-controlled path in its own field. `messageFragment` is the
- * lowercase clause the write path slots into its own sentence, kept verbatim so
- * that path's messages do not change.
- *
- * They travel together rather than being derived from each other, because the
- * alternative is a caller parsing the other's prose to recover a fact the rule
- * already knew. Nothing projects `messageFragment` into a read model: the read
- * models take `.refusal`, explicitly.
- */
-interface PackageOwnershipRefusal {
-  refusal: SkillWriteRefusal;
-  messageFragment: string;
-}
 
 /**
  * Which condition a refusal SPEAKS ABOUT when several hold at once.
@@ -427,21 +419,6 @@ export const SKILL_REFUSAL_STATEMENT = {
 } as const satisfies Record<
   SkillPackageDirectoryCondition,
   Pick<SkillWriteRefusal, 'reason' | 'detail'>
->;
-
-/** The clause the write path slots into its own sentence, kept verbatim. */
-const SKILL_REFUSAL_FRAGMENT = {
-  'unsafe-name': (_name: string, _directory: string) =>
-    'its name cannot be used as a directory name, so Station cannot work out where it would write this package',
-  unreadable: (_name: string, directory: string) =>
-    `the package Station found for it at ${directory} could not be read, so where a write would land is unknown`,
-  'outside-writable-root': (_name: string, directory: string) =>
-    `it is served from ${directory}, which is not a skills root Station writes`,
-  'name-mismatch': (name: string, directory: string) =>
-    `the package discovery found for it is ${directory}, whose directory name is not '${name}'`,
-} as const satisfies Record<
-  SkillPackageDirectoryCondition,
-  (name: string, directory: string) => string
 >;
 
 /**
@@ -1218,7 +1195,7 @@ export class SkillService {
   private packageOwnershipRefusal(
     name: string,
     projectHomeDir: string,
-  ): PackageOwnershipRefusal | undefined {
+  ): SkillWriteRefusal | undefined {
     const registered = this.registry.get(name);
     // A source whose generation has been retired is not a writability answer
     // either way: nothing about the package can be trusted until discovery
@@ -1229,22 +1206,16 @@ export class SkillService {
     const directory = dirname(registered.location);
     if (registered.provided)
       return {
-        messageFragment: `it is served in place from ${directory}, which Station does not own`,
-        refusal: {
-          reason: 'served-in-place',
-          detail:
-            'A plugin serves it in place, from a directory Station does not own.',
-          packageDirectory: directory,
-        },
+        reason: 'served-in-place',
+        detail:
+          'A plugin serves it in place, from a directory Station does not own.',
+        packageDirectory: directory,
       };
     if (this.canonicalSourceFor(registered.location))
       return {
-        messageFragment: `it is served from the package at ${directory}, which Station does not own`,
-        refusal: {
-          reason: 'canonical-package',
-          detail: 'It is served from a package that ships read-only.',
-          packageDirectory: directory,
-        },
+        reason: 'canonical-package',
+        detail: 'It is served from a package that ships read-only.',
+        packageDirectory: directory,
       };
     // The floor's OWN verdict, threaded out rather than re-derived. It
     // distinguishes four conditions and an earlier draft collapsed three of
@@ -1265,11 +1236,8 @@ export class SkillService {
     const condition = worstSkillPackageCondition(report.conditions);
     if (!condition) return undefined;
     return {
-      messageFragment: SKILL_REFUSAL_FRAGMENT[condition](name, directory),
-      refusal: {
-        ...SKILL_REFUSAL_STATEMENT[condition],
-        packageDirectory: directory,
-      },
+      ...SKILL_REFUSAL_STATEMENT[condition],
+      packageDirectory: directory,
     };
   }
 
@@ -1334,10 +1302,7 @@ export class SkillService {
     name: string,
     projectHomeDir: string,
   ): { writable: boolean; writeRefusal?: SkillWriteRefusal } {
-    const writeRefusal = this.packageOwnershipRefusal(
-      name,
-      projectHomeDir,
-    )?.refusal;
+    const writeRefusal = this.packageOwnershipRefusal(name, projectHomeDir);
     return writeRefusal
       ? { writable: false, writeRefusal }
       : { writable: true };
@@ -1535,7 +1500,7 @@ export class SkillService {
     if (!config && !existsSync(skillPath)) {
       // Neither a record nor a body: there is nothing left to answer FROM. The
       // registry entry is a memory of a file that has since gone.
-      throw new Error(`Skill '${name}' not found`);
+      throw new SkillNotFoundError(name);
     }
     if (!existsSync(skillPath)) {
       // The mirror is the ONLY thing left to read, so say so. A silent
@@ -2193,7 +2158,14 @@ export class SkillService {
     updates: Partial<EditableSkillInput>,
     projectHomeDir: string,
     projectSlug?: string,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<SkillPackageWriteResult> {
+    // Discovery can retain a package whose declared name cannot be used for
+    // path resolution. Explain that package's refusal before resolving it.
+    if (!isSafeSkillName(name)) {
+      const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
+      if (refusal) return refusedPackageWrite(refusal);
+      assertSafeSkillName(name);
+    }
     // A rename touches both namespace identities. Acquire in path order before
     // reading either so two opposing renames cannot deadlock or overwrite —
     // and acquire the DIRECTORIES this write will touch, which for a workspace
@@ -2229,35 +2201,13 @@ export class SkillService {
     /** Resolved and LOCKED by the caller — never re-derived here. */
     skillDir: string,
     projectSlug?: string,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<SkillPackageWriteResult> {
     // A rename is a create under a new name: the same seam, the same refusal.
     if (updates.name !== undefined) assertSafeSkillName(updates.name);
-    // WRITABILITY FIRST, then the directory. A root Station does not own is
-    // refused for EVERY field rather than only when the request declares a
-    // command: that is what `isSkillWritable`'s docblock has always said
-    // ("those must be installed into the workspace before they can be
-    // edited"), and a description edit used to quietly publish a shadow
-    // package into the workspace instead. The predicate is shared with the
-    // route rather than restated, so one rule cannot drift into two answers —
-    // and it has to run before the resolution below, which REFUSES such a
-    // directory by throwing rather than by answering.
-    //
-    // Read the registry entry here rather than inside the message: a package
-    // with no discovered location is writable by definition, so this condition
-    // is exactly the predicate's own — with no unreachable "or else" to
-    // describe a case it cannot produce.
-    //
-    // `messageFragment`, not the projected refusal: this path states the reason
-    // in a sentence and the read models state it in a code plus prose that
-    // carries no author-controlled text. Same rule, same call, two shapes —
-    // which is the point. (The fragment does interpolate paths and the name;
-    // that is pre-existing and tracked in #1681, not introduced here.)
-    const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
-    if (refusal) {
-      return {
-        success: false,
-        message: `Cannot edit '${name}': ${refusal.messageFragment}.`,
-      };
+    // Recheck under the mutation lock, before loading or rewriting the package.
+    const writeRefusal = this.packageOwnershipRefusal(name, projectHomeDir);
+    if (writeRefusal) {
+      return refusedPackageWrite(writeRefusal);
     }
     const current = await this.getSkill(name);
     const skillPath = join(skillDir, 'SKILL.md');
@@ -2499,7 +2449,14 @@ export class SkillService {
     name: string,
     projectHomeDir: string,
     projectSlug?: string,
-  ): Promise<SkillRemovalResult> {
+  ): Promise<SkillPackageWriteResult> {
+    // Discovery can retain a package whose declared name cannot be used for
+    // path resolution. Explain that package's refusal before resolving it.
+    if (!isSafeSkillName(name)) {
+      const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
+      if (refusal) return refusedPackageWrite(refusal);
+      assertSafeSkillName(name);
+    }
     const directory = this.packageDirectoryFor(
       name,
       projectHomeDir,
@@ -2516,7 +2473,7 @@ export class SkillService {
     /** Resolved and LOCKED by the caller — never re-derived here. */
     directory: string,
     projectSlug?: string,
-  ): Promise<SkillRemovalResult> {
+  ): Promise<SkillPackageWriteResult> {
     skillOps.add(1, { operation: 'remove' });
     // A remove deletes a package TREE, so a package Station does not own must
     // not be one of them. `packageDirectoryFor` already guarantees that — it
@@ -2540,16 +2497,9 @@ export class SkillService {
     // deletes it; on a case-sensitive volume both refuse. That asymmetry is
     // the price of not blocking a user from deleting their own package, and it
     // is recorded rather than papered over.
-    const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
-    if (refusal && !existsSync(directory)) {
-      return {
-        success: false,
-        // STRUCTURED, not a message a caller has to parse: the route maps this
-        // to 409, and deriving that from the prose meant any rewording
-        // silently reverted every ownership refusal to a false 404.
-        reason: 'not-owned',
-        message: `Cannot remove '${name}': ${refusal.messageFragment}.`,
-      };
+    const writeRefusal = this.packageOwnershipRefusal(name, projectHomeDir);
+    if (writeRefusal && !existsSync(directory)) {
+      return refusedPackageWrite(writeRefusal);
     }
     return removeInstalledSkill({
       name,

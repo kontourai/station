@@ -5,7 +5,10 @@ import {
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
-import type { UsageExportPage } from '@kontourai/station-contracts/usage-export';
+import {
+  parseUsageExportPage,
+  type UsageExportPage,
+} from '@kontourai/station-contracts/usage-export';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { readAuthorizedUsageExport } from '../../../analytics/usage-export-reader.js';
@@ -55,12 +58,12 @@ function fixture() {
     },
   );
   let index = 0;
-  const providers = new Map<string, 'codex' | 'claude'>();
+  const providers = new Map<string, 'codex' | 'claude' | 'opencode'>();
   const start = (
     thread: string,
     owner: string,
     tenant?: string,
-    provider: 'codex' | 'claude' = 'codex',
+    provider: 'codex' | 'claude' | 'opencode' = 'codex',
   ) => {
     providers.set(thread, provider);
     const time = new Date().toISOString();
@@ -166,6 +169,41 @@ test('mounted export walks more than 500 committed facts and excludes later appe
     );
   }
   expect(received).toEqual(expected);
+});
+
+test('the v1 export remains readable when OpenCode reports a step model', async () => {
+  const f = fixture();
+  f.start('own', 'reader', undefined, 'opencode');
+  const createdAt = new Date().toISOString();
+  f.store.appendEvent({
+    eventId: 'usage-opencode',
+    provider: 'opencode',
+    threadId: 'own',
+    method: 'token-usage.updated',
+    createdAt,
+    promptTokens: 10,
+    servedModelObservation: {
+      source: 'opencode-step-started',
+      providerId: 'provider',
+      modelId: 'org/model',
+      assistantMessageId: 'message',
+    },
+  });
+
+  const response = await f.app.request(f.url());
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { data: UsageExportPage };
+  const day = createdAt.slice(0, 10);
+  const page = parseUsageExportPage(body.data, {
+    expectedStationId: 'station-a',
+    from: day,
+    to: day,
+    scope: 'individual',
+  });
+  expect(page.observations[0]?.receipts[0]).toMatchObject({
+    sourceEventId: 'usage-opencode',
+    inputTokens: 10,
+  });
 });
 
 test('personal nonmembers refuse account scope while retaining individual reads', async () => {

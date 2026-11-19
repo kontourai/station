@@ -1,3 +1,5 @@
+import { STATION_AGENT_ID } from '@kontourai/station-contracts/agent-identity';
+
 export interface SDKMockConfig {
   layoutSlug: string;
 }
@@ -155,6 +157,9 @@ window.__station_ai_sdk_mock={
 window.__station_ai_sdk_mock_subpaths={
   '@kontourai/station-sdk/client':{createKnowledgeRecord:__fetcher('createKnowledgeRecord')},
   '@kontourai/station-sdk/voice':{voiceRegistry:__voiceRegistry,voiceSessionAdapterRegistry:__voiceSessionAdapterRegistry,registerRealtimeVoiceProvider:function(registry,provider){window.__devToast&&window.__devToast('Realtime voice is unavailable in station dev');return{adapter:provider,dispose:noop}}},
-  '@kontourai/station-sdk/agent':{}
+  '@kontourai/station-sdk/agent':{
+    STATION_AGENT_ID:${JSON.stringify(STATION_AGENT_ID)},
+    agentId:function(value){return window.__station_sdk.agentId(value)}
+  }
 };`;
 }

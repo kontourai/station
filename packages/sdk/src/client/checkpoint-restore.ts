@@ -33,27 +33,27 @@ export interface CheckpointRestorePreview {
 
 async function unwrap<T>(response: Response): Promise<T> {
   const fallback = `Checkpoint restore failed: ${response.status}`;
-  let body: {
-    success?: boolean;
-    data?: T;
-    error?: unknown;
-    message?: unknown;
-    details?: { formErrors?: unknown; fieldErrors?: unknown };
-    reason?: unknown;
-  };
+  let body: unknown;
   try {
     body = await response.json();
   } catch (error) {
     rethrowDeadline(error);
     throw envelopeError(response, undefined, fallback);
   }
-  if (!response.ok || !body.success) {
+  const envelope = body && typeof body === 'object' ? body : undefined;
+  if (
+    !response.ok ||
+    !envelope ||
+    !('success' in envelope) ||
+    envelope.success !== true ||
+    !('data' in envelope)
+  ) {
     const error = envelopeError(response, body, fallback);
-    if (typeof body.reason === 'string')
-      Object.assign(error, { reason: body.reason });
+    if (envelope && 'reason' in envelope && typeof envelope.reason === 'string')
+      Object.assign(error, { reason: envelope.reason });
     throw error;
   }
-  return body.data as T;
+  return envelope.data as T;
 }
 
 export async function previewCheckpointRestore(
@@ -61,13 +61,14 @@ export async function previewCheckpointRestore(
   threadId: string,
   turnId: string,
   requestScope: ApiRequestScope,
+  phase: CheckpointRestorePreview['phase'] = 'settle',
 ): Promise<CheckpointRestorePreview> {
   return unwrap(
     await mutateJson(
       `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/checkpoints/${encodeURIComponent(turnId)}/restore-preview`,
       'POST',
-      { requestScope },
-      { phase: 'settle' },
+      { requestScope, redirect: 'error', readOnly: true },
+      { phase },
     ),
   );
 }
@@ -83,7 +84,7 @@ export async function confirmCheckpointRestore(
     await mutateJson(
       `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/checkpoints/${encodeURIComponent(turnId)}/restore`,
       'POST',
-      { requestScope },
+      { requestScope, redirect: 'error' },
       {
         confirmed: true,
         previewId: preview.previewId,

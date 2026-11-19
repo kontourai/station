@@ -132,8 +132,8 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
   };
 });
 
-// Provider ordering is covered against the real application entrypoint in
-// main-provider-order.test.ts. This component suite isolates onboarding
+// NativeRelayEntryBoundary.test.tsx exercises provider placement through
+// the real application entrypoint. This suite isolates onboarding
 // behavior from the toast implementation while retaining the hook contract.
 vi.mock('../contexts/ToastContext', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../contexts/ToastContext')>()),
@@ -2748,7 +2748,7 @@ describe('OnboardingGate', () => {
       [
         'while stopped',
         bundled({ phase: 'stopped' }),
-        /local Station is stopped/,
+        'Local Station stopped. Restart it to use local server actions.',
       ],
       [
         'after a service error',

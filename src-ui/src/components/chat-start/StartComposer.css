@@ -178,6 +178,7 @@
 .start-composer__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--k-space-2);
   flex: 0 0 auto;
 }

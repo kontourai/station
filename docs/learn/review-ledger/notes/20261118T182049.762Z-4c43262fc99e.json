@@ -1,0 +1,25 @@
+{
+  "revision": "9dc94b007e759b6b9e174f234e61445d772d8635",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Traced the existing native platform marker, capability and app-name reads, saved-profile hydration, and the lazy pairing owner. The mobile renderer deadline names a pending stage, ends startup, and offers a full renderer reload. Desktop sidecar admission and credential authority keep their own owners.","inputs":["docs/design/native-capabilities.md","src-ui/src/__tests__/PlatformProfile.test.tsx","src-ui/src/platform/native/index.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked the simulator build and normal startup owners on iOS 27.2. Exact healthy build opened the unpaired welcome and pairing routes; a separate simulator-only delayed station_profile_store_read reached the named recovery and Reload began a fresh attempt. The restored healthy build reached welcome again. Physical and signed release qualification are separate.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed the user-facing mobile recovery action through the installed simulator. Reload revisits renderer startup with the same app container, and the desktop recovery options remain correct.","inputs":["docs/user/native-recovery.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked the main renderer branch order. Account and shared-answer routes still mount above PlatformBootstrap. The awaited pairing owner lives in the ordinary native application branch.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the document media and native platform stamps and iOS screenshots. The new pairing owner remains below those setup steps and the existing welcome uses the same controls and adaptive layout.","inputs":["docs/guides/responsive-ui.md","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked initial theme and appearance binding, startup handoff, and current native root stamps. Mobile recovery dismisses the startup cover through the recovery handoff. Boot theme, CSS and native channel mark still use the documented owners.","inputs":["docs/guides/theming.md","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the native bootstrap and main provider order. No backend contract, requests, error vocabulary or connection authority changed.","inputs":["docs/patterns/backend.md","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the main recovery and protected-query providers. The pairing module loads before the mobile welcome, and the recovery owner stays in its scoped query client when the protected tree changes.","inputs":["docs/patterns/frontend.md","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the main renderer setup and native platform bootstrap. API base resolution and every documented environment variable retain their existing behavior.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked native renderer and ordinary app provider wiring. Public hooks, SDK provider, query scope and execution contracts are unchanged.","inputs":["docs/reference/sdk.md","src-ui/src/main.tsx"]}
+  ]
+}

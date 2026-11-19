@@ -135,6 +135,7 @@ function createConnections(
 
 function createAdapter(
   options: {
+    provider?: AcpAdapterOptions['provider'];
     imageCapability?: boolean;
     loadSessionCapability?: boolean;
     /** Advertise `sessionCapabilities.resume` (`{}`) at initialize. */
@@ -171,6 +172,7 @@ function createAdapter(
 } {
   const processes: FakeAcpProcess[] = [];
   const adapter = new AcpAdapter({
+    provider: options.provider,
     getConnections: async () =>
       createConnections(options.connectionOverrides ?? []),
     logger: options.logger ?? {
@@ -4454,7 +4456,7 @@ describe('AcpAdapter', () => {
     expect(await adapter.hasSession('thread-other')).toBe(false);
   });
 
-  test('#354 a refusal or exhausted request budget completes the turn but keeps the ACP stop reason', async () => {
+  test('#354 refusal and request budget exhaustion settle as non-retryable failures with their provider reason', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
@@ -4479,7 +4481,7 @@ describe('AcpAdapter', () => {
       completions.push(
         (await nextEvent(
           iterator,
-          `turn.completed (${stopReason})`,
+          `terminal (${stopReason})`,
         )) as unknown as Record<string, unknown>,
       );
     }
@@ -4488,14 +4490,43 @@ describe('AcpAdapter', () => {
     expect(ended).toMatchObject({ finishReason: 'stop' });
     expect(ended).not.toHaveProperty('stopReason');
     expect(refused).toMatchObject({
-      method: 'turn.completed',
-      finishReason: 'other',
-      stopReason: 'refusal',
+      method: 'runtime.error',
+      code: 'acp-turn-refused',
+      retryable: false,
+      details: { stopReason: 'refusal' },
     });
     expect(exhausted).toMatchObject({
-      method: 'turn.completed',
-      finishReason: 'other',
-      stopReason: 'max_turn_requests',
+      method: 'runtime.error',
+      code: 'acp-turn-request-limit',
+      retryable: false,
+      details: { stopReason: 'max_turn_requests' },
+    });
+    await adapter.stopAll();
+  });
+
+  test('OpenCode over ACP reports an unconfirmed result when its actual prompt reply omits the reason', async () => {
+    const { adapter, processes } = createAdapter({ provider: 'opencode' });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'opencode',
+      threadId: 'thread-stop',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-stop', input: 'work' });
+    await nextEvent(iterator, 'turn.started');
+
+    // Exercise a protocol reply from an implementation that omitted stopReason.
+    processes[0].resolvePrompt(
+      undefined as unknown as Parameters<FakeAcpProcess['resolvePrompt']>[0],
+    );
+    expect(await nextEvent(iterator, 'runtime.error')).toMatchObject({
+      provider: 'opencode',
+      method: 'runtime.error',
+      code: 'acp-turn-outcome-unknown',
+      retryable: false,
     });
     await adapter.stopAll();
   });

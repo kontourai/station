@@ -1923,6 +1923,26 @@ a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.
 
+#### Named lazy-surface readiness
+
+The [lazy boundary](../../src-ui/src/components/LazyBoundary.tsx) keeps a
+loader's original promise separate from the tracing promise React receives.
+This lets a caller reuse its settled promise across mounts. A rejected import
+can be retried through the boundary, which creates a fresh lazy attempt.
+
+The live first-run journey observes **Chat actions** and **Inbox** by their
+stable `data-lazy-surface` IDs on visible failure rows. An unrelated failure
+can appear, clear, or coexist without changing that observation. The displayed
+message names the affected surface, and the shared row offers Retry and Reload.
+Custom History chrome uses the same row.
+
+A boundary failure identifies the UI that failed. Gallery uses its existing
+request evidence to determine whether an app asset failed to load. The
+[Chromium remount and Retry fixture](../../src-ui/src/__tests__/LazyBoundary.browser.test.tsx)
+and the
+[readiness adapter fixture](../../src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx)
+cover those contracts with controlled loaders and saved failure markup.
+
 #### Gallery app error states and the after-photo control record
 
 When a lazily loaded part of the product fails, it shows an error surface and
@@ -1955,7 +1975,7 @@ any error its child throws, a render error included. NOT detected, because none
 has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
 `RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
 `DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
-their own `unavailable` slot (several render nothing). The route boundary's
+their own `unavailable` slot that omits the shared row (several render nothing). The route boundary's
 other error states, its authority failure (`route.authority.title`) and its
 render failure (`route.generic.title`), are not detected either. The route
 surface is matched by its en-US titles only, so a capture in another locale
@@ -2586,7 +2606,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Veritas readiness executes full-repository lint once through its required `style-standard` check. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.

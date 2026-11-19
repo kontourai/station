@@ -1,0 +1,7 @@
+{
+  "revision": "7a67bf0ea4191aa4e71bc4f02756e46fa020ae59",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the 390px touch journeys against the Connections routes, Station-details disclosure, and live connection-condition producer. The coverage table remains representative. The spec uses an isolated Station with explicit health, identity, and inventory fixtures, plus a refused access request observed through the real UI. These journeys do not qualify external providers or a paired native device.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-reconnect-banner.spec.ts"]}
+  ]
+}

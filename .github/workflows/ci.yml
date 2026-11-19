@@ -507,15 +507,14 @@ jobs:
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 15
 
-      # Same provisioning as full-regression: the selection can include
-      # tests that exec zsh (ops/nightly/macos-build-only-cleanup.test.mjs),
-      # and ubuntu-22.04 ships without it.
+      # Use the exact slice's Linux fixture inventory. Older candidate
+      # slicers omit requires-zsh and keep the previous preflight.
       # Transient apt mirror or DNS failures (`Temporary failure resolving
       # 'archive.ubuntu.com'`) retry the idempotent bootstrap: three attempts
       # and 30 seconds of backoff inside the five-minute step bound. The last
       # attempt's own apt error and exit status still fail the step.
       - name: Provision and preflight zsh for process-heavy installer fixtures
-        if: ${{ steps.slice.outputs.empty == 'false' }}
+        if: ${{ steps.slice.outputs.empty == 'false' && steps.slice.outputs.requires-zsh != 'false' }}
         timeout-minutes: 5
         env:
           BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
