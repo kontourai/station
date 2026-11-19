@@ -1672,6 +1672,11 @@ something writes only to that subagent's own session log, not to the
 parent's stdout, and reads as silent after the window, which is the
 signal the user acts on now that no idle timer ends it.
 
+A Session summary's `turnProgress` can carry `threadId` and `turnId` for
+the execution observed by the watchdog. Older observations can omit either
+identifier. An observation without a turn ID cannot identify a turn for
+delegated supervision.
+
 The source route is the [window resolver](../../packages/contracts/src/turn-stall-window.ts),
 [watchdog](../../src-server/services/orchestration/turn-stall-watchdog.ts), and
 [progress projection](../../src-server/services/orchestration/turn-progress-tracker.ts).

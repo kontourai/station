@@ -1,7 +1,4 @@
-import type {
-  OrchestrationSessionSummary,
-  TurnProgressObservation,
-} from '@kontourai/station-contracts/orchestration';
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 
 /**
  * Session summaries as the SERVER folds them, for client tests that need the
@@ -38,21 +35,8 @@ export interface FoldFixtureOptions {
   silentForMs?: number;
 }
 
-/**
- * A fixture's summary: the contract's shape over the fields the fold test
- * pins, typed rather than asserted so the compiler checks every literal.
- *
- * `turnProgress` is the one place the wire carries more than the contract
- * declares: `TurnProgressTracker.recordProgress` keeps `threadId` and
- * `turnId` on the stored observation and the summary serializes it as-is,
- * so an exact fixture has to carry them. Nothing in the client reads them;
- * `TurnProgressObservation` is still what consumers are scoped to.
- */
-export type FoldSummary = Partial<
-  Omit<OrchestrationSessionSummary, 'turnProgress'>
-> & {
-  turnProgress?: TurnProgressObservation & { threadId: string; turnId: string };
-};
+/** The public summary fields pinned by the fold test. */
+export type FoldSummary = Partial<OrchestrationSessionSummary>;
 
 export interface FoldFixture {
   events: readonly FoldEvent[];
