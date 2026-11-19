@@ -228,6 +228,49 @@ describe('PlatformProfile derivation', () => {
     );
   });
 
+  test('offers recovery when iOS never returns its saved Station list', async () => {
+    vi.useFakeTimers();
+    let resolveRead!: () => void;
+    const read = new Promise<void>((resolve) => {
+      resolveRead = resolve;
+    });
+    const profileRead = vi.fn(() => read);
+    state.adapter = tauriAdapter('ios', 'disabled');
+    state.profileHydrate = profileRead;
+    const authorize = vi.fn(async () => true);
+    state.authorizeRememberedProfile = authorize;
+    vi.resetModules();
+    try {
+      const { PlatformBootstrap } = await import(
+        '../platform/PlatformProfileContext'
+      );
+      render(
+        <PlatformBootstrap>
+          <div>Workspace</div>
+        </PlatformBootstrap>,
+      );
+      await act(async () => vi.dynamicImportSettled());
+      expect(profileRead).toHaveBeenCalledOnce();
+      await act(async () => vi.advanceTimersByTimeAsync(29_999));
+      expect(
+        screen.queryByRole('button', { name: 'Reload Station' }),
+      ).toBeNull();
+      await act(async () => vi.advanceTimersByTimeAsync(1));
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Station stopped waiting for the saved Station list.',
+      );
+      expect(
+        screen.getByRole('button', { name: 'Reload Station' }),
+      ).toBeTruthy();
+
+      await act(async () => resolveRead());
+      expect(screen.queryByText('Workspace')).toBeNull();
+      expect(authorize).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   function wireAdapter(channel: unknown, includeChannel = true) {
     const payload = {
       ...completeNativeCapabilityReport('android'),
