@@ -12929,9 +12929,9 @@ export class EventStore {
    * SQL cannot express without disagreeing with the writer at the edges. The
    * caller applies the exact predicate to this window. It differs from the old
    * full scan only if the newest `limit` configured events ALL fail that
-   * predicate while an older one passes; the caller's cost for that is one
-   * envelope pair, once, because its event id no longer depends on a count
-   * (see `envelopeEventId`).
+   * predicate while an older one passes. The caller treats a full window with
+   * no claim as unknown, and can key a recovery envelope to its newest
+   * configuration row (see `envelopeEventId`).
    *
    * Ordering is identical to the scan it replaces (`created_at DESC,
    * sequence DESC`). `idx_events_turn_window` serves the SEARCH but does NOT
@@ -14919,15 +14919,27 @@ export class EventStore {
    * attribution can be established by a Session-level event with no turn id.
    */
   readConversationProjectSlug(threadId: string): string | undefined {
+    return (
+      this.readConversationProjectScope(threadId)?.projectSlug ?? undefined
+    );
+  }
+
+  /** Null records an unbound Session. An absent row cannot prove its scope. */
+  readConversationProjectScope(
+    threadId: string,
+  ): { projectSlug: string | null } | undefined {
     const row = this.db
       .prepare(
         `SELECT project_slug FROM orchestration_conversation_history
          WHERE thread_id = ? LIMIT 1`,
       )
-      .get(threadId) as { project_slug?: string | null } | undefined;
-    return typeof row?.project_slug === 'string' && row.project_slug.length > 0
-      ? row.project_slug
-      : undefined;
+      .get(threadId) as { project_slug: string | null } | undefined;
+    if (
+      row &&
+      (row.project_slug === null ||
+        (typeof row.project_slug === 'string' && row.project_slug.length > 0))
+    )
+      return { projectSlug: row.project_slug };
   }
 
   /** Deliberate composition seam; callers receive conversation intent, never SQLite. */
@@ -18448,7 +18460,7 @@ export class EventStore {
                WHERE thread_id = ?
                  AND method IN ('session.started', 'session.configured')
                  AND json_valid(payload)
-                 AND typeof(json_extract(payload, '$.metadata.userId')) = 'text'
+                 AND json_type(payload, '$.metadata.userId') = 'text'
                ORDER BY sequence DESC
                LIMIT 1`,
             )
@@ -18459,7 +18471,7 @@ export class EventStore {
                WHERE thread_id = ?
                  AND method IN ('session.started', 'session.configured')
                  AND json_valid(payload)
-                 AND typeof(json_extract(payload, '$.metadata.agentSlug')) = 'text'
+                 AND json_type(payload, '$.metadata.agentSlug') = 'text'
                ORDER BY sequence DESC
                LIMIT 1`,
             )
@@ -18470,7 +18482,7 @@ export class EventStore {
                WHERE thread_id = ?
                  AND method IN ('session.started', 'session.configured')
                  AND json_valid(payload)
-                 AND typeof(json_extract(payload, '$.metadata.projectSlug')) = 'text'
+                 AND json_type(payload, '$.metadata.projectSlug') = 'text'
                ORDER BY sequence DESC
                LIMIT 1`,
             )
@@ -18783,7 +18795,7 @@ export class EventStore {
        WHERE thread_id = ?
          AND method IN ('session.started', 'session.configured')
          AND json_valid(payload)
-         AND typeof(json_extract(payload, '$.metadata.projectSlug')) = 'text'
+         AND json_type(payload, '$.metadata.projectSlug') = 'text'
        ORDER BY sequence DESC
        LIMIT 1`,
     );

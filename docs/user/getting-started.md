@@ -1356,7 +1356,8 @@ Each conversation is filed under a Project by the folder it ran in:
 
 Rows can show **Directory · …/parent/folder** when a working folder is recorded
 without a Project label. The label provides folder context and leaves Project
-membership unchanged.
+membership unchanged. A reopened delegated chat can show **CLI (reported)**
+when Station's accepted start receipt records a CLI caller.
 
 A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
@@ -1638,12 +1639,20 @@ request version, once. A review request with recorded evidence offers
 A row's ⋯ menu holds **Dismiss**, and **Snooze** when the Attention snooze
 preview is on.
 
+A conversation’s Inbox row also shows the request and **Approve once** or
+**Deny** when Station can inspect one exact request and you can answer it.
+Open the chat from its row to review an approval when those controls are
+unavailable.
+
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station
 checks that the request is still open and makes the decision. When the paired
 Station reports a question's exact request and your access permits it, the card
 offers an **Answer on the paired Station** box whose **Send answer** reply is
 bound to that question; otherwise the card says to answer it on that Station.
+
+When the approval guardian asks you to review a call after repeated denials,
+**Approval guardian** quotes its reason separately from the tool’s description.
 
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision

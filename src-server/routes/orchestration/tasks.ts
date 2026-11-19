@@ -1788,6 +1788,7 @@ export function createTaskRoutes(
           ? await options.answerNarrativeBindingModule.withTaskReferencePin({
               sessionId: input.sessionId,
               turnId: input.turnId,
+              taskProjectId: referenceCommitAuthorization!.expectedProjectId,
               authority: options.readAuthorityForRequest!(c.req.raw),
               current: () =>
                 (options.isRequestPrincipalCurrent?.(c.req.raw) ?? true) &&

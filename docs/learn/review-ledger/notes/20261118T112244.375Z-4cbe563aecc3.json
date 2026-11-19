@@ -1,0 +1,25 @@
+{
+  "revision": "6ac186906496309ce778c74f283776dfeda5d267",
+
+  "notes": [
+    {"path":"docs/guides/deployment.md","note":"Traced CLI and server home admission through the schema gate. A registered migration stages a sibling copy before publication. The copy preserves existing POSIX directory and file modes before the migration runs. The production migration registry is still empty and the documented markerless-home refusal remains accurate.","inputs":["docs/guides/deployment.md","packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the migration staging delta against the cited startup and recovery boundaries. The copy starts in a private sibling directory and reapplies source directory permission bits before invoking the migration. The source and staged directory traversal does not follow copied links. The CLI and server retain the same marker validation, lock, refusal and publication contracts.","inputs":["packages/shared/src/station-home-schema.ts"]}
+  ]
+}

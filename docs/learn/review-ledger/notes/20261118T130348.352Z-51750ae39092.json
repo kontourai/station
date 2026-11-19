@@ -1,0 +1,23 @@
+{
+  "revision": "30ee61cd9420dc52a4e359465d537f7d180e2821",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"The phone title reuses its existing eyebrow for the reported CLI start. The exact host session and composer controller still own their respective facts and actions.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed the mobile header's rendering guard. The start caption follows the exact visible parent thread and yields while a child or the Inbox is showing.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Verified the shared CLI start selector now serves both desktop and mobile header layouts. The compact card's legacy result preview and title grouping retain their existing layout.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The phone provenance fits the existing title eyebrow and adds no interactive row. Desktop and mobile share the same authenticated start input.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the phone header wiring for the current host-owned delegated session. It uses the existing exact-thread command-receipts query and accepted start discriminator.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Checked that the reported CLI label derives from the accepted start record. Agent, route and model display continue to reflect the existing execution inputs.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Verified the concise phone provenance retains the reported qualifier and only applies when the visible delegated conversation's own start record contains CLI.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the phone and desktop route labels and documented their shared CLI reported wording. The existing Directory label remains the folder display for Project-less runs.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the shared dock title consumer. Board and placement actions keep their current routing; the mobile eyebrow follows the selected conversation.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -3420,7 +3420,11 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
   });
 
   test("an Agent's Station tool policy that requires a person puts an edit Auto would answer to the person", async () => {
-    const policy = stagedPolicy(() => ({ behavior: 'ask', required: true }));
+    const policy = stagedPolicy(() => ({
+      behavior: 'ask',
+      required: true,
+      guardianReason: 'The only-if-asked rule requires a person.',
+    }));
     const h = await setup(
       { scenario: 'governed' },
       { acp: { resolvePreToolPolicy: policy.resolvePreToolPolicy } },
@@ -3432,7 +3436,10 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
         (event) =>
           event.method === 'request.opened' && event.turnId === edit.turnId,
       ),
-    ).toMatchObject({ payload: { toolName: 'edit' } });
+    ).toMatchObject({
+      guardianReason: 'The only-if-asked rule requires a person.',
+      payload: { toolName: 'edit' },
+    });
     expect(replies(h)).toEqual([]);
     expect(policy.calls).toHaveLength(1);
   });

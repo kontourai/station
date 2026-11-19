@@ -129,16 +129,16 @@
   padding-bottom: calc(var(--k-space-5) + var(--dock-bottom-clearance));
 }
 
-/* Sources own their scrollport between the header and the shell's dock reserve. */
-.route-transition:has(> .project-settings--sources) {
+/* Sources and Memory scroll within the shell's dock clearance. */
+.route-transition:has(> .project-settings--bounded-list) {
   min-height: 0;
   overflow: hidden;
 }
-.project-settings--sources,
-.project-settings--sources .project-settings__layout {
+.project-settings--bounded-list,
+.project-settings--bounded-list .project-settings__layout {
   overflow: hidden;
 }
-.project-settings--sources .project-settings__body {
+.project-settings--bounded-list .project-settings__body {
   margin-bottom: 0;
   padding-bottom: var(--k-space-5);
   scroll-padding-block: var(--k-space-4);
@@ -362,13 +362,6 @@
   font-size: var(--text-base);
 }
 
-/* The three New chats choices read as one group: one width, wide enough for
-   the longest option, never wider than the row. */
-.project-settings__new-chat-select {
-  width: 22rem;
-  max-width: 100%;
-}
-
 @media (max-width: 640px) {
   .project-settings__body {
     padding: var(--k-space-3);
@@ -389,10 +382,6 @@
   .project-settings__layout > .project-settings__body {
     padding-top: 0;
   }
-  .project-settings__layout .section-navigation__picker select {
-    min-height: 44px;
-  }
-
   /* Stop the identity preview / path strings from forcing horizontal scroll */
   .project-settings__identity-preview,
   .project-settings__identity-card,
@@ -711,4 +700,155 @@
   border-bottom: var(--k-border-thin) solid var(--k-line);
   text-align: start;
   overflow-wrap: anywhere;
+}
+
+/* ── Project Dashboard ──────────────────────────────────────────── */
+
+.project-dashboard__modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--layer-dialog);
+}
+
+.project-dashboard__modal {
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* ── Knowledge Section ──────────────────────────────────────────── */
+
+.knowledge-section__badge {
+  font-size: var(--k-text-sm);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--k-panel-raised);
+  color: var(--k-text-faint);
+  flex-shrink: 0;
+}
+
+.knowledge-section__scan-result {
+  margin-top: 8px;
+  font-size: var(--k-text-sm);
+  color: var(--k-positive);
+}
+
+.knowledge-section__empty {
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
+  margin: 0;
+}
+
+.knowledge-section__dropzone {
+  border: 2px dashed var(--k-line);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard);
+  margin-bottom: 8px;
+}
+
+.knowledge-section__dropzone:hover {
+  border-color: var(--k-action);
+  color: var(--text-secondary);
+}
+
+.knowledge-section__dropzone--active {
+  border-color: var(--k-action);
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+  color: var(--k-action);
+}
+
+.knowledge-section__doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.knowledge-section__doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--k-bg);
+  border: 1px solid var(--k-line);
+  border-radius: 5px;
+  font-size: var(--k-text-sm);
+}
+
+.knowledge-section__doc-name {
+  flex: 1;
+  color: var(--k-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knowledge-section__doc-remove {
+  background: none;
+  border: none;
+  color: var(--k-text-faint);
+  cursor: pointer;
+  font-size: var(--k-text-lg);
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.knowledge-section__doc-remove:hover {
+  color: var(--k-negative);
+}
+
+.knowledge-section__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
+  padding-top: 4px;
+}
+
+.knowledge-section__clear-btn {
+  background: none;
+  border: none;
+  color: var(--k-negative);
+  cursor: pointer;
+  font-size: var(--k-text-sm);
+  padding: 2px 6px;
+}
+
+.knowledge-section__clear-btn:hover {
+  text-decoration: underline;
+}
+
+.knowledge-section__migrate {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--k-line);
+}
+
+.knowledge-section__migrate-copy {
+  font-size: var(--k-text-sm);
+  color: var(--k-text-faint);
+  margin: 0 0 8px;
+}
+
+.knowledge-section__migrate-errors {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: var(--k-text-sm);
+  color: var(--k-negative);
 }

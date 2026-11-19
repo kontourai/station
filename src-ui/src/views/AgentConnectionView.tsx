@@ -2,6 +2,10 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import {
+  appHomeActive,
+  sanitizeConnectionConfigHome,
+} from '@kontourai/station-contracts/connection';
 import type {
   CredentialProfile,
   CredentialProfileApplicationProjection,
@@ -769,7 +773,7 @@ export function AgentConnectionView({
 
                 <div className="editor-field">
                   <span className="editor-label">Type</span>
-                  <div className="editor-input editor-input--readonly">
+                  <div className="editor-readonly">
                     {engineDisplayLabel(
                       connectionEngineId(form) ?? form.type,
                     ) ?? form.type}
@@ -778,14 +782,14 @@ export function AgentConnectionView({
 
                 <div className="editor-field">
                   <span className="editor-label">Status</span>
-                  <div className="editor-input editor-input--readonly">
+                  <div className="editor-readonly">
                     {connectionStatusLabel(form.status)}
                   </div>
                 </div>
 
                 <div className="editor-field">
                   <span className="editor-label">Catalog</span>
-                  <div className="editor-input editor-input--readonly">
+                  <div className="editor-readonly">
                     {runtimeCatalogSourceLabel(
                       runtimeCatalog?.source ?? 'none',
                     )}
@@ -797,13 +801,7 @@ export function AgentConnectionView({
 
                 <div className="editor-field">
                   <span className="editor-label">Model backend</span>
-                  <div
-                    className="editor-input"
-                    style={{
-                      background: 'var(--bg-tertiary)',
-                      cursor: 'default',
-                    }}
-                  >
+                  <div className="editor-readonly">
                     {providerLabel || 'Unknown'}
                   </div>
                 </div>
@@ -812,19 +810,13 @@ export function AgentConnectionView({
                   <label className="editor-label" htmlFor="runtime-enabled">
                     Enabled
                   </label>
-                  <label className="editor-checkbox">
-                    <input
-                      id="runtime-enabled"
-                      type="checkbox"
-                      checked={form.enabled}
-                      onChange={(event) =>
-                        setField('enabled', event.target.checked)
-                      }
-                    />
-                    <span>
-                      Expose this engine in Connections and agent setup
-                    </span>
-                  </label>
+                  <Checkbox
+                    id="runtime-enabled"
+                    checked={form.enabled}
+                    onChange={(checked) => setField('enabled', checked)}
+                  >
+                    Expose this engine in Connections and agent setup
+                  </Checkbox>
                 </div>
 
                 <div className="editor-field">
@@ -906,7 +898,7 @@ export function AgentConnectionView({
                           connectionEngineId(form) ?? form.type,
                         ) ?? form.name
                       }
-                      useAppHome={form.config.useAppHome === true}
+                      config={form.config}
                       onToggle={(value) => setConfigField('useAppHome', value)}
                     />
                   </CredentialProfileAccess>
@@ -1255,14 +1247,16 @@ function ClaudeSkillsMaterializationField({
 function AppHomeProfileField({
   connectionId,
   engineLabel,
-  useAppHome,
+  config,
   onToggle,
 }: {
   connectionId: string;
   engineLabel: string;
-  useAppHome: boolean;
+  config: Record<string, unknown>;
   onToggle: (value: boolean) => void;
 }) {
+  const useAppHome = appHomeActive(config);
+  const hasConfiguredHome = !!sanitizeConnectionConfigHome(config.configHome);
   const [includeCredentials, setIncludeCredentials] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   // Read-only status peek (docs/design/agent-engine-unification.md §6.1) —
@@ -1282,14 +1276,21 @@ function AppHomeProfileField({
         <Checkbox
           id={`${connectionId}-use-app-home`}
           checked={useAppHome}
+          disabled={hasConfiguredHome}
           onChange={onToggle}
         >
           Run sessions in a Station-managed app home
         </Checkbox>
-        <p className="editor-help">
-          Leaves your global {engineLabel} settings untouched. Uses{' '}
-          <code>~/.station/app-homes/{connectionId}</code>.
-        </p>
+        {hasConfiguredHome ? (
+          <p className="editor-help">
+            A custom home is configured for this Engine connection.
+          </p>
+        ) : (
+          <p className="editor-help">
+            Leaves your global {engineLabel} settings untouched. Uses{' '}
+            <code>~/.station/app-homes/{connectionId}</code>.
+          </p>
+        )}
         {useAppHome && (
           <div style={{ marginTop: 8 }}>
             {status && (
@@ -1299,20 +1300,13 @@ function AppHomeProfileField({
                   : 'Created on the first session with this on.'}
               </p>
             )}
-            <label
-              className="editor-checkbox"
-              htmlFor={`${connectionId}-app-home-include-credentials`}
+            <Checkbox
+              id={`${connectionId}-app-home-include-credentials`}
+              checked={includeCredentials}
+              onChange={setIncludeCredentials}
             >
-              <input
-                id={`${connectionId}-app-home-include-credentials`}
-                type="checkbox"
-                checked={includeCredentials}
-                onChange={(event) =>
-                  setIncludeCredentials(event.target.checked)
-                }
-              />
-              <span>Include sign-in credentials</span>
-            </label>
+              Include sign-in credentials
+            </Checkbox>
             <div className="editor-row">
               <button
                 type="button"

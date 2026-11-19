@@ -1,0 +1,15 @@
+{
+  "revision": "35ff109b017ac4f0e755bc04679d4d6ae4d9a661",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the current responsive Inbox and Session context owners. A desktop pointer can enter the preview and scroll to Basis without dismissing it. The existing measured viewport placement and Escape dismissal still apply. The built Chromium dock verifies both behaviors through the stored-chat route and the regular and maximized dock headers. Physical-device behavior is outside this evidence.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatInboxHoverCard.css","src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx","tests/chat-dock-inbox-open.spec.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the shared Inbox row in Home and the Chat Dock. Desktop hover stays active while the pointer moves from the row into its preview, and Escape still closes it. The touch Details path and row opening, selection, and data reads are unchanged. The Chromium test drives the real desktop dock row.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the shared Inbox row in Home and the Chat Dock. Desktop hover stays active while the pointer moves from the row into its preview, and Escape still closes it. The touch Details path and row opening, selection, and data reads are unchanged. The Chromium test drives the real desktop dock row.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the shared Inbox row in Home and the Chat Dock. Desktop hover stays active while the pointer moves from the row into its preview, and Escape still closes it. The touch Details path and row opening, selection, and data reads are unchanged. The Chromium test drives the real desktop dock row.","inputs":["src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the viewport cap and scroll handling alongside the responsive guide. The cropped Chromium frames show the original below-fold preview items within a contained card and the same Basis content reached by wheel scrolling. Scroll chaining is contained to the preview.","inputs":["src-ui/src/components/chat-dock/ChatInboxHoverCard.css"]}
+  ]
+}

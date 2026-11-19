@@ -18,8 +18,9 @@
 
 Reply and start composers share one bottom row inside the input box: attachment,
 voice and other tools on the left, then Agent & model immediately beside Send or
-Start on the right. The reply's next-turn destination notice and conversation
-status/resync action stay above the box when present.
+Start on the right. If Start wraps, it stays at the trailing edge of the
+toolbar. The reply's next-turn destination notice and conversation status/resync
+action stay above the box when present.
 
 Agent & model is a quiet ghost pill with overlapping Agent and engine marks, a
 secondary-weight model label, and the shared caret. The Agent mark names the
@@ -187,7 +188,9 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   model. Setup, repair and read errors scroll above the composer.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
   **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
-  for a fork a message action started). The start composer's Project chip
+  for a fork a message action started). A fork starts with the source Agent
+  selected. Moving the pointer over a different Agent or using the arrow keys
+  changes the selection. The start composer's Project chip
   is the single owner of destination choice; dock headers have no project picker.
 - **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
   draft and hands back its text; on a phone this restores the dock size the

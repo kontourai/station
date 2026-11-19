@@ -22,10 +22,6 @@ import type {
   SchedulerProviderStatus,
 } from '../../providers/provider-contracts.js';
 import type { ISchedulerProvider } from '../../providers/provider-interfaces.js';
-import {
-  schedulerJobDuration,
-  schedulerJobRuns,
-} from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { SSEBroadcaster } from '../infra/sse-broadcaster.js';
 import {
@@ -213,35 +209,13 @@ export class SchedulerService {
     job?: SchedulerMutationJob,
   ): Promise<SchedulerManualRunReceipt> {
     const p = await this.providerForMutation(target, job);
-    const start = Date.now();
-    try {
-      const result = await (p === this.builtin
-        ? this.builtin.runJob(target, job?.unattendedPrincipal?.jobId)
-        : p.runJob(target));
-      this.recordRunMetrics(
-        result.outcome === 'completed' ? 'success' : 'error',
-        start,
-      );
-      return result;
-    } catch (e) {
-      // Telemetry is not an execution authority. A provider error remains the
-      // provider error even when the observer is unavailable.
-      this.recordRunMetrics('error', start);
-      throw e;
-    }
+    return p === this.builtin
+      ? this.builtin.runJob(target, job?.unattendedPrincipal?.jobId)
+      : p.runJob(target);
   }
 
   prepareStarterManualIntent(operationId: string): PreparedStarterScheduledRun {
     return this.builtin.prepareStarterManualIntent(operationId);
-  }
-
-  private recordRunMetrics(status: 'success' | 'error', start: number) {
-    try {
-      schedulerJobRuns.add(1, { status });
-      schedulerJobDuration.record(Date.now() - start);
-    } catch {
-      // Best-effort observer only; the durable provider result above wins.
-    }
   }
 
   async enableJob(target: string, job?: SchedulerMutationJob): Promise<void> {
