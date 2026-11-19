@@ -1012,6 +1012,27 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
     );
   });
 
+  test('snapshot restores a Codex reviewer independently of approval mode', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'reviewer-thread',
+            status: 'ready',
+            reportedApprovalReviewer: 'automatic',
+            appliedApprovalMode: 'ask',
+          },
+        ],
+      },
+      { 'reviewer-thread': {} },
+    );
+    expect(updates['reviewer-thread']).toMatchObject({
+      reportedApprovalReviewer: 'automatic',
+      lastAppliedApprovalMode: 'ask',
+    });
+  });
+
   test('snapshot updates the reported model without eroding a pending picker request', () => {
     const updates = applyOrdinarySnapshot(
       {

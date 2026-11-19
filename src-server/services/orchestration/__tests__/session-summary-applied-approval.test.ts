@@ -1,6 +1,8 @@
+import { join } from 'node:path';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
@@ -10,6 +12,7 @@ import { buildOrchestrationSessionSummary } from '../orchestration-session-state
  * it instead of falling back to the inherited "Default".
  */
 const THREAD = 'thread-applied';
+const makeTempDir = trackTempDirs();
 
 function event(
   method: 'session.configured' | 'turn.started',
@@ -76,48 +79,59 @@ describe('appliedApprovalMode on the session summary (#4433)', () => {
   });
 });
 
-test('the bounded Session projection retains only the current binding’s reviewer observation', () => {
-  const store = new EventStore(':memory:');
+test('SQLite reload restores only the current Codex binding’s reviewer', () => {
+  const path = join(makeTempDir('reviewer-observation-'), 'events.sqlite');
   const base = {
     provider: 'codex' as const,
     threadId: THREAD,
     createdAt: '2026-11-02T10:00:00.000Z',
   };
-  const started = (id: string) =>
-    store.appendEvent({
-      ...base,
-      eventId: id,
-      method: 'session.started',
-      sessionId: THREAD,
-      metadata: { reportedApprovalReviewer: 'user' },
-    });
-  try {
-    started('first-start');
-    store.appendEvent({
+  const write = (events: CanonicalRuntimeEvent[]) => {
+    const store = new EventStore(path);
+    try {
+      for (const item of events) store.appendEvent(item);
+    } finally {
+      store.close();
+    }
+  };
+  const expectRestored = (reviewer: string, approvalMode: string) => {
+    for (const read of [
+      (store: EventStore) => store.listSessionProjectionEvents(THREAD),
+      (store: EventStore) =>
+        store.listSessionProjectionEventsForThreads([THREAD]).get(THREAD) ?? [],
+    ]) {
+      const store = new EventStore(path);
+      try {
+        expect(summarize(read(store).map((row) => row.payload))).toMatchObject({
+          reportedApprovalReviewer: reviewer,
+          appliedApprovalMode: approvalMode,
+        });
+      } finally {
+        store.close();
+      }
+    }
+  };
+  const started = (id: string, reviewer: string): CanonicalRuntimeEvent => ({
+    ...base,
+    eventId: id,
+    method: 'session.started',
+    sessionId: THREAD,
+    metadata: { reportedApprovalReviewer: reviewer },
+  });
+  write([
+    started('first-start', 'user'),
+    {
       ...base,
       eventId: 'reviewer-update',
       method: 'session.approval-reviewer-observed',
       reviewer: 'automatic',
-    });
-    store.appendEvent(event('turn.started', 1, 'ask'));
-    const snapshot = () =>
-      summarize(
-        store
-          .listSessionProjectionEventsForThreads([THREAD])
-          .get(THREAD)
-          ?.map((row) => row.payload) ?? [],
-      );
-    expect(snapshot()).toMatchObject({
-      reportedApprovalReviewer: 'automatic',
-      appliedApprovalMode: 'ask',
-    });
-    started('replacement-start');
-    store.appendEvent(event('turn.started', 2, 'auto'));
-    expect(snapshot()).toMatchObject({
-      reportedApprovalReviewer: 'user',
-      appliedApprovalMode: 'auto',
-    });
-  } finally {
-    store.close();
-  }
+    },
+    event('turn.started', 1, 'ask'),
+  ]);
+  expectRestored('automatic', 'ask');
+  write([
+    started('replacement-start', 'unknown'),
+    event('turn.started', 2, 'auto'),
+  ]);
+  expectRestored('unknown', 'auto');
 });

@@ -908,7 +908,10 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
     If Codex reports automatic review when starting, resuming, or forking an
     explicit workspace session, Station refuses the session before announcing
     it. An omitted reviewer is compatible with older responses and provides
-    no reviewer evidence.
+    no reviewer evidence. The approval sheet shows the current Codex binding's
+    reported reviewer as You, Automatic, or Unknown. Station records changes
+    from the current native thread and restores the newest report on reconnect.
+    Changing the approval mode does not change this reviewer report.
 
   A `-c` override outranks every file layer and applies to every
   configuration load of that process (start, resume, fork): a user or

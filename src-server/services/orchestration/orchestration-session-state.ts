@@ -1164,28 +1164,32 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
  * generation and must not be surfaced as if it confirms the current one. Stop
  * there and report absent rather than keep scanning into older history.
  */
-/**
- * #4433: the approval mode the engine last reported applying, as the client
- * folds it live (`session.configured` / `turn.started` metadata; an event
- * without a mode changes nothing). Newest first over the projection, which
- * keeps the latest of each.
- */
 function extractApprovalReviewer(events: readonly CanonicalRuntimeEvent[]) {
-  for (const event of [...events].reverse()) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event) continue;
+    if (event.method === 'session.started') {
+      const reviewer = event.metadata?.reportedApprovalReviewer;
+      return event.provider === 'codex' && isEngineApprovalReviewer(reviewer)
+        ? reviewer
+        : undefined;
+    }
     if (event.provider !== 'codex') continue;
     if (event.method === 'session.approval-reviewer-observed') {
       return isEngineApprovalReviewer(event.reviewer)
         ? event.reviewer
         : 'unknown';
     }
-    if (event.method === 'session.started') {
-      const reviewer = event.metadata?.reportedApprovalReviewer;
-      return isEngineApprovalReviewer(reviewer) ? reviewer : undefined;
-    }
   }
   return undefined;
 }
 
+/**
+ * #4433: the approval mode the engine last reported applying, as the client
+ * folds it live (`session.configured` / `turn.started` metadata; an event
+ * without a mode changes nothing). Newest first over the projection, which
+ * keeps the latest of each.
+ */
 function extractAppliedApprovalMode(
   events: readonly CanonicalRuntimeEvent[],
 ): ApprovalMode | undefined {
@@ -1462,7 +1466,10 @@ export function projectionFactKeysForEvent(
     facts.push({ key: 'effective-model-boundary' });
   }
   if (extractReportedModel([event])) facts.push({ key: 'reported-model' });
-  if (event.method === 'session.approval-reviewer-observed')
+  if (
+    event.method === 'session.approval-reviewer-observed' &&
+    event.provider === 'codex'
+  )
     facts.push({ key: 'approval-reviewer' });
   // A bounded projection retains one latest fact per initiator, not per turn:
   // a session can restart indefinitely, so adding turn identity to the key
