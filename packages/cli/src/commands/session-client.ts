@@ -739,21 +739,23 @@ function createRuntimeSessionClient(
       const providerSessions = sessions.filter((session) =>
         sessionProviderMatches(session.provider, provider),
       );
-      const matchingSessions = isAcpFamilyEngine(provider)
-        ? (
-            await Promise.all(
-              providerSessions.map(async (session) => {
-                const detail = await readRuntimeSessionOrNull(
-                  apiBase,
-                  String(session.threadId),
-                );
-                return runtimeSessionMatchesTarget(detail, target)
-                  ? session
-                  : null;
-              }),
-            )
-          ).filter((session): session is Record<string, unknown> => !!session)
-        : providerSessions;
+      const matchingSessions = (
+        await Promise.all(
+          providerSessions.map(async (session) => {
+            if (typeof session.assignedAgentSlug === 'string') {
+              return session.assignedAgentSlug === agentSlug ? session : null;
+            }
+            if (!isAcpFamilyEngine(provider)) {
+              return agentSlug === String(provider) ? session : null;
+            }
+            const detail = await readRuntimeSessionOrNull(
+              apiBase,
+              String(session.threadId),
+            );
+            return runtimeSessionMatchesTarget(detail, target) ? session : null;
+          }),
+        )
+      ).filter((session): session is Record<string, unknown> => !!session);
 
       return matchingSessions.map((session) => ({
         id: String(session.threadId),
@@ -905,7 +907,8 @@ function runtimeSessionMatchesTarget(
   const configuredMetadata = configured?.metadata as
     | Record<string, unknown>
     | undefined;
-  const configuredAgentId = configuredMetadata?.agentSlug;
+  const configuredAgentId =
+    session?.assignedAgentSlug ?? configuredMetadata?.agentSlug;
   if (typeof configuredAgentId === 'string') {
     return configuredAgentId === target.agentSlug;
   }
@@ -914,7 +917,10 @@ function runtimeSessionMatchesTarget(
   // agents (for example Kiro and OpenCode), so an unscoped ACP session must
   // never leak into another Agent's list/read/interrupt surface. The same
   // holds for an engine that runs saved ACP connections (`opencode`).
-  return !isAcpFamilyEngine(target.provider);
+  return (
+    !isAcpFamilyEngine(target.provider) &&
+    target.agentSlug === String(target.provider)
+  );
 }
 
 /**

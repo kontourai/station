@@ -2858,7 +2858,10 @@ failed Station-agent turn, runs in a successor Session. The read covers every
 Session in the conversation's lineage, oldest first, and concatenates them
 ([read seam](../../src-server/routes/chat/conversations.ts)). For each Session it
 reads the file-memory record first and, when that has no usable record, the
-authorized messages restored from orchestration. A successor stores only its
+authorized messages restored from orchestration. The named message and export
+routes check the Agent recorded by runtime admission. An addressed Session
+uses its own recorded Agent when it has no conversation-root resolution.
+An Agent mismatch or refused runtime admission returns 404. A successor stores only its
 own turns; earlier history reaches its model without being copied into its
 record. Export, fork and summary use the same read. A successor's own record
 is never listed as a conversation of its own, and conversation message search

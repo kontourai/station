@@ -1,6 +1,9 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildApprovalsRespondCommand,
@@ -146,4 +149,62 @@ describe('shellQuote', () => {
       'station approvals respond thr_1 req_1 <accept|acceptForSession|decline|cancel>',
     );
   });
+});
+
+test('runtime Session listing respects the recorded Agent on a shared provider', async () => {
+  const server = createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    if (request.url !== '/api/orchestration/sessions/read-model') {
+      response.writeHead(404).end(JSON.stringify({ success: false }));
+      return;
+    }
+    response.end(
+      JSON.stringify({
+        success: true,
+        data: [
+          {
+            threadId: 'root-alpha',
+            provider: 'claude',
+            assignedAgentSlug: 'alpha',
+          },
+          {
+            threadId: 'root-alpha:session:child',
+            provider: 'claude',
+            assignedAgentSlug: 'alpha',
+          },
+          {
+            threadId: 'beta-only',
+            provider: 'claude',
+            assignedAgentSlug: 'beta',
+          },
+          { threadId: 'unassigned-legacy', provider: 'claude' },
+        ],
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const apiBase = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const list = async (slug: string) => {
+      const agentSlug = agentId(slug);
+      const client = await createSessionClient(apiBase, {
+        agentSlug,
+        classifiedExternalTarget: {
+          kind: 'runtime',
+          agentSlug,
+          connectionId: engineConnectionId('fixture-claude'),
+          provider: 'claude',
+        },
+      });
+      return (await client.listSessions()).map(({ id }) => id);
+    };
+    await expect(list('alpha')).resolves.toEqual([
+      'root-alpha',
+      'root-alpha:session:child',
+    ]);
+    await expect(list('beta')).resolves.toEqual(['beta-only']);
+    await expect(list('claude')).resolves.toEqual(['unassigned-legacy']);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

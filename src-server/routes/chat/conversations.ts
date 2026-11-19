@@ -330,6 +330,11 @@ async function sanitizePublicConversationUpdate(
  * events into the same conversation-message shape via the shared projection.
  */
 interface SessionMessageReader {
+  isRuntimeConversation?(id: string): boolean;
+  resolveConversationOpen?(
+    id: string,
+    authority: SessionReadAuthority,
+  ): Promise<ConversationOpenResolution | null>;
   readForkConversationTranscript?(
     id: string,
     scope: SessionReadAuthority,
@@ -2196,12 +2201,13 @@ export function createConversationRoutes(
   // The one unified read seam (`conversation-message-reader.ts`): every
   // Session in the conversation's lineage, memory store then the runtime-
   // event projection per Session, served sanitized.
-  const { readConversationMessages } = createConversationMessageReader({
-    getAdapter,
-    authorityFor,
-    sessionMessageReader,
-    logger,
-  });
+  const { readConversationMessages, readAddressedConversationMessages } =
+    createConversationMessageReader({
+      getAdapter,
+      authorityFor,
+      sessionMessageReader,
+      logger,
+    });
 
   const summaryCoordinateFor = (
     authority: SessionReadAuthority,
@@ -2340,11 +2346,14 @@ export function createConversationRoutes(
       });
       const slug = param(c, 'slug');
       const conversationId = param(c, 'conversationId');
-      const { messages, source } = await readConversationMessages(
+      const read = await readAddressedConversationMessages(
         c.req.raw,
         slug,
         conversationId,
       );
+      if (!read)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      const { messages, source } = read;
       if (source !== 'store') {
         conversationOps.add(1, {
           operation: 'history_restore',
@@ -2662,11 +2671,14 @@ export function createConversationRoutes(
         agent: slug,
         format,
       });
-      const { messages, source, absence } = await readConversationMessages(
+      const read = await readAddressedConversationMessages(
         c.req.raw,
         slug,
         conversationId,
       );
+      if (!read)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      const { messages, source, absence } = read;
       if (messages.length === 0) {
         // Three different answers, and the read already knows which one it
         // is. The undetermined case keeps the either/or wording on purpose:
