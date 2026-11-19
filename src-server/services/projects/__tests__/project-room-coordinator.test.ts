@@ -66,7 +66,10 @@ class World {
   dieAfterPublish = false;
   failPublication = false;
 
-  open(): { coordinator: ProjectRoomCoordinator; db: DatabaseSync } {
+  open(overrides: Partial<ProjectRoomCoordinatorPorts> = {}): {
+    coordinator: ProjectRoomCoordinator;
+    db: DatabaseSync;
+  } {
     const db = new DatabaseSync(join(this.dir, 'coordinator.sqlite'));
     const store = new ProjectRoomCoordinatorStore(db);
     const ports: ProjectRoomCoordinatorPorts = {
@@ -153,6 +156,7 @@ class World {
         }
         return `message-${intentId}`;
       },
+      ...overrides,
     };
     return { coordinator: new ProjectRoomCoordinator(store, ports), db };
   }
@@ -452,6 +456,52 @@ describe('ProjectRoomCoordinator', () => {
       '**Task finished:** [Fix login](/tasks/task-1)',
     ]);
   });
+
+  it.each(['creation', 'dispatch'] as const)(
+    'keeps a private %s diagnostic out of the Room card',
+    async (step) => {
+      const diagnostic = 'Synthetic private Task diagnostic';
+      const w = new World();
+      const { coordinator, db } = w.open(
+        step === 'creation'
+          ? {
+              createTask: async () => {
+                throw new Error(diagnostic);
+              },
+            }
+          : {
+              dispatchTask: async () => ({
+                kind: 'failed',
+                reason: diagnostic,
+              }),
+            },
+      );
+      try {
+        await propose(coordinator, THREE);
+        const [card] = coordinator.view(scope, ROOM).proposals;
+        const rowId = card!.tasks[0]!.rowId;
+        await coordinator.start({
+          scope,
+          roomId: ROOM,
+          proposalId: card!.proposalId,
+          rowIds: [rowId],
+          starter: PERSON,
+        });
+        const stored = new ProjectRoomCoordinatorStore(db).row(rowId);
+        expect(stored?.refusal?.includes(diagnostic)).toBe(true);
+        const publicRow = coordinator.view(scope, ROOM).proposals[0]!.tasks[0]!;
+        expect(JSON.stringify(publicRow).includes(diagnostic)).toBe(false);
+        expect(publicRow.refusal).toBe(
+          step === 'creation'
+            ? 'Check the selected Agent and placement.'
+            : 'Open the Task to check its status.',
+        );
+      } finally {
+        await coordinator.close();
+        db.close();
+      }
+    },
+  );
 
   it('publishes a fixed failed status without the engine reason', async () => {
     const w = new World();

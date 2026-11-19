@@ -51,6 +51,21 @@ import type { DispatchOutcome } from './task-dispatcher.js';
 
 const logger = createLogger({ name: 'project-room-coordinator' });
 
+const PUBLIC_START_REFUSALS = {
+  starterUnavailable: 'The starter is unavailable.',
+  projectChanged:
+    'The Project changed or the person can no longer start work in it.',
+  queueFull: "Its chat's queue is full.",
+  firstMessageRefused: 'Station could not send it its first message.',
+};
+
+function cardRefusal(reason: string, taskId: string | undefined): string {
+  if (Object.values(PUBLIC_START_REFUSALS).includes(reason)) return reason;
+  return taskId
+    ? 'Open the Task to check its status.'
+    : 'Check the selected Agent and placement.';
+}
+
 /** The coordinator's actor on the messages Station posts for it. */
 export const COORDINATOR_ACTOR = {
   kind: 'agent' as const,
@@ -392,7 +407,9 @@ export class ProjectRoomCoordinator {
           pullRequestRefusals: row.pullRequestRefusals,
           state: row.state,
           ...(row.taskId ? { taskId: row.taskId } : {}),
-          ...(row.refusal ? { refusal: row.refusal } : {}),
+          ...(row.refusal
+            ? { refusal: cardRefusal(row.refusal, row.taskId) }
+            : {}),
           ...(row.resultMessageId
             ? { resultMessageId: row.resultMessageId }
             : {}),
@@ -496,7 +513,8 @@ export class ProjectRoomCoordinator {
   private async startRow(row: CoordinatorRowRecord): Promise<void> {
     if (!this.ports.enabled()) return;
     const starter = row.starterId;
-    if (!starter) return this.refuse(row, 'The starter is unavailable.');
+    if (!starter)
+      return this.refuse(row, PUBLIC_START_REFUSALS.starterUnavailable);
     const projectScope = row.scope;
     const authorize = () => {
       const current = this.ports.currentScope(projectScope.localProjectSlug);
@@ -506,10 +524,7 @@ export class ProjectRoomCoordinator {
       );
     };
     const refused = () =>
-      this.refuse(
-        row,
-        'The Project changed or the person can no longer start work in it.',
-      );
+      this.refuse(row, PUBLIC_START_REFUSALS.projectChanged);
     if (!authorize()) return refused();
     let taskId = row.taskId;
     if (!taskId) {
@@ -574,8 +589,8 @@ export class ProjectRoomCoordinator {
       return this.refuse(
         row,
         submitted === 'capacity'
-          ? "Its chat's queue is full."
-          : 'Station could not send it its first message.',
+          ? PUBLIC_START_REFUSALS.queueFull
+          : PUBLIC_START_REFUSALS.firstMessageRefused,
       );
     if (submitted === 'conflict') return;
     this.store.transition(row.rowId, ['starting'], {

@@ -1477,6 +1477,8 @@ answers 404 with `code: 'feature_preview_disabled'` while the preview is off.
   `ProjectRoomCoordinatorView`: the Project's effective
   `ProjectRoomCoordinatorSettings`, how many coordinator Tasks are working and
   waiting, and the newest 20 cards, each with its message id and rows.
+  Card refusals give a recovery step. Detailed Task diagnostics stay in the
+  private coordinator journal.
 - `POST …/room/coordinator/proposals/:proposalId/start` (execute), body the
   room guards plus optional `rowIds` (absent is **Start all**), moves the
   card's proposed rows to waiting as the caller, starts as many as the
