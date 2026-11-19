@@ -1,3 +1,4 @@
+import { isTerminalConnectionStatus } from '@kontourai/station-contracts/http';
 import {
   type OrchestrationSessionEventWindow,
   withNormalizedAnswerability,
@@ -11,6 +12,7 @@ import {
   authenticatedFetch,
   type ClientRequestOptions,
   readJsonBody,
+  StationHttpError,
 } from '../client/http';
 import { fetchPublicStationCapabilities } from '../client/publicStationCapabilities';
 import { rethrowDeadline } from '../client/request-deadline';
@@ -377,7 +379,18 @@ export function useOpenSshHostsQuery(
 export function useRemoteSessionsQuery(
   config?: QueryConfig<RemoteSessionsResult>,
 ) {
-  return useQuery({ ...sshEnvironmentQueries.remoteSessions(), ...config });
+  return useQuery({
+    ...sshEnvironmentQueries.remoteSessions(),
+    ...config,
+    // Home and the dock share this inventory. A late observer of the same
+    // authority must not restart a read that already returned 401 or 403.
+    enabled: ({ state: { error } }) =>
+      config?.enabled !== false &&
+      !(
+        error instanceof StationHttpError &&
+        isTerminalConnectionStatus(error.status)
+      ),
+  });
 }
 
 export function useCreateSshEnvironmentMutation() {
