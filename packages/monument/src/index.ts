@@ -52,6 +52,7 @@ export {
   decideTurnDedupRelease,
   decideTurnDedupResolve,
   turnClaimIsReclaimable,
+  witnessedTurnInputDigest,
 } from './decisions/turn-dedup.js';
 export {
   type MemoryKernelStorageOptions,

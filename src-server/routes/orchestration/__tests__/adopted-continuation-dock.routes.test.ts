@@ -751,7 +751,23 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       expect(f.engines.claude.turns).toHaveLength(1);
       if (scenario === 'same reference') {
         expect(retry.status, retry.text).toBe(200);
-        expect(retry.body).toEqual(first.body);
+        expect(retry.body).toMatchObject({
+          success: true,
+          data: {
+            conversationId: first.body.data.conversationId,
+            sessionId: first.body.data.sessionId,
+            providerTurnId: first.body.data.providerTurnId,
+          },
+        });
+        const changed = await f.request('/api/orchestration/chat', {
+          ...input,
+          message: 'Different instructions for the same attachment',
+        });
+        expect(changed.status, changed.text).toBe(409);
+        expect(changed.body).toMatchObject({
+          code: 'client_turn_input_conflict',
+        });
+        expect(f.engines.claude.turns).toHaveLength(1);
       } else {
         expect.soft(retry.status, retry.text).toBe(409);
         if (retry.status === 409)
