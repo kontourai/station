@@ -416,7 +416,7 @@ export class AttentionProjectionService {
       );
     const approvals = await Promise.all(
       approvalNotifications.map((notification) =>
-        this.projectApproval(notification, readAuthority),
+        this.projectApproval(notification, readAuthority, sessionsById),
       ),
     );
     const approvalSessions = new Set(
@@ -1084,6 +1084,7 @@ export class AttentionProjectionService {
   private async projectApproval(
     notification: Notification,
     authority: SessionReadAuthority,
+    sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>,
   ): Promise<AttentionItem> {
     const metadata = notification.metadata ?? {};
     const sessionId =
@@ -1108,6 +1109,12 @@ export class AttentionProjectionService {
       metadata.requestKind === 'registry'
         ? stringValue(metadata.guardianReason)
         : undefined;
+
+    // Bind the count to the Session the caller may read and its live request.
+    const session = openRequest
+      ? sessionsById.get(openRequest.threadId)
+      : undefined;
+    const projectSlug = session && sessionProjectSlug(session);
     const requestReference = openRequest
       ? attentionRequestReference(openRequest, stringValue(metadata.threadId))
       : undefined;
@@ -1120,6 +1127,7 @@ export class AttentionProjectionService {
       createdAt: notification.createdAt,
       updatedAt: notification.updatedAt,
       ...(sessionId ? { sessionId } : {}),
+      ...(projectSlug ? { projectSlug } : {}),
       ...(openHref ? { openHref } : {}),
       source: {
         notificationId: notification.id,

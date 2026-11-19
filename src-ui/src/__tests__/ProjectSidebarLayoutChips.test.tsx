@@ -254,8 +254,9 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     deviceSettingsStore.reloadFromStorage();
   });
 
-  test('the layouts render as one labelled chip row naming their project', () => {
+  test('the layouts render as one labelled chip row naming their project', async () => {
     renderSidebar(<ProjectSidebar />);
+    await screen.findByRole('toolbar', { name: 'Demo layouts' });
 
     const row = chipRow();
     // The label names the project, so a reader landing on the row from
@@ -267,8 +268,9 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     ).toEqual(['Coding', 'Tasks', 'Chat']);
   });
 
-  test('the row is one tab stop and arrow keys move between the chips', () => {
+  test('the row is one tab stop and arrow keys move between the chips', async () => {
     renderSidebar(<ProjectSidebar />);
+    await screen.findByRole('toolbar', { name: 'Demo layouts' });
 
     // Exactly one chip is tabbable; the rest are reachable only by arrowing.
     const tabbable = Array.from(chipRow().querySelectorAll('button')).filter(
@@ -295,10 +297,11 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     expect(document.activeElement).toBe(chip('Chat'));
   });
 
-  test('the routed layout is announced as current and holds the tab stop', () => {
+  test('the routed layout is announced as current and holds the tab stop', async () => {
     navState.selectedProjectLayout = 'tasks';
     navState.pathname = '/projects/demo/layouts/tasks';
     renderSidebar(<ProjectSidebar />);
+    await screen.findByRole('toolbar', { name: 'Demo layouts' });
 
     expect(chip('Tasks').getAttribute('aria-current')).toBe('page');
     expect(chip('Coding').getAttribute('aria-current')).toBeNull();
@@ -316,10 +319,11 @@ describe('project layout chips in the real sidebar (#2063)', () => {
    * while a different chip was announced as current, which is the opposite of
    * the claim the test above makes.
    */
-  test('the tab stop follows the current layout when the route changes elsewhere', () => {
+  test('the tab stop follows the current layout when the route changes elsewhere', async () => {
     navState.selectedProjectLayout = 'code';
     navState.pathname = '/projects/demo/layouts/code';
     renderSidebar(<ProjectSidebar />);
+    await screen.findByRole('toolbar', { name: 'Demo layouts' });
 
     // The reader arrows away from the routed chip, taking the stop with them.
     chip('Coding').focus();
@@ -347,8 +351,9 @@ describe('project layout chips in the real sidebar (#2063)', () => {
    * chip's target to `rendersChatWorkspaceLayout` is what makes this a claim
    * about the chat placement rather than about a string.
    */
-  test('the Chat chip selects the chat layout, the one App suspends ambient regions for', () => {
+  test('the Chat chip selects the chat layout, the one App suspends ambient regions for', async () => {
     renderSidebar(<ProjectSidebar />);
+    await screen.findByRole('toolbar', { name: 'Demo layouts' });
 
     fireEvent.click(chip('Chat'));
 
@@ -359,17 +364,19 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     expect(rendersChatWorkspaceLayout(CHAT_LAYOUT)).toBe(true);
   });
 
-  test('a plain layout chip selects its own layout', () => {
+  test('a plain layout chip selects its own layout', async () => {
     renderSidebar(<ProjectSidebar />);
+    await screen.findByRole('toolbar', { name: 'Demo layouts' });
 
     fireEvent.click(chip('Coding'));
     expect(setLayout).toHaveBeenCalledWith('demo', 'code');
   });
 
   /** The synthesized Board entry keeps its place, now as a chip. */
-  test('the Board shortcut joins the chips when the server reports a Builder run', () => {
+  test('the Board shortcut joins the chips when the server reports a Builder run', async () => {
     boardAvailability.data = { hasBuilderRun: true };
     renderSidebar(<ProjectSidebar />);
+    await screen.findByRole('toolbar', { name: 'Demo layouts' });
 
     expect(
       Array.from(chipRow().querySelectorAll('button')).map(
@@ -381,10 +388,11 @@ describe('project layout chips in the real sidebar (#2063)', () => {
     expect(navigate).toHaveBeenCalledWith('/projects/demo/session-board');
   });
 
-  test('the Board chip is current on the Board route', () => {
+  test('the Board chip is current on the Board route', async () => {
     boardAvailability.data = { hasBuilderRun: true };
     navState.pathname = '/projects/demo/session-board';
     renderSidebar(<ProjectSidebar />);
+    await screen.findByRole('toolbar', { name: 'Demo layouts' });
 
     expect(chip('Board').getAttribute('aria-current')).toBe('page');
   });

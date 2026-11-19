@@ -1,0 +1,7 @@
+{
+  "revision": "b9549cb69291effc806a31332990bc94fb51b16d",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the existing region-fieldset geometry test against the current header markup and CSS. A plain fixed-width action no longer models the shrinkable Station chip. The Chromium fixture retains the 390px viewport and both placement inequalities and now models the lockup, Station chip and fixed sibling actions. It verifies actual chip shrink and hit testing for all five controls.","inputs":["src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx"]}
+  ]
+}
