@@ -1260,7 +1260,7 @@
 
 .schedule__week > li {
   border: 1px solid var(--border-primary);
-  border-radius: var(--k-radius-2);
+  border-radius: var(--k-radius-md);
   padding: var(--k-space-3);
 }
 
