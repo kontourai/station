@@ -1,0 +1,9 @@
+{
+  "revision": "2d8708b679d493a466a64f9ea9c7d4e2d96bb3c3",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Checked the citing pages: terminal.md and integrating-station.md link to api.md for terminal and integration route shapes. The edit adds one sentence on the Overview reopen route scope, which neither page describes; their claims are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the citing pages: terminal.md and integrating-station.md link to api.md for terminal and integration route shapes. The edit adds one sentence on the Overview reopen route scope, which neither page describes; their claims are unchanged.","inputs":["docs/reference/api.md"]}
+  ]
+}

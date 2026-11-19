@@ -63,6 +63,7 @@
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > never reuses snapshot B destructively when candidate B staging fails",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > never stops the active release when application build staging fails",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > never stops the active release when dependency install staging fails",
+  "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > never stops the active release when missing dependency lifecycle staging fails",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > overwrites locally ready recovery health when tailnet verification fails",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > persists a bounded failed recovery receipt without claiming readiness",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > preserves live reconciler replacement B while reclaiming its orphan guard",

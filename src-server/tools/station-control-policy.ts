@@ -753,6 +753,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // bundled playbook; a redacted, bounded issue-form link) and call nothing.
   get_troubleshoot_playbook: { ...READ, routes: [] },
   draft_troubleshoot_report: { ...READ, routes: [] },
+  list_engine_setup: { ...SELF_READ, routes: [get('/acp/setup')] },
+  open_engine_setup: {
+    ...SELF_READ,
+    routes: [get('/acp/setup'), NAVIGATE_ROUTE],
+  },
   // Delivered only to the owner's own Station clients (`/events`).
   navigate_to: {
     ...SELF_READ,
@@ -1175,6 +1180,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_task_brief: {
     ...SELF_READ,
     routes: [get('/api/orchestration/station-control/task-brief')],
+  },
+  // #5067: the caller's OWN Project Library. The route reads the Project
+  // Station recorded for the verified caller's Session; no argument names it.
+  list_project_library: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-library')],
+  },
+  read_project_library_file: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-library/file')],
   },
   // #4003: write the Task memory of the caller's OWN Session's Task: one
   // summary revision, or one keyed record version. The routes read the
@@ -2179,6 +2194,8 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'read_pull_request_guide',
     'declare_pull_request',
     'get_task_brief',
+    'list_project_library',
+    'read_project_library_file',
     'task_summary_update',
     'task_record',
     'task_thread_list',

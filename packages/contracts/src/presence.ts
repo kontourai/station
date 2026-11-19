@@ -52,6 +52,17 @@ export interface FocusReport {
    * client then reports without it.
    */
   viewingSessionIds?: string[];
+  /**
+   * The local Project (`ProjectConfig.id`) this document has in the
+   * foreground (#5072), matching {@link FOCUS_VIEWING_SESSION_ID_PATTERN}.
+   * A focused document that reports it quiets `done` and `info`
+   * notifications about that Project's work, like a session it shows.
+   * Absent: no Project on screen, or a client that does not report it.
+   *
+   * A host built before this field answers 400 to a report carrying it; the
+   * client then reports without it.
+   */
+  viewingProjectId?: string;
 }
 
 /** Bound on {@link FocusReport.viewingSessionIds}. */
@@ -88,6 +99,11 @@ export interface FocusSurfaceSnapshot {
    * session.
    */
   readonly viewingSessionIds?: readonly string[];
+  /**
+   * When {@link state} is `focused`: the Projects its focused documents
+   * have in the foreground (#5072). Absent when none reported one.
+   */
+  readonly viewingProjectIds?: readonly string[];
 }
 
 /** Surfaces with an unexpired report. An absent surface has no live report. */

@@ -74,6 +74,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
+  ATTACHED_SESSION_CONTINUATION_REFRESH,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -143,6 +144,7 @@ import {
   isCreateRequestHandle,
   runForegroundCreateClaim,
 } from '../../services/orchestration/create-request-claims.js';
+import { assertInheritedDelegationToolPolicy } from '../../services/orchestration/delegation-tool-policy.js';
 
 /** #3483: an authenticated request that is not a station-control (internal) call. */
 function isPersonRequest(request: Request): boolean {
@@ -814,6 +816,10 @@ const agentDelegationContextSchema = z.object({
   rootAgentSlug: z.string().min(1).max(64),
   rootConversationId: z.string().min(1).max(512).optional(),
   allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  toolAllowlistConstraints: z
+    .array(z.array(z.string().min(1).max(256)).max(256))
+    .max(64)
+    .optional(),
   blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
   denyApprovals: z.boolean().optional(),
 });
@@ -3094,6 +3100,7 @@ export function createOrchestrationRoutes(
         },
       );
       const delegation = resolvedDelegation?.context;
+      assertInheritedDelegationToolPolicy(delegation);
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
       const foregroundRequest = {
         ...body,
@@ -4563,6 +4570,7 @@ export function createOrchestrationRoutes(
         },
       );
       const delegation = resolvedDelegation?.context;
+      assertInheritedDelegationToolPolicy(delegation);
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
       if (roomRequest && body.clientTurnId !== roomRequest.operationId)
@@ -8043,9 +8051,7 @@ export function createOrchestrationRoutes(
           if (
             evt.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
           ) {
-            const updatedThreadId = (
-              evt.data as { threadId?: unknown } | undefined
-            )?.threadId;
+            const updatedThreadId = evt.data?.threadId;
             if (
               typeof updatedThreadId !== 'string' ||
               (threadId !== undefined && updatedThreadId !== threadId) ||
@@ -8062,7 +8068,12 @@ export function createOrchestrationRoutes(
             forward({
               event: SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
               threadId: updatedThreadId,
-              data: JSON.stringify({ threadId: updatedThreadId }),
+              data: JSON.stringify({
+                threadId: updatedThreadId,
+                ...(evt.data?.reason === ATTACHED_SESSION_CONTINUATION_REFRESH
+                  ? { reason: ATTACHED_SESSION_CONTINUATION_REFRESH }
+                  : {}),
+              }),
             });
             return;
           }

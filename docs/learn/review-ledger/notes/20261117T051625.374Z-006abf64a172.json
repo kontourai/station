@@ -1,0 +1,9 @@
+{
+  "revision": "33a564892674adaeb268e07e72cbd3ef99476dd6",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md only adds the head-review routes and reviewEachHead keep rule under Pull request agent feedback; pages citing api.md for other route families are unaffected.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md only adds the head-review routes and reviewEachHead keep rule under Pull request agent feedback; pages citing api.md for other route families are unaffected.","inputs":["docs/reference/api.md"]}
+  ]
+}

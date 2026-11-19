@@ -1,7 +1,4 @@
-import {
-  type EngineId,
-  parseEngineId,
-} from '@kontourai/station-contracts/agent-identity';
+import { type EngineId } from '@kontourai/station-contracts/agent-identity';
 import {
   cloneElement,
   isValidElement,
@@ -17,7 +14,7 @@ import {
   ComposerChoiceSummary,
   ComposerRunSetupClose,
 } from './ComposerChoiceSummary';
-import { AgentIcon } from './icons/AgentIcon';
+import { AgentIcon, agentIconEngineId } from './icons/AgentIcon';
 import {
   BrandIcon,
   hasBundledEngineMark,
@@ -65,8 +62,7 @@ export function ComposerRunControl({
     icon.type === AgentIcon
       ? icon.props.agent
       : undefined;
-  const agentEngine =
-    agent && (agent.engineId ?? parseEngineId(agent.slug ?? agent.id));
+  const agentEngine = agent && agentIconEngineId(agent);
   // Explicit artwork wins over the engine's default mark, just as in BrandIcon.
   const agentBrand = agent?.icon?.startsWith('brand:')
     ? agent.icon.slice(6)
@@ -235,7 +231,7 @@ export function ComposerRunControl({
         // A picker opened from a choice here replaces this panel rather than
         // stacking on it.
         yieldToChildPopover
-        ariaLabel="Run setup"
+        ariaLabel="Agent & model"
         onClose={() => setOpen(false)}
         anchorRef={trigger}
         returnFocusTarget={trigger.current}
@@ -243,8 +239,8 @@ export function ComposerRunControl({
         panelClassName="composer-popover-panel composer-run-panel"
       >
         <ResponsiveDialogHeader
-          title="Run setup"
-          closeLabel="Close run setup"
+          title="Agent & model"
+          closeLabel="Close settings"
           onClose={() => setOpen(false)}
         />
         <ComposerChoiceSummary.Provider value={publish}>

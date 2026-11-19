@@ -1209,15 +1209,12 @@ describe('the model a turn launches with', () => {
     expect(plan('start', 'zai-coding-plan/glm-5.3-flash').kind).not.toBe(
       'unavailable',
     );
-    // A later turn or resume restating the session's model is kept, and
-    // another model is refused: neither transport changes it mid-session.
-    for (const lifecycle of ['resume', 'turn'] as const) {
-      expect(plan(lifecycle, 'a/b', 'a/b').kind).not.toBe('unavailable');
-      expect(plan(lifecycle, 'a/c', 'a/b')).toEqual({
-        kind: 'unavailable',
-        reason: `${lifecycle}-override-unsupported`,
-      });
-    }
+    expect(plan('resume', 'a/b', 'a/b').kind).not.toBe('unavailable');
+    expect(plan('resume', 'a/c', 'a/b')).toEqual({
+      kind: 'unavailable',
+      reason: 'resume-override-unsupported',
+    });
+    expect(plan('turn', 'a/c', 'a/b').kind).not.toBe('unavailable');
   });
 
   test('a blank declared model is treated as unstated, never sent as an empty id', async () => {

@@ -97,7 +97,7 @@ function fixture() {
       store
         .resolveEventContent(store.listEvents(threadId))
         .map((row) => row.payload),
-    readUsageRevision: (threadId) => store.readUsageRevision(threadId),
+    usageProjectionStore: store,
     listUsageEventPayloads: (threadId, clock) =>
       store.listUsageEventPayloads(threadId, clock),
     listUsageReceiptEvents: (options) => store.listUsageReceiptEvents(options),
@@ -1143,7 +1143,7 @@ test('a cumulative decrease leaves earlier dates unallocated and counts only lat
   }
 });
 
-test('daily cumulative throughput excludes outside jumps on each Station resume and reattach', () => {
+test('daily cumulative throughput excludes outside jumps on each Station resume and reattach', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime('2026-08-01T12:00:00Z');
   const f = fixture();
@@ -1183,9 +1183,9 @@ test('daily cumulative throughput excludes outside jumps on each Station resume 
         .reduce((total, row) => total + (row.outputTokens ?? 0), 0),
     ).toBe(5_000);
     // A non-daily caller still receives canonical lifetime accounting.
-    expect(f.reads.listSessionUsage(f.authority)[0].usage.inputTokens).toBe(
-      9_220_000,
-    );
+    expect(
+      (await f.reads.listSessionUsage(f.authority))[0].usage.inputTokens,
+    ).toBe(9_220_000);
   } finally {
     f.store.close();
     vi.useRealTimers();
@@ -1274,7 +1274,7 @@ test.each([
   },
 ])(
   'daily Codex usage baselines inherited counters for $name',
-  ({ started, configured }) => {
+  async ({ started, configured }) => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(day2);
     const f = fixture();
@@ -1321,9 +1321,9 @@ test.each([
         promptTokens: 42_100_000,
       });
       expect(dailyInput()).toBe(50_000);
-      expect(f.reads.listSessionUsage(f.authority)[0].usage.inputTokens).toBe(
-        42_100_000,
-      );
+      expect(
+        (await f.reads.listSessionUsage(f.authority))[0].usage.inputTokens,
+      ).toBe(42_100_000);
     } finally {
       f.store.close();
       vi.useRealTimers();

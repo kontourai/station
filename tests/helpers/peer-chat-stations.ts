@@ -492,7 +492,7 @@ export async function startConnectionChat(
         )
       ).click();
     await modelPicker
-      .getByRole('option', { name: new RegExp(CONNECTION_MODEL) })
+      .getByRole('button', { name: new RegExp('^' + CONNECTION_MODEL) })
       .click();
     await closeRunSetup(page);
     await form.getByRole('button', { name: /^Project:/ }).click();

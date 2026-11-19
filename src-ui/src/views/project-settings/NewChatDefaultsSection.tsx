@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/project-chat-defaults';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
+import { Select } from '@kontourai/ui/react';
 import { ManagedApprovalCeilingNote } from '../../components/managed/ManagedApprovalCeilingNote';
 import { PageRow } from '../../components/PageRow';
 import { PageSection } from '../../components/PageSection';
@@ -77,7 +78,7 @@ export function NewChatDefaultsSection({
     stationApprovalDefault === 'auto' ||
     stationApprovalDefault === 'never'
       ? approvalModeLabel(stationApprovalDefault)
-      : 'the engine’s own settings';
+      : 'engine settings';
 
   const modelDescription =
     form.defaultModelSelection === 'last-used'
@@ -98,18 +99,26 @@ export function NewChatDefaultsSection({
   return (
     <PageSection
       id="section-new-chat"
-      className="project-settings__section"
+      className="project-settings__section page-section--choice-rows"
       title="New chats"
       description="Start from project defaults or your last chat. Agent approval settings take precedence; composer choices override defaults."
     >
       <PageRow
-        label="Starting model"
-        description={modelDescription}
+        className="page-row--choice"
+        label={
+          <label htmlFor="project-default-model-selection">
+            Starting model
+          </label>
+        }
+        description={
+          <span id="project-default-model-selection-hint">
+            {modelDescription}
+          </span>
+        }
         control={
-          <select
+          <Select
             id="project-default-model-selection"
-            className="editor-input project-settings__new-chat-select"
-            aria-label="Starting model"
+            aria-describedby="project-default-model-selection-hint"
             value={form.defaultModelSelection}
             onChange={(event) =>
               setField(
@@ -120,17 +129,25 @@ export function NewChatDefaultsSection({
           >
             <option value="fixed">Use the AI model above</option>
             <option value="last-used">Last model used in this project</option>
-          </select>
+          </Select>
         }
       />
       <PageRow
-        label="Starting approval mode"
-        description={approvalDescription}
+        className="page-row--choice"
+        label={
+          <label htmlFor="project-default-approval-selection">
+            Starting approval mode
+          </label>
+        }
+        description={
+          <span id="project-default-approval-selection-hint">
+            {approvalDescription}
+          </span>
+        }
         control={
-          <select
+          <Select
             id="project-default-approval-selection"
-            className="editor-input project-settings__new-chat-select"
-            aria-label="Starting approval mode"
+            aria-describedby="project-default-approval-selection-hint"
             value={form.defaultApprovalModeSelection}
             onChange={(event) =>
               setField(
@@ -141,17 +158,26 @@ export function NewChatDefaultsSection({
           >
             <option value="fixed">Use the set approval mode</option>
             <option value="last-used">Last mode used in this project</option>
-          </select>
+          </Select>
         }
       />
       <PageRow
-        label="Set approval mode"
-        description="Also used when there is no chat history. Full access requires permission; otherwise a narrower mode applies."
+        className="page-row--choice"
+        label={
+          <label htmlFor="project-default-approval-mode">
+            Set approval mode
+          </label>
+        }
+        description={
+          <span id="project-default-approval-mode-hint">
+            Also used when there is no chat history. Full access requires
+            permission; otherwise a narrower mode applies.
+          </span>
+        }
         control={
-          <select
+          <Select
             id="project-default-approval-mode"
-            className="editor-input project-settings__new-chat-select"
-            aria-label="Set approval mode"
+            aria-describedby="project-default-approval-mode-hint"
             value={form.defaultApprovalMode}
             onChange={(event) =>
               setField(
@@ -161,9 +187,9 @@ export function NewChatDefaultsSection({
             }
           >
             <option value="inherit">
-              {!stationConfigLoaded
-                ? 'Follow the Station approval default'
-                : `Use the Station approval default (currently: ${stationApprovalLabel})`}
+              {stationConfigLoaded
+                ? `Station default (${stationApprovalLabel})`
+                : 'Station default'}
             </option>
             {(['ask', 'auto', 'never'] as const).map((mode) => {
               // #4518: above the managed ceiling, a mode is not offered unless
@@ -178,7 +204,7 @@ export function NewChatDefaultsSection({
                 </option>
               );
             })}
-          </select>
+          </Select>
         }
       />
       <ManagedApprovalCeilingNote className="editor-hint" />

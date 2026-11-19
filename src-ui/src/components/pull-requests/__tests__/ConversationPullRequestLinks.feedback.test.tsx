@@ -73,6 +73,7 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', async (original) => {
     >();
   return {
     pullRequestFeedbackOwnerOf: actual.pullRequestFeedbackOwnerOf,
+    pullRequestHeadReviewRefusal: actual.pullRequestHeadReviewRefusal,
     readPullRequestFeedbackCapability: vi.fn(async () => true),
     getConversationPullRequestFeedback: (...args: unknown[]) => {
       sdk.read(...args);

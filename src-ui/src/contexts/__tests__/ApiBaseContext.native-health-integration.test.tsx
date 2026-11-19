@@ -17,6 +17,10 @@ import {
 } from '@kontourai/station-connect';
 import type { StationProfileStore } from '@kontourai/station-contracts';
 import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
+import {
   authenticatedFetch,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk';
@@ -92,6 +96,11 @@ const PROFILE_STORE: StationProfileStore = {
   ],
 };
 
+const stationIdentityHeaders = {
+  'Content-Type': 'application/json',
+  [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+};
+
 const HANDSHAKE = {
   schemaVersion: 1,
   environmentId: 'environment-1',
@@ -160,7 +169,7 @@ describe('ApiBaseContext native health integration', () => {
     await native.repository.authorizeDefaultProfile();
     nativeTransport.mockReset();
     nativeTransport.mockImplementation(async () =>
-      Response.json({ bootId: 'boot-1' }),
+      Response.json({ bootId: 'boot-1' }, { headers: stationIdentityHeaders }),
     );
     vi.stubGlobal(
       'fetch',
@@ -271,7 +280,12 @@ describe('ApiBaseContext native health integration', () => {
     expect(currentConnection().credentialState).toBe('required');
     expect(currentConnection().lastError?.reason).toBe('unreachable');
     await act(async () =>
-      releaseDeferredIdentity?.(Response.json({ bootId: 'boot-2' })),
+      releaseDeferredIdentity?.(
+        Response.json(
+          { bootId: 'boot-2' },
+          { headers: stationIdentityHeaders },
+        ),
+      ),
     );
     await waitFor(() =>
       expect(currentConnection().credentialState).toBe('saved'),
@@ -293,7 +307,12 @@ describe('ApiBaseContext native health integration', () => {
     await waitFor(() => expect(releaseStaleIdentity).toBeDefined());
     await act(async () => markCurrentFailure());
     await act(async () => {
-      releaseStaleIdentity?.(Response.json({ bootId: 'old-boot' }));
+      releaseStaleIdentity?.(
+        Response.json(
+          { bootId: 'old-boot' },
+          { headers: stationIdentityHeaders },
+        ),
+      );
       await staleRequest.catch(() => undefined);
     });
     expect(currentConnection().credentialState).toBe('required');
@@ -315,7 +334,12 @@ describe('ApiBaseContext native health integration', () => {
     bindingId = '22222222-2222-4222-8222-222222222222';
     await native.repository?.authorizeActiveConnection(currentConnection().id);
     await act(async () => {
-      releaseOldBinding?.(Response.json({ bootId: 'old-binding-boot' }));
+      releaseOldBinding?.(
+        Response.json(
+          { bootId: 'old-binding-boot' },
+          { headers: stationIdentityHeaders },
+        ),
+      );
       await expect(oldBindingRequest).rejects.toMatchObject({
         name: 'StationRequestAuthorityError',
       });
@@ -350,7 +374,7 @@ describe('ApiBaseContext native health integration', () => {
         },
       });
       return new Response(body, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: stationIdentityHeaders,
       });
     });
 

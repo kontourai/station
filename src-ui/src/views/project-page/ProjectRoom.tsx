@@ -113,6 +113,7 @@ import {
   currentProjectRoomChannel,
   ProjectRoomChannelHeader,
 } from './ProjectRoomChannels';
+import { ProjectWaitingOnYouDot } from './ProjectWaitingOnYouDot';
 import { useProjectSearch } from './project-room-navigation';
 
 export interface ProjectRoomProps {
@@ -1853,6 +1854,7 @@ function ProjectRoomSession({
       ))}
     </span>
   );
+  const waitingDot = <ProjectWaitingOnYouDot slug={slug} />;
   return (
     <section
       ref={section}
@@ -1870,7 +1872,12 @@ function ProjectRoomSession({
                     heading: { title: 'Thread', subtitle: `#${channelName}` },
                   }
                 : {}),
-              trailing: participants.length ? faces : undefined,
+              trailing: (
+                <>
+                  {waitingDot}
+                  {participants.length ? faces : null}
+                </>
+              ),
               actions: [
                 tab === 'conversation'
                   ? {
@@ -1890,6 +1897,7 @@ function ProjectRoomSession({
       ) : (
         <header className="project-room__header">
           {channelHeader()}
+          {waitingDot}
           <div
             className="project-room__presence"
             role="status"

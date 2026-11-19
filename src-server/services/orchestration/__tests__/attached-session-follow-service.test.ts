@@ -10,7 +10,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   parseTenantExecutionContext,
@@ -1312,6 +1315,17 @@ describe('AttachedSessionFollowService', () => {
     });
     const before = persistedAttachment();
     const audit = auditWrites();
+    const refreshes: unknown[] = [];
+    const unsubscribe = eventBus.subscribe((frame) => {
+      if (
+        frame.event !== SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
+      )
+        return;
+      refreshes.push({
+        threadId: frame.data?.threadId,
+        boundary: persistedAttachment().attachedSource?.completedBoundary,
+      });
+    });
     try {
       cursor = {
         offset: 20,
@@ -1357,6 +1371,7 @@ describe('AttachedSessionFollowService', () => {
         turnId: 'native-turn',
         finishReason: 'stop',
       };
+      expect(refreshes).toEqual([]);
       events = [completed];
       await service.pollNow();
       expect(persistedAttachment().attachedSource?.completedBoundary).toEqual({
@@ -1369,7 +1384,18 @@ describe('AttachedSessionFollowService', () => {
       const after = audit.counts();
       await service.pollNow();
       expect(audit.counts()).toEqual(after);
+      expect(refreshes).toEqual([
+        {
+          threadId: session.threadId,
+          boundary: {
+            kind: 'completed-turn',
+            providerTurnId: completed.turnId,
+            observedEventId: completed.eventId,
+          },
+        },
+      ]);
     } finally {
+      unsubscribe();
       audit.close();
     }
   });
@@ -2342,6 +2368,88 @@ describe('AttachedSessionFollowService', () => {
     }
 
     const app = () => join(dir, 'repository', 'app');
+
+    test.each(['project', 'unattributed'] as const)(
+      'a capped cold-read window preserves durable attribution when the next observation is %s',
+      async (observation) => {
+        const projectsFor = (slug: string) => [
+          { slug, workingDirectory: app() },
+        ];
+        let projects = projectsFor('alpha');
+        const original = followService(() => projects);
+        await original.pollNow();
+        projects = projectsFor('beta');
+        await original.pollNow();
+        expect(summarize().projectSlug).toBe('beta');
+
+        for (let index = 0; index < 64; index += 1) {
+          store.appendEvent({
+            eventId: `legacy-owner-only-${index}`,
+            provider: 'claude',
+            method: 'session.configured',
+            sessionId: session.threadId,
+            threadId: session.threadId,
+            createdAt: '2026-07-22T00:00:02.000Z',
+            metadata: {
+              userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+              controlMode: 'read-only-attached',
+            },
+          });
+        }
+        const count = store.listEvents(session.threadId).length;
+        projects = observation === 'project' ? projectsFor('alpha') : [];
+        store.close();
+        store = new EventStore(join(dir, 'orchestration.sqlite'));
+        const readWindow = vi.spyOn(
+          store,
+          'listRecentConfiguredEventsByThread',
+        );
+        await followService(() => projects).pollNow();
+        expect(readWindow.mock.calls).toEqual([[session.threadId, 64]]);
+        const expectedSlug = observation === 'project' ? 'alpha' : 'beta';
+        const expectedLength = observation === 'project' ? count + 2 : count;
+        expect(summarize().projectSlug).toBe(expectedSlug);
+        expect(store.listEvents(session.threadId)).toHaveLength(expectedLength);
+        const persisted = store.readSessionByThread(session.threadId);
+        if (!persisted)
+          throw new Error('the attached session was not persisted');
+        expect(
+          buildOrchestrationSessionSummary({
+            answerability: OBSERVATION,
+            persisted,
+            events: store
+              .listSessionProjectionEvents(session.threadId)
+              .map(({ payload }) => payload),
+          }).projectSlug,
+        ).toBe(expectedSlug);
+
+        store.close();
+        store = new EventStore(join(dir, 'orchestration.sqlite'));
+        await followService(() => projects).pollNow();
+        expect(summarize().projectSlug).toBe(expectedSlug);
+        expect(store.listEvents(session.threadId)).toHaveLength(expectedLength);
+      },
+    );
+
+    test('a suppressed repeat leaves the last committed Project in the warm follower', async () => {
+      const alpha = [{ slug: 'alpha', workingDirectory: app() }];
+      const beta = [{ slug: 'beta', workingDirectory: app() }];
+      let projects = alpha;
+      const service = followService(() => projects);
+      for (const next of [alpha, beta, alpha, beta]) {
+        projects = next;
+        await service.pollNow();
+      }
+      expect(summarize().projectSlug).toBe('alpha');
+      const count = store.listEvents(session.threadId).length;
+
+      const elsewhere = join(dir, 'elsewhere');
+      mkdirSync(elsewhere);
+      projects = [{ slug: 'alpha', workingDirectory: elsewhere }];
+      await service.pollNow();
+      expect(summarize().projectSlug).toBe('alpha');
+      expect(store.listEvents(session.threadId)).toHaveLength(count);
+    });
 
     test('adding a second project on the same directory clears the stamped slug, and survives a restart', async () => {
       let projects: AttachedProjectRoot[] = [

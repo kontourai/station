@@ -29,7 +29,6 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { passkey } from '@better-auth/passkey';
 import type { DeploymentAuthenticationEndpoint } from '@kontourai/station-contracts/deployment-authentication';
 import type { BetterAuthPlugin, GenericEndpointContext } from 'better-auth';
 import { APIError } from 'better-auth/api';
@@ -144,7 +143,10 @@ export interface MemberPasskeys {
   ): Promise<Response>;
 }
 
-export function createMemberPasskeys(host: MemberPasskeyHost): MemberPasskeys {
+export async function createMemberPasskeys(
+  host: MemberPasskeyHost,
+): Promise<MemberPasskeys> {
+  const { passkey } = await import('@better-auth/passkey');
   const now = host.now ?? (() => Date.now());
   const scope = new AsyncLocalStorage<Scope>();
   const ceremonies = new Map<string, Ceremony>();

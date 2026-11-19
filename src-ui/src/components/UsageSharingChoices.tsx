@@ -1,6 +1,7 @@
 import type {
   TelemetryChoiceCapabilities,
   TelemetryPublisherId,
+  TelemetryPublisherStatus,
   TelemetryTier,
   TelemetryTierChoices,
 } from '@kontourai/station-contracts/product-telemetry';
@@ -16,6 +17,12 @@ export const SHARING_LABELS: Record<TelemetryTier, string> = {
 };
 
 const TIER_RANK = { off: 0, lite: 1, full: 2 } as const;
+
+export function kontourReceivesOnlyLite(
+  status: TelemetryPublisherStatus | undefined,
+): boolean {
+  return status?.endpointConfigured === true && status.fullAvailable === false;
+}
 
 /**
  * What the server has said this caller may do with the usage-sharing choice.
@@ -161,7 +168,7 @@ function readableSharingFields(text: string): string {
 
 /** One readable view of the server-owned definitions, for both sharing choices. */
 export function UsageSharingIncluded(
-  props:
+  props: (
     | {
         data: SharingDisclosure;
         saveLabel?: string;
@@ -169,15 +176,17 @@ export function UsageSharingIncluded(
         /** `host`: this caller cannot confirm Detailed; `none`: not known yet. */
         confirmation?: 'save' | 'host' | 'none';
       }
-    | { counts: SharingCounts },
+    | { counts: SharingCounts }
+  ) & { heading?: string },
 ) {
   const daily = 'counts' in props;
+  const heading = props.heading ?? "What's included";
   return (
     <section
-      aria-label="What's included"
+      aria-label={heading}
       className="usage-telemetry-disclosure__included-content"
     >
-      <h3>What's included</h3>
+      <h3>{heading}</h3>
       {!daily && props.data.authorDisclosure && (
         <p>
           Shared with Kontour at:{' '}
@@ -292,6 +301,7 @@ export function UsageSharingChoices({
   host,
   data,
   detailedAvailable = true,
+  kontourLiteOnly = false,
   counts,
   onDetailedIntent,
   firstRun = false,
@@ -313,6 +323,7 @@ export function UsageSharingChoices({
   counts?: SharingCounts;
   onDetailedIntent?: () => void;
   detailedAvailable?: boolean;
+  kontourLiteOnly?: boolean;
   firstRun?: boolean;
 }) {
   const name = useId();
@@ -349,7 +360,7 @@ export function UsageSharingChoices({
               aria-describedby={`${name}-${tier}-description`}
               checked={value === tier}
               disabled={
-                (tier === 'full' && !detailedAvailable) ||
+                (tier === 'full' && (!detailedAvailable || kontourLiteOnly)) ||
                 (selectable !== undefined && !selectable(tier))
               }
               onClick={() => {
@@ -364,7 +375,9 @@ export function UsageSharingChoices({
                   ? 'No automatic usage sharing.'
                   : tier === 'lite'
                     ? 'Daily counts, plus coarse tokens per engine from conversations run in Station. No ID, account or content.'
-                    : 'Feature use. Monthly code. No account or content.'}
+                    : kontourLiteOnly
+                      ? 'Available for an additional receiver in Advanced settings.'
+                      : 'Feature use. Monthly code. No account or content.'}
               </small>
             </span>
           </label>

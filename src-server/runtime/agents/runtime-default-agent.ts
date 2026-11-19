@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { UsageAggregator } from '../../analytics/usage-aggregator.js';
+import { resolveStationRunMaxSteps } from '../../constants.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
@@ -373,6 +374,7 @@ export async function bootstrapRuntimeDefaultAgent(
       ),
     model: defaultModel,
     tools: defaultTools,
+    maxSteps: resolveStationRunMaxSteps(context.appConfig, { builtin: true }),
     memoryAdapter: defaultMemoryAdapter,
     hooks: defaultHooks,
     durable,

@@ -88,6 +88,7 @@ names what the module owns. Read the module before depending on it.
 - `/turn-changed-files`: the files a turn changed, and why that list can be unavailable.
 - `/session-output-declaration`: durable provenance for an output a native tool declared.
 - `/session-outputs`: the metadata-only Session Outputs page and inspection (v1).
+- `/project-library`: the Project Library page, upload path rule and filters (v1).
 - `/mcp-elicitation`: the field subset Station renders for an MCP form elicitation.
 - `/mcp-app-display-mode`: host-mediated display-mode decisions for MCP Apps.
 - `/stall-watchdog`: a stream read raced against a resetting stall timeout.

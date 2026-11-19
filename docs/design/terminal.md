@@ -1,6 +1,14 @@
 # Integrated terminal
 
-Status: In progress under #3994. Implemented: the scoped session service, supervisor workloads (protocol 1.3) with the in-process fallback, command sessions for agent terminals, retention settings and restore after a restart, the same-origin gateway with operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` (with a screen reader mode setting, its keys listed in the shortcut list, and replay on reattach), the Coding cutover onto it, and the plugin terminal target. The legacy `port + 1` stack is removed. Also implemented: the script runner, agent terminal tools with per-run approval, and Add to chat as a composer chip (see [Agent integration](#agent-integration)). Proposed and not implemented: splits and groups, terminal layout shortcuts, a standalone terminal route, and the browser broker (DataChannel) route, which is intentionally unsupported. See [Verification](#verification) for what is not verified.
+Status: In progress under #3994. Implemented: the scoped session service, supervisor workloads (introduced in protocol 1.3) with the in-process fallback, command sessions for agent terminals, retention settings and restore after a restart, the same-origin gateway with operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` (with a screen reader mode setting, its keys listed in the shortcut list, and replay on reattach), the Coding cutover onto it, and the plugin terminal target. The legacy `port + 1` stack is removed. Also implemented: the script runner, agent terminal tools with per-run approval, and Add to chat as a composer chip (see [Agent integration](#agent-integration)). Proposed and not implemented: splits and groups, terminal layout shortcuts, a standalone terminal route, and the browser broker (DataChannel) route, which is intentionally unsupported. See [Verification](#verification) for what is not verified.
+
+Guided engine installers use server-owned terminal launches with a persisted
+operation id and finite lifetime. Protocol 1.4 adds workload-host capability
+negotiation and deadline enforcement while the core is absent; unsupported
+hosts refuse before launch. The final spawn boundary rechecks authorization.
+Unbounded interactive terminals keep their existing behavior. See
+[bounded setup commands](process-supervisor.md#bounded-setup-commands-protocol-14)
+and the [ACP setup journey](../guides/acp.md#set-up-an-engine-from-chat).
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is

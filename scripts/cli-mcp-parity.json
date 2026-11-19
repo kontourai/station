@@ -1,5 +1,21 @@
 {
-  "app": {},
+  "app": {
+    "engine-install-terminal": {
+      "route": "POST /acp/registry/:id/install-terminal",
+      "exempt": "person-only",
+      "reason": "A person confirms the exact reviewed installer and operates its owned terminal; chat only opens the existing setup pane."
+    },
+    "engine-recommended-setup": {
+      "route": "POST /acp/connections/:id/recommended-setup",
+      "exempt": "person-only",
+      "reason": "A person reviews and applies built-in launch arguments while preserving the saved connection and Agent."
+    },
+    "engine-station-tools": {
+      "route": "POST /acp/connections/:id/station-tools",
+      "exempt": "person-only",
+      "reason": "A person explicitly selects Station tools for the canonical Agent; agent tools cannot grant themselves this selection."
+    }
+  },
   "cli": {
     "acp command-options": {
       "missing": 4286,
@@ -13,6 +29,7 @@
       "missing": 4286,
       "want": "List|create|update|delete|reconnect_acp_connection"
     },
+    "acp setup": { "tools": ["list_engine_setup"] },
     "acp status": {
       "missing": 4286,
       "want": "Acp_status"
@@ -1428,6 +1445,7 @@
     "list_delegation_targets": {
       "cli": ["delegate targets"]
     },
+    "list_engine_setup": { "cli": ["acp setup"] },
     "list_integrations": {
       "cli": ["tools list"]
     },
@@ -1459,6 +1477,10 @@
     "list_project_layouts": {
       "cli": ["projects layouts"],
       "note": "CLI layouts also creates/updates/deletes layouts; MCP is read-only."
+    },
+    "list_project_library": {
+      "exempt": "agent-self",
+      "reason": "The caller's own Project Library (route uses authority.caller's recorded Project). People use the Project page's Files & connections."
     },
     "list_project_notes": {
       "exempt": "agent-self",
@@ -1522,6 +1544,10 @@
       "cli": ["notifications create"],
       "note": "The tool posts an agent-attributed notification (POST /api/notifications/agent); the CLI posts as the person (POST /notifications)."
     },
+    "open_engine_setup": {
+      "exempt": "agent-ui",
+      "reason": "Navigates to the existing engine setup pane via POST /api/ui; station acp setup returns its setupPath."
+    },
     "preview_schedule": {
       "cli": ["schedule preview"]
     },
@@ -1562,6 +1588,10 @@
     },
     "read_monitoring_events": {
       "cli": ["monitoring events", "insights events"]
+    },
+    "read_project_library_file": {
+      "exempt": "agent-self",
+      "reason": "One file from the caller's own Project Library (route uses authority.caller's recorded Project)."
     },
     "read_project_note": {
       "exempt": "agent-self",

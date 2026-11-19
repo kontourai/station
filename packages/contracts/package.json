@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./delegation-group": "./src/delegation-group.ts",
     "./peer-chat": "./src/peer-chat.ts",
     "./managed-policy": "./src/managed-policy.ts",
     "./managed-policy-engines": "./src/managed-policy-engines.ts",
@@ -186,10 +187,12 @@
     "./runs": "./src/runs.ts",
     "./session-attention": "./src/session-attention.ts",
     "./task-lane": "./src/task-lane.ts",
+    "./task-overview": "./src/task-overview.ts",
     "./work-claims": "./src/work-claims.ts",
     "./session-lifecycle": "./src/session-lifecycle.ts",
     "./session-output-declaration": "./src/session-output-declaration.ts",
     "./session-outputs": "./src/session-outputs.ts",
+    "./project-library": "./src/project-library.ts",
     "./session-inventory": "./src/session-inventory.ts",
     "./session-work-item": "./src/session-work-item.ts",
     "./settings-registry": "./src/settings-registry.ts",

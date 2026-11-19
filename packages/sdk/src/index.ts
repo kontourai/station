@@ -698,6 +698,7 @@ export {
   fetchUsageStats,
   fetchVapidPublicKey,
   fetchVoicePort,
+  fetchWebPushRegistration,
   fetchWorkspaceHomeRoleCandidates,
   fetchWorkspaceHomeRoleRequest,
   fetchWorkspaceHomeRoleStatus,
@@ -832,6 +833,7 @@ export {
   renameCodingFile,
   renameConversation,
   renewAuth,
+  reopenTaskOnOverview,
   requestAgentHealth,
   requestCoreUpdateStatus,
   requestPluginRecoveryPreview,
@@ -927,6 +929,7 @@ export {
   type TaskListRecord,
   type TaskMemoryRecord,
   type TaskMemoryView,
+  TaskOverviewReopenUnsupportedError,
   type TaskRecord,
   type TaskRecordWrite,
   type TaskReferenceInput,
@@ -1180,6 +1183,7 @@ export {
   usePluginSettingsMutation,
   usePluginSettingsQuery,
   usePluginsQuery,
+  usePluginUpdateCheckQuery,
   usePluginUpdateMutation,
   usePluginUpdatesQuery,
   usePluginVisibilityQuery,
@@ -1230,6 +1234,7 @@ export {
   useRenameCodingFileMutation,
   useRenameConversationMutation,
   useRenewAuthMutation,
+  useReopenTaskOnOverviewMutation,
   useReorderProjectsMutation,
   useReposQuery,
   useResetUsageStatsMutation,
@@ -1401,11 +1406,19 @@ export {
   useCodingFileMentionCandidatesQuery,
 } from './query-domains/chatRuntimeCoding.js';
 export {
-  type CustomAppearanceAction,
   customAppearanceKey,
-  useCustomAppearanceMutation,
   useCustomAppearanceQuery,
 } from './query-domains/customAppearance';
+export {
+  type CustomAppearanceLibraryAction,
+  customAppearanceLibraryKey,
+  useCustomAppearanceLibraryMutation,
+  useCustomAppearanceLibraryQuery,
+} from './query-domains/customAppearanceLibrary';
+export {
+  type CustomAppearanceAction,
+  useCustomAppearanceMutation,
+} from './query-domains/customAppearanceMutation';
 export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,

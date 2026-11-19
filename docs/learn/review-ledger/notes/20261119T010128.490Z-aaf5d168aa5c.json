@@ -1,0 +1,9 @@
+{
+  "revision": "dd2cf1b61b08a76cfe30784b231b5f850d25aea0",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Checked Coding placement and settings: the layout renders admitted built-in File Preview occurrences when the catalog has no available preview descriptor. The layout scope, pane selection history, and settings behavior still match the documented design.","inputs":["src-ui/src/app-shell/ProjectLayoutRenderer.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked Coding placement and settings: the layout renders admitted built-in File Preview occurrences when the catalog has no available preview descriptor. The layout scope, pane selection history, and settings behavior still match the documented design.","inputs":["src-ui/src/app-shell/ProjectLayoutRenderer.tsx"]}
+  ]
+}

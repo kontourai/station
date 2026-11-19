@@ -38,6 +38,10 @@ import {
   orchestrationEventsPersisted,
   orchestrationEventWindowElisions,
 } from '../../../telemetry/metrics.js';
+import {
+  delegatedTaskReason,
+  projectDelegatedTaskEvent,
+} from '../../../tools/station-control-delegation.js';
 import { MAX_EVENT_CONTENT_BYTES } from '../event-content-spill.js';
 import type { PersistedRuntimeEvent } from '../event-store.js';
 import {
@@ -3711,6 +3715,249 @@ describe('EventStore', () => {
     expect(run.status).toBe('completed');
   });
 
+  test.each([
+    [
+      'cancelled completion',
+      {
+        method: 'turn.completed',
+        finishReason: 'cancelled',
+        sessionState: 'canceled',
+      },
+    ],
+    [
+      'abort',
+      {
+        method: 'turn.aborted',
+        reason: 'interrupted',
+        sessionState: 'canceled',
+      },
+    ],
+    [
+      'unproven completion',
+      { method: 'turn.completed', finishReason: 'other', sessionState: 'idle' },
+    ],
+  ] as const)(
+    'keeps a same-turn failure after %s in all session reads',
+    (_label, terminal) => {
+      const threadId = 'failed-turn-confirmation';
+      const createdAt = '2026-11-18T00:00:00.000Z';
+      const base = {
+        provider: 'codex',
+        threadId,
+        turnId: 'turn-1',
+        createdAt,
+      } as const;
+      store.appendEvent({
+        ...base,
+        eventId: 'start',
+        method: 'turn.started',
+        prompt: 'run',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'error',
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'provider rejected the work',
+        retriable: false,
+      });
+      store.appendEvent({ ...base, eventId: 'late', ...terminal });
+      const persisted: ProviderSession = {
+        provider: 'codex',
+        threadId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      };
+      const answerability = {
+        threadAttachment: 'detached' as const,
+        providerRegistered: true,
+        observedBy: 'test',
+        observedAt: createdAt,
+      };
+      const readers = () =>
+        [
+          store.listEvents(threadId),
+          store.listSessionProjectionEvents(threadId),
+          store
+            .listSessionProjectionEventsForThreads([threadId])
+            .get(threadId) ?? [],
+        ].map((rows) => ({
+          persisted,
+          answerability,
+          events: rows.map(({ payload }) => payload),
+        }));
+      for (const options of readers()) {
+        expect(buildOrchestrationSessionSummary(options)).toMatchObject({
+          lifecycleState: 'failed',
+          blockedReason: 'provider rejected the work',
+          hasActiveTurn: false,
+        });
+        expect(buildAgentRunSummary(options)).toMatchObject({
+          status: 'failed',
+          failureMessage: 'provider rejected the work',
+          retryEligible: false,
+        });
+      }
+      store.appendEvent({
+        ...base,
+        eventId: 'proof',
+        method: 'turn.completed',
+        finishReason: 'stop',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'late-after-proof',
+        method: 'turn.completed',
+        finishReason: 'cancelled',
+      });
+      for (const options of readers()) {
+        expect(buildOrchestrationSessionSummary(options).lifecycleState).toBe(
+          'idle',
+        );
+        expect(buildAgentRunSummary(options).status).toBe('completed');
+        expect(buildAgentRunSummary(options).failureMessage).toBeUndefined();
+      }
+      store.appendEvent({
+        ...base,
+        eventId: 'successor',
+        turnId: 'turn-2',
+        method: 'turn.started',
+        prompt: 'continue',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: 'successor-cancel',
+        turnId: 'turn-2',
+        method: 'turn.completed',
+        finishReason: 'cancelled',
+      });
+      for (const options of readers()) {
+        expect(buildOrchestrationSessionSummary(options).lifecycleState).toBe(
+          'canceled',
+        );
+        expect(buildAgentRunSummary(options).status).toBe('cancelled');
+        expect(buildAgentRunSummary(options).failureMessage).toBeUndefined();
+      }
+    },
+  );
+
+  test.each([
+    ['acp', 'refusal', 'acp-turn-refused', 'Request declined.'],
+    ['opencode', 'refusal', 'acp-turn-refused', 'Request declined.'],
+    [
+      'acp',
+      'max_turn_requests',
+      'acp-turn-request-limit',
+      'Request limit reached.',
+    ],
+    [
+      'acp',
+      'new_engine_stop',
+      'acp-turn-outcome-unknown',
+      'Result unconfirmed.',
+    ],
+    ['acp', undefined, 'acp-turn-outcome-unknown', 'Result unconfirmed.'],
+  ] as const)(
+    'reads a persisted %s ACP completion with %s without rewriting evidence',
+    (provider, stopReason, code, message) => {
+      const threadId = 'historical-acp-stop';
+      const createdAt = '2026-11-18T00:00:00.000Z';
+      const base = {
+        provider,
+        threadId,
+        turnId: 'turn-1',
+        createdAt,
+      } as const;
+      const completion = {
+        ...base,
+        eventId: 'stop',
+        method: 'turn.completed',
+        finishReason: 'other',
+        ...(stopReason === undefined ? {} : { stopReason }),
+        sessionState: 'idle',
+        transitionReason: 'turn_completed',
+      } as const;
+      store.appendEvent({
+        ...base,
+        eventId: 'start',
+        method: 'turn.started',
+        prompt: 'run',
+      });
+      store.appendEvent(completion);
+      const persisted: ProviderSession = {
+        provider,
+        threadId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      };
+      const answerability = {
+        threadAttachment: 'detached' as const,
+        providerRegistered: true,
+        observedBy: 'test',
+        observedAt: createdAt,
+      };
+      const raw = store.listEvents(threadId).map(({ payload }) => payload);
+      expect(raw.at(-1)).toMatchObject(completion);
+      const options = { persisted, answerability, events: raw };
+      expect(
+        delegatedTaskReason(
+          { lifecycleState: 'failed' },
+          raw.map((event) => ({ ...event })),
+        ),
+      ).toEqual({ code, detail: message });
+      expect(projectDelegatedTaskEvent(2, raw.at(-1))).toMatchObject({
+        kind: 'runtime',
+        severity: 'error',
+        text: message,
+        retriable: false,
+      });
+      expect(buildOrchestrationSessionSummary(options)).toMatchObject({
+        lifecycleState: 'failed',
+        blockedReason: message,
+        hasActiveTurn: false,
+      });
+      expect(buildAgentRunSummary(options)).toMatchObject({
+        status: 'failed',
+        failureMessage: message,
+        retryEligible: false,
+      });
+      const messages = projectRuntimeEventsToMessages(raw);
+      expect(messages.at(-1)?.parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'text',
+            text: expect.stringContaining(message),
+          }),
+        ]),
+      );
+      store.appendEvent({
+        ...base,
+        eventId: 'late-cancel',
+        method: 'turn.completed',
+        finishReason: 'cancelled',
+      });
+      for (const rows of [
+        store.listEvents(threadId),
+        store.listSessionProjectionEvents(threadId),
+        store.listSessionProjectionEventsForThreads([threadId]).get(threadId) ??
+          [],
+      ]) {
+        const view = { ...options, events: rows.map(({ payload }) => payload) };
+        expect(buildOrchestrationSessionSummary(view)).toMatchObject({
+          lifecycleState: 'failed',
+          blockedReason: message,
+        });
+        expect(buildAgentRunSummary(view)).toMatchObject({
+          status: 'failed',
+          failureMessage: message,
+          retryEligible: false,
+        });
+      }
+    },
+  );
+
   // archive#3581: the cross-turn companion to the non-regression test above,
   // driven through the REAL `EventStore` and specifically through the FULL,
   // unbounded `listEvents(threadId)` path `orchestration-service.ts`'s
@@ -5926,90 +6173,159 @@ describe('EventStore', () => {
     expect(new Set(ids)).toHaveLength(1_020);
   });
 
-  test('backfills bounded history title and message count from persisted events', () => {
-    store.close();
-    const databasePath = join(dir, 'pre-ownership-history.sqlite');
-    const database = new DatabaseSync(databasePath);
-    database.exec('BEGIN IMMEDIATE');
-    try {
-      database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-      database
-        .prepare(
-          `INSERT INTO provider_session_state
+  test.each([
+    ['new', false],
+    ['already-projected', true],
+  ] as const)(
+    'backfills typed legacy metadata (%s history row)',
+    (_layout, alreadyProjected) => {
+      store.close();
+      const databasePath = join(dir, 'pre-ownership-history.sqlite');
+      const database = new DatabaseSync(databasePath);
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+        database
+          .prepare(
+            `INSERT INTO provider_session_state
           (thread_id, provider, status, tenant_execution_context, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          'thread-backfilled',
-          'claude',
-          'ready',
-          JSON.stringify({ tenantId: 'alpha', source: 'session' }),
-          '2026-08-08T11:00:00.000Z',
-          '2026-08-08T12:00:00.000Z',
-        );
-      const insertEvent = database.prepare(
-        `INSERT INTO orchestration_events
+          )
+          .run(
+            'thread-backfilled',
+            'claude',
+            'ready',
+            JSON.stringify({ tenantId: 'alpha', source: 'session' }),
+            '2026-08-08T11:00:00.000Z',
+            '2026-08-08T12:00:00.000Z',
+          );
+        const insertEvent = database.prepare(
+          `INSERT INTO orchestration_events
         (id, provider, thread_id, method, payload, created_at, sequence, global_sequence)
        VALUES (?, 'claude', 'thread-backfilled', ?, ?, ?, ?, ?)`,
-      );
-      insertEvent.run(
-        'backfilled-start',
-        'session.started',
-        JSON.stringify({
-          method: 'session.started',
-          metadata: { userId: 'owner-alpha', agentSlug: 'claude' },
-        }),
-        '2026-08-08T11:00:00.000Z',
-        1,
-        1,
-      );
-      insertEvent.run(
-        'backfilled-turn-start',
-        'turn.started',
-        JSON.stringify({
-          method: 'turn.started',
-          prompt: 'Accurate history title',
-        }),
-        '2026-08-08T11:01:00.000Z',
-        2,
-        2,
-      );
-      insertEvent.run(
-        'backfilled-turn-complete',
-        'turn.completed',
-        JSON.stringify({ method: 'turn.completed' }),
-        '2026-08-08T12:00:00.000Z',
-        3,
-        3,
-      );
-      database.exec('COMMIT');
-    } catch (error) {
-      database.exec('ROLLBACK');
-      throw error;
-    } finally {
-      database.close();
-    }
+        );
+        insertEvent.run(
+          'backfilled-start',
+          'session.started',
+          JSON.stringify({
+            method: 'session.started',
+            metadata: {
+              userId: 'owner-alpha',
+              agentSlug: 'claude',
+              projectSlug: 'legacy-project',
+            },
+          }),
+          '2026-08-08T11:00:00.000Z',
+          1,
+          1,
+        );
+        insertEvent.run(
+          'backfilled-malformed-config',
+          'session.configured',
+          JSON.stringify({
+            method: 'session.configured',
+            metadata: {
+              userId: { id: 'wrong-owner' },
+              agentSlug: ['wrong-agent'],
+              projectSlug: { slug: 'wrong-project' },
+            },
+          }),
+          '2026-08-08T11:00:01.000Z',
+          2,
+          2,
+        );
+        insertEvent.run(
+          'backfilled-turn-start',
+          'turn.started',
+          JSON.stringify({
+            method: 'turn.started',
+            prompt: 'Accurate history title',
+          }),
+          '2026-08-08T11:01:00.000Z',
+          3,
+          3,
+        );
+        insertEvent.run(
+          'backfilled-turn-complete',
+          'turn.completed',
+          JSON.stringify({ method: 'turn.completed' }),
+          '2026-08-08T12:00:00.000Z',
+          4,
+          4,
+        );
+        if (alreadyProjected) {
+          database
+            .prepare(
+              'INSERT INTO orchestration_conversation_history (thread_id, owner_user_id, tenant_id, agent_slug, title, message_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            )
+            .run(
+              'thread-backfilled',
+              'owner-alpha',
+              'alpha',
+              'claude',
+              'Accurate history title',
+              2,
+              '2026-08-08T11:00:00.000Z',
+              '2026-08-08T12:00:00.000Z',
+            );
+        }
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      } finally {
+        database.close();
+      }
 
-    store = new EventStore(databasePath);
-
-    expect(
-      store.listConversationHistoryPage({
-        ownerUserId: 'owner-alpha',
-        tenantId: 'alpha',
-        limit: 1,
-      }).records,
-    ).toEqual([
-      expect.objectContaining({
-        threadId: 'thread-backfilled',
-        title: 'Accurate history title',
-        messageCount: 2,
-      }),
-    ]);
-    expect(store.readConversationHistoryUpgrade()).toMatchObject({
-      status: 'complete',
-      quarantinedCount: 0,
-    });
-  });
+      const assertHistory = () => {
+        const stored = new DatabaseSync(databasePath);
+        try {
+          expect(
+            stored
+              .prepare(
+                'SELECT owner_user_id, agent_slug, project_slug FROM orchestration_conversation_history WHERE thread_id = ?',
+              )
+              .get('thread-backfilled'),
+          ).toEqual({
+            owner_user_id: 'owner-alpha',
+            agent_slug: 'claude',
+            project_slug: 'legacy-project',
+          });
+        } finally {
+          stored.close();
+        }
+        expect(
+          store.listConversationHistoryPage({
+            ownerUserId: 'owner-alpha',
+            tenantId: 'alpha',
+            limit: 1,
+          }).records,
+        ).toEqual([
+          expect.objectContaining({
+            threadId: 'thread-backfilled',
+            title: 'Accurate history title',
+            messageCount: 2,
+          }),
+        ]);
+        expect(
+          store.listConversationHistoryPage({
+            ownerUserId: 'owner-alpha',
+            tenantId: 'beta',
+            limit: 1,
+          }).records,
+        ).toEqual([]);
+        expect(store.readConversationHistoryUpgrade()).toMatchObject({
+          status: 'complete',
+          quarantinedCount: 0,
+        });
+      };
+      store = new EventStore(databasePath);
+      assertHistory();
+      store.close();
+      store = new EventStore(databasePath);
+      assertHistory();
+    },
+  );
 
   test('#2324 review J1: the history backfill counts a provider turn’s reply but not its start', () => {
     store.close();

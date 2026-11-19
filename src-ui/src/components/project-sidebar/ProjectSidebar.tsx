@@ -1,4 +1,6 @@
+import { attentionProjectCounts } from '@kontourai/station-contracts/attention';
 import {
+  useAttentionQuery,
   useOrchestrationSessionsQuery,
   useReorderProjectsMutation,
 } from '@kontourai/station-sdk';
@@ -39,6 +41,8 @@ import {
   projectLiveLabel,
   projectLiveLanesBySlug,
 } from '../../views/project-page/project-live-work-model';
+import { useProjectOverviewPreview } from '../../views/project-page/projectOverviewPreview';
+import { useWaitingOnYouCounts } from '../../views/project-page/waitingOnYouStore';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { HomeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
@@ -55,6 +59,14 @@ const loadProjectSidebarFooter = () =>
   import('./ProjectSidebarFooter').then((module) => ({
     default: module.ProjectSidebarFooter,
   }));
+
+// #5064: the Waiting on you count runs in its own chunk, only while the
+// project-overview preview is on, so the sidebar's first paint reads no
+// Tasks and carries no Overview rule.
+const loadWaitingOnYouSource = () =>
+  import('../../views/project-page/ProjectWaitingOnYouSource').then(
+    (module) => ({ default: module.ProjectWaitingOnYouSource }),
+  );
 
 const loadProjectSidebarBoards = () =>
   import('./ProjectSidebarBoards').then((module) => ({
@@ -165,6 +177,15 @@ function ProjectSidebarImpl() {
   // optimistic write/rollback/settle target THIS authority's list cache and
   // never another home's.
   const hostRequestAuthority = useHostRequestAuthorityScope();
+  const canReadAttention = !!hostRequestAuthority?.isCurrent();
+  const { data: attention } = useAttentionQuery(hostRequestAuthority, {
+    enabled: canReadAttention && projects.length > 0,
+  });
+  const attentionItems = canReadAttention ? attention?.items : undefined;
+  const attentionByProject = useMemo(
+    () => attentionProjectCounts(attentionItems ?? []),
+    [attentionItems],
+  );
   const { namespace: durableAuthorityNamespace } = useAuthorityPersistence();
   const reorderProjectsMutation = useReorderProjectsMutation();
   const { rowReorderProps, announcement: reorderAnnouncement } =
@@ -192,6 +213,8 @@ function ProjectSidebarImpl() {
   // list it sends the reader to cannot disagree. The badge previously folded
   // the conversation inventory here inline; see that module for what changed
   // and why.
+  const projectOverviewOn = useProjectOverviewPreview();
+  const waitingOnYouBySlug = useWaitingOnYouCounts();
   const liveLanesByProject = useMemo(
     () =>
       projectLiveLanesBySlug({
@@ -442,6 +465,8 @@ function ProjectSidebarImpl() {
                   accent={accentBySlug.get(project.slug)}
                   liveCount={projectLiveCount(liveLanes)}
                   liveLabel={projectLiveLabel(liveLanes)}
+                  attentionCount={attentionByProject.get(project.slug) ?? 0}
+                  waitingOnYou={waitingOnYouBySlug.get(project.slug) ?? 0}
                 />
               );
             })}
@@ -457,6 +482,15 @@ function ProjectSidebarImpl() {
             {/* A keyboard reorder is otherwise silent: the rows swap with no
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}
+            {projectOverviewOn && (
+              <LazyBoundary
+                key={`waiting-on-you:${durableAuthorityNamespace ?? ''}`}
+                load={loadWaitingOnYouSource}
+                pending={null}
+                unavailable={() => null}
+                componentProps={{}}
+              />
+            )}
             <LazyBoundary
               key={durableAuthorityNamespace ?? ''}
               load={loadProjectSidebarBoards}

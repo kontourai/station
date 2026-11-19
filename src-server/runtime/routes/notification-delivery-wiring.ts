@@ -86,6 +86,8 @@ export interface NotificationDeliveryWiringDeps {
    */
   focus?: FocusSource;
   inAppLiveness?: InAppLiveness;
+  /** #5072: per-Project notification settings (a Feature Preview). */
+  projectNotificationSettings?: () => boolean;
 }
 
 export interface NotificationDeliveryWiring {
@@ -169,6 +171,9 @@ export function wireNotificationDelivery(
     logger: deps.logger,
     ...(deps.focus ? { focus: deps.focus } : {}),
     ...(deps.inAppLiveness ? { inAppLiveness: deps.inAppLiveness } : {}),
+    ...(deps.projectNotificationSettings
+      ? { projectNotificationSettings: deps.projectNotificationSettings }
+      : {}),
     readNotification: (id) => deps.getNotification(id),
   });
   return { preferences, router, desktopHostChannel, isFeedDevice };

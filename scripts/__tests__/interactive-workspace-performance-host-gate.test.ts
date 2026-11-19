@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -35,14 +35,38 @@ const TEST_TIMEOUT_MS = PLAYWRIGHT_TIMEOUT_MS + 30_000;
 
 const makeTempDir = trackTempDirs();
 
+const HOST_GATE_CASE =
+  'reports NOT_VERIFIED without provisioning a Station or launching a browser';
+const WORKLOAD_CASE =
+  'executes isolated real Station targets and aggregates one build receipt';
+
+type CaseResult = { status: string; error?: { message?: string } };
+type ReportSpec = { title: string; tests: { results: CaseResult[] }[] };
+type ReportSuite = { specs?: ReportSpec[]; suites?: ReportSuite[] };
+
+function namedResult(report: string, title: string, output: string) {
+  const collect = (suite: ReportSuite): ReportSpec[] => [
+    ...(suite.specs ?? []),
+    ...(suite.suites ?? []).flatMap(collect),
+  ];
+  const document: ReportSuite = JSON.parse(readFileSync(report, 'utf8'));
+  const matches = collect(document).filter((spec) => spec.title === title);
+  expect(matches, output).toHaveLength(1);
+  expect(matches[0].tests, output).toHaveLength(1);
+  expect(matches[0].tests[0].results, output).toHaveLength(1);
+  return matches[0].tests[0].results[0];
+}
+
 function runSpec(extraEnv: Record<string, string> = {}) {
   const root = makeTempDir('station-iw-host-gate-');
   const browsers = join(root, 'browsers');
   mkdirSync(browsers);
   const report = join(root, 'report', 'interactive-workspace.json');
+  const playwrightReport = join(root, 'playwright.json');
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PLAYWRIGHT_BROWSERS_PATH: browsers,
+    PLAYWRIGHT_JSON_OUTPUT_FILE: playwrightReport,
     STATION_E2E_OUTPUT_DIR: join(root, 'test-results'),
     STATION_PERFORMANCE_REPORT_OUTPUT: report,
     // A temp root the spec would create Station homes and fixtures under.
@@ -59,7 +83,7 @@ function runSpec(extraEnv: Record<string, string> = {}) {
       'test',
       SPEC,
       '--project=chromium',
-      '--reporter=line',
+      '--reporter=line,json',
       '--workers=1',
       '--retries=0',
     ],
@@ -76,6 +100,7 @@ function runSpec(extraEnv: Record<string, string> = {}) {
     output: `${result.stdout ?? ''}\n${result.stderr ?? ''}`,
     browsers,
     report,
+    playwrightReport,
     tmp: env.TMPDIR!,
   };
 }
@@ -91,7 +116,12 @@ describe.skipIf(process.platform === 'win32')(
         expect(run.result.error, run.output).toBeUndefined();
         expect(run.result.status, run.output).toBe(0);
         expect(run.output).toContain('1 passed');
-        expect(run.output).toContain('1 skipped');
+        expect(
+          namedResult(run.playwrightReport, HOST_GATE_CASE, run.output).status,
+        ).toBe('passed');
+        expect(
+          namedResult(run.playwrightReport, WORKLOAD_CASE, run.output).status,
+        ).toBe('skipped');
         expect(run.output).toContain('REFERENCE_OS_MISMATCH');
         // Nothing was installed into, or launched from, the empty browser root.
         expect(readdirSync(run.browsers)).toEqual([]);
@@ -122,13 +152,42 @@ describe.skipIf(process.platform === 'win32')(
       () => {
         const run = runSpec({
           STATION_PERFORMANCE_NON_REFERENCE_DIAGNOSTIC: '1',
+          STATION_PERFORMANCE_E2E_FIXTURES:
+            'local-input-apply,reconnect-10k-operations',
         });
 
         expect(run.result.status, run.output).not.toBe(0);
-        expect(run.output).toMatch(/Executable doesn't exist/);
+        const workload = namedResult(
+          run.playwrightReport,
+          WORKLOAD_CASE,
+          run.output,
+        );
+        expect(workload.status).toBe('failed');
+        expect(workload.error?.message).toMatch(/Executable doesn't exist/);
         // The gate test is skipped when the workload is admitted.
-        expect(run.output).toContain('1 skipped');
-        expect(existsSync(run.report)).toBe(false);
+        expect(
+          namedResult(run.playwrightReport, HOST_GATE_CASE, run.output).status,
+        ).toBe('skipped');
+        // Browser setup failed before the first fixture body. The retained
+        // receipt still names exactly the selected fixtures as unmeasured.
+        const report = JSON.parse(readFileSync(run.report, 'utf8'));
+        expect(report.fixtures).toMatchObject([
+          {
+            fixtureId: 'local-input-apply',
+            status: 'NOT_VERIFIED',
+            reasonCodes: ['REFERENCE_FIXTURE_NOT_RUN'],
+          },
+          {
+            fixtureId: 'reconnect-10k-operations',
+            status: 'NOT_VERIFIED',
+            reasonCodes: ['REFERENCE_FIXTURE_NOT_RUN'],
+          },
+        ]);
+        expect(report.summary).toMatchObject({
+          PASS: 0,
+          FAIL: 0,
+          NOT_VERIFIED: 2,
+        });
       },
       TEST_TIMEOUT_MS,
     );

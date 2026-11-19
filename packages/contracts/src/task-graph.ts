@@ -689,6 +689,13 @@ export interface TaskRecord {
    */
   closeOnMerge?: boolean;
   /**
+   * When a person last reopened this Task on the Project Overview (#5064).
+   * The Overview auto-resolves an Idle Task after its Project's quiet
+   * period; that clock restarts here. Only a person sets it
+   * (`POST /api/tasks/:taskId/overview-reopen`). Absent: never reopened.
+   */
+  overviewReopenedAt?: string;
+  /**
    * A person's choice (#5066) whether this Task watches the pull requests
    * kept on it: `on` and `off` override the Project's setting, absent
    * follows it. Only a person sets it

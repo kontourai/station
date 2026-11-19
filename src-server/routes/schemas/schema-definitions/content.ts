@@ -18,6 +18,7 @@ import {
   SKILL_COMMAND_NAME_PATTERN,
   SKILL_COMMAND_NAME_RULE,
 } from '@kontourai/station-contracts/skill-command';
+import { TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS } from '@kontourai/station-contracts/task-overview';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import {
   SETUP_IMPORT_MAX_ITEMS,
@@ -304,6 +305,13 @@ export const projectCreateSchema = z
       .enum(PROJECT_CHAT_DEFAULT_SELECTIONS)
       .nullable()
       .optional(),
+    // #5064: days before the Overview auto-resolves an Idle Task; 0 never.
+    overviewAutoResolveDays: z
+      .number()
+      .int()
+      .min(0)
+      .max(TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS)
+      .optional(),
   })
   .passthrough();
 
@@ -512,7 +520,7 @@ export const agentCreateSchema = z
     description: z.string().max(500).optional(),
     model: z.string().max(200).optional(),
     region: z.string().max(50).optional(),
-    maxSteps: z.number().int().nonnegative().optional(),
+    maxSteps: z.number().int().min(1).max(100).nullable().optional(),
     icon: z.string().max(10).optional(),
   })
   .passthrough();

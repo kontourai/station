@@ -1,6 +1,4 @@
-import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import type { BundledServerStatus } from '../../platform/native/types';
-import { sessionTitle } from '../../utils/sessionDisplay';
 
 /**
  * What restarting the desktop app does to the Station server this window
@@ -61,22 +59,4 @@ export function desktopRestartServerImpact(input: {
   // loopback address could still be this app's own server behind a proxy
   // or forward, so it is not called safe.
   return window.loopback ? 'unknown' : 'other-server-keeps-running';
-}
-
-export interface RunningTurn {
-  id: string;
-  title: string;
-}
-
-/**
- * Sessions whose turn the server reports open (`hasActiveTurn`). Nothing
- * computes whether a turn could resume after a restart yet, so the dialog
- * calls every one of these interrupted.
- */
-export function runningTurns(
-  sessions: readonly OrchestrationSessionSummary[],
-): RunningTurn[] {
-  return sessions
-    .filter((session) => session.hasActiveTurn === true)
-    .map((session) => ({ id: session.threadId, title: sessionTitle(session) }));
 }

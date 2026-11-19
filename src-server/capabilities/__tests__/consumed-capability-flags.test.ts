@@ -40,6 +40,7 @@ import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-ro
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
+import { composeProjectLibraryRoutes } from '../../runtime/routes/runtime-project-library.js';
 import { composePullRequestFeedbackRuntime } from '../../runtime/routes/runtime-pull-request-feedback.js';
 import {
   resolveRuntimeConnectionRoutesEnabled,
@@ -752,6 +753,26 @@ const CONSUMED_FLAGS: Record<
       await runtime.close();
     }
   },
+  // GET /api/projects/:slug/library answers only where the runtime composes
+  // the Project Library (not hosted).
+  projectLibrary: async ({ hosted }) => {
+    const library = composeProjectLibraryRoutes({
+      hosted,
+      homeDir: makeTempDir('project-library-flag-'),
+      preview: { select: (branches) => branches.enabled() },
+      readTask: () => null,
+      isInternalRequest: () => false,
+      projectById: () => undefined,
+      authorize: async () => ({
+        project: { id: 'project-a', slug: 'demo' },
+        isCurrent: () => true,
+      }),
+    });
+    if (!library) return false;
+    const app = new Hono().route('/api/projects', library.projectRoutes);
+    const response = await app.request('/api/projects/demo/library');
+    return response.status === 200;
+  },
   // GET /api/system/routes answers the Station routes only where runtime
   // route support composes a resolver, from the same predicate as the flag.
   connectionRoutes: async ({ hosted }) => {
@@ -784,7 +805,12 @@ const CONSUMED_FLAGS: Record<
         readAuthorityForRequest: () =>
           ({ mode: hosted ? 'hosted' : 'personal' }) as never,
         // Runtime composition passes it only where a Project runner exists.
-        ...(hosted ? {} : { projectJobs: true }),
+        ...(hosted
+          ? {}
+          : {
+              jobOwner: () => ({ userId: 'local-operator' }),
+              maySetProjectJob: () => true,
+            }),
       },
     );
     const response = await routes.request('/jobs', {
@@ -1003,6 +1029,7 @@ describe('consumed capability flags match what their routes serve', () => {
     coordinatorSession: { personal: true, hosted: false },
     followUpAttachments: { personal: true, hosted: false },
     pullRequestFeedback: { personal: true, hosted: false },
+    projectLibrary: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
   };
 

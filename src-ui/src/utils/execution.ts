@@ -11,11 +11,6 @@ import {
   type ProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
 import {
-  isSessionLifecycleStateStopped,
-  SESSION_LIFECYCLE_STATES,
-  type SessionLifecycleState,
-} from '@kontourai/station-contracts/session-lifecycle';
-import {
   type AgentConnectionView,
   type ConnectionConfig,
   EXECUTION_MODE,
@@ -402,14 +397,16 @@ export function resolveEffectiveModel({
 export function acpAdvertisedModels(
   connection:
     | {
-        advertisedModels?: ReadonlyArray<{ id: string; name: string }>;
+        advertisedModels?: ReadonlyArray<
+          Pick<ModelOption, 'id' | 'name' | 'catalogRoute'>
+        >;
         configOptions?: ReadonlyArray<{
           category: string;
           options?: Array<string | { value: string; name?: string }>;
         }>;
       }
     | undefined,
-): Array<{ id: string; name: string }> {
+): Array<Pick<ModelOption, 'id' | 'name' | 'catalogRoute'>> {
   const served =
     connection?.advertisedModels ??
     (connection?.configOptions ?? [])
@@ -711,9 +708,8 @@ type SessionExecutionActivity = SessionExecutionSummary & {
 /**
  * Whether a running turn can take more user input on the engine's live
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
- * Only native steering fidelity permits this action. Emulated steering can
- * cancel and reprompt, so it cannot promise an additive live input channel.
- * Station-owned placement is held for an observed boundary.
+ * Native placement joins the live channel. Engine-defined emulation cancels
+ * and continues; Station-owned placement waits for an observed boundary.
  */
 export function sessionSteeringPlacement(profile?: ProviderDurabilityProfile) {
   return (profile ?? UNKNOWN_ENGINE_DURABILITY).steerPlacement;
@@ -724,7 +720,10 @@ export function sessionAdapterSupportsSteering(
 ): boolean {
   const placement = sessionSteeringPlacement(profile);
   return (
-    placement.state === 'native' || placement.boundary === 'station-observed'
+    placement.state === 'native' ||
+    (placement.state === 'emulated' &&
+      (placement.boundary === 'station-observed' ||
+        placement.boundary === 'engine-defined'))
   );
 }
 
@@ -1066,102 +1065,6 @@ export function resolveSessionExecutionSummary(
     model: session.orchestrationModel ?? session.model ?? undefined,
     status: session.orchestrationStatus ?? session.status ?? undefined,
   };
-}
-
-/**
- * Client-written `orchestrationStatus` values that mean the SESSION ended —
- * the ones no lifecycle state covers. Today that is `session.exited`
- * (`sessionHandlers`, and the snapshot's dead-session fold in
- * `snapshotHandlers`).
- *
- * The writers of `orchestrationStatus` this derivation has been checked
- * against, because the distinction is the whole point (#2169). The
- * field is written from three vocabularies, none of which is
- * `SessionLifecycleState`: `session.state-changed` carries a `SessionState`
- * (`packages/contracts/src/runtime-events.ts`), the connect-time snapshot
- * carries `ProviderSession['status']`, and the turn handlers write their own
- * strings. SESSION-level writers: `session.state-changed` (`event.to`, with
- * 'running'-without-an-open-turn-or-local-send folded to 'idle') and the
- * snapshot's `session.status`. TURN-level writers: `turn.started`
- * ('running'), `assistantTurn` ('idle'), `turn.aborted` ('aborted'),
- * `runtime.error` ('errored'), the approval handlers
- * ('awaiting-approval'/'running'), and the storage rehydrator, which scrubs
- * 'running'/'awaiting-approval' on restore.
- *
- * 'errored' arrives from BOTH levels — `runtime.error` and a
- * `session.state-changed` from the Codex and station-agent adapters — and
- * `sessionHandlers` treats the latter as terminal for activity hints. It is
- * LIVE here regardless: the server decides continuation on the lifecycle
- * state, not this string, and an errored thread can return to idle. Likewise
- * 'aborted': a user pressing Stop leaves the process alive and
- * `orchestrationSessionStarted` untouched. Both were settled in #2169:
- * reading them as ended re-requested the posture into a session the server
- * merely continues.
- *
- * Known gap, tracked in #2168: the snapshot vocabulary's 'dead' and
- * 'closed' fall through both halves below and read live, so a send against
- * such a row withholds the posture from a genuine restart.
- */
-const CLIENT_SESSION_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  'exited',
-]);
-
-/** Whether an `orchestrationStatus` means this chat's SESSION is over. */
-function orchestrationStatusIsSessionSettled(status: string): boolean {
-  if (CLIENT_SESSION_TERMINAL_STATUSES.has(status)) return true;
-  // The lifecycle half is derived, never re-listed: station#1548 is two
-  // hand-written copies of "terminal" drifting apart.
-  return (SESSION_LIFECYCLE_STATES as readonly string[]).includes(status)
-    ? isSessionLifecycleStateStopped(status as SessionLifecycleState)
-    : false;
-}
-
-/**
- * Whether the server will CONTINUE this chat's existing session rather than
- * start a new one — the question "is a session live", asked by the send path
- * so a session-start-only payload (the resolved approval posture, #2144
- * slice 6) is withheld only when there is genuinely a live session.
- *
- * Deliberately NOT `orchestrationSessionStarted || currentSessionId`, which
- * was true on two paths where the server really does call `startSession`
- * (#2169): `currentSessionId` outlives the session it names —
- * `session.exited` writes `orchestrationSessionStarted: false` and leaves the
- * id in place — and `commitConversationOpen` sets BOTH for any
- * `status: 'resolved'` resolution, which means "continuable", not "running"
- * (a stopped conversation resolves too, and its next send takes the server's
- * `startRequired: true` path).
- *
- * UNSURE ANSWERS "not live", ON PURPOSE. A reopened conversation carries no
- * `orchestrationStatus` at all, and the client cannot reproduce the server's
- * `resolveConversationContinuation` (it reads the session lineage and the
- * process detail). "Not live" means the posture IS sent, which is the safe
- * side twice over: the value is deterministic per chat, so re-sending it to
- * an already-configured session is a no-op at the adapter
- * (`targetPermissionMode !== record.currentPermissionMode`,
- * claude-adapter.ts), while withholding it leaves a genuinely new session
- * running a posture the composer is simultaneously claiming.
- */
-export function chatSessionIsLive(
-  session?:
-    | ({
-        orchestrationSessionStarted?: boolean;
-        orchestrationStatus?: string;
-        orchestrationTurnOpen?: boolean;
-      } & ConversationActivityCarrier)
-    | null,
-): boolean {
-  if (!session) return false;
-  if (session.orchestrationSessionStarted !== true) return false;
-  // #2309: the server's open turn, when it sent a record; the legacy fold
-  // only when it did not.
-  if (
-    session.conversationActivity
-      ? serverTurnLive(session) === true
-      : session.orchestrationTurnOpen === true
-  )
-    return true;
-  if (!session.orchestrationStatus) return false;
-  return !orchestrationStatusIsSessionSettled(session.orchestrationStatus);
 }
 
 export function isSessionExecutionActive(

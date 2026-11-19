@@ -1,5 +1,6 @@
 import { hostname } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   APPLICATION_SESSION_HEADER,
   APPLICATION_SESSION_NATIVE_HEADER,
@@ -405,6 +406,8 @@ import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
+  materializeEngineAgent,
+  registerEngineConnection,
   replacePluginEngineConnections,
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
@@ -472,6 +475,7 @@ import { createACPSignInRoutes } from '../../routes/connections/acp-sign-in.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createBedrockRoutes } from '../../routes/connections/bedrock.js';
 import { createConnectionRoutes } from '../../routes/connections/connections.js';
+import { createEngineSetupActionsRoutes } from '../../routes/connections/engine-setup-actions.js';
 import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
@@ -616,6 +620,10 @@ import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
+import {
+  createProjectLibraryRoutes,
+  createSessionProjectLibraryRoutes,
+} from '../../routes/projects/project-library-routes.js';
 import { createProjectMemoryRoutes } from '../../routes/projects/project-memory-routes.js';
 import { createProjectS3SourceRoutes } from '../../routes/projects/project-s3-source-routes.js';
 import { createProjectWorkingConfigurationRoutes } from '../../routes/projects/project-working-configuration-routes.js';
@@ -789,7 +797,10 @@ import {
 import { TrustBundleService } from '../../services/evidence/trust-bundle-service.js';
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
-import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
+import type {
+  FeaturePreviewRegistry,
+  FeaturePreviewSelector,
+} from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { createFeedbackRatingTarget } from '../../services/feedback/feedback-target.js';
 import { FlowMcpUiEvidenceBridge } from '../../services/flow/flow-mcp-ui-evidence-bridge.js';
@@ -1182,6 +1193,7 @@ import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
+import { composeProjectLibraryDeps } from './runtime-project-library.js';
 import {
   composePullRequestFeedbackRuntime,
   pullRequestFeedbackTaskBranchPorts,
@@ -1807,6 +1819,15 @@ export function configureRuntimeRoutes(
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
   );
+  // #5064/#5072: the Project Overview's groups, its reopen, the merge-queue
+  // read behind "Landing" and per-Project notification settings. One
+  // binding; every consumer selects it at its own branch.
+  const projectOverviewPreview = context.featurePreviews.bind({
+    id: 'project-overview',
+    label: 'Project Overview',
+    description:
+      'Group a Project’s Tasks by what they need next, and choose per Project when Station notifies you. Checks each open pull request’s merge queue on GitHub.',
+  });
   const connectedClientPresence = new ClientConnectionPresence({
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
@@ -2975,6 +2996,11 @@ export function configureRuntimeRoutes(
     '/api/spatial-board/resolved',
     bindConversationReadAuthority,
   );
+  context.app.on(
+    'POST',
+    '/api/spatial-board/cleanup',
+    bindConversationReadAuthority,
+  );
   context.app.use(
     '/api/analytics/source-enrollments/*',
     bindConversationReadAuthority,
@@ -3408,6 +3434,10 @@ export function configureRuntimeRoutes(
           { type: 'answer-basis', threadId: sessionId, turnId },
           authority,
         ) ?? Promise.resolve({ status: 'unavailable' as const }),
+      readProjectScope: (sessionId) =>
+        context.orchestrationEventStore?.readConversationProjectScope(
+          sessionId,
+        ),
     },
     new FlowAgentsRetainedNarrativeOwner(resolveWorkspacePath),
     ({ sessionId, turnId, revision, active }) =>
@@ -5922,6 +5952,8 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      // #5064: reopening on the Project Overview is part of its preview.
+      overviewPreview: projectOverviewPreview,
       // Read per request: pull request feedback is composed after these
       // routes are mounted.
       pullRequestWatch: () => pullRequestFeedback?.watch,
@@ -5980,6 +6012,19 @@ export function configureRuntimeRoutes(
                 ? context
                     .orchestrationEventStore!.taskMemoryStore()
                     .countOpenQuestions(
+                      tasks.map((task) => ({
+                        taskId: task.id,
+                        taskCreatedAt: task.createdAt,
+                      })),
+                    )
+                : new Map(),
+            // #5064: the Overview's one-line latest report, from the same
+            // store and under the same condition.
+            currentSummaries: (tasks: readonly TaskRecord[]) =>
+              projectTaskRoomRuntime && !isHostedTenantExecutionRequired()
+                ? context
+                    .orchestrationEventStore!.taskMemoryStore()
+                    .currentSummaries(
                       tasks.map((task) => ({
                         taskId: task.id,
                         taskCreatedAt: task.createdAt,
@@ -6343,6 +6388,17 @@ export function configureRuntimeRoutes(
         // back to any default identity.
         resolve: async (request, taskId, capability) =>
           resolveRoomPerson(request, taskId, capability),
+        matchesMemberPublication: (request, taskId, expected) => {
+          const admitted = taskMemberAdmission.admit(
+            request,
+            taskId,
+            'discuss',
+          );
+          return (
+            admitted?.member.principal.id === expected.principalId &&
+            admitted.shareId === expected.shareId
+          );
+        },
         isCurrent: (request, expected, taskId, capability) => {
           if (!isRequestPrincipalCurrent(request)) return false;
           const now = resolveRoomPerson(request, taskId, capability);
@@ -7149,7 +7205,13 @@ export function configureRuntimeRoutes(
       steerFidelity: (threadId) => service.steerFidelityForThread(threadId),
       inspectSteer: (input) => eventStore.readSteerInput(input),
       steer: stationServerEntry(
-        async ({ threadId, clientInputId, payload, turnId }) => {
+        async ({
+          threadId,
+          clientInputId,
+          payload,
+          turnId,
+          targetIsCurrent,
+        }) => {
           const dispatched = await service.dispatchWithReceipt(
             {
               type: 'steerTurn',
@@ -7165,9 +7227,12 @@ export function configureRuntimeRoutes(
               clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
             },
             // #4827: a steer a person typed and queued stays theirs.
-            payload.authoredBy === 'person'
-              ? { personAuthored: true }
-              : undefined,
+            {
+              ...(payload.authoredBy === 'person'
+                ? { personAuthored: true }
+                : {}),
+              steerTargetIsCurrent: targetIsCurrent,
+            },
           );
           const result = dispatched.result as
             | { outcome: string; turnId?: string }
@@ -7442,6 +7507,8 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    projectExists: projectLifecycle.projectHold.projectExists,
+    principalMayInProject,
     // #5070: a Project schedule is proposable only where Project runs exist
     // and the `project-schedules` preview is on.
     projectSchedulesEnabled: () =>
@@ -8293,12 +8360,65 @@ export function configureRuntimeRoutes(
     }),
   );
 
+  const engineSetupPreview: FeaturePreviewSelector = isPersonalHost
+    ? context.featurePreviews.bind({
+        id: 'guided-engine-setup',
+        label: 'Guided engine setup',
+        description:
+          'Let chat find engine setup pages. Install, sign in and choose Station tools from one pane.',
+      })
+    : { select: (branches) => branches.disabled() };
+  context.app.route(
+    '/acp',
+    createEngineSetupActionsRoutes({
+      configLoader: context.configLoader,
+      preview: engineSetupPreview,
+      personalHost: isPersonalHost,
+      terminals: () => scopedTerminals.sessions,
+      apply: runtimeContext.applyAgentConfigurationMutation,
+      reconnect: async (config) => {
+        if (!config.enabled) return false;
+        const connected = await context.acpBridge.addConnection(config);
+        const saved = (
+          await context.configLoader.loadACPConfig()
+        ).connections.find((entry) => entry.id === config.id);
+        if (!isDeepStrictEqual(saved, config)) return false;
+        if (connected) {
+          await registerEngineConnection(
+            context.configLoader,
+            engineConnectionId(config.id),
+            { kind: 'user-acp' },
+          );
+          await materializeEngineAgent(
+            context.configLoader,
+            config.id,
+            config.name,
+          );
+        }
+        return connected;
+      },
+      current: isRequestPrincipalCurrent,
+      changed: () => context.eventBus.emit(SERVER_EVENTS.AGENTS_CHANGED),
+      advertisedHttp: (id) =>
+        context.acpBridge
+          .getStatus()
+          .connections.some(
+            (entry) =>
+              entry.id === id &&
+              entry.status === ACPStatus.AVAILABLE &&
+              !!entry.handshakeObservedAt &&
+              entry.capabilities?.mcpCapabilities?.http === true,
+          ),
+    }),
+  );
   context.app.route(
     '/acp',
     createACPRoutes(runtimeContext, {
       publicAgentRegistry: createPublicAgentRegistrySource(
         context.configLoader.getProjectHomeDir(),
       ),
+      personalHost: isPersonalHost,
+      engineSetupPreview,
     }),
   );
   // Sign-in terminals are server-owned TerminalSessions launches.
@@ -9573,6 +9693,69 @@ export function configureRuntimeRoutes(
     );
   }
 
+  // #5067: the Project Library. Personal Stations only: uploads live in the
+  // Station home, and Task outputs are a personal-home store.
+  const projectLibrary = composeProjectLibraryDeps({
+    hosted: isHostedTenantExecutionRequired(),
+    homeDir: context.configLoader.getProjectHomeDir(),
+    preview: context.featurePreviews.bind({
+      id: 'project-library',
+      label: 'Project Library',
+      description:
+        'List the files people add to a Project and the files its Tasks keep, and let every chat in the Project read them.',
+    }),
+    outputs: taskOutputs,
+    readTask: (taskId) => context.taskGraphService.readTask(taskId),
+    isInternalRequest: isStationInternalRequest,
+    projectById: (projectId) => {
+      const project = context.projectService
+        .listProjects()
+        .find((entry) => entry.id === projectId);
+      return project ? { id: project.id, slug: project.slug } : undefined;
+    },
+    authorize: async (request, slug) => {
+      const projectIdFor = () =>
+        context.projectService
+          .listProjects()
+          .find((entry) => entry.slug === slug)?.id;
+      const projectId = projectIdFor();
+      if (!projectId) return undefined;
+      const authority = projectMembershipAuthority(request);
+      try {
+        await authority.operator();
+        const actor = await authority.current();
+        return {
+          project: { id: projectId, slug },
+          isCurrent: async () => {
+            if (request.signal.aborted || projectIdFor() !== projectId)
+              return false;
+            try {
+              await authority.operator();
+              return (
+                (await authority.current()).principal.id === actor.principal.id
+              );
+            } catch {
+              return false;
+            }
+          },
+        };
+      } catch (error) {
+        if (error instanceof ProjectMembershipRefusal) return undefined;
+        throw error;
+      }
+    },
+  });
+  if (projectLibrary) {
+    context.app.route(
+      '/api/projects',
+      createProjectLibraryRoutes(projectLibrary.project),
+    );
+    context.app.route(
+      '/api/orchestration',
+      createSessionProjectLibraryRoutes(projectLibrary.session),
+    );
+  }
+
   /**
    * #2377 slice B: whether a station-control agent request may take
    * `action` in the Project named by `projectRef` (its id or slug), for a
@@ -10129,9 +10312,25 @@ export function configureRuntimeRoutes(
   // The person's own custom appearance. Station-control requests resolve to
   // the session's recorded owner, so an agent proposes into its person's
   // document; the route refuses agents every step but read and propose.
+  const appearanceStudioPreview = context.featurePreviews.bind({
+    id: 'appearance-studio',
+    label: 'Appearance studio',
+    description:
+      'Customize backgrounds and styling, save and share theme files, and preview agent proposals in chat. Images stay in the theme file; accepted appearances remain when this is turned off.',
+  });
   context.app.route(
     '/api/me',
     createCustomAppearanceRoutes({
+      studioEnabled: () =>
+        appearanceStudioPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
+      resolveProposalSourceSessionId: (c) =>
+        resolveStationControlCallerForRequest(
+          c.req.raw,
+          resolveStationControlCallerRecord,
+        )?.sessionId,
       store: new CustomAppearanceStore(
         context.configLoader.getProjectHomeDir(),
       ),
@@ -10808,7 +11007,17 @@ export function configureRuntimeRoutes(
   // station#2037: persistent exact-tool grants share the runtime's STATION_HOME
   // with the resolver already wired by slice 3. The narrower route-family
   // scope below makes this an operator-management surface, never an agent tool.
-  registerPullRequestProvider(new GitHubPullRequestProvider());
+  // #5064: the Overview's "Landing" asks GitHub about the merge queue only
+  // while the `project-overview` Feature Preview is on.
+  registerPullRequestProvider(
+    new GitHubPullRequestProvider(undefined, undefined, {
+      readMergeQueue: () =>
+        projectOverviewPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
+    }),
+  );
   registerPullRequestProvider(new GitLabPullRequestProvider());
   const reviewGuides = new PullRequestReviewGuideService(
     new PullRequestReviewGuideStore(context.configLoader.getProjectHomeDir()),
@@ -11350,6 +11559,25 @@ export function configureRuntimeRoutes(
         reviewObserver.diagnostic({ operation, error }),
     },
   );
+  const repoMapReviewSelection = new RepoMapReviewSelection({
+    target: (projectSlug) => {
+      const project = context.projectService.getProject(projectSlug);
+      const workspace = project?.workingDirectory
+        ? expandTilde(project.workingDirectory)
+        : undefined;
+      if (!project || !workspace) return undefined;
+      return {
+        projectSlug: project.slug,
+        workspace,
+        globalAgentSlugs: [...(project.agents ?? [])].map(String).sort(),
+      };
+    },
+    listAgents: () => context.configLoader.listAgents(),
+    supportsReadOnlyReview: (provider) =>
+      context.orchestrationService.supportsReadOnlyReview(provider),
+    isCodexReviewerAvailable: (agent) =>
+      agent.execution?.agentConnectionId === 'codex',
+  });
   const reviewEvidence = new ReviewEvidenceModule({
     source: new GitReviewWorkspaceSource(
       { workspace: resolveWorkspacePath },
@@ -11383,25 +11611,31 @@ export function configureRuntimeRoutes(
       flowRunService,
       resolveWorkspacePath,
     ),
-    selectionResolver: new RepoMapReviewSelection({
-      target: (projectSlug) => {
-        const project = context.projectService.getProject(projectSlug);
-        const workspace = project?.workingDirectory
-          ? expandTilde(project.workingDirectory)
-          : undefined;
-        if (!project || !workspace) return undefined;
-        return {
-          projectSlug: project.slug,
-          workspace,
-          globalAgentSlugs: [...(project.agents ?? [])].map(String).sort(),
-        };
-      },
-      listAgents: () => context.configLoader.listAgents(),
-      supportsReadOnlyReview: (provider) =>
-        context.orchestrationService.supportsReadOnlyReview(provider),
-      isCodexReviewerAvailable: (agent) =>
-        agent.execution?.agentConnectionId === 'codex',
-    }),
+    selectionResolver: repoMapReviewSelection,
+  });
+  pullRequestFeedback?.bindHeadReview({
+    reviews: reviewEvidence,
+    selection: repoMapReviewSelection,
+    projectRoot: resolveWorkspacePath,
+    // The Task code review's reviewer rule, below.
+    fallbackReviewer: async (projectSlug, implementer) => {
+      const project = context.projectService.getProject(projectSlug);
+      return (await context.agentService.listAgents())
+        .filter(
+          (agent) =>
+            String(agent.slug) !== implementer &&
+            (agent.project === projectSlug ||
+              (agent.project === undefined &&
+                project?.agents?.some(
+                  (id) => String(id) === String(agent.slug),
+                ))) &&
+            agent.execution?.agentConnectionId === 'codex',
+        )
+        .map((agent) => String(agent.slug))
+        .sort()[0];
+    },
+    taskBaseCommit: (taskId) =>
+      context.taskGraphService.readTaskWorktree(taskId)?.baseCommit,
   });
   const reviewReadAccess: NonNullable<
     Parameters<typeof createReviewEvidenceRoutes>[1]['readAccess']
@@ -12912,6 +13146,7 @@ export function configureRuntimeRoutes(
     coordinatorWakes: () => coordinatorPlacement,
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
+    projectOverviewPreview,
     ...(scheduledConversationRuns
       ? { conversationRuns: scheduledConversationRuns }
       : {}),
@@ -13216,8 +13451,13 @@ export function configureRuntimeRoutes(
           deviceId,
           subscription,
         ),
-      clearPushSubscription: (deviceId) =>
+      clearPushSubscription: (deviceId, endpoint) =>
         context.environmentSecurityService.devicePairing.clearPushSubscription(
+          deviceId,
+          { endpoint },
+        ),
+      readPushSubscriptionFingerprint: (deviceId) =>
+        context.environmentSecurityService.devicePairing.readPushSubscriptionFingerprint(
           deviceId,
         ),
     }),
@@ -13275,7 +13515,7 @@ export function configureRuntimeRoutes(
         : {}),
       ...(scheduledProjectRuns
         ? {
-            projectJobs: true,
+            maySetProjectJob: agentSchedule.maySetProjectJob,
             projectJobsPreview: projectLifecycle.schedulesPreview,
           }
         : {}),

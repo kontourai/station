@@ -8,7 +8,10 @@ function owningPage(scope: Scope): Page {
 /** Open the real, portaled setup using its trigger; never interact with inert choices. */
 async function openRunSetup(scope: Scope): Promise<Locator> {
   const page = owningPage(scope);
-  const panel = page.getByRole('dialog', { name: 'Run setup', exact: true });
+  const panel = page.getByRole('dialog', {
+    name: 'Agent & model',
+    exact: true,
+  });
   if (!(await panel.isVisible())) {
     // Both composer owners place setup in the bottom toolbar next to Send/Start.
     await scope
@@ -31,11 +34,11 @@ export async function runSetupControl(
 /** Call after the child picker settles, before returning to the draft. */
 export async function closeRunSetup(scope: Scope): Promise<void> {
   const panel = owningPage(scope).getByRole('dialog', {
-    name: 'Run setup',
+    name: 'Agent & model',
     exact: true,
   });
   if (await panel.isVisible())
     await panel
-      .getByRole('button', { name: 'Close run setup', exact: true })
+      .getByRole('button', { name: 'Close settings', exact: true })
       .click();
 }

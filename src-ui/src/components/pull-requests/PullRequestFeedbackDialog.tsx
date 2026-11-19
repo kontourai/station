@@ -18,7 +18,7 @@ import type { PullRequestFeedbackSwitches } from './usePullRequestFeedback';
 import './PullRequestFeedbackDialog.css';
 
 const SWITCHES: Array<{
-  key: keyof PullRequestFeedbackSwitches;
+  key: 'fixFailingChecks' | 'addressReviewComments' | 'reviewEachHead';
   label: string;
   description: (chat: string | undefined) => string;
 }> = [
@@ -32,6 +32,12 @@ const SWITCHES: Array<{
     key: 'addressReviewComments',
     label: 'Address review comments automatically',
     description: () => 'Sends unresolved review threads and change requests.',
+  },
+  {
+    key: 'reviewEachHead',
+    label: 'Review each new head',
+    description: () =>
+      "Station's Codex reviewers read each push; you choose what reaches the agent.",
   },
 ];
 
@@ -49,7 +55,10 @@ export function PullRequestFeedbackDialog({
   onSendAgain,
   onClose,
   chatTitle,
+  headReview = false,
 }: {
+  /** Offer "Review each new head" (its preview is on). */
+  headReview?: boolean;
   /**
    * The chat these switches belong to, when it is not the one open (the
    * pull request panel's gear for another chat's feedback).
@@ -72,7 +81,18 @@ export function PullRequestFeedbackDialog({
     addressReviewComments: view?.ownedHere
       ? view.settings.addressReviewComments
       : false,
+    // Left out while not offered: the server keeps what the chat stored.
+    ...(headReview
+      ? {
+          reviewEachHead: view?.ownedHere
+            ? view.settings.reviewEachHead
+            : false,
+        }
+      : {}),
   };
+  const switches = SWITCHES.filter(
+    (entry) => headReview || entry.key !== 'reviewEachHead',
+  );
   const owner = conflict ?? (view && !view.ownedHere ? view.owner : null);
   const badge = view ? pullRequestFeedbackBadge(view) : undefined;
   const line = pullRequestFeedbackLine(view);
@@ -137,6 +157,9 @@ export function PullRequestFeedbackDialog({
                     addressReviewComments: known
                       ? view.settings.addressReviewComments
                       : true,
+                    ...(headReview && known
+                      ? { reviewEachHead: view.settings.reviewEachHead }
+                      : {}),
                   },
                   true,
                 );
@@ -147,7 +170,7 @@ export function PullRequestFeedbackDialog({
           </div>
         )}
         <ul className="pr-feedback-dialog__switches">
-          {SWITCHES.map((entry) => {
+          {switches.map((entry) => {
             const descriptionId = `${historyId}-${entry.key}`;
             return (
               <li key={entry.key} className="pr-feedback-dialog__switch">
@@ -163,7 +186,7 @@ export function PullRequestFeedbackDialog({
                   </span>
                 </div>
                 <Toggle
-                  checked={settings[entry.key]}
+                  checked={settings[entry.key] ?? false}
                   label={entry.label}
                   describedBy={descriptionId}
                   disabled={pending || !!owner}

@@ -1,0 +1,7 @@
+{
+  "revision": "76422d2f243526272b532065d26d9913d112d8ee",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the generated settings registry against the catalog. The download policy retains its setting ID, route, reset key, and platform applicability. The help text now matches the row, whose editable control receives focus when staged updates are supported.","inputs":["src-server/generated/settings-registry.json"]}
+  ]
+}

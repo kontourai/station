@@ -28,8 +28,8 @@ import type {
 import {
   type ProjectPullRequestFeedbackDefaults,
   type PullRequestFeedbackSettings,
+  pullRequestFeedbackActive,
   pullRequestFeedbackKey,
-  pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
@@ -82,6 +82,11 @@ export interface PullRequestFeedbackTaskBranchPorts {
   conversationOf(sessionId: string): string;
   session(conversationId: string): FeedbackSessionState;
   mayContinue(conversationId: string, userId: string): boolean;
+  /**
+   * The head review preview: while off, a default's "Review each new head"
+   * neither makes a claim nor is copied into one, and cannot be set.
+   */
+  headReviewEnabled?(): boolean;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
@@ -129,6 +134,10 @@ export class PullRequestFeedbackTaskBranches {
     return this.ports.now?.() ?? Date.now();
   }
 
+  private headReviewOn(): boolean {
+    return this.ports.headReviewEnabled?.() ?? false;
+  }
+
   /** The Task whose lead this conversation is, if any. */
   private leadTasks(conversationId: string, sessionId?: string) {
     const bound = sessionId ? this.ports.taskOfSession?.(sessionId) : undefined;
@@ -147,7 +156,7 @@ export class PullRequestFeedbackTaskBranches {
   nudge(conversationId: string, sessionId?: string): void {
     if (
       !this.ports.enabled() ||
-      !this.ports.readStore()?.anyProjectDefaultsOn()
+      !this.ports.readStore()?.anyProjectDefaultsOn(this.headReviewOn())
     )
       return;
     for (const task of this.leadTasks(conversationId, sessionId))
@@ -178,7 +187,7 @@ export class PullRequestFeedbackTaskBranches {
   }): Promise<'ok' | 'rate-limited'> {
     if (!this.ports.enabled()) return 'ok';
     const store = this.ports.readStore();
-    if (!store?.anyProjectDefaultsOn()) return 'ok';
+    if (!store?.anyProjectDefaultsOn(this.headReviewOn())) return 'ok';
     const due = [];
     // One Project read per tick, however many of its Tasks there are.
     const projects = new Map<string, TaskBranchProject | undefined>();
@@ -202,7 +211,11 @@ export class PullRequestFeedbackTaskBranches {
         : undefined;
       if (!project || !workingDirectory) continue;
       const defaults = store.projectDefaults(project.id, project.createdAt);
-      if (!defaults || !pullRequestFeedbackSends(defaults.settings)) continue;
+      if (
+        !defaults ||
+        !pullRequestFeedbackActive(defaults.settings, this.headReviewOn())
+      )
+        continue;
       if (store.hasDerivedLinks(task.id, task.createdAt)) continue;
       const worktree = this.ports.taskWorktree(task.id);
       // Only the Task's own worktree: its branch is the Task's alone.
@@ -317,7 +330,7 @@ export class PullRequestFeedbackTaskBranches {
       if (removed) continue;
       if (
         defaults &&
-        pullRequestFeedbackSends(defaults.settings) &&
+        pullRequestFeedbackActive(defaults.settings, this.headReviewOn()) &&
         this.ports.mayContinue(conversationId, defaults.setBy)
       )
         store.autoClaim({
@@ -325,7 +338,12 @@ export class PullRequestFeedbackTaskBranches {
           identity: prIdentity,
           taskId: task.id,
           conversationId,
-          settings: { ...defaults.settings },
+          // "Review each new head" is copied only while it is offered.
+          settings: {
+            ...defaults.settings,
+            reviewEachHead:
+              this.headReviewOn() && defaults.settings.reviewEachHead,
+          },
           enabledBy: defaults.setBy,
           now: nowIso,
         });
@@ -381,7 +399,12 @@ export class PullRequestFeedbackTaskBranches {
             reviewEachHead: false,
           },
       canChange,
-      stillOn: store?.projectDefaultClaimsOn(project.id, canRead) ?? 0,
+      stillOn:
+        store?.projectDefaultClaimsOn(
+          project.id,
+          canRead,
+          this.headReviewOn(),
+        ) ?? 0,
     };
   }
 
@@ -412,7 +435,10 @@ export class PullRequestFeedbackTaskBranches {
         fixFailingChecks: settings.fixFailingChecks ?? prior.fixFailingChecks,
         addressReviewComments:
           settings.addressReviewComments ?? prior.addressReviewComments,
-        reviewEachHead: settings.reviewEachHead ?? prior.reviewEachHead,
+        // Ignored while review of each head is not offered (its preview off).
+        reviewEachHead:
+          (this.headReviewOn() ? settings.reviewEachHead : undefined) ??
+          prior.reviewEachHead,
       },
       setBy: userId,
       now: new Date(this.now()).toISOString(),

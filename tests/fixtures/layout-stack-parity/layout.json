@@ -1,24 +1,24 @@
 {
   "name": "Stack Parity",
-  "slug": "fx",
+  "slug": "review-workspace",
   "icon": "💬",
   "description": "A contributed layout that owns Chat and pushes two drill-ins",
   "primary": "chat",
   "presentation": "stack",
   "drillIns": [
-    "pane:plugin%3Astack-fx:fx:notes",
-    "pane:plugin%3Astack-fx:fx:checks"
+    "pane:plugin%3Alayout-parity-review-workbench:review-workspace:notes",
+    "pane:plugin%3Alayout-parity-review-workbench:review-workspace:checks"
   ],
   "tabs": [
     {
       "id": "notes",
       "label": "Parity notes",
-      "component": "stack-fx-notes"
+      "component": "layout-parity-review-workbench-notes"
     },
     {
       "id": "checks",
       "label": "Parity checks",
-      "component": "stack-fx-checks"
+      "component": "layout-parity-review-workbench-checks"
     }
   ]
 }

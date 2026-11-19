@@ -21,7 +21,11 @@ import {
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
 import type { ConversationEngineMcpServer } from '@kontourai/station-contracts/runtime';
-import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
+import type {
+  FlowGateDiagnosticDetails,
+  FlowGateVerdict,
+  FlowRunFreshness,
+} from '@kontourai/station-contracts/runtime-events';
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
@@ -104,7 +108,8 @@ export type FlowRunBinding = {
 
 export type FlowGateVerdictInfo = {
   runId: string;
-  verdict: 'pass' | 'route-back' | 'block' | 'wait';
+  verdict: FlowGateVerdict;
+  diagnostics?: FlowGateDiagnosticDetails;
   gateId?: string;
   summary?: string;
   nextAction?: string;

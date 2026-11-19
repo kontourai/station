@@ -1,0 +1,11 @@
+{
+  "revision": "50151a4fa88ff42de721bf8ef44c314dd174fc3e",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"The Library and Setup scenes now shoot whole-page frames (1440x2500, 1440x1000, the existing 390x1200 PHONE_PAGE), following the channel list precedent; no other screen, mock or audit rule changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The Library and Setup scenes now shoot whole-page frames (1440x2500, 1440x1000, the existing 390x1200 PHONE_PAGE), following the channel list precedent; no other screen, mock or audit rule changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The Library and Setup scenes now shoot whole-page frames (1440x2500, 1440x1000, the existing 390x1200 PHONE_PAGE), following the channel list precedent; no other screen, mock or audit rule changed.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

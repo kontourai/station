@@ -242,8 +242,10 @@ backups retain their stored section values for compatibility.
 - **Projects** keep their model. Their live-work count reads the shared
   session classifier. The selected project's child rows name its actual
   Layout records; these are not a hard-coded list of built-in features.
-  Member presence and a separate project attention count remain subject to
-  their own backing projections; the map does not manufacture either.
+  Member presence remains subject to its own backing projection; the map
+  does not manufacture it. With the `project-overview` preview on, a dot
+  marks a Project with Tasks in the Overview's Waiting on you group (#5064),
+  from the Overview's own rule over the Tasks list and session summaries.
 - **Chat is a Layout.** A configured Chat view opens the existing fullscreen
   chat workspace. Individual conversations and composer drafts remain in
   the chat dock (⌘D), which retains its own inbox.
@@ -276,7 +278,11 @@ meaning is "a human must decide": tool approvals and pairing (already there),
 plus proposed-change decisions and paused gate reviews (from Review). The
 current workspace-map refinement in D3 keeps the bell and its single projected
 count in the header; the original footer placement below remains design history.
-Project-scoped attention still requires its own backing projection.
+The Project row counts pending items that the same server projection
+assigns to that Project. A live orchestration approval takes its Project
+from its authorized Session. The collapsed map opens the same channel and
+Task room list as an expanded Project and keeps one tab stop across its
+conversation rows.
 
 Local connection and recovery facts are owned by the Station control and remain
 readable offline. Short client outcomes use toasts and local recent-message recall;

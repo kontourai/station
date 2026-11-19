@@ -20,6 +20,7 @@ export interface ConversationOpenRecoveryNoticeProps {
     | 'missing-session'
     | 'resolved'
     | 'fork-ready'
+    | 'fresh-context-ready'
     | 'unavailable'
     | 'error'
     | 'unverified';
@@ -40,7 +41,8 @@ export function ConversationOpenRecoveryNotice({
   const verdict =
     state === 'missing-session' ||
     state === 'resolved' ||
-    state === 'fork-ready';
+    state === 'fork-ready' ||
+    state === 'fresh-context-ready';
   const detail =
     state === 'missing-session'
       ? 'Its execution session is no longer available.'

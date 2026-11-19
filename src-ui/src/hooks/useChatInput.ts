@@ -1,9 +1,8 @@
 import {
-  ACP_MODEL_OVERRIDE_PER_TURN,
+  ENGINE_CAPABILITY_MATRICES,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
@@ -409,16 +408,18 @@ export function useChatInput({
       ? { engineId: 'station' }
       : (runtimeConnection ?? { type: activeChatState?.provider }),
   ).modelSelection;
-  // ACP applies a model only at session start, and so does an engine that
-  // runs saved ACP connections (`opencode`). The server honours a changed
+  // ACP applies a model only at session start. OpenCode can switch its
+  // native session model before the next prompt. The server honours a changed
   // model on the next send by starting a successor session with it
   // (`conversation-lineage.ts` `needsModelRestart`), which is free for a
   // conversation that never ran a turn — nothing to carry over — so only a
   // conversation with engine history keeps the picker closed.
+  const continuationModelSelection =
+    ENGINE_CAPABILITY_MATRICES[activeChatState?.provider ?? '']
+      ?.modelSelection ?? engineModelSelection;
   const continuationOverrideUnsupported =
     Boolean(conversationId) &&
-    isAcpFamilyEngine(activeChatState?.provider) &&
-    !ACP_MODEL_OVERRIDE_PER_TURN &&
+    continuationModelSelection.overridePerTurn === false &&
     !conversationAwaitsFirstTurn(
       orchestrationSession,
       activeChatState?.turnInFlight ?? false,
@@ -1002,7 +1003,7 @@ export function useChatInput({
       if (!isAlreadyActive) {
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `Model changed to **${model.providerName ? `${model.providerName} · ` : ''}${model.name}**`,
+          content: `Model selected: **${model.providerName ? `${model.providerName} · ` : ''}${model.name}**`,
         });
       }
       closeModel();

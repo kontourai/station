@@ -1,15 +1,23 @@
 import {
+  chmodSync,
   closeSync,
   existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  ensureStationHomeSchemaSync,
+  readStationHomeSchemaVersion,
+  STATION_HOME_SCHEMA_VERSION,
+} from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   PeerCredentialStore,
@@ -60,6 +68,55 @@ afterEach(() => {
 });
 
 describe('PeerCredentialStore (station#1123 slice 2)', () => {
+  test.skipIf(process.platform === 'win32')(
+    'reopens the peer store after a migration with home, directory and file modes preserved',
+    async () => {
+      const root = home();
+      ensureStationHomeSchemaSync(root);
+      const peer = input('environment-migration');
+      const before = new PeerCredentialStore(root);
+      await before.upsert(peer);
+
+      const dataDir = join(root, 'data');
+      const nested = join(dataDir, 'nested');
+      const file = join(nested, 'example');
+      mkdirSync(nested, { recursive: true });
+      chmodSync(dataDir, 0o750);
+      chmodSync(nested, 0o710);
+      writeFileSync(file, 'keep', { mode: 0o640 });
+      const outside = home();
+      chmodSync(outside, 0o751);
+      symlinkSync(outside, join(root, 'outside-link'));
+
+      const paths = [
+        '',
+        'security',
+        'security/peer-credentials.json',
+        'data',
+        'data/nested',
+        'data/nested/example',
+      ];
+      const modes = () =>
+        paths.map((path) => lstatSync(join(root, path)).mode & 0o777);
+      const expectedModes = modes();
+      const targetVersion = STATION_HOME_SCHEMA_VERSION + 1;
+      ensureStationHomeSchemaSync(root, {
+        targetVersion,
+        migrations: [
+          { fromVersion: STATION_HOME_SCHEMA_VERSION, migrate: () => {} },
+        ],
+      });
+
+      expect(readStationHomeSchemaVersion(root)).toBe(targetVersion);
+      expect(
+        new PeerCredentialStore(root).get(peer.environmentId),
+      ).toMatchObject(peer);
+      expect(modes()).toEqual(expectedModes);
+      expect(lstatSync(join(root, 'outside-link')).isSymbolicLink()).toBe(true);
+      expect(lstatSync(outside).mode & 0o777).toBe(0o751);
+    },
+  );
+
   test('round-trips a peer credential atomically with private file/directory permissions', async () => {
     const root = home();
     const store = new PeerCredentialStore(root);

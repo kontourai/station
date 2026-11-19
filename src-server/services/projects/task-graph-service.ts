@@ -731,6 +731,7 @@ const TASK_RECORD_KEYS = [
   'workItemObservedAt',
   'workItemProvenance',
   'closeOnMerge',
+  'overviewReopenedAt',
   'pullRequestWatch',
   'pullRequestWatchHold',
   'dispatchReservation',
@@ -1075,6 +1076,12 @@ function validateTaskGraphStoreData(
       );
     if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
       problems.push(`${at}.closeOnMerge: must be true when present`);
+    if (task.overviewReopenedAt !== undefined)
+      validateCanonicalTimestamp(
+        task.overviewReopenedAt,
+        `${at}.overviewReopenedAt`,
+        problems,
+      );
     if (
       task.pullRequestWatch !== undefined &&
       task.pullRequestWatch !== 'on' &&
@@ -2962,6 +2969,38 @@ export class TaskGraphService {
         ...rest,
         ...(enabled ? { closeOnMerge: true } : {}),
         updatedAt: new Date().toISOString(),
+        ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) =>
+            item.id === taskId ? nextTask : item,
+          ),
+        },
+        result: nextTask,
+      };
+    });
+  }
+
+  /**
+   * #5064: a PERSON reopens a Task the Project Overview auto-resolved after
+   * its quiet period. The mark restarts that clock, so the Task returns to
+   * the group its facts place it in. It is not a Task edit: `updatedAt`
+   * stays, so the Tasks board keeps its order. No agent tool names the route.
+   */
+  async reopenOnOverview(
+    taskId: string,
+    clientOrigin?: ClientOrigin,
+  ): Promise<TaskRecord> {
+    return this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === taskId);
+      if (!task) throw new Error(`Task not found: ${taskId}`);
+      if (task.status === 'done' || task.status === 'canceled')
+        throw new Error(`Task is already ${task.status}`);
+      const nextTask: PersistedTaskRecord = {
+        ...task,
+        overviewReopenedAt: new Date().toISOString(),
         ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
       };
       return {

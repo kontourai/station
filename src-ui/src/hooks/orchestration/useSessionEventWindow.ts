@@ -372,7 +372,18 @@ export function useSessionEventWindow(
     { key: string | undefined; generation: number } | undefined
   >(undefined);
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>();
+  const [childObservation, setChildObservation] = useState<{
+    sessionId: string;
+    sessionIdAtRead: string | undefined;
+  }>();
+  // The rows can keep painting when a foreground receipt or /open changes
+  // the child. A head read started under a different child cannot undo it.
+  const currentSessionId =
+    childObservation &&
+    (childObservation.sessionIdAtRead === legacySessionId ||
+      childObservation.sessionId === legacySessionId)
+      ? childObservation.sessionId
+      : undefined;
   const [sessionLineage, setSessionLineage] =
     useState<
       NonNullable<OrchestrationConversationEventWindow['sessionLineage']>
@@ -525,7 +536,11 @@ export function useSessionEventWindow(
           page.session?.conversationActivity,
           station,
         );
-      setCurrentSessionId(page.currentSessionId);
+      setChildObservation(
+        page.currentSessionId
+          ? { sessionId: page.currentSessionId, sessionIdAtRead: legacyAtSend }
+          : undefined,
+      );
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
@@ -726,7 +741,6 @@ export function useSessionEventWindow(
             page.session?.conversationActivity,
             station,
           );
-        setCurrentSessionId(page.currentSessionId);
         setSessionLineage(page.sessionLineage);
         setHandoffs(page.handoffs ?? []);
         setContextBoundaries(page.contextBoundaries ?? []);
@@ -890,7 +904,7 @@ export function useSessionEventWindow(
       recoveryTimerRef.current = undefined;
     }
     setEvents([]);
-    setCurrentSessionId(undefined);
+    setChildObservation(undefined);
     setSessionLineage(undefined);
     setHandoffs([]);
     setContextBoundaries([]);

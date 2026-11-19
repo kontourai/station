@@ -393,7 +393,7 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     expect(detect).toHaveBeenCalledTimes(1);
   });
 
-  it('elides the next candidate probe when the abort lands during a write (#1815)', async () => {
+  it('elides the next candidate probe when abort lands before Agent lock admission (#1815)', async () => {
     const loader = createLoader();
     const controller = new AbortController();
     // The window the loop's pre-probe check covers on its own: candidate 1's
@@ -456,16 +456,12 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       codex: 'interrupted',
       muse: 'interrupted',
     });
-    // Candidate 1's writes completed: the check stops the NEXT candidate, it
-    // does not abandon a write already under way. Both halves are asserted,
-    // because the connection write had already RETURNED when the abort
-    // landed — the write actually under way was the agent materialization,
-    // and asserting only the connection would not have covered the sentence
-    // above it.
+    // The connection committed before abort. Agent materialization had yet
+    // to acquire its persistence lock, so it leaves no Agent behind.
     const registry = await loadOrCreateAgentRegistry(loader);
     expect(registry.engineConnections.map((c) => c.id)).toEqual(['claude']);
-    await expect(loader.loadAgent('claude')).resolves.toMatchObject({
-      execution: { agentConnectionId: 'claude' },
+    await expect(loader.loadAgent('claude')).rejects.toMatchObject({
+      code: 'AGENT_CONFIG_NOT_FOUND',
     });
   });
 

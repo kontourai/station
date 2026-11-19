@@ -22,10 +22,6 @@ import type {
   SchedulerProviderStatus,
 } from '../../providers/provider-contracts.js';
 import type { ISchedulerProvider } from '../../providers/provider-interfaces.js';
-import {
-  schedulerJobDuration,
-  schedulerJobRuns,
-} from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { SSEBroadcaster } from '../infra/sse-broadcaster.js';
 import {
@@ -36,6 +32,7 @@ import {
   BuiltinScheduler,
   type BuiltinSchedulerOptions,
   type PreparedStarterScheduledRun,
+  SchedulerJobNotFoundError,
 } from './builtin-scheduler.js';
 
 export interface SchedulerServiceOptions {
@@ -54,6 +51,11 @@ export class SchedulerScheduleInvalidError extends Error {
     this.name = 'SchedulerScheduleInvalidError';
   }
 }
+
+type SchedulerMutationJob = Pick<
+  SchedulerJob,
+  'provider' | 'unattendedPrincipal'
+>;
 
 export class SchedulerService {
   private providers = new Map<string, ISchedulerProvider>();
@@ -106,6 +108,17 @@ export class SchedulerService {
       if (jobs.some((j) => j.name === name)) return p;
     }
     throw new Error(`Job '${name}' not found in any provider`);
+  }
+
+  private async providerForMutation(
+    target: string,
+    job: SchedulerMutationJob | undefined,
+  ): Promise<ISchedulerProvider> {
+    if (!job) return this.findJobProvider(target);
+    const provider = this.getProvider(job.provider);
+    if (provider === this.builtin && !job.unattendedPrincipal?.jobId)
+      throw new SchedulerJobNotFoundError(target);
+    return provider;
   }
 
   // ── Aggregated reads ──
@@ -176,55 +189,47 @@ export class SchedulerService {
   async editJob(
     target: string,
     opts: Record<string, unknown>,
+    job?: SchedulerMutationJob,
   ): Promise<string> {
-    const p = await this.findJobProvider(target);
-    return p.editJob(target, opts);
+    const p = await this.providerForMutation(target, job);
+    return p === this.builtin
+      ? this.builtin.editJob(target, opts, job?.unattendedPrincipal?.jobId)
+      : p.editJob(target, opts);
   }
 
-  async removeJob(target: string): Promise<void> {
-    const p = await this.findJobProvider(target);
-    return p.removeJob(target);
+  async removeJob(target: string, job?: SchedulerMutationJob): Promise<void> {
+    const p = await this.providerForMutation(target, job);
+    return p === this.builtin
+      ? this.builtin.removeJob(target, job?.unattendedPrincipal?.jobId)
+      : p.removeJob(target);
   }
 
-  async runJob(target: string): Promise<SchedulerManualRunReceipt> {
-    const p = await this.findJobProvider(target);
-    const start = Date.now();
-    try {
-      const result = await p.runJob(target);
-      this.recordRunMetrics(
-        result.outcome === 'completed' ? 'success' : 'error',
-        start,
-      );
-      return result;
-    } catch (e) {
-      // Telemetry is not an execution authority. A provider error remains the
-      // provider error even when the observer is unavailable.
-      this.recordRunMetrics('error', start);
-      throw e;
-    }
+  async runJob(
+    target: string,
+    job?: SchedulerMutationJob,
+  ): Promise<SchedulerManualRunReceipt> {
+    const p = await this.providerForMutation(target, job);
+    return p === this.builtin
+      ? this.builtin.runJob(target, job?.unattendedPrincipal?.jobId)
+      : p.runJob(target);
   }
 
   prepareStarterManualIntent(operationId: string): PreparedStarterScheduledRun {
     return this.builtin.prepareStarterManualIntent(operationId);
   }
 
-  private recordRunMetrics(status: 'success' | 'error', start: number) {
-    try {
-      schedulerJobRuns.add(1, { status });
-      schedulerJobDuration.record(Date.now() - start);
-    } catch {
-      // Best-effort observer only; the durable provider result above wins.
-    }
+  async enableJob(target: string, job?: SchedulerMutationJob): Promise<void> {
+    const p = await this.providerForMutation(target, job);
+    return p === this.builtin
+      ? this.builtin.enableJob(target, job?.unattendedPrincipal?.jobId)
+      : p.enableJob(target);
   }
 
-  async enableJob(target: string): Promise<void> {
-    const p = await this.findJobProvider(target);
-    return p.enableJob(target);
-  }
-
-  async disableJob(target: string): Promise<void> {
-    const p = await this.findJobProvider(target);
-    return p.disableJob(target);
+  async disableJob(target: string, job?: SchedulerMutationJob): Promise<void> {
+    const p = await this.providerForMutation(target, job);
+    return p === this.builtin
+      ? this.builtin.disableJob(target, job?.unattendedPrincipal?.jobId)
+      : p.disableJob(target);
   }
 
   async restartMonitor(target: string): Promise<string> {

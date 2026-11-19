@@ -1,0 +1,9 @@
+{
+  "revision": "e729b5d8615f79ba9d25c7398f383b9b045e514a",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Both the queue candidate and its unchanged base reproduced the approval inspection race. The fixture now waits for the unavailable inspection to finish before serving the settled reply, with the same click, layout and lifecycle assertions.","inputs":["tests/orchestration-chat-flow.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Both the queue candidate and its unchanged base reproduced the approval inspection race. The fixture now waits for the unavailable inspection to finish before serving the settled reply, with the same click, layout and lifecycle assertions.","inputs":["tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

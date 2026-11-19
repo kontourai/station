@@ -1,11 +1,16 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type HttpBindings } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
+import type { Notification } from '@kontourai/station-contracts/notification';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
+import { deliveryEnvelopeFor } from '../../services/notifications/delivery/channel.js';
+import { WebPushChannel } from '../../services/notifications/web-push-channel.js';
+import type { WebPushSendResult } from '../../services/notifications/web-push-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
 import type { Logger } from '../../utils/logger.js';
@@ -70,8 +75,10 @@ function createHarness() {
       credentialAliasId: (credential) => pairing.credentialAliasId(credential),
       setPushSubscription: (deviceId, subscription) =>
         pairing.setPushSubscription(deviceId, subscription),
-      clearPushSubscription: (deviceId) =>
-        pairing.clearPushSubscription(deviceId),
+      clearPushSubscription: (deviceId, endpoint) =>
+        pairing.clearPushSubscription(deviceId, { endpoint }),
+      readPushSubscriptionFingerprint: (deviceId) =>
+        pairing.readPushSubscriptionFingerprint(deviceId),
     }),
   );
 
@@ -94,7 +101,7 @@ function createHarness() {
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  return { pairing, request, authed };
+  return { pairing, request, authed, homeDir };
 }
 
 async function pairDevice(
@@ -176,6 +183,7 @@ describe('push routes', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       publicKey: 'fake-vapid-public-key',
+      registration: { status: 'pairing-required' },
     });
   });
 
@@ -235,7 +243,7 @@ describe('push routes', () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
-    expect(harness.pairing.listPushSubscriptions()).toEqual([
+    expect(harness.pairing.listPushSubscriptions()).toMatchObject([
       { deviceId: paired.device.id, subscription: fakeSubscription('a') },
     ]);
   });
@@ -350,7 +358,7 @@ describe('push routes', () => {
       harness.authed(paired.credential, fakeSubscription('a')),
     );
     expect(subscribed.status).toBe(200);
-    expect(harness.pairing.listPushSubscriptions()).toEqual([
+    expect(harness.pairing.listPushSubscriptions()).toMatchObject([
       { deviceId: paired.device.id, subscription: fakeSubscription('a') },
     ]);
 
@@ -410,10 +418,141 @@ describe('push routes', () => {
     expect(response.status).toBe(200);
 
     const remaining = harness.pairing.listPushSubscriptions();
-    expect(remaining).toEqual([
+    expect(remaining).toMatchObject([
       { deviceId: second.device.id, subscription: fakeSubscription('second') },
     ]);
   });
+
+  test('the VAPID read identifies only the caller’s current registration, and old endpoint cleanup leaves a replacement', async () => {
+    const harness = createHarness();
+    const first = await pairDevice(harness);
+    const second = await pairDevice(harness, 'Other browser');
+    const original = fakeSubscription('original');
+    const replacement = fakeSubscription('replacement');
+    for (const subscription of [original, replacement])
+      expect(
+        (
+          await harness.request(
+            '/api/system/push-subscribe',
+            harness.authed(first.credential, subscription),
+          )
+        ).status,
+      ).toBe(200);
+    expect(
+      (
+        await harness.request(
+          '/api/system/push-unsubscribe',
+          harness.authed(first.credential, { endpoint: original.endpoint }),
+        )
+      ).status,
+    ).toBe(200);
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify([
+          replacement.endpoint,
+          replacement.keys.p256dh,
+          replacement.keys.auth,
+        ]),
+      )
+      .digest('hex');
+    const read = (credential: string) =>
+      harness.request('/api/system/vapid-public-key', {
+        headers: { Authorization: `Bearer ${credential}` },
+      });
+    const own = await read(first.credential);
+    expect(own.headers.get('Cache-Control')).toBe('no-store');
+    expect(await own.json()).toEqual({
+      publicKey: 'fake-vapid-public-key',
+      registration: { status: 'paired', fingerprint },
+    });
+    expect(await (await read(second.credential)).json()).toMatchObject({
+      registration: { status: 'paired', fingerprint: null },
+    });
+  });
+
+  test.each([
+    'replacement',
+    'same-endpoint renewal',
+    'gone',
+    'revoked',
+    'sent',
+  ] as const)(
+    'the real delivery and device stores settle a delayed %s result',
+    async (scenario) => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness);
+      function register(subscription: ReturnType<typeof fakeSubscription>) {
+        return harness.request(
+          '/api/system/push-subscribe',
+          harness.authed(paired.credential, subscription),
+        );
+      }
+      const original = fakeSubscription('old');
+      expect((await register(original)).status).toBe(200);
+      let finish!: (result: WebPushSendResult) => void;
+      const send = vi.fn(
+        () =>
+          new Promise<WebPushSendResult>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const channel = new WebPushChannel(
+        harness.pairing,
+        { send },
+        { warn: vi.fn() },
+      );
+      const notification = {
+        id: 'approval',
+        source: 'approval-inbox',
+        category: 'approval-request',
+        title: 'Approval',
+        body: 'Approval needed',
+        priority: 'high',
+        status: 'delivered',
+        scheduledAt: null,
+        deliveredAt: '2026-10-01T00:00:00.000Z',
+        createdAt: '2026-10-01T00:00:00.000Z',
+        updatedAt: '2026-10-01T00:00:00.000Z',
+      } satisfies Notification;
+      const targets = channel
+        .registrations()
+        .map((target) => ({ ...target, hideContent: false }));
+      const delivery = channel.deliver(
+        notification,
+        deliveryEnvelopeFor(notification).envelope,
+        targets,
+      );
+      expect(send).toHaveBeenCalledExactlyOnceWith(
+        original,
+        expect.anything(),
+        expect.any(Number),
+      );
+
+      let expected = [original];
+      if (scenario === 'replacement' || scenario === 'same-endpoint renewal') {
+        const replacement =
+          scenario === 'replacement' ? fakeSubscription('new') : original;
+        expect((await register(replacement)).status).toBe(200);
+        expected = [replacement];
+      } else if (scenario === 'revoked') {
+        harness.pairing.revokeDevice(paired.device.id, 'operator-credential');
+        expected = [];
+      } else if (scenario === 'gone') expected = [];
+      finish(scenario === 'sent' ? 'sent' : 'gone');
+      await delivery;
+
+      const persisted = new DevicePairingService({
+        homeDir: harness.homeDir,
+        environmentId: ENVIRONMENT_ID,
+      });
+      expect(
+        harness.pairing.listPushSubscriptions().map((row) => row.subscription),
+      ).toEqual(expected);
+      expect(
+        persisted.listPushSubscriptions().map((row) => row.subscription),
+      ).toEqual(expected);
+    },
+  );
 
   test('unsubscribe without a device credential 403s and clears nothing', async () => {
     const harness = createHarness();

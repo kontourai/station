@@ -152,7 +152,7 @@ export function createElicitationCallback(
 ) {
   const autoApprove = agentSpec?.tools?.autoApprove || [];
 
-  return async (request: any) => {
+  return async (request: any, guardianReason?: string) => {
     if (request?.type === 'mcp-elicitation') {
       return requestMcpElicitation(request as McpElicitationCallbackRequest, {
         agentName: agentSpec?.name,
@@ -201,7 +201,11 @@ export function createElicitationCallback(
           agentSpec?.tools?.askBeforeUse,
           sourceKey,
         ) === 'ask';
-      if (!explicitAsk && (isApproved || isApprovedOriginal || isIntrinsic)) {
+      if (
+        !guardianReason &&
+        !explicitAsk &&
+        (isApproved || isApprovedOriginal || isIntrinsic)
+      ) {
         logger.info('[Elicitation] Auto-approved, returning true immediately', {
           toolName,
           originalName: toolMapping?.original,
@@ -241,6 +245,7 @@ export function createElicitationCallback(
             server,
             tool,
             toolDescription: request.toolDescription,
+            ...(guardianReason ? { guardianReason } : {}),
             toolArgs: request.toolArgs,
             purpose: request.purpose,
           } as unknown as any);
@@ -257,6 +262,7 @@ export function createElicitationCallback(
               orchestrationThreadId === conversationId
                 ? { orchestrationThreadId }
                 : {}),
+              ...(guardianReason ? { guardianReason } : {}),
               description:
                 typeof request.toolDescription === 'string'
                   ? request.toolDescription

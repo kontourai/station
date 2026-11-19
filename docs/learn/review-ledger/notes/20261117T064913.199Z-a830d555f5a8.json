@@ -1,0 +1,7 @@
+{
+  "revision": "a11d18779fb3f2ffa1d75c871173047e0c9e956a",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated bundle by docs:mcp:generate after the added Library sections; generator and bundle shape unchanged, docs:mcp:check validates it.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

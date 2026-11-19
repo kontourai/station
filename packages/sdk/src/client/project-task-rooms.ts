@@ -398,6 +398,7 @@ export async function appendProjectTaskRoomHumanMessage(
     attachments?: TaskRoomAttachment[];
     occurredAt?: string;
     expectedTaskCreatedAt?: string;
+    expectedMember?: { principalId: string; shareId: string };
   },
   opts?: ClientRequestOptions,
 ) {
@@ -412,6 +413,9 @@ export async function appendProjectTaskRoomHumanMessage(
         {
           proposalId: input.proposalId,
           text: input.text,
+          ...(input.expectedMember
+            ? { expectedMember: input.expectedMember }
+            : {}),
           ...(input.attachments?.length
             ? { attachments: input.attachments }
             : {}),

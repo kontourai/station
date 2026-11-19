@@ -1,3 +1,8 @@
+import { isTerminalConnectionStatus } from '@kontourai/station-contracts/http';
+import {
+  StationHttpError,
+  StationRequestAuthorityError,
+} from '@kontourai/station-sdk/client';
 import type { DefaultOptions } from '@tanstack/react-query';
 
 /**
@@ -27,6 +32,22 @@ function stationDefaultQueryRetry(
 ): boolean {
   return failureCount < 1 && !isSaturatedTransportError(error);
 }
+
+export function isStationReadAccessRefusal(
+  error: unknown,
+): error is StationHttpError {
+  return (
+    error instanceof StationHttpError &&
+    isTerminalConnectionStatus(error.status)
+  );
+}
+
+export const stationViewReadQueryOptions = {
+  retry: (failureCount: number, error: Error) =>
+    !isStationReadAccessRefusal(error) &&
+    !(error instanceof StationRequestAuthorityError) &&
+    stationDefaultQueryRetry(failureCount, error),
+};
 
 /**
  * The query defaults shared by every app-owned QueryClient: the bootstrap

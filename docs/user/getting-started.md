@@ -5,6 +5,41 @@ This guide covers installation, your first chat and Project, connecting a phone,
 and keeping Station updated. To share a Project with someone, read the
 [sharing setup and current limits](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md).
 
+## Quickstart
+
+1. [Install Nightly](#install-nightly) on the computer that will run Station.
+   Open the app or use the single-use sign-in link printed by the installer.
+2. On Home, open the Agent control beside **Start** and choose an Agent that is
+   ready. If Home offers **Set up an agent engine**, use that action to open
+   Connections. For an existing Codex account, follow
+   [First chat with Codex](#first-chat-with-codex).
+3. Try a small request such as “Give me three questions to check before I
+   review a documentation change. Use no tools.” Choose **Start** to open a
+   direct chat.
+4. Read the answer in the chat. If an approval or question appears, inspect
+   it before responding. When the answer has a **Basis** chip, open it to
+   inspect the recorded inputs behind that answer.
+5. Keep talking in the same chat, create a Project for shared context, or
+   track a deliverable in a Task. [Choose what fits](concepts.md#choose-a-project-task-or-direct-chat).
+
+### How a turn works
+
+```text
+Write a request and choose Start or Send
+                    ↓
+The selected Agent runs one turn in a Session
+                    ↓
+It may ask you a question or request approval
+                    ↓
+Station shows the answer, stop, or failure
+```
+
+A follow-up can add another turn to the same Session. See the
+[visual walkthroughs](https://github.com/kontourai/station/blob/main/docs/learn/walkthroughs.md)
+for Gallery captures of the interface. The
+[Learn Station atlas](https://github.com/kontourai/station/blob/main/docs/learn/README.md)
+explains how the parts fit together.
+
 ## First chat with Codex
 
 If Codex is installed and signed in on this computer, you can use that account
@@ -480,9 +515,9 @@ would. Write what you want done
 and choose **Start**. You do not need to choose anything first; the controls
 show what **Start** will use:
 
-- The combined Run setup button shows the Agent's icon and the Model's name,
+- The combined Agent & model button shows the Agent's icon and the Model's name,
   followed by the thinking effort when you chose one (for example
-  **Opus · High**). It opens **Run setup**. Its Agent choice
+  **Opus · High**). It opens **Agent & model**. Its Agent choice
   lists **Station**, **Coding apps**, and **My agents**, with readiness and setup
   actions. Its Model choice opens the
   **Engine & model** picker, which also offers alternative engines when they
@@ -499,10 +534,10 @@ show what **Start** will use:
   now: your draft, or a catch-up request when there is none, is the first
   message.
   Full access, a pending or refused approval change, and a conversation override
-  add a warning glyph to the combined button; open Run setup to see the same
+  add a warning glyph to the combined button; open Agent & model to see the same
   glyph on the choice that raised it. When the conversation's Agent now points
-  at another engine, the button adds **Agent moved**; Run setup's Engine &
-  model choice names where. If the conversation's engine session has already
+  at another engine, the button adds **Default differs**. The panel names the
+  session engine and the Agent default. If the conversation's engine session has already
   ended, a **Next turn starts on …** line above the message box says where the
   next turn goes instead.
   In the model picker, while a reply you sent is still running, the other
@@ -551,7 +586,7 @@ and **Edit**. If delivery is uncertain, use **Check** before sending a
 changed copy. Station keeps the original pending message.
 
 To move a chat you already have to a paired Station, open the Agent picker in
-**Run setup** and choose that Station; the dialog becomes **Continue
+**Agent & model** and choose that Station; the dialog becomes **Continue
 elsewhere**. Pick its engine and
 one of its Projects, then **Continue on <Station>**. A new chat opens there,
 and its Agent gets this chat's messages as context. The new chat shows messages
@@ -592,6 +627,32 @@ dock. **Tasks** shows a board of what each Task needs now, or a list of current 
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
+
+With the **Project Overview** [feature preview](settings.md#feature-previews)
+on, Overview lists the Project's Tasks under what each needs next:
+
+| Group | Contains |
+| --- | --- |
+| **Waiting on you** | The run needs input or approval, failed, or the Task is marked blocked or asks a question |
+| **Ready for review** | A pull request or result to review. A ready pull request nobody armed to merge says **Not queued** |
+| **Working** | The run is moving |
+| **Landing** | Every open pull request has auto-merge on or is in the merge queue, or is approved and waiting on checks |
+| **Idle** | The agent finished its turn and nothing is pending |
+| **Resolved** | Done, canceled, every pull request merged, or Idle for 7 days (folded; open it to see the list) |
+
+Each row shows the Task, its Agent, the first line of its Task summary, and
+its pull request with its checks. Select the row to open the Task, or the pull
+request to open it. A Task that was resolved for being idle has a **⋯** menu
+with **Reopen**, which puts it back in its group and restarts the 7 days. A dot
+on the Project in the sidebar and in the Room header means something is
+Waiting on you. Not-started Tasks stay on the **Tasks** board.
+
+Project settings → **Overview and notifications** sets how long an Idle Task
+waits before it resolves (or **Never**), and when this Project notifies you:
+**Only when blocked** (a Task needs input or approval, or fails), **Everything**
+(also each finished turn), **Off**, or your Station settings. The inbox keeps
+every notification whatever you choose. A device that has the Project open is
+not interrupted for that Project's finished turns.
 
 Choosing on a chip starts nothing, and Station remembers it. An Agent is
 remembered only once it can start, and for each project and for **No project** on this browser and
@@ -765,7 +826,9 @@ you outside the filter, choose **Show all** from the notice; on a computer, a
 count badge on the scope picker does the same. On a computer the scope picker
 sits beside search, **Browse all conversations** is at the end of the list,
 and each row is two lines: its title and time, then the agent's icon, its
-status and its project. Hover the icon to read the agent's name.
+status and its project. Hover the icon to read the agent's name. To browse
+chats from a side dock, open **More dock actions** and choose **Open chat…**.
+The picker opens over the current dock placement.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
 from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
@@ -794,8 +857,8 @@ The Undo button replaces the row's discard shortcut; the Details sheet also
 shows the pending message. Undo keeps
 the Draft; leaving that control or switching Station or account also cancels
 the pending deletion. After the window, Station asks the server to discard it
-and shows any refusal. Discarding an **unsent draft** instead clears the text
-you typed on this device.
+and shows any refusal. On a touch row, the message appears below the row’s
+actions. Discarding an **unsent draft** clears the text you typed on this device.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
@@ -1000,10 +1063,13 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. With Claude Code, Codex and Muse, which take native
-steering, **Send** defaults to **Steer**; elsewhere, including a Muse chat that fell back to `muse exec`, it defaults to **Queue**,
-which delivers after the turn finishes. The dropdown switches between them. Other engines hold steering until a safe boundary can be proven;
-currently they wait until the turn finishes. Each pending row shows its mode.
+Keep typing during a turn. **Send** defaults to **Queue**. Station holds the
+message and delivers it after the turn finishes. The message appears in the
+pending list as soon as Station accepts it. The dropdown switches between the
+available modes. For an ACP engine without native steering, choosing **Steer**
+stops its current step and continues the task with your instruction once cancellation
+finishes. Station-owned steering waits for the next safe boundary. A Muse chat
+on `muse exec` supports Queue only. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
@@ -1084,7 +1150,7 @@ Drafts are stored in this browser or app on this device, not synced to other
 devices. Station keeps the 20 newest saved drafts, with up to five images per
 draft, and lists any dropped or unreadable images. The trash icon clears the
 current message. Hold or focus
-either icon to read its label. Choose **Chat settings → Return in chat** to change
+either icon to read its label. Choose **Agent & model → Return in chat** to change
 Return behavior on this device. Touch devices default to a new line; desktop
 Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.
 
@@ -1152,7 +1218,7 @@ unavailable.
 
 ## Start Your First Task
 
-1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its Project control or **Run setup** to change the Agent, Model or Approval settings.
+1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its Project control or **Agent & model** to change the Agent, Model or Approval settings.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
@@ -1166,9 +1232,10 @@ message waits and goes once the upload finishes; a failed upload offers Retry.
 The existing Task room, Project channels and agent-thread replies accept
 images the same way, including messages with only an image; their room composer also retains **Paste image** on supported touch devices. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
-does not restore them. In chats and the Task room, an older image in history may
-become unavailable after the server's attachment retention expires; a Project
-channel keeps a file for as long as its message stands. If a Project channel
+does not restore them. An older chat image may become unavailable after the
+server's attachment retention expires. The Task room keeps bytes for bound
+attachments and can refuse new files if its store is full. A Project channel
+keeps a file for as long as its message stands. If a Project channel
 pauses attachments while its file store is repaired, it says so; remove the
 files and your text still sends.
 
@@ -1327,7 +1394,8 @@ Each conversation is filed under a Project by the folder it ran in:
 
 Rows can show **Directory · …/parent/folder** when a working folder is recorded
 without a Project label. The label provides folder context and leaves Project
-membership unchanged.
+membership unchanged. A reopened delegated chat can show **CLI (reported)**
+when Station's accepted start receipt records a CLI caller.
 
 A conversation keeps its Project after its worktree is removed. If its Project
 is deleted while other Projects remain, it moves to **No project**. A conversation inside a git submodule
@@ -1419,6 +1487,9 @@ engine, the continuation is still created and you continue it from
 **Chat**; the dock says why it cannot open it.
 
 See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
+
+If **Recent work** can’t load sessions from another Station, Home shows an
+explanation alongside any work it could load locally.
 
 ## Arrange Work You Already Own
 
@@ -1609,12 +1680,20 @@ request version, once. A review request with recorded evidence offers
 A row's ⋯ menu holds **Dismiss**, and **Snooze** when the Attention snooze
 preview is on.
 
+A conversation’s Inbox row also shows the request and **Approve once** or
+**Deny** when Station can inspect one exact request and you can answer it.
+Open the chat from its row to review an approval when those controls are
+unavailable.
+
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station
 checks that the request is still open and makes the decision. When the paired
 Station reports a question's exact request and your access permits it, the card
 offers an **Answer on the paired Station** box whose **Send answer** reply is
 bound to that question; otherwise the card says to answer it on that Station.
+
+When the approval guardian asks you to review a call after repeated denials,
+**Approval guardian** quotes its reason separately from the tool’s description.
 
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision

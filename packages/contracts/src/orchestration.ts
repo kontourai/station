@@ -2170,6 +2170,23 @@ export interface ConversationOpenCallerAccess {
 
 export type ConversationOpenResolution = (
   | {
+      /** The next turn can start the reserved empty-context execution. */
+      status: 'fresh-context-ready';
+      conversation: ConversationListItem;
+      predecessorSessionId: string;
+      reservedSessionId: string;
+      /** Earlier messages remain readable but are not passed to the next engine. */
+      transcript: {
+        available: true;
+        owner: 'runtime';
+        messageCount: number;
+      };
+      canContinue: boolean;
+      continuationPending?: true;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly [];
+    }
+  | {
       /** A saved, authorized fork with no provider Session until first send. */
       status: 'fork-ready';
       conversation: ConversationListItem;

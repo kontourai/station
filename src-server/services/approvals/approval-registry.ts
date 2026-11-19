@@ -23,6 +23,7 @@ interface ApprovalRequestMetadata {
   conversationId?: string;
   conversationTitle?: string;
   description?: string;
+  guardianReason?: string;
   /**
    * #2589: the orchestration thread whose `request.opened` republishes this
    * approval (a Station-agent relay turn; stream-orchestrator.ts). Equal to

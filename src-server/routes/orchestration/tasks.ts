@@ -48,7 +48,11 @@ import type {
   TaskPullRequestFactsProjection,
   TaskPullRequestFeedbackFact,
 } from '@kontourai/station-contracts/task-lane';
-import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
+import {
+  type TaskLatestReportPresentation,
+  type TaskMemoryAttention,
+  taskLatestReportLine,
+} from '@kontourai/station-contracts/task-memory';
 import {
   isHostedSessionReadAuthority,
   type SessionReadAuthority,
@@ -79,6 +83,7 @@ import {
   TaskAnswerSupportModule,
   TaskAnswerSupportUnavailableError,
 } from '../../services/evidence/task-answer-support-module.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { SessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import type { SessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
 import type { SessionOwnerStamp } from '../../services/orchestration/session-owner-attribution.js';
@@ -302,6 +307,7 @@ function sameTaskWorkspaceBinding(
 }
 
 const taskCloseOnMergeSchema = z.object({ enabled: z.boolean() }).strict();
+const taskOverviewReopenSchema = z.object({}).strict();
 const taskPullRequestWatchSchema = z
   .object({ mode: z.enum(['on', 'off', 'project']) })
   .strict();
@@ -445,6 +451,19 @@ export function createTaskRoutes(
     openQuestionCounts?: (
       tasks: readonly TaskRecord[],
     ) => ReadonlyMap<string, number>;
+    /**
+     * #5064: each Task's current Task-memory summary, so the Tasks list
+     * carries its first line as `latestReport` for the Project Overview.
+     * Personal mode only, like `openQuestionCounts`.
+     */
+    /**
+     * #5064: the `project-overview` Feature Preview, selected before the
+     * Overview's reopen. Absent: the route is offered (route tests).
+     */
+    overviewPreview?: FeaturePreviewSelector;
+    currentSummaries?: (
+      tasks: readonly TaskRecord[],
+    ) => ReadonlyMap<string, { text: string; createdAt: string }>;
     workChatConversations?: (
       request: Request,
       tasks: readonly TaskRecord[],
@@ -806,15 +825,33 @@ export function createTaskRoutes(
     }
     // #4507: the same worktree projection the Task view reads, so a list
     // row's branch is the Task's own and not its creation-time binding.
+    let summaries:
+      | ReadonlyMap<string, { text: string; createdAt: string }>
+      | undefined;
+    try {
+      summaries = options.currentSummaries?.(currentTasks);
+    } catch {
+      // The report line is decoration; the Tasks list never fails on it.
+      summaries = undefined;
+    }
     const projectedTasks = service.projectTaskWorktrees(currentTasks);
     const data: Array<
-      TaskRecord & Partial<TaskMemoryAttention> & TaskWorkChatPresentation
-    > = counts
-      ? projectedTasks.map((task) => {
-          const openQuestionCount = counts.get(task.id) ?? 0;
-          return openQuestionCount > 0 ? { ...task, openQuestionCount } : task;
-        })
-      : projectedTasks;
+      TaskRecord &
+        Partial<TaskMemoryAttention> &
+        TaskLatestReportPresentation &
+        TaskWorkChatPresentation
+    > = projectedTasks.map((task) => {
+      const openQuestionCount = counts?.get(task.id) ?? 0;
+      const summary = summaries?.get(task.id);
+      const line = summary ? taskLatestReportLine(summary.text) : undefined;
+      return {
+        ...task,
+        ...(openQuestionCount > 0 ? { openQuestionCount } : {}),
+        ...(line && summary
+          ? { latestReport: { text: line, at: summary.createdAt } }
+          : {}),
+      };
+    });
     return c.json({
       success: true,
       data: workChats
@@ -1751,6 +1788,7 @@ export function createTaskRoutes(
           ? await options.answerNarrativeBindingModule.withTaskReferencePin({
               sessionId: input.sessionId,
               turnId: input.turnId,
+              taskProjectId: referenceCommitAuthorization!.expectedProjectId,
               authority: options.readAuthorityForRequest!(c.req.raw),
               current: () =>
                 (options.isRequestPrincipalCurrent?.(c.req.raw) ?? true) &&
@@ -2601,6 +2639,40 @@ export function createTaskRoutes(
         const data = await service.setCloseOnMerge(
           param(c, 'taskId'),
           getBody(c).enabled,
+          resolveClientOriginForRequest(c.req.raw),
+        );
+        return c.json({ success: true, data });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+    },
+  );
+
+  // #5064: a person reopens a Task the Project Overview auto-resolved. No
+  // station-control tool names this route, so the central authority guard
+  // refuses an agent's request to it.
+  app.post(
+    '/:taskId/overview-reopen',
+    validate(taskOverviewReopenSchema),
+    async (c) => {
+      const refused = options.overviewPreview?.select({
+        enabled: () => undefined,
+        disabled: () => ({
+          success: false as const,
+          error:
+            'Enable Project Overview in Settings → Advanced → Feature previews.',
+          code: 'feature_preview_disabled' as const,
+          previewId: 'project-overview',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews' as const,
+        }),
+      });
+      if (refused) return c.json(refused, 404);
+      try {
+        const service = serviceForRequest(c.req.raw);
+        if (!service) return hostedNotFound(c);
+        const data = await service.reopenOnOverview(
+          param(c, 'taskId'),
           resolveClientOriginForRequest(c.req.raw),
         );
         return c.json({ success: true, data });

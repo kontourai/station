@@ -135,12 +135,12 @@ describe('inbox unread state comes from the server', () => {
     ]);
 
     expect(
-      screen.getByRole('button', { name: /^fresh title, unread, station/ }),
+      screen.getByRole('button', { name: /^fresh title.*station.*unread$/ }),
     ).not.toBeNull();
     expect(rowOf(/^fresh title/)?.hasAttribute('data-unread')).toBe(true);
 
     for (const id of ['seen', 'unknown']) {
-      const name = new RegExp(`^${id} title, station`);
+      const name = new RegExp(`^${id} title(?!.*unread).*station`);
       expect(screen.getByRole('button', { name })).not.toBeNull();
       expect(rowOf(name)?.hasAttribute('data-unread')).toBe(false);
     }
@@ -158,7 +158,9 @@ describe('inbox unread state comes from the server', () => {
       activeChatSessionId: 'current',
     });
     expect(
-      screen.getByRole('button', { name: /^current title, station/ }),
+      screen.getByRole('button', {
+        name: /^current title(?!.*unread).*station/,
+      }),
     ).not.toBeNull();
     onScreen.unmount();
 
@@ -167,7 +169,7 @@ describe('inbox unread state comes from the server', () => {
       activeChatSessionId: 'current',
     });
     expect(
-      screen.getByRole('button', { name: /^current title, unread, station/ }),
+      screen.getByRole('button', { name: /^current title.*station.*unread$/ }),
     ).not.toBeNull();
     unfocused.unmount();
 
@@ -177,7 +179,7 @@ describe('inbox unread state comes from the server', () => {
     act(() => conversationOnScreenStore.release(dock));
     renderPanel([current], { activeChatSessionId: 'current' });
     expect(
-      screen.getByRole('button', { name: /^current title, unread, station/ }),
+      screen.getByRole('button', { name: /^current title.*station.*unread$/ }),
     ).not.toBeNull();
   });
 
@@ -195,7 +197,7 @@ describe('inbox unread state comes from the server', () => {
     });
     renderPanel([fresh], { onAcknowledgeConversation });
     fireEvent.click(
-      screen.getByRole('button', { name: /^fresh title, unread, station/ }),
+      screen.getByRole('button', { name: /^fresh title.*station.*unread$/ }),
     );
     await waitFor(() =>
       expect(onAcknowledgeConversation).toHaveBeenCalledWith(fresh),
@@ -232,13 +234,13 @@ describe('inbox unread state comes from the server', () => {
       </QueryClientProvider>,
     );
     expect(lost).not.toHaveProperty('unread');
-    const name = /^lost title, read status unknown, station/;
+    const name = /^lost title.*station.*read status unknown$/;
     expect(screen.getByRole('button', { name })).not.toBeNull();
     const row = rowOf(name);
     expect(row?.hasAttribute('data-unread')).toBe(false);
     expect(row?.hasAttribute('data-read-unknown')).toBe(true);
     expect(
-      rowOf(/^known title, station/)?.hasAttribute('data-read-unknown'),
+      rowOf(/^known title.*station/)?.hasAttribute('data-read-unknown'),
     ).toBe(false);
     // One note for the surface, not one per row.
     const notes = screen

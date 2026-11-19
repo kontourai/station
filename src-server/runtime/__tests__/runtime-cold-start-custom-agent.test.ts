@@ -32,6 +32,7 @@
  * regression and nothing below asserts on it, so the watcher is faked and
  * `ConfigLoader` itself stays real.
  */
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -41,7 +42,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -50,6 +54,10 @@ import {
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
+import {
+  acquireStationHomeMaintenanceLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { adoptNativeEngineConnection } from '../../domain/agent-registry.js';
@@ -65,6 +73,7 @@ import {
   withTimeout,
 } from '../../providers/__tests__/codex-adapter-wire-harness.js';
 import { listProviders } from '../../providers/registries/registry.js';
+import * as chatTitleGeneration from '../../routes/chat/chat-title-generation.js';
 import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import {
   principalKey,
@@ -86,6 +95,7 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { WorktreeProvisioningService } from '../../services/projects/worktree-provisioning-service.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -495,6 +505,14 @@ async function awaitRouteConfiguration(
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 // archive#1019: these cases cold-boot a real StationRuntime (route services, servers,
 // terminal/voice seams) — under parallel vitest workers or a sibling agent
 // session on the same host, real spawns starve the 5s default budget and this
@@ -758,9 +776,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       ].Authorization.replace('Bearer ', '');
       return { config: thread.params.config, token };
     };
-    // Sessions stop inside the case, even when it fails: a stop after the
-    // runtime's teardown emits session.exited, whose deferred worktree
-    // retry would land in a later case.
+    // The fixture owns these adapter Sessions, so stop them before returning.
     const stopAll = async () => {
       for (const id of ['families-preview-off', 'families-preview-on'])
         await adapter.stopSession(id).catch(() => undefined);
@@ -861,6 +877,333 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     }
   });
 
+  it('joins deferred Task worktree retries before stopping orchestration and claim updates before closing the home', async () => {
+    home = await createSchemaHome('station-task-writer-shutdown-');
+    const finalization = deferred<void>();
+    const retries = vi
+      .spyOn(
+        TaskGraphService.prototype,
+        'retryDeferredTaskWorktreeFinalizations',
+      )
+      .mockReturnValue(finalization.promise);
+    const release = deferred<void>();
+    const reconcile = deferred<{ releasedSubjects: string[] }>();
+    const releaseClaim = vi
+      .spyOn(TaskGraphService.prototype, 'releaseClaimForSession')
+      .mockReturnValue(release.promise);
+    const reconcileClaims = vi
+      .spyOn(TaskGraphService.prototype, 'reconcileStaleAssignmentClaims')
+      .mockReturnValue(reconcile.promise);
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    const { eventBus } = runtime;
+    const emitExit = (sessionId: string) =>
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: { method: 'session.exited', sessionId, reason: 'ended' },
+      });
+    const stop = vi.fn(async () => emitExit('during-shutdown'));
+    const subject = runtime as unknown as {
+      orchestrationService: {
+        shutdown: typeof stop;
+      };
+      orchestrationEventStore: EventStore;
+    };
+    subject.orchestrationService = { shutdown: stop };
+    const outbox = subject.orchestrationEventStore.operationalEventReader();
+
+    try {
+      emitExit('before-shutdown');
+      await vi.waitFor(() => expect(retries).toHaveBeenCalled());
+      const shutdown = runtime.shutdown();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(stop).not.toHaveBeenCalled();
+
+      finalization.resolve();
+      await vi.waitFor(() =>
+        expect(releaseClaim).toHaveBeenCalledWith('during-shutdown', 'ended'),
+      );
+      expect(reconcileClaims).toHaveBeenCalledTimes(1);
+      expect(outbox.readAfter().kind).toBe('available');
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+
+      release.resolve();
+      // The startup sweep is a separate writer and still has custody.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(outbox.readAfter().kind).toBe('available');
+      reconcile.resolve({ releasedSubjects: [] });
+      await shutdown;
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      emitExit('after-shutdown');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(releaseClaim).toHaveBeenCalledTimes(2);
+    } finally {
+      finalization.resolve();
+      release.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      retries.mockRestore();
+      releaseClaim.mockRestore();
+      reconcileClaims.mockRestore();
+    }
+  });
+
+  it('settles the real worktree of a terminal Session published during orchestration shutdown', async () => {
+    home = await createSchemaHome('station-late-session-exit-');
+    const repo = makeTempDir('station-late-session-exit-repo-');
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: repo, windowsHide: true });
+    git('init', '-q');
+    git(
+      '-c',
+      'user.name=Station Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '--allow-empty',
+      '-qm',
+      'initial',
+    );
+    const sessionId = 'claude:late-terminal';
+    const metadata = await new WorktreeProvisioningService().provision({
+      repoPath: repo,
+      threadId: sessionId,
+      providerKind: 'claude',
+      isolation: { mode: 'worktree', policy: { preserveOnFailure: false } },
+    });
+    if (!metadata) throw new Error('Expected a provisioned Session worktree');
+    expect(existsSync(metadata.path)).toBe(true);
+
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    await runtime.initialize();
+    const subject = runtime as unknown as {
+      orchestrationService: {
+        shutdown(): Promise<void>;
+        projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+        stopEventConsumption(): void;
+      };
+      orchestrationEventStore: EventStore;
+    };
+    const orchestra = subject.orchestrationService;
+    const store = subject.orchestrationEventStore;
+    const base = {
+      provider: 'claude' as const,
+      threadId: sessionId,
+      sessionId,
+      createdAt: new Date().toISOString(),
+    };
+    orchestra.projectAndPublishEvent({
+      ...base,
+      eventId: 'late-worktree-start',
+      method: 'session.started',
+      metadata: { userId: 'human:local:operator', worktree: metadata },
+    });
+    expect(store.listEventPayloads(sessionId, ['session.started'])).toEqual([
+      expect.objectContaining({
+        metadata: expect.objectContaining({ worktree: metadata }),
+      }),
+    ]);
+    expect(git('rev-parse', '--show-toplevel').toString().trim()).toBe(
+      metadata.repoPath,
+    );
+    const stopConsumption = orchestra.stopEventConsumption.bind(orchestra);
+    const stopped = vi
+      .spyOn(orchestra, 'stopEventConsumption')
+      .mockImplementationOnce(() => {
+        stopConsumption();
+        orchestra.projectAndPublishEvent({
+          ...base,
+          eventId: 'late-worktree-exit',
+          method: 'session.exited',
+          exitCode: 0,
+          reason: 'process_exit',
+        });
+      });
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    const finalizeOriginal = WorktreeProvisioningService.prototype.finalize;
+    const finalize = vi
+      .spyOn(WorktreeProvisioningService.prototype, 'finalize')
+      .mockImplementation(async function (
+        this: WorktreeProvisioningService,
+        input,
+      ) {
+        entered.resolve();
+        await finish.promise;
+        return finalizeOriginal.call(this, input);
+      });
+
+    try {
+      const shutdown = runtime.shutdown();
+      const state = await Promise.race([
+        entered.promise.then(() => 'finalizing'),
+        shutdown.then(() => 'closed'),
+      ]);
+      expect(state).toBe('finalizing');
+      expect(stopped).toHaveBeenCalledTimes(1);
+      expect(store.listEventPayloads(sessionId, ['session.exited'])).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ eventId: 'late-worktree-exit' }),
+        ]),
+      );
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+      expect(existsSync(metadata.path)).toBe(true);
+
+      finish.resolve();
+      await shutdown;
+      expect(existsSync(metadata.path)).toBe(false);
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      const reopened = new EventStore(getOrchestrationDatabasePath(home));
+      try {
+        expect(
+          reopened.worktreeOutputSettlementStore().read(sessionId)?.record,
+        ).toMatchObject({
+          outcome: 'cleaned-up-without-decision',
+          state: 'settled',
+        });
+      } finally {
+        reopened.close();
+        maintenance.release();
+      }
+    } finally {
+      finish.resolve();
+      await runtime.shutdown();
+      finalize.mockRestore();
+      stopped.mockRestore();
+    }
+  });
+
+  it('retains the live EventStore and home lease when startup claim reconciliation exceeds the drain deadline', async () => {
+    home = await createSchemaHome('station-task-writer-timeout-');
+    const reconcile = deferred<{ releasedSubjects: string[] }>();
+    const sweep = deferred<void>();
+    const reconcileClaims = vi
+      .spyOn(TaskGraphService.prototype, 'reconcileStaleAssignmentClaims')
+      .mockReturnValue(reconcile.promise);
+    const retryWorktrees = vi
+      .spyOn(
+        TaskGraphService.prototype,
+        'retryDeferredTaskWorktreeFinalizations',
+      )
+      .mockResolvedValue(undefined);
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      orphanEngineSweep: sweep.promise,
+    });
+    const subject = runtime as unknown as {
+      agentConfigurationShutdownDrainGraceMs: number;
+      orchestrationEventStore: EventStore;
+    };
+    subject.agentConfigurationShutdownDrainGraceMs = 20;
+    const outbox = subject.orchestrationEventStore.operationalEventReader();
+
+    try {
+      await vi.waitFor(() => expect(reconcileClaims).toHaveBeenCalledTimes(1));
+      await expect(runtime.shutdown()).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.stringContaining(
+              'waiting for assignment claim updates',
+            ),
+          }),
+        ]),
+      });
+      expect(outbox.readAfter().kind).toBe('available');
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+
+      sweep.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      expect(retryWorktrees).not.toHaveBeenCalled();
+    } finally {
+      sweep.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      reconcileClaims.mockRestore();
+      retryWorktrees.mockRestore();
+    }
+  });
+
+  it('fences a late generated conversation title before closing the EventStore', async () => {
+    home = await createSchemaHome('station-title-writer-shutdown-');
+    const result = deferred<string>();
+    const generate = vi
+      .spyOn(chatTitleGeneration, 'generateConversationTitle')
+      .mockReturnValue(result.promise);
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    const subject = runtime as unknown as {
+      appConfig: { titleModel?: string };
+      orchestrationEventStore: EventStore;
+    };
+    subject.appConfig = {
+      ...subject.appConfig,
+      titleModel: 'test-title-model',
+    };
+    const store = subject.orchestrationEventStore;
+    const candidate = vi.spyOn(store, 'conversationTitleGenerationCandidate');
+    const write = vi.spyOn(store, 'recordGeneratedConversationTitle');
+    const threadId = 'claude:title-shutdown';
+    const createdAt = '2026-11-18T00:00:00Z';
+    const base = { provider: 'claude' as const, threadId, createdAt };
+    store.upsertSession({ ...base, status: 'ready', updatedAt: createdAt });
+    store.appendEvent({
+      ...base,
+      eventId: 'title-session-start',
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'human:local:operator', agentSlug: 'claude' },
+    });
+    store.appendEvent({
+      ...base,
+      eventId: 'title-turn-start',
+      method: 'turn.started',
+      turnId: 'title-turn',
+      prompt: 'Fix the dark theme contrast',
+    });
+    const completed = {
+      ...base,
+      eventId: 'title-turn-complete',
+      method: 'turn.completed',
+      turnId: 'title-turn',
+      outputText: 'Adjusted the theme contrast.',
+    } as const;
+    store.appendEvent(completed);
+
+    try {
+      runtime.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: completed,
+      });
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(candidate).toHaveBeenCalledTimes(1);
+
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      result.resolve('Improved Dark Theme Contrast');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(write).not.toHaveBeenCalled();
+
+      runtime.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: { ...completed, threadId: 'claude:post-shutdown' },
+      });
+      expect(candidate).toHaveBeenCalledTimes(1);
+    } finally {
+      result.resolve('Improved Dark Theme Contrast');
+      await runtime.shutdown();
+      generate.mockRestore();
+      candidate.mockRestore();
+      write.mockRestore();
+    }
+  });
+
   it('refuses to construct a runtime when STATION_TRUSTED_CONSENT_ORIGIN is malformed', () => {
     // The field initializer throws before the home is read, so nothing is created.
     const unusedHome = join(tmpdir(), 'station-consent-origin-never-created');
@@ -945,7 +1288,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(virtualReady).not.toHaveBeenCalled();
   });
 
-  it('shutdown during boot settles the in-flight initialize (#1019)', async () => {
+  it('concurrent shutdown during boot shares one teardown after initialize settles (#1019)', async () => {
     // The cross-test contamination mode: a cancelled/abandoned boot kept
     // initializing after teardown deleted its home, and its rejection
     // surfaced in whichever test ran next ('custom-writer not found at
@@ -979,11 +1322,26 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         bootSettled = true;
       });
 
-    await runtime.shutdown();
-    // shutdown resolving implies the boot promise already settled — nothing
-    // is left racing the (about-to-be-deleted) home directory.
-    expect(bootSettled).toBe(true);
-    await boot;
+    const store = (
+      runtime as unknown as { orchestrationEventStore: EventStore }
+    ).orchestrationEventStore;
+    const close = vi.spyOn(store, 'close');
+    try {
+      const outcomes = await Promise.allSettled([
+        runtime.shutdown(),
+        runtime.shutdown(),
+      ]);
+      expect(outcomes).toEqual([
+        { status: 'fulfilled', value: undefined },
+        { status: 'fulfilled', value: undefined },
+      ]);
+      expect(bootSettled).toBe(true);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(store.isClosed).toBe(true);
+    } finally {
+      close.mockRestore();
+      await boot;
+    }
   });
 
   it('resolves the built-in engine binding at boot without model discovery or commands', async () => {

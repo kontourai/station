@@ -116,6 +116,7 @@ export async function getPullRequestFeedbackByPullRequest(
 /**
  * Set a pull request's switches in this chat. Another chat's feedback is
  * refused (409, see {@link pullRequestFeedbackOwnerOf}) unless `move`.
+ * Leaving `reviewEachHead` out keeps the value this chat stored.
  */
 export async function writePullRequestFeedback(
   apiBase: string,
@@ -125,7 +126,8 @@ export async function writePullRequestFeedback(
     settings: Pick<
       PullRequestFeedbackSettings,
       'fixFailingChecks' | 'addressReviewComments'
-    >;
+    > &
+      Partial<Pick<PullRequestFeedbackSettings, 'reviewEachHead'>>;
     move?: boolean;
   },
   options?: ClientRequestOptions,
@@ -204,7 +206,8 @@ export async function getProjectPullRequestFeedbackDefaults(
 
 /**
  * Set a Project's defaults (this Station's owner only). They apply to pull
- * requests set up from now on, never to one already set up.
+ * requests set up from now on, never to one already set up. Leaving
+ * `reviewEachHead` out keeps the stored value.
  */
 export async function writeProjectPullRequestFeedbackDefaults(
   apiBase: string,
@@ -212,7 +215,8 @@ export async function writeProjectPullRequestFeedbackDefaults(
   settings: Pick<
     PullRequestFeedbackSettings,
     'fixFailingChecks' | 'addressReviewComments'
-  >,
+  > &
+    Partial<Pick<PullRequestFeedbackSettings, 'reviewEachHead'>>,
   options?: ClientRequestOptions,
 ): Promise<ProjectPullRequestFeedbackDefaults> {
   return projectDefaultsOf(
@@ -221,6 +225,9 @@ export async function writeProjectPullRequestFeedbackDefaults(
         settings: {
           fixFailingChecks: settings.fixFailingChecks,
           addressReviewComments: settings.addressReviewComments,
+          ...(settings.reviewEachHead === undefined
+            ? {}
+            : { reviewEachHead: settings.reviewEachHead }),
         },
       }),
     ),
@@ -248,4 +255,69 @@ export async function removeDerivedPullRequest(
       },
     ),
   );
+}
+
+/**
+ * Run Station's review of the pull request's current head again (or for
+ * the first time, before it held still). Refused (409) while the Project's
+ * review limit is reached or the head cannot be reviewed.
+ */
+export async function reviewPullRequestHeadAgain(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<void> {
+  await read<{ conversationId: string }>(
+    await mutateJson(
+      path(apiBase, conversationId, '/head-review/again'),
+      'POST',
+      options,
+      { identity },
+    ),
+  );
+}
+
+/**
+ * Send the current head review's required findings to the agent, even
+ * with "Address review comments" off. The feedback caps still apply.
+ */
+export async function sendPullRequestHeadReviewFindings(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<void> {
+  await read<{ conversationId: string }>(
+    await mutateJson(
+      path(apiBase, conversationId, '/head-review/send'),
+      'POST',
+      options,
+      { identity },
+    ),
+  );
+}
+
+/** The refusals Station words itself for Review again and Send to agent. */
+const HEAD_REVIEW_REFUSALS = new Set([
+  'pull_request_head_review_not_started',
+  'pull_request_head_review_nothing_to_send',
+  'pull_request_feedback_paused',
+]);
+
+/**
+ * Why Review again or Send to agent did not go, as display text: the
+ * server composes these sentences itself (a busy Project, the daily limit,
+ * no reviewer, a pause), so they are shown as they come. Undefined for any
+ * other failure, which callers describe as usual.
+ */
+export function pullRequestHeadReviewRefusal(
+  error: unknown,
+): string | undefined {
+  return error instanceof StationHttpError &&
+    error.status === 409 &&
+    typeof error.code === 'string' &&
+    HEAD_REVIEW_REFUSALS.has(error.code)
+    ? error.message
+    : undefined;
 }

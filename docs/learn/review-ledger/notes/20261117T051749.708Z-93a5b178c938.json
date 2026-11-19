@@ -1,0 +1,9 @@
+{
+  "revision": "33a564892674adaeb268e07e72cbd3ef99476dd6",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"sdk.md adds reviewPullRequestHeadAgain, sendPullRequestHeadReviewFindings and the optional reviewEachHead on writePullRequestFeedback; citing pages make no claim about that subpath.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md adds reviewPullRequestHeadAgain, sendPullRequestHeadReviewFindings and the optional reviewEachHead on writePullRequestFeedback; citing pages make no claim about that subpath.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

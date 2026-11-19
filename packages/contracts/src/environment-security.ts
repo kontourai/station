@@ -1135,6 +1135,17 @@ export interface WebPushSubscription {
   };
 }
 
+/** Canonical input to the SHA-256 registration check, never a wire payload. */
+export function webPushRegistrationFingerprintInput(
+  subscription: WebPushSubscription,
+): string {
+  return JSON.stringify([
+    subscription.endpoint,
+    subscription.keys.p256dh,
+    subscription.keys.auth,
+  ]);
+}
+
 export interface DevicePairingExchangeRequest {
   offerId: string;
   proof: string;
@@ -1220,6 +1231,11 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /**
+   * #5067: the Project Library (`/api/projects/:slug/library…`): uploads and
+   * kept Task outputs in one list. Absent on hosted deployments.
+   */
+  projectLibrary?: boolean;
   peerChatTunnelV1?: boolean;
   delegationLocalConversationV1?: boolean;
   /**

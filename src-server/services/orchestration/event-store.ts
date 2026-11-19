@@ -62,6 +62,7 @@ import type {
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
+import { appearanceProposalReferenceOfEvent } from '@kontourai/station-contracts/custom-appearance';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
 import type {
@@ -74,6 +75,7 @@ import type {
   SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  isAcpFamilyEngine,
   type ProviderSession,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -91,12 +93,14 @@ import {
 } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEvent,
+  isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
   TURN_DISPATCH_ORIGINS,
   type TurnDispatchOrigin,
   turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
+import { isSessionLifecycleStateAtRest } from '@kontourai/station-contracts/session-lifecycle';
 import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
@@ -195,6 +199,7 @@ import {
   ensureWorktreeOutputSettlementOwnerColumn,
   WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION,
 } from '../../domain/migrations/029-worktree-output-settlements.js';
+import { USAGE_PROJECTION_CACHE_MIGRATION } from '../../domain/migrations/030-usage-projection-cache.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -412,6 +417,7 @@ import type {
   RecoveryLedger,
   RecoveryLedgerCoordinator,
 } from './recovery-ledger-binding.js';
+import { projectSessionLifecycle } from './session-lifecycle-service.js';
 import {
   SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
@@ -2437,8 +2443,12 @@ function snapshotEvent(
     const refusal =
       parseStationControlRefusal(toolName, payload.error) ??
       parseStationControlRefusal(toolName, payload.output);
+    const appearance = appearanceProposalReferenceOfEvent(event.payload);
     snapshotPayload = {
       ...payload,
+      ...(appearance
+        ? { appearanceProposal: appearance }
+        : { appearanceProposal: undefined }),
       ...(pageReference ? { htmlReply: pageReference } : {}),
       ...(refusal ? { stationControlRefusal: refusal } : {}),
       ...(error ? { error: error.text } : {}),
@@ -3358,6 +3368,8 @@ export class EventStore {
       ensureWorktreeOutputSettlementOwnerColumn(this.db);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
+      // #373: lifetime usage's per-thread fold cache and its watermark.
+      this.db.exec(USAGE_PROJECTION_CACHE_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -4841,6 +4853,11 @@ export class EventStore {
           typeof raw.error === 'string' ? raw.error : undefined,
         ) ?? parseStationControlRefusal(toolName, raw.output);
       if (refusal) stamped.stationControlRefusal = refusal;
+      const appearance = appearanceProposalReferenceOfEvent({
+        ...stamped,
+        output: raw.output,
+      });
+      if (appearance) stamped.appearanceProposal = appearance;
     }
     persisted = { ...persisted, payload: plan.payload };
     // Attachment projection can replace a very small inline data URL with a
@@ -7952,20 +7969,128 @@ export class EventStore {
     return rows.map((row) => JSON.parse(row.payload as string));
   }
 
-  /** Append-only usage projection identity; delete/recreate gets a new head. */
-  readUsageRevision(threadId: string): string {
+  /**
+   * #373: lifetime usage's projection watermark (`030-usage-projection-cache`).
+   * `undefined` when no pass has completed its catch-up under any version.
+   */
+  readUsageProjectionCheckpoint():
+    | { version: string; watermark: number }
+    | undefined {
     const row = this.readStatement(
-      `SELECT id, global_sequence FROM orchestration_events
-       WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1`,
-    ).get(threadId) as { id: string; global_sequence: number } | undefined;
-    const external = this.readStatement('PRAGMA data_version').get() as
-      | { data_version: number }
-      | undefined;
-    return JSON.stringify([
-      row?.id,
-      row?.global_sequence,
-      external?.data_version,
-    ]);
+      `SELECT version, watermark FROM orchestration_usage_projection_checkpoint
+       WHERE singleton = 1`,
+    ).get() as { version: string; watermark: number } | undefined;
+    return row
+      ? { version: row.version, watermark: Number(row.watermark) }
+      : undefined;
+  }
+
+  /**
+   * #373: one pass's catch-up, in one transaction. A rebuild (`since`
+   * undefined) forgets every cached thread; otherwise only the threads with
+   * a row in `(since, through]` are forgotten. Either way the watermark then
+   * moves to `through`, so a later pass never re-reads these rows and a thread
+   * forgotten here is refolded whenever it is next read.
+   *
+   * The range read is pinned to `idx_events_global_sequence`: left to itself
+   * SQLite scans the whole `(thread_id, global_sequence)` index instead.
+   */
+  advanceUsageProjection(input: {
+    version: string;
+    since?: number;
+    through: number;
+  }): { rows: number; threads: number } {
+    const changed =
+      input.since === undefined
+        ? []
+        : (this.readStatement(
+            `SELECT thread_id, COUNT(*) AS rows
+             FROM orchestration_events INDEXED BY idx_events_global_sequence
+             WHERE global_sequence > ? AND global_sequence <= ?
+             GROUP BY thread_id`,
+          ).all(input.since, input.through) as Array<{
+            thread_id: string;
+            rows: number;
+          }>);
+    this.inUsageProjectionWrite(() => {
+      if (input.since === undefined)
+        this.db
+          .prepare('DELETE FROM orchestration_usage_projection_cache')
+          .run();
+      else {
+        const forget = this.readStatement(
+          'DELETE FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+        );
+        for (const row of changed) forget.run(row.thread_id);
+      }
+      this.readStatement(
+        `INSERT INTO orchestration_usage_projection_checkpoint (singleton, version, watermark)
+         VALUES (1, ?, ?)
+         ON CONFLICT(singleton) DO UPDATE SET
+           version = excluded.version, watermark = excluded.watermark`,
+      ).run(input.version, input.through);
+    });
+    return {
+      rows: changed.reduce((sum, row) => sum + Number(row.rows), 0),
+      threads: changed.length,
+    };
+  }
+
+  /** #373: one thread's cached usage fold, as the reader serialized it. */
+  readUsageProjection(threadId: string): string | undefined {
+    const row = this.readStatement(
+      'SELECT projection FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+    ).get(threadId) as { projection: string } | undefined;
+    return row?.projection;
+  }
+
+  /**
+   * #373: stores refolded threads and drops threads the caller no longer
+   * lists. Never moves the watermark: that belongs to
+   * {@link advanceUsageProjection}.
+   */
+  writeUsageProjections(input: {
+    upserts: ReadonlyArray<readonly [threadId: string, projection: string]>;
+    retainOnly?: ReadonlySet<string>;
+  }): void {
+    this.inUsageProjectionWrite(() => {
+      const upsert = this.readStatement(
+        `INSERT INTO orchestration_usage_projection_cache (thread_id, projection)
+         VALUES (?, ?)
+         ON CONFLICT(thread_id) DO UPDATE SET projection = excluded.projection`,
+      );
+      for (const [threadId, projection] of input.upserts)
+        upsert.run(threadId, projection);
+      if (!input.retainOnly) return;
+      const forget = this.readStatement(
+        'DELETE FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+      );
+      for (const { thread_id } of this.readStatement(
+        'SELECT thread_id FROM orchestration_usage_projection_cache',
+      ).all() as Array<{ thread_id: string }>)
+        if (!input.retainOnly.has(thread_id)) forget.run(thread_id);
+    });
+  }
+
+  /** Takes the writer first, as appends do, so a peer writer waits rather than failing the upgrade. */
+  private inUsageProjectionWrite(write: () => void): void {
+    const nested = this.db.isTransaction;
+    this.db.exec(
+      nested ? 'SAVEPOINT usage_projection_write' : 'BEGIN IMMEDIATE',
+    );
+    try {
+      write();
+      this.db.exec(
+        nested ? 'RELEASE SAVEPOINT usage_projection_write' : 'COMMIT',
+      );
+    } catch (error) {
+      this.db.exec(
+        nested
+          ? 'ROLLBACK TO SAVEPOINT usage_projection_write; RELEASE SAVEPOINT usage_projection_write'
+          : 'ROLLBACK',
+      );
+      throw error;
+    }
   }
 
   /**
@@ -7973,7 +8098,9 @@ export class EventStore {
    * transcript deltas; SQL removes large input/output fields before JS sees
    * them. Keep optional usage fields absent rather than manufacturing nulls.
    * A method the fold reads (`foldUsageEvents`) must be listed here, or it
-   * never reaches the fold in production.
+   * never reaches the fold in production. Lifetime usage caches what the fold
+   * makes of these rows (#373), so a change here also bumps
+   * `USAGE_PROJECTION_VERSION` in `session-transcript-reads.ts`.
    */
   listUsageEventPayloads(
     threadId: string,
@@ -10022,6 +10149,19 @@ export class EventStore {
       latestCompletion.sequence > latestTurnStarted.sequence
         ? latestCompletion
         : undefined;
+    const latestTurnTerminal = latestTurnStarted?.turnId
+      ? this.latestTerminalEventForTurn(
+          threadId,
+          latestTurnStarted.turnId,
+          bounded,
+          latestTurnStarted.payload.invocationId,
+        )
+      : undefined;
+    const currentError = this.latestCurrentTurnRuntimeErrorEvent(
+      threadId,
+      bounded,
+      latestTurnStarted,
+    );
     // The verified selected open request supplies pending-review evidence;
     // another request's later resolution must not erase it.
     const unresolvedRequests =
@@ -10108,19 +10248,14 @@ export class EventStore {
       // archive#3557/#3558 fix-round review BLOCK 1: scoped to the turn
       // `latestTurnStarted` names, not the thread's latest terminal — see
       // {@link EventStore.latestTerminalEventForTurn}'s docblock for why.
-      latestTurnStarted?.turnId
-        ? this.latestTerminalEventForTurn(
-            threadId,
-            latestTurnStarted.turnId,
-            bounded,
-            latestTurnStarted.payload.invocationId,
-          )
-        : undefined,
+      latestTurnTerminal,
       this.latestEventByMethods(threadId, LIFECYCLE_METHODS, bounded, hydrate),
-      this.latestCurrentTurnRuntimeErrorEvent(
-        threadId,
+      currentError,
+      ...this.displacedTurnOutcomeFacts(
+        latestTurnTerminal,
+        currentTurnCompletion,
+        currentError,
         bounded,
-        latestTurnStarted,
       ),
       ...this.listSessionProjectionFactEvents(threadId, bounded, hydrate),
       ...unresolvedRequests,
@@ -10449,6 +10584,86 @@ export class EventStore {
         ...(invocationId === undefined ? [] : [invocationId]),
       ) as any;
     return row ? this.mapEventRow(row) : undefined;
+  }
+
+  /**
+   * A late cancellation can evict both a legacy ACP failure and an earlier
+   * proven recovery from the latest-terminal slots. Only probe that exact
+   * turn when those slots show a weak terminal, using its indexed history.
+   */
+  private displacedTurnOutcomeFacts(
+    terminal: PersistedRuntimeEvent | undefined,
+    completion: PersistedRuntimeEvent | undefined,
+    error: PersistedRuntimeEvent | undefined,
+    bounded = false,
+  ): PersistedRuntimeEvent[] {
+    if (!terminal?.turnId) return [];
+    if (
+      terminal.payload.method === 'turn.completed' &&
+      PROVIDER_PROVEN_FINISH_REASONS.has(terminal.payload.finishReason ?? '')
+    )
+      return [];
+    const readCompletion = (
+      filter: string,
+      after: number,
+      parameters: string[],
+    ) => {
+      const row = this.readStatement(
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, observed_at, sequence, global_sequence
+          FROM orchestration_events
+          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.completed'
+          AND sequence > ? AND sequence < ?
+          AND json_extract(payload, '$.invocationId') IS ?
+          AND ${filter}
+          ORDER BY sequence DESC LIMIT 1`,
+      ).get(
+        terminal.threadId,
+        terminal.turnId,
+        after,
+        terminal.sequence,
+        terminal.payload.invocationId ?? null,
+        ...parameters,
+      );
+      return row ? this.mapEventRow(row) : undefined;
+    };
+    const legacyFailure =
+      completion?.payload.method === 'turn.completed' &&
+      completion.payload.finishReason === 'cancelled' &&
+      isAcpFamilyEngine(completion.provider)
+        ? readCompletion(
+            "json_extract(payload, '$.finishReason') = 'other' AND (provider = 'acp' OR length(json_extract(payload, '$.stopReason')) > 0)",
+            0,
+            [],
+          )
+        : undefined;
+    const recordedFailure =
+      error?.payload.method === 'runtime.error' &&
+      error.turnId === terminal.turnId &&
+      error.payload.invocationId === terminal.payload.invocationId &&
+      !isDeferredRetriableTurnError(error.payload)
+        ? error
+        : undefined;
+    const failureSequence = Math.max(
+      legacyFailure?.sequence ?? 0,
+      recordedFailure?.sequence ?? 0,
+    );
+    const reasons = [...PROVIDER_PROVEN_FINISH_REASONS];
+    const recovery =
+      failureSequence > 0 &&
+      failureSequence < terminal.sequence &&
+      !(
+        completion?.payload.method === 'turn.completed' &&
+        PROVIDER_PROVEN_FINISH_REASONS.has(
+          completion.payload.finishReason ?? '',
+        )
+      )
+        ? readCompletion(
+            `json_extract(payload, '$.finishReason') IN (${reasons.map(() => '?').join(', ')})`,
+            failureSequence,
+            reasons,
+          )
+        : undefined;
+    return [legacyFailure, recovery].filter((row) => row !== undefined);
   }
 
   /**
@@ -10974,6 +11189,15 @@ export class EventStore {
           : latest;
       }, undefined);
 
+      const latestTurnTerminal = latestTurnStarted?.turnId
+        ? terminalByPair.get(
+            pairKey(
+              threadId,
+              latestTurnStarted.turnId,
+              latestTurnStarted.payload.invocationId,
+            ),
+          )
+        : undefined;
       const facts = [
         latestAnyEventByThread.get(threadId),
         methodFacts?.get('flow.run-attached')?.latest,
@@ -10986,17 +11210,14 @@ export class EventStore {
         latestObservedStart,
         positiveStart,
         latestTurnStarted,
-        latestTurnStarted?.turnId
-          ? terminalByPair.get(
-              pairKey(
-                threadId,
-                latestTurnStarted.turnId,
-                latestTurnStarted.payload.invocationId,
-              ),
-            )
-          : undefined,
+        latestTurnTerminal,
         latestLifecycleEvent,
         latestCurrentTurnRuntimeError,
+        ...this.displacedTurnOutcomeFacts(
+          latestTurnTerminal,
+          currentTurnCompletion,
+          latestCurrentTurnRuntimeError,
+        ),
         ...(projectionFactsByThread.get(threadId) ?? []),
         ...(unresolvedRequestsByThread.get(threadId) ?? []),
         // #3071: per-thread reads, but only for a thread that holds an
@@ -12804,9 +13025,9 @@ export class EventStore {
    * SQL cannot express without disagreeing with the writer at the edges. The
    * caller applies the exact predicate to this window. It differs from the old
    * full scan only if the newest `limit` configured events ALL fail that
-   * predicate while an older one passes; the caller's cost for that is one
-   * envelope pair, once, because its event id no longer depends on a count
-   * (see `envelopeEventId`).
+   * predicate while an older one passes. The caller treats a full window with
+   * no claim as unknown, and can key a recovery envelope to its newest
+   * configuration row (see `envelopeEventId`).
    *
    * Ordering is identical to the scan it replaces (`created_at DESC,
    * sequence DESC`). `idx_events_turn_window` serves the SEARCH but does NOT
@@ -14794,15 +15015,27 @@ export class EventStore {
    * attribution can be established by a Session-level event with no turn id.
    */
   readConversationProjectSlug(threadId: string): string | undefined {
+    return (
+      this.readConversationProjectScope(threadId)?.projectSlug ?? undefined
+    );
+  }
+
+  /** Null records an unbound Session. An absent row cannot prove its scope. */
+  readConversationProjectScope(
+    threadId: string,
+  ): { projectSlug: string | null } | undefined {
     const row = this.db
       .prepare(
         `SELECT project_slug FROM orchestration_conversation_history
          WHERE thread_id = ? LIMIT 1`,
       )
-      .get(threadId) as { project_slug?: string | null } | undefined;
-    return typeof row?.project_slug === 'string' && row.project_slug.length > 0
-      ? row.project_slug
-      : undefined;
+      .get(threadId) as { project_slug: string | null } | undefined;
+    if (
+      row &&
+      (row.project_slug === null ||
+        (typeof row.project_slug === 'string' && row.project_slug.length > 0))
+    )
+      return { projectSlug: row.project_slug };
   }
 
   /** Deliberate composition seam; callers receive conversation intent, never SQLite. */
@@ -16185,7 +16418,13 @@ export class EventStore {
           offset + EVENT_STORE_BATCH_CHUNK_SIZE,
         );
         const relations = z
-          .array(z.object({ root_id: z.string(), child_id: z.string() }))
+          .array(
+            z.object({
+              root_id: z.string(),
+              child_id: z.string(),
+              starting: z.number(),
+            }),
+          )
           .parse(
             this.db
               .prepare(`WITH RECURSIVE
@@ -16197,13 +16436,77 @@ export class EventStore {
           owned(root_id, child_id) AS (
             SELECT root_id, root_id FROM requested
             UNION SELECT owned.root_id, edges.child_id FROM owned JOIN edges ON edges.parent_id = owned.child_id
-          ) SELECT root_id, child_id FROM owned`)
+          ) SELECT root_id, child_id,
+            EXISTS (SELECT 1 FROM orchestration_ownership_starts WHERE child_session_id = owned.child_id) AS starting
+            FROM owned`)
               .all(...chunk),
           );
         const facts = readCascadeSessionFacts(
           this.db,
           relations.map((row) => row.child_id),
         );
+        const childIds = [
+          ...new Set(
+            relations
+              .filter((row) => row.child_id !== row.root_id)
+              .map((row) => row.child_id),
+          ),
+        ];
+        const starting = new Set(
+          relations.filter((row) => row.starting).map((row) => row.child_id),
+        );
+        const events = childIds.length
+          ? this.listSessionProjectionEventsForThreads(childIds)
+          : new Map<string, PersistedRuntimeEvent[]>();
+        const sessions = new Map<string, ProviderSession>();
+        for (
+          let offset = 0;
+          offset < childIds.length;
+          offset += EVENT_STORE_BATCH_CHUNK_SIZE
+        ) {
+          const ids = childIds.slice(
+            offset,
+            offset + EVENT_STORE_BATCH_CHUNK_SIZE,
+          );
+          for (const session of this.db
+            .prepare(
+              `SELECT thread_id, provider, status, created_at, updated_at
+               FROM provider_session_state WHERE thread_id IN (${ids.map(() => '?').join(',')})`,
+            )
+            .all(...ids)
+            .map(mapPersistedSessionRow))
+            sessions.set(session.threadId, session);
+        }
+        const activeChildren = new Set<string>();
+        for (const childId of childIds) {
+          const current = facts.get(childId)!;
+          const session = sessions.get(childId);
+          const pendingInvocation =
+            current.owner &&
+            ['prepared', 'invoking', 'accepted', 'indeterminate'].includes(
+              current.owner.state,
+            );
+          // An idle adapter may remain attached. Work activity follows the same
+          // event fold as the child's summary, not its persisted provider status.
+          const active =
+            starting.has(childId) ||
+            pendingInvocation ||
+            (session
+              ? !isSessionLifecycleStateAtRest(
+                  projectSessionLifecycle({
+                    session,
+                    events: (events.get(childId) ?? []).map(
+                      (event) => event.payload,
+                    ),
+                  }).lifecycleState,
+                )
+              : current.active);
+          if (
+            active &&
+            !isCascadeStopSettled(current, this.hasSessionBinding(childId))
+          )
+            activeChildren.add(childId);
+        }
         for (const rootId of chunk) {
           const children = new Set(
             relations
@@ -16230,12 +16533,7 @@ export class EventStore {
           }
           let runningChildCount = 0;
           for (const childId of children) {
-            const current = facts.get(childId)!;
-            if (
-              childId !== rootId &&
-              current.active &&
-              !isCascadeStopSettled(current, this.hasSessionBinding(childId))
-            )
+            if (childId !== rootId && activeChildren.has(childId))
               runningChildCount++;
           }
           result.set(rootId, {
@@ -18258,7 +18556,7 @@ export class EventStore {
                WHERE thread_id = ?
                  AND method IN ('session.started', 'session.configured')
                  AND json_valid(payload)
-                 AND typeof(json_extract(payload, '$.metadata.userId')) = 'text'
+                 AND json_type(payload, '$.metadata.userId') = 'text'
                ORDER BY sequence DESC
                LIMIT 1`,
             )
@@ -18269,7 +18567,7 @@ export class EventStore {
                WHERE thread_id = ?
                  AND method IN ('session.started', 'session.configured')
                  AND json_valid(payload)
-                 AND typeof(json_extract(payload, '$.metadata.agentSlug')) = 'text'
+                 AND json_type(payload, '$.metadata.agentSlug') = 'text'
                ORDER BY sequence DESC
                LIMIT 1`,
             )
@@ -18280,7 +18578,7 @@ export class EventStore {
                WHERE thread_id = ?
                  AND method IN ('session.started', 'session.configured')
                  AND json_valid(payload)
-                 AND typeof(json_extract(payload, '$.metadata.projectSlug')) = 'text'
+                 AND json_type(payload, '$.metadata.projectSlug') = 'text'
                ORDER BY sequence DESC
                LIMIT 1`,
             )
@@ -18593,7 +18891,7 @@ export class EventStore {
        WHERE thread_id = ?
          AND method IN ('session.started', 'session.configured')
          AND json_valid(payload)
-         AND typeof(json_extract(payload, '$.metadata.projectSlug')) = 'text'
+         AND json_type(payload, '$.metadata.projectSlug') = 'text'
        ORDER BY sequence DESC
        LIMIT 1`,
     );

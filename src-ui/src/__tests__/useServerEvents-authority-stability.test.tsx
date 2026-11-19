@@ -228,6 +228,7 @@ describe('useServerEvents authority stability through the real host capture hook
       ['acp-connections'],
       ['acp-unregistered-connections'],
       ['acp-connection-registry'],
+      ['engine-setup', 'station-tools', 'antigravity'],
     ];
     const readinessReads = readinessKeys.map(() =>
       vi.fn(async () => observedStatus),

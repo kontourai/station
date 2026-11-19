@@ -75,6 +75,79 @@ const dependencyReasons = (result: ReturnType<typeof select>) =>
       /dependency .*\(#3149\)|import this changed dependency/.test(reason),
     );
 
+describe('dispatch-scope contract dependencies (#3335)', () => {
+  const guard =
+    'src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts';
+
+  test.each([
+    'packages/contracts/src/execution-preparation.ts',
+    'packages/contracts/src/execution-target.ts',
+  ])('retains the posture guard when only %s changes', (path) => {
+    for (const hosted of [false, true]) {
+      const result = select([path], head, hosted);
+      expect(executed(result)).toContain(guard);
+      expect(result.selection.lanes).toContainEqual(
+        expect.objectContaining({ id: 'ci-fast' }),
+      );
+    }
+  });
+
+  test('an unrelated high-fanout contract keeps the guard out of its explicit selection', () => {
+    const result = select(['packages/contracts/src/agent.ts']);
+    expect(executed(result)).not.toContain(guard);
+    expect(result.selection.lanes).toContainEqual(
+      expect.objectContaining({ id: 'ci-fast' }),
+    );
+  });
+});
+
+describe('Nightly regressions outside the import graph', () => {
+  test.each([
+    [
+      'src-ui/src/pages/AppearancePage.tsx',
+      'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
+    ],
+    [
+      'src-ui/src/hooks/useAppearanceStudioEnabled.ts',
+      'src-ui/src/__tests__/appearance-page-keyboard.test.ts',
+    ],
+    [
+      'src-server/security/confinement/__tests__/seatbelt.process.test.ts',
+      'scripts/__tests__/check-required-tests-ran.test.ts',
+    ],
+    [
+      'src-server/security/confinement/__tests__/bubblewrap.process.test.ts',
+      'scripts/__tests__/check-required-tests-ran.test.ts',
+    ],
+    [
+      'src-ui/src/views/project-settings/OverviewNotificationsSection.tsx',
+      'src-ui/src/__tests__/project-settings.browser.test.tsx',
+    ],
+    [
+      'src-ui/src/views/ProjectSettingsView.tsx',
+      'src-ui/src/__tests__/project-settings.browser.test.tsx',
+    ],
+    [
+      'docs/reference/play-data-safety.md',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'docs/privacy-policy.md',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'src-desktop/gen/apple/PrivacyInfo.xcprivacy',
+      'src-server/services/__tests__/privacy-inventory.test.ts',
+    ],
+    [
+      'tests/interactive-workspace-performance-bridge.spec.ts',
+      'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
+    ],
+  ])('%s selects its executable contract %s', (path, suite) => {
+    expect(executed(select([path], head, true))).toContain(suite);
+  });
+});
+
 describe('#3200: a sibling dependency bump selects the suites importing it', () => {
   const FLOW_AGENTS = '@kontourai/flow-agents';
   const AGENT_POLICY =

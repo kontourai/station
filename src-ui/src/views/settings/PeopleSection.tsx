@@ -47,8 +47,8 @@ import { useDecisionSurface } from '../../lib/custom-appearance/decision-surface
  *
  * Operator-only, gated by the SERVER like plugin visibility: the read is
  * admitted for the operator credential and the desktop's local grant, and
- * anything the route refuses (or a Station without the route) renders
- * nothing. Changes need the operator credential itself, so the local grant
+ * a denied read is explained when someone opens People directly.
+ * Changes need the operator credential itself, so the local grant
  * can list but its changes come back 401 — answered with what to do, not a
  * dead control.
  */
@@ -95,7 +95,22 @@ function matchesFilter(person: StationPerson, needle: string): boolean {
   );
 }
 
-export function PeopleSection() {
+export function PeopleReadRefusal() {
+  return (
+    <SettingsSection icon="◐" title="People" id="section-people">
+      <Empty
+        variant="compact"
+        label="Ask the Station operator to review who can connect."
+      />
+    </SettingsSection>
+  );
+}
+
+export function PeopleSection({
+  showReadRefusal = false,
+}: {
+  showReadRefusal?: boolean;
+} = {}) {
   useDecisionSurface('people-roles');
   const people = useStationPeopleQuery();
   const mintMutation = useMintStationPersonTokenMutation();
@@ -139,7 +154,12 @@ export function PeopleSection() {
     setFocusSection(false);
   }, [focusSection]);
   const refused = isStationAccessUnavailable(people.error);
-  if (refused && !held) return null;
+  if (refused && !held)
+    return showReadRefusal &&
+      people.error instanceof StationAccessError &&
+      people.error.status === 403 ? (
+      <PeopleReadRefusal />
+    ) : null;
   // The heading is a claim that the caller administers people; it waits for
   // the server's answer rather than appearing and being taken back.
   if (people.isPending && !held) return null;

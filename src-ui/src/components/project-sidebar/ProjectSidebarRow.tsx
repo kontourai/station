@@ -8,14 +8,12 @@ import {
   useNavigationActions,
 } from '../../contexts/NavigationContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { getInitials } from '../../utils/layout';
 import { Button } from '../Button';
-import { ProjectIcon } from '../icons/ProjectIcon';
+import { displayableProjectIcon, ProjectIcon } from '../icons/ProjectIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { ErrorState, SkeletonBlock } from '../state';
-import {
-  type ProjectLayoutChip,
-  ProjectLayoutChips,
-} from './ProjectLayoutChips';
+import type { ProjectLayoutChip } from './ProjectLayoutChips';
 import { sidebarLayoutPaneId } from './pill-region-placement';
 import { SidebarPopover } from './SidebarPopover';
 import type { ProjectRowReorderProps } from './useProjectListReorder';
@@ -28,7 +26,12 @@ import type { ProjectRowReorderProps } from './useProjectListReorder';
  */
 const BOARD_SHORTCUT_KEY = 'shortcut:board';
 
-/** #4794: the expanded Project's channels and Task rooms, off the shell bundle. */
+const loadProjectLayoutChips = () =>
+  import('./ProjectLayoutChips').then((module) => ({
+    default: module.ProjectLayoutChips,
+  }));
+
+/** The Project's channels and Task rooms load on demand. */
 const loadProjectSidebarConversations = () =>
   import('./ProjectSidebarConversations').then((module) => ({
     default: module.ProjectSidebarConversations,
@@ -43,6 +46,8 @@ export function ProjectSidebarRow({
   accent,
   liveCount = 0,
   liveLabel = '',
+  attentionCount = 0,
+  waitingOnYou = 0,
   reorder,
 }: {
   project: ProjectMetadata;
@@ -63,6 +68,12 @@ export function ProjectSidebarRow({
    * composed here, so the number and its explanation cannot drift.
    */
   liveLabel?: string;
+  attentionCount?: number;
+  /**
+   * #5064: Tasks in this Project's Overview group "Waiting on you". Drawn as
+   * a dot, with the count in its accessible name.
+   */
+  waitingOnYou?: number;
   /** archive#3315: drag/keyboard reorder wiring from `useProjectListReorder`. */
   reorder?: ProjectRowReorderProps;
 }) {
@@ -176,6 +187,65 @@ export function ProjectSidebarRow({
     isActive ? ' sidebar__project-btn--active' : ''
   }`;
 
+  const attentionLabel = attentionCount
+    ? `Needs attention: ${attentionCount}`
+    : '';
+  const projectViewsLabel = `${project.name} views`;
+  const projectIcon = displayableProjectIcon(
+    project.icon ?? (project.iconDisabled ? undefined : project.derivedIcon),
+  );
+  const railLabel = [
+    projectViewsLabel,
+    !projectIcon && getInitials(project.name),
+    liveLabel,
+    attentionLabel,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const conversations = (
+    <LazyBoundary
+      load={loadProjectSidebarConversations}
+      pending={null}
+      componentProps={{
+        project: { slug: project.slug, id: project.id, name: project.name },
+        onNavigate: collapsed
+          ? () => {
+              closeMenu();
+              onNavigate?.();
+            }
+          : onNavigate,
+      }}
+    />
+  );
+  const badges = (
+    <>
+      {liveCount > 0 && (
+        <>
+          {/* The hover label and accessible name describe the same live work. */}
+          <span
+            className="sidebar__project-live-count"
+            aria-hidden="true"
+            title={liveLabel}
+          >
+            {liveCount}
+          </span>
+          <span className="sidebar__project-live-label">{liveLabel}</span>
+        </>
+      )}
+      {attentionCount > 0 && (
+        <>
+          <span
+            className="sidebar__project-live-count sidebar__project-attention-count"
+            aria-hidden="true"
+            title={attentionLabel}
+          >
+            {attentionCount}
+          </span>
+          <span className="sidebar__project-live-label">{attentionLabel}</span>
+        </>
+      )}
+    </>
+  );
   const showReorderHandle = !collapsed && reorder && reorder.count > 1;
 
   return (
@@ -196,18 +266,14 @@ export function ProjectSidebarRow({
           type="button"
           className={btnClass}
           ref={triggerRef}
-          aria-label={collapsed ? `${project.name} views` : undefined}
+          aria-label={collapsed ? railLabel : undefined}
           aria-haspopup={collapsed ? 'dialog' : undefined}
           aria-expanded={collapsed ? menuOpen : undefined}
           onPointerDown={(event) => {
             if (collapsed && menuOpen) event.preventDefault();
           }}
           onClick={handleClick}
-          title={
-            collapsed
-              ? `${project.name} views`
-              : `Open ${project.name} workspace`
-          }
+          title={collapsed ? railLabel : `Open ${project.name} workspace`}
         >
           {collapsed ? (
             <ProjectIcon
@@ -231,41 +297,21 @@ export function ProjectSidebarRow({
             </span>
           )}
           <span className="sidebar__project-name">{project.name}</span>
-          {liveCount > 0 && (
-            <>
-              {/* archive#3202: the number's meaning was written down and shown
-                  ONLY to screen readers — a sighted user got a bare integer
-                  with no tooltip and no legend ("what does the 6 next to
-                  kontour mean?"). Same string, same source, now also a native
-                  tooltip on the number itself. `aria-hidden` stays: `title` is
-                  decoration for the sighted reader and the visually-hidden
-                  label is the accessible name's contribution, so the sentence
-                  is announced once, not twice.
-
-                  TOUCH IS NOT COVERED BY THE TOOLTIP and is not meant to be:
-                  `title` never surfaces without a pointer. The touch answer is
-                  the tap itself — selecting the row opens the project page,
-                  whose Live work section names these same lanes and lists the
-                  sessions behind the number. The popup keeps the project name visible before the reader navigates.
-              */}
+          {!collapsed && badges}
+          {/* #5064 (the #2064 D4 seam): Tasks Waiting on you, from the
+              Overview's own rule (`useProjectsWaitingOnYou`). */}
+          {waitingOnYou > 0 && (
+            <span className="sidebar__project-waiting">
               <span
-                className="sidebar__project-live-count"
+                className="sidebar__project-waiting-dot"
                 aria-hidden="true"
-                title={liveLabel}
-              >
-                {liveCount}
+              />
+              <span className="sidebar__project-live-label">
+                {`Waiting on you: ${waitingOnYou}`}
               </span>
-              <span className="sidebar__project-live-label">{liveLabel}</span>
-            </>
+            </span>
           )}
-          {/* SEAM — per-project attention count (#2064, design record D4).
-              It belongs HERE, after the live-work count, as the "1 needs you"
-              half of the row the record draws. #2064 closed without wiring
-              one (its unused hook was deleted), so nothing renders here: a
-              count with no derivation behind it is a number that means
-              whatever the reader assumes.
-
-              SEAM — member avatars (#2066, design record D5). The record
+          {/* SEAM — member avatars (#2066, design record D5). The record
               draws "[J][M]" here, but presence is what it draws: the avatars
               of members PRESENT. No per-project presence authority exists in
               the UI today — the live-activity read is a host-wide
@@ -277,6 +323,11 @@ export function ProjectSidebarRow({
               Rendering stand-in avatars would claim people are here, so this
               renders nothing at all until #2066 ships the authority. */}
         </button>
+        {collapsed && (liveCount > 0 || attentionCount > 0) && (
+          <span className="sidebar__rail-project-badges" aria-hidden="true">
+            {badges}
+          </span>
+        )}
         {isActive && !collapsed && (
           <button
             type="button"
@@ -324,24 +375,13 @@ export function ProjectSidebarRow({
             isError={isError}
             retry={() => void refetch()}
           />
-          <LazyBoundary
-            load={loadProjectSidebarConversations}
-            pending={null}
-            componentProps={{
-              project: {
-                slug: project.slug,
-                id: project.id,
-                name: project.name,
-              },
-              onNavigate,
-            }}
-          />
+          {conversations}
         </>
       )}
       <SidebarPopover
         open={collapsed && menuOpen}
         anchorRef={triggerRef}
-        label={`${project.name} views`}
+        label={projectViewsLabel}
         onClose={closeMenu}
       >
         <div className="sidebar__popover-heading">{project.name}</div>
@@ -352,6 +392,7 @@ export function ProjectSidebarRow({
           isError={isError}
           retry={() => void refetch()}
         />
+        {conversations}
         <button
           type="button"
           className="menu-row sidebar__popover-project-action"
@@ -395,5 +436,12 @@ function ProjectSidebarViews({
       />
     );
   if (chips.length === 0) return null;
-  return <ProjectLayoutChips projectName={projectName} chips={chips} />;
+  return (
+    <LazyBoundary
+      load={loadProjectLayoutChips}
+      componentProps={{ projectName, chips }}
+      pending={<SkeletonBlock count={2} label="Loading views" />}
+      shareAcrossMounts
+    />
+  );
 }

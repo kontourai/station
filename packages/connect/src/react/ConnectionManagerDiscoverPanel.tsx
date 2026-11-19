@@ -1,33 +1,13 @@
-import React from 'react';
 import type { ConnectionCandidateProviderResult } from '../core/connectionCandidates';
+import {
+  httpConnectionConsentRequired,
+  httpDevelopmentOrigin,
+} from '../core/hostInput';
 import type {
   ConnectionCandidate,
   ConnectionCandidateSource,
 } from '../core/types';
-
-const primaryBtnStyle: React.CSSProperties = {
-  padding: '8px 14px',
-  minHeight: 44,
-  fontSize: 13,
-  fontWeight: 600,
-  borderRadius: 8,
-  border: 'none',
-  cursor: 'pointer',
-  background: 'var(--accent-primary, #3b82f6)',
-  color: 'var(--text-on-accent, white)',
-};
-
-const secondaryBtnStyle: React.CSSProperties = {
-  padding: '10px 20px',
-  minHeight: 44,
-  fontSize: 13,
-  fontWeight: 500,
-  borderRadius: 8,
-  border: '1px solid var(--border-primary, #333)',
-  cursor: 'pointer',
-  background: 'transparent',
-  color: 'var(--text-primary, #e5e5e5)',
-};
+import './ConnectionManagerModal.css';
 
 const SOURCE_LABEL: Record<ConnectionCandidateSource, string> = {
   'lan-dns-sd': 'Local network',
@@ -43,7 +23,7 @@ interface ConnectionManagerDiscoverPanelProps {
   existingUrls: Set<string>;
   onRefresh: () => void;
   onSelect: (candidate: ConnectionCandidate) => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 export function ConnectionManagerDiscoverPanel({
@@ -73,50 +53,19 @@ export function ConnectionManagerDiscoverPanel({
   );
   const failed = providers.some((provider) => provider.status === 'failed');
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <p
-        style={{
-          margin: 0,
-          fontSize: 13,
-          lineHeight: 1.5,
-          color: 'var(--text-secondary, #999)',
-        }}
-      >
+    <div className="station-connect-discovery">
+      <p className="station-connect-discovery__intro">
         Choose your computer. You’ll still need to approve access there.
       </p>
 
       {providerCount === 0 ? (
-        <div
-          role="status"
-          style={{
-            border: '1px solid var(--border-primary, #333)',
-            borderRadius: 8,
-            padding: 14,
-            fontSize: 13,
-            lineHeight: 1.5,
-            color: 'var(--text-secondary, #999)',
-          }}
-        >
+        <div role="status" className="station-connect-discovery__empty">
           Nearby discovery is not available here. Scan a QR code, enter a
           pairing code, or use a Station address instead.
         </div>
       ) : (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            flexWrap: 'wrap',
-          }}
-        >
-          <span
-            role="status"
-            style={{
-              flex: '1 1 180px',
-              fontSize: 13,
-              color: 'var(--text-secondary, #999)',
-            }}
-          >
+        <div className="station-connect-discovery__toolbar">
+          <span role="status" className="station-connect-discovery__status">
             {discovering
               ? 'Looking for nearby Stations…'
               : candidates.length > 0
@@ -137,9 +86,11 @@ export function ConnectionManagerDiscoverPanel({
           </span>
           <button
             type="button"
-            onClick={onRefresh}
-            disabled={discovering}
-            style={secondaryBtnStyle}
+            onClick={() => {
+              if (!discovering) onRefresh();
+            }}
+            aria-disabled={discovering || undefined}
+            className="station-connect-btn station-connect-btn--quiet"
           >
             {discovering ? 'Checking…' : 'Check again'}
           </button>
@@ -147,73 +98,75 @@ export function ConnectionManagerDiscoverPanel({
       )}
 
       {candidates.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="station-connect-discovery__candidates">
           {candidates.map((candidate) => {
             const alreadyAdded = existingUrls.has(candidate.url);
+            const needsHttpConsent =
+              !alreadyAdded &&
+              httpConnectionConsentRequired(candidate.url) &&
+              !httpDevelopmentOrigin(candidate.url);
             return (
               <div
                 key={candidate.id}
-                style={{
-                  background: 'var(--bg-primary, #0a0a0a)',
-                  border: '1px solid var(--border-primary, #333)',
-                  borderRadius: 8,
-                  padding: 12,
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  gap: 10,
-                }}
+                className="station-connect-discovery__candidate"
               >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>
-                    {candidate.name}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 2,
-                      fontSize: 11,
-                      color: 'var(--text-secondary, #999)',
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
-                    {SOURCE_LABEL[candidate.source]} · Unverified · Access not
-                    granted
-                    <br />
-                    {candidate.url}
-                    <br />
-                    {candidate.url.startsWith('http:')
-                      ? 'Unencrypted HTTP · requires your consent'
-                      : 'HTTPS · still requires access approval'}
-                  </div>
+                <div className="station-connect-discovery__candidate-name">
+                  {candidate.name}
                 </div>
-                {alreadyAdded ? (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: 'var(--text-secondary, #999)',
-                    }}
-                  >
-                    Saved
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    aria-label={`Request access to ${candidate.name}`}
-                    onClick={() => onSelect(candidate)}
-                    style={primaryBtnStyle}
-                  >
-                    Request access
-                  </button>
+                <p className="station-connect-discovery__candidate-meta">
+                  {SOURCE_LABEL[candidate.source]} · Unverified
+                  {!alreadyAdded && ' · Access not granted'}
+                </p>
+                {candidate.url.startsWith('http:') && (
+                  <p className="station-connect-discovery__http-warning">
+                    Unencrypted HTTP
+                    {needsHttpConsent && ' · consent required'}
+                  </p>
                 )}
+                <div className="station-connect-discovery__candidate-actions">
+                  <details className="station-connect-discovery__identity">
+                    <summary
+                      aria-label={`Connection details for ${candidate.name}`}
+                    >
+                      Connection details
+                    </summary>
+                    <dl>
+                      <dt>Full name</dt>
+                      <dd>{candidate.name}</dd>
+                      <dt>Station address</dt>
+                      <dd>{candidate.url}</dd>
+                    </dl>
+                  </details>
+                  {alreadyAdded ? (
+                    <span className="station-connect-discovery__saved">
+                      Saved
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`Request access to ${candidate.name}`}
+                      onClick={() => onSelect(candidate)}
+                      className="station-connect-btn station-connect-btn--primary"
+                    >
+                      Request access
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
       )}
 
-      <button type="button" onClick={onBack} style={secondaryBtnStyle}>
-        Back
-      </button>
+      {onBack && (
+        <button
+          type="button"
+          className="station-connect-btn station-connect-btn--quiet station-connect-discovery__back"
+          onClick={onBack}
+        >
+          Back
+        </button>
+      )}
     </div>
   );
 }

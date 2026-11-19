@@ -1,6 +1,8 @@
 /** @vitest-environment jsdom */
 import { resolve } from 'node:path';
+import { _setApiBase } from '@kontourai/station-sdk';
 import { chromium } from '@playwright/test';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import {
   afterAll,
@@ -17,6 +19,8 @@ import {
   resolveCssImports,
 } from '../../../../../tests/helpers/css-cascade-fixture';
 
+import { stationQueryDefaults } from '../../../lib/queryDefaults';
+
 const hooks = vi.hoisted(() => ({
   apply: vi.fn(),
   preview: vi.fn(),
@@ -28,6 +32,7 @@ const hooks = vi.hoisted(() => ({
   resetReview: vi.fn(),
   refetchSources: vi.fn(),
   sourcesError: false,
+  useSources: vi.fn(),
   applyError: false,
   /** Set while a test renders the stepper before any preview exists. */
   noPreviewYet: false,
@@ -61,13 +66,13 @@ const preview = {
 };
 
 vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
-  useSetupImportSourcesQuery: () => ({
+  useSetupImportSourcesQuery: hooks.useSources.mockImplementation(() => ({
     data: [{ id: 'codex-prompts', available: true }],
     isLoading: false,
     isError: hooks.sourcesError,
     error: new Error('Could not check existing setup'),
     refetch: hooks.refetchSources,
-  }),
+  })),
   useCreateSetupImportPreviewMutation: () => ({
     data: hooks.noPreviewYet ? undefined : preview,
     isPending: false,
@@ -112,6 +117,75 @@ describe('ExistingSetupImportStepper', () => {
     hooks.review.mockReset();
     hooks.apply.mockReset();
   });
+
+  test.each([403, 503] as const)(
+    'handles HTTP %i in the real source query',
+    async (status) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/setup-imports-query')
+      >('@kontourai/station-sdk/setup-imports-query');
+      const prior = hooks.useSources.getMockImplementation()!;
+      hooks.useSources.mockImplementation(actual.useSetupImportSourcesQuery);
+      _setApiBase('https://station.test');
+      const fetch = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          Response.json(
+            {
+              error: {
+                code: status === 403 ? 'insufficient_scope' : 'unavailable',
+              },
+            },
+            { status },
+          ),
+        )
+        .mockImplementation(async () =>
+          status === 403
+            ? Response.json(
+                { error: { code: 'insufficient_scope' } },
+                { status },
+              )
+            : Response.json({
+                success: true,
+                data: [{ id: 'codex-prompts', available: true }],
+              }),
+        );
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: { ...stationQueryDefaults(), retryDelay: 0 },
+        },
+      });
+      try {
+        render(
+          <QueryClientProvider client={client}>
+            <ExistingSetupImportStepper />
+          </QueryClientProvider>,
+        );
+        if (status === 403) {
+          await screen.findByRole('alert');
+          expect(fetch).toHaveBeenCalledTimes(1);
+          expect(screen.getByRole('alert').textContent).toContain(
+            'Ask the Station operator',
+          );
+          expect(
+            screen.queryByRole('button', { name: 'Retry setup check' }),
+          ).toBeNull();
+          expect(
+            screen.queryByRole('button', { name: 'Apply reviewed import' }),
+          ).toBeNull();
+        } else {
+          await screen.findByRole('heading', {
+            name: 'Bring in existing setup',
+          });
+          expect(fetch).toHaveBeenCalledTimes(2);
+        }
+      } finally {
+        client.clear();
+        fetch.mockRestore();
+        hooks.useSources.mockImplementation(prior);
+      }
+    },
+  );
 
   test('offers a source-check retry instead of hiding a failed read', () => {
     hooks.sourcesError = true;

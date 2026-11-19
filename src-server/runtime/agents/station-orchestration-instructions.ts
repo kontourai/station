@@ -25,6 +25,7 @@ export const STATION_INSTRUCTION_SECTION_MAX_BYTES = 3_500;
 export const STATION_INSTRUCTIONS_MAX_BYTES = 12_000;
 
 export type StationInstructionSectionId =
+  | 'engine-setup'
   | 'orchestration'
   | 'delegated-child'
   | 'sessions'
@@ -112,23 +113,23 @@ function orchestrationSection(
 ): Section | undefined {
   if (!has('delegate_task')) return undefined;
   const lines: string[] = [
-    'Ordinary coding needs no Station tools. Use them when the work needs another Agent, engine, model, Project or Station, or when the user asks.',
-    'For a quick helper on your own engine in this checkout, use your own subagent tool. Use `delegate_task` when the work needs another Agent or engine, a model you do not have, another Project or saved environment, or a resumable Task the user can open in Station.',
+    'Use Station tools when asked or when work needs another Agent, engine, model, Project or Station; ordinary coding needs none.',
+    'Use your own subagent for a quick helper on this engine/checkout. Use `delegate_task` for another Agent/engine, unavailable model, another Project/saved environment, or resumable Task.',
   ];
   if (has('list_delegation_targets')) {
     lines.push(
-      `Before your first \`delegate_task\` in this conversation, call \`list_delegation_targets\` once: it lists Agents, readiness, engines and models. Call it again only after a refusal or when the user names another target. If it is refused, ${has('list_agents') ? 'use `list_agents` and ' : ''}delegate only to an Agent the user named.`,
+      `Before the first \`delegate_task\`, call \`list_delegation_targets\` once for Agents/readiness/engines/models; repeat only after refusal or a user-named target change. If it is refused, ${has('list_agents') ? 'use `list_agents` and ' : ''}delegate only to an Agent the user named.`,
     );
   } else if (has('list_agents')) {
     lines.push(
-      'Before your first `delegate_task`, call `list_agents` once and delegate only to an Agent it lists or the user names; readiness and models cannot be checked from here.',
+      'Before the first `delegate_task`, call `list_agents` once. Use a listed or user-named Agent; readiness/models are unknown.',
     );
   } else {
     lines.push('Delegate only to an Agent the user named.');
   }
   lines.push(
-    'If the target is missing or not ready, say so. Never switch Agent or model unasked, and never fall back to running `station`, `claude` or `codex` in a shell.',
-    'Give each new `delegate_task` a fresh `clientTurnId`; reuse it only to retry the identical call. A new review or re-check is a new `delegate_task` with its own brief.',
+    'Report missing/unready targets. Never switch Agent/model unasked or fall back to shell `station`, `claude` or `codex`.',
+    'Use a fresh `clientTurnId` per `delegate_task`; reuse only for an identical retry. New review/re-check: new task/brief.',
   );
   const follow: string[] = [];
   if (has('continue_task'))
@@ -136,7 +137,7 @@ function orchestrationSection(
   if (has('get_task')) {
     follow.push(
       has('get_task_events')
-        ? 'Read state with `get_task` and `get_task_events`, passing back `nextCursor`.'
+        ? 'Read `get_task` and `get_task_events`; pass `nextCursor`.'
         : 'Read state with `get_task`.',
     );
   } else if (has('get_task_events')) {
@@ -147,13 +148,11 @@ function orchestrationSection(
   if (follow.length > 0) lines.push(follow.join(' '));
   if (has('wait_session')) {
     lines.push(
-      'To wait for a task on this Station, call `wait_session` with its `sessionId` and `until: "turn-settled"`; when it times out, call it again. Never poll with sleep or shell loops.',
+      'Wait with `wait_session`, its `sessionId` and `until: "turn-settled"`; repeat on timeout. Never poll with sleep/shell loops.',
     );
   }
   if (has('interrupt_task')) {
-    lines.push(
-      'Stop a task you replaced or no longer need with `interrupt_task`.',
-    );
+    lines.push('Use `interrupt_task` for replaced or unneeded tasks.');
   }
   return {
     id: 'orchestration',
@@ -178,12 +177,12 @@ function sessionsSection(
   const lines: string[] = [];
   if (has('send_to_session')) {
     lines.push(
-      "`send_to_session` messages a Session in your Project; it runs under that Session's own Agent settings. Give each new message a fresh `requestKey` and reuse it only to retry. `session_busy` means nothing was sent; `indeterminate` means it may have arrived, so do not resend under a new key.",
+      "`send_to_session` uses the Project Session's Agent settings. Fresh `requestKey` per message; reuse only to retry. `session_busy`: unsent. `indeterminate`: may have arrived; never resend with a new key.",
     );
   }
   if (has('wait_session')) {
     lines.push(
-      `${has('send_to_session') ? 'Then call' : 'Call'} \`wait_session\` with the returned \`sessionId\`, \`afterEventCursor\` set to its \`eventCursor\`, and \`until: "turn-settled"\`. If the answer is \`superseded\`, wait on \`currentSessionId\`.`,
+      `${has('send_to_session') ? 'Then call' : 'Call'} \`wait_session\` with \`sessionId\`, \`afterEventCursor\` = \`eventCursor\`, \`until: "turn-settled"\`; on \`superseded\`, wait on \`currentSessionId\`.`,
     );
   }
   if (has('interrupt_session')) {
@@ -204,7 +203,7 @@ function sessionsSection(
   if (lines.length === 0) return undefined;
   return {
     id: 'sessions',
-    text: bulleted('## Other Sessions in this Project', lines),
+    text: bulleted('## Project Sessions', lines),
   };
 }
 
@@ -212,7 +211,7 @@ function repliesSection(has: (...n: string[]) => boolean): Section | undefined {
   const lines: string[] = [];
   if (has('html_preview', 'html_render')) {
     lines.push(
-      'For a chart or visual the user should see here, reach for `html_preview` then `html_render` by default. If an Artifact tool refuses with an auth-token message, publish the same page with `html_render` instead of leaving a local file. Do not start a server for it.',
+      'For visuals, reach for `html_preview` then `html_render` by default. On Artifact auth-token refusal, use `html_render` for the same page; no local-file-only result or server.',
     );
   }
   if (has('schedule_wake_up')) {
@@ -233,7 +232,7 @@ function repliesSection(has: (...n: string[]) => boolean): Section | undefined {
   if (lines.length === 0) return undefined;
   return {
     id: 'replies',
-    text: bulleted('## Replying through Station', lines),
+    text: bulleted('## Station replies', lines),
   };
 }
 
@@ -243,7 +242,7 @@ function browserSection(): Section {
     text: [
       '## Station browser',
       '',
-      'When the task asks for browser work, the `browser_*` tools drive the Browser pane the user can watch. Call `browser_status` first and `browser_open` if you have no session. Read the page with `browser_snapshot` and act by its element refs, not coordinates. Do not open the browser just to check your own edit unless asked. Close sessions you opened with `browser_close` before you finish, unless the user is using them.',
+      'For requested browser work, use the visible Browser pane: `browser_status`, then `browser_open` if needed. Read with `browser_snapshot`; act by element refs, not coordinates. Never open it to check your edit unasked. Finish with `browser_close` for sessions you opened, unless the user uses them.',
     ].join('\n'),
   };
 }
@@ -252,7 +251,7 @@ function devicesSection(has: (...n: string[]) => boolean): Section | undefined {
   if (!has('device_open')) return undefined;
   const look = ['device_screenshot', 'device_snapshot'].filter((n) => has(n));
   const sentences: string[] = [
-    `For an iOS Simulator or Android Emulator, use the device tools so the user can watch in the Device pane: ${has('device_list') ? '`device_list`, then ' : ''}\`device_open\` with its id (call again while it reports starting).`,
+    `For a visible iOS Simulator/Android Emulator, use ${has('device_list') ? '`device_list`, then ' : ''}\`device_open\` with its id (call again while it reports starting).`,
   ];
   const lookAct: string[] = [];
   if (look.length > 0) {
@@ -263,11 +262,11 @@ function devicesSection(has: (...n: string[]) => boolean): Section | undefined {
   }
   if (lookAct.length > 0) sentences.push(`${lookAct.join('; ')}.`);
   sentences.push(
-    'Do not drive the UI with `xcrun simctl`, `adb` or ssh scripts; they stay fine for builds and logs. If a device tool is refused, quote the refusal and stop.',
+    'No UI driving via `xcrun simctl`, `adb` or ssh; builds/logs are fine. On device-tool refusal, quote it and stop.',
   );
   if (has('delegate_task')) {
     sentences.push(
-      'When you delegate device work, pass the device id and tell the child to use `device_open`.',
+      'When you delegate device work, pass its id; the child uses `device_open`.',
     );
   }
   return {
@@ -326,6 +325,19 @@ export function composeStationInstructions(
     }
   } else {
     push(orchestrationSection(has));
+  }
+  if (has('list_engine_setup')) {
+    const lines = [
+      'For engine setup, call `list_engine_setup`; reuse its id/setupPath and saved connection. Preview off: give the Settings path; never enable it.',
+      has('open_engine_setup')
+        ? 'Use `open_engine_setup` for that id; check navigation or give setupPath.'
+        : 'Give setupPath to the person.',
+      'The person installs/signs in on the Station host (may differ from the client), reviews launch arguments in place, and chooses Add Station tools if needed. Never request OAuth codes/tokens in chat, edit Station home config, or bypass with shell login.',
+      'Ask the person to return here; re-read `list_engine_setup`. Handshake, sign-in, chat and Station-tool delivery are separate facts; report only observed facts.',
+    ];
+    if (has('list_agents'))
+      lines.push('Read `list_agents` after setup; use its actual Agent id.');
+    push({ id: 'engine-setup', text: bulleted('## Engine setup', lines) });
   }
   push(sessionsSection(has));
   push(repliesSection(has));

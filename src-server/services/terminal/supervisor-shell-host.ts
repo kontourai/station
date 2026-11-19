@@ -234,6 +234,33 @@ export class SupervisorShellHost implements ShellHost {
   ) {}
 
   async spawn(input: Parameters<ShellHost['spawn']>[0]): Promise<IPtyProcess> {
+    if (input.maxRuntimeMs !== undefined) {
+      let capabilities: unknown;
+      try {
+        capabilities = await this.channel.requestWorkload({
+          op: 'capabilities',
+        });
+      } catch {
+        throw Object.assign(
+          new Error(
+            'Update the Station host to run installers with a bounded lifetime.',
+          ),
+          { code: 'terminal-lifetime-unsupported' },
+        );
+      }
+      if (
+        !capabilities ||
+        typeof capabilities !== 'object' ||
+        !('maxRuntimeMs' in capabilities) ||
+        capabilities.maxRuntimeMs !== true
+      )
+        throw Object.assign(
+          new Error(
+            'Update the Station host to run installers with a bounded lifetime.',
+          ),
+          { code: 'terminal-lifetime-unsupported' },
+        );
+    }
     // A named launch (an agent CLI, an engine sign-in, an agent's command)
     // runs as the workload itself, never replaced by a fallback shell.
     const command = input.kind === 'command';
@@ -248,6 +275,7 @@ export class SupervisorShellHost implements ShellHost {
         : terminalShellEnvironment(input.launch?.env),
     ))
       if (value !== undefined) env[key] = value;
+    await input.authorize?.();
     const info = (await this.channel.requestWorkload({
       op: 'spawn',
       workloadId: input.terminalId,
@@ -261,6 +289,9 @@ export class SupervisorShellHost implements ShellHost {
       cols: input.cols,
       rows: input.rows,
       journal: input.journal,
+      ...(input.maxRuntimeMs !== undefined
+        ? { maxRuntimeMs: input.maxRuntimeMs }
+        : {}),
       ...(input.kind === 'command' && {
         outputCapBytes: input.outputCapBytes,
       }),

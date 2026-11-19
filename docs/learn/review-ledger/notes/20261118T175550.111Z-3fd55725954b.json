@@ -1,0 +1,11 @@
+{
+  "revision": "f39298fd4106fd1096f70aae336cbeddd7aa39a0",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"The Spatial Board cleanup addition is confined to its own API section. The Terminal Socket operator transport anchor and its credit protocol are still the referenced authority.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The revised personal Board cleanup section documents its existing endpoint and fresh observation. The guide's API and experimental S3 links still point to their intended references.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the shipped Corpus bundle from the module map. Its sole topic change is Personal Work Board and describes mount refresh, conflict recovery, and request-bound cleanup.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

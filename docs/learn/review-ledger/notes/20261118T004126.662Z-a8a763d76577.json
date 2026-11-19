@@ -1,0 +1,7 @@
+{
+  "revision": "9329692199ecdf9212f1e8a9ceb99c8acdbf369b",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed the confinement-design dependency after bubblewrap short-root hide propagation. The automation document links default approval-mode authority; intake, dispatch and persistence are unchanged, so no prose update is needed.","inputs":["docs/design/automations.md"]}
+  ]
+}

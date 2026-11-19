@@ -1892,6 +1892,47 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Setup reads expose an owner-scoped recipe/eligibility projection. The
+  // installer includes terminal metadata only after its command/terminal guard.
+  ...(
+    [
+      '/acp/setup',
+      '/acp/registry/:id/install-terminal',
+      '/acp/connections/:id/station-tools',
+    ] as const
+  ).map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:engine-setup-read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
+  // Preserve the ACP operate tier. Handlers additionally require terminal and
+  // host-command authority, a current personal-owner device, and the attempt id.
+  ...(['POST', 'DELETE'] as const).map(
+    (method): PairingScopeRouteRule => ({
+      id: `/acp/registry/:id/install-terminal:${method.toLowerCase()}`,
+      method,
+      prefix: '/acp/registry/:id/install-terminal',
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
+  // Agent mutations stay person-only; launcher repair also checks host-command authority.
+  ...(['station-tools', 'recommended-setup'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-setup-operate`,
+      method: 'POST',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+      origin: 'explicit',
+    }),
+  ),
   // Installing a managed engine downloads and lays down code Station runs:
   // an operate-tier action, with explicit consent in the body.
   {
@@ -3762,6 +3803,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // (404 otherwise) and keyed on the verified station-control caller's own
     // Task binding, so a paired credential reaches nothing through it.
     { method: 'GET', path: '/api/orchestration/station-control/task-brief' },
+    // #5067 `list_project_library` and `read_project_library_file`'s REST
+    // side. Internal-only at the route (404 otherwise) and keyed on the
+    // Project Station recorded for the verified caller's own Session, so a
+    // paired credential reaches nothing through them. Reads only.
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-library',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-library/file',
+    },
     // #4003 `task_summary_update` and `task_record`'s REST side.
     // Internal-only at the route like the leaf above; the Task they write is
     // the verified caller Session's own bound Task, and each write is one
@@ -3909,6 +3962,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/api/me/appearance/proposal' },
     { method: 'POST', path: '/api/me/appearance/proposal/keep' },
     { method: 'POST', path: '/api/me/appearance/proposal/report' },
+    { method: 'GET', path: '/api/me/appearance/library' },
+    { method: 'POST', path: '/api/me/appearance/library' },
+    { method: 'PATCH', path: '/api/me/appearance/library' },
+    { method: 'DELETE', path: '/api/me/appearance/library' },
     { method: 'GET', path: '/api/me/notifications' },
     { method: 'POST', path: '/api/me/notifications/:id/read' },
     { method: 'DELETE', path: '/api/me/notifications/:id' },
@@ -4004,6 +4061,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #5064 a person reopens a Task the Project Overview auto-resolved. It
+    // writes one timestamp (`overviewReopenedAt`) on that Task's own record:
+    // no status transition, no dispatch, no external or provider effect, and
+    // it leaves `updatedAt` alone. That is narrower than close-on-merge just
+    // above, which can move a Task to `done`, and than the family's status
+    // change, so the task family's operate tier is the intended scope and a
+    // read-tier device cannot call it. It is also refused while the
+    // `project-overview` Feature Preview is off; no station-control tool
+    // reaches it.
+    { method: 'POST', path: '/api/tasks/:taskId/overview-reopen' },
     // #5066 a Task's pull request watch: what it watches, its fix attempts
     // and refused agent actions (read tier), and a person's choice to watch
     // or Stop watching (operate tier, that Task's own record). No
@@ -5040,6 +5107,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // root/content-currentness checks still fence both family-tier leaves.
     { method: 'GET', path: '/api/projects/:slug/working-configuration' },
     { method: 'PUT', path: '/api/projects/:slug/working-configuration' },
+    // #5067: the Project Library. Files this Station keeps for the Project
+    // (its Library folder and its Tasks' kept outputs), behind the
+    // `project-library` preview and the current Project operator. Upload and
+    // remove write only inside the Project's Library folder; no command,
+    // model call or other-Station data. Reads take the read tier, writes the
+    // operate tier, as their family does.
+    { method: 'GET', path: '/api/projects/:slug/library' },
+    { method: 'GET', path: '/api/projects/:slug/library/uploads/content' },
+    { method: 'PUT', path: '/api/projects/:slug/library/uploads' },
+    { method: 'DELETE', path: '/api/projects/:slug/library/uploads' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/library/outputs/:outputId/content',
+    },
     // How far the Project's checkout is behind its upstream, from local git
     // refs: its branch, upstream name, commit counts and an update command
     // naming the working directory `GET /:slug` already returns. A read that

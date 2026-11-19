@@ -57,6 +57,7 @@ import { engineStartupFailureGuidance } from '@kontourai/station-contracts/provi
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import {
   type CanonicalRuntimeEventBase,
+  describeAcpTurnStopFailure,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
@@ -93,6 +94,7 @@ import {
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
+import { PROVIDER_PROVEN_FINISH_REASONS } from '../providers/finish-reason-authority.js';
 import {
   formatProviderQuotaEventText,
   formatProviderQuotaReasonDetail,
@@ -143,6 +145,7 @@ import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
 } from '../services/orchestration/delegation-files.js';
+import { assertInheritedDelegationToolPolicy } from '../services/orchestration/delegation-tool-policy.js';
 import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
@@ -1362,10 +1365,21 @@ export function delegatedTaskReason(
   // The CURRENT outcome is the newest terminal event, not the newest budget
   // code anywhere in history: a prior budget failure followed by a newer
   // turn's terminal (or a still-running turn) must not reuse the old code.
-  const terminal = reversed.find(isDelegationTerminalEvent);
+  const terminal = reversed.find((event) => {
+    if (!isDelegationTerminalEvent(event)) return false;
+    if (session.lifecycleState !== 'failed') return true;
+    if (event.method === 'turn.aborted') return false;
+    return (
+      event.method !== 'turn.completed' ||
+      Boolean(describeAcpTurnStopFailure(event)) ||
+      (typeof event.finishReason === 'string' &&
+        PROVIDER_PROVEN_FINISH_REASONS.has(event.finishReason))
+    );
+  });
   if (!terminal) return undefined;
   // A clean completion ends the story even when older errors linger.
-  if (terminal.method === 'turn.completed') return undefined;
+  const acpFailure = describeAcpTurnStopFailure(terminal);
+  if (terminal.method === 'turn.completed' && !acpFailure) return undefined;
   const terminalCode =
     (terminal.method === 'runtime.error' ||
       terminal.method === 'runtime_error') &&
@@ -1387,6 +1401,10 @@ export function delegatedTaskReason(
     typeof newestStartTurnId !== 'string' ||
     typeof terminal.turnId !== 'string' ||
     newestStartTurnId === terminal.turnId;
+  if (acpFailure)
+    return terminalScopedToLatestTurn
+      ? { code: acpFailure.code, detail: acpFailure.message }
+      : undefined;
   const startupGuidance = engineStartupFailureGuidance(terminalCode);
   if (startupGuidance && terminalCode) {
     if (!terminalScopedToLatestTurn) return undefined;
@@ -4177,9 +4195,9 @@ function optionalNumber(value: unknown): number | undefined {
 /**
  * #225: the usage fields a delegated-task event carries, keyed by the
  * canonical `TokenUsageUpdatedEvent` so a field added to the contract is a
- * compile error here instead of a silent drop. Pricing snapshots and serving
- * routes stay on the canonical receipt; this projection carries token counters
- * and context occupancy. `reportedCostUsd` has a per-provider scope (per-turn
+ * compile error here instead of a silent drop. Pricing, serving routes and
+ * served-model observations stay on canonical usage records. This projection
+ * carries token counters and context occupancy. `reportedCostUsd` has a per-provider scope (per-turn
  * versus cumulative) that this per-event projection cannot state;
  * `reportedCost` is a cost in the engine's own unit, not a counter, and stays
  * on the canonical event too.
@@ -4190,6 +4208,7 @@ type DelegatedUsageField = Exclude<
   | 'method'
   | 'pricingSnapshot'
   | 'servingRoute'
+  | 'servedModelObservation'
   | 'reportedCostUsd'
   | 'reportedCost'
 >;
@@ -4280,6 +4299,15 @@ export function projectDelegatedTaskEvent(
 ): DelegatedTaskEvent {
   const event = record(rawEvent);
   const common = commonTaskEvent(sequence, event);
+  const acpFailure = describeAcpTurnStopFailure(event);
+  if (acpFailure)
+    return {
+      ...common,
+      kind: 'runtime',
+      severity: 'error',
+      text: acpFailure.message,
+      retriable: false,
+    };
   switch (event.method) {
     case 'content.text-delta':
       return { ...common, kind: 'message', ...visibleText(event.delta) };
@@ -5662,7 +5690,11 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
-  input = { ...input, clientTurnId: input.clientTurnId ?? randomUUID() };
+  assertInheritedDelegationToolPolicy(input.delegation);
+  input = snapshotTurnSubmissionFields(
+    { ...input, clientTurnId: input.clientTurnId ?? randomUUID() },
+    ['target', 'createRequestIntent', 'taskRoomAttachments'],
+  );
   if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
     throw new Error('Task attachments require Task room invocation admission.');
   if (
@@ -6818,6 +6850,7 @@ export async function executeExecutionTargetMessage(
   remote?: RemoteStationForwarder,
   context?: ForegroundMessageContext,
 ): Promise<ForegroundMessageHandle> {
+  assertInheritedDelegationToolPolicy(input.delegation);
   context = context ? { ...context } : undefined;
   if (input.clientTurnId || input.handoffIntent)
     input = snapshotTurnSubmissionFields(input, [

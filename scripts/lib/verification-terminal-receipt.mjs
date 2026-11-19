@@ -73,6 +73,9 @@ function boundedSummaryEnvelope(summary) {
     terminal: summary?.terminal ?? 'infrastructure_error',
     counts: summary?.counts ?? null,
     cleanup: summary?.cleanup ?? null,
+    ...(summary?.phaseAdmission
+      ? { phaseAdmission: boundedText(summary.phaseAdmission, 512) }
+      : {}),
     ...(summary?.failingStep
       ? { failingStep: boundedText(summary.failingStep, 128) }
       : {}),
@@ -180,6 +183,23 @@ function boundedSummaryEnvelope(summary) {
         }))
       : [],
   };
+  if (Array.isArray(summary?.diagnosticExcerpts)) {
+    const diagnostics = summary.diagnosticExcerpts.filter(
+      (excerpt) => typeof excerpt === 'string',
+    );
+    for (const excerpt of diagnostics.slice(0, 32)) {
+      const diagnosticExcerpts = [
+        ...(envelope.diagnosticExcerpts ?? []),
+        boundedText(excerpt, 512),
+      ];
+      if (
+        Buffer.byteLength(JSON.stringify({ ...envelope, diagnosticExcerpts })) >
+        SUMMARY_ENVELOPE_CAP
+      )
+        break;
+      envelope.diagnosticExcerpts = diagnosticExcerpts;
+    }
+  }
   return Buffer.byteLength(JSON.stringify(envelope)) > SUMMARY_ENVELOPE_CAP
     ? {
         terminal: envelope.terminal,
@@ -365,6 +385,7 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
     // `createVerificationReceipt`, so this is what makes the runner's own
     // final word survive into the canonical receipt a later reader opens.
     const infrastructureCause = ownerInfrastructureCause(raw, reportedResult);
+    const phaseAdmission = raw?.phaseAdmission;
     return {
       result: infrastructureCause
         ? { ...reportedResult, infrastructureCause }
@@ -372,46 +393,50 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
       artifacts,
       outputTruncated,
       attachmentOmissions,
-      summary: summarizeVerificationOutput({
-        stdout: raw?.output?.stdout?.text ?? '',
-        stderr: raw?.output?.stderr?.text ?? '',
-        // The SAME STRING the receipt carries -- this is the whole of the
-        // "one cause" guarantee, and it is an identity rather than a claim
-        // about two transforms agreeing (station#1827 fix round 2).
-        //
-        // The first round threaded a normalized value here and let the
-        // summarizer normalize it again, which read as belt-and-braces and
-        // was not: at the time `normalizeDeclaredCause` was not idempotent, so
-        // a cause whose bound landed on a token prefix came back different and
-        // the two artifacts named different causes for one run. It IS
-        // still is not, and the design does not rest on it being so: the
-        // summarizer uses what it is given, and this is the only derivation.
-        //
-        // What that guarantees, stated no wider than it is true. Whenever the
-        // MARKER is present the excerpt was not budget-truncated, and
-        // `boundedSummaryEnvelope` copies this one value into both of its
-        // fields without transforming it -- so receipt field, summary marker
-        // and envelope marker are the same bytes because nothing recomputed
-        // them, not because a recomputation happened to agree.
-        //
-        // When the marker is ABSENT the excerpt may be a budget-truncated
-        // prefix that the envelope re-redacts through `boundedText`, and no
-        // such claim is made about it. The reconcile branch below separately
-        // wraps the cause in a sentence, which is a rendering of the same
-        // declaration rather than a second one.
-        ...(infrastructureCause ? { infrastructureCause } : {}),
-        // exitCode and truncated are what let the reporter tell a real
-        // non-pass from a `completed` status, and a prefix-capture from a
-        // real exit (review of station#1871). Dropping them here is what
-        // made the predicate on the other side unfixable.
-        terminal: {
-          status: reportedResult.status,
-          exitCode: reportedResult.exitCode ?? null,
-          truncated: outputTruncated,
-        },
-        counts: reportedResult.counts,
-        cleanup,
-      }),
+      summary: {
+        ...summarizeVerificationOutput({
+          // The captured output belongs entirely to earlier completed phases.
+          stdout: phaseAdmission ? '' : (raw?.output?.stdout?.text ?? ''),
+          stderr: phaseAdmission ? '' : (raw?.output?.stderr?.text ?? ''),
+          // The SAME STRING the receipt carries -- this is the whole of the
+          // "one cause" guarantee, and it is an identity rather than a claim
+          // about two transforms agreeing (station#1827 fix round 2).
+          //
+          // The first round threaded a normalized value here and let the
+          // summarizer normalize it again, which read as belt-and-braces and
+          // was not: at the time `normalizeDeclaredCause` was not idempotent, so
+          // a cause whose bound landed on a token prefix came back different and
+          // the two artifacts named different causes for one run. It IS
+          // still is not, and the design does not rest on it being so: the
+          // summarizer uses what it is given, and this is the only derivation.
+          //
+          // What that guarantees, stated no wider than it is true. Whenever the
+          // MARKER is present the excerpt was not budget-truncated, and
+          // `boundedSummaryEnvelope` copies this one value into both of its
+          // fields without transforming it -- so receipt field, summary marker
+          // and envelope marker are the same bytes because nothing recomputed
+          // them, not because a recomputation happened to agree.
+          //
+          // When the marker is ABSENT the excerpt may be a budget-truncated
+          // prefix that the envelope re-redacts through `boundedText`, and no
+          // such claim is made about it. The reconcile branch below separately
+          // wraps the cause in a sentence, which is a rendering of the same
+          // declaration rather than a second one.
+          ...(infrastructureCause ? { infrastructureCause } : {}),
+          // exitCode and truncated are what let the reporter tell a real
+          // non-pass from a `completed` status, and a prefix-capture from a
+          // real exit (review of station#1871). Dropping them here is what
+          // made the predicate on the other side unfixable.
+          terminal: {
+            status: reportedResult.status,
+            exitCode: reportedResult.exitCode ?? null,
+            truncated: outputTruncated,
+          },
+          counts: reportedResult.counts,
+          cleanup,
+        }),
+        ...(phaseAdmission ? { phaseAdmission } : {}),
+      },
     };
   } catch (error) {
     const recoverableFailures = Array.isArray(raw?.recoverableFailures)

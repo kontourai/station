@@ -9,7 +9,10 @@ import {
   useRemoteSessionsQuery,
   useTasksQuery,
 } from '@kontourai/station-sdk';
-import { listProjectLayouts } from '@kontourai/station-sdk/client';
+import {
+  listProjectLayouts,
+  StationHttpError,
+} from '@kontourai/station-sdk/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useReducer } from 'react';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
@@ -27,6 +30,10 @@ import {
   dockFoldsToOneRegion,
   useDockSlotDevice,
 } from '../../hooks/useIsMobile';
+import {
+  isStationReadAccessRefusal,
+  stationViewReadQueryOptions,
+} from '../../lib/queryDefaults';
 import type { NavigationView } from '../../types';
 import { withConversationInventory } from './conversation-inventory-facts';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
@@ -65,6 +72,7 @@ interface HomeWorkData {
   workDegraded: boolean;
   workError: boolean;
   retryWork: () => void;
+  remoteReadError?: { description?: string; retry?: () => void };
   remoteUnavailable: NonNullable<
     ReturnType<typeof useRemoteSessionsQuery>['data']
   >['unavailable'];
@@ -79,7 +87,26 @@ function useHomeWorkData(): HomeWorkData {
   const sessions = useOrchestrationSessionsQuery();
   const inventory = useConversationInventoryQuery();
   const tasks = useTasksQuery();
-  const { data: remoteSessionsResult } = useRemoteSessionsQuery();
+  const remoteSessions = useRemoteSessionsQuery(stationViewReadQueryOptions);
+  const remoteError = remoteSessions.error;
+  const remoteAccessRefused = isStationReadAccessRefusal(remoteError);
+  const remoteSessionsResult = remoteAccessRefused
+    ? undefined
+    : remoteSessions.data;
+  const remoteReadError =
+    remoteSessions.isError &&
+    !(remoteError instanceof StationHttpError && remoteError.status === 404)
+      ? {
+          description: remoteAccessRefused
+            ? remoteError.status === 401
+              ? 'Sign in to this Station to see remote work.'
+              : 'Ask the Station operator for access to remote work.'
+            : undefined,
+          retry: remoteAccessRefused
+            ? undefined
+            : () => void remoteSessions.refetch(),
+        }
+      : undefined;
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
   // archive#3391: Home's rows name a model the way the New Chat surfaces
@@ -152,9 +179,7 @@ function useHomeWorkData(): HomeWorkData {
       projects.length === 0 &&
       workItems.length === 0 &&
       !workLoading &&
-      !workError &&
-      (remoteSessionsResult?.unavailable.length ?? 0) === 0 &&
-      (remoteSessionsResult?.authenticationRequired?.length ?? 0) === 0,
+      !workError,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
@@ -168,6 +193,7 @@ function useHomeWorkData(): HomeWorkData {
       void tasks.refetch();
       void inventory.refetch();
     },
+    remoteReadError,
     remoteUnavailable: remoteSessionsResult?.unavailable ?? [],
     remoteAuthenticationRequired:
       remoteSessionsResult?.authenticationRequired ?? [],

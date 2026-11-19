@@ -94,6 +94,8 @@ export interface TaskPullRequestFact extends PullRequestLinkIdentity {
         readiness?: PullRequestMergeReadiness;
         mergeability: PullRequest['mergeability'];
         sourceBranch?: string;
+        /** Armed or queued to merge; absent when not observed. */
+        landing?: PullRequest['landing'];
         /** The head commit the provider reported, when it did. */
         headSha?: string;
       }

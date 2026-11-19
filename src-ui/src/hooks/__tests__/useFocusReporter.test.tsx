@@ -26,6 +26,7 @@ import {
   registerChatReaderCover,
   registerFullscreenChatSurface,
 } from '../orchestration/chatForeground';
+import { useForegroundProject } from '../projectForeground';
 import { useFocusReporter } from '../useFocusReporter';
 
 /** Longer than every retry the reporter would schedule on its own. */
@@ -461,6 +462,48 @@ describe('useFocusReporter', () => {
     await advance(FOCUS_REPORT_DEBOUNCE_MS);
     expect(
       'viewingSessionIds' in
+        JSON.parse(mocks.authenticatedFetch.mock.calls.at(-1)![1].body),
+    ).toBe(false);
+  });
+
+  test('reports the Project on screen (#5072), and drops only that field for an older host', async () => {
+    mocks.authenticatedFetch
+      .mockReset()
+      .mockImplementation(async (_url, init) =>
+        'viewingProjectId' in JSON.parse(init.body) ? status(400) : ok(),
+      );
+    const project = renderHook(() => useForegroundProject('project-alpha'));
+    try {
+      await mount();
+      await advance(FOCUS_REPORT_DEBOUNCE_MS);
+      await advance(0);
+      const bodies = mocks.authenticatedFetch.mock.calls.map(([, init]) =>
+        JSON.parse(init.body),
+      );
+      expect(bodies.map((body) => body.viewingProjectId)).toEqual([
+        'project-alpha',
+        undefined,
+      ]);
+      // The session field survives the Project field's refusal.
+      expect(bodies.every((body) => 'viewingSessionIds' in body)).toBe(true);
+    } finally {
+      project.unmount();
+    }
+  });
+
+  test('leaving the Project reports again without it', async () => {
+    mocks.authenticatedFetch.mockReset().mockImplementation(async () => ok());
+    const project = renderHook(() => useForegroundProject('project-alpha'));
+    await mount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    expect(
+      JSON.parse(mocks.authenticatedFetch.mock.calls.at(-1)![1].body)
+        .viewingProjectId,
+    ).toBe('project-alpha');
+    project.unmount();
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    expect(
+      'viewingProjectId' in
         JSON.parse(mocks.authenticatedFetch.mock.calls.at(-1)![1].body),
     ).toBe(false);
   });
