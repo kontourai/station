@@ -1,0 +1,7 @@
+{
+  "revision": "71ca29256cc9861ef5657f690e724e02b898c57c",
+
+  "notes": [
+    {"path":"scripts/__tests__/fixtures/sbom/README.md","note":"The CycloneDX 7.0.1 dependency still supplies its library schema. The release SBOM test executes the 1.6 JSON validator with a valid production graph and a malformed negative control. No SPDX fixture or license changed.","inputs":["scripts/__tests__/fixtures/sbom/README.md","package.json#/devDependencies/@cyclonedx~1cyclonedx-npm"]}
+  ]
+}
