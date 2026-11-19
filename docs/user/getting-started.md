@@ -622,7 +622,10 @@ channels. React to a message with an emoji, and tap a reaction to add or take
 back yours. You can edit or delete your own messages (press ↑ in an empty
 composer to edit your last one); a deleted message leaves "Message deleted" so
 replies still make sense. Use **Bring an Agent** for an explicit request whose answer returns
-to the channel. Direct Agent conversations stay in the chat
+to the channel. With the **Coordinator in #general** preview on, the Agent you
+ask in `#general` answers, proposes Tasks you start from a card, or passes your
+message to a running Task, and posts each Task's result back
+([Coordinator in #general](settings.md#coordinator-in-general)). Direct Agent conversations stay in the chat
 dock. **Tasks** shows a board of what each Task needs now, or a list of current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution

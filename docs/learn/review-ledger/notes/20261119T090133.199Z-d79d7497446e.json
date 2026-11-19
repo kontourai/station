@@ -1,0 +1,351 @@
+{
+  "revision": "572bf8d85df3375e6e0e6f2ca956639842e2b443",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced default Room request capture and publishing, exact approval, TaskGraph authorization, dispatcher readiness before provider start, stable inbox intent, durable result bytes and room authorization through restart. Reviewed the additive route and handshake diffs against existing runtime sections.","inputs":["docs/architecture/module-map.md","src-server/routes/projects/project-room-routes.ts","src-server/routes/projects/projects.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/execution-target/execution-target-resolver.ts","src-server/services/projects/project-room-agent-module.ts","src-server/services/projects/task-dispatcher.ts","src-server/services/projects/task-graph-service.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/views/project-page/ProjectRoom.tsx","src-server/services/projects/project-room-coordinator.ts","src-server/services/projects/project-room-coordinator-store.ts","src-server/runtime/routes/project-room-coordinator-runtime.ts","src-server/runtime/routes/project-room-agent-runtime.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the new Project Room coordinator definition and its distinction from the personal cross-Project coordinator. Existing Project, Task and Session definitions and their scopes are preserved.","inputs":["docs/glossary.md","src-server/runtime/routes/runtime-routes.ts","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the default Room read, approval, sweep and settings leaves through their paired and owner guards. Checked the exact proposal, Task identity and replay paths and the personal-host boundary. Earlier terminal and Task relationship API sections keep their existing routes.","inputs":["docs/reference/api.md","src-server/routes/agents/enriched-agents.ts","src-server/routes/projects/project-room-routes.ts","src-server/routes/projects/projects.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-room-agent-module.ts","src-server/services/projects/task-graph-service.ts","packages/contracts/src/environment-security.ts","src-server/security/pairing-route-scopes.ts","src-server/domain/file-storage-schemas.ts","src-ui/src/views/project-page/ProjectRoom.tsx","packages/contracts/src/project-room-coordinator.ts","src-server/runtime/routes/project-room-coordinator-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the optional Project setting and additive capability, bounded route reply parsing and card and sweep contracts. Existing deployment and Task contracts retain their shapes.","inputs":["docs/reference/contracts.md","src-server/routes/projects/project-room-routes.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-room-agent-module.ts","src-server/services/projects/task-graph-service.ts","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/environment-security.ts","src-server/security/pairing-route-scopes.ts","packages/contracts/src/project.ts","src-ui/src/views/project-page/ProjectRoom.tsx","packages/contracts/src/project-room-coordinator.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the new scoped client and React query hooks against the default room, Project and actor guards. Existing Project clients and conversation reads retain their routes.","inputs":["docs/reference/sdk.md","src-server/routes/projects/project-room-routes.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/execution-target/execution-target-resolver.ts","src-server/services/projects/project-room-agent-module.ts","src-server/services/projects/task-graph-service.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/contexts/ProjectsContext.tsx","packages/sdk/package.json#/exports","packages/sdk/package.json","src-ui/src/views/project-page/ProjectRoom.tsx","packages/sdk/src/client/project-room-coordinator.ts","packages/sdk/src/query-domains/projectRoomCoordinator.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the preview link and entry into the existing default Project Room. The personal coordinator and ordinary Task creation flows retain their prior guidance.","inputs":["docs/user/getting-started.md","packages/contracts/src/project.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the default off settings, Project limits, actual Task Done settlement, shared-host exclusion and pre-tool pull request scope against their UI and runtime owners.","inputs":["docs/user/settings.md","src-ui/src/views/ProjectSettingsView.tsx","src-ui/src/views/project-settings/RoomCoordinatorSection.tsx","src-ui/src/views/project-page/ProjectRoomCoordinator.tsx"]},
+
+    {"path":"packages/contracts/README.md","note":"Reviewed the additive Project Room coordinator subpath and the existing package export inventory.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the new Project Room coordinator definition and its distinction from the personal cross-Project coordinator. Existing Project, Task and Session definitions and their scopes are preserved.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the new Project Room coordinator definition and its distinction from the personal cross-Project coordinator. Existing Project, Task and Session definitions and their scopes are preserved.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the default Room read, approval, sweep and settings leaves through their paired and owner guards. Checked the exact proposal, Task identity and replay paths and the personal-host boundary. Earlier terminal and Task relationship API sections keep their existing routes.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the default Room read, approval, sweep and settings leaves through their paired and owner guards. Checked the exact proposal, Task identity and replay paths and the personal-host boundary. Earlier terminal and Task relationship API sections keep their existing routes.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the optional Project setting and additive capability, bounded route reply parsing and card and sweep contracts. Existing deployment and Task contracts retain their shapes.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the optional Project setting and additive capability, bounded route reply parsing and card and sweep contracts. Existing deployment and Task contracts retain their shapes.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the optional Project setting and additive capability, bounded route reply parsing and card and sweep contracts. Existing deployment and Task contracts retain their shapes.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the new scoped client and React query hooks against the default room, Project and actor guards. Existing Project clients and conversation reads retain their routes.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the new scoped client and React query hooks against the default room, Project and actor guards. Existing Project clients and conversation reads retain their routes.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the default off settings, Project limits, actual Task Done settlement, shared-host exclusion and pre-tool pull request scope against their UI and runtime owners.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the default off settings, Project limits, actual Task Done settlement, shared-host exclusion and pre-tool pull request scope against their UI and runtime owners.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/contracts/package.json"]},
+
+    {"path":"docs/architecture.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the additive optional coordinator handshake property. Existing protocol fields and existing flags keep their normal behavior.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the optional Project coordinator configuration field. Existing Project fields, source ownership and defaults remain compatible with old files.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the optional Project coordinator configuration field. Existing Project fields, source ownership and defaults remain compatible with old files.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the optional Project coordinator configuration field. Existing Project fields, source ownership and defaults remain compatible with old files.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/sdk/package.json"]},
+
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/architecture.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/reference/sdk.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"Inspected package exports. The new Project Room coordinator subpath adds the matching published contract or client. Existing module resolution keys and entry points remain the same.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Reviewed the coordinator capability withdrawal on hosted and shared Project Room modes. Other capabilities keep their existing predicates.","inputs":["src-server/capabilities/station-capability-flags.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the optional bounded roomCoordinator value and compatibility with Project files that have no coordinator settings.","inputs":["src-server/domain/file-storage-schemas.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Reviewed the narrowly identified Agent catalog refresh reason through the existing degraded read, current-host resolver and retryable pre-reservation dispatch return. Other unavailable Agents remain ordinary refusals.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the narrowly identified Agent catalog refresh reason through the existing degraded read, current-host resolver and retryable pre-reservation dispatch return. Other unavailable Agents remain ordinary refusals.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the narrowly identified Agent catalog refresh reason through the existing degraded read, current-host resolver and retryable pre-reservation dispatch return. Other unavailable Agents remain ordinary refusals.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the narrowly identified Agent catalog refresh reason through the existing degraded read, current-host resolver and retryable pre-reservation dispatch return. Other unavailable Agents remain ordinary refusals.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the narrowly identified Agent catalog refresh reason through the existing degraded read, current-host resolver and retryable pre-reservation dispatch return. Other unavailable Agents remain ordinary refusals.","inputs":["src-server/routes/agents/enriched-agents.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed coordinator leaves at the existing #general prefix with view or execute authority and exact Project, Room and actor guards. Other room actions and ordering are preserved.","inputs":["src-server/routes/projects/project-room-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed coordinator leaves at the existing #general prefix with view or execute authority and exact Project, Room and actor guards. Other room actions and ordering are preserved.","inputs":["src-server/routes/projects/project-room-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed coordinator leaves at the existing #general prefix with view or execute authority and exact Project, Room and actor guards. Other room actions and ordering are preserved.","inputs":["src-server/routes/projects/project-room-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed coordinator leaves at the existing #general prefix with view or execute authority and exact Project, Room and actor guards. Other room actions and ordering are preserved.","inputs":["src-server/routes/projects/project-room-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the added preview-gated Project owner settings write. Existing project catalogue, workspace, repository discovery and settings paths are untouched.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Reviewed the added preview-gated Project owner settings write. Existing project catalogue, workspace, repository discovery and settings paths are untouched.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed the added preview-gated Project owner settings write. Existing project catalogue, workspace, repository discovery and settings paths are untouched.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the added preview-gated Project owner settings write. Existing project catalogue, workspace, repository discovery and settings paths are untouched.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/strategy/station-delivery-retirement.md","note":"Reviewed the added preview-gated Project owner settings write. Existing project catalogue, workspace, repository discovery and settings paths are untouched.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"Reviewed the added preview-gated Project owner settings write. Existing project catalogue, workspace, repository discovery and settings paths are untouched.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed the exact coordinator additions and their off, hosted and sharing admission. The existing sign-in, browser, terminal, guest Project, and Task APIs keep their established route composition. The four prior operator sign-in captures still depict the same paths and remain historical captures from their original runs.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed the four newly classified exact coordinator leaves, with no broader path change. The existing pairing exchanges, route families and authorization scopes keep their prior behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the current-host catalog refresh condition and typed transient error. Other inaccessible targets and provider-specific resolution keep their previous behavior.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the bound default Room coordinator frame and routed publication before runtime dispatch, with existing Room Task context, named-channel and authorization checks preserved.","inputs":["src-server/services/projects/project-room-agent-module.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the bound default Room coordinator frame and routed publication before runtime dispatch, with existing Room Task context, named-channel and authorization checks preserved.","inputs":["src-server/services/projects/project-room-agent-module.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the bound default Room coordinator frame and routed publication before runtime dispatch, with existing Room Task context, named-channel and authorization checks preserved.","inputs":["src-server/services/projects/project-room-agent-module.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the bound default Room coordinator frame and routed publication before runtime dispatch, with existing Room Task context, named-channel and authorization checks preserved.","inputs":["src-server/services/projects/project-room-agent-module.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the retryable result at preparation before any reservation, claim or provider invocation. Existing readiness, uncertainty and post-invocation behavior remain on their canonical paths.","inputs":["src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the retryable result at preparation before any reservation, claim or provider invocation. Existing readiness, uncertainty and post-invocation behavior remain on their canonical paths.","inputs":["src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Reviewed the retryable result at preparation before any reservation, claim or provider invocation. Existing readiness, uncertainty and post-invocation behavior remain on their canonical paths.","inputs":["src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/design/work-plane-composition.md","note":"Reviewed the retryable result at preparation before any reservation, claim or provider invocation. Existing readiness, uncertainty and post-invocation behavior remain on their canonical paths.","inputs":["src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the retryable result at preparation before any reservation, claim or provider invocation. Existing readiness, uncertainty and post-invocation behavior remain on their canonical paths.","inputs":["src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed stable idempotent Task creation with an optional owner-supplied authorization check under the existing graph write fence, plus replay and agent configuration readiness. Existing callers without this callback keep their creation contract.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed stable idempotent Task creation with an optional owner-supplied authorization check under the existing graph write fence, plus replay and agent configuration readiness. Existing callers without this callback keep their creation contract.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed stable idempotent Task creation with an optional owner-supplied authorization check under the existing graph write fence, plus replay and agent configuration readiness. Existing callers without this callback keep their creation contract.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed stable idempotent Task creation with an optional owner-supplied authorization check under the existing graph write fence, plus replay and agent configuration readiness. Existing callers without this callback keep their creation contract.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed stable idempotent Task creation with an optional owner-supplied authorization check under the existing graph write fence, plus replay and agent configuration readiness. Existing callers without this callback keep their creation contract.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed stable idempotent Task creation with an optional owner-supplied authorization check under the existing graph write fence, plus replay and agent configuration readiness. Existing callers without this callback keep their creation contract.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed stable idempotent Task creation with an optional owner-supplied authorization check under the existing graph write fence, plus replay and agent configuration readiness. Existing callers without this callback keep their creation contract.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed the handshake projection against the new shared-room exclusion. Existing proof, pairing and routing ownership and protocol fields are unchanged.","inputs":["src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the handshake projection against the new shared-room exclusion. Existing proof, pairing and routing ownership and protocol fields are unchanged.","inputs":["src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the handshake projection against the new shared-room exclusion. Existing proof, pairing and routing ownership and protocol fields are unchanged.","inputs":["src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the handshake projection against the new shared-room exclusion. Existing proof, pairing and routing ownership and protocol fields are unchanged.","inputs":["src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the handshake projection against the new shared-room exclusion. Existing proof, pairing and routing ownership and protocol fields are unchanged.","inputs":["src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the handshake projection against the new shared-room exclusion. Existing proof, pairing and routing ownership and protocol fields are unchanged.","inputs":["src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked output regenerated from the updated canonical ProjectRoom and Task dispatcher notes. Topic ownership and registration remain the source of truth.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the additive optional coordinator configuration shape. Existing Project reads and shared Task ownership are preserved.","inputs":["src-ui/src/contexts/ProjectsContext.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the new Coordinator settings section under its own preview. The Overview and Agent feedback guards remain active and existing settings navigation and paths remain in place.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Reviewed the new Coordinator settings section under its own preview. The Overview and Agent feedback guards remain active and existing settings navigation and paths remain in place.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the new Coordinator settings section under its own preview. The Overview and Agent feedback guards remain active and existing settings navigation and paths remain in place.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed default channel and capability checks, card binding by published message, and room guard forwarding. Named-channel room behavior and existing actions stay on their canonical scope.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed default channel and capability checks, card binding by published message, and room guard forwarding. Named-channel room behavior and existing actions stay on their canonical scope.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed default channel and capability checks, card binding by published message, and room guard forwarding. Named-channel room behavior and existing actions stay on their canonical scope.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed default channel and capability checks, card binding by published message, and room guard forwarding. Named-channel room behavior and existing actions stay on their canonical scope.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the added coordinator gallery capture scene and exact fallback cleanup. Existing gallery cases and scope remain in place. Separate live paired Chromium evidence on the feature source exercised the actual Start all control.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the added coordinator gallery capture scene and exact fallback cleanup. Existing gallery cases and scope remain in place. Separate live paired Chromium evidence on the feature source exercised the actual Start all control.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the added coordinator gallery capture scene and exact fallback cleanup. Existing gallery cases and scope remain in place. Separate live paired Chromium evidence on the feature source exercised the actual Start all control.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

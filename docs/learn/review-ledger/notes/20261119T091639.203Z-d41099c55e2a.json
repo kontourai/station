@@ -1,0 +1,7 @@
+{
+  "revision": "da759335d4ee05ec588984da3b0f607261045e7d",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Verified that the documented project-room-coordinator subpath stays outside the main SDK entry. The barrel classification names the supported subpath and all 15 contract cases passed.","inputs":["packages/sdk/src/__tests__/publicBarrel.test.ts"]}
+  ]
+}

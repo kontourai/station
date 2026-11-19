@@ -653,6 +653,26 @@
       "src-ui/src/views/project-page/ProjectRoom.tsx",
       "src-ui/src/components/room/RoomAgentActivity.tsx"
     ],
+    "room-coordinator-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
+    "room-coordinator-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.tsx",
+      "src-ui/src/views/project-page/ProjectRoomCoordinator.css"
+    ],
     "notifications-for-you-dark-desktop": [
       "src-ui/src/pages/NotificationsPage.tsx",
       "src-ui/src/components/notifications/PersonMentionsSection.tsx",

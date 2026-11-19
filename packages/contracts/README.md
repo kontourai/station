@@ -115,6 +115,7 @@ names what the module owns. Read the module before depending on it.
 - `/conversation-pull-request-links`: pull requests linked to a conversation and how each link was found.
 - `/pull-request-feedback`: pull request agent feedback: switches, the forge observation, status and delivery history.
 - `/pull-request-watch`: Task-owned pull requests: the Project setting, a Task's choice, the ready test, refusals and the Task's watch view.
+- `/project-room-coordinator`: the `#general` coordinator: the Project's limits, the reply's routing block, suggested-Tasks cards and the status sweep.
 - `/action-operation`: the durable execution-status envelope around an existing mutation.
 - `/operational-event`: versioned, bounded facts emitted by Station actors; contract only.
 - `/live-activity`: the Activity live-collaborator roster projection.

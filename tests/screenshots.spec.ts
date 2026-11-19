@@ -5128,6 +5128,132 @@ function roomConversationScreens(): Screen[] {
 }
 
 /**
+ * #5063: `#general` with its coordinator, at 1440 and 390 in both themes: a
+ * routed reply with its suggested-Tasks card (one Task done, two to start,
+ * so Start all shows), a settled Task's result and the coordinator bar. The
+ * `project-room-coordinator` preview is turned on on the e2e Station and the
+ * handshake advertises `projectRoomCoordinator`; the room and its card come
+ * from the room fixture.
+ */
+function roomCoordinatorScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      const slug = `gallery-coordinator-${theme}-${viewport.width}`;
+      let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+      let created = false;
+      let previousPreview: boolean | undefined;
+      let fixture:
+        | Awaited<ReturnType<typeof installProjectRoomFixture>>
+        | undefined;
+      let restoreHandshake: (() => Promise<void>) | undefined;
+      return {
+        name: `room-coordinator-${theme}-${width}`,
+        title: `Project room coordinator — ${theme}, ${viewport.width}px`,
+        path: `/projects/${slug}?section=room`,
+        viewport,
+        async beforeGoto(page) {
+          request = createAuthenticatedE2ERequest(page.request);
+          const previews = await request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          expect(previews.ok()).toBe(true);
+          const preview = (await previews.json()).data.find(
+            (item: { id: string }) => item.id === 'project-room-coordinator',
+          );
+          expect(preview).toBeDefined();
+          previousPreview = preview.enabled;
+          const enabled = await request.put(
+            `${resolveE2EApiBase()}/api/feature-previews/project-room-coordinator`,
+            { data: { enabled: true } },
+          );
+          expect(enabled.ok()).toBe(true);
+          const response = await request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Onboarding revamp', slug } },
+          );
+          expect(response.ok()).toBe(true);
+          created = true;
+          const project = (await response.json()).data;
+          restoreHandshake = await withRoute(
+            page,
+            '**/.well-known/station/v1',
+            (route) =>
+              fulfillGalleryStationHandshake(route, false, {
+                projectRoomMessageActions: true,
+                projectRoomCoordinator: true,
+              }),
+          );
+          fixture = await installProjectRoomFixture(page, {
+            slug,
+            projectId: project.id,
+            scene: 'coordinator',
+          });
+        },
+        async afterGoto(page) {
+          await page.evaluate(
+            (selected) =>
+              document.documentElement.setAttribute('data-theme', selected),
+            theme,
+          );
+          const roomRegion = page.getByRole('region', {
+            name: 'Project room',
+            exact: true,
+          });
+          await expect(roomRegion).toBeVisible();
+          const card = roomRegion.getByRole('region', {
+            name: 'Suggested Tasks, 3',
+          });
+          await expect(card).toBeVisible();
+          await expect(card.getByText('Done')).toBeVisible();
+          await expect(
+            card.getByRole('button', {
+              name: 'Start Document the redirect flag',
+            }),
+          ).toBeVisible();
+          const startAll = card.getByRole('button', { name: 'Start all 2' });
+          await expect(startAll).toBeVisible();
+          await expect(
+            roomRegion.getByText('0 working · 0 waiting · up to 2 at once'),
+          ).toBeVisible();
+          const sweep = roomRegion.getByRole('button', {
+            name: 'Status sweep',
+          });
+          await expect(sweep).toBeVisible();
+          await expect(
+            roomRegion.getByText('Task finished:', { exact: false }),
+          ).toBeVisible();
+          if (viewport.width === MOBILE.width) {
+            await expectTouchTarget(startAll, 'Start all');
+            await expectTouchTarget(sweep, 'Status sweep');
+          }
+          // The card's own row sits in view for the shot.
+          await card.scrollIntoViewIfNeeded();
+          await page.mouse.move(0, 0);
+        },
+        async cleanup() {
+          await fixture?.cleanup();
+          await restoreHandshake?.();
+          if (created) {
+            const removed = await request.delete(
+              `${resolveE2EApiBase()}/api/projects/${slug}`,
+            );
+            expect(removed.ok()).toBe(true);
+          }
+          if (previousPreview !== undefined) {
+            const restored = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/project-room-coordinator`,
+              { data: { enabled: previousPreview } },
+            );
+            expect(restored.ok()).toBe(true);
+          }
+        },
+      };
+    }),
+  );
+}
+
+/**
  * Channel navigation (#4794, #4795): the Project's channel list (the phone's
  * Project page; at 1440 the sidebar with one Project expanded and one
  * collapsed), a channel opened by its address, and a thread. Unread state
@@ -6355,6 +6481,7 @@ function projectCoordinationScreens(): Screen[] {
 const SCREENS: Screen[] = [
   ...projectCoordinationScreens(),
   ...roomConversationScreens(),
+  ...roomCoordinatorScreens(),
   ...personMentionScreens(),
   ...channelNavigationScreens(),
   ...projectLibraryScreens(),

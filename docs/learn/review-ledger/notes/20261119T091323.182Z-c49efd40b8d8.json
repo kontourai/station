@@ -1,0 +1,13 @@
+{
+  "revision": "3ecb3424a5eb8275684ddde2ecb8406c730ec35c",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the added coordinator card entry against its wrapping rows, the shared touch target floor, gallery checks, and the paired Chromium Start all action at 390px. The existing responsive, theming and backend guidance remains accurate.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the added coordinator card entry against its wrapping rows, the shared touch target floor, gallery checks, and the paired Chromium Start all action at 390px. The existing responsive, theming and backend guidance remains accurate.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the added coordinator card entry against its wrapping rows, the shared touch target floor, gallery checks, and the paired Chromium Start all action at 390px. The existing responsive, theming and backend guidance remains accurate.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the added coordinator card entry against its wrapping rows, the shared touch target floor, gallery checks, and the paired Chromium Start all action at 390px. The existing responsive, theming and backend guidance remains accurate.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

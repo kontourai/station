@@ -110,6 +110,7 @@ describe('public handshake capability flags (station#1095)', () => {
       projectRoomLive: true,
       scheduledConversationTarget: true,
       projectSchedules: true,
+      projectRoomCoordinator: true,
       sshEnvironments: true,
       remoteSessionHistory: true,
       conversationStationHandoff: true,
@@ -134,6 +135,20 @@ describe('public handshake capability flags (station#1095)', () => {
       usageConnectionFilters: true,
       followUpAttachments: true,
     });
+  });
+
+  test('the HTTP handshake withdraws the coordinator for shared Project Rooms', async () => {
+    const service = new EnvironmentSecurityService({ homeDir: makeHome() });
+    const app = new Hono();
+    configureRuntimePublicRoutes(app as never, service, () => false, true);
+
+    const response = await app.request('/.well-known/station/v1');
+    expect(response.status).toBe(200);
+    const handshake = (await response.json()) as {
+      capabilities?: Record<string, boolean>;
+    };
+    expect(handshake.capabilities).not.toHaveProperty('projectRoomCoordinator');
+    expect(handshake.capabilities).toHaveProperty('projectRoomLive', true);
   });
 
   test('server route test: the live HTTP response includes the seeded flags', async () => {
@@ -165,6 +180,7 @@ describe('public handshake capability flags (station#1095)', () => {
       projectRoomLive: true,
       scheduledConversationTarget: true,
       projectSchedules: true,
+      projectRoomCoordinator: true,
       sshEnvironments: true,
       remoteSessionHistory: true,
       conversationStationHandoff: true,

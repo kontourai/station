@@ -2067,6 +2067,19 @@ them. `PullRequestFeedbackStatus` gains the `fix-budget` pause reason and
 `TaskLaneRung` the `fixAttemptsUsed` rung. See
 [Task-owned pull requests](../decisions/task-owned-pull-requests.md).
 
+`project-room-coordinator` defines the `#general` coordinator (#5063): the
+Project's limits (`ProjectRoomCoordinatorSettings`, parsed by
+`parseProjectRoomCoordinatorSettings`, defaulted by
+`effectiveProjectRoomCoordinatorSettings`; `ProjectConfig.roomCoordinator` is
+optional), `askedForPullRequest` over the person's own message,
+`parseCoordinatorReply` (the reply's visible text and its `station_routing`
+block: an answer, up to six proposed Tasks, or a message for an existing Task;
+a missing or malformed block is an answer), the row states
+(`COORDINATOR_TASK_STATES`, with `coordinatorTaskHoldsSlot` and
+`coordinatorTaskIsOpen`), the card view, the status sweep result and
+`coordinatorTaskPath`. `StationCapabilityFlags.projectRoomCoordinator` names
+the routes.
+
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
 opt-in to move a Task to `done` when every pull request kept on it is merged;
 a Task store that carries it is refused by Station builds that predate it.

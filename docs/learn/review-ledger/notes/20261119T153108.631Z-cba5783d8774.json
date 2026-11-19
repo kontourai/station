@@ -1,0 +1,27 @@
+{
+  "revision": "81f155d1e9c4a03999ccffefe2255526cb2fbc8f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Task settlement prepare, persisted stable intent, retry and starter publication fence against the protected Task link and sweep output-availability checks. Synthetic Task output stayed out of same-home Room history when an actual invited Viewer read it after sharing was enabled. Legacy prepared text stays private and is withheld from replay. Shared runtime admission remains unavailable.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-room-coordinator.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the Room view, start and sweep leaves, independent Task read and fixed refusal projection. The routes return recovery copy while raw Task creation/dispatch diagnostics stay journal-only. The upstream and coordinator source citations from the ledger merge are both retained.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/user/settings.md","note":"Compared the preview controls and settings gates with the link-only status, Task read, sweep answer availability and queue semantics. Verified the same-home synthetic recipient and existing private Task refusal at the owning fixture boundaries. Physical paired-phone acceptance remains open.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/glossary.md","note":"Replaced the result quotation claim with a linked settled status. Kept the personal preview scope and independent cross-Project coordinator vocabulary.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Checked both context entry documents' glossary links at the changed Project Room coordinator term. Their ownership boundaries and vocabulary navigation remain valid after the linked-status wording change.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked both context entry documents' glossary links at the changed Project Room coordinator term. Their ownership boundaries and vocabulary navigation remain valid after the linked-status wording change.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the Terminal socket protocol anchor and application integration links against the coordinator-only API amendment. Their endpoint and authentication claims are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the Terminal socket protocol anchor and application integration links against the coordinator-only API amendment. Their endpoint and authentication claims are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Compared the preview guide and Agent efficiency links with the changed settings section and table. The Feature Preview id, scope, dispatcher settings, and separate cross-Project coordinator remain intact.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Compared the preview guide and Agent efficiency links with the changed settings section and table. The Feature Preview id, scope, dispatcher settings, and separate cross-Project coordinator remain intact.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Compared the regenerated Project Room topic with its module-map input. The generated bundle reflects protected Task links, no copied private output or diagnostics, restrictions on legacy replay and the personal-only preview.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

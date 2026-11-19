@@ -819,6 +819,7 @@ export class EnvironmentSecurityService {
 
   async getPublicHandshake(
     peerChatEnabled = false,
+    sharedProjectRooms = false,
   ): Promise<PublicStationHandshake> {
     const { environmentId } = await this.initialize();
     return {
@@ -842,6 +843,7 @@ export class EnvironmentSecurityService {
       capabilities: resolveStationCapabilityFlags({
         hosted: this.#hosted,
         peerChatEnabled,
+        sharedProjectRooms,
       }),
     };
   }

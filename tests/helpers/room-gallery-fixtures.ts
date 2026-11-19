@@ -247,7 +247,86 @@ export type ProjectRoomScene =
    * a bug triage with SHORT's shape (two Jonas lines, Scout, Maya) plus two
    * replies to Scout's message (its thread).
    */
-  | 'navigation';
+  | 'navigation'
+  /**
+   * #5063: `#general` with its coordinator: a three-part request, Scout's
+   * routed reply with its suggested-Tasks card (one working, two to start),
+   * and a settled Task's result. Needs the `project-room-coordinator`
+   * preview and the `projectRoomCoordinator` flag.
+   */
+  | 'coordinator';
+
+/** The coordinator's own actor on the results Station posts (#5063). */
+const COORDINATOR = {
+  id: 'station-coordinator',
+  displayName: 'Coordinator',
+  kind: 'agent',
+};
+
+/** The coordinator scene's `#general`; sequence 2 carries the card. */
+const COORDINATOR_HISTORY: ProjectLine[] = [
+  {
+    actor: VIEWER,
+    at: at(1, 9, 2),
+    text: '@Scout can you fix the Safari sign-in loop, document the new redirect flag, and bump the lint packages?',
+  },
+  {
+    actor: SCOUT,
+    at: at(1, 9, 3),
+    text: 'Three separate pieces of work, so three Tasks. The sign-in fix comes first; the docs depend on it.\n\n_Proposed 3 new Tasks. Start them from the card below._',
+  },
+  {
+    actor: COORDINATOR,
+    at: at(1, 9, 41),
+    text: '**Task finished:** [Fix the Safari sign-in loop](/tasks/c0a1e6f2-5b6d-4c7e-8f90-a1b2c3d4e5f6)\n> The return URL kept its query string only on Chrome. It now survives the redirect, and the session cookie is set before it. Added a regression test.',
+  },
+];
+
+/** The coordinator scene's card under sequence 2 (#5063). */
+function coordinatorGalleryView(slug: string) {
+  const row = (
+    position: number,
+    title: string,
+    extra: Record<string, unknown>,
+  ) => ({
+    rowId: `row-${position}`,
+    title,
+    prompt: `${title}.`,
+    agentId: 'scout',
+    agentLabel: 'Scout',
+    placement: 'worktree',
+    mayOpenPullRequest: false,
+    pullRequestRefusals: 0,
+    updatedAt: at(1, 9, 41),
+    ...extra,
+  });
+  return {
+    projectSlug: slug,
+    settings: {
+      startWithoutAsking: false,
+      maxConcurrentTasks: 2,
+      pullRequests: 'when-asked',
+    },
+    working: 0,
+    waiting: 0,
+    proposals: [
+      {
+        proposalId: 'card-1',
+        messageId: uuid(2, 'c1'),
+        createdAt: at(1, 9, 3),
+        tasks: [
+          row(0, 'Fix the Safari sign-in loop', {
+            state: 'done',
+            taskId: 'c0a1e6f2-5b6d-4c7e-8f90-a1b2c3d4e5f6',
+            resultMessageId: uuid(3, 'c1'),
+          }),
+          row(1, 'Document the redirect flag', { state: 'proposed' }),
+          row(2, 'Bump the lint packages', { state: 'proposed' }),
+        ],
+      },
+    ],
+  };
+}
 
 /** Ids of the attachment scene's files. */
 const SHARED_IMAGE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332211';
@@ -298,6 +377,7 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
   if (scene === 'long' || scene === 'new-messages') return longHistory();
   if (scene === 'navigation') return NAVIGATION_HISTORY;
+  if (scene === 'coordinator') return COORDINATOR_HISTORY;
   const [first, second, third, fourth] = SHORT as [
     ProjectLine,
     ProjectLine,
@@ -827,6 +907,17 @@ export async function installProjectRoomFixture(
         false,
       ),
     );
+  if (scene === 'coordinator')
+    handlers.push([
+      `${base}/coordinator`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: { success: true, data: coordinatorGalleryView(slug) },
+        });
+      },
+    ]);
   if (scene === 'agent-pending' || scene === 'agent-abandon') {
     // The Station's real catalog plus one available Agent, Scout, shaped like
     // the catalog's own entries.

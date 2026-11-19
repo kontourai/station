@@ -3995,6 +3995,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // writes one Project setting; the runtime Project guard admits only the
     // owner, and no station-control tool names it.
     { method: 'PUT', path: '/api/projects/:slug/pull-request-watch' },
+    // #5063 the `#general` coordinator's limits. One Project setting with
+    // the same admission as the watch above: owner only, no tool names it.
+    { method: 'PUT', path: '/api/projects/:slug/room-coordinator' },
     // #488 Explicitly shared Task reads retain the Project family's read tier;
     // exact membership/share/Task checks own resource visibility. Administration
     // retains the family's operate tier and separately requires Station operator.
@@ -5209,6 +5212,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/projects/:slug/room/agents/:requestId/reconcile',
     },
+    // The `#general` coordinator (#5063), so a paired phone can review its
+    // cards. Start and the status sweep compose the room's execute tier,
+    // exactly as an agent request does; the view is the room's read.
+    { method: 'GET', path: '/api/projects/:slug/room/coordinator' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/coordinator/proposals/:proposalId/start',
+    },
+    { method: 'POST', path: '/api/projects/:slug/room/coordinator/sweep' },
     // Named channels (#4792): the same per-room actions, addressed per channel.
     // Create, rename, topic and archive compose the room's `edit` tier.
     { method: 'GET', path: '/api/projects/:slug/channels' },

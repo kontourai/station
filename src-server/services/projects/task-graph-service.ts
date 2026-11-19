@@ -83,6 +83,7 @@ import type {
   AssignmentClaimService,
 } from '../evidence/assignment-claim-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
+import { AgentCatalogRefreshingError } from '../execution-target/execution-target-resolver.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import { captureExecutionWorkspaceBinding } from '../orchestration/execution-workspace-binding.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
@@ -2769,6 +2770,7 @@ export class TaskGraphService {
     namespace: string,
     operationId: string,
     clientOrigin?: ClientOrigin,
+    authorize?: () => boolean,
   ): Promise<TaskRecord> {
     const digest = crypto
       .createHash('sha256')
@@ -2779,13 +2781,21 @@ export class TaskGraphService {
     digest[8] = (digest[8] & 0x3f) | 0x80;
     const hex = digest.subarray(0, 16).toString('hex');
     const taskId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    const assertAuthorized = () => {
+      if (authorize && !authorize())
+        throw new Error('Task creation is no longer authorized');
+    };
+    assertAuthorized();
     const existing = this.readTask(taskId);
     if (existing) return this.assertIdempotentTask(existing, input, taskId);
     try {
-      return await this.createTask(input, clientOrigin, taskId);
+      return await this.createTask(input, clientOrigin, taskId, authorize);
     } catch (error) {
       const replay = this.readTask(taskId);
-      if (replay) return this.assertIdempotentTask(replay, input, taskId);
+      if (replay) {
+        assertAuthorized();
+        return this.assertIdempotentTask(replay, input, taskId);
+      }
       throw error;
     }
   }
@@ -4300,6 +4310,8 @@ export class TaskGraphService {
           );
           if (withDefaults) agentStart = await resolveAgentStart(withDefaults);
         } catch (error) {
+          if (error instanceof AgentCatalogRefreshingError)
+            return { kind: 'unavailable' as const, reason: error.message };
           return {
             kind: 'refused' as const,
             reason: `Agent '${agentId}' cannot start this Task: ${errorMessage(error)}`,
