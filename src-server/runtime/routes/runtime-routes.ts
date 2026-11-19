@@ -1748,7 +1748,7 @@ export function isProjectMemberDraftLease(method: string, path: string) {
 function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile)|coordinator\/(?:proposals\/[^/]+\/start|sweep))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
       ) ||
         /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(

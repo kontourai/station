@@ -89,7 +89,7 @@ export function projectRoomAgentExecution(deps: {
               executionAgentId: target.executionAgentId ?? capture.agentId,
               ...(target.engine.kind === 'connection'
                 ? { connectionId: target.engine.connectionId }
-                : {}),
+                : { agentId: target.agentId }),
               projectSlug: capture.scope.localProjectSlug,
             },
           },
