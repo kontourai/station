@@ -103,6 +103,7 @@ export async function createSessionClient(
   apiBase: string,
   target: {
     agentSlug: AgentId;
+    readOnly?: boolean;
     /**
      * station#1155: when the caller has ALREADY classified a plain agent
      * slug via `resolveManagedAgentExternalEngineTarget` (the CLI's
@@ -154,6 +155,7 @@ async function resolveRuntimeSessionTargetForConnection(
   apiBase: string,
   connectionId: EngineConnectionId,
   agentSlug: AgentId,
+  readOnly: boolean,
 ): Promise<RuntimeSessionTarget> {
   const connection = (await requestJson<ConnectionConfig>(
     apiBase,
@@ -162,12 +164,13 @@ async function resolveRuntimeSessionTargetForConnection(
   if (connection.kind !== 'agent') {
     throw new Error(`Connection '${connectionId}' is not an agent connection.`);
   }
-  if (!connection.enabled || connection.status === 'disabled') {
+  if (!readOnly && (!connection.enabled || connection.status === 'disabled')) {
     throw new Error(`Connection '${connectionId}' is disabled.`);
   }
   if (
-    connection.status === 'missing_prerequisites' ||
-    connection.status === 'error'
+    !readOnly &&
+    (connection.status === 'missing_prerequisites' ||
+      connection.status === 'error')
   ) {
     const blockers = describeConnectionBlockers(connection);
     throw new Error(
@@ -236,7 +239,7 @@ function connectionRuntimeProvider(
 export async function resolveManagedAgentExternalEngineTarget(
   apiBase: string,
   agentSlug: AgentId,
-  options?: { strict?: boolean },
+  options?: { strict?: boolean; readOnly?: boolean },
 ): Promise<RuntimeSessionTarget | null> {
   try {
     const binding = (await requestJson<{
@@ -265,6 +268,7 @@ export async function resolveManagedAgentExternalEngineTarget(
       apiBase,
       engineConnectionId(connectionId),
       agentSlug,
+      options?.readOnly === true,
     );
   } catch (error) {
     if (options?.strict) throw error;
@@ -278,6 +282,7 @@ async function resolveSessionTarget(
   apiBase: string,
   target: {
     agentSlug: AgentId;
+    readOnly?: boolean;
     classifiedExternalTarget?: RuntimeSessionTarget | null;
   },
 ): Promise<ResolvedSessionTarget> {
@@ -290,6 +295,7 @@ async function resolveSessionTarget(
       : await resolveManagedAgentExternalEngineTarget(
           apiBase,
           target.agentSlug,
+          { readOnly: target.readOnly === true },
         );
   if (externalTarget) return externalTarget;
   return { kind: 'managed', agentSlug: target.agentSlug };

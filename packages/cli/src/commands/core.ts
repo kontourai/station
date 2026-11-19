@@ -1280,7 +1280,10 @@ async function runSessionsCommand(
     return;
   }
 
-  const client = await createSessionClient(apiBase, { agentSlug });
+  const client = await createSessionClient(apiBase, {
+    agentSlug,
+    readOnly: action === 'list' || action === 'read',
+  });
 
   if (action === 'list') {
     printJson(await client.listSessions());

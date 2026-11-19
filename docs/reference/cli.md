@@ -1300,8 +1300,10 @@ the record for the Option A decision and the New-Chat privacy constraint.
 ### `sessions`
 
 Unified session management for managed conversations and orchestration-backed runtime sessions.
-Managed lists show one row per conversation. Runtime lists use the recorded
-Agent when Station supplies it. Managed reads and conversation export accept
+Managed lists show one row per conversation. Runtime lists show individual
+Sessions and use the recorded Agent when Station supplies it. An Agent with
+a configured external engine can list and read its persisted Sessions while
+that engine is unavailable. Managed reads and conversation export accept
 the conversation root or a specific Session ID and require the Agent recorded
 for that address.
 
