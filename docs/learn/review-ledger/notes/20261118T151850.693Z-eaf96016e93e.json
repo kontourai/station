@@ -1,0 +1,7 @@
+{
+  "revision": "c18e26cb59c119877a22decfa3632df79bdb76e1",
+
+  "notes": [
+    {"path":"docs/third-party/provider-icons.md","note":"Checked the Coding apps picker through AgentIcon and BrandIcon, including detected ACP app identity, bundled themed masks, unchanged custom artwork priority, and the existing integration image fallback. Focused picker and icon tests passed. Inspected Chromium icon fixture captures at 390 and 1440 pixels in both themes.","inputs":["docs/third-party/provider-icons.md","src-ui/src/components/icons/BrandIcon.css","src-ui/src/components/icons/BrandIcon.tsx","src-ui/src/components/icons/AgentIcon.tsx"]}
+  ]
+}
