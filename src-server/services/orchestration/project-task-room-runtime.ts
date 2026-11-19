@@ -145,7 +145,13 @@ interface RequestPrincipal {
   readonly displayName?: string;
   readonly member?: true;
 }
+
 export interface ProjectTaskRoomRequestAuthority {
+  matchesMemberPublication?(
+    request: Request,
+    taskId: string,
+    expected: { principalId: string; shareId: string },
+  ): boolean;
   /** Synchronous grant recheck for SQLite transactions; absent support refuses writes. */
   isCurrent?(
     request: Request,
@@ -431,6 +437,10 @@ export class ProjectTaskRoomRuntime {
   readonly #displayNames = new Map<string, string>();
   readonly #published = new Set<string>();
   readonly #unpostedAnswers = new Set<string>();
+  readonly #sharedMessageListeners = new Map<
+    string,
+    Set<(closed: boolean) => void>
+  >();
   #closed = false;
 
   constructor(deps: ProjectTaskRoomRuntimeDeps) {
@@ -1917,6 +1927,22 @@ export class ProjectTaskRoomRuntime {
       input.id,
     );
   }
+  watchSharedMessages(taskId: string, notify: (closed: boolean) => void) {
+    if (this.#closed) {
+      notify(true);
+      return () => {};
+    }
+    const listeners =
+      this.#sharedMessageListeners.get(taskId) ??
+      new Set<(closed: boolean) => void>();
+    this.#sharedMessageListeners.set(taskId, listeners);
+    listeners.add(notify);
+    return () => {
+      listeners.delete(notify);
+      if (!listeners.size) this.#sharedMessageListeners.delete(taskId);
+    };
+  }
+
   async message(input: {
     taskId: string;
     request: Request;
@@ -1925,6 +1951,7 @@ export class ProjectTaskRoomRuntime {
     attachments?: TaskRoomAttachment[];
     occurredAt?: string;
     expectedTaskCreatedAt?: string;
+    expectedMember?: { principalId: string; shareId: string };
     correlationId?: string;
     causationId?: string;
   }): Promise<ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomAppendOutcome>> {
@@ -1934,6 +1961,7 @@ export class ProjectTaskRoomRuntime {
       'message-write',
       undefined,
       input.expectedTaskCreatedAt,
+      input.expectedMember,
     );
     if (!grant) return { kind: 'not-found' };
     const result = await this.#history.append({
@@ -1966,6 +1994,10 @@ export class ProjectTaskRoomRuntime {
         },
       },
     });
+    if (result.kind === 'committed' && !input.correlationId) {
+      for (const notify of this.#sharedMessageListeners.get(input.taskId) ?? [])
+        notify(false);
+    }
     if (result.kind === 'committed' || result.kind === 'duplicate') {
       const scope = this.#scope(input.taskId);
       if (scope)
@@ -3277,6 +3309,9 @@ export class ProjectTaskRoomRuntime {
 
   async close() {
     this.#closed = true;
+    for (const listeners of this.#sharedMessageListeners.values())
+      for (const notify of listeners) notify(true);
+    this.#sharedMessageListeners.clear();
     // Closing the ports settles outstanding I/O; waiting for it here first
     // would deadlock a queued request against the shutdown that releases it.
     this.#liveStateChains.clear();
@@ -3740,6 +3775,7 @@ export class ProjectTaskRoomRuntime {
     capability: K,
     currentSharedRead?: () => Promise<boolean>,
     expectedTaskCreatedAt?: string,
+    expectedMember?: { principalId: string; shareId: string },
   ): Promise<ProjectTaskRoomGrant<K> | undefined> {
     if (this.#closed || this.#deps.hosted?.()) return undefined;
     const scope = this.#scope(taskId);
@@ -3750,6 +3786,17 @@ export class ProjectTaskRoomRuntime {
       roomRequestCapability(capability),
     );
     if (!principal) return undefined;
+    if (
+      expectedMember &&
+      (!principal.member ||
+        principal.operatorId !== expectedMember.principalId ||
+        !this.#deps.requestAuthority.matchesMemberPublication?.(
+          request,
+          taskId,
+          expectedMember,
+        ))
+    )
+      return undefined;
     const token = randomUUID();
     // Grants span only the one request → history-worker operation. Keep their
     // registry bounded even when a peer floods distinct, otherwise-valid

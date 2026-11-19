@@ -1072,7 +1072,18 @@ omitting config still use the ambient API base; other room read/edit hooks
 retain their existing contracts. An old receiver that rejects the additive
 message field cannot silently accept it for a different Task.
 
-These personal-Station clients do not establish invited,
+While the recipient reads Chat, `watchProjectSharedTaskHistory` requests an
+event stream from the selected publication’s history endpoint. A change frame
+contains only `{}`. The client re-reads the authorized human history for text.
+Older hosts can still serve the ordinary history read and manual refresh.
+
+For a human reply from account entry, `appendProjectTaskRoomHumanMessage`
+accepts `expectedMember: { principalId, shareId }` alongside
+`expectedTaskCreatedAt`. Capture these from the signed-in account and selected
+publication. The receiver requires matching current member and publication
+authority. Retry an unconfirmed reply with the same proposal ID, time and text.
+
+These personal-Station agent clients do not establish invited,
 remote or anonymous-public participation. See [request ownership and limits](../design/task-room-agent-requests.md).
 
 

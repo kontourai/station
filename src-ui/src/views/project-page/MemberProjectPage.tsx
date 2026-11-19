@@ -12,10 +12,6 @@ import { displayableProjectIcon } from '../../components/icons/ProjectIcon';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import {
-  useScopedMemberProjectSharedTaskDetails,
-  useScopedMemberProjectSharedTasksQuery,
-} from '../../contexts/ProjectsContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { ToolLibraryClientContext } from '../agent-editor/ToolLibraryContext';
 import { AccessSection } from '../project-settings/AccessSection';
@@ -23,6 +19,10 @@ import { ProjectAgentsPanel } from '../project-settings/ProjectAgentsPanel';
 import { ProjectNavigation, useProjectDestination } from './ProjectNavigation';
 import { ProjectRoom } from './ProjectRoom';
 import { useListScrollMemory } from './useListScrollMemory';
+import {
+  useScopedMemberProjectSharedTaskDetails,
+  useScopedMemberProjectSharedTasksQuery,
+} from './useMemberProjectSharedWork';
 import '../ProjectPage.css';
 import { MemberProjectHeader } from './ProjectPageHeader';
 import '../project-page-frame.css';

@@ -387,6 +387,9 @@ function ProjectOperatorPage({
               ? { goal: project.goal }
               : {})}
             gitStatus={gitStatus}
+            invitePeople={() =>
+              navigate(`/projects/${slug}/edit`, { section: 'access' })
+            }
             navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
           />
         )}
