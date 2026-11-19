@@ -283,7 +283,7 @@ const COORDINATOR_HISTORY: ProjectLine[] = [
 ];
 
 /** The coordinator scene's card under sequence 2 (#5063). */
-export function coordinatorGalleryView(slug: string) {
+function coordinatorGalleryView(slug: string) {
   const row = (
     position: number,
     title: string,

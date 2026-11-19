@@ -193,7 +193,7 @@ function taskLink(row: Pick<CoordinatorRowRecord, 'title' | 'taskId'>) {
 }
 
 /** The first turn a coordinator Task receives. */
-export function coordinatorTaskMessage(row: CoordinatorRowRecord): string {
+function coordinatorTaskMessage(row: CoordinatorRowRecord): string {
   return [
     `[Station] ${row.starterName ?? 'A person'} started this Task from the Project's #general channel. This message is from Station, not the person.`,
     row.mayOpenPullRequest
