@@ -12,6 +12,7 @@ import type {
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
+  EngineApprovalReviewer,
   ModelLaunchPlan,
   ProviderDurabilityProfile,
   ProviderSendTurnInput,
@@ -1238,6 +1239,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * inherited default until the next report.
    */
   appliedApprovalMode?: ApprovalMode;
+  /** Reviewer reported by the engine for this binding. Unknown if omitted or unrecognized. */
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;

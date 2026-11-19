@@ -44,6 +44,7 @@ import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
+  isEngineApprovalReviewer,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -664,6 +665,7 @@ export function buildOrchestrationSessionSummary(options: {
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
   const appliedApprovalMode = extractAppliedApprovalMode(events);
+  const reportedApprovalReviewer = extractApprovalReviewer(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
     (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
@@ -761,6 +763,7 @@ export function buildOrchestrationSessionSummary(options: {
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(appliedApprovalMode ? { appliedApprovalMode } : {}),
+    ...(reportedApprovalReviewer ? { reportedApprovalReviewer } : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
     // A partial live projection cannot erase a persisted native cursor or its
     // persistence posture; explicit false still refuses a native continuation.
@@ -1167,6 +1170,22 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
  * without a mode changes nothing). Newest first over the projection, which
  * keeps the latest of each.
  */
+function extractApprovalReviewer(events: readonly CanonicalRuntimeEvent[]) {
+  for (const event of [...events].reverse()) {
+    if (event.provider !== 'codex') continue;
+    if (event.method === 'session.approval-reviewer-observed') {
+      return isEngineApprovalReviewer(event.reviewer)
+        ? event.reviewer
+        : 'unknown';
+    }
+    if (event.method === 'session.started') {
+      const reviewer = event.metadata?.reportedApprovalReviewer;
+      return isEngineApprovalReviewer(reviewer) ? reviewer : undefined;
+    }
+  }
+  return undefined;
+}
+
 function extractAppliedApprovalMode(
   events: readonly CanonicalRuntimeEvent[],
 ): ApprovalMode | undefined {
@@ -1443,6 +1462,8 @@ export function projectionFactKeysForEvent(
     facts.push({ key: 'effective-model-boundary' });
   }
   if (extractReportedModel([event])) facts.push({ key: 'reported-model' });
+  if (event.method === 'session.approval-reviewer-observed')
+    facts.push({ key: 'approval-reviewer' });
   // A bounded projection retains one latest fact per initiator, not per turn:
   // a session can restart indefinitely, so adding turn identity to the key
   // makes retained state grow forever. The projector still matches event

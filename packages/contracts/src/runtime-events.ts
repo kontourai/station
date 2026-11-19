@@ -8,6 +8,7 @@ import type { HtmlReplyReference } from './html-reply.js';
 import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
+  type EngineApprovalReviewer,
   type EngineId,
   isAcpFamilyEngine,
   PROVIDER_CODEX,
@@ -363,6 +364,13 @@ export interface SessionConfiguredEvent extends CanonicalRuntimeEventBase {
   cwd?: string;
   tools?: string[];
   metadata?: Record<string, unknown>;
+}
+
+/** An engine-owned setting observed within the current Session binding. */
+export interface SessionApprovalReviewerObservedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.approval-reviewer-observed';
+  reviewer: EngineApprovalReviewer;
 }
 
 export interface SessionStateChangedEvent extends CanonicalRuntimeEventBase {
@@ -1678,6 +1686,7 @@ export interface ConversationForkedEvent extends CanonicalRuntimeEventBase {
 export type CanonicalRuntimeEvent =
   | SessionStartedEvent
   | SessionConfiguredEvent
+  | SessionApprovalReviewerObservedEvent
   | SessionStateChangedEvent
   | SessionExitedEvent
   | SessionCancellationRequestedEvent

@@ -1,4 +1,7 @@
-import { isApprovalMode } from '@kontourai/station-contracts/provider';
+import {
+  isApprovalMode,
+  isEngineApprovalReviewer,
+} from '@kontourai/station-contracts/provider';
 import type {
   StationStateScope,
   StationStateSource,
@@ -77,6 +80,15 @@ export function handleSessionLifecycleEvent(
       : {}),
     orchestrationSessionStarted: true,
     ...startedConnection,
+    ...(event.method === 'session.started'
+      ? {
+          reportedApprovalReviewer:
+            event.provider === 'codex' &&
+            isEngineApprovalReviewer(event.metadata?.reportedApprovalReviewer)
+              ? event.metadata.reportedApprovalReviewer
+              : undefined,
+        }
+      : {}),
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
     ...(event.method === 'session.configured' &&
     typeof event.metadata?.acpSessionMode === 'string'

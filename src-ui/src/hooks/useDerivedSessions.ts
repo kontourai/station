@@ -319,6 +319,7 @@ function deriveSession(
     peerChatInvalid: chatState.peerChatInvalid,
     providerOptions: chatState.providerOptions,
     lastAppliedApprovalMode: chatState.lastAppliedApprovalMode,
+    reportedApprovalReviewer: chatState.reportedApprovalReviewer,
     approvalEscalationRejected: chatState.approvalEscalationRejected,
     approvalTakeoverFailed: chatState.approvalTakeoverFailed,
     queuedApprovalMode: chatState.queuedApprovalMode,

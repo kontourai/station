@@ -904,8 +904,11 @@ Its posture comes from the `sandbox` and `activePermissionProfile` of Codex's
   - `-c sandbox_workspace_write.writable_roots=[]`, for a thread not under
     the profile (a `read-only` review start, or a Codex that does not apply
     it), whose tightening restores the reported workspace baseline.
-  - `-c approvals_reviewer="user"`: with `auto_review` a model, not a person,
-    would approve a sandbox escalation.
+  - `-c approvals_reviewer="user"` selects a person to review escalations.
+    If Codex reports automatic review when starting, resuming, or forking an
+    explicit workspace session, Station refuses the session before announcing
+    it. An omitted reviewer is compatible with older responses and provides
+    no reviewer evidence.
 
   A `-c` override outranks every file layer and applies to every
   configuration load of that process (start, resume, fork): a user or

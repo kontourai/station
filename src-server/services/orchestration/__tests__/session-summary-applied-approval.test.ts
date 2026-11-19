@@ -1,6 +1,7 @@
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
+import { EventStore } from '../event-store.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
 /**
@@ -73,4 +74,50 @@ describe('appliedApprovalMode on the session summary (#4433)', () => {
       summarize([event('turn.started', 1)]).appliedApprovalMode,
     ).toBeUndefined();
   });
+});
+
+test('the bounded Session projection retains only the current binding’s reviewer observation', () => {
+  const store = new EventStore(':memory:');
+  const base = {
+    provider: 'codex' as const,
+    threadId: THREAD,
+    createdAt: '2026-11-02T10:00:00.000Z',
+  };
+  const started = (id: string) =>
+    store.appendEvent({
+      ...base,
+      eventId: id,
+      method: 'session.started',
+      sessionId: THREAD,
+      metadata: { reportedApprovalReviewer: 'user' },
+    });
+  try {
+    started('first-start');
+    store.appendEvent({
+      ...base,
+      eventId: 'reviewer-update',
+      method: 'session.approval-reviewer-observed',
+      reviewer: 'automatic',
+    });
+    store.appendEvent(event('turn.started', 1, 'ask'));
+    const snapshot = () =>
+      summarize(
+        store
+          .listSessionProjectionEventsForThreads([THREAD])
+          .get(THREAD)
+          ?.map((row) => row.payload) ?? [],
+      );
+    expect(snapshot()).toMatchObject({
+      reportedApprovalReviewer: 'automatic',
+      appliedApprovalMode: 'ask',
+    });
+    started('replacement-start');
+    store.appendEvent(event('turn.started', 2, 'auto'));
+    expect(snapshot()).toMatchObject({
+      reportedApprovalReviewer: 'user',
+      appliedApprovalMode: 'auto',
+    });
+  } finally {
+    store.close();
+  }
 });

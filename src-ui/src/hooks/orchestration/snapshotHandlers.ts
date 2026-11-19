@@ -1,5 +1,6 @@
 import {
   isApprovalMode,
+  isEngineApprovalReviewer,
   providerSessionBindingEnded,
   readProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
@@ -520,6 +521,13 @@ function planSnapshot(
           orchestrationModel:
             session.reportedModel ?? session.effectiveModel ?? session.model,
           orchestrationSessionStarted: true,
+          ...(session.threadId ===
+            (currentChild ?? chat?.currentSessionId ?? chatKey) &&
+          isEngineApprovalReviewer(session.reportedApprovalReviewer)
+            ? { reportedApprovalReviewer: session.reportedApprovalReviewer }
+            : adoptsCurrentChild
+              ? { reportedApprovalReviewer: undefined }
+              : {}),
           // #4433: what the engine last reported applying is client memory
           // (`lastAppliedApprovalMode`), lost on a reload, a resync or a
           // reopened conversation; the chip then fell back to "Default"
