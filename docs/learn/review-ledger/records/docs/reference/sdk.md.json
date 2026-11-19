@@ -890,7 +890,11 @@
 
     "packages/sdk/src/query-domains/customAppearanceMutation.ts",
 
-    "packages/sdk/src/query-domains/workspaceProjectMutations.ts"
+    "packages/sdk/src/query-domains/workspaceProjectMutations.ts",
+
+    "packages/sdk/src/client/project-room-coordinator.ts",
+
+    "packages/sdk/src/query-domains/projectRoomCoordinator.ts"
   ],
 
   "checks": [

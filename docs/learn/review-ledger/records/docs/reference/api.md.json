@@ -672,7 +672,11 @@
 
     "src-server/services/flow/flow-gate-diagnostics.ts",
 
-    "src-server/routes/evidence/flow-runs.ts"
+    "src-server/routes/evidence/flow-runs.ts",
+
+    "packages/contracts/src/project-room-coordinator.ts",
+
+    "src-server/runtime/routes/project-room-coordinator-runtime.ts"
   ],
 
   "checks": [
