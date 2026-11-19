@@ -1,0 +1,7 @@
+{
+  "revision": "8c1aa56897a85f088c9e0758fad7b95048c18f25",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Followed native preflight and direct start through the serve pool. Both inspect the launch directory before lease acquisition and check the effective session directory before rules. ACP inspection still precedes approval-rule discovery and the launch. Native wire replay and the ACP fixture exercise refusal before either operation with inert files.","inputs":["docs/guides/acp.md","src-server/providers/adapters/opencode-adapter.ts"]}
+  ]
+}
