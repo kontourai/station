@@ -24,6 +24,9 @@ export const MANAGED_POLICY_ENGINE_IDS = [
   'muse',
   'acp',
   'station-agent',
+  // Chats on a remote task engine (docs/decisions/remote-task-engines.md).
+  // Which vendors may be used is `remoteTasks`; both must allow a chat.
+  'remote-task',
 ] as const;
 export type ManagedPolicyEngineId = (typeof MANAGED_POLICY_ENGINE_IDS)[number];
 

@@ -430,9 +430,11 @@ import { classifyKnowledgeRoot } from '../../knowledge-store/session-backed-root
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
 import { createOtlpReceiverRoutes } from '../../monitoring/otlp-receiver.js';
+import { RemoteTaskAdapter } from '../../providers/adapters/remote-task-adapter.js';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import {
   listProviders,
+  registerProviderAdapter,
   registerPullRequestProvider,
 } from '../../providers/registries/registry.js';
 import {
@@ -679,6 +681,7 @@ import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-sta
 import { launchesCommand } from '../../routes/working-directory-authority.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
 import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
+import { engineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
 import { NativeDeviceRequestAuthority } from '../../security/native-device-request-authority.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
 import { outsideAgentConsentStore } from '../../security/outside-agent-release-guard.js';
@@ -971,7 +974,9 @@ import {
   taskRoomVersionSource,
 } from '../../services/read-markers/room-version-sources.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
+import { adoptRemoteTaskEngineWhenReady } from '../../services/remote-task-engines/adoption.js';
 import { RemoteTaskCredentials } from '../../services/remote-task-engines/credentials.js';
+import { resolveRemoteTaskRepository } from '../../services/remote-task-engines/repository.js';
 import { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
 import { RemoteTaskTracker } from '../../services/remote-task-engines/tracker.js';
 import {
@@ -8491,12 +8496,49 @@ export function configureRuntimeRoutes(
     service: remoteTaskService,
     logger: context.logger,
   });
+  // The remote task engine as a chat: one engine whose model picker lists
+  // the ready connections. Registered always (the preview gates every start
+  // and turn); its engine connection and Agent are adopted into the registry
+  // once a connection is ready, so nothing shows before the person set one up.
+  registerProviderAdapter(
+    new RemoteTaskAdapter({
+      service: remoteTaskService,
+      resolveRepository: resolveRemoteTaskRepository,
+    }),
+    { builtin: true, source: 'station-core' },
+  );
+  const adoptRemoteTaskEngine = () =>
+    void adoptRemoteTaskEngineWhenReady({
+      service: remoteTaskService,
+      configLoader: context.configLoader,
+      reloadAgents: () => context.reloadAgents(),
+      engineAllowed: () => engineAllowedByManagedPolicy('remote-task'),
+    }).catch((error: unknown) =>
+      context.logger.warn('Remote task engine adoption failed', {
+        name: error instanceof Error ? error.name : typeof error,
+      }),
+    );
+  adoptRemoteTaskEngine();
+  // The preview can be turned on at any time: offer the Agent then too. The
+  // registry has no change event, so its generation is read once a minute.
+  // The managed policy is read once at startup, so it needs no watch.
+  {
+    let generation = context.featurePreviews.generation('remote-task-engines');
+    const watch = setInterval(() => {
+      const next = context.featurePreviews.generation('remote-task-engines');
+      if (next === generation) return;
+      generation = next;
+      adoptRemoteTaskEngine();
+    }, 60_000);
+    watch.unref?.();
+  }
   context.app.route(
     '/remote-task-engines',
     createRemoteTaskEngineRoutes({
       service: remoteTaskService,
       tracker: remoteTaskTracker,
       logger: context.logger,
+      onConnectionReady: adoptRemoteTaskEngine,
     }),
   );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));

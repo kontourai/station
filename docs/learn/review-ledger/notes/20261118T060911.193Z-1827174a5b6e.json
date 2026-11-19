@@ -1,0 +1,9 @@
+{
+  "revision": "62b7152291af40cd5e3b1d64bb115dd396766722",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the engine-neutral failure contract against the existing person-only refusal, the shared diagnostic map, and the independent wire-contract test. The wire token person-authored-turn-required now classifies as permission_denied with retryable false. The refusal still occurs before provider effects. The exhaustive test pins the full code set and verifies both kind and retry eligibility. Focused contract and consumer evidence covered 198 passing tests at the source commit.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed Engine failure classification against StationHttpError and ChatHttpError. StationHttpError prefers a server-provided kind, then classifies a known wire code through the shared map, and derives retry eligibility from that kind. The person-authored-turn-required fallback now yields permission_denied and retryable false. ChatHttpError uses the same classification and retains the server-provided failure phase. The Appearance Studio reference and source bindings are inherited from the approved upstream commit.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts"]}
+  ]
+}

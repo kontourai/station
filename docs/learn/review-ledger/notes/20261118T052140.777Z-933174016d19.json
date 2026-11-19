@@ -1,0 +1,7 @@
+{
+  "revision": "27c11c90aff0a742bfd51324eacc530f04cb3641",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the committed Station Docs bundle against the canonical module map and generator. SessionCommandModule includes the dormant CLI Session group owner, its durable reservation boundary, and dispatch allowance. RemoteTaskEngine includes the chat adapter, ready-connection picker, and polling during an open turn. The generator and check agreed on 139 topics. The bundle remains static content for the credential-free Station Docs MCP. This review covers the generated content and its source, with no live MCP or provider execution.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

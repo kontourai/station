@@ -118,6 +118,10 @@ export const githubCopilotBinding: RemoteTaskBinding = {
     followUp: 'none',
     events: false,
     cancel: false,
+    cancelEndsTask: false,
+    finishedAcceptsFollowUp: false,
+    // A task is created in a repository (`/agents/repos/{owner}/{repo}/tasks`).
+    requiresRepository: true,
     createOptions: { model: true, baseRef: true, createPullRequest: true },
     usageUnits: ['ai-credits', 'premium-requests'],
   },

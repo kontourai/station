@@ -31,6 +31,11 @@ export interface RemoteTaskEngineRoutesOptions {
    * The runtime auth boundary has already applied the route's scope.
    */
   readonly isPersonRequest?: (request: Request) => boolean;
+  /**
+   * A connection may have become ready for chats (acknowledged, or given a
+   * token): the runtime offers the remote task engine as an Agent then.
+   */
+  readonly onConnectionReady?: () => void;
 }
 
 function defaultIsPersonRequest(request: Request): boolean {
@@ -149,9 +154,14 @@ export function createRemoteTaskEngineRoutes(
   );
   app.post(
     '/connections/:id/acknowledgement',
-    handle(async (c) =>
-      service.acknowledge(param(c, 'id'), (await jsonBody(c)).statement),
-    ),
+    handle(async (c) => {
+      const view = await service.acknowledge(
+        param(c, 'id'),
+        (await jsonBody(c)).statement,
+      );
+      options.onConnectionReady?.();
+      return view;
+    }),
   );
   app.delete(
     '/connections/:id/acknowledgement',
@@ -163,6 +173,7 @@ export function createRemoteTaskEngineRoutes(
     '/connections/:id/credential',
     handle(async (c) => {
       await service.setCredential(param(c, 'id'), (await jsonBody(c)).token);
+      options.onConnectionReady?.();
       // Never echo the token: the answer is only whether one is set.
       return { credential: 'set' };
     }),

@@ -1,0 +1,7 @@
+{
+  "revision": "3be6a926d89369018ca1f3a00cce88fa98c5567d",
+
+  "notes": [
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed the runtime route composition against the Survey-backed Flow review. The added remote task adapter, adoption callback, and preview watcher are wired through /remote-task-engines. The existing project Flow mount still passes surveyReview and the Project workspace resolver to createFlowRunRoutes. The review handlers still return 503 when the provider is absent. This review covers source wiring.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

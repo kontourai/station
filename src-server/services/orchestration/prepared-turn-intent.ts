@@ -13,6 +13,8 @@ const retainedInputSchema = z
   .object({
     text: z.string(),
     displayInput: z.string().optional(),
+    // The typed text of a person-authored turn (`ProviderSendTurnInput.personText`).
+    personText: z.string().optional(),
     ambientContext: z.string().optional(),
     modelId: z.string().optional(),
     modelOptions: z.record(z.string(), z.unknown()).optional(),
@@ -163,6 +165,7 @@ export function captureTurnIntent(
   const dto: Record<string, unknown> = { text: input.input };
   for (const key of [
     'displayInput',
+    'personText',
     'ambientContext',
     'attachments',
     'modelId',

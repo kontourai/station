@@ -44,7 +44,7 @@ notifications and usage display.
 | `startSession` | Local only; nothing is sent. |
 | first `sendTurn` | Create the task. |
 | later `sendTurn` | Send a follow-up, where the binding declares one. |
-| `interruptTurn` | Cancel, where declared; otherwise `termination-unconfirmed`, because the work keeps running at the vendor. |
+| `interruptTurn` | Cancel only where the vendor's cancel leaves the task usable (a Cursor run); where it ends the whole task (Devin's terminate) or there is none, stop following: `termination-unconfirmed`, and the work keeps running at the vendor. |
 | `hasSession` | True for a thread whose resume cursor names a remote task. The adapter contract allows this for work that genuinely survives a restart. |
 | `streamEvents` | Vendor messages, keyed by the vendor's event id so replay is idempotent. |
 | `respondToRequest` | Never needed: no Station approval is ever opened. |
@@ -69,13 +69,68 @@ The routes' events read uses Station's own per-task sequence, with
 `after` or `Last-Event-ID`, the same resume role the orchestration stream
 gives `Last-Event-ID`.
 
-The second, stacked on the first, composes the chat adapter. It needs four
-things:
+The second, stacked on the first, composes the chat adapter:
 
-- a new engine family in the closed `EngineCapabilityMatrix`;
-- an answer to how `limits.engines.allowed` treats it;
-- a transcript projection of the stored messages onto runtime events;
-- Agent and picker entries, behind the same preview.
+- **Engine family.** `remote-task` in the closed `EngineCapabilityMatrix`.
+  Every cell that could carry something of the host's is unsupported:
+  instructions, tool servers, skills, commands, tool policy, images. The
+  model selection is a session `flag`, because the picker's "model" is the
+  connection, fixed at start.
+- **Managed policy.** `remote-task` is an engine id `limits.engines.allowed`
+  can name. A chat needs both that list (when there is one) and
+  `limits.engines.remoteTasks` naming the connection's vendor.
+- **Who may send.** The adapter declares `turnAuthorship: 'person-only'`,
+  and orchestration enforces it for every engine that declares it. A start
+  needs the composer route's person-start mark (`personChatStart`) and a send
+  or steer its person-typed mark, so a public command start, a delegation, a
+  task dispatch, a schedule, an automation, a review, a station-control tool
+  and an agent-origin or internal-principal request are all refused before the
+  adapter. A delegation or a Task dispatch to the engine's Agent is refused
+  earlier too, in the shared execution path, before an approval pick or a
+  worktree. Which requests carry those marks is pinned by the
+  person-authorship ingress suites.
+- **Adapter.** `RemoteTaskAdapter` over the service. The first turn creates
+  the task (claimed before the vendor call, so concurrent first sends create
+  one) and later turns send follow-ups. Only `personText`, the typed text
+  orchestration sets for a person-typed send to a person-only engine and
+  strips from every other, is sent, never the composed input. The repository is the chat's working copy's
+  GitHub `origin`; Station reads only the remote's URL. A vendor that needs
+  a repository (GitHub) is refused at start without one; others start with a
+  warning.
+- **Stop.** Stop cancels only where the vendor's cancel leaves the task usable
+  (a Cursor run). Where cancel ends the whole task (Devin) Stop only stops
+  following, and the task keeps working. A task that finished at a vendor
+  whose finished tasks take no more work (Devin) closes the chat to further
+  messages, with a clear refusal.
+- **Transcript projection.** A turn polls only while it is open and reports
+  the task's status as tool progress, under the turn-stall window. It shows
+  every message the store holds after what the chat last showed, whoever
+  synced it. A follow-up catches the task up just before it is sent, so a
+  late reply to an earlier turn still shows but is not taken as the answer.
+  The catch-up only sees what the vendor had written by then: a reply stored
+  after it counts as the new turn's answer, even when it answers the earlier
+  message. So after a turn ended at its wake or work bound while the vendor
+  was still answering it, that answer can end the next turn as its reply.
+  It ends only once the vendor reacted to the message (a reply stored after
+  it was sent, or a status it did not have then) and rests. It ends early as
+  "still waking" if the vendor did not react within 10 minutes, or as "still
+  working" after an hour, also while the vendor is rate limiting or
+  unreachable; the task goes on either way. A vendor's Retry-After is
+  honoured even past the poll ceiling: until it passes, the turn reports
+  progress without calling the vendor. Every turn ends with a
+  line naming the status, each pull request (by URL, or by the vendor's
+  reference), the task's page, and where to answer when Station cannot (a
+  GitHub task waiting for the person). A failed or timed-out task ends the
+  turn as aborted. A restarted chat resumes its task from its resume cursor
+  without replaying history.
+- **Agent and picker.** The adapter is registered always, and every start
+  and turn passes the service's gate. Its model catalog lists only the
+  connections ready for a chat. The engine connection and its same-id Agent
+  are adopted into the agent registry once a connection is ready (preview
+  on, the managed engine list allows `remote-task`, the vendor allowed,
+  acknowledged, token set), through the registry's native adoption, which
+  honours a recorded decline. Adoption runs at boot, after an
+  acknowledgement or a token, and when the preview's choice changes.
 
 ### Capabilities
 
@@ -135,8 +190,17 @@ refusal sends nothing:
    - The value reaches a binding only as the auth header for one call.
    - It is never returned to a client, logged, or passed on in a vendor's
      error text: the vendor's message and error code are redacted of it.
-5. **Who asks.** A request that may be an agent's is refused on every route,
-   so an agent cannot send host code off the machine.
+5. **Who asks.** A request that may be an agent's is refused on every route.
+   In a chat, only a session a person started in the composer and a message a
+   person typed reach the engine (see **Who may send**), so neither an agent
+   nor any automatic path can send host code off the machine.
+
+   The residual is the one person-typed turns already accept (#4827): a
+   program on the host that holds the person's own credential and reports a
+   composer surface passes as the person. Station's agents never hold that
+   credential (theirs is the internal principal, which is refused), so this
+   is a program the person ran or a compromised account, not an agent
+   Station launched.
 
 Station never forwards anything the vendor could use to reach the host:
 
@@ -215,6 +279,10 @@ selected organizations only".
   [`bindings/index.ts`](../../src-server/services/remote-task-engines/bindings/index.ts).
 - The routes are
   [`remote-task-engine-routes.ts`](../../src-server/routes/remote-task-engines/remote-task-engine-routes.ts).
+- The chat adapter is
+  [`remote-task-adapter.ts`](../../src-server/providers/adapters/remote-task-adapter.ts),
+  registered and adopted in the route composition
+  ([`adoption.ts`](../../src-server/services/remote-task-engines/adoption.ts)).
   Their pairing scopes are in `pairing-route-scopes.ts`: reads are
   `orchestration:read`, changes `orchestration:operate`, and the token
   `engine:login`.
@@ -241,6 +309,16 @@ Tests:
   interest, cadence and what is retried.
 - [Service rules](../../src-server/services/remote-task-engines/__tests__/remote-task-service.test.ts):
   capability flags, usage units, and removal during a sync.
+- [Chat adapter](../../src-server/providers/__tests__/remote-task-adapter.test.ts):
+  the picker, `personText` only, replies from the store, the wake and work
+  bounds, Stop per vendor, closed finished sessions, the status line,
+  concurrent first sends, failures, the repository rule, restart resume.
+- [Person-only engines](../../src-server/services/orchestration/__tests__/person-only-engine.test.ts):
+  orchestration refuses public, delegated, scheduled, automation, task
+  dispatch and review starts and sends, and passes only the typed text.
+- [Execution path](../../src-server/services/execution-target/__tests__/execution-target-execution.test.ts):
+  a start that is not a person's own chat, or a message they did not type, is
+  refused before an approval pick, a worktree or the engine.
 
 ## Not verified
 
