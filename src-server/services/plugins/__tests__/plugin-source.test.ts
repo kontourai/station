@@ -209,6 +209,32 @@ describe('installPluginDependency', () => {
     expect(buildPlugin).not.toHaveBeenCalled();
   });
 
+  test('an unreadable installed manifest produces a bounded dependency failure', async () => {
+    const root = createRoot();
+    const pluginsDir = join(root, 'plugins');
+    const dependencyDir = join(pluginsDir, 'invalid-dep');
+    mkdirSync(dependencyDir, { recursive: true });
+    writeFileSync(
+      join(dependencyDir, 'plugin.json'),
+      'ordinary non-JSON manifest contents',
+    );
+    const { buildPlugin, getAgentRegistryProvider, logger } = deps();
+
+    const result = await installPluginDependency(
+      { id: 'invalid-dep' },
+      pluginsDir,
+      getAgentRegistryProvider,
+      buildPlugin,
+      logger,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(
+      "Plugin dependency 'invalid-dep' manifest is invalid or unreadable",
+    );
+    expect(buildPlugin).not.toHaveBeenCalled();
+  });
+
   test('rejects registry success that does not materialize a valid dependency manifest', async () => {
     const root = createRoot();
     const pluginsDir = join(root, 'plugins');
