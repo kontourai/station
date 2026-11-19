@@ -1072,9 +1072,7 @@ describe('NewProjectModal starter layout picker', () => {
       fireEvent.click(screen.getByText('Start from a Git repository'));
       let url = 'https://user:private-token@github.com/org/draft.git';
       if (source === 'provider') {
-        fireEvent.change(screen.getByLabelText('Repository provider'), {
-          target: { value: 'github' },
-        });
+        fireEvent.click(screen.getByRole('button', { name: 'GitHub' }));
         await screen.findByLabelText('Clone protocol');
         fireEvent.change(screen.getByLabelText('Clone protocol'), {
           target: { value: 'ssh' },
@@ -1121,10 +1119,11 @@ describe('NewProjectModal starter layout picker', () => {
         screen.getByLabelText('Repository subdirectory (optional)'),
       ).toHaveProperty('value', 'packages/app');
       if (source === 'provider') {
-        expect(screen.getByLabelText('Repository provider')).toHaveProperty(
-          'value',
-          'github',
-        );
+        expect(
+          screen
+            .getByRole('button', { name: 'GitHub' })
+            .getAttribute('aria-pressed'),
+        ).toBe('true');
         expect(screen.getByLabelText('Clone protocol')).toHaveProperty(
           'value',
           'ssh',
@@ -1151,10 +1150,11 @@ describe('NewProjectModal starter layout picker', () => {
       expect(
         screen.getByLabelText('Repository subdirectory (optional)'),
       ).toHaveProperty('value', '');
-      expect(screen.getByLabelText('Repository provider')).toHaveProperty(
-        'value',
-        '',
-      );
+      expect(
+        screen
+          .getByRole('button', { name: 'Git URL' })
+          .getAttribute('aria-pressed'),
+      ).toBe('true');
       expect(screen.queryByText(/Signed in as operator/)).toBeNull();
       expect(repositoryFixture.mutate).not.toHaveBeenCalled();
     },

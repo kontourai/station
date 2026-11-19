@@ -327,7 +327,8 @@ The `@kontourai/station-contracts/terminal-transport` subpath exports the
 terminal binary frame codec (with the version 2 resize frame and its size
 codec), limits, the socket's `restart` request
 (`TerminalRestartRequest`, with `TERMINAL_SUBDIRECTORY_MAX_LENGTH`) and the
-observe/operate scope predicate. The
+observe/operate scope predicate. It also exposes the fixed GitHub and GitLab
+repository sign-in launch profiles and their displayed commands. The
 frame limit bounds unacknowledged output records independently of byte credit,
 including records sanitized to an empty payload. The
 [API reference](api.md#terminal-socket-operator-transport) owns the

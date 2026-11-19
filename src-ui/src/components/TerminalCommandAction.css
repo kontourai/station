@@ -1,0 +1,54 @@
+.terminal-command {
+  min-inline-size: 0;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+.terminal-command__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding-inline: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+}
+
+.terminal-command__header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.terminal-command__header .action-row {
+  display: flex;
+  flex-flow: row nowrap;
+  gap: 0;
+}
+
+.terminal-command__header .button {
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  padding: 0;
+}
+
+.terminal-command pre,
+.terminal-command p {
+  margin: 0;
+  padding: var(--k-space-3);
+}
+
+.terminal-command pre {
+  overflow-x: auto;
+  color: var(--k-text);
+}
+
+.terminal-command__session {
+  block-size: clamp(12rem, 35dvh, 22rem);
+  min-inline-size: 0;
+}
