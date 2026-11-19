@@ -1,3 +1,4 @@
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 
 export interface ConversationOpenRecoveryNoticeProps {
@@ -70,17 +71,31 @@ export function ConversationOpenRecoveryNotice({
         </strong>{' '}
         {detail}
       </span>
-      {onContinue || onRetry || onStartNew ? (
-        <span className="conversation-open-recovery__actions">
-          {onContinue ? (
+      <ActionRow
+        className="conversation-open-recovery__actions"
+        overflowLabel="More recovery actions"
+        primary={
+          onContinue ? (
             <Button onClick={onContinue}>Continue with another agent</Button>
-          ) : null}
-          {onRetry ? <Button onClick={onRetry}>Retry</Button> : null}
-          {onStartNew ? (
+          ) : onStartNew ? (
             <Button onClick={onStartNew}>Start new chat</Button>
-          ) : null}
-        </span>
-      ) : null}
+          ) : undefined
+        }
+        secondary={
+          onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined
+        }
+        overflow={
+          onContinue && onStartNew
+            ? [
+                {
+                  key: 'start-new',
+                  label: 'Start new chat',
+                  onSelect: onStartNew,
+                },
+              ]
+            : undefined
+        }
+      />
     </div>
   );
 }
