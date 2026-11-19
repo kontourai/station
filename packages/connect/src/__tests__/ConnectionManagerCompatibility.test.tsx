@@ -2,11 +2,20 @@
 
 import type { StationCompatibilityResult } from '@kontourai/station-contracts';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionStore } from '../core/ConnectionStore';
 import type { StorageAdapter } from '../core/types';
 import { ConnectionManagerModalContent } from '../react/ConnectionManagerModalContent';
 import { ConnectionsProvider } from '../react/ConnectionsContext';
+
+beforeEach(() => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function memoryAdapter(): StorageAdapter {
   const values: Record<string, string> = {};
@@ -132,18 +141,33 @@ describe('Connection Manager — compatibility verdict before the host is saved'
     expect(store.getAll()).toHaveLength(0);
   });
 
+  const compatibleHost = async (): Promise<StationCompatibilityResult> => ({
+    verdict: 'compatible',
+    blocking: false,
+    reason: 'Station 0.4.1 is compatible with this app.',
+    serverVersion: '0.4.1',
+  });
+
   it('stays quiet on a compatible host', async () => {
-    const store = renderManager(async () => ({
-      verdict: 'compatible',
-      blocking: false,
-      reason: 'Station 0.4.1 is compatible with this app.',
-      serverVersion: '0.4.1',
-    }));
+    const store = renderManager(compatibleHost);
 
     typeHost();
 
-    await waitFor(() => expect(store.getAll()).toHaveLength(1));
+    await screen.findByRole('button', { name: 'Request access' });
+    expect(store.getAll()).toHaveLength(1);
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('keeps the pairing recovery warning when browser storage is unavailable', async () => {
+    vi.stubGlobal('indexedDB', undefined);
+    const store = renderManager(compatibleHost);
+
+    typeHost();
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /Previous pairing attempts could not be fully recovered/,
+    );
+    expect(store.getAll()).toHaveLength(1);
   });
 
   it('blocks an embedding that omits the required compatibility checker', async () => {
