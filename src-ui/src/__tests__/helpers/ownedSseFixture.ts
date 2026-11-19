@@ -19,6 +19,10 @@ export function ownSseFixture(
       ).toHaveLength(0);
       await Promise.all(streams.map(([stream]) => stream.completed));
     } finally {
+      for (const stream of connections.keys()) stream.close();
+      await Promise.allSettled(
+        [...connections.keys()].map((stream) => stream.completed),
+      );
       connections.clear();
       vi.useRealTimers();
       vi.unstubAllGlobals();

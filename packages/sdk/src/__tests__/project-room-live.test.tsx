@@ -193,6 +193,9 @@ afterEach(async () => {
     await Promise.all([...transports.keys()].map((stream) => stream.completed));
   } finally {
     for (const stream of transports.keys()) stream.close();
+    await Promise.allSettled(
+      [...transports.keys()].map((stream) => stream.completed),
+    );
     transports.clear();
     for (const client of clients) client.clear();
     setClientCredentialResolver(undefined);
