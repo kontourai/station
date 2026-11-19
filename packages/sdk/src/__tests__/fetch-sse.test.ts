@@ -173,6 +173,83 @@ describe('fetchSSE', () => {
     expect(stream.signal.aborted).toBe(true);
   });
 
+  it('settles and releases listeners when the registration surface retires before transport cleanup', async () => {
+    const page = pagehideTarget();
+    const removePageListener = vi.spyOn(page.target, 'removeEventListener');
+    const parent = new AbortController();
+    const removeParentListener = vi.spyOn(parent.signal, 'removeEventListener');
+    const requestAborted = vi.fn();
+    const fetchMock = pendingFetchThatRejectsOnAbort(requestAborted);
+    vi.stubGlobal('window', page.target);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      signal: parent.signal,
+      onMessage: () => undefined,
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(stream.signal.aborted).toBe(false);
+
+    page.pagehide(false);
+    Object.defineProperty(page.target, 'removeEventListener', {
+      value: undefined,
+    });
+    await expect(stream.completed).resolves.toBeUndefined();
+
+    expect(requestAborted).toHaveBeenCalledOnce();
+    expect(removePageListener).toHaveBeenCalledWith(
+      'pagehide',
+      expect.any(Function),
+    );
+    expect(removeParentListener).toHaveBeenCalledWith(
+      'abort',
+      expect.any(Function),
+    );
+  });
+
+  it('removes retry listeners from their original targets after the host changes', async () => {
+    const page = pagehideTarget();
+    const document = pagehideTarget();
+    const addPageListener = vi.spyOn(page.target, 'addEventListener');
+    const removePageListener = vi.spyOn(page.target, 'removeEventListener');
+    const removeDocumentListener = vi.spyOn(
+      document.target,
+      'removeEventListener',
+    );
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError('network down');
+    });
+    vi.stubGlobal('window', page.target);
+    vi.stubGlobal('document', document.target);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stream = fetchSSE('https://station.example.test/events', {
+      onMessage: () => undefined,
+    });
+    await vi.waitFor(() =>
+      expect(addPageListener).toHaveBeenCalledWith(
+        'online',
+        expect.any(Function),
+      ),
+    );
+
+    vi.stubGlobal('window', pagehideTarget().target);
+    vi.stubGlobal('document', pagehideTarget().target);
+    stream.close();
+    await stream.completed;
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(removePageListener.mock.calls.map(([type]) => type)).toEqual([
+      'focus',
+      'online',
+      'pagehide',
+    ]);
+    expect(removeDocumentListener).toHaveBeenCalledWith(
+      'visibilitychange',
+      expect.any(Function),
+    );
+  });
+
   it('keeps a browser-owned stream active for BFCache pagehide until closed', async () => {
     const page = pagehideTarget();
     const requestAborted = vi.fn();

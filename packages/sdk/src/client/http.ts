@@ -1893,6 +1893,18 @@ type HostEventTarget = {
   ): void;
 };
 
+function listenToHost(
+  target: HostEventTarget | undefined,
+  type: string,
+  listener: (event?: { persisted?: boolean }) => void,
+): (() => void) | undefined {
+  if (!target) return;
+  // The stream can settle after the page is torn down.
+  const remove = target.removeEventListener.bind(target, type, listener);
+  target.addEventListener(type, listener);
+  return remove;
+}
+
 function browserDocument():
   | (HostEventTarget & { hidden?: boolean })
   | undefined {
@@ -1959,18 +1971,21 @@ function interruptibleDelay(
       clearTimeout(timer);
       if (resumeTimer !== undefined) clearTimeout(resumeTimer);
       signal.removeEventListener('abort', finish);
-      browserDocument()?.removeEventListener('visibilitychange', onWake);
-      const scope = browserWindow();
-      scope?.removeEventListener('focus', onWake);
-      scope?.removeEventListener('online', onWake);
+      removeVisibility?.();
+      removeFocus?.();
+      removeOnline?.();
       resolve();
     };
     const timer = setTimeout(() => finish(), ms);
     signal.addEventListener('abort', finish, { once: true });
-    browserDocument()?.addEventListener('visibilitychange', onWake);
-    const scope = browserWindow();
-    scope?.addEventListener('focus', onWake);
-    scope?.addEventListener('online', onWake);
+    const page = browserWindow();
+    const removeVisibility = listenToHost(
+      browserDocument(),
+      'visibilitychange',
+      onWake,
+    );
+    const removeFocus = listenToHost(page, 'focus', onWake);
+    const removeOnline = listenToHost(page, 'online', onWake);
   });
   return { promise, wake: () => finish() };
 }
@@ -2179,11 +2194,9 @@ export function fetchSSE(
   // terminal for this document; keeping an SSE reader alive after navigation
   // can retain a stale UI tree and its credentials. BFCache entry is different:
   // the same page may resume, so it intentionally keeps the stream alive.
-  const page = browserWindow();
-  const abortOnPageHide = (event?: { persisted?: boolean }) => {
+  const removePageHide = listenToHost(browserWindow(), 'pagehide', (event) => {
     if (!event?.persisted) abort();
-  };
-  page?.addEventListener('pagehide', abortOnPageHide);
+  });
   opts.signal?.addEventListener('abort', abort, { once: true });
   const origin = requestOrigin(url);
   const initialRetryDelay = opts.retryDelayMs ?? 1000;
@@ -2436,8 +2449,11 @@ export function fetchSSE(
       retryDelay = Math.min(Math.max(retryDelay * 2, 1), maxRetryDelay);
     }
   })().finally(() => {
-    page?.removeEventListener('pagehide', abortOnPageHide);
-    opts.signal?.removeEventListener('abort', abort);
+    try {
+      removePageHide?.();
+    } finally {
+      opts.signal?.removeEventListener('abort', abort);
+    }
   });
   return {
     close: abort,
