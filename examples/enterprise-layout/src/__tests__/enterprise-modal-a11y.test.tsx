@@ -44,7 +44,8 @@ vi.mock('../data', () => ({
   useVaultSave: () => idleMutation,
 }));
 
-vi.mock('../data/notes-hooks', () => ({
+vi.mock('../data/notes-hooks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../data/notes-hooks')>()),
   useNoteTree: () => ({ data: [], isLoading: false }),
   useFilteredNotes: () => ({
     data: [
