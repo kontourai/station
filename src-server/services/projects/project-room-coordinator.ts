@@ -40,6 +40,7 @@ import {
 import type { TaskStatus } from '@kontourai/station-contracts/task-graph';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { sameRoomTaskScope } from './project-room-agent-task-context.js';
 import {
   type CoordinatorRowDraft,
   type CoordinatorRowRecord,
@@ -82,6 +83,7 @@ export interface ProjectRoomCoordinatorPorts {
       agentId: string;
     },
     key: string,
+    authorize: () => boolean,
   ): Promise<{ id: string; createdAt: string }>;
   dispatchTask(input: {
     taskId: string;
@@ -501,22 +503,33 @@ export class ProjectRoomCoordinator {
   private async startRow(row: CoordinatorRowRecord): Promise<void> {
     if (!this.ports.enabled()) return;
     const starter = row.starterId;
-    if (!starter || !this.ports.mayStart(starter, row.scope.localProjectId))
-      return this.refuse(
-        row,
-        'The person who started it can no longer start work in this Project.',
+    if (!starter) return this.refuse(row, 'The starter is unavailable.');
+    const projectScope = row.scope;
+    const authorize = () => {
+      const current = this.ports.currentScope(projectScope.localProjectSlug);
+      return (
+        Boolean(current && sameRoomTaskScope(current, projectScope)) &&
+        this.ports.mayStart(starter, projectScope.localProjectId)
       );
+    };
+    const refused = () =>
+      this.refuse(
+        row,
+        'The Project changed or the person can no longer start work in it.',
+      );
+    if (!authorize()) return refused();
     let taskId = row.taskId;
     if (!taskId) {
       try {
         const task = await this.ports.createTask(
           {
-            projectId: row.scope.localProjectId,
+            projectId: projectScope.localProjectSlug,
             title: row.title,
             description: row.prompt,
             agentId: row.agentId,
           },
           row.rowId,
+          authorize,
         );
         taskId = task.id;
       } catch (error) {
@@ -531,6 +544,7 @@ export class ProjectRoomCoordinator {
       if (!updated) return;
       row = updated;
     }
+    if (!authorize()) return refused();
     let sessionId = row.sessionId ?? this.ports.readTask(taskId)?.sessionId;
     if (!sessionId) {
       const outcome = await this.ports.dispatchTask({
@@ -556,6 +570,7 @@ export class ProjectRoomCoordinator {
     }
     const conversationId = this.ports.conversationForSession(sessionId);
     if (!conversationId) return;
+    if (!authorize()) return refused();
     const submitted = this.ports.submitTurn({
       conversationId,
       clientTurnId: firstTurnKey(row.rowId),

@@ -161,11 +161,13 @@ export function composeProjectRoomCoordinatorRuntime(
     agentLabel: deps.agentName,
     currentScope: deps.currentScope,
     mayStart: deps.mayStart,
-    createTask: (input, key) =>
+    createTask: (input, key, authorize) =>
       deps.taskGraph.createTaskIdempotent(
         { ...input, createdBy: 'project-room-coordinator' },
         'project-room-coordinator',
         key,
+        undefined,
+        authorize,
       ),
     dispatchTask: ({ taskId, agentId, ownerUserId }) =>
       deps.dispatcher.dispatch(taskId, {
