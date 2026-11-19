@@ -191,9 +191,9 @@ dependency hooks keep their separate deadlines.
 
 An interrupted install retains `.station-dependency-install` with its receipt
 and any incomplete `node_modules` tree. A retry refuses while that guard
-exists. Check the retained state and establish that the installer and its
-child processes have stopped before recovering the checkout. A PID or a
-receipt's age alone cannot establish that. Once custody is confirmed, move
-the failed guard and incomplete tree together to an owned inspection
-directory and run `npm run dependencies:ci` to install and verify a fresh tree.
-Use a fresh sibling checkout when the original install's state is uncertain.
+exists. Recover the checkout only when you control it and have confirmed that
+the installer and its child processes stopped. Preserve any incomplete tree
+in an owned inspection directory while the guard still holds. Move the
+failed guard to the same directory last, then run `npm run dependencies:ci`
+to install and verify a fresh tree. Use a fresh sibling checkout when the
+original install's state is uncertain.
