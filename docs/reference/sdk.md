@@ -803,6 +803,10 @@ this Station does not have (`project_room_project_not_found`, also read by
 opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
+The newest live window rolls within the 500-message span. Ordinary refetch
+reads that range in bounded 25-message spans and pages earlier from its
+actual start. The Room keeps recently departed rows through its retained
+history reader. A contiguous live rollover does not start a history request.
 The hook follows forward continuations when the server's byte limit splits a
 window, then loads older windows; it retains up to 20 windows.
 `useProjectRoomRetainedHistory` re-reads the rows a caller still shows from
