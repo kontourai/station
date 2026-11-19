@@ -994,7 +994,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await standaloneModal(page).getByText('See exactly what is sent').click();
     await expect(page.getByText('station_started')).toBeVisible();
     await expect(disclosureStep(page)).toHaveCount(0);
-    await expect(page.locator('.responsive-surface-overlay')).toHaveCount(1);
+    await expect(page.getByRole('dialog')).toHaveCount(1);
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
 
     await page.screenshot({
@@ -1155,11 +1155,10 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     ).toBeVisible();
     // Its own dismissal is unchanged — the exit that decides nothing.
     await expect(page.getByRole('button', { name: 'Not now' })).toBeVisible();
-    // Chat is ready in this mix, so the launcher is not wanted; the point is
-    // that the modal is the ONLY overlay, and the chapter is not offered.
+    // Review is the only active dialog after the explicit action.
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
-    await expect(page.getByTestId('first-run-home-card')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(1);
   });
 
   test('a home whose engines need attention still offers privacy review without interrupting work', async ({
@@ -1202,7 +1201,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
 
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
     await expect(standaloneModal(page)).toHaveCount(0);
-    await expect(page.locator('.responsive-surface-overlay')).toHaveCount(1);
+    await expect(page.getByRole('dialog')).toHaveCount(1);
     // An acknowledged home has nothing to disclose, so the disclosure step is
     // not promised — the run is the engines step, the engine role this home
     // has not answered, and About you.
