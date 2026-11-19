@@ -23523,7 +23523,7 @@ describe('OrchestrationService', () => {
     input: Parameters<OrchestrationService['runConnectionSmoke']>[0],
   ) {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
-    const terminal = Promise.withResolvers<void>();
+    const terminal = deferred<void>();
     const unsubscribe = eventBus.subscribe((frame) => {
       if (frame.event !== 'orchestration:event') return;
       const event = frame.data?.event as CanonicalRuntimeEvent | undefined;
