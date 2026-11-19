@@ -51,7 +51,7 @@
 .room-coordinator-card__meta,
 .room-coordinator-card__note {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .room-coordinator-card__side {

@@ -4063,7 +4063,10 @@ message, or a framed inbox turn to a coordinator Task's chat. The coordinator's
 brief and memory arrive through its Session start (`composeProjectSessionContext`,
 #5132), and each request rebuilds its picture from the
 [store](../../src-server/services/projects/project-room-coordinator-store.ts)'s rows
-and the room, so a replacement coordinator Session loses nothing (#3513). Rows move
+and the room, so a replacement coordinator Session loses nothing (#3513).
+The private `security/project-room-coordinator.sqlite` store is Station home
+state. Home backups check and checkpoint the database before copying it.
+Rows move
 proposed → waiting → starting → working → done, failed or refused by compare-and-set,
 and slots are claimed in one SQLite transaction against the Project's
 `roomCoordinator.maxConcurrentTasks`. A starting row creates its Task with
