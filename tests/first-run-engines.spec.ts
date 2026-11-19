@@ -1002,7 +1002,8 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
       fullPage: false,
     });
 
-    await standaloneModal(page)
+    await page
+      .getByRole('dialog', { name: 'What Station sends' })
       .getByRole('button', { name: 'Keep usage telemetry on' })
       .click();
 
