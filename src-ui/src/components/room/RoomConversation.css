@@ -496,6 +496,15 @@ a.room-attachments__file:focus-visible {
   min-width: 44px;
 }
 
+.room-conversation--compact .room-message-text a[href^="/tasks/"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .room-conversation--compact .room-conversation__jump.button {
   /* A phone line runs edge to edge, so no overlay spot is free: the control
      takes its own row under the list while it is shown (#4810 review 8). */
