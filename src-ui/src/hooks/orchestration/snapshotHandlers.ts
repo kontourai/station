@@ -1,5 +1,6 @@
 import {
   isApprovalMode,
+  isEngineApprovalReviewer,
   providerSessionBindingEnded,
   readProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
@@ -20,12 +21,14 @@ import { newerConversationActivity } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
+  pendingNonModelOptions,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { reconcileChildWorkSnapshot } from './childWorkHandlers';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
+import { observedEngineModeUpdates } from './sessionHandlers';
 import type { OrchestrationSnapshotPayload } from './types';
 
 type SnapshotChatState = Pick<
@@ -35,6 +38,7 @@ type SnapshotChatState = Pick<
   | 'requestedModel'
   | 'requestedModelSource'
   | 'requestedProviderOptions'
+  | 'currentModeId'
   | 'modelSource'
   | 'defaultModel'
   | 'orchestrationSessionStarted'
@@ -478,9 +482,30 @@ function planSnapshot(
         currentChild !== undefined &&
         chat?.currentSessionId !== currentChild &&
         (currentChild !== chatKey || chat?.currentSessionId !== undefined);
+      const modeForCurrentSession =
+        session.threadId === (currentChild ?? chat?.currentSessionId ?? chatKey)
+          ? session.currentModeId
+          : undefined;
+      const observedMode =
+        typeof modeForCurrentSession === 'string' &&
+        modeForCurrentSession.length > 0
+          ? observedEngineModeUpdates(
+              modeForCurrentSession,
+              adoptsCurrentChild ? undefined : chat,
+            )
+          : adoptsCurrentChild
+            ? { currentModeId: null }
+            : {};
+      const remainingAfterMode = Object.hasOwn(
+        observedMode,
+        'requestedProviderOptions',
+      )
+        ? observedMode.requestedProviderOptions
+        : chat?.requestedProviderOptions;
       return {
         threadId: chatKey,
         updates: {
+          ...observedMode,
           provider: session.provider,
           model:
             session.reportedModel ?? session.effectiveModel ?? session.model,
@@ -498,7 +523,10 @@ function planSnapshot(
                   chat?.requestedProviderOptions,
                   session.effectiveModelOptions,
                 )
-                  ? { requestedProviderOptions: undefined }
+                  ? {
+                      requestedProviderOptions:
+                        pendingNonModelOptions(remainingAfterMode),
+                    }
                   : {}),
                 ...(chat?.requestedModel !== null
                   ? {
@@ -520,6 +548,13 @@ function planSnapshot(
           orchestrationModel:
             session.reportedModel ?? session.effectiveModel ?? session.model,
           orchestrationSessionStarted: true,
+          ...(session.threadId ===
+            (currentChild ?? chat?.currentSessionId ?? chatKey) &&
+          isEngineApprovalReviewer(session.reportedApprovalReviewer)
+            ? { reportedApprovalReviewer: session.reportedApprovalReviewer }
+            : adoptsCurrentChild
+              ? { reportedApprovalReviewer: undefined }
+              : {}),
           // #4433: what the engine last reported applying is client memory
           // (`lastAppliedApprovalMode`), lost on a reload, a resync or a
           // reopened conversation; the chip then fell back to "Default"

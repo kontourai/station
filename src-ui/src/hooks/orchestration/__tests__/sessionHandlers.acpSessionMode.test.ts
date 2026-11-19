@@ -9,6 +9,7 @@ const threadId = 'thread-acp-mode';
 describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
   let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
   let handleSessionLifecycleEvent: typeof import('../sessionHandlers').handleSessionLifecycleEvent;
+  let handleSessionEngineModeObservedEvent: typeof import('../sessionHandlers').handleSessionEngineModeObservedEvent;
 
   beforeEach(async () => {
     vi.stubGlobal('localStorage', {
@@ -28,7 +29,8 @@ describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
     ({ activeChatsStore } = await import(
       '../../../contexts/active-chats-store'
     ));
-    ({ handleSessionLifecycleEvent } = await import('../sessionHandlers'));
+    ({ handleSessionEngineModeObservedEvent, handleSessionLifecycleEvent } =
+      await import('../sessionHandlers'));
     activeChatsStore.initChat(threadId, {
       agentSlug: 'kiro',
       agentName: 'Kiro',
@@ -42,7 +44,10 @@ describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
     vi.resetModules();
   });
 
-  test('session.configured stores the advertised current mode id', () => {
+  test('session.configured confirms the requested mode and keeps other pending options', () => {
+    activeChatsStore.updateChat(threadId, {
+      requestedProviderOptions: { mode: 'plan', effort: 'high' },
+    });
     handleSessionLifecycleEvent({
       eventId: 'evt-mode',
       provider: 'acp',
@@ -62,6 +67,51 @@ describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
     expect(activeChatsStore.getSnapshot()[threadId]?.currentModeId).toBe(
       'plan',
     );
+    expect(
+      activeChatsStore.getSnapshot()[threadId]?.requestedProviderOptions,
+    ).toEqual({
+      effort: 'high',
+    });
+  });
+
+  test('a delayed model acknowledgement keeps the newer mode pending', () => {
+    activeChatsStore.updateChat(threadId, {
+      requestedModel: 'next-model',
+      providerOptions: { effort: 'low' },
+      requestedProviderOptions: { effort: 'high', mode: 'plan' },
+      currentModeId: 'build',
+    });
+    handleSessionLifecycleEvent({
+      eventId: 'evt-earlier-model',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-09-11T00:00:00.000Z',
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: {
+        effectiveModel: 'next-model',
+        effectiveModelOptions: { effort: 'high' },
+        acpSessionMode: 'build',
+      },
+    });
+
+    expect(activeChatsStore.getSnapshot()[threadId]).toMatchObject({
+      currentModeId: 'build',
+      requestedProviderOptions: { mode: 'plan' },
+      providerOptions: { effort: 'high' },
+    });
+    handleSessionEngineModeObservedEvent({
+      eventId: 'evt-next-mode',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-09-11T00:00:01.000Z',
+      method: 'session.engine-mode-observed',
+      modeId: 'plan',
+    });
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.currentModeId).toBe('plan');
+    expect(chat?.requestedProviderOptions).toBeUndefined();
+    expect(chat?.providerOptions).toEqual({ effort: 'high' });
   });
 
   test('session.started does not invent a current mode', () => {

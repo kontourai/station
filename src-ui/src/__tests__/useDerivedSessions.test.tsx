@@ -94,6 +94,27 @@ test.each([false, true])(
 );
 
 describe('useDerivedSessions — ChatDock identity stability (station#726)', () => {
+  test('the dock sees a requested mode separately from the confirmed session mode', () => {
+    const { result } = renderHook(() => useDerivedSessions('', null));
+    act(() => {
+      activeChatsStore.updateChat(SESSION_A, { currentModeId: 'build' });
+    });
+    const opened = result.current.find((session) => session.id === SESSION_A);
+    expect(opened?.requestedProviderOptions).toBeUndefined();
+
+    act(() => {
+      activeChatsStore.updateChat(SESSION_A, {
+        requestedProviderOptions: { mode: 'plan' },
+      });
+    });
+    expect(
+      result.current.find((session) => session.id === SESSION_A),
+    ).toMatchObject({
+      currentModeId: 'build',
+      requestedProviderOptions: { mode: 'plan' },
+    });
+  });
+
   test('the mounted session adapter carries retained receiver text into the dock', () => {
     const station = conversationConnection('relay');
     const copy = retainChatTranscript(

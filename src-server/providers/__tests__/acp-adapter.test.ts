@@ -6370,11 +6370,19 @@ describe('station#1182: runtime-reported model', () => {
       },
     });
 
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'acp',
       threadId: 'thread-mode-turn',
       cwd: '/tmp/project',
       metadata: { connectionId: 'kiro' },
+    });
+    expect((await nextEvent(iterator, 'session.started')).method).toBe(
+      'session.started',
+    );
+    expect(await nextEvent(iterator, 'initial mode')).toMatchObject({
+      method: 'session.configured',
+      metadata: { acpSessionMode: 'ask' },
     });
     expect(processes[0].setModeCalls).toEqual([]);
 
@@ -6384,6 +6392,10 @@ describe('station#1182: runtime-reported model', () => {
       modelOptions: { mode: 'code' },
     });
     expect(processes[0].setModeCalls).toEqual(['code']);
+    expect(await nextEvent(iterator, 'engine mode')).toMatchObject({
+      method: 'session.engine-mode-observed',
+      modeId: 'code',
+    });
     processes[0].resolvePrompt('end_turn');
 
     await adapter.stopAll();
