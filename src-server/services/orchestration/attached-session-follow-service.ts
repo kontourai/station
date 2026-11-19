@@ -4,6 +4,7 @@ import { resolve, sep } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
+  ATTACHED_SESSION_CONTINUATION_REFRESH,
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -1202,6 +1203,22 @@ export class AttachedSessionFollowService {
     this.staleWriteLogged.delete(descriptor.threadId);
     if (outcome === true) return true;
     snapshot.set(outcome);
+    if (
+      !sameBoundedPersistedValues(
+        observed?.attachedSource?.completedBoundary,
+        outcome.attachedSource?.completedBoundary,
+      )
+    ) {
+      // The terminal transcript event can reach readers before this commit.
+      // Wake the authorized summary reader once the completed boundary lands.
+      this.options.eventBus.emit(
+        SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+        {
+          threadId: descriptor.threadId,
+          reason: ATTACHED_SESSION_CONTINUATION_REFRESH,
+        },
+      );
+    }
     return true;
   }
 

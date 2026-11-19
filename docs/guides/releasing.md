@@ -228,6 +228,9 @@ lockfile, toolchain pins and phase plan. A newer commit or expired/missing
 evidence runs fresh qualification. A newer failed qualification invalidates
 prior green evidence for that source. An API lookup failure also runs fresh;
 it cannot admit publication.
+REST evidence GETs retry HTTP 502, 503 and 504 at most twice within the same
+30-second request deadline. Exhaustion remains an API failure; writes,
+authentication failures and malformed evidence are not retried.
 
 Quiet intervals therefore avoid rerunning successful unchanged source. A
 scheduled run also declines to repeat the corpus on a source whose newest

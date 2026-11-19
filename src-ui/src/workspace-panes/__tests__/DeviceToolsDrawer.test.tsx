@@ -41,6 +41,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 }));
 
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { DeviceWorkspacePane } from '../DeviceWorkspacePane';
 import {
   authorizeScope,
@@ -333,11 +334,12 @@ describe('the Tools drawer', () => {
     const drawer = await openSettings('Location');
     await within(drawer).findByText('This device cannot report it.');
     await click(within(drawer).getByRole('button', { name: 'London' }));
-    expect(
-      await within(drawer).findByText(
-        /Last set from Station at .*: 51\.5074, -0\.1278\. This device cannot report its location back\./,
-      ),
-    ).toBeTruthy();
+    const readback = await within(drawer).findByText('51.5074, -0.1278');
+    const status = readback.closest('[role="status"]');
+    expect(status?.textContent).toContain('Last set from Station');
+    expect(status?.textContent).toContain(
+      'This device cannot report its location back.',
+    );
   });
 
   test('someone else controlling the device is said plainly', async () => {
@@ -441,6 +443,28 @@ describe('drawer focus (S5)', () => {
       expect(screen.queryByRole('complementary', { name: 'Apps' })).toBeNull(),
     );
     expect(document.activeElement).toBe(more);
+  });
+
+  test('only a full mobile drawer makes the device controls inert, and Escape restores them', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === MOBILE_MEDIA_QUERY,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    await openDevice(handler);
+    const more = await chooseDeviceMenuItem('Device settings');
+    const drawer = await screen.findByRole('complementary', {
+      name: 'Device settings',
+    });
+    expect(more.closest('[inert]')).toBeNull();
+
+    resize(390);
+    expect(more.closest('[inert]')).not.toBeNull();
+    expect(drawer.closest('[inert]')).toBeNull();
+
+    fireEvent.keyDown(drawer, { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(more));
+    expect(more.closest('[inert]')).toBeNull();
   });
 
   test('a docked↔overlay flip (a resize) does not move focus', async () => {

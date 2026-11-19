@@ -1183,6 +1183,7 @@ export {
   usePluginSettingsMutation,
   usePluginSettingsQuery,
   usePluginsQuery,
+  usePluginUpdateCheckQuery,
   usePluginUpdateMutation,
   usePluginUpdatesQuery,
   usePluginVisibilityQuery,

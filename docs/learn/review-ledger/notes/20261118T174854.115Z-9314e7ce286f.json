@@ -1,0 +1,11 @@
+{
+  "revision": "9a5f93e088b5540a4a61e157ac738942b20c72ab",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the catalog route documentation and its callers. It records optional presentation fields on a catalog option. The vocabulary, integration entry points and package import boundaries are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the catalog route documentation and its callers. It records optional presentation fields on a catalog option. The vocabulary, integration entry points and package import boundaries are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the catalog route documentation and its callers. It records optional presentation fields on a catalog option. The vocabulary, integration entry points and package import boundaries are unchanged.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

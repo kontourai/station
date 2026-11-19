@@ -1,0 +1,11 @@
+{
+  "revision": "f21e47725d5734836f2fb3cb61cb90c68d3657a4",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the Settings and Customize browser routes against the product spec and manifest. The test enters Settings through the account menu on the 390px viewport, opens the real chooser, and verifies each link’s computed minimum, rendered geometry, and hit testing. The malformed CSS control failed on effective size with the computed 44px floor intact.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs","tests/settings.spec.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Checked the Settings/Customize evidence row, the manifest execution class, and the four focused Chromium route cases. The selector and current destinations now follow the live navigation contract. The campaign keeps the original scope and isolated instance ownership.","inputs":["docs/plans/whole-app-ux-campaign.md","docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Checked the changed Settings rationale against the browser-smoke manifest. The Settings spec remains in the product bucket. Its CSS floor and hit-area proof do not add or promote any smoke fixture.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

@@ -13,6 +13,7 @@ import { describe, expect, test } from 'vitest';
 import { chatModelLabel } from '../components/chat-dock/chat-dock-utils';
 import {
   modelIdentityLabel,
+  modelOptionLabel,
   type SelectableModel,
 } from '../utils/modelCapabilities';
 import { defaultResolveModelLabel } from '../views/home/home-view-model';
@@ -47,6 +48,21 @@ describe('modelIdentityLabel', () => {
     expect(modelIdentityLabel('default', [resolvedEngineDefault, opus])).toBe(
       'Opus 5',
     );
+  });
+
+  test('uses structured route fields for labels and leaves an opaque selector intact', () => {
+    const id = 'zai-coding-plan/glm-5.3-flash';
+    const model = {
+      id,
+      name: id,
+      catalogRoute: { providerId: 'zai-coding-plan', modelId: 'glm-5.3-flash' },
+    };
+    expect(modelIdentityLabel(id, [model])).toBe('glm-5.3-flash');
+    expect(modelOptionLabel(model, true)).toBe(
+      'glm-5.3-flash (zai-coding-plan)',
+    );
+    expect(modelIdentityLabel(id)).toBe(id);
+    expect(model.id).toBe(id);
   });
 
   test('uses the catalog name for a concrete id', () => {

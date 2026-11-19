@@ -1,0 +1,193 @@
+{
+  "revision": "67c6c99084a8698156b4038a18d8e3b50ee8c831",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed guardian escalation and external deferral guidance at the configured policy and approval adapters. Rendered Inbox evidence covers both widths and themes. Live model and physical device execution remain unverified.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/routes/chat/chat-primary-stream.ts","src-server/runtime/agents/agent-hooks.ts","src-server/runtime/agents/pre-tool-policy.ts","src-server/services/projects/attention-projection.ts","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Inbox guardian label against the real inspection and EventStore browser fixtures. The guarded approval remains the same exact decision, with an independent quote only when present.","inputs":["docs/user/getting-started.md","src-ui/src/components/attention/RequestInspectionDialog.tsx","tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the guardian delivery overview against the configured provider tests. Escalation now presents the attributed quote. External no-person enforce defer denies on the configured policy boundary without implying general external unattended grants.","inputs":["docs/guides/agent-configuration.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the additive guardianReason string on exact inspection and approved registry attention items. Optional display data does not grant request answerability or change the open-event identity.","inputs":["packages/contracts/src/attention.ts"]},
+
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Reviewed the provider event declaration. Guardian reason is optional, authored by the Station policy path, and carried separately from tool descriptions and payloads. Existing runtime event identity, blocking semantics and receipt authority remain in force.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the provider event declaration. Guardian reason is optional, authored by the Station policy path, and carried separately from tool descriptions and payloads. Existing runtime event identity, blocking semantics and receipt authority remain in force.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the provider event declaration. Guardian reason is optional, authored by the Station policy path, and carried separately from tool descriptions and payloads. Existing runtime event identity, blocking semantics and receipt authority remain in force.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the provider event declaration. Guardian reason is optional, authored by the Station policy path, and carried separately from tool descriptions and payloads. Existing runtime event identity, blocking semantics and receipt authority remain in force.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the exact-open response and SDK reader. The guardian quotation comes from the verified open event or typed inspection response and stays separate from the body. Existing state and identity guards remain in effect.","inputs":["packages/sdk/src/client/request-inspection.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the exact-open response and SDK reader. The guardian quotation comes from the verified open event or typed inspection response and stays separate from the body. Existing state and identity guards remain in effect.","inputs":["packages/sdk/src/client/request-inspection.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the controlled ACP permission fixture. It exercises an independent quote on the required question and a native decline when nobody can answer an enforce defer.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the controlled Claude hook and permission-frame observations. The tests validate both real guardian defer contexts and quote identity for unchanged versus changed input. No live provider assertion is made.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the controlled Claude hook and permission-frame observations. The tests validate both real guardian defer contexts and quote identity for unchanged versus changed input. No live provider assertion is made.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the configured ACP permission flow and fixtures. A required guardian question keeps its reason on the open event. An enforce defer with no person goes through the existing mapped decline. The engine call’s own tool fields cannot supply the reason.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the configured Claude hook and canUseTool handoff. A required guardian question holds the prompt and transfers the quote once for its tool-use identity and unchanged input. Changed input loses the quote. A noninteractive enforce defer is denied in the hook.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the configured Codex bound-tool policy path. A required guardian question keeps its quote on the open event. No-person enforce defer returns the existing refusal outcome before opening a request. Ordinary native approval transport remains as documented.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the typed Station Agent relay request event. Its guardian quote is a separate field from raw tool args and description; approval identity and caller settlement retain their existing owners.","inputs":["src-server/providers/adapters/station-agent-adapter.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the typed Station Agent relay request event. Its guardian quote is a separate field from raw tool args and description; approval identity and caller settlement retain their existing owners.","inputs":["src-server/providers/adapters/station-agent-adapter.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the typed Station Agent relay request event. Its guardian quote is a separate field from raw tool args and description; approval identity and caller settlement retain their existing owners.","inputs":["src-server/providers/adapters/station-agent-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the managed requester registration and relay. Its distinct guardian argument is forwarded through the existing elicitation owner without granting a new action or changing chat routing.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the managed requester registration and relay. Its distinct guardian argument is forwarded through the existing elicitation owner without granting a new action or changing chat routing.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the managed requester registration and relay. Its distinct guardian argument is forwarded through the existing elicitation owner without granting a new action or changing chat routing.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the managed requester registration and relay. Its distinct guardian argument is forwarded through the existing elicitation owner without granting a new action or changing chat routing.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the admitted-turn controls using the real guardian conversation reader. Unattended Task, delegation, Automation and unknown contexts fail closed, and the interactive arm still defers.","inputs":["src-server/runtime/agents/__tests__/pre-tool-policy.test.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed managed before-tool authorization. Only the staged policy’s required ask supplies the optional independent reason through the managed requester; ordinary approvals and denial effects keep their existing paths.","inputs":["src-server/runtime/agents/agent-hooks.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed managed before-tool authorization. Only the staged policy’s required ask supplies the optional independent reason through the managed requester; ordinary approvals and denial effects keep their existing paths.","inputs":["src-server/runtime/agents/agent-hooks.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed managed before-tool authorization. Only the staged policy’s required ask supplies the optional independent reason through the managed requester; ordinary approvals and denial effects keep their existing paths.","inputs":["src-server/runtime/agents/agent-hooks.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed managed recovery requester registration. Recovery forwards its trusted policy quote through the same request owner, without changing replay, data admission or action custody.","inputs":["src-server/runtime/agents/durable-agent-recovery.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed managed recovery requester registration. Recovery forwards its trusted policy quote through the same request owner, without changing replay, data admission or action custody.","inputs":["src-server/runtime/agents/durable-agent-recovery.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed guardian escalation, required questions and the admitted-turn no-person check. The reason is separately attributed to the guardian and bounded before publication. An external enforce defer without a person denies before engine approval, while an attended defer keeps the existing handoff.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed guardian escalation, required questions and the admitted-turn no-person check. The reason is separately attributed to the guardian and bounded before publication. An external enforce defer without a person denies before engine approval, while an attended defer keeps the existing handoff.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed guardian escalation, required questions and the admitted-turn no-person check. The reason is separately attributed to the guardian and bounded before publication. An external enforce defer without a person denies before engine approval, while an attended defer keeps the existing handoff.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed guardian escalation, required questions and the admitted-turn no-person check. The reason is separately attributed to the guardian and bounded before publication. An external enforce defer without a person denies before engine approval, while an attended defer keeps the existing handoff.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed guardian escalation, required questions and the admitted-turn no-person check. The reason is separately attributed to the guardian and bounded before publication. An external enforce defer without a person denies before engine approval, while an attended defer keeps the existing handoff.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed guardian escalation, required questions and the admitted-turn no-person check. The reason is separately attributed to the guardian and bounded before publication. An external enforce defer without a person denies before engine approval, while an attended defer keeps the existing handoff.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the managed elicitation producer. The guardian quote comes through a distinct internal argument and is written to the request event and registry metadata. Raw request descriptions and tool arguments cannot provide it.","inputs":["src-server/runtime/conversation/stream-orchestrator.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the managed elicitation producer. The guardian quote comes through a distinct internal argument and is written to the request event and registry metadata. Raw request descriptions and tool arguments cannot provide it.","inputs":["src-server/runtime/conversation/stream-orchestrator.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the managed elicitation producer. The guardian quote comes through a distinct internal argument and is written to the request event and registry metadata. Raw request descriptions and tool arguments cannot provide it.","inputs":["src-server/runtime/conversation/stream-orchestrator.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the managed elicitation producer. The guardian quote comes through a distinct internal argument and is written to the request event and registry metadata. Raw request descriptions and tool arguments cannot provide it.","inputs":["src-server/runtime/conversation/stream-orchestrator.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the registry approval projection. The optional guardian reason is read from the trusted approval lifecycle message, separately from tool metadata and the exact operation’s answer authority.","inputs":["src-server/services/approvals/approval-inbox.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the registry approval projection. The optional guardian reason is read from the trusted approval lifecycle message, separately from tool metadata and the exact operation’s answer authority.","inputs":["src-server/services/approvals/approval-inbox.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the registry lifecycle metadata path. The guardian quote remains an optional display field and does not alter binding, authorized settlement or request identity.","inputs":["src-server/services/approvals/approval-registry.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the registry lifecycle metadata path. The guardian quote remains an optional display field and does not alter binding, authorized settlement or request identity.","inputs":["src-server/services/approvals/approval-registry.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the registry lifecycle metadata path. The guardian quote remains an optional display field and does not alter binding, authorized settlement or request identity.","inputs":["src-server/services/approvals/approval-registry.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the registry lifecycle metadata path. The guardian quote remains an optional display field and does not alter binding, authorized settlement or request identity.","inputs":["src-server/services/approvals/approval-registry.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the registry lifecycle metadata path. The guardian quote remains an optional display field and does not alter binding, authorized settlement or request identity.","inputs":["src-server/services/approvals/approval-registry.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the exact-open response and SDK reader. The guardian quotation comes from the verified open event or typed inspection response and stays separate from the body. Existing state and identity guards remain in effect.","inputs":["src-server/services/orchestration/request-inspection.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the approval item projection. A registry guardian quote is used only on the approval inbox’s own notification source; exact requests continue through the scoped inspection path. Push delivery and visibility rules remain as documented.","inputs":["src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the approval item projection. A registry guardian quote is used only on the approval inbox’s own notification source; exact requests continue through the scoped inspection path. Push delivery and visibility rules remain as documented.","inputs":["src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the approval item projection. A registry guardian quote is used only on the approval inbox’s own notification source; exact requests continue through the scoped inspection path. Push delivery and visibility rules remain as documented.","inputs":["src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the ordinary Inbox approval row and its header, body and decision separately. The registry guardian quote uses its own labelled quotation, while exact events continue through their existing inspection owner.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the ordinary Inbox approval row and its header, body and decision separately. The registry guardian quote uses its own labelled quotation, while exact events continue through their existing inspection owner.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the exact inspector and retained images for the ordinary un-escalated request. No quotation appears for that fixture. A real guardian field displays separately without changing the decision controls or stale-request guard.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the exact inspector and retained images for the ordinary un-escalated request. No quotation appears for that fixture. A real guardian field displays separately without changing the decision controls or stale-request guard.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the exact inspector and retained images for the ordinary un-escalated request. No quotation appears for that fixture. A real guardian field displays separately without changing the decision controls or stale-request guard.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the exact inspector and retained images for the ordinary un-escalated request. No quotation appears for that fixture. A real guardian field displays separately without changing the decision controls or stale-request guard.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the exact inspector and retained images for the ordinary un-escalated request. No quotation appears for that fixture. A real guardian field displays separately without changing the decision controls or stale-request guard.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the controlled request fixture and retained walkthrough image and video. The default ordinary request retains its previous event. The optional guardian scenario adds a separate field and tests spoof-shaped tool input.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the controlled request fixture and retained walkthrough image and video. The default ordinary request retains its previous event. The optional guardian scenario adds a separate field and tests spoof-shaped tool input.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the controlled request fixture and retained walkthrough image and video. The default ordinary request retains its previous event. The optional guardian scenario adds a separate field and tests spoof-shaped tool input.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the controlled request fixture and retained walkthrough image and video. The default ordinary request retains its previous event. The optional guardian scenario adds a separate field and tests spoof-shaped tool input.","inputs":["tests/helpers/exact-request-backend.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the controlled request fixture and retained walkthrough image and video. The default ordinary request retains its previous event. The optional guardian scenario adds a separate field and tests spoof-shaped tool input.","inputs":["tests/helpers/exact-request-backend.ts"]}
+  ]
+}

@@ -18,9 +18,9 @@
  *    device-code argument comes from `engineLoginCapabilities`'s evidence, so
  *    an engine that no longer advertises it is refused rather than invoked
  *    with a flag it will reject.
- *  - Put anything in the child's environment except the engine's own
- *    config-home override and its launcher's no-prompt, no-download
- *    switches (`enrolmentLauncherEnv`; never a credential).
+ *  - Add a credential to the child's environment. Enrolment sets the engine's
+ *    config home and launcher switches. The owned-process launcher adds the
+ *    standard Station process-ownership metadata.
  *  - Report completion from an exit code. `credential-enrolment.ts` says why:
  *    a user who closes the browser tab gets a clean exit and no credential.
  *    The engine is asked, and its answer decides.
@@ -28,8 +28,12 @@
  *    fails with that as its stated reason; it never sits in `starting`
  *    pretending a code is coming.
  */
-import { spawn } from 'node:child_process';
 import { augmentedSpawnEnv } from '../../providers/auth/cli-auth.js';
+import { createLogger } from '../../utils/logger.js';
+import {
+  spawnOwnedChild,
+  terminateProcessTree,
+} from '../infra/process-utils.js';
 import {
   type EnrolmentAuthState,
   type EnrolmentEngine,
@@ -43,6 +47,8 @@ import {
   engineLoginCapabilities,
   mechanismEvidence,
 } from './engine-login-capabilities.js';
+
+const logger = createLogger({ name: 'device-code-login' });
 
 /**
  * `verifying` is a real state, not a cosmetic one: the process has exited and
@@ -99,14 +105,14 @@ export interface DeviceCodeChildProcess {
   readonly stderr: NodeJS.ReadableStream | null;
   on(event: 'exit', listener: (code: number | null) => void): unknown;
   on(event: 'error', listener: (error: Error) => void): unknown;
-  kill(signal?: NodeJS.Signals): boolean;
+  stop(): Promise<void>;
 }
 
 export interface DeviceCodeLoginDeps {
   spawnLogin: (
     command: string,
     args: string[],
-    options: { env: NodeJS.ProcessEnv; windowsHide: boolean },
+    options: { env: NodeJS.ProcessEnv },
   ) => DeviceCodeChildProcess;
   /** The environment the child starts from, BEFORE the config-home override. */
   baseEnv: () => Promise<NodeJS.ProcessEnv>;
@@ -122,12 +128,27 @@ export interface DeviceCodeLoginDeps {
 
 function defaultDeviceCodeLoginDeps(): DeviceCodeLoginDeps {
   return {
-    spawnLogin: (command, args, options) =>
-      spawn(command, args, {
+    spawnLogin: (command, args, options) => {
+      const { proc, release } = spawnOwnedChild(command, args, {
         env: options.env,
-        windowsHide: options.windowsHide,
         stdio: ['ignore', 'pipe', 'pipe'],
-      }) as unknown as DeviceCodeChildProcess,
+      });
+      let stopping = false;
+      proc.once('close', () => {
+        if (!stopping) release();
+      });
+      return {
+        stdout: proc.stdout,
+        stderr: proc.stderr,
+        on: proc.on.bind(proc),
+        stop: () => {
+          stopping = true;
+          return terminateProcessTree(proc, {
+            graceMs: DEVICE_CODE_KILL_GRACE_MS,
+          }).then(release);
+        },
+      };
+    },
     baseEnv: () => augmentedSpawnEnv(),
     capabilities: (engine) => engineLoginCapabilities(engine),
     verify: (engine, profileDir) => verifyEnrolment(engine, profileDir),
@@ -157,7 +178,7 @@ export const DEVICE_CODE_PROMPT_TIMEOUT_MS = 90_000;
 const DEVICE_CODE_KILL_GRACE_MS = 5_000;
 /** Output kept for parsing. A CLI that writes more than this is not prompting. */
 const DEVICE_CODE_OUTPUT_MAX_CHARS = 64 * 1024;
-/** Concurrent live logins across every profile. */
+/** Host slots reserved by active logins and process trees awaiting confirmed exit. */
 export const DEVICE_CODE_MAX_LIVE_LOGINS = 4;
 /** How long a finished record stays readable before it is pruned. */
 const DEVICE_CODE_RECORD_RETENTION_MS = 10 * 60_000;
@@ -266,7 +287,6 @@ interface LoginSession {
   record: DeviceCodeLoginRecord;
   readonly profileDir: string;
   child?: DeviceCodeChildProcess;
-  output: string;
   /** Set the moment a terminal phase is decided, so a later exit cannot revise it. */
   settled: boolean;
   cancelTimers: Array<() => void>;
@@ -279,11 +299,12 @@ const CLOSED_REASON =
 /** A start that has passed the fast checks but not yet registered a session. */
 interface PendingStart {
   readonly profileDir: string;
-  cancelled: boolean;
+  readonly engine: EnrolmentEngine;
+  cancelled?: DeviceCodeLoginRecord;
 }
 
 function busyReason(): string {
-  return `${DEVICE_CODE_MAX_LIVE_LOGINS} device logins are already waiting for approval on this host.`;
+  return `All ${DEVICE_CODE_MAX_LIVE_LOGINS} device sign-in slots on this host are in use. Process cleanup keeps a slot reserved until exit is confirmed.`;
 }
 
 function isLive(record: DeviceCodeLoginRecord): boolean {
@@ -298,6 +319,7 @@ export class DeviceCodeLoginManager {
   readonly #deps: DeviceCodeLoginDeps;
   readonly #sessions = new Map<string, LoginSession>();
   readonly #pending = new Set<PendingStart>();
+  readonly #stopping = new Map<string, 'stopping' | 'unconfirmed'>();
   #closed = false;
 
   constructor(deps: DeviceCodeLoginDeps = defaultDeviceCodeLoginDeps()) {
@@ -326,18 +348,19 @@ export class DeviceCodeLoginManager {
     isCurrent: () => boolean = () => true,
   ): Promise<DeviceCodeStartResult> {
     this.#prune();
+    if (this.#closed) {
+      return { kind: 'closed', reason: CLOSED_REASON };
+    }
+    const stopRefusal = this.#stopRefusal(profileDir);
+    if (stopRefusal) return stopRefusal;
     const existing = this.#sessions.get(profileDir);
     if (existing && isLive(existing.record)) {
       return { kind: 'existing', record: existing.record };
     }
-    if (this.#liveCount() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
+    if (this.#occupiedLoginSlots() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
       return { kind: 'busy', reason: busyReason() };
     }
-    if (this.#closed) {
-      return { kind: 'closed', reason: CLOSED_REASON };
-    }
-
-    const pending: PendingStart = { profileDir, cancelled: false };
+    const pending: PendingStart = { profileDir, engine };
     this.#pending.add(pending);
     try {
       return await this.#startAfterChecks(
@@ -358,6 +381,8 @@ export class DeviceCodeLoginManager {
     isCurrent: () => boolean,
   ): Promise<DeviceCodeStartResult> {
     const capabilities = await this.#deps.capabilities(engine);
+    const interruptedDuringProbe = this.#startInterruption(pending, isCurrent);
+    if (interruptedDuringProbe) return interruptedDuringProbe;
     const evidence = mechanismEvidence(capabilities, 'device-code');
     if (!evidence) {
       return {
@@ -373,6 +398,11 @@ export class DeviceCodeLoginManager {
     // from the credential that was already there. Refusing here is what lets
     // `#onExit` read `authenticated` as this login's own result.
     const current = await this.#currentAuthState(engine, profileDir);
+    const interruptedDuringVerification = this.#startInterruption(
+      pending,
+      isCurrent,
+    );
+    if (interruptedDuringVerification) return interruptedDuringVerification;
     if (current === 'authenticated') {
       return {
         kind: 'already-signed-in',
@@ -389,28 +419,17 @@ export class DeviceCodeLoginManager {
     // below is synchronous, so a check made here holds until the session is in
     // the map: this is where single-flight and the cap are actually enforced,
     // and the checks at the top are only a fast path.
-    // A cancel or shutdown that landed during those awaits found no session;
-    // honour it here rather than spawning after the caller was told nothing
-    // was waiting.
-    if (pending.cancelled || this.#closed || !isCurrent()) {
-      const now = this.#deps.now().toISOString();
-      return {
-        kind: 'cancelled',
-        record: { engine, phase: 'cancelled', startedAt: now, expiresAt: now },
-      };
-    }
     const raced = this.#sessions.get(profileDir);
     if (raced && isLive(raced.record)) {
       return { kind: 'existing', record: raced.record };
     }
-    if (this.#liveCount() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
+    if (this.#occupiedLoginSlots() >= DEVICE_CODE_MAX_LIVE_LOGINS) {
       return { kind: 'busy', reason: busyReason() };
     }
 
     const startedAt = this.#deps.now();
     const session: LoginSession = {
       profileDir,
-      output: '',
       settled: false,
       cancelTimers: [],
       record: {
@@ -422,6 +441,7 @@ export class DeviceCodeLoginManager {
         ).toISOString(),
       },
     };
+    this.#pending.delete(pending);
     this.#sessions.set(profileDir, session);
 
     let baseEnv: Awaited<ReturnType<DeviceCodeLoginDeps['baseEnv']>>;
@@ -455,15 +475,11 @@ export class DeviceCodeLoginManager {
     let child: DeviceCodeChildProcess;
     try {
       child = this.#deps.spawnLogin(engine, args, {
-        // The engine's own config-home override is the ONLY thing Station
-        // adds. `credential-enrolment.ts`'s invariant, at a spawn instead of
-        // a printed command.
         env: enrolmentChildEnv(
           engine,
           baseEnv,
           enrolmentHomeEnv(engine, profileDir),
         ),
-        windowsHide: true,
       });
     } catch {
       this.#fail(session, `The ${engine} login could not be started.`);
@@ -471,30 +487,27 @@ export class DeviceCodeLoginManager {
     }
     session.child = child;
 
-    const onChunk = (chunk: unknown) => {
-      if (session.settled) return;
-      const text =
-        typeof chunk === 'string'
-          ? chunk
-          : Buffer.from(chunk as Uint8Array).toString('utf8');
-      if (session.output.length < DEVICE_CODE_OUTPUT_MAX_CHARS) {
-        session.output = (session.output + text).slice(
+    const watchPrompt = (stream: NodeJS.ReadableStream | null) => {
+      let output = '';
+      stream?.on('data', (chunk: Buffer | string) => {
+        if (session.settled || session.record.phase !== 'starting') return;
+        if (output.length >= DEVICE_CODE_OUTPUT_MAX_CHARS) return;
+        output = (output + chunk.toString()).slice(
           0,
           DEVICE_CODE_OUTPUT_MAX_CHARS,
         );
-      }
-      if (session.record.phase !== 'starting') return;
-      const prompt = parseDeviceCodePrompt(session.output);
-      if (!prompt) return;
-      session.record = {
-        ...session.record,
-        phase: 'awaiting-approval',
-        verificationUri: prompt.verificationUri,
-        userCode: prompt.userCode,
-      };
+        const prompt = parseDeviceCodePrompt(output);
+        if (!prompt) return;
+        session.record = {
+          ...session.record,
+          phase: 'awaiting-approval',
+          verificationUri: prompt.verificationUri,
+          userCode: prompt.userCode,
+        };
+      });
     };
-    child.stdout?.on('data', onChunk);
-    child.stderr?.on('data', onChunk);
+    watchPrompt(child.stdout);
+    watchPrompt(child.stderr);
 
     child.on('error', (error) => {
       this.#fail(
@@ -511,7 +524,7 @@ export class DeviceCodeLoginManager {
     session.cancelTimers.push(
       this.#deps.schedule(() => {
         if (session.settled || session.record.phase !== 'starting') return;
-        this.#kill(session);
+        this.#stop(session);
         this.#fail(
           session,
           `The ${engine} login did not print a verification code, so there is nothing to approve.`,
@@ -521,7 +534,7 @@ export class DeviceCodeLoginManager {
         // Once the process has exited, the code was either approved or not and
         // the engine is being asked which. That answer outranks the clock.
         if (session.settled || session.record.phase === 'verifying') return;
-        this.#kill(session);
+        this.#stop(session);
         this.#fail(session, 'The device code expired before it was approved.');
       }, DEVICE_CODE_LOGIN_TIMEOUT_MS),
     );
@@ -529,18 +542,51 @@ export class DeviceCodeLoginManager {
     return { kind: 'started', record: session.record };
   }
 
-  /** Stop a live login and kill its process. Returns the record it stopped. */
+  /** Cancel a pending start or stop a live login and its process tree. */
   cancel(profileDir: string): DeviceCodeLoginRecord | undefined {
-    // A start still in its checks has no session yet. Mark it, so it stops
-    // before registering instead of spawning after this call returned.
+    let cancelled: DeviceCodeLoginRecord | undefined;
     for (const pending of this.#pending) {
-      if (pending.profileDir === profileDir) pending.cancelled = true;
+      if (pending.profileDir !== profileDir || pending.cancelled) continue;
+      pending.cancelled = this.#cancelledStartRecord(pending.engine);
+      cancelled ??= pending.cancelled;
     }
     const session = this.#sessions.get(profileDir);
-    if (!session || !isLive(session.record)) return undefined;
-    this.#kill(session);
+    if (!session || !isLive(session.record)) return cancelled;
+    this.#stop(session);
     this.#settle(session, { ...session.record, phase: 'cancelled' });
     return session.record;
+  }
+
+  #cancelledStartRecord(engine: EnrolmentEngine): DeviceCodeLoginRecord {
+    const now = this.#deps.now().toISOString();
+    return { engine, phase: 'cancelled', startedAt: now, expiresAt: now };
+  }
+
+  #startInterruption(
+    pending: PendingStart,
+    isCurrent: () => boolean,
+  ): DeviceCodeStartResult | undefined {
+    const record = pending.cancelled;
+    if (record) return { kind: 'cancelled', record };
+    if (this.#closed || !isCurrent()) {
+      return {
+        kind: 'cancelled',
+        record: this.#cancelledStartRecord(pending.engine),
+      };
+    }
+    return this.#stopRefusal(pending.profileDir);
+  }
+
+  #stopRefusal(profileDir: string): DeviceCodeStartResult | undefined {
+    const state = this.#stopping.get(profileDir);
+    if (!state) return undefined;
+    return {
+      kind: 'busy',
+      reason:
+        state === 'stopping'
+          ? 'Station is still stopping the previous sign-in process for this profile.'
+          : 'Station could not confirm that the previous sign-in process for this profile stopped.',
+    };
   }
 
   /**
@@ -549,7 +595,6 @@ export class DeviceCodeLoginManager {
    */
   cancelAll(): void {
     this.#closed = true;
-    for (const pending of this.#pending) pending.cancelled = true;
     for (const profileDir of [...this.#sessions.keys()]) {
       this.cancel(profileDir);
     }
@@ -600,10 +645,10 @@ export class DeviceCodeLoginManager {
     );
   }
 
-  #liveCount(): number {
-    let count = 0;
-    for (const session of this.#sessions.values()) {
-      if (isLive(session.record)) count += 1;
+  #occupiedLoginSlots(): number {
+    let count = this.#stopping.size;
+    for (const [profileDir, session] of this.#sessions) {
+      if (isLive(session.record) && !this.#stopping.has(profileDir)) count += 1;
     }
     return count;
   }
@@ -632,25 +677,22 @@ export class DeviceCodeLoginManager {
     session.cancelTimers = [];
   }
 
-  #kill(session: LoginSession): void {
+  #stop(session: LoginSession): void {
     const child = session.child;
     if (!child) return;
     session.child = undefined;
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      return;
-    }
-    // The grace timer is registered before `#settle` clears the list only on
-    // the cancel path; on the deadline paths `#settle` runs after this, so it
-    // would drop the SIGKILL. Keep it on its own handle instead.
-    this.#deps.schedule(() => {
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        // The process is already gone, which is the outcome this wanted.
-      }
-    }, DEVICE_CODE_KILL_GRACE_MS);
+    const { profileDir } = session;
+    this.#stopping.set(profileDir, 'stopping');
+    void child.stop().then(
+      () => this.#stopping.delete(profileDir),
+      (error: unknown) => {
+        this.#stopping.set(profileDir, 'unconfirmed');
+        logger.warn('Device login process tree did not confirm exit', {
+          engine: session.record.engine,
+          error: String(error),
+        });
+      },
+    );
   }
 
   #prune(): void {

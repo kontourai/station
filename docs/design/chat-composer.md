@@ -18,8 +18,9 @@
 
 Reply and start composers share one bottom row inside the input box: attachment,
 voice and other tools on the left, then Run setup immediately beside Send or
-Start on the right. The reply's next-turn destination notice and conversation
-status/resync action stay above the box when present.
+Start on the right. If Start wraps, it stays at the trailing edge of the
+toolbar. The reply's next-turn destination notice and conversation status/resync
+action stay above the box when present.
 
 Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
 secondary-weight model label, and the shared caret. The Agent mark names the

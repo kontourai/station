@@ -5,6 +5,41 @@ This guide covers installation, your first chat and Project, connecting a phone,
 and keeping Station updated. To share a Project with someone, read the
 [sharing setup and current limits](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md).
 
+## Quickstart
+
+1. [Install Nightly](#install-nightly) on the computer that will run Station.
+   Open the app or use the single-use sign-in link printed by the installer.
+2. On Home, open the Agent control beside **Start** and choose an Agent that is
+   ready. If Home offers **Set up an agent engine**, use that action to open
+   Connections. For an existing Codex account, follow
+   [First chat with Codex](#first-chat-with-codex).
+3. Try a small request such as “Give me three questions to check before I
+   review a documentation change. Use no tools.” Choose **Start** to open a
+   direct chat.
+4. Read the answer in the chat. If an approval or question appears, inspect
+   it before responding. When the answer has a **Basis** chip, open it to
+   inspect the recorded inputs behind that answer.
+5. Keep talking in the same chat, create a Project for shared context, or
+   track a deliverable in a Task. [Choose what fits](concepts.md#choose-a-project-task-or-direct-chat).
+
+### How a turn works
+
+```text
+Write a request and choose Start or Send
+                    ↓
+The selected Agent runs one turn in a Session
+                    ↓
+It may ask you a question or request approval
+                    ↓
+Station shows the answer, stop, or failure
+```
+
+A follow-up can add another turn to the same Session. See the
+[visual walkthroughs](https://github.com/kontourai/station/blob/main/docs/learn/walkthroughs.md)
+for Gallery captures of the interface. The
+[Learn Station atlas](https://github.com/kontourai/station/blob/main/docs/learn/README.md)
+explains how the parts fit together.
+
 ## First chat with Codex
 
 If Codex is installed and signed in on this computer, you can use that account
@@ -1639,12 +1674,20 @@ request version, once. A review request with recorded evidence offers
 A row's ⋯ menu holds **Dismiss**, and **Snooze** when the Attention snooze
 preview is on.
 
+A conversation’s Inbox row also shows the request and **Approve once** or
+**Deny** when Station can inspect one exact request and you can answer it.
+Open the chat from its row to review an approval when those controls are
+unavailable.
+
 For a task that runs on a paired Station, the card shows **Allow** and **Deny**
 for that Station's approval when your access here permits it. The paired Station
 checks that the request is still open and makes the decision. When the paired
 Station reports a question's exact request and your access permits it, the card
 offers an **Answer on the paired Station** box whose **Send answer** reply is
 bound to that question; otherwise the card says to answer it on that Station.
+
+When the approval guardian asks you to review a call after repeated denials,
+**Approval guardian** quotes its reason separately from the tool’s description.
 
 A resolved or changed request must be inspected again from refreshed attention.
 A request that cannot currently be answered remains visible without decision

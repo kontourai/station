@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { reportLiteralStyles } from './lib/literal-style-advisory.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOTS = [
@@ -219,4 +220,9 @@ if (invokedDirectly(import.meta.url)) {
     `Component/style hygiene: ${added.length} new legacy-token, bespoke-action, bespoke-dialog or alert-with-action finding(s).`,
   );
   if (added.length) process.exitCode = 1;
+  try {
+    reportLiteralStyles();
+  } catch (error) {
+    console.warn('Literal style advisory could not complete:', error.message);
+  }
 }

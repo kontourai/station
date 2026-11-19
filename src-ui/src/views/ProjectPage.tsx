@@ -53,7 +53,6 @@ import {
 import { ProjectOverviewSection } from './project-page/ProjectOverviewSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
-import type { ProjectRoomProps } from './project-page/ProjectRoom';
 import { ProjectRoom } from './project-page/ProjectRoom';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { useProjectSearch } from './project-page/project-room-navigation';
@@ -215,7 +214,9 @@ function ProjectOperatorPage({
 }: {
   slug: string;
   project: ProjectConfig;
-  requestScope: ProjectRoomProps['requestScope'];
+  requestScope: NonNullable<
+    ReturnType<typeof useScopedProjectPageViewQuery>['requestScope']
+  >;
 }) {
   const { setLayout, navigate, updateParams } = useNavigation();
   // #5072: this Project's own alerts are not sent here while it is shown.
@@ -415,6 +416,7 @@ function ProjectOperatorPage({
                 />
               )}
               <SetupRecommendationsCard
+                requestScope={requestScope}
                 project={{
                   id: project.id,
                   slug,

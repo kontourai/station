@@ -1929,7 +1929,18 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
           .getByRole('log')
           .getByText('Claude Alpha transcript loaded.', { exact: true }),
       ).toBeVisible();
-      await header.getByRole('button', { name: 'Inbox', exact: true }).click();
+      // Escape restores the earlier dock height. During that transition
+      // the header can move between the pointer action's hit test and click.
+      await page
+        .getByRole('region', { name: 'Dock', exact: true })
+        .evaluate(async (dock) => {
+          await Promise.allSettled(
+            dock.getAnimations().map((animation) => animation.finished),
+          );
+        });
+      await inboxToggle.click();
+      await expect(chats).toBeVisible();
+      await expect(selected).toContainText('Claude Alpha Chat');
       await expect(selected.locator('.inbox-row__project')).toHaveText('alpha');
       expect(executionRequests).toHaveLength(0);
     });

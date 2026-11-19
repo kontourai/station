@@ -123,30 +123,63 @@ function isSharedMobileCondition(condition: string) {
   );
 }
 
+function mediaConditions(css: string) {
+  // Mask comments and quoted content, including escapes, without changing
+  // string offsets or line endings used by source diagnostics.
+  const syntax = css.replaceAll(
+    /\/\*[\s\S]*?\*\/|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'/g,
+    (prose) => prose.replaceAll(/[^\r\n]/g, ' '),
+  );
+  return [
+    ...syntax.matchAll(/(?<=^|[{};])\s*(@media\b)\s*([^{};]+)(?=\{)/gi),
+  ].map((match) => {
+    const offset = match.index + match[0].indexOf(match[1]);
+    const before = css.slice(0, offset);
+    return {
+      condition: match[2].trim().replaceAll(/\s+/g, ' '),
+      line: before.split('\n').length,
+      column: offset - before.lastIndexOf('\n'),
+    };
+  });
+}
+
+test('ignores quoted media prose and locates a real nested media rule', () => {
+  const css = [
+    '/* @media (pointer: coarse) { .ignored {} } */',
+    '.quoted { content: "@media (pointer: coarse) { \\"quoted\\" }"; }',
+    '@supports (display: grid) {',
+    '  @media(max-width: 768px) /* note */ { .real {} }',
+    '}',
+  ].join('\n');
+  expect(mediaConditions(css)).toEqual([
+    { condition: '(max-width: 768px)', line: 4, column: 3 },
+  ]);
+  expect(isSharedMobileCondition(mediaConditions(css)[0].condition)).toBe(
+    false,
+  );
+});
+
 test('mobile stylesheet conditions agree with the shared mobile classification', () => {
   const css = readFileSync(join(process.cwd(), 'src-ui/src/index.css'), 'utf8');
-  const conditions = [...css.matchAll(/@media ([^{]+)\{/g)].map((match) =>
-    match[1].trim(),
-  );
-
+  const conditions = mediaConditions(css);
   // General layout must still cover the entire mobile population. Short-window
   // overrides narrow that population using the same height/pointer branch.
-  expect(conditions).toContain(MOBILE_MEDIA_QUERY);
+  expect(conditions.map(({ condition }) => condition)).toContain(
+    MOBILE_MEDIA_QUERY,
+  );
 
-  const mobileShaped = conditions.filter(
-    (condition) =>
-      condition.includes('pointer: coarse') ||
-      condition.includes('max-width: 768px'),
+  const mobileShaped = conditions.filter(({ condition }) =>
+    /\b(?:pointer\s*:\s*coarse|max-width\s*:\s*768px)\b/i.test(condition),
   );
   expect(
     mobileShaped.length,
     'index.css must still carry the mobile breakpoint blocks this constant mirrors',
   ).toBeGreaterThan(0);
 
-  for (const condition of mobileShaped)
+  for (const { condition, line, column } of mobileShaped)
     expect(
       isSharedMobileCondition(condition),
-      `"${condition}" disagrees with the shared mobile classification`,
+      `index.css:${line}:${column}: "${condition}" disagrees with the shared mobile classification`,
     ).toBe(true);
 });
 

@@ -1,0 +1,7 @@
+{
+  "revision": "0fe52a59a267445b02f82a5d60ff22c706b144d6",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed Claude result matching against the success, error and Stop receipt paths. No-turn and stale-Stop results now have distinct type variants. The existing guards and ledger settlement remain the same at runtime.","inputs":["src-server/providers/adapters/claude-sdk-turns.ts"]}
+  ]
+}
