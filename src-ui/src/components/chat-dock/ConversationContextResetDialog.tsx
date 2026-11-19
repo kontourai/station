@@ -98,10 +98,8 @@ export function ConversationContextResetDialog({
     sessionId,
     isCurrent: () => mounted.current && authority.isCurrent(),
   };
-  const { candidate, boundary, refetch } = useContextBoundaryRecovery(
-    scope,
-    apiBase,
-  );
+  const { candidate, boundary, refetch, refreshCurrent } =
+    useContextBoundaryRecovery(scope, apiBase);
   const stored = candidate?.legacy ? undefined : candidate;
   const [selectedPolicy, setPolicy] = useState<
     'continue-from-history' | 'empty-next-cold-start'
@@ -185,13 +183,26 @@ export function ConversationContextResetDialog({
         cause.stationEnvelope &&
         cause.status >= 400 &&
         cause.status < 500;
-      if (!stored && (refused || isProvablyNotSent(cause))) {
-        forgetContextBoundaryIntent(scope, intent.idempotencyKey);
+      const notSent = isProvablyNotSent(cause);
+      let canRetire = !stored;
+      if (stored && statusValue === 'failed' && (refused || notSent)) {
+        // A different tab may have started the reserved successor since the
+        // failed status was shown. Check again before retiring its local key.
+        const current = await refreshCurrent();
+        canRetire =
+          !current.isError &&
+          current.data?.status === 'failed' &&
+          observeContextBoundary(scope, intent, current.data);
       }
+      if (canRetire && (refused || notSent))
+        forgetContextBoundaryIntent(scope, intent.idempotencyKey);
+      if (!scope.isCurrent()) return;
       setError(
-        refused && (!stored || statusValue === 'failed')
+        canRetire && refused
           ? userFacingErrorMessage(cause)
-          : "Station couldn't confirm the reset. Check its status before continuing.",
+          : canRetire && notSent
+            ? "Station didn't send the reset request."
+            : "Station couldn't confirm the reset. Check its status before continuing.",
       );
     }
   };

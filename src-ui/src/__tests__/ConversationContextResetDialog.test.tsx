@@ -13,7 +13,9 @@ const reserve = vi.fn();
 const cancel = vi.fn();
 const dispatchWithReceipt = vi.fn();
 const status = vi.fn(
-  (..._args: [string, string, string, unknown]): { data?: unknown } => ({
+  (
+    ..._args: [string, string, string, unknown]
+  ): { data?: unknown; refetch?: () => Promise<unknown> } => ({
     data: undefined,
   }),
 );
@@ -66,7 +68,11 @@ function seedRememberedBoundary(state: string) {
     policy: 'continue-from-history',
     boundaryId: 'b',
   });
-  status.mockReturnValue({ data: observedBoundary(state) });
+  const data = observedBoundary(state);
+  status.mockReturnValue({
+    data,
+    refetch: async () => ({ isError: false, data }),
+  });
 }
 
 function renderDialog(
@@ -315,6 +321,21 @@ describe('ConversationContextResetDialog', () => {
       }
     },
   );
+
+  test('a definite no-send while retrying a confirmed failed reset releases its local choice', async () => {
+    seedRememberedBoundary('failed');
+    reserve.mockRejectedValueOnce(new Error('not sent'));
+    renderDialog();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry reset' }));
+    await screen.findByRole('button', { name: 'Reset agent context' });
+    expect(
+      (
+        screen.getByRole('radio', {
+          name: 'Continue with chat history',
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(false);
+  });
 
   test('the status line reports the server-observed reserved policy', () => {
     seedRememberedBoundary('reserved');

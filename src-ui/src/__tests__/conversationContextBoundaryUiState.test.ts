@@ -40,13 +40,17 @@ describe('conversation context-boundary UI state', () => {
   test('retains intent and the confirmed opaque reservation identity without copying the projection', () => {
     expect(rememberContextBoundaryIntent(scope, intent)).toBe(true);
     const key = localStorage.key(0)!;
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(intent);
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+      ...intent,
+      recordedAt: expect.any(Number),
+    });
     expect(observeContextBoundary(scope, intent, boundary('reserved'))).toBe(
       true,
     );
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
       ...intent,
       boundaryId: 'boundary-a',
+      recordedAt: expect.any(Number),
     });
   });
 

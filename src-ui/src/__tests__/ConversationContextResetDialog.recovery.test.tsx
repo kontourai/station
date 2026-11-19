@@ -13,6 +13,10 @@ import { createOrchestrationRoutes } from '../../../src-server/routes/orchestrat
 import { ConversationLineage } from '../../../src-server/services/orchestration/conversation-lineage';
 import { EventStore } from '../../../src-server/services/orchestration/event-store';
 import { ConversationContextResetDialog } from '../components/chat-dock/ConversationContextResetDialog';
+import {
+  forgetContextBoundaryIntent,
+  rememberContextBoundaryIntent,
+} from '../components/chat-dock/conversationContextBoundaryUiState';
 
 const stop = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -32,17 +36,32 @@ afterEach(() => {
 });
 
 test.each([
-  ['direct reset', { kind: 'reserve' }, 'Reset agent context', false],
-  ['legacy reset hint', { kind: 'reserve' }, 'Reset agent context', true],
+  ['direct reset', { kind: 'reserve' }, 'Reset agent context', false, false],
+  ['two stale tabs', { kind: 'reserve' }, 'Reset agent context', false, true],
+  [
+    'earlier unknown attempt',
+    { kind: 'reserve' },
+    'Reset agent context',
+    false,
+    'unknown',
+  ],
+  [
+    'legacy reset hint',
+    { kind: 'reserve' },
+    'Reset agent context',
+    true,
+    false,
+  ],
   [
     'stop then reset',
     { kind: 'stop-session', reason: 'Stop the agent first.' },
     'Stop agent and reset',
     false,
+    false,
   ],
 ] as const)(
   '%s recovers the committed reservation after a lost response and reload',
-  async (_path, eligibility, label, legacy) => {
+  async (_path, eligibility, label, legacy, competing) => {
     // SQLite returns buffers from the Node realm, outside Vitest's DOM VM.
     vi.stubGlobal(
       'Uint8Array',
@@ -64,6 +83,11 @@ test.each([
     let statusAfterReload: Promise<void> | undefined;
     let releaseStatus: (() => void) | undefined;
     const principal = humanPrincipal('fixture', 'reset-author', 'Reset author');
+    const authority = {
+      namespace: 'station-reset-owner',
+      actorId: principal.id,
+      isCurrent: () => true,
+    };
     const mountRoutes = (eventStore: EventStore) => {
       const lineage = new ConversationLineage({
         eventStore,
@@ -150,11 +174,7 @@ test.each([
         <QueryClientProvider client={client}>
           <ConversationContextResetDialog
             apiBase={apiBase}
-            authority={{
-              namespace: 'station-reset-owner',
-              actorId: principal.id,
-              isCurrent: () => true,
-            }}
+            authority={authority}
             conversationId={conversationId}
             sessionId={conversationId}
             eligibility={eligibility}
@@ -195,6 +215,41 @@ test.each([
         actorId: principal.id,
         status: 'reserved',
       });
+      if (competing === true) {
+        // The other tab captured its action before the first tab's storage
+        // event. Its distinct write reaches the owner after the first commit.
+        const scope = {
+          ...authority,
+          conversationId,
+          sessionId: conversationId,
+        };
+        const secondKey = 'stale-tab-reset-request';
+        expect(
+          rememberContextBoundaryIntent(scope, {
+            idempotencyKey: secondKey,
+            policy: 'empty-next-cold-start',
+          }),
+        ).toBe(true);
+        const second = await app.request(
+          `/api/orchestration/conversations/${conversationId}/context-boundary`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              idempotencyKey: secondKey,
+              policy: 'empty-next-cold-start',
+              expectedCurrentSessionId: conversationId,
+            }),
+          },
+        );
+        expect(second.status).toBe(409);
+        expect(
+          store.conversationContextBoundaryByKey(conversationId, secondKey),
+        ).toBeUndefined();
+        forgetContextBoundaryIntent(scope, secondKey);
+        expect(store.conversationSessions(conversationId)).toHaveLength(2);
+      }
+
       await waitFor(() =>
         expect(
           (
@@ -231,6 +286,19 @@ test.each([
           }),
         );
       }
+      const olderKey = 'older-unknown-key';
+      if (competing === 'unknown') {
+        expect(
+          rememberContextBoundaryIntent(
+            { ...authority, conversationId, sessionId: conversationId },
+            {
+              idempotencyKey: olderKey,
+              policy: 'empty-next-cold-start',
+              recordedAt: 0,
+            },
+          ),
+        ).toBe(true);
+      }
       store.close();
       store = new EventStore(file);
       app = mountRoutes(store);
@@ -239,7 +307,11 @@ test.each([
         releaseStatus = resolve;
       });
       close = openDialog();
-      await waitFor(() => expect(reservationStatusReads).toContain(key));
+      await waitFor(() =>
+        expect(reservationStatusReads).toContain(
+          competing === 'unknown' ? olderKey : key,
+        ),
+      );
       expect(screen.queryByRole('button', { name: 'Cancel reset' })).toBeNull();
       releaseStatus?.();
 

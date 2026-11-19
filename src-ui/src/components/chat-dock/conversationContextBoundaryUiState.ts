@@ -6,7 +6,8 @@ import {
   type ApiRequestScope,
   useConversationContextBoundaryStatusQuery,
 } from '@kontourai/station-sdk';
-import { useSyncExternalStore } from 'react';
+import { ChatHttpError } from '@kontourai/station-sdk/client';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 export interface ContextBoundaryAuthority {
   namespace: string;
@@ -29,6 +30,7 @@ interface StoredBoundary {
   idempotencyKey: string;
   policy: ResetPolicy;
   stopped?: boolean;
+  recordedAt?: number;
   boundaryId?: string;
 }
 
@@ -38,13 +40,17 @@ interface BoundaryObservation extends StoredBoundary {
 
 const CHANGED_EVENT = 'station:context-boundary-change';
 
-function scopedKey(scope: ContextBoundaryScope): string {
+function scopedPrefix(scope: ContextBoundaryScope): string {
   return (
     'station.conversation-context-boundary.v2:' +
     [scope.namespace, scope.conversationId, scope.sessionId]
       .map(encodeURIComponent)
       .join(':')
   );
+}
+
+function scopedKey(scope: ContextBoundaryScope, key: string): string {
+  return `${scopedPrefix(scope)}:${encodeURIComponent(key)}`;
 }
 
 function legacyKey(conversationId: string): string {
@@ -78,6 +84,9 @@ function readCandidate(
       policy,
       idempotencyKey,
       ...(value.stopped === true ? { stopped: true } : {}),
+      ...(typeof value.recordedAt === 'number'
+        ? { recordedAt: value.recordedAt }
+        : {}),
       ...(typeof value.boundaryId === 'string'
         ? { boundaryId: value.boundaryId }
         : {}),
@@ -87,13 +96,34 @@ function readCandidate(
   }
 }
 
-function readRaw(scope: ContextBoundaryScope | undefined): string | null {
+function readCandidates(
+  scope: ContextBoundaryScope | undefined,
+): string | null {
   if (!scope?.isCurrent()) return null;
   try {
-    return (
-      localStorage.getItem(scopedKey(scope)) ??
-      localStorage.getItem(legacyKey(scope.conversationId))
-    );
+    const prefix = `${scopedPrefix(scope)}:`;
+    const candidates: StoredBoundary[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(prefix)) continue;
+      const raw = localStorage.getItem(key);
+      const candidate = raw && readCandidate(scope, raw);
+      if (candidate && scopedKey(scope, candidate.idempotencyKey) === key)
+        candidates.push(candidate);
+    }
+    if (candidates.length) {
+      candidates.sort(
+        (left, right) =>
+          Number(Boolean(right.boundaryId)) -
+            Number(Boolean(left.boundaryId)) ||
+          (left.recordedAt ?? 0) - (right.recordedAt ?? 0) ||
+          left.idempotencyKey.localeCompare(right.idempotencyKey),
+      );
+      return JSON.stringify(candidates);
+    }
+    const raw = localStorage.getItem(legacyKey(scope.conversationId));
+    const legacy = raw && readCandidate(scope, raw);
+    return legacy ? JSON.stringify([legacy]) : null;
   } catch {
     return null;
   }
@@ -130,7 +160,16 @@ export function rememberContextBoundaryIntent(
 ): boolean {
   if (!scope.isCurrent()) return false;
   try {
-    localStorage.setItem(scopedKey(scope), JSON.stringify(intent));
+    localStorage.setItem(
+      scopedKey(scope, intent.idempotencyKey),
+      JSON.stringify({
+        idempotencyKey: intent.idempotencyKey,
+        policy: intent.policy,
+        recordedAt: intent.recordedAt ?? Date.now(),
+        ...(intent.stopped ? { stopped: true } : {}),
+        ...(intent.boundaryId ? { boundaryId: intent.boundaryId } : {}),
+      }),
+    );
     window.dispatchEvent(new Event(CHANGED_EVENT));
     return true;
   } catch {
@@ -144,10 +183,9 @@ export function forgetContextBoundaryIntent(
 ): void {
   if (!scope.isCurrent()) return;
   try {
-    const raw = localStorage.getItem(scopedKey(scope));
-    if (!raw || readCandidate(scope, raw)?.idempotencyKey !== idempotencyKey)
-      return;
-    localStorage.removeItem(scopedKey(scope));
+    const key = scopedKey(scope, idempotencyKey);
+    if (localStorage.getItem(key) === null) return;
+    localStorage.removeItem(key);
     window.dispatchEvent(new Event(CHANGED_EVENT));
   } catch {
     // Reopening can still check a retained key against Station.
@@ -160,7 +198,16 @@ export function observeContextBoundary(
   result: ConversationContextBoundaryProjection,
 ): boolean {
   if (!matches(scope, intent, result)) return false;
-  const raw = readRaw(scope);
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(
+      intent.legacy
+        ? legacyKey(scope.conversationId)
+        : scopedKey(scope, intent.idempotencyKey),
+    );
+  } catch {
+    return false;
+  }
   if (
     !raw ||
     readCandidate(scope, raw)?.idempotencyKey !== intent.idempotencyKey
@@ -176,6 +223,7 @@ export function observeContextBoundary(
         policy: intent.policy,
         idempotencyKey: intent.idempotencyKey,
         ...(intent.stopped ? { stopped: true } : {}),
+        recordedAt: intent.recordedAt,
         boundaryId: result.boundaryId,
       })
     )
@@ -203,10 +251,16 @@ export function useContextBoundaryRecovery(
 ) {
   const raw = useSyncExternalStore(
     subscribe,
-    () => readRaw(scope),
+    () => readCandidates(scope),
     () => null,
   );
-  const candidate = scope && raw ? readCandidate(scope, raw) : undefined;
+  const candidates = useMemo(
+    () => (raw ? (JSON.parse(raw) as BoundaryObservation[]) : []),
+    [raw],
+  );
+  const [probe, setProbe] = useState<{ raw: string; index: number }>();
+  const index = probe?.raw === raw ? probe.index : 0;
+  const candidate = candidates[index];
   const query = useConversationContextBoundaryStatusQuery(
     scope?.conversationId ?? '',
     candidate?.idempotencyKey ?? '',
@@ -221,5 +275,23 @@ export function useContextBoundaryRecovery(
     scope && candidate && matches(scope, candidate, query.data)
       ? query.data
       : undefined;
-  return { candidate, boundary, refetch: query.refetch };
+  useEffect(() => {
+    if (
+      raw &&
+      query.error instanceof ChatHttpError &&
+      query.error.stationEnvelope &&
+      query.error.status === 404 &&
+      index + 1 < candidates.length
+    )
+      setProbe({ raw, index: index + 1 });
+  }, [raw, query.error, index, candidates.length]);
+  return {
+    candidate,
+    boundary,
+    refreshCurrent: query.refetch,
+    refetch: () => {
+      if (index > 0) setProbe(undefined);
+      else void query.refetch();
+    },
+  };
 }
