@@ -273,8 +273,14 @@ async function unwrapSchedulerResponse<T>(response: Response): Promise<T> {
 export async function listJobs(
   apiBase: string,
   opts?: ClientRequestOptions,
+  weekStart?: string,
+  displayZone?: string,
 ): Promise<SchedulerJob[]> {
-  const response = await getJson(`${apiBase}/scheduler/jobs`, opts);
+  const suffix =
+    weekStart === undefined
+      ? ''
+      : `?${new URLSearchParams({ weekStart, ...(displayZone ? { displayZone } : {}) })}`;
+  const response = await getJson(`${apiBase}/scheduler/jobs${suffix}`, opts);
   return unwrapSchedulerResponse<SchedulerJob[]>(response);
 }
 

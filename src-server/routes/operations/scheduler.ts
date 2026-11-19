@@ -13,6 +13,7 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   SchedulerJobConflictError,
   SchedulerJobNotFoundError,
@@ -439,7 +440,16 @@ export function createSchedulerRoutes(
 
   app.get('/jobs', async (c) => {
     try {
-      const data = await visibleJobs(c);
+      const jobs = await visibleJobs(c);
+      const weekStart = c.req.query('weekStart');
+      const data =
+        weekStart === undefined
+          ? jobs
+          : schedulerService.projectWeek(
+              jobs,
+              weekStart,
+              c.req.query('displayZone'),
+            );
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to list scheduler jobs', { error });
@@ -525,6 +535,10 @@ export function createSchedulerRoutes(
         status.jobCount = jobs.filter(
           (job) => job.provider === provider,
         ).length;
+      }
+      if (isOperatorInPersonNotAgent(c.req.raw) && data.providers['built-in']) {
+        data.providers['built-in'].rowIssues =
+          schedulerService.readBuiltinRowIssues();
       }
       return c.json({ success: true, data });
     } catch (error: unknown) {

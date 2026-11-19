@@ -4,6 +4,19 @@ An automation is work Station runs for you on a schedule: every weekday at
 9:00, every hour, or once at a set time. Open **Automations** in the sidebar
 (it was called Schedule; old `/schedule` links still work).
 
+## Review the week and its executions
+
+**Calendar** shows the current Monday-first week. Change **Display time zone**
+to see scheduled times in another zone. The automation keeps its stored
+schedule and time zone. Frequent jobs can have more occurrences than the
+calendar displays.
+
+**Executions** shows the recorded runs. Choose **View run** to see a run's
+status and attempt, and **Load result** when that receipt has a saved result.
+
+A job whose stored record needs repair appears separately for the Station
+operator, with a job ID for recovery. Healthy automations remain available.
+
 ## Where an automation runs
 
 Choose **Run in** when you create one:
