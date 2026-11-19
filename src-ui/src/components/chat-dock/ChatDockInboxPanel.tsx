@@ -11,7 +11,7 @@ import { Button } from '../Button';
 import { MessageGlyph } from '../icons/Glyph';
 import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { NewChatAction } from '../NewChatAction';
-import { type ListRefresh, ListRefreshIndicator } from '../refresh/ListRefresh';
+import { type ListRefresh, ListRefreshStatus } from '../refresh/ListRefresh';
 import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import {
@@ -176,12 +176,6 @@ function ChatDockInboxPanelImpl({
         />
         <InboxScopeFilter scope={scope} inline />
         {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
-        {sync && (
-          <ListRefreshIndicator
-            phase={sync.refresh?.phase}
-            updating={sync.updating && (hasAnyItems || !sync.pending)}
-          />
-        )}
       </div>
       <div className="chat-dock-inbox__scroll">
         {sync && (sync.failed || sync.refresh?.recovering) && (
@@ -263,6 +257,13 @@ function ChatDockInboxPanelImpl({
           Browse all conversations
         </Button>
       </div>
+      {sync && (
+        <ListRefreshStatus
+          activity="Refreshing inbox…"
+          phase={sync.refresh?.phase}
+          updating={sync.updating && (hasAnyItems || !sync.pending)}
+        />
+      )}
       {controller.notice}
     </aside>
   );

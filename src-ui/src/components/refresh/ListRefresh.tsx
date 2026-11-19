@@ -1,5 +1,6 @@
 import { onlineManager } from '@tanstack/react-query';
 import {
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -10,8 +11,14 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import { triggerHaptic } from '../../platform/native/haptics';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
-import { CheckGlyph, RefreshGlyph, WarningGlyph } from '../icons/Glyph';
+import { RefreshGlyph } from '../icons/Glyph';
+import {
+  LiveStatusGlyph,
+  type LiveStatusGlyphKind,
+  trackPageVisibilityForStatusMotion,
+} from '../status/LiveStatusGlyph';
 import './ListRefresh.css';
 
 const BACKGROUND_DELAY_MS = 300;
@@ -111,14 +118,19 @@ export function useListRefresh({
 
 export type ListRefresh = ReturnType<typeof useListRefresh>;
 
-export function ListRefreshIndicator({
+export function ListRefreshStatus({
   phase = 'idle',
   updating = false,
+  activity,
+  dockClearance = false,
 }: {
   phase?: RefreshPhase;
   updating?: boolean;
+  activity: string;
+  dockClearance?: boolean;
 }) {
   const [showBackground, setShowBackground] = useState(false);
+  useEffect(trackPageVisibilityForStatusMotion, []);
   const online = useSyncExternalStore(subscribeOnline, isOnline, () => true);
   useEffect(() => {
     if (!updating) {
@@ -140,20 +152,39 @@ export function ListRefreshIndicator({
         : phase;
   const label = {
     idle: '',
-    updating: 'Updating…',
-    refreshing: 'Refreshing…',
+    updating: activity,
+    refreshing: activity,
     done: 'Updated',
     failed: 'Couldn’t refresh',
     offline: 'Waiting for connection',
   }[state];
+  const glyphs: Record<typeof state, LiveStatusGlyphKind> = {
+    idle: 'idle',
+    updating: 'working',
+    refreshing: 'working',
+    done: 'done',
+    failed: 'attention',
+    offline: 'attention',
+  };
+
   return (
-    <span className="list-refresh__indicator" data-state={state} title={label}>
-      {state === 'done' && <CheckGlyph />}
-      {(state === 'failed' || state === 'offline') && <WarningGlyph />}
-      <span className="sr-only" aria-live="polite">
-        {state === 'updating' ? '' : label}
-      </span>
-    </span>
+    <div
+      className="list-refresh__status"
+      data-dock-clearance={dockClearance || undefined}
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {state !== 'idle' && (
+        <div
+          className="list-refresh__pill"
+          data-state={state}
+          aria-hidden={state === 'updating' || undefined}
+        >
+          <LiveStatusGlyph kind={glyphs[state]} />
+          <span>{label}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -161,12 +192,10 @@ export function ListRefreshActions({
   label,
   refreshLabel,
   refresh,
-  updating,
 }: {
   label: string;
   refreshLabel: string;
   refresh: ListRefresh;
-  updating?: boolean;
 }) {
   const coarsePointer = useCoarsePointer();
   return (
@@ -174,7 +203,6 @@ export function ListRefreshActions({
       className="list-refresh__actions"
       data-coarse-pointer={coarsePointer || undefined}
     >
-      <ListRefreshIndicator phase={refresh.phase} updating={updating} />
       <ActionOverflowMenu
         label={label}
         actions={[
@@ -187,6 +215,45 @@ export function ListRefreshActions({
         ]}
       />
     </div>
+  );
+}
+
+export function ListRefreshPull({
+  surfaceRef,
+  refresh,
+  enabled = true,
+  children,
+}: {
+  surfaceRef: RefObject<HTMLElement | null>;
+  refresh?: ListRefresh;
+  enabled?: boolean;
+  children: ReactNode;
+}) {
+  usePullToRefresh(surfaceRef, enabled ? refresh?.run : undefined);
+  if (!refresh) return children;
+  return (
+    <>
+      <div className="list-refresh__pull" aria-hidden="true">
+        <span className="list-refresh__ring-badge">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle
+              className="list-refresh__ring-track"
+              cx="10"
+              cy="10"
+              r="7"
+            />
+            <circle
+              className="list-refresh__ring-progress"
+              cx="10"
+              cy="10"
+              r="7"
+              pathLength="1"
+            />
+          </svg>
+        </span>
+      </div>
+      <div className="list-refresh__pull-content">{children}</div>
+    </>
   );
 }
 
@@ -208,7 +275,7 @@ function scrollOwner(target: Element) {
   return document.scrollingElement;
 }
 
-export function usePullToRefresh(
+function usePullToRefresh(
   ref: RefObject<HTMLElement | null>,
   refresh?: ListRefresh['run'],
 ) {
@@ -218,12 +285,13 @@ export function usePullToRefresh(
 
     let origin: Touch | undefined;
     let distance = 0;
+    let pulsed = false;
     let scroller: Element | null = null;
     const clearPull = () => {
       distance = 0;
       delete surface.dataset.listRefreshPull;
-      delete surface.dataset.listRefreshLabel;
       surface.style.removeProperty('--list-refresh-pull');
+      surface.style.removeProperty('--list-refresh-stretch');
     };
     const reset = () => {
       origin = undefined;
@@ -232,6 +300,7 @@ export function usePullToRefresh(
     };
     const start = (event: TouchEvent) => {
       reset();
+      pulsed = false;
       const target = event.target;
       if (
         event.touches.length === 1 &&
@@ -270,29 +339,42 @@ export function usePullToRefresh(
       }
       event.preventDefault();
       distance = dy;
-      const ready = dy >= PULL_THRESHOLD_PX;
+      const progress = Math.min(dy / PULL_THRESHOLD_PX, 1);
+      const beyond = Math.max(0, dy - PULL_THRESHOLD_PX);
+      const stretch = progress + 0.3 * (1 - Math.exp(-beyond / 64));
+      const ready = progress === 1;
+      if (ready && !pulsed) {
+        pulsed = true;
+        triggerHaptic('selection');
+      }
       surface.dataset.listRefreshPull = ready ? 'ready' : 'pulling';
-      surface.dataset.listRefreshLabel = ready
-        ? 'Release to refresh'
-        : dy >= 28
-          ? 'Pull to refresh'
-          : '';
-      surface.style.setProperty(
-        '--list-refresh-pull',
-        String(Math.min(dy / PULL_THRESHOLD_PX, 1)),
-      );
+      surface.style.setProperty('--list-refresh-pull', String(progress));
+      surface.style.setProperty('--list-refresh-stretch', String(stretch));
     };
-    const end = () => {
-      const armed = distance >= PULL_THRESHOLD_PX;
+    const end = (event: TouchEvent) => {
+      const armed =
+        distance >= PULL_THRESHOLD_PX &&
+        event.touches.length === 0 &&
+        Array.from(event.changedTouches).some(
+          (touch) => touch.identifier === origin?.identifier,
+        );
       reset();
       if (armed) refresh();
     };
+    const cancelMultipleTouches = (event: TouchEvent) => {
+      if (origin && event.touches.length > 1) reset();
+    };
+    document.addEventListener('touchstart', cancelMultipleTouches, {
+      passive: true,
+      capture: true,
+    });
     surface.addEventListener('touchstart', start, { passive: true });
     surface.addEventListener('touchmove', move, { passive: false });
     surface.addEventListener('touchend', end, { passive: true });
     surface.addEventListener('touchcancel', reset);
     return () => {
       reset();
+      document.removeEventListener('touchstart', cancelMultipleTouches, true);
       surface.removeEventListener('touchstart', start);
       surface.removeEventListener('touchmove', move);
       surface.removeEventListener('touchend', end);

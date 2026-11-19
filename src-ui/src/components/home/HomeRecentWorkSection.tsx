@@ -27,7 +27,8 @@ import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import {
   type ListRefresh,
   ListRefreshActions,
-  usePullToRefresh,
+  ListRefreshPull,
+  ListRefreshStatus,
 } from '../refresh/ListRefresh';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import { type HomeRowContext, renderHomeWorkRow } from './HomeWorkRow';
@@ -144,7 +145,7 @@ function useHomeWorkController(lanes: HomeWorkLanes): HomeWorkController {
 export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
   const controller = useHomeWorkController(props.lanes);
   const sectionRef = useRef<HTMLElement>(null);
-  usePullToRefresh(sectionRef, props.refresh?.run);
+  const listRef = useRef<HTMLDivElement>(null);
   // A row whose lane changes (or whose lane empties) remounts elsewhere;
   // keep a keyboard user's focus on it. `tabIndex={-1}` is the last-resort
   // fallback target when the row itself is gone.
@@ -164,30 +165,44 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
             label="Recent work actions"
             refreshLabel="Refresh recent work"
             refresh={props.refresh}
-            updating={props.updating && !props.workLoading}
           />
         )}
       </div>
-      {props.remoteReadError && (
-        <ErrorState
-          variant="compact"
-          title="Remote work unavailable"
-          description={props.remoteReadError.description}
-          action={
-            props.remoteReadError.retry && (
-              <Button variant="secondary" onClick={props.remoteReadError.retry}>
-                Retry remote work
-              </Button>
-            )
-          }
-        />
-      )}
-      <RemoteUnavailableNote environments={props.remoteUnavailable} />
-      <RemoteAuthenticationRequiredNote
-        environments={props.remoteAuthenticationRequired}
-      />
-      <ReadStatusNote items={props.workItems} />
-      <HomeWorkContent {...props} controller={controller} />
+      <div ref={listRef}>
+        <ListRefreshPull surfaceRef={listRef} refresh={props.refresh}>
+          {props.remoteReadError && (
+            <ErrorState
+              variant="compact"
+              title="Remote work unavailable"
+              description={props.remoteReadError.description}
+              action={
+                props.remoteReadError.retry && (
+                  <Button
+                    variant="secondary"
+                    onClick={props.remoteReadError.retry}
+                  >
+                    Retry remote work
+                  </Button>
+                )
+              }
+            />
+          )}
+          <RemoteUnavailableNote environments={props.remoteUnavailable} />
+          <RemoteAuthenticationRequiredNote
+            environments={props.remoteAuthenticationRequired}
+          />
+          <ReadStatusNote items={props.workItems} />
+          <HomeWorkContent {...props} controller={controller} />
+        </ListRefreshPull>
+        {props.refresh && (
+          <ListRefreshStatus
+            activity="Refreshing recent work…"
+            phase={props.refresh.phase}
+            updating={props.updating && !props.workLoading}
+            dockClearance
+          />
+        )}
+      </div>
     </section>
   );
 }

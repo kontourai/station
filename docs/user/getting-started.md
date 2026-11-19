@@ -815,9 +815,8 @@ management remains in the chat actions menu. **Projects** has the same add contr
 for creating a project, including a short first-project prompt when empty.
 
 On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
-Project **Tasks** list. Let go when you see **Release to refresh**. The actions
-menu offers the same refresh, and a short line shows activity while the list
-catches up.
+Project **Tasks** list. Release when the ring fills. The actions menu offers
+the same refresh. A floating status pill shows what’s refreshing.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay

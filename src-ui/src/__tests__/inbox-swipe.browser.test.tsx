@@ -179,14 +179,25 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     const css = ['src-ui/src/index.css', 'src-ui/src/components/chat/chat.css']
       .map((path) => resolveCssImports(resolve(path)))
       .join('\n');
-    await page.addStyleTag({ content: css });
+    await page.addStyleTag({
+      content:
+        css +
+        '\n#root { display: flex; flex-direction: column; height: 100dvh; }',
+    });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await mount(page, true);
     const cdp = await page.context().newCDPSession(page);
     const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
     const row = inbox.getByRole('button', { name: /^Review the inbox\b/ });
-    const list = inbox.locator('.mobile-inbox__list');
-    const pullHint = () =>
-      list.evaluate((element) => getComputedStyle(element, '::before').content);
+    const cue = inbox.locator('.list-refresh__pull');
+    const rowTravel = async () =>
+      ((await row.boundingBox())?.y ?? rowTop) - rowTop;
+    const ringProgress = () =>
+      cue
+        .locator('.list-refresh__ring-progress')
+        .evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).strokeDasharray),
+        );
     const refreshes = () =>
       page.evaluate(() => Reflect.get(window, 'inboxRefreshes'));
     const setUpdating = (value: boolean) =>
@@ -194,43 +205,51 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
         (updating) => Reflect.get(window, 'setInboxUpdating')(updating),
         value,
       );
-    const status = inbox.locator('.list-refresh__indicator');
+    const status = inbox.locator('.list-refresh__status');
+    const pill = status.locator('.list-refresh__pill');
     const menu = inbox.getByRole('button', { name: 'Inbox actions' });
     const target = await menu.boundingBox();
     expect(target?.height).toBeGreaterThanOrEqual(44);
     expect(target?.width).toBeGreaterThanOrEqual(44);
 
-    await setUpdating(true);
-    await expectBrowser(status).toHaveAttribute('title', 'Updating…');
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    expect(
-      await status.evaluate((element) => {
-        const rail = getComputedStyle(element, '::before');
-        return rail.content !== 'none' && Number.parseFloat(rail.height) > 0;
-      }),
-    ).toBe(true);
-    await expectBrowser
-      .poll(() =>
-        status.evaluate((element) =>
-          Number.parseFloat(
-            getComputedStyle(element, '::before').animationDuration,
-          ),
-        ),
-      )
-      .toBeLessThan(0.01);
-    await expectBrowser(row).toBeVisible();
-    await setUpdating(false);
-    await expectBrowser(status).toHaveAttribute('title', '');
-
     const rowTop = (await row.boundingBox())?.y ?? 0;
+    await setUpdating(true);
+    await expectBrowser(pill).toHaveText('Refreshing inbox…');
+    const [panelBounds, pillBounds] = await Promise.all([
+      inbox.boundingBox(),
+      pill.boundingBox(),
+    ]);
+    if (!panelBounds || !pillBounds)
+      throw new Error('Inbox status did not render');
+    expect(
+      panelBounds.y + panelBounds.height - pillBounds.y - pillBounds.height,
+    ).toBeGreaterThanOrEqual(8);
+    expect(
+      panelBounds.y + panelBounds.height - pillBounds.y - pillBounds.height,
+    ).toBeLessThanOrEqual(16);
+    expect((await row.boundingBox())?.y).toBe(rowTop);
+    await expectBrowser(pill).toHaveCSS('pointer-events', 'none');
+    await expectBrowser(pill.locator('.live-status-glyph__orbit')).toHaveCSS(
+      'animation-iteration-count',
+      '1',
+    );
+    await setUpdating(false);
+    await expectBrowser(pill).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
     await swipe(cdp, page, 0, 36, {
       during: async () => {
-        await expectBrowser.poll(pullHint).toBe('"Pull to refresh"');
-        expect((await row.boundingBox())?.y).toBeGreaterThan(rowTop + 10);
+        const travel = await rowTravel();
+        expect(travel).toBeGreaterThan(12);
+        expect(travel).toBeLessThan(36);
+        const progress = await ringProgress();
+        expect(progress).toBeGreaterThan(0);
+        expect(progress).toBeLessThan(1);
       },
     });
-    expect(await pullHint()).toBe('none');
+    await expectBrowser.poll(rowTravel).toBe(0);
     await swipe(cdp, page, 0, 110, { cancel: true });
+    await expectBrowser.poll(rowTravel).toBe(0);
     await swipe(cdp, page, 0, 110, {
       during: async ({ x, y }) => {
         await cdp.send('Input.dispatchTouchEvent', {
@@ -239,26 +258,32 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
         });
       },
     });
+    await swipe(cdp, page, 0, 110, {
+      during: async ({ x, y }) => {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchStart',
+          touchPoints: [
+            { x, y: y + 110 },
+            { x: 12, y: 12 },
+          ],
+        });
+      },
+    });
     expect(await refreshes()).toBe(0);
     await swipe(cdp, page, 0, 110, {
       during: async () => {
-        await expectBrowser.poll(pullHint).toBe('"Release to refresh"');
-        expect(
-          await list.evaluate((element) => {
-            const cue = getComputedStyle(element, '::before');
-            return (
-              Number.parseFloat(cue.height) > Number.parseFloat(cue.fontSize)
-            );
-          }),
-        ).toBe(true);
+        await expectBrowser.poll(ringProgress).toBe(1);
+        expect(await rowTravel()).toBeLessThan(62);
         expect(await refreshes()).toBe(0);
       },
     });
-    expect(await pullHint()).toBe('none');
-    expect((await row.boundingBox())?.y).toBe(rowTop);
-    await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
-      'Refreshing…',
+    await expectBrowser(pill).toHaveText('Refreshing inbox…');
+    await expectBrowser(pill.locator('.live-status-glyph__orbit')).toHaveCSS(
+      'animation-name',
+      'live-status-orbit',
     );
+    await expectBrowser.poll(rowTravel).toBe(0);
+    expect((await row.boundingBox())?.y).toBe(rowTop);
     await expectBrowser(row).toBeVisible();
 
     await swipe(cdp, page, 0, 110);
@@ -266,20 +291,14 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     await page.getByRole('menuitem', { name: 'Refresh inbox' }).click();
     expect(await refreshes()).toBe(1);
     await page.evaluate(() => Reflect.get(window, 'finishInboxRefresh')(true));
-    await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
-      'Updated',
-    );
+    await expectBrowser(pill).toHaveText('Updated');
     await expectBrowser(row).toBeVisible();
 
     await inbox.getByRole('button', { name: 'Inbox actions' }).click();
     await page.getByRole('menuitem', { name: 'Refresh inbox' }).click();
-    await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
-      'Refreshing…',
-    );
+    await expectBrowser(pill).toHaveText('Refreshing inbox…');
     await page.evaluate(() => Reflect.get(window, 'finishInboxRefresh')(false));
-    await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
-      'Couldn’t refresh',
-    );
+    await expectBrowser(pill).toHaveText('Couldn’t refresh');
     await expectBrowser(row).toBeVisible();
     expect(await page.evaluate(() => Reflect.get(window, 'opens'))).toBe(0);
     expect(errors).toEqual([]);

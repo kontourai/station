@@ -13,7 +13,11 @@ import type {
 } from '../../views/home/useHomeViewModel';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import { agentRunnability } from '../agent-runnability';
-import { ListRefreshActions, usePullToRefresh } from '../refresh/ListRefresh';
+import {
+  ListRefreshActions,
+  ListRefreshPull,
+  ListRefreshStatus,
+} from '../refresh/ListRefresh';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
@@ -210,15 +214,13 @@ export function HomeContinueCard({
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
   const projectIconBySlug = useProjectIcons();
-  const sectionRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const refresh = offerRefresh ? model.refreshWork : undefined;
-  usePullToRefresh(sectionRef, refresh?.run);
   const primary = model.primaryWorkItem;
   if (!primary) return null;
   return (
     <section
       id={id}
-      ref={sectionRef}
       className="home-view__continue"
       aria-labelledby="home-continue-label"
       tabIndex={-1}
@@ -232,32 +234,43 @@ export function HomeContinueCard({
             label="Recent work actions"
             refreshLabel="Refresh recent work"
             refresh={refresh}
-            updating={model.workUpdating}
           />
         )}
       </div>
-      <ul className="home-view__task-list home-view__continue-list">
-        {renderHomeWorkRow({
-          task: { ...primary, stableId: `continue:${primary.id}` },
-          isWoken: false,
-          agents: model.agents,
-          onOpen: (item) =>
-            model.continueWork(item.id === primary.id ? primary : item),
-          context: {
-            now: Date.now(),
-            workFacts: model.workFacts,
-            childrenById,
-            expandedFamilies,
-            setExpandedFamilies,
-            detailsFor,
-            setDetailsFor,
-            chrome: coarsePointer ? 'touch' : 'hover',
-            gitLocationByThreadId,
-            projectAccentBySlug,
-            projectIconBySlug,
-          },
-        })}
-      </ul>
+      <div ref={listRef}>
+        <ListRefreshPull surfaceRef={listRef} refresh={refresh}>
+          <ul className="home-view__task-list home-view__continue-list">
+            {renderHomeWorkRow({
+              task: { ...primary, stableId: `continue:${primary.id}` },
+              isWoken: false,
+              agents: model.agents,
+              onOpen: (item) =>
+                model.continueWork(item.id === primary.id ? primary : item),
+              context: {
+                now: Date.now(),
+                workFacts: model.workFacts,
+                childrenById,
+                expandedFamilies,
+                setExpandedFamilies,
+                detailsFor,
+                setDetailsFor,
+                chrome: coarsePointer ? 'touch' : 'hover',
+                gitLocationByThreadId,
+                projectAccentBySlug,
+                projectIconBySlug,
+              },
+            })}
+          </ul>
+        </ListRefreshPull>
+        {refresh && (
+          <ListRefreshStatus
+            activity="Refreshing recent work…"
+            phase={refresh.phase}
+            updating={model.workUpdating}
+            dockClearance
+          />
+        )}
+      </div>
     </section>
   );
 }

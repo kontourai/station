@@ -15,7 +15,8 @@ import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import {
   type ListRefresh,
   ListRefreshActions,
-  usePullToRefresh,
+  ListRefreshPull,
+  ListRefreshStatus,
 } from '../refresh/ListRefresh';
 import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
@@ -94,7 +95,6 @@ export function MobileInboxPanel({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  usePullToRefresh(listRef, open ? refresh?.run : undefined);
   const showLoadError = loadError || refresh?.recovering;
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -202,7 +202,6 @@ export function MobileInboxPanel({
             label="Inbox actions"
             refreshLabel="Refresh inbox"
             refresh={refresh}
-            updating={updating && (hasVisibleItems || !pending)}
           />
         )}
       </div>
@@ -218,97 +217,106 @@ export function MobileInboxPanel({
         />
       )}
       <div className="mobile-inbox__list" ref={listRef}>
-        {showLoadError && !hasVisibleItems ? (
-          <ErrorState
-            variant="compact"
-            title="Unable to load chats and tasks"
-            action={
-              refresh && (
-                <Button
-                  disabled={refresh.phase === 'refreshing'}
-                  onClick={() => void refresh.run(true)}
-                >
-                  {refresh.recovering ? 'Retrying…' : 'Retry'}
-                </Button>
-              )
-            }
+        <ListRefreshPull surfaceRef={listRef} refresh={refresh} enabled={open}>
+          {showLoadError && !hasVisibleItems ? (
+            <ErrorState
+              variant="compact"
+              title="Unable to load chats and tasks"
+              action={
+                refresh && (
+                  <Button
+                    disabled={refresh.phase === 'refreshing'}
+                    onClick={() => void refresh.run(true)}
+                  >
+                    {refresh.recovering ? 'Retrying…' : 'Retry'}
+                  </Button>
+                )
+              }
+            />
+          ) : pending && !hasVisibleItems ? (
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label="Loading chats and tasks"
+            >
+              <SkeletonList count={3} />
+            </div>
+          ) : !hasVisibleItems && query.trim() ? (
+            <FilteredEmpty
+              query={query}
+              noun="work"
+              onClear={() => setQuery('')}
+            />
+          ) : !hasVisibleItems ? (
+            <Empty
+              variant="compact"
+              label={
+                scope.effectiveValue === 'all'
+                  ? 'No chats yet.'
+                  : 'No work in this filter.'
+              }
+              description={
+                scope.effectiveValue === 'all'
+                  ? 'Start a chat with an agent.'
+                  : 'Choose All work to see other projects and Stations.'
+              }
+            />
+          ) : null}
+          {showLoadError && hasVisibleItems && (
+            <ErrorState
+              variant="compact"
+              title="Showing last known results"
+              action={
+                refresh && (
+                  <Button
+                    disabled={refresh.phase === 'refreshing'}
+                    onClick={() => void refresh.run(true)}
+                  >
+                    {refresh.recovering ? 'Retrying…' : 'Retry'}
+                  </Button>
+                )
+              }
+            />
+          )}
+          <ReadStatusNote items={tasks} />
+          <InboxGroupList
+            key={controller.stateKey}
+            swipeActions={swipeActions}
+            groups={groups}
+            idPrefix="mobile-task-switcher"
+            activeChatSessionId={activeChatSessionId}
+            openChatIds={openMembership}
+            now={now}
+            agents={agents}
+            workFacts={workFacts}
+            gitLocationByThreadId={gitLocationByThreadId}
+            projectAccentBySlug={projectAccentBySlug}
+            projectIconBySlug={projectIconBySlug}
+            showGroupCounts
+            collapsible={{
+              sections: inboxSections,
+              order: inboxSections.order,
+              onReorder: (order) =>
+                setDeviceSetting('inboxSections', { ...inboxSections, order }),
+              onToggle: (id) =>
+                setDeviceSetting('inboxSections', {
+                  ...inboxSections,
+                  [id]: inboxSections[id] === false,
+                }),
+            }}
+            chrome="touch"
+            actionsInDetails
+            {...controller.rowActions}
           />
-        ) : pending && !hasVisibleItems ? (
-          <div
-            role="status"
-            aria-busy="true"
-            aria-label="Loading chats and tasks"
-          >
-            <SkeletonList count={3} />
-          </div>
-        ) : !hasVisibleItems && query.trim() ? (
-          <FilteredEmpty
-            query={query}
-            noun="work"
-            onClear={() => setQuery('')}
-          />
-        ) : !hasVisibleItems ? (
-          <Empty
-            variant="compact"
-            label={
-              scope.effectiveValue === 'all'
-                ? 'No chats yet.'
-                : 'No work in this filter.'
-            }
-            description={
-              scope.effectiveValue === 'all'
-                ? 'Start a chat with an agent.'
-                : 'Choose All work to see other projects and Stations.'
-            }
-          />
-        ) : null}
-        {showLoadError && hasVisibleItems && (
-          <ErrorState
-            variant="compact"
-            title="Showing last known results"
-            action={
-              refresh && (
-                <Button
-                  disabled={refresh.phase === 'refreshing'}
-                  onClick={() => void refresh.run(true)}
-                >
-                  {refresh.recovering ? 'Retrying…' : 'Retry'}
-                </Button>
-              )
-            }
-          />
-        )}
-        <ReadStatusNote items={tasks} />
-        <InboxGroupList
-          key={controller.stateKey}
-          swipeActions={swipeActions}
-          groups={groups}
-          idPrefix="mobile-task-switcher"
-          activeChatSessionId={activeChatSessionId}
-          openChatIds={openMembership}
-          now={now}
-          agents={agents}
-          workFacts={workFacts}
-          gitLocationByThreadId={gitLocationByThreadId}
-          projectAccentBySlug={projectAccentBySlug}
-          projectIconBySlug={projectIconBySlug}
-          showGroupCounts
-          collapsible={{
-            sections: inboxSections,
-            order: inboxSections.order,
-            onReorder: (order) =>
-              setDeviceSetting('inboxSections', { ...inboxSections, order }),
-            onToggle: (id) =>
-              setDeviceSetting('inboxSections', {
-                ...inboxSections,
-                [id]: inboxSections[id] === false,
-              }),
-          }}
-          chrome="touch"
-          actionsInDetails
-          {...controller.rowActions}
-        />
+        </ListRefreshPull>
       </div>
+      {open && refresh && (
+        <ListRefreshStatus
+          activity="Refreshing inbox…"
+          phase={refresh.phase}
+          updating={updating && (hasVisibleItems || !pending)}
+        />
+      )}
       {controller.notice}
     </section>
   );
