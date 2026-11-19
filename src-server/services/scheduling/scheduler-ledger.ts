@@ -1352,14 +1352,26 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     for (const row of rows) {
       try {
         const job = freezeJob(parseStoredJob(row.data));
-        const schedule = toScheduledJob(job)?.schedule;
         if (
           job.name !== row.name ||
+          typeof job.createdAt !== 'string' ||
+          typeof job.enabled !== 'boolean' ||
           (job.cron !== undefined && typeof job.cron !== 'string') ||
           (job.schedule !== undefined &&
             (!job.schedule ||
-              !['at', 'every', 'cron'].includes(job.schedule.kind))) ||
-          (schedule && validateSchedule(schedule) !== null)
+              !['at', 'every', 'cron'].includes(job.schedule.kind)))
+        )
+          throw new MalformedSchedulerJob('invalid-job');
+        const schedule = toScheduledJob(job)?.schedule;
+        if (
+          schedule &&
+          (validateSchedule(schedule) !== null ||
+            (schedule.kind === 'at' &&
+              !Number.isFinite(new Date(schedule.timeMs).getTime())) ||
+            (schedule.kind === 'every' &&
+              !Number.isFinite(
+                new Date(Date.now() + schedule.everyMs).getTime(),
+              )))
         )
           throw new MalformedSchedulerJob('invalid-job');
         jobs.push({ jobId: row.job_id, job });

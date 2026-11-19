@@ -1193,13 +1193,13 @@ describe('SchedulerLedger', () => {
     [
       'invalid-job',
       Buffer.from(
-        '{"name":"damaged","prompt":"private-cue","enabled":true,"schedule":{"kind":"every","everyMs":-1}}',
+        '{"name":"damaged","prompt":"private-cue","enabled":true,"createdAt":"2026-01-01T00:00:00.000Z","schedule":{"kind":"every","everyMs":-1}}',
       ),
     ],
     [
       'invalid-job',
       Buffer.from(
-        '{"name":"damaged","prompt":"private-cue","enabled":true,"schedule":{"kind":"other"}}',
+        '{"name":"damaged","prompt":"private-cue","enabled":true,"createdAt":"2026-01-01T00:00:00.000Z","schedule":{"kind":"other"}}',
       ),
     ],
   ] as const)(

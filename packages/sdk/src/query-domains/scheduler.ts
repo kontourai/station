@@ -49,7 +49,7 @@ export function useSchedulerJobs(weekStart?: string, displayZone?: string) {
   return useApiQuery(
     weekStart === undefined
       ? ['scheduler', 'jobs']
-      : ['scheduler', 'jobs', weekStart, displayZone],
+      : ['scheduler', 'jobs', weekStart, displayZone ?? 'UTC'],
     async () => {
       const apiBase = await _getApiBase();
       return listJobs(apiBase, undefined, weekStart, displayZone);
