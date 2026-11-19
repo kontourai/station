@@ -50,6 +50,11 @@ const EXAMPLES_DIR = join(ROOT, 'examples');
 export const CREDENTIAL_GATED = new Map([
   ['openai-realtime-voice', 'needs an OpenAI API key'],
   ['meeting-transcription', 'needs a speech-to-text provider credential'],
+  [
+    'elevenlabs-voice',
+    'live ElevenLabs and microphone/playback acceptance remain unverified',
+  ],
+  ['station-sessions-mcp', 'external MCP host rendering remains unverified'],
 ]);
 
 /**
@@ -61,14 +66,6 @@ export const KNOWN_BROKEN = new Map([
   [
     'nova-sonic-voice',
     'structural only: its relay returns HTTP 501 until a WebSocket-to-Bedrock bridge exists',
-  ],
-  [
-    'elevenlabs-voice',
-    'its token, audio and transcript code differs from the provider protocol (#2784)',
-  ],
-  [
-    'station-sessions-mcp',
-    'its reader uses the wrong route and reports failed reads as empty (#2785)',
   ],
 ]);
 

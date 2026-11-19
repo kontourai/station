@@ -5,8 +5,8 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
-  useState,
+  useLayoutEffect,
+  useRef,
 } from 'react';
 import type { PluginApiIdentity } from './api-core';
 import type {
@@ -126,89 +126,36 @@ interface LayoutNavigationProviderProps {
   layoutSlug?: string;
 }
 
-// Global hash restoration mechanism
-let lastSetHash: string | null = null;
-// `ReturnType<typeof setTimeout>`, not `NodeJS.Timeout`: the SDK is a browser
-// package whose consumers have no reason to install `@types/node`, and an
-// ambient namespace they cannot resolve makes their `tsc` fail on our source.
-const hashRestoreTimeout: ReturnType<typeof setTimeout> | null = null;
-
-const restoreHashIfCleared = () => {
-  const currentHash = window.location.hash.slice(1);
-  if (lastSetHash && currentHash !== lastSetHash) {
-    window.location.hash = lastSetHash;
-  }
-};
-
 export function LayoutNavigationProvider({
   children,
   activeTabId,
   layoutSlug,
 }: LayoutNavigationProviderProps) {
-  const [_instanceId] = useState(() => Math.random().toString(36).substr(2, 9));
+  const previousKey = useRef<string | null>(null);
+  const pendingRestore = useRef<(() => void) | null>(null);
+  const cancelRestore = useCallback(() => {
+    pendingRestore.current?.();
+    pendingRestore.current = null;
+  }, []);
 
-  // IMMEDIATE hash restoration - before any state initialization
-  if (activeTabId && layoutSlug) {
-    const key = `layout-${layoutSlug}-tab-${activeTabId}`;
-    const stored = sessionStorage.getItem(key);
-    const currentHash = window.location.hash.slice(1);
-
-    if (stored && !currentHash) {
-      window.location.hash = stored;
-    }
+  const activeKey =
+    activeTabId && layoutSlug
+      ? `layout-${layoutSlug}-tab-${activeTabId}`
+      : null;
+  // Plugins can initialize state from the URL when their first render runs.
+  if (activeKey && typeof window !== 'undefined' && !window.location.hash) {
+    const retained = sessionStorage.getItem(activeKey);
+    if (retained) window.location.hash = retained;
   }
 
-  const [previousActiveTab, setPreviousActiveTab] = useState<
-    string | undefined
-  >(undefined);
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  // Log mount/unmount
-  useEffect(() => {
-    return () => {};
-  }, []);
-
-  // Restore hash from sessionStorage on mount
-  useEffect(() => {
-    if (activeTabId && layoutSlug) {
-      const key = `layout-${layoutSlug}-tab-${activeTabId}`;
-      const stored = sessionStorage.getItem(key);
-      const currentHash = window.location.hash.slice(1);
-      if (stored && !currentHash) {
-        window.location.hash = stored;
-      }
+  useLayoutEffect(() => {
+    if (!activeKey) return cancelRestore;
+    if (previousKey.current && previousKey.current !== activeKey) {
+      window.location.hash = sessionStorage.getItem(activeKey) ?? '';
     }
-  }, [activeTabId, layoutSlug]); // Empty deps - only run on mount
-
-  // Debug: Track all hash changes
-  useEffect(() => {
-    const handleHashChange = () => {};
-
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  // Handle tab switching - restore hash for the active tab
-  useEffect(() => {
-    // Skip on first mount - let existing hash remain
-    if (!isInitialized) {
-      setPreviousActiveTab(activeTabId);
-      setIsInitialized(true);
-      return;
-    }
-
-    if (previousActiveTab !== activeTabId && activeTabId) {
-      // Always restore the active tab's hash when switching tabs
-      const key = `layout-${layoutSlug}-tab-${activeTabId}`;
-      const stored = sessionStorage.getItem(key);
-      if (stored) {
-        window.location.hash = stored;
-      } else {
-        window.location.hash = '';
-      }
-      setPreviousActiveTab(activeTabId);
-    }
-  }, [activeTabId, previousActiveTab, layoutSlug, isInitialized]);
+    previousKey.current = activeKey;
+    return cancelRestore;
+  }, [activeKey, cancelRestore]);
 
   const getTabState = useCallback(
     (tabId: string): string => {
@@ -222,35 +169,41 @@ export function LayoutNavigationProvider({
 
   const setTabState = useCallback(
     (tabId: string, state: string) => {
-      // Always save to sessionStorage first
       const key = `layout-${layoutSlug}-tab-${tabId}`;
       sessionStorage.setItem(key, state);
+      if (tabId !== activeTabId) return;
 
-      if (tabId === activeTabId) {
-        // Active tab also updates URL hash
-        window.location.hash = state;
+      cancelRestore();
+      window.location.hash = state;
+      if (!state) return;
 
-        // Global restoration mechanism - use requestAnimationFrame for after render
-        lastSetHash = state;
-        if (hashRestoreTimeout) clearTimeout(hashRestoreTimeout);
-        requestAnimationFrame(() => {
-          setTimeout(restoreHashIfCleared, 0);
-        });
-      }
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const frame = requestAnimationFrame(() => {
+        timeout = setTimeout(() => {
+          pendingRestore.current = null;
+          if (!window.location.hash && sessionStorage.getItem(key) === state) {
+            window.location.hash = state;
+          }
+        }, 0);
+      });
+      pendingRestore.current = () => {
+        cancelAnimationFrame(frame);
+        clearTimeout(timeout);
+      };
     },
-    [activeTabId, layoutSlug],
+    [activeTabId, layoutSlug, cancelRestore],
   );
 
   const clearTabState = useCallback(
     (tabId: string) => {
+      const key = `layout-${layoutSlug}-tab-${tabId}`;
+      sessionStorage.removeItem(key);
       if (tabId === activeTabId) {
+        cancelRestore();
         window.location.hash = '';
-      } else {
-        const key = `layout-${layoutSlug}-tab-${tabId}`;
-        sessionStorage.removeItem(key);
       }
     },
-    [activeTabId, layoutSlug],
+    [activeTabId, layoutSlug, cancelRestore],
   );
 
   return (
