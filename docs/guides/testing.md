@@ -1923,6 +1923,26 @@ a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.
 
+#### Named lazy-surface readiness
+
+The [lazy boundary](../../src-ui/src/components/LazyBoundary.tsx) keeps a
+loader's original promise separate from the tracing promise React receives.
+This lets a caller reuse its settled promise across mounts. A rejected import
+can be retried through the boundary, which creates a fresh lazy attempt.
+
+The live first-run journey observes **Chat actions** and **Inbox** by their
+stable `data-lazy-surface` IDs on visible failure rows. An unrelated failure
+can appear, clear, or coexist without changing that observation. The displayed
+message names the affected surface, and the shared row offers Retry and Reload.
+Custom History chrome uses the same row.
+
+A boundary failure identifies the UI that failed. Gallery uses its existing
+request evidence to determine whether an app asset failed to load. The
+[Chromium remount and Retry fixture](../../src-ui/src/__tests__/LazyBoundary.browser.test.tsx)
+and the
+[readiness adapter fixture](../../src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx)
+cover those contracts with controlled loaders and saved failure markup.
+
 #### Gallery app error states and the after-photo control record
 
 When a lazily loaded part of the product fails, it shows an error surface and
@@ -1956,7 +1976,7 @@ records failed requests independently. NOT detected, because none
 has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
 `RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
 `DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
-their own `unavailable` slot (several render nothing). The route boundary's
+their own `unavailable` slot that omits the shared row (several render nothing). The route boundary's
 other error states, its authority failure (`route.authority.title`) and its
 render failure (`route.generic.title`), are not detected either. The route
 chunk failure is matched by its en-US titles. The stalled route is matched

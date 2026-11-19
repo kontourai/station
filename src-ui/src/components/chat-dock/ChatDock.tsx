@@ -4300,6 +4300,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       {isMobile && (
                         <LazyBoundary
                           load={loadMobileInboxPanel}
+                          surface={{ id: 'mobile-inbox', label: 'Inbox' }}
                           componentProps={{
                             open: workspaceShown && mobileInboxShown,
                             tasks: taskItems,
