@@ -1,0 +1,71 @@
+[
+ {
+  "scheme": "light",
+  "width": 390,
+  "headings": [
+   "Sources · 1",
+   "Rules · 1",
+   "Open episodes · 2",
+   "Recent deliveries · 3"
+  ],
+  "items": [
+   1,
+   1,
+   2,
+   3
+  ],
+  "overflow": false
+ },
+ {
+  "scheme": "light",
+  "width": 1440,
+  "headings": [
+   "Sources · 1",
+   "Rules · 1",
+   "Open episodes · 2",
+   "Recent deliveries · 3"
+  ],
+  "items": [
+   1,
+   1,
+   2,
+   3
+  ],
+  "overflow": false,
+  "mandateText": "Started by automation\n\nStopped: automation rule “Diagnose red main qualification” was disabled.\n\nRULE\nDiagnose red main qualification\nRULE ID\nf5f5c956-e021-461a-bfd0-2669f61beffa\nPOLICY VERSION AT START\n735eed731064\nEPISODE\n37423043581\nREPOSITORY\nkontourai/station\nWORKFLOW\n.github/workflows/main-qualification.yml\nRUN\n37423043581\nCONCLUSION\nfailure\nRUN LINK\nhttps://github.com/kontourai/station/acti"
+ },
+ {
+  "scheme": "dark",
+  "width": 390,
+  "headings": [
+   "Sources · 1",
+   "Rules · 1",
+   "Open episodes · 2",
+   "Recent deliveries · 3"
+  ],
+  "items": [
+   1,
+   1,
+   2,
+   3
+  ],
+  "overflow": false
+ },
+ {
+  "scheme": "dark",
+  "width": 1440,
+  "headings": [
+   "Sources · 1",
+   "Rules · 1",
+   "Open episodes · 2",
+   "Recent deliveries · 3"
+  ],
+  "items": [
+   1,
+   1,
+   2,
+   3
+  ],
+  "overflow": false
+ }
+]

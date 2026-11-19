@@ -1,0 +1,7 @@
+{
+  "revision": "9c1599510b4e227e8a2a3594c46debf616d4338d",
+
+  "notes": [
+    {"path":"docs/guides/feature-previews.md","note":"Scoped delta review (#4513): docs/user/settings.md gained a GitHub automations section (Advanced, behind GitHub automation observations) and its feature-preview table is unchanged; this guide's preview classification and table pointers remain accurate.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]}
+  ]
+}

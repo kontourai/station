@@ -1,0 +1,9 @@
+{
+  "revision": "6de1d69ad315fa29b255d4fa0d0e19bb3dcff722",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the surfaces.ts delta against the Automation operator API/CLI claims: three redundant double assertions became direct boundary assertions; request bytes, SDK calls, operator authorization, fingerprints, outcomes and command names are unchanged. CLI typecheck passes and the CLI/runtime owner suites pass 67 tests. Existing API/CLI explanations remain accurate; no runtime behavior or new platform claim.","inputs":["docs/reference/api.md","packages/cli/src/commands/surfaces.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the surfaces.ts delta against the Automation operator API/CLI claims: three redundant double assertions became direct boundary assertions; request bytes, SDK calls, operator authorization, fingerprints, outcomes and command names are unchanged. CLI typecheck passes and the CLI/runtime owner suites pass 67 tests. Existing API/CLI explanations remain accurate; no runtime behavior or new platform claim.","inputs":["docs/reference/cli.md","packages/cli/src/commands/surfaces.ts"]}
+  ]
+}
