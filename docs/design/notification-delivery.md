@@ -48,6 +48,11 @@ cards keep their explicit dismiss. When the phone Inbox is open, it reserves
 space for the displayed notification stack so the scope and search controls
 stay reachable. Taller stacks and the Inbox list scroll independently.
 
+Server-backed silent notifications remain in History and do not play a
+browser sound or show a transient toast. An otherwise audible turn completion
+keeps its category sound. The existing foreground check suppresses the toast
+for the chat the person is reading.
+
 [NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
 recent messages separately from server attention. Persistence is opt-in through
 caller-approved `recallText`, bounded by count and age, and scoped to the selected

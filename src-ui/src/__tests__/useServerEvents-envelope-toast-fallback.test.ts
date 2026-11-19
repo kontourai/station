@@ -57,7 +57,21 @@ import {
 } from '../hooks/useServerEvents';
 
 describe('enveloped delivery toast fallback (#2587 review L6)', () => {
-  test('a failed envelope chunk still shows the plain toast', async () => {
+  test('a failed envelope chunk displays an audible delivery without interrupting for a silent one', async () => {
+    handleNotificationDeliveredToast({
+      id: 'silent-1',
+      category: 'agent-done',
+      title: 'Silent history entry',
+      metadata: {
+        envelope: {
+          v: 1,
+          source: { kind: 'system', subsystem: 'fixture' },
+          audience: { kind: 'owner' },
+          urgency: 'done',
+          interrupt: 'silent',
+        },
+      },
+    });
     handleNotificationDeliveredToast({
       id: 'n-1',
       category: 'agent-done',
