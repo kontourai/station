@@ -1,10 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import type { ProjectRoomCoordinatorSettings } from '@kontourai/station-contracts/project-room-coordinator';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   CoordinatorResultWithheld,
   ProjectRoomCoordinator,
@@ -21,6 +20,7 @@ const scope: ProjectMembershipScope = {
 };
 const ROOM = 'room-general';
 const PERSON = { id: 'person-1', displayName: 'Ada' };
+const makeTempDir = trackTempDirs();
 
 /**
  * A world shared across "restarts": the Task graph, the dispatcher, the
@@ -28,7 +28,7 @@ const PERSON = { id: 'person-1', displayName: 'Ada' };
  * handle are rebuilt on the same database file.
  */
 class World {
-  dir = mkdtempSync(join(tmpdir(), 'coordinator-'));
+  dir = makeTempDir('coordinator-');
   settings: ProjectRoomCoordinatorSettings = {
     startWithoutAsking: false,
     maxConcurrentTasks: 2,
@@ -40,6 +40,7 @@ class World {
     {
       id: string;
       key: string;
+      title: string;
       status: 'in_progress' | 'done' | 'canceled';
       sessionId?: string;
     }
@@ -80,7 +81,12 @@ class World {
         if (existing) return { id: existing.id, createdAt: 't0' };
         this.creates += 1;
         const id = `task-${this.tasks.size + 1}`;
-        this.tasks.set(id, { id, key, status: 'in_progress' });
+        this.tasks.set(id, {
+          id,
+          key,
+          title: input.title,
+          status: 'in_progress',
+        });
         // The Task is written and the process dies before the call returns.
         if (this.crashAfterCreate.delete(input.title))
           return new Promise<never>(() => {});
@@ -94,10 +100,8 @@ class World {
         if (task.sessionId) return { kind: 'terminal', reason: 'dispatched' };
         task.sessionId = `session-${taskId}`;
         this.dispatchedTasks.push(taskId);
-        const title = [...this.crashOnDispatch].find(
-          (t) => taskId === this.titleTask(t),
-        );
-        if (title) throw new Error('crash after the start');
+        if (this.crashOnDispatch.has(task.title))
+          throw new Error('crash after the start');
         return {
           kind: 'dispatched',
           result: { session: { threadId: task.sessionId } },
@@ -151,17 +155,6 @@ class World {
     return { coordinator: new ProjectRoomCoordinator(store, ports), db };
   }
 
-  private titles = new Map<string, string>();
-  titleTask(title: string): string | undefined {
-    return this.titles.get(title);
-  }
-  /** Remember which Task a title's row created, for crash injection. */
-  noteTitles(coordinator: ProjectRoomCoordinator) {
-    for (const proposal of coordinator.view(scope, ROOM).proposals)
-      for (const task of proposal.tasks)
-        if (task.taskId) this.titles.set(task.title, task.taskId);
-  }
-
   /** The Task's first turn ran and ended. */
   finish(taskId: string, result: 'completed' | 'failed', answer?: string) {
     const task = this.tasks.get(taskId)!;
@@ -175,10 +168,6 @@ class World {
     });
     this.terminals.set(`${task.sessionId}|turn-${taskId}`, result);
     if (answer) this.answers.set(task.sessionId!, answer);
-  }
-
-  dispose() {
-    rmSync(this.dir, { recursive: true, force: true });
   }
 }
 
@@ -215,19 +204,9 @@ async function propose(
   return publication;
 }
 
-const opened: World[] = [];
-function world() {
-  const value = new World();
-  opened.push(value);
-  return value;
-}
-afterEach(() => {
-  for (const value of opened.splice(0)) value.dispose();
-});
-
 describe('ProjectRoomCoordinator', () => {
   it('answers a quick question in place without creating a Task', async () => {
-    const w = world();
+    const w = new World();
     const { coordinator } = w.open();
     const publication = await propose(
       coordinator,
@@ -242,7 +221,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('turns three requests in one message into three proposed Tasks, and Start all dispatches exactly three', async () => {
-    const w = world();
+    const w = new World();
     w.settings.maxConcurrentTasks = 5;
     const { coordinator } = w.open();
     const publication = await propose(coordinator, THREE);
@@ -282,7 +261,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('a restart in the middle of Start all creates and starts no Task twice', async () => {
-    const w = world();
+    const w = new World();
     w.settings.maxConcurrentTasks = 5;
     const first = w.open();
     await propose(first.coordinator, THREE);
@@ -291,7 +270,6 @@ describe('ProjectRoomCoordinator', () => {
     // before its row recorded it, and after the third Task's engine started
     // but before its row recorded the Session or sent its first message.
     w.crashAfterCreate.add('Update docs');
-    w.titles.set('Bump deps', 'task-3');
     w.crashOnDispatch.add('Bump deps');
     // Start all never returns: the process dies inside it.
     void first.coordinator.start({
@@ -330,7 +308,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('with a limit of 2 a third Task waits visibly and starts when a slot frees', async () => {
-    const w = world();
+    const w = new World();
     w.settings.maxConcurrentTasks = 2;
     const { coordinator } = w.open();
     await propose(coordinator, THREE);
@@ -373,7 +351,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('posts exactly one result per settled Task, including after a restart', async () => {
-    const w = world();
+    const w = new World();
     const first = w.open();
     await propose(first.coordinator, THREE);
     const [card] = first.coordinator.view(scope, ROOM).proposals;
@@ -409,7 +387,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('a restart between posting a result and recording it still leaves one result', async () => {
-    const w = world();
+    const w = new World();
     const first = w.open();
     await propose(first.coordinator, THREE);
     const [card] = first.coordinator.view(scope, ROOM).proposals;
@@ -440,7 +418,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('retries a transient room write after restart with the original result text', async () => {
-    const w = world();
+    const w = new World();
     const first = w.open();
     await propose(first.coordinator, THREE);
     const [card] = first.coordinator.view(scope, ROOM).proposals;
@@ -474,7 +452,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('posts nothing for a starter who lost access, and still frees the slot', async () => {
-    const w = world();
+    const w = new World();
     w.settings.maxConcurrentTasks = 1;
     const { coordinator } = w.open();
     await propose(coordinator, THREE);
@@ -497,7 +475,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('starts without asking when the Project says so, within the limit', async () => {
-    const w = world();
+    const w = new World();
     w.settings = {
       startWithoutAsking: true,
       maxConcurrentTasks: 1,
@@ -512,7 +490,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('sends a follow-up to the Task already doing that work, and says so with a link', async () => {
-    const w = world();
+    const w = new World();
     const { coordinator } = w.open();
     await propose(coordinator, THREE);
     const [card] = coordinator.view(scope, ROOM).proposals;
@@ -550,7 +528,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('the status sweep reports one line per open Task from its stored output', async () => {
-    const w = world();
+    const w = new World();
     w.settings.maxConcurrentTasks = 2;
     const { coordinator } = w.open();
     await propose(coordinator, THREE);
@@ -588,7 +566,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('refuses a pull request the person did not ask for, and counts it on the card', async () => {
-    const w = world();
+    const w = new World();
     const { coordinator } = w.open();
     await propose(
       coordinator,
@@ -648,7 +626,7 @@ describe('ProjectRoomCoordinator', () => {
   });
 
   it('with the preview off it routes nothing and starts nothing', async () => {
-    const w = world();
+    const w = new World();
     w.enabled = false;
     const { coordinator } = w.open();
     const publication = await propose(coordinator, THREE);

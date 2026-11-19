@@ -208,9 +208,12 @@ describe('the #general coordinator leaves', () => {
         '/project/room/coordinator/proposals/card-1/start',
         h.guards,
       );
-      expect(h.coordinator.start.mock.calls[1]![0]).not.toHaveProperty(
-        'rowIds',
-      );
+      expect(h.coordinator.start).toHaveBeenNthCalledWith(2, {
+        scope: h.scope,
+        roomId: h.roomId,
+        proposalId: 'card-1',
+        starter: { id: 'ada', displayName: 'Ada' },
+      });
     } finally {
       h.runtime.close();
     }

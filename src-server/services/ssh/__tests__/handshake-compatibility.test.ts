@@ -144,7 +144,9 @@ describe('public handshake capability flags (station#1095)', () => {
 
     const response = await app.request('/.well-known/station/v1');
     expect(response.status).toBe(200);
-    const handshake = await response.json();
+    const handshake = (await response.json()) as {
+      capabilities?: Record<string, boolean>;
+    };
     expect(handshake.capabilities).not.toHaveProperty('projectRoomCoordinator');
     expect(handshake.capabilities).toHaveProperty('projectRoomLive', true);
   });

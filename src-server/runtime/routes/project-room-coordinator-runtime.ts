@@ -104,7 +104,6 @@ export function coordinatorRoomPublisher(
     return deps.rooms.append(
       scope,
       COORDINATOR_ACTOR,
-      CoordinatorResultWithheld,
       { intentId: input.intentId, text: input.text },
       current,
     ).messageId;
