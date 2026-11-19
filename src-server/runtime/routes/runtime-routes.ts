@@ -270,9 +270,9 @@ import {
 import { TelemetryIncidentLinks } from '../../services/telemetry-incident-links.js';
 import { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 import { WalkthroughService } from '../../services/walkthroughs/walkthrough-service.js';
-import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
+import { RouteError } from '../../utils/route-error.js';
 import { bindLocalMediaPreviews } from '../bootstrap/local-media-runtime.js';
 import { registerConversationDeliveryShutdown } from '../bootstrap/runtime-shutdown.js';
 import {
@@ -374,6 +374,7 @@ import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import {
+  capScopeToGroup,
   isStationGroup,
   type StationGroup,
   type StationGroupAssignment,
@@ -11348,31 +11349,11 @@ export function configureRuntimeRoutes(
       readAuthorityForRequest: conversationReadAuthorityForRequest,
     }),
   );
-  context.app.get('/api/projects/:slug/conversations', async (routeContext) => {
-    // File-memory conversations have no tenant binding.  They are therefore
-    // not a hosted projection, even if an old shared home still contains
-    // records; return the same empty inventory shape rather than exposing a
-    // cross-tenant count or title.
-    // Only the deployment mode is read, which does not depend on the user.
-    if (readAuthorityForRequest(routeContext.req.raw).mode === 'hosted') {
-      return routeContext.json({ success: true, data: [] });
-    }
-    const limit =
-      boundedIntQuery(routeContext.req.query('limit'), {
-        min: 0,
-        max: 1000,
-      }) ?? 50;
-    const adapter = context.memoryAdapters.values().next().value;
-    if (!adapter) {
-      return routeContext.json({ success: true, data: [] });
-    }
-    const conversations = await adapter.queryConversations({});
-    conversations.sort((a: any, b: any) =>
-      (b.updatedAt || '').localeCompare(a.updatedAt || ''),
-    );
-    return routeContext.json({
-      success: true,
-      data: conversations.slice(0, limit),
+  context.app.get('/api/projects/:slug/conversations', () => {
+    // The legacy file-memory inventory has no authoritative Project binding.
+    // Project admission alone cannot make those records safe to return.
+    throw new RouteError(503, 'Project conversation history is unavailable', {
+      code: 'project_conversations_unavailable',
     });
   });
   if (localMediaPreviews) {
@@ -15695,6 +15676,37 @@ export function configureDevicePairingHostRoutes(
       ? principal.operatorSession
       : null;
   };
+  const operatorRequired = (
+    c: Context,
+    code: 'operator_credential_required' | 'operator_session_required',
+  ) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    let currentDevice = false;
+    try {
+      // An expired operator session or changed scope can leave the Device
+      // valid. This checks credential liveness only to classify a refusal.
+      currentDevice =
+        (principal?.authority === 'device-credential' ||
+          principal?.authority === 'operator-session') &&
+        pairing.verifyCredential(principal.credential);
+    } catch {
+      return c.json({ error: { code: 'credential_status_unavailable' } }, 503);
+    }
+    if (!currentDevice)
+      return c.json({ error: 'authentication_required' }, 401);
+    return c.json(
+      {
+        error: { code },
+        ...(code === 'operator_credential_required'
+          ? {
+              message:
+                'Group and token changes require the host operator credential or an operator passkey session with step-up.',
+            }
+          : { signInUrl: options.operatorSessions?.signInUrl ?? null }),
+      },
+      403,
+    );
+  };
   const stepUp = (
     c: Context,
     target: ConsentTargetSnapshot,
@@ -15712,7 +15724,7 @@ export function configureDevicePairingHostRoutes(
   ) => {
     const session = operatorSession(c.req.raw);
     const channel = options.consentChannel;
-    if (!session) return c.json({ error: 'authentication_required' }, 401);
+    if (!session) return operatorRequired(c, 'operator_session_required');
     if (!channel?.trustedOrigin || channel.state().status !== 'listening')
       return c.json({ error: 'step_up_unavailable' }, 503);
     const assertSessionCurrent = () => {
@@ -15951,7 +15963,7 @@ export function configureDevicePairingHostRoutes(
       : undefined;
     const session = operatorSession(c.req.raw);
     if (!currentOperator(c, c.req.raw) && !session)
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_session_required');
     if (
       transaction?.ceremony !== 'webauthn' ||
       (!currentOperator(c, c.req.raw) &&
@@ -16792,7 +16804,7 @@ export function configureDevicePairingHostRoutes(
     if (!options.groups) return c.json({ error: 'not_found' }, 404);
     const request = c.req.raw;
     if (!currentOperator(c, request) && !operatorSession(request))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     const body = (await request.json().catch(() => null)) as {
       group?: unknown;
     } | null;
@@ -16801,13 +16813,10 @@ export function configureDevicePairingHostRoutes(
     const principalId = c.req.param('principalId');
     // Reading the body yielded: the decision stays the operator's.
     if (!currentOperator(c, request) && !operatorSession(request))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     const nextGroup = body.group;
-    const apply = async (
-      expectedGroup?: typeof nextGroup,
-      assertCurrent?: () => void,
-    ) => {
-      const tied = pairing
+    const personDevices = () =>
+      pairing
         .listDevices()
         .filter(
           (device) =>
@@ -16817,6 +16826,11 @@ export function configureDevicePairingHostRoutes(
             principalForDeviceBinding(device.principalBinding).id ===
               principalId,
         );
+    const apply = async (
+      expectedGroup?: typeof nextGroup,
+      assertCurrent?: () => void,
+    ) => {
+      const tied = personDevices();
       const heldFullAccess = new Set(
         tied
           .filter((device) =>
@@ -16877,26 +16891,42 @@ export function configureDevicePairingHostRoutes(
       return c.json({ person, revocations });
     };
     if (operatorSession(request)) {
-      const expectedGroup = options.groups.groupOf(principalId);
-      const target = {
-        kind: 'person-group-change',
-        subject: principalId,
-        fingerprint: JSON.stringify({ principalId, expectedGroup, nextGroup }),
-      };
-      return stepUp(
-        c,
-        target,
-        `Change Station group for ${principalId} from ${expectedGroup} to ${nextGroup}.`,
-        () => ({
-          ...target,
+      const groupReview = () => {
+        const expectedGroup = options.groups!.groupOf(principalId);
+        const fullAccessDevices = personDevices()
+          .filter(
+            (device) =>
+              !pairingScopeIncludes(
+                capScopeToGroup(device.scope, expectedGroup),
+                'approval:full-access',
+              ) &&
+              pairingScopeIncludes(
+                capScopeToGroup(device.scope, nextGroup),
+                'approval:full-access',
+              ),
+          )
+          .map(({ id, name }) => ({ id, name }))
+          .sort((left, right) => left.id.localeCompare(right.id));
+        const target: ConsentTargetSnapshot = {
+          kind: 'person-group-change',
+          subject: principalId,
           fingerprint: JSON.stringify({
             principalId,
-            expectedGroup: options.groups!.groupOf(principalId),
+            expectedGroup,
             nextGroup,
+            fullAccessDevices,
           }),
-        }),
+        };
+        return { expectedGroup, fullAccessDevices, target };
+      };
+      const reviewed = groupReview();
+      return stepUp(
+        c,
+        reviewed.target,
+        `Change Station group for ${principalId} from ${reviewed.expectedGroup} to ${nextGroup}.`,
+        () => groupReview().target,
         async (_passkeyId, _sessionId, assertCurrent) => {
-          const response = await apply(expectedGroup, assertCurrent);
+          const response = await apply(reviewed.expectedGroup, assertCurrent);
           if (!response.ok)
             throw new ConsentCommitRefusedError(
               'The group change was refused.',
@@ -16904,6 +16934,11 @@ export function configureDevicePairingHostRoutes(
             );
           return (await response.json()) as Record<string, unknown>;
         },
+        undefined,
+        [],
+        reviewed.fullAccessDevices.length > 0
+          ? `Full access will become effective on ${reviewed.fullAccessDevices.map(({ name }) => name).join(', ')}. Full access allows unrestricted agent execution.`
+          : undefined,
       );
     }
     return apply();
@@ -16914,7 +16949,7 @@ export function configureDevicePairingHostRoutes(
   app.post('/api/pairing/people/:principalId/tokens', async (c) => {
     const request = c.req.raw;
     if (!currentOperator(c, request) && !operatorSession(request))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     const principalId = c.req.param('principalId');
     const body = (await request.json().catch(() => null)) as {
       name?: unknown;
@@ -16922,7 +16957,7 @@ export function configureDevicePairingHostRoutes(
       expiresInDays?: unknown;
     } | null;
     if (!currentOperator(c, request) && !operatorSession(request))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     observeOperatorCredentialUse(
       c,
       'POST /api/pairing/people/:principalId/tokens',
@@ -17120,7 +17155,7 @@ export function configureDevicePairingHostRoutes(
       );
     }
     if (!currentOperator(c, c.req.raw))
-      return c.json({ error: 'authentication_required' }, 401);
+      return operatorRequired(c, 'operator_credential_required');
     observeOperatorCredentialUse(
       c,
       'DELETE /api/pairing/people/:principalId/tokens/:tokenId',

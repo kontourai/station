@@ -2473,6 +2473,10 @@ station auth users search <query> [--api-base=<url>]
 station auth users get <alias> [--api-base=<url>]
 ```
 
+`auth users search` prints the result array on success. If the selected
+Station’s directory provider is unavailable, the command exits with an error.
+
+
 ### `branding`
 
 ```

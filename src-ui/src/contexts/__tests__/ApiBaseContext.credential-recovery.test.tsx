@@ -114,6 +114,7 @@ import {
   authenticatedFetch,
   fetchEventStreamResumeCapability,
   fetchPairedDevices,
+  setStationPersonGroup,
 } from '@kontourai/station-sdk';
 import { WorkspaceStationState } from '../../components/notifications/StationConditions';
 import { OnboardingGate } from '../../components/OnboardingGate';
@@ -303,6 +304,48 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
       }
     },
   );
+
+  it('keeps the saved credential after People requires operator authority and retires an invalid credential', async () => {
+    await renderShell();
+    const active = connections?.activeConnection;
+    if (!active) throw new Error('no active connection');
+    const credential = 'fixture-desktop-device';
+    await act(async () => {
+      connections?.setCredential(active.id, credential);
+    });
+    const path = '/api/pairing/people/fixture-person/group';
+    const setGroup = () =>
+      setStationPersonGroup('fixture-person', 'member', window.location.origin);
+    fetchByPath({
+      [path]: async () =>
+        Response.json(
+          { error: { code: 'operator_credential_required' } },
+          { status: 403 },
+        ),
+    });
+    await act(async () => {
+      await expect(setGroup()).rejects.toMatchObject({
+        status: 403,
+        code: 'operator_credential_required',
+      });
+    });
+    expect(connections?.getConnectionCredential(active.id)).toBe(credential);
+    expect(connections?.activeConnection?.credentialState).toBe('saved');
+    expect(screen.queryByText(BANNER)).toBeNull();
+
+    fetchByPath({
+      [path]: async () =>
+        Response.json(
+          { error: { code: 'authentication_required' } },
+          { status: 401 },
+        ),
+    });
+    await act(async () => {
+      await expect(setGroup()).rejects.toMatchObject({ status: 401 });
+    });
+    expect(connections?.getConnectionCredential(active.id)).toBeUndefined();
+    expect(await screen.findByText(BANNER)).toBeTruthy();
+  });
 
   it('keeps the banner when a 2xx that was issued BEFORE the 401 lands after it', async () => {
     // The lockout ordering. Request A is accepted but slow; request B meets a

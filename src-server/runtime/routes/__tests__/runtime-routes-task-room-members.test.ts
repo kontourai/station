@@ -70,7 +70,12 @@ const authority = {
   operator: async () => {},
 };
 
-async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
+async function fixture(
+  options: {
+    codeReviewCheckout?: boolean;
+    legacyConversationRead?: () => Promise<unknown[]>;
+  } = {},
+) {
   const root = realpathSync(makeTempDir('task-room-members-'));
   const home = join(root, 'data');
   mkdirSync(join(home, 'security'), { recursive: true, mode: 0o700 });
@@ -163,7 +168,11 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
     agentTools: new Map(),
     agentStats: new Map(),
     agentStatus: new Map(),
-    memoryAdapters: new Map(),
+    memoryAdapters: new Map(
+      options.legacyConversationRead
+        ? [['legacy', { queryConversations: options.legacyConversationRead }]]
+        : [],
+    ),
     metricsLog: [],
     monitoringEvents: [],
   });
@@ -334,6 +343,37 @@ async function fixture(options: { codeReviewCheckout?: boolean } = {}) {
     request,
   };
 }
+
+test('legacy Project conversations stay unavailable without reading unbound records', async () => {
+  const legacyRead = vi.fn(async () => [
+    { id: 'unbound-conversation', title: 'Private legacy conversation' },
+  ]);
+  const f = await fixture({ legacyConversationRead: legacyRead });
+  const member = f.people[0]!;
+  const base = `/api/projects/${f.project.slug}`;
+  expect((await f.request(member, base)).status).toBe(200);
+  const path = `${base}/conversations`;
+  const accountBoundDevice = await f.request(member, path);
+  expect(accountBoundDevice.status).toBe(403);
+
+  const operatorHeaders = {
+    Authorization: `Bearer ${f.operatorCredential}`,
+  };
+  expect(
+    (await f.app.request(`${origin}${base}`, { headers: operatorHeaders }))
+      .status,
+  ).toBe(200);
+  const response = await f.app.request(`${origin}${path}`, {
+    headers: operatorHeaders,
+  });
+  expect(response.status, await response.clone().text()).toBe(503);
+  expect(await response.json()).toMatchObject({
+    success: false,
+    code: 'project_conversations_unavailable',
+    error: 'Project conversation history is unavailable',
+  });
+  expect(legacyRead).not.toHaveBeenCalled();
+});
 
 test('Project readers hide Task reviews from members while preserving ordinary Project evidence', async () => {
   const f = await fixture({ codeReviewCheckout: true });
