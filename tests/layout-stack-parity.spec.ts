@@ -303,7 +303,9 @@ test.describe('layout contract fields: built-in Coding and a plugin layout behav
       paneUrl(oldInstanceId('00000000-0000-0000-0000-000000000000')),
     );
     await expect(
-      page.getByRole('heading', { name: 'Workspace pane not found' }),
+      page
+        .getByRole('alert')
+        .getByText('Workspace pane not found', { exact: true }),
     ).toBeVisible();
     await expect(content).toHaveCount(0);
   });
