@@ -111,19 +111,22 @@ function readCandidates(
       if (candidate && scopedKey(scope, candidate.idempotencyKey) === key)
         candidates.push(candidate);
     }
-    if (candidates.length) {
-      candidates.sort(
-        (left, right) =>
-          Number(Boolean(right.boundaryId)) -
-            Number(Boolean(left.boundaryId)) ||
-          (left.recordedAt ?? 0) - (right.recordedAt ?? 0) ||
-          left.idempotencyKey.localeCompare(right.idempotencyKey),
-      );
-      return JSON.stringify(candidates);
-    }
+    candidates.sort(
+      (left, right) =>
+        Number(Boolean(right.boundaryId)) - Number(Boolean(left.boundaryId)) ||
+        (left.recordedAt ?? 0) - (right.recordedAt ?? 0) ||
+        left.idempotencyKey.localeCompare(right.idempotencyKey),
+    );
     const raw = localStorage.getItem(legacyKey(scope.conversationId));
     const legacy = raw && readCandidate(scope, raw);
-    return legacy ? JSON.stringify([legacy]) : null;
+    if (
+      legacy &&
+      !candidates.some(
+        (candidate) => candidate.idempotencyKey === legacy.idempotencyKey,
+      )
+    )
+      candidates.push(legacy);
+    return candidates.length ? JSON.stringify(candidates) : null;
   } catch {
     return null;
   }

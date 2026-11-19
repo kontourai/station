@@ -53,6 +53,13 @@ test.each([
     false,
   ],
   [
+    'legacy hint behind a missing scoped attempt',
+    { kind: 'reserve' },
+    'Reset agent context',
+    true,
+    'unknown',
+  ],
+  [
     'stop then reset',
     { kind: 'stop-session', reason: 'Stop the agent first.' },
     'Stop agent and reset',
