@@ -3434,7 +3434,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     const record = this.transport.requireSession(input.threadId);
     if (
       record.activeTurnId &&
-      !codexTurnAlreadyTerminal(record, record.activeTurnId)
+      record.terminalPublishedForTurnId !== record.activeTurnId
     )
       throw new SendTurnRefusedError(
         'Codex already has an active turn.',

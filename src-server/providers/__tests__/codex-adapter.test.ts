@@ -3403,6 +3403,17 @@ describe('CodexAdapter', () => {
         id: String(4 + index),
         result: { turn: { id: turnId } },
       });
+      await withTimeout(send, 'reused sendTurn');
+      const requestCount = processHandle.stdin.lines.length;
+      const refusal = adapter
+        .sendTurn({ threadId: 'thread-ambient', input: 'Overlapping send' })
+        .catch((error: unknown) => error);
+      await flushIo();
+      expect(processHandle.stdin.lines).toHaveLength(requestCount);
+      await expect(refusal).resolves.toMatchObject({
+        name: 'SendTurnRefusedError',
+        kind: 'busy',
+      });
       writeServerMessage(adapter, 'thread-ambient', {
         method: 'turn/completed',
         params: {
@@ -3410,7 +3421,6 @@ describe('CodexAdapter', () => {
           turn: { id: turnId, status: 'completed' },
         },
       });
-      await withTimeout(send, 'reused sendTurn');
       expect(await nextEvent(iterator, 'turn.started')).toMatchObject({
         turnId,
         invocationId,
