@@ -1,0 +1,7 @@
+{
+  "revision": "bdb0a6921f788af64e78c70bdcbd81e6f882c3fc",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the drag reveal, release threshold, short activity line, and distinct completion and error cues against the shared implementation. Chromium exercised the actual Inbox touch events and kept its rows mounted through the request.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}
