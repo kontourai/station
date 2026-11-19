@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/desktop-update';
 import type { ServerUpdateRunningTurns } from '@kontourai/station-contracts/system-status';
 import { useServerUpdateRunningTurnsQuery } from '@kontourai/station-sdk';
+import { displayMultilineText } from '@kontourai/station-shared/display-text';
 import { useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { installDesktopUpdateAndRestart } from '../../platform/native/desktopUpdate';
@@ -158,7 +159,11 @@ function DesktopUpdateRestartDialogView({
         <p>Update version {version}</p>
         <ImpactCopy impact={impact} />
         {turnsMatter && <TurnsCopy turns={turns} />}
-        {installError && <TechnicalDetails detail={installError.message} />}
+        {installError && (
+          <TechnicalDetails
+            detail={displayMultilineText(installError.message)}
+          />
+        )}
       </div>
     </Dialog>
   );
