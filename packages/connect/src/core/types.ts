@@ -222,6 +222,10 @@ export type ConnectionFailureReason =
   | 'identity-mismatch'
   | 'access-method-mismatch'
   | 'authentication-failed'
+  | 'authentication-rate-limited'
+  | 'access-scope-refused'
+  | 'relay-authority-unavailable'
+  | 'access-check-unavailable'
   | 'unsupported-capability-version'
   /**
    * #2962 — the host refused this client's API protocol (HTTP 426

@@ -19,6 +19,7 @@ import {
 } from 'react';
 
 import type { ConnectionHealthCheckResult } from '../core/ConnectionHealthCoordinator';
+import { connectionProbeFailureReason } from '../core/connectionFailureClassification';
 import {
   clearPendingExchange,
   loadPendingExchange,
@@ -468,7 +469,7 @@ export function ConnectionManagerModalContent({
         recordEndpointFailure(
           conn.id,
           typeof result === 'object' && !result.ok
-            ? result.reason
+            ? connectionProbeFailureReason(result)
             : 'unreachable',
         );
         setHealthIfMounted((m) => ({ ...m, [conn.id]: false }));
@@ -483,7 +484,7 @@ export function ConnectionManagerModalContent({
         recordEndpointFailure(
           conn.id,
           typeof result === 'object' && !result.ok
-            ? result.reason
+            ? connectionProbeFailureReason(result)
             : 'unreachable',
         );
       }

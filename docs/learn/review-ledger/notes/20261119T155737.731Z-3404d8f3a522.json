@@ -1,0 +1,23 @@
+{
+  "revision": "d06b2197ea357170334fe64cbf26529a581f9cf1",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the Station details remedy checks. Scope and relay verification labels still use the existing Connections surface, and no onboarding route, approval action, or pending-pairing lifecycle changed.","inputs":["docs/design/connections-onboarding.md","src-ui/src/__tests__/ConnectionBannerSource.test.tsx"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Checked the shared connection failure vocabulary against SSH setup. The added probe dispositions neither determine SSH launch success nor change pairing, forward ownership, or the checkout identity check.","inputs":["docs/design/ssh-launched-environments.md","packages/connect/src/core/types.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the Connect reference update. Station and Device retain their existing meanings. The documented sign-in, access-scope, and relay verification outcomes describe probe evidence instead of new product objects.","inputs":["docs/glossary.md","docs/reference/connect.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the Connections modal changes against the notification journey. Detailed Station health now chooses its remedy from the observed check; the separate VAPID and device-pairing refusal mapping is unchanged.","inputs":["docs/guides/web-push-notifications.md","packages/connect/src/react/ConnectionManagerModalContent.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the synthetic server-health response fixtures. They exercise the existing authenticated transport and handshake boundary, with explicit response evidence and no additional fetch or query owner.","inputs":["docs/patterns/frontend.md","src-ui/src/__tests__/serverHealth.test.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the health result, HTTP and local authority producers, coordinator retry decision, and Connections fallback. Detailed results retain legacy reason with observed status, phase and code. Consumers distinguish pairing from scoped access, a temporary limiter, and local verification.","inputs":["docs/reference/connect.md","packages/connect/src/core/ConnectionHealthCoordinator.ts","packages/connect/src/core/connectionFailureClassification.ts","packages/connect/src/core/types.ts","packages/connect/src/index.ts","packages/connect/src/react/ConnectionManagerModalContent.tsx","src-ui/src/__tests__/serverHealth.test.ts","src-ui/src/lib/serverHealth.ts"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Rechecked the historical sidebar findings against the modal delta. Only health failure classification changed. The modal focus and navigation receivers described in this capture use the same paths.","inputs":["docs/reviews/sidebar-focus-20261107/README.md","packages/connect/src/react/ConnectionManagerModalContent.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Checked the historical manager focus audit against the current probe disposition. The connection status mapping changes without moving the modal, form controls, or focus restoration.","inputs":["docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","packages/connect/src/react/ConnectionManagerModalContent.tsx"]},
+
+    {"path":"packages/connect/README.md","note":"Checked the Connect package barrel and modal caller. The added failure evidence is a type export. Existing health, pairing and transport ownership follow the documented Connect composition.","inputs":["packages/connect/README.md","packages/connect/src/index.ts","packages/connect/src/react/ConnectionManagerModalContent.tsx"]}
+  ]
+}
