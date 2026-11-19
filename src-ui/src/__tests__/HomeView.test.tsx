@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -519,7 +520,7 @@ describe('HomeView', () => {
       id: conversationId,
       title,
       source: 'runtime',
-      agentSlug: 'codex-agent',
+      agentSlug: agentId('codex-agent'),
       createdAt: '2026-11-18T19:59:00Z',
       updatedAt: endedAt,
       lifecycleState: 'idle',

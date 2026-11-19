@@ -26,8 +26,8 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *   state. This function does not re-decide it.
  * - THE FACTS (`WorkFacts`, derived beside the item) only choose the words
  *   inside that family: which thing is owed, which tool is running. They
- *   are optional, and the lane is the same with or without them, which is
- *   why the partition can call this with the item alone.
+ *   also identify a resumable delegation whose completed result has been read.
+ *   Its Done status stays intact when it returns to open work.
  *
  * Rungs, in the order a reader should expect them down an inbox:
  *
@@ -280,7 +280,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       return {
         rung: 'done',
         lane:
-          item.resumableDelegationResult && item.unread === false
+          facts?.resumableDelegationResult && item.unread === false
             ? 'idle'
             : 'finished',
         tone: 'neutral',
@@ -296,18 +296,21 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   }
 }
 
-export function hasUnseenDelegationResult(item: HomeWorkItem): boolean {
+export function hasUnseenDelegationResult(
+  item: HomeWorkItem,
+  facts?: WorkFacts,
+): boolean {
   return (
-    item.resumableDelegationResult === true &&
+    facts?.resumableDelegationResult === true &&
     item.unread === true &&
     item.lifecycleLabel === 'Completed' &&
-    rungFor(item, undefined).lane === 'finished'
+    rungFor(item, facts).lane === 'finished'
   );
 }
 
 /**
  * `facts` are the item's `WorkFacts`, derived beside it; without them the
- * line says only what the lifecycle label says, and the lane is the same.
+ * line and lane follow the recorded lifecycle.
  */
 export function workStatus(
   item: HomeWorkItem,

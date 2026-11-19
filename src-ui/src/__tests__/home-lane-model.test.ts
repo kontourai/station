@@ -51,7 +51,6 @@ describe('ready local delegation completion', () => {
       kind: 'orchestration',
       kindLabel: 'Session',
       lifecycleLabel: 'Completed',
-      resumableDelegationResult: true,
       unread: true,
     });
     const running = item({ id: 'active-child', lifecycleLabel: 'Running' });
@@ -61,11 +60,20 @@ describe('ready local delegation completion', () => {
       lifecycleLabel: 'Completed',
       unread: true,
     });
+    const workFacts = new Map([
+      [result.id, { resumableDelegationResult: true as const }],
+    ]);
     const partition = (entries: HomeWorkItem[]) =>
-      partitionHomeWorkItems({ items: entries, now, snoozedUntil: new Map() });
+      partitionHomeWorkItems({
+        items: entries,
+        now,
+        snoozedUntil: new Map(),
+        workFacts,
+      });
     const grouped = (entries: HomeWorkItem[], label: string) =>
-      groupMobileActivity(entries, now).find((group) => group.label === label)
-        ?.items;
+      groupMobileActivity(entries, now, {}, workFacts).find(
+        (group) => group.label === label,
+      )?.items;
     const items = [result, running, draft, otherCompletion];
     expect(partition(items).recentlyFinished).toEqual([result]);
     expect(grouped(items, 'Just finished')).toEqual([result]);

@@ -275,7 +275,7 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
       (task) =>
         task.kind !== 'remote-session' &&
         task.lifecycleLabel !== 'Draft' &&
-        !hasUnseenDelegationResult(task) &&
+        !hasUnseenDelegationResult(task, data.workFacts?.get(task.id)) &&
         !data.workFacts?.get(task.id)?.runRootId,
     ),
     continueWork: createContinueWork(

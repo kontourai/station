@@ -1,4 +1,5 @@
 import { ownedWorkUnknownReasons } from '@kontourai/station-contracts/session-attention';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
   OrchestrationSessionSummary,
@@ -71,6 +72,8 @@ export interface WorkFacts {
   chatBinding?: ChatStationBindingV1;
   /** Host-only detail reads and controls must not borrow a bound receiver ID. */
   hostDetails?: boolean;
+  /** A completed local delegation with a ready Session for follow-up. */
+  resumableDelegationResult?: true;
   /** Recorded run root, resolved against this presentation's row identities. */
   runRootId?: string;
   station?: { id: string; label: string };
@@ -235,6 +238,19 @@ export function buildWorkFacts({
       hostDetails:
         item.kind !== 'remote-session' && (!chat || chatBelongsToStation(chat)),
     };
+    if (
+      entry.hostDetails &&
+      item.lifecycleLabel === 'Completed' &&
+      session?.delegation?.taskId &&
+      (session.delegation.environmentKind === undefined ||
+        session.delegation.environmentKind === 'current') &&
+      session.controlMode !== 'read-only-attached' &&
+      session.status === 'ready' &&
+      session.lifecycleState !== undefined &&
+      sessionLifecycleOutcome(session.lifecycleState) === 'completed'
+    ) {
+      entry.resumableDelegationResult = true;
+    }
     if (chat?.stationBinding && chat.stationBinding.affinity.kind !== 'host')
       entry.station = {
         id: chat.stationBinding.environmentId,

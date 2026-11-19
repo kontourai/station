@@ -227,7 +227,8 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       snoozed.push(item);
       continue;
     }
-    const { lane } = workStatus(item, now);
+    const facts = workFacts?.get(item.id);
+    const { lane } = workStatus(item, now, facts);
     if (lane === 'external') {
       external.push(item);
       continue;
@@ -261,7 +262,7 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       // chat pane records one while it is visible (`useAcknowledgeVisibleConversation`).
       const finishedAt = finishedAtOf(item);
       const unseen =
-        hasUnseenDelegationResult(item) ||
+        hasUnseenDelegationResult(item, facts) ||
         (item.acknowledgedAt !== undefined && item.acknowledgedAt < finishedAt);
       (now - finishedAt < TERMINAL_LINGER_MS || unseen
         ? recentlyFinished
