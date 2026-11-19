@@ -65,11 +65,23 @@ test('the approval picker replaces Run setup and stays inside the chat column on
       );
       await page.setViewportSize({ width, height: 1100 });
       await page.getByTestId('run-setup-trigger').click();
-      const runSetup = page.getByRole('dialog', { name: 'Run setup' });
+      const runSetup = page.getByRole('dialog', {
+        name: 'Agent & model',
+      });
       await runSetup.waitFor();
-      await runSetup
-        .getByRole('button', { name: /^Approval mode:/ })
-        .click({ force: width === 390 });
+      const approval = runSetup.getByRole('button', {
+        name: /^Approval mode:.*Full access/,
+      });
+      const mark = await approval
+        .locator('.composer-choice__safety')
+        .boundingBox();
+      const label = await approval
+        .locator('.chat-input__chip-stack')
+        .boundingBox();
+      expect(mark).not.toBeNull();
+      expect(label).not.toBeNull();
+      expect(mark!.x + mark!.width).toBeLessThanOrEqual(label!.x);
+      await approval.click({ force: width === 390 });
       const sheet = page.getByRole('dialog', { name: 'Approval mode' });
       await sheet.getByRole('radiogroup').waitFor();
       await page.evaluate(() =>
@@ -141,7 +153,7 @@ test('the approval picker replaces Run setup and stays inside the chat column on
         .toBe('Approval mode:');
       await page.keyboard.press('Escape');
       await page
-        .getByRole('dialog', { name: 'Run setup' })
+        .getByRole('dialog', { name: 'Agent & model' })
         .waitFor({ state: 'hidden' });
     }
     expect(errors).toEqual([]);

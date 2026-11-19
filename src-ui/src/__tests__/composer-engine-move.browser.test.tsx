@@ -153,8 +153,9 @@ test('a phone composer shows the next-turn destination in full above its Run set
         document.querySelectorAll(
           '.chat-input__settings > .composer-run-control',
         ).length === 1 &&
-        document.querySelectorAll('.composer-run-panel__choices > *').length >=
-          4,
+        document.querySelectorAll(
+          '.composer-run-panel__choices .composer-choice',
+        ).length >= 4,
     );
     const destination = await page.evaluate(
       unclipped,
@@ -190,7 +191,8 @@ async function mounted(source: string) {
     () =>
       document.querySelectorAll('.chat-input__settings > .composer-run-control')
         .length === 1 &&
-      document.querySelectorAll('.composer-run-panel__choices > *').length >= 4,
+      document.querySelectorAll('.composer-run-panel__choices .composer-choice')
+        .length >= 4,
   );
   return fixture;
 }
@@ -226,7 +228,7 @@ function closedTrigger() {
   };
 }
 
-test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its label gives way', async () => {
+test('a phone composer\'s Run setup trigger keeps "Default differs" whole while its label gives way', async () => {
   const { browser, page, errors } = await mounted(
     // A model id too long for the row, so the label has to give way.
     composer(false, {
@@ -252,7 +254,7 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
       }
     }
     expect(await page.locator('.chat-input__next-turn-notice').count()).toBe(0);
-    // With Run setup closed, its trigger says the Agent moved, at every phone
+    // With Run setup closed, its trigger says the Default differs, at every phone
     // width: where the label collapses to marks (320, 360) and where it shows.
     for (const width of [320, 360, 390]) {
       await page.setViewportSize({ width, height: 844 });
@@ -262,7 +264,7 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
       );
       expect(hint, `${width}px`).toMatchObject({
         found: true,
-        text: '· Agent moved',
+        text: '· Default differs',
       });
       expect(hint.display, `${width}px`).not.toBe('none');
       expect(hint.width, `${width}px`).toBeGreaterThan(0);
@@ -276,10 +278,10 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
         // The label has collapsed, so the hint follows the marks alone and
         // does not open with a separator.
         expect(row.labelWidth, `${width}px`).toBe(0);
-        expect(row.painted, `${width}px`).toBe('Agent moved');
+        expect(row.painted, `${width}px`).toBe('Default differs');
       } else {
         expect(row.labelWidth, `${width}px`).toBeGreaterThan(0);
-        expect(row.painted, `${width}px`).toBe('· Agent moved');
+        expect(row.painted, `${width}px`).toBe('· Default differs');
         // The label is what gave way: the model reads ahead of an ellipsis.
         const model = await page.evaluate(
           unclipped,
@@ -296,13 +298,13 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
     // A wide composer keeps the Agent name beside the hint.
     await page.setViewportSize({ width: 1280, height: 844 });
     const wide = await page.evaluate(closedTrigger);
-    expect(wide.painted).toBe('· Agent moved');
+    expect(wide.painted).toBe('· Default differs');
     expect(wide.agent, 'Agent name at 1280px').not.toBeNull();
     expect(wide.agent!.width).toBeGreaterThanOrEqual(80);
     await page.setViewportSize({ width: 390, height: 844 });
 
     // Not by position alone: the trigger's name and description say it too.
-    const trigger = page.getByRole('button', { name: /; Agent moved$/ });
+    const trigger = page.getByRole('button', { name: /; Default differs$/ });
     expect(await trigger.count()).toBe(1);
     expect(
       await trigger.evaluate(
@@ -311,13 +313,15 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
             ?.textContent,
       ),
     ).toBe(
-      'This conversation used Claude Code (work). Its Agent now uses OpenCode Zen gateway (work).',
+      'Session engine: Claude Code (work). Agent default: OpenCode Zen gateway (work).',
     );
 
     // Opened, the sheet holds the four real controls and names where the
-    // Agent moved, with nothing wider than the sheet and nothing clipped.
+    // Default differs, with nothing wider than the sheet and nothing clipped.
     await trigger.click();
-    const sheet = page.getByRole('dialog', { name: 'Run setup' });
+    const sheet = page.getByRole('dialog', {
+      name: 'Agent & model',
+    });
     await sheet.waitFor();
     for (const name of [
       /^Agent: /,
@@ -326,15 +330,19 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
       /^Approval: /,
     ])
       expect(await sheet.getByRole('button', { name }).isVisible()).toBe(true);
+    await sheet.getByLabel(/^Engine details/).click();
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 844 });
+      await sheet.getByText('Engine differs', { exact: true }).waitFor({
+        state: width > 360 ? 'visible' : 'hidden',
+      });
       const move = await page.evaluate(
         unclipped,
         '.composer-run-panel .chat-input__engine-moved',
       );
       expect(move, `${width}px`).toMatchObject({
         found: true,
-        text: 'Agent now on OpenCode Zen gateway (work)',
+        text: 'Agent default: OpenCode Zen gateway (work)',
         inViewport: true,
         clippedBy: null,
       });
@@ -344,6 +352,12 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
         separator: false,
       });
       expect(await page.evaluate(sheetFaults), `${width}px`).toEqual([]);
+      const labelLefts = await sheet
+        .locator('.chat-input__chip-stack')
+        .evaluateAll((labels) =>
+          labels.map((label) => Math.round(label.getBoundingClientRect().left)),
+        );
+      expect(new Set(labelLefts).size, `${width}px`).toBe(1);
     }
     expect(errors).toEqual([]);
   } finally {
@@ -352,18 +366,19 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
 });
 
 test('the Run setup sheet puts even a short move on its own line', async () => {
-  // "Agent now on Codex" would fit beside the engine name.
+  // "Agent default: Codex" would fit beside the engine name.
   const { browser, page, errors } = await mounted(
     composer(false, { to: 'Codex' }),
   );
   try {
     await page.getByTestId('run-setup-trigger').click();
-    await page.getByRole('dialog', { name: 'Run setup' }).waitFor();
+    await page.getByRole('dialog', { name: 'Agent & model' }).waitFor();
+    await page.getByLabel(/^Engine details/).click();
     expect(
       await page
         .locator('.composer-run-panel .chat-input__engine-moved')
         .innerText(),
-    ).toMatch(/^Agent now on Codex$/i);
+    ).toMatch(/^Agent default: Codex$/i);
     expect(await page.evaluate(moveLine)).toEqual({
       below: true,
       separator: false,
@@ -379,7 +394,7 @@ test('the Run setup sheet puts even a short move on its own line', async () => {
  * painted text (a generated `::before` included) opens with a separator. */
 function moveLine() {
   const caption = document.querySelector(
-    '.composer-run-panel .chat-input__chip-caption:has(.chat-input__engine-moved)',
+    '.composer-run-panel .composer-run-panel__routing',
   )!;
   const engine = caption.querySelector('.chat-input__chip-caption-engine')!;
   const moved = caption.querySelector('.chat-input__engine-moved')!;

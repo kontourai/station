@@ -13,6 +13,7 @@ import {
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
+import { ShieldGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 
 /** The chat composer's own picker, loaded only when opened (ApprovalModeChip). */
@@ -117,6 +118,7 @@ export function StartApprovalSummary({
           override: resolved.source === 'session override',
         })}
         caption="Permissions"
+        icon={<ShieldGlyph />}
         value={label}
         aria-label={`${visible}. ${title}`}
         title={title}
@@ -138,6 +140,7 @@ export function StartApprovalSummary({
           override: resolved.source === 'session override',
         })}
         caption="Permissions"
+        icon={<ShieldGlyph />}
         value={label}
       />
       {isSheetOpen && (
