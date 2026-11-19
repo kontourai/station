@@ -155,7 +155,8 @@ export function ConnectionBannerSource() {
     !isDesktop &&
     new URL(endpoint).origin !== window.location.origin &&
     failureStreak >= 3 &&
-    reason !== 'busy';
+    reason !== 'busy' &&
+    reason !== 'authentication-rate-limited';
 
   /**
    * archive#3297 — a banner requires a decision.
@@ -243,10 +244,10 @@ export function ConnectionBannerSource() {
     ) {
       const name = activeConnection?.name || 'Station';
       const explanation =
-        reason === 'busy'
-          ? `${name} is busy.`
-          : reason === 'timeout'
-            ? `${name} didn't answer in time.`
+        reason === 'authentication-rate-limited' || reason === 'timeout'
+          ? connectionFailureCopy(reason, name).summary
+          : reason === 'busy'
+            ? `${name} is busy.`
             : `Connection to ${name} lost.`;
       const message = blocked
         ? `${explanation} Reconnect needs attention.`
@@ -406,14 +407,21 @@ export function ConnectionBannerSource() {
                   },
                 ];
               })()
-            : [
-                {
-                  label: 'Try now',
-                  onClick: () => {
-                    recheck();
+            : reason === 'relay-authority-unavailable'
+              ? [
+                  {
+                    label: 'Open Connections',
+                    onClick: () => openConnectionsModal({ mode: 'list' }),
                   },
-                },
-              ],
+                ]
+              : [
+                  {
+                    label: 'Try now',
+                    onClick: () => {
+                      recheck();
+                    },
+                  },
+                ],
     });
 
     return () => {

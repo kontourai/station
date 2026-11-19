@@ -105,8 +105,17 @@ credentialed request is sent. A route that answers as another Station shows as
 run, `in-use`, `failed` (with its reason), `blocked` (the page cannot use it,
 with its reason) or `not-checked` (a route ranked after the one that answered;
 probing it would cost a request per poll for nothing). The Station-level
-status line stays as it is: connected, or the failure reason in the existing
-copy (`connectionFailureCopy`).
+status line shows whether the Station is connected and what to do when a
+check fails. An authenticated 401 can prompt pairing again. When the Station
+temporarily limits sign-in checks, the client keeps checking on its normal
+retry schedule. A scope refusal asks the person to check their access with
+the operator. If local relay authority cannot be verified, Connections
+shows where to check the selected Station and account. A public handshake
+refusal can point to an address check before any authenticated request is made.
+
+The browser relay gate keeps protected content behind the access check. It
+releases a previously verified person's cached appearance after an authenticated
+401 or when the account scope has settled without an account.
 
 ## UI
 

@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   connection: {
@@ -27,7 +27,8 @@ const mocks = vi.hoisted(() => ({
   probe: vi.fn(),
 }));
 
-vi.mock('@kontourai/station-connect', () => ({
+vi.mock('@kontourai/station-connect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   useConnections: () => ({
     activeConnection: mocks.connection,
   }),
@@ -43,7 +44,8 @@ vi.mock('../lib/browserRelayAccountScope', () => ({
 vi.mock('../lib/browserRelayRouteBinding', () => ({
   captureBrowserRelayRoute: () => ({ isCurrent: () => true }),
 }));
-vi.mock('../lib/serverHealth', () => ({
+vi.mock('../lib/serverHealth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/serverHealth')>()),
   probeServerConnection: mocks.probe,
 }));
 vi.mock('../lib/local-ui-bootstrap', () => ({
@@ -61,6 +63,7 @@ vi.mock('../components/GuidedConnect', () => ({
 
 import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { setStationHealthRouteResolver } from '../lib/serverHealth';
 
 function publishAccount(authorityKey: string, version: number) {
   act(() => {
@@ -207,19 +210,88 @@ it('releases it when the relay account scope settles with no account (signed out
   release.mockRestore();
 });
 
-it('releases it once the relay identity check refuses the current account', async () => {
-  const release = vi.spyOn(deviceSettingsStore, 'releaseBootAppearance');
-  mocks.probe.mockResolvedValue({
-    ok: false,
-    reason: 'authentication-failed',
-  });
-  render(
-    <LocalUiSessionGate apiBase="https://client.example.test">
-      <div>Protected Project work</div>
-    </LocalUiSessionGate>,
-  );
-  publishAccount('account-A', 1);
-  await waitFor(() => expect(release).toHaveBeenCalled());
-  expect(screen.queryByText('Protected Project work')).toBeNull();
-  release.mockRestore();
+afterEach(() => {
+  setStationHealthRouteResolver(undefined);
+  vi.restoreAllMocks();
 });
+
+it.each([
+  {
+    status: 429,
+    code: 'authentication_rate_limited',
+    authenticated: true,
+    release: false,
+  },
+  {
+    status: 403,
+    code: 'insufficient_scope',
+    authenticated: true,
+    release: false,
+  },
+  {
+    status: 401,
+    code: 'authentication_required',
+    authenticated: false,
+    release: false,
+  },
+  {
+    status: 401,
+    code: 'authentication_required',
+    authenticated: true,
+    release: true,
+  },
+])(
+  'handles HTTP $status during the relay access check (authenticated request: $authenticated)',
+  async ({ status, code, authenticated, release: shouldRelease }) => {
+    const releaseAppearance = vi.spyOn(
+      deviceSettingsStore,
+      'releaseBootAppearance',
+    );
+    const { probeServerConnection } = await vi.importActual<
+      typeof import('../lib/serverHealth')
+    >('../lib/serverHealth');
+    mocks.probe.mockImplementation(probeServerConnection);
+    const reply = () => Response.json({ error: { code } }, { status });
+    const transport = vi.fn<typeof fetch>().mockImplementation(async () =>
+      authenticated
+        ? Response.json({
+            schemaVersion: 1,
+            environmentId: 'relay-station',
+            authentication: { scheme: 'bearer', protocolVersion: 1 },
+            transports: { http: 1, sse: 1, websocket: 1 },
+            compatibility: {
+              serverVersion: '0.4.1',
+              protocolVersion: 1,
+              minClientProtocol: 1,
+            },
+          })
+        : reply(),
+    );
+    const identityTransport = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => reply());
+    setStationHealthRouteResolver(() => ({
+      kind: 'relay',
+      transport,
+      identityTransport,
+      clientOrigin: 'https://client.example.test',
+      isCurrent: () => true,
+    }));
+
+    render(
+      <LocalUiSessionGate apiBase="https://client.example.test">
+        <div>Protected Project work</div>
+      </LocalUiSessionGate>,
+    );
+    publishAccount('account-A', 1);
+    await waitFor(() => expect(mocks.probe).toHaveBeenCalledOnce());
+    await act(async () => {
+      await mocks.probe.mock.results[0]?.value;
+    });
+
+    expect(transport).toHaveBeenCalledOnce();
+    expect(identityTransport).toHaveBeenCalledTimes(authenticated ? 1 : 0);
+    expect(releaseAppearance).toHaveBeenCalledTimes(shouldRelease ? 1 : 0);
+    expect(screen.queryByText('Protected Project work')).toBeNull();
+  },
+);
