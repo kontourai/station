@@ -1,0 +1,7 @@
+{
+  "revision": "ebda13a9e6af0f537f335ec54c594933549cefc4",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed the Project room coordinator preview and Task-row labels. Done now comes from the shared session status vocabulary. The owner and vocabulary suites passed 26 tests with the rendered label retained.","inputs":["src-ui/src/views/project-page/ProjectRoomCoordinator.tsx"]}
+  ]
+}
