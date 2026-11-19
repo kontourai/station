@@ -21,6 +21,7 @@ import {
   taskStatusLabel,
 } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
+import { REPOSITORY_SIGN_IN_COMMANDS } from '@kontourai/station-contracts/terminal-transport';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { HANDOFF_DEFAULTS } from '@kontourai/station-supervisor/protocol';
 import { zodSchema } from 'ai';
@@ -7021,6 +7022,7 @@ export function configureRuntimeRoutes(
         {
           submissionDigest: input.inputDigest,
           ...(input.inboxPlacement ? { inboxPlacement: true } : {}),
+          expectedInboxSessionId: input.expectedInboxSessionId,
           ...(input.dispatchOrigin
             ? { dispatchOrigin: input.dispatchOrigin }
             : {}),
@@ -7142,6 +7144,9 @@ export function configureRuntimeRoutes(
     const service = context.orchestrationService;
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
+      coordinatorBusy: (threadId) =>
+        service.isSessionStartUnderway(threadId) ||
+        service.hasActiveTurn(threadId),
       get automation() {
         return automationActions;
       },
@@ -8524,6 +8529,10 @@ export function configureRuntimeRoutes(
     '/api/agents',
     createChatRoutes({
       ...runtimeContext,
+      fileConversationOwnerId: (request) => {
+        const authority = knowledgeReadAuthorities.get(request);
+        return authority?.mode === 'personal' ? authority.userId : undefined;
+      },
       memoryBrief: (request, session) =>
         memoryBriefProvider
           ? memoryBriefProvider(request, session)
@@ -10449,7 +10458,29 @@ export function configureRuntimeRoutes(
         },
         // An agent tab names a configured connection and one of its live
         // modes; the program and arguments come from the saved connection.
-        resolveLaunch: async (_request, _scope, profile) => {
+        resolveLaunch: async (request, _scope, profile) => {
+          if (profile.kind === 'repository-sign-in') {
+            const admitted = () =>
+              isOperatorInPersonNotAgent(request) &&
+              isRequestPrincipalCurrent(request) &&
+              mayRunCommandsOnHostCurrently(
+                request,
+                context.environmentSecurityService,
+              );
+            if (!admitted())
+              throw new TerminalSessionRefusal(
+                'Sign-in requires the Station operator',
+              );
+            const [command, ...args] =
+              REPOSITORY_SIGN_IN_COMMANDS[profile.provider];
+            const file = await findCliBinaryAsync(command);
+            const path = await resolveAugmentedPath();
+            if (!file || !admitted())
+              throw new TerminalSessionRefusal(
+                'Repository sign-in is unavailable',
+              );
+            return { file, args, env: { PATH: path } };
+          }
           const connection = (
             await context.configLoader.loadACPConfig()
           ).connections.find(
@@ -12712,6 +12743,24 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  const isCurrentConversationPerson = (c: Context, expectedUserId?: string) => {
+    const request = c.req.raw;
+    const authenticated = getRuntimeAuthenticatedRequestPrincipal(request);
+    if (
+      !authenticated ||
+      authenticated.kind === 'internal' ||
+      !isRequestPrincipalCurrent(request) ||
+      resolveInboundDeviceKindForRequest(request, (credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      ) === 'delegation'
+    )
+      return false;
+    const principal = resolveOrchestrationRequestPrincipal(c);
+    return (
+      principal.kind === 'human' &&
+      (expectedUserId === undefined || principal.id === expectedUserId)
+    );
+  };
   // Bind the SAME domain as the constructor's verifier to the real final-Request
   // resolver. Only retained native intents consume handles; replay stays ordinary.
   const nativeForkStoredReadMount = context.nativeForkStoredReadBinder?.(
@@ -12776,6 +12825,7 @@ export function configureRuntimeRoutes(
       pairedStationImportCaller((credential) =>
         context.environmentSecurityService.identifyDevice(credential),
       ),
+      isCurrentConversationPerson,
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from
@@ -13016,6 +13066,7 @@ export function configureRuntimeRoutes(
         context.memoryAdapters.values().next().value,
       search: context.runtimeSearch,
       current: isRequestPrincipalCurrent,
+      maySearchAsPerson: isCurrentConversationPerson,
     }),
   );
   context.app.route(

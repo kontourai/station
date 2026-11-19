@@ -1,0 +1,11 @@
+{
+  "revision": "4b01b3076028ca1fcc5c88188e2c1541f7ad188f",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the full-page Project Gallery viewport heights after the repository section increased page length. The phone and desktop widths, screen assertions, hit-target checks, and screenshot baselines remain as before. All eight affected scenes rendered without dock-occlusion findings in local Chromium.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the full-page Project Gallery viewport heights after the repository section increased page length. The phone and desktop widths, screen assertions, hit-target checks, and screenshot baselines remain as before. All eight affected scenes rendered without dock-occlusion findings in local Chromium.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the full-page Project Gallery viewport heights after the repository section increased page length. The phone and desktop widths, screen assertions, hit-target checks, and screenshot baselines remain as before. All eight affected scenes rendered without dock-occlusion findings in local Chromium.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

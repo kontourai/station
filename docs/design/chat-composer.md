@@ -102,17 +102,17 @@ rows expose their metadata and link to the Session for surrounding context.
 No input or result body is read until that row is selected. The compact answer
 inspection remains a separate entry point.
 
-A settled answer's **Basis** chip is not hover-revealed: it sits beside that row,
-visible at rest, and opens the Chat inventory scoped to that answer
+A settled answer's **Basis** chip stays visible while the other actions are
+hidden and opens the Chat inventory scoped to that answer
 ([#926 amendment](https://github.com/kontourai/station/issues/926#issuecomment-6273381066)).
 It reads plain **Basis** for an unassessed answer, which is nearly every answer
 today, and states that standing only in its accessible name. A notable standing
 (policy met, assessed with gaps, or unresolved) adds Surface's own label, such as
 **Basis · Policy met**
 ([owner decision](https://github.com/kontourai/station/issues/926#issuecomment-6281195632)).
-In a narrow dock or phone row, Surface's label is cut short with an ellipsis
-after a whole **Basis ·**, and the full label stays in the chip's accessible
-name and tooltip.
+The answer footer wraps when its controls need more space. In a narrow dock
+or phone row, a long Surface label can end in an ellipsis after a whole
+**Basis ·**. The full label stays in the chip's accessible name and tooltip.
 The chip reads an answer's standing only after the answer has stayed on screen
 for about 150ms, so a fling through history sends no read for answers it only
 passes. It cancels a read that scrolls off screen unanswered, does not re-read a
@@ -173,9 +173,17 @@ only an explicit Agent request starts Agent work. Files & connections contains
 source and workspace controls, with specialist management still in Settings.
 
 Home and the chat dock share one start composer (`StartComposer`, driven in
-the dock by `NewChatModal`). Both use a heading with the inline Project picker,
-a compact Agent & model control beside Start inside the message box, and a Station/location
-line below it.
+the dock by `NewChatModal`). Both use a centered heading, a compact Agent & model
+control beside Start inside the message box, and a Station/location line below
+it. First-run Home uses **Start your first conversation** with the Project picker
+beneath it. Other drafts put the selected Project in **What would you like to do?**
+and keep **No project** available. Compact Home drafts shorten the message box.
+
+On the current Station, **Create project** in the Project picker opens the
+standard Project form with **Blank workspace** selected. After creation, the draft
+selects that Project and keeps its message and attachments. Canceling keeps the
+previous Project. A draft targeting another Station uses that Station's existing
+Project list.
 
 **New chat** is not a dialog. It opens a draft in the chat dock's body, in place
 of the chat on screen, in any dock region or placement (full screen on a phone):
@@ -1247,6 +1255,8 @@ proven closed (its Web Lock is gone; liveness that cannot be read is not
 closed). A failed send marks it **Not sent** instead. A copy another open
 window holds reads **Queued in another window.** (that window sends it), one
 from a closed window **From a closed window. Not sent.**; both offer **Send**.
+When a held outbox message restores an unopened chat, Home and Inbox use the
+conversation title and Agent from Station’s inventory and catalog when available.
 Send on a closed window's copy releases its original durable outbox key for
 server handoff. It never moves into a new per-tab automatic queue. Restored
 sessionStorage input has no originating Station/authority and is held for
@@ -1258,6 +1268,16 @@ than popping.
 In a dock too short for the list and the draft, the list yields before the
 draft does, down to its toggle row (and, while open, its first row); the rest
 scrolls inside it.
+
+A no-project composer can omit its workspace when the conversation already
+runs in a Station-managed chat folder. Station holds that follow-up for the
+Session and folder it observed at admission. If a different Session takes
+over before placement, the held message is refused. A request that names an
+explicit directory or Project still has to match the conversation's binding.
+While an automatic turn prepares a successor in the same conversation, Queue
+can use the existing binding for that ordinary continuation. The held
+follow-up waits for startup and the earlier turn. A handoff or a fresh-context
+reservation must establish its own binding before this path can admit a message.
 
 The pending-message section starts collapsed, showing only its
 count and a Needs review (or Not sent) indicator; a live region outside the

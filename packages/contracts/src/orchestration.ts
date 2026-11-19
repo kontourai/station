@@ -1025,6 +1025,10 @@ export interface TurnProgressSilence {
  * recognizes only its narrower progress vocabulary (#2959/#3031).
  */
 export interface TurnProgressObservation {
+  /** Execution Session observed by the watchdog, when reported by the host. */
+  threadId?: string;
+  /** Turn observed by the watchdog, when reported by the host. */
+  turnId?: string;
   lastProgressEventAt: string;
   progressSilence?: TurnProgressSilence;
 }

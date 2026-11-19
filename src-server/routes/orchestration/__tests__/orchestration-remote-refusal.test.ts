@@ -2,12 +2,7 @@
  * #2377 slice C2b: the dispatch routes decide the remote verdict themselves,
  * before they connect or forward anything.
  *
- * The policy table already holds `POST /delegations/options` to a bound
- * operator, so the route's own refusal there is defense in depth that no
- * request through the full composition can reach. This suite drives the
- * route directly, with the guard's authority record bound the way the
- * station-control authority guard binds it, so each route refusal has a
- * rejection path that has actually run.
+ * The tests bind the same caller authority as the Station Control guard.
  */
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
@@ -29,6 +24,14 @@ function app(assurance: StationControlCallerAssurance | undefined) {
       logger,
       getUserId: () => 'operator',
       discoverDelegationOptions,
+      stationControlDispatchScope: {
+        ownProjectSlug: () => 'caller-project',
+        target: (ref: { projectSlug?: string; ownerId: string }) => ({
+          ownerId: ref.ownerId,
+          scope: { kind: 'project', id: ref.projectSlug },
+          ownerHoldsAction: true,
+        }),
+      },
       listDelegatedTasks,
     } as never,
   );
@@ -40,6 +43,8 @@ function app(assurance: StationControlCallerAssurance | undefined) {
         caller: {
           sessionId: 'session-1',
           assurance,
+          projectIdSource: 'session-record',
+          localProjectId: 'caller-project',
           principal: {
             id: STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
             source: 'session-owner',
@@ -53,6 +58,22 @@ function app(assurance: StationControlCallerAssurance | undefined) {
   host.route('/', routes);
   return { host, discoverDelegationOptions, listDelegatedTasks };
 }
+
+test('an ACP caller discovers its own Project targets and cannot inspect another Project', async () => {
+  const { host, discoverDelegationOptions } = app('delegated-custody');
+  const post = (body: object) =>
+    host.request('/delegations/options', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  expect((await post({})).status).toBe(200);
+  expect(discoverDelegationOptions).toHaveBeenCalledWith({
+    projectSlug: 'caller-project',
+  });
+  expect((await post({ projectSlug: 'another-project' })).status).toBe(403);
+  expect(discoverDelegationOptions).toHaveBeenCalledTimes(1);
+});
 
 const requests = [
   [

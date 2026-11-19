@@ -158,8 +158,8 @@ export function projectOutboundQueueEntries(
       const first = queued[0]!;
       activeChatsStore.initChat(sessionId, {
         agentSlug: first.agentSlug,
-        agentName: first.agentSlug,
-        title: 'Queued message',
+        agentName: '',
+        title: 'New chat',
         conversationId: first.conversationId,
         stationBinding: first.station?.binding,
         executionAgentId: first.executionAgentId,

@@ -584,14 +584,14 @@ describe('the session reads over HTTP', () => {
   });
 
   async function runExpectingExit(args: string[]) {
-    const { runCli } = await import('../cli.js');
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('exit');
-    }) as never);
-    await expect(
-      runCli([...args, `--api-base=${apiBase}`, '--credential=test-person']),
-    ).rejects.toThrow('exit');
-    return exit.mock.calls[0]?.[0];
+    const originalExitCode = process.exitCode;
+    try {
+      process.exitCode = undefined;
+      await run(args);
+      return process.exitCode;
+    } finally {
+      process.exitCode = originalExitCode;
+    }
   }
   async function run(args: string[]) {
     const { runCli } = await import('../cli.js');

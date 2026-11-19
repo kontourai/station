@@ -1,0 +1,15 @@
+{
+  "revision": "8d91b7297afd9bcb0fa5c781c6382acf69e7f74c",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the command card in the repository sign-in path. It shows the command and Station, copies the displayed text, and offers the matching Station bottom terminal. The operator still runs the command.","inputs":["docs/guides/connections.md","src-ui/src/views/project-settings/ProjectRepositorySources.tsx","src-ui/src/views/project-settings/ProjectSourcesSection.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the linked Connections guidance. Project checkout and terminal authority remain scoped to the Station.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the overview repository row's Default marker and compact controls. The full Sources view retains refresh and checkout details.","inputs":["src-ui/src/views/project-settings/ProjectRepositorySources.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked repository picker entry and shared source management. The standalone terminal button was removed. Sign-in recovery keeps the context-specific command card.","inputs":["src-ui/src/views/project-settings/ProjectSourcesSection.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked repository picker entry and shared source management. The standalone terminal button was removed. Sign-in recovery keeps the context-specific command card.","inputs":["src-ui/src/views/project-settings/ProjectSourcesSection.tsx"]}
+  ]
+}

@@ -49,6 +49,7 @@ export interface RecordedActorContinuation {
   attachments?: ChatAttachmentInput[];
   inputDigest?: string;
   inboxPlacement?: true;
+  expectedInboxSessionId?: string;
   automaticBackground?: true;
   dispatchOrigin?: TurnDispatchOrigin;
   /** #4827: forwarded from a queued entry a person typed; see `authoredBy`. */
@@ -157,6 +158,7 @@ export function inboxPlacementStartPort(deps: StartPortDeps) {
         automaticBackground: payload.automaticBackground,
         inputDigest: payload.inputDigest,
         inboxPlacement: true,
+        expectedInboxSessionId: payload.expectedInboxSessionId,
         dispatchOrigin: inboxTurnDispatchOrigin(
           payload,
           taskBound(deps, threadId),

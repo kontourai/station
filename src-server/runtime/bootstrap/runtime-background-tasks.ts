@@ -57,35 +57,6 @@ export function mergeRuntimeACPConnections(
   ];
 }
 
-export function scheduleRuntimeDailyReload(
-  context: RuntimeTaskTimerContext & {
-    reloadAgents: () => Promise<void>;
-    setTimeoutImpl?: typeof setTimeout;
-    getNow?: () => Date;
-  },
-): void {
-  const setTimeoutImpl = context.setTimeoutImpl || setTimeout;
-  const getNow = context.getNow || (() => new Date());
-
-  const msUntilMidnight = () => {
-    const now = getNow();
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 0, 0);
-    return midnight.getTime() - now.getTime();
-  };
-
-  const scheduleNextReload = () => {
-    context.timers.push(
-      setTimeoutImpl(() => {
-        context.reloadAgents().catch(() => {});
-        scheduleNextReload();
-      }, msUntilMidnight()),
-    );
-  };
-
-  scheduleNextReload();
-}
-
 /**
  * Reap Station-owned engine spawn artifacts independently of every engine
  * connection's startup path. Both the initial sweep and recurring work are

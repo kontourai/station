@@ -45,9 +45,6 @@ vi.mock('react-markdown', () => ({
   default: ({ children }: { children?: string }) => <div>{children}</div>,
 }));
 vi.mock('remark-gfm', () => ({ default: () => null }));
-vi.mock('../components/chat/message-bubble/MessageRating', () => ({
-  MessageRating: () => null,
-}));
 vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
 vi.mock('../hooks/useIsMobile', async (original) => ({
   ...(await original<typeof import('../hooks/useIsMobile')>()),
@@ -182,6 +179,9 @@ async function answerMarkup(mobile: boolean): Promise<string> {
   expect(chip.getAttribute('title')).toMatch(
     /^Basis · Temporarily unavailable\. /,
   );
+  if (!mobile) {
+    await screen.findByRole('button', { name: 'More answer actions' });
+  }
   const markup = container.innerHTML;
   unmount();
   return markup;
@@ -236,6 +236,76 @@ describe.skipIf(!chromiumAvailable)(
     afterAll(async () => {
       await browser?.close();
     });
+
+    it.each([
+      [820, 135],
+      [1000, 220],
+    ])(
+      'at %ipx the complete answer footer fits its %ipx allocation and reveals focusable actions',
+      async (width, footerWidth) => {
+        const markup = await answerMarkup(false);
+        const page = await browser.newPage({
+          viewport: { width, height: 850 },
+        });
+        page.setDefaultTimeout(3_000);
+        try {
+          await page.setContent(
+            `<!doctype html><style>${stylesheet()}</style><main style="margin-left:120px;width:420px">${markup}</main>`,
+          );
+          const footer = page.locator('.turn-footer');
+          await footer.evaluate((element, size) => {
+            element.style.width = `${size}px`;
+          }, footerWidth);
+          const names = [
+            `${LABEL} for the answer “The build passed on the second attempt.”`,
+            'Copy answer',
+            'More answer actions',
+            'Good response',
+            'Bad response',
+          ];
+          const buttons = names.map((name) =>
+            footer.getByRole('button', { name, exact: true }),
+          );
+          await buttons[0]!.focus();
+          for (const button of buttons) {
+            expect(
+              await button.evaluate((element) =>
+                element.matches(':focus-visible'),
+              ),
+            ).toBe(true);
+            await page.keyboard.press('Tab');
+          }
+          const fit = await page.evaluate(measure);
+          expect(fit.leadWhole).toBe(true);
+          const bounds = await footer.boundingBox();
+          expect(bounds?.width).toBe(footerWidth);
+          for (const button of buttons) {
+            const box = await button.boundingBox();
+            expect(box).not.toBeNull();
+            expect(box!.x).toBeGreaterThanOrEqual(bounds!.x - 0.5);
+            expect(box!.x + box!.width).toBeLessThanOrEqual(
+              bounds!.x + bounds!.width + 0.5,
+            );
+          }
+          await buttons[0]!.hover({ timeout: 2_000 });
+          for (const button of buttons) {
+            expect(
+              await button.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                return element.contains(
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                );
+              }),
+            ).toBe(true);
+          }
+        } finally {
+          await page.close();
+        }
+      },
+    );
 
     it.each([280, 320, 360])(
       'in a %ipx desktop dock it stays inside the bubble, whole "Basis · " and clickable',

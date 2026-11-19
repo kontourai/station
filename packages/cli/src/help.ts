@@ -799,17 +799,43 @@ const VERBS: Record<string, VerbSpec> = {
       'Needs the Session reads from the station CLI Feature Preview.',
     ],
   },
-  conversation: {
+  board: {
     group: 'Core Workspace',
-    summary: 'Export, fork, settle or reopen a conversation',
+    summary: 'Read or arrange widgets on a Session or Task Board',
     targets: true,
     usage: [
+      'station board read <session|task> <id> [--project=<slug>]',
+      'station board pin <session|task> <id> <name> [--project=<slug>] [--data=<block-json>|--file=<path>] [--tab=<id>] [--tab-title=<title>] [--size=<sm|md|lg|full>] [--after=<name>]',
+      'station board unpin <session|task> <id> <name> [--project=<slug>]',
+      'station board move <session|task> <id> <name> [--project=<slug>] [--tab=<id>] [--after=<name>]',
+    ],
+    actions: ['read', 'pin', 'unpin', 'move'],
+    detail: [
+      'Task references require --project. Session references use the Session ID alone.',
+      'Pin also reads block JSON from stdin. Data claims require source references.',
+      '--after places a widget after another widget by its stable name.',
+    ],
+  },
+  boards: {
+    group: 'Core Workspace',
+    summary: 'Read your saved Personal Boards',
+    targets: true,
+    usage: ['station boards list', 'station boards get <slug>'],
+    actions: ['list', 'get'],
+  },
+  conversation: {
+    group: 'Core Workspace',
+    summary: 'Search, delete, export, fork, settle or reopen conversations',
+    targets: true,
+    usage: [
+      'station conversation delete <agent> <conversationId> --confirm',
+      'station conversation search <phrase> [--project=<slug>] [--agent=<slug>] [--limit=<n>]',
       'station conversation export <agent> <conversationId>',
       'station conversation fork <agent> <conversationId> [--json]',
       'station conversation settle <conversationId> [--json]',
       'station conversation reopen <conversationId> [--json]',
     ],
-    actions: ['export', 'fork', 'settle', 'reopen'],
+    actions: ['delete', 'export', 'fork', 'settle', 'reopen', 'search'],
     detail: [
       'export:',
       '  --format=<fmt>        thread (default), anthropic-messages, openai-chat, gemini, markdown',

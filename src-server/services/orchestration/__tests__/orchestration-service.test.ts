@@ -4516,7 +4516,10 @@ describe('OrchestrationService', () => {
   // presents the cursor deterministically dies with the CLI's
   // "No conversation found with session ID: <uuid>". The continuation must
   // take the transcript-seed fresh child instead.
-  test('#765 A1: a predecessor without engine persistence continues by transcript seed, never its cursor', async () => {
+  test.each([
+    ['a predecessor without engine persistence', false],
+    ['a deliberate Continue from history after a failed native reopen', true],
+  ] as const)('%s uses a fresh Session and transcript seed', async (_label, continueFromHistory) => {
     claude.startSession.mockImplementationOnce(async (input) => {
       const session: ProviderSession = {
         provider: 'claude' as const,
@@ -4526,7 +4529,7 @@ describe('OrchestrationService', () => {
         // The live adapter records the start posture on its ProviderSession
         // (claude-adapter.ts `startTrackedSession`); this is that exact
         // shape for a chat started before #765 forced persistence on.
-        persistSession: false,
+        persistSession: continueFromHistory,
         createdAt: '2026-08-29T00:00:00.000Z',
         updatedAt: '2026-08-29T00:00:00.000Z',
       };
@@ -4578,6 +4581,34 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-29T00:00:01.000Z',
     });
 
+    if (continueFromHistory) {
+      eventStore.appendEvent({
+        eventId: 'conversation-unpersisted-turn-completed',
+        provider: 'claude',
+        threadId: 'conversation-unpersisted',
+        turnId: 'unpersisted-turn',
+        method: 'turn.completed',
+        finishReason: 'stop',
+        sessionState: 'idle',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-29T00:00:01.100Z',
+      });
+    }
+
+    const boundary = continueFromHistory
+      ? await service.reserveConversationContextBoundary(
+          'conversation-unpersisted',
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            policy: 'continue-from-history',
+            idempotencyKey: 'resume-by-transcript',
+            expectedCurrentSessionId: 'conversation-unpersisted',
+            actorId: 'owner-user',
+          },
+        )
+      : undefined;
     const next = await service.resolveConversationContinuation(
       'conversation-unpersisted',
       INTERNAL_SESSION_READ_SCOPE,
@@ -4588,6 +4619,7 @@ describe('OrchestrationService', () => {
       transcriptSeed: expect.stringContaining('first-turn-token coral-7'),
     });
     expect(next).not.toHaveProperty('resumeCursor');
+    if (boundary) expect(next.sessionId).toBe(boundary.successorSessionId);
   });
 
   // #765 A1: `dead` is the engine's own structured verdict that this binding
@@ -22923,7 +22955,7 @@ describe('OrchestrationService', () => {
 
     const first = service.dispatch(command);
     await vi.waitFor(() => expect(claude.startSession).toHaveBeenCalledOnce());
-    await expect(service.dispatch(command)).rejects.toThrow('already starting');
+    await expect(service.dispatch(command)).rejects.toThrow('The session is still starting.');
 
     const now = new Date().toISOString();
     pending.resolve({

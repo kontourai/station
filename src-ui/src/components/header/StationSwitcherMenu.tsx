@@ -469,12 +469,18 @@ export function StationSwitcherMenu({
                     // Station that stopped answering. `select` refuses a row
                     // that is not ready. A row with nothing to offer stays
                     // disabled, so arrow keys pass over it.
+                    // Keep the selected row focusable while a pending
+                    // navigation guard owns the choice. Native disabling
+                    // moves focus out and can dismiss the menu prematurely.
                     aria-disabled={
-                      (unavailable && canForget(connection)) || undefined
+                      switchingId !== null ||
+                      (unavailable && canForget(connection)) ||
+                      undefined
                     }
                     disabled={
-                      switchingId !== null ||
-                      (unavailable && !canForget(connection))
+                      switchingId !== connection.id &&
+                      unavailable &&
+                      !canForget(connection)
                     }
                     className="menu-row station-switcher__row"
                     onClick={() => select(connection)}

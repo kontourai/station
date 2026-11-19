@@ -1,0 +1,13 @@
+{
+  "revision": "a2a19acd86f7f128e76f3aa049249814d5a4eb5c",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Rechecked the context-reset paragraph after Chromium retried the POST on a lost pre-header response. A replay conflict can follow a committed reserve. The dialog retains the exact request key for the existing status owner and makes cancellation available only after the scoped marker is confirmed. The server still validates the current tail and exact request identity.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/glossary.md","note":"The reset recovery paragraph now includes a conflict after transparent replay. The socket-loss case preserves the existing request and authority contracts. Integration guidance, glossary and contract package instructions still apply.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The reset recovery paragraph now includes a conflict after transparent replay. The socket-loss case preserves the existing request and authority contracts. Integration guidance, glossary and contract package instructions still apply.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"The reset recovery paragraph now includes a conflict after transparent replay. The socket-loss case preserves the existing request and authority contracts. Integration guidance, glossary and contract package instructions still apply.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

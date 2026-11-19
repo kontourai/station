@@ -182,19 +182,18 @@ export function HomeSurface({
           Skip to recent work
         </a>
       )}
-      {model.firstSession ? (
-        <header className="home-view__welcome">
-          <h1>Start your first conversation</h1>
-        </header>
-      ) : (
+      {!model.firstSession && (
         <h1 className="sr-only">{OVERVIEW_PRODUCT_NAME}</h1>
       )}
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div
-        className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
+        className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}${model.firstSession ? ' home-view__welcome' : ''}`}
       >
-        <HomeStartComposer compact={hasWork || model.firstSession} />
+        <HomeStartComposer
+          compact={hasWork}
+          firstSession={model.firstSession}
+        />
       </div>
       {hasWork ? (
         <>

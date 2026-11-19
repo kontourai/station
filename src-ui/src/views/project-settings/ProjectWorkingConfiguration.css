@@ -22,3 +22,33 @@
   padding: var(--k-space-3);
   min-width: 0;
 }
+
+.project-working-configuration .project-working-configuration__checklist {
+  margin: 0;
+  background: var(--k-panel);
+}
+
+.project-working-configuration__checklist legend {
+  padding-inline: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-working-configuration__excerpt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding-inline-start: var(--k-space-6);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-working-configuration__advanced:not([hidden]) {
+  display: grid;
+  gap: var(--k-space-3);
+}
+
+.project-working-configuration__actions {
+  justify-self: start;
+}
