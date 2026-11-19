@@ -3412,9 +3412,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId: input.threadId,
         createdAt: new Date().toISOString(),
-        method: 'session.configured',
-        sessionId: input.threadId,
-        metadata: { acpSessionMode: observedMode },
+        method: 'session.engine-mode-observed',
+        modeId: observedMode,
       });
     }
     this.publish({

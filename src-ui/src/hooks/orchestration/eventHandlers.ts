@@ -44,6 +44,7 @@ import { isReplayThread } from './replay/replay-registry';
 import { recordSequencedLiveEvent } from './sequencedLiveEvents';
 import {
   handleApprovalModeSetEvent,
+  handleSessionEngineModeObservedEvent,
   handleSessionExitedEvent,
   handleSessionLifecycleEvent,
   handleSessionStateChangedEvent,
@@ -298,6 +299,9 @@ function dispatchProjectedOrchestrationEvent(
     case 'session.started':
     case 'session.configured':
       handleSessionLifecycleEvent(event, station);
+      return;
+    case 'session.engine-mode-observed':
+      handleSessionEngineModeObservedEvent(event, station);
       return;
     case 'session.state-changed':
       handleSessionStateChangedEvent(event, undefined, station ?? apiBase);

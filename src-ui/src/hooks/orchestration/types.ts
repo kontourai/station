@@ -37,6 +37,7 @@ export type OrchestrationSnapshotPayload = {
     hasActiveTurn?: boolean;
     /** #4433: `OrchestrationSessionSummary.appliedApprovalMode`. */
     appliedApprovalMode?: unknown;
+    currentModeId?: string;
     model?: string;
     effectiveModel?: string;
     /** Model identity independently reported by the runtime, when available. */

@@ -365,6 +365,13 @@ export interface SessionConfiguredEvent extends CanonicalRuntimeEventBase {
   metadata?: Record<string, unknown>;
 }
 
+/** A mode confirmed by the engine for the existing Session. */
+export interface SessionEngineModeObservedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.engine-mode-observed';
+  modeId: string;
+}
+
 export interface SessionStateChangedEvent extends CanonicalRuntimeEventBase {
   method: 'session.state-changed';
   sessionId: string;
@@ -1678,6 +1685,7 @@ export interface ConversationForkedEvent extends CanonicalRuntimeEventBase {
 export type CanonicalRuntimeEvent =
   | SessionStartedEvent
   | SessionConfiguredEvent
+  | SessionEngineModeObservedEvent
   | SessionStateChangedEvent
   | SessionExitedEvent
   | SessionCancellationRequestedEvent

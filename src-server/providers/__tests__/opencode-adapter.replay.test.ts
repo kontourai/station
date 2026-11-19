@@ -1461,6 +1461,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
 
   test('an exact delivery receipt wins over a lost steer POST response', async () => {
     const home = makeTempDir('opencode-positive-receipt-');
+    let deliveryObserved = false;
     const h = await setup(
       {
         scenario: 'steer',
@@ -1468,6 +1469,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         holdUntil: (r) =>
           (r.body as { delivery?: string })?.delivery === 'steer'
             ? (frame) =>
+                deliveryObserved &&
                 frame.event?.type === 'session.inbox.delivered' &&
                 frame.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq'
             : undefined,
@@ -1490,6 +1492,10 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       opened.requestId as string,
       'accept',
     );
+    await h.waitFor(
+      (event) => event.method === 'turn.started' && event.inputKind === 'steer',
+    );
+    deliveryObserved = true;
     await expect(steering).resolves.toBeUndefined();
     await h.waitFor(completedFor(turnId));
     expect(h.replay.made('DELETE', '/api/session/:id/inbox/:id')).toHaveLength(
@@ -1789,17 +1795,16 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
       agent: 'plan',
     });
     await h.waitFor(completedFor(plan.turnId));
-    // The start's own configured event comes first; this is the engine's.
     expect(
       await h.waitFor(
         (event) =>
-          event.method === 'session.configured' &&
-          event.metadata?.acpSessionMode === 'plan',
+          event.method === 'session.engine-mode-observed' &&
+          event.modeId === 'plan',
       ),
     ).toBeDefined();
     expect(
       h.events.filter((event) => event.method === 'session.configured').at(-1),
-    ).toMatchObject({ metadata: { mode: 'plan' } });
+    ).toMatchObject({ cwd: '/replay/proj', model: 'mock/mock-1' });
   });
 
   /** Fails the first `count` requests `match` names with a 500. */

@@ -27,6 +27,7 @@ import { reconcileChildWorkSnapshot } from './childWorkHandlers';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
 import { rehydrateChatSession } from './rehydrateChatSession';
 import { isReplayThread } from './replay/replay-registry';
+import { observedEngineModeUpdates } from './sessionHandlers';
 import type { OrchestrationSnapshotPayload } from './types';
 
 type SnapshotChatState = Pick<
@@ -36,6 +37,7 @@ type SnapshotChatState = Pick<
   | 'requestedModel'
   | 'requestedModelSource'
   | 'requestedProviderOptions'
+  | 'currentModeId'
   | 'modelSource'
   | 'defaultModel'
   | 'orchestrationSessionStarted'
@@ -479,9 +481,30 @@ function planSnapshot(
         currentChild !== undefined &&
         chat?.currentSessionId !== currentChild &&
         (currentChild !== chatKey || chat?.currentSessionId !== undefined);
+      const modeForCurrentSession =
+        session.threadId === (currentChild ?? chat?.currentSessionId ?? chatKey)
+          ? session.currentModeId
+          : undefined;
+      const observedMode =
+        typeof modeForCurrentSession === 'string' &&
+        modeForCurrentSession.length > 0
+          ? observedEngineModeUpdates(
+              modeForCurrentSession,
+              adoptsCurrentChild ? undefined : chat,
+            )
+          : adoptsCurrentChild
+            ? { currentModeId: null }
+            : {};
+      const remainingAfterMode = Object.hasOwn(
+        observedMode,
+        'requestedProviderOptions',
+      )
+        ? observedMode.requestedProviderOptions
+        : chat?.requestedProviderOptions;
       return {
         threadId: chatKey,
         updates: {
+          ...observedMode,
           provider: session.provider,
           model:
             session.reportedModel ?? session.effectiveModel ?? session.model,
@@ -500,9 +523,8 @@ function planSnapshot(
                   session.effectiveModelOptions,
                 )
                   ? {
-                      requestedProviderOptions: pendingNonModelOptions(
-                        chat?.requestedProviderOptions,
-                      ),
+                      requestedProviderOptions:
+                        pendingNonModelOptions(remainingAfterMode),
                     }
                   : {}),
                 ...(chat?.requestedModel !== null

@@ -1238,6 +1238,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * inherited default until the next report.
    */
   appliedApprovalMode?: ApprovalMode;
+  /** The latest engine-confirmed mode on this execution Session. */
+  currentModeId?: string;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;

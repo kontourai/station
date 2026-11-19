@@ -9,6 +9,7 @@ const threadId = 'thread-acp-mode';
 describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
   let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
   let handleSessionLifecycleEvent: typeof import('../sessionHandlers').handleSessionLifecycleEvent;
+  let handleSessionEngineModeObservedEvent: typeof import('../sessionHandlers').handleSessionEngineModeObservedEvent;
 
   beforeEach(async () => {
     vi.stubGlobal('localStorage', {
@@ -28,7 +29,8 @@ describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
     ({ activeChatsStore } = await import(
       '../../../contexts/active-chats-store'
     ));
-    ({ handleSessionLifecycleEvent } = await import('../sessionHandlers'));
+    ({ handleSessionEngineModeObservedEvent, handleSessionLifecycleEvent } =
+      await import('../sessionHandlers'));
     activeChatsStore.initChat(threadId, {
       agentSlug: 'kiro',
       agentName: 'Kiro',
@@ -98,14 +100,13 @@ describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
       requestedProviderOptions: { mode: 'plan' },
       providerOptions: { effort: 'high' },
     });
-    handleSessionLifecycleEvent({
+    handleSessionEngineModeObservedEvent({
       eventId: 'evt-next-mode',
       provider: 'acp',
       threadId,
       createdAt: '2026-09-11T00:00:01.000Z',
-      method: 'session.configured',
-      sessionId: threadId,
-      metadata: { acpSessionMode: 'plan' },
+      method: 'session.engine-mode-observed',
+      modeId: 'plan',
     });
     const chat = activeChatsStore.getSnapshot()[threadId];
     expect(chat?.currentModeId).toBe('plan');

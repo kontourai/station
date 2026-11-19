@@ -1155,6 +1155,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   says so is re-read after every send that did not take, and a turn in flight
   outranks it, so a running first turn never reopens Model.
 
+- An ACP mode pick stays pending until the engine confirms it. Station records
+  confirmed ACP and native OpenCode modes as Session observations without
+  changing the Session's model, directory or lifecycle. The Session summary
+  restores the last confirmed mode after reconnecting.
+
 ### Turn activity and follow-up delivery
 
 On desktop, Send remains available beside a separate Stop action during a turn.

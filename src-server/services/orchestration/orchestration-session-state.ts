@@ -664,6 +664,7 @@ export function buildOrchestrationSessionSummary(options: {
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
   const appliedApprovalMode = extractAppliedApprovalMode(events);
+  const currentModeId = extractEngineMode(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
     (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
@@ -761,6 +762,7 @@ export function buildOrchestrationSessionSummary(options: {
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(appliedApprovalMode ? { appliedApprovalMode } : {}),
+    ...(currentModeId ? { currentModeId } : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
     // A partial live projection cannot erase a persisted native cursor or its
     // persistence posture; explicit false still refuses a native continuation.
@@ -1167,6 +1169,25 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
  * without a mode changes nothing). Newest first over the projection, which
  * keeps the latest of each.
  */
+function readEngineMode(event: CanonicalRuntimeEvent): string | undefined {
+  const modeId =
+    event.method === 'session.engine-mode-observed'
+      ? event.modeId
+      : event.method === 'session.configured'
+        ? event.metadata?.acpSessionMode
+        : undefined;
+  return typeof modeId === 'string' && modeId.length > 0 ? modeId : undefined;
+}
+
+function extractEngineMode(events: readonly CanonicalRuntimeEvent[]) {
+  for (const event of [...events].reverse()) {
+    if (event.method === 'session.started') return undefined;
+    const modeId = readEngineMode(event);
+    if (modeId) return modeId;
+  }
+  return undefined;
+}
+
 function extractAppliedApprovalMode(
   events: readonly CanonicalRuntimeEvent[],
 ): ApprovalMode | undefined {
@@ -1443,6 +1464,7 @@ export function projectionFactKeysForEvent(
     facts.push({ key: 'effective-model-boundary' });
   }
   if (extractReportedModel([event])) facts.push({ key: 'reported-model' });
+  if (readEngineMode(event)) facts.push({ key: 'engine-mode' });
   // A bounded projection retains one latest fact per initiator, not per turn:
   // a session can restart indefinitely, so adding turn identity to the key
   // makes retained state grow forever. The projector still matches event

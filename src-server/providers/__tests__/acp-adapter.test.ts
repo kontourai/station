@@ -6352,8 +6352,9 @@ describe('station#1182: runtime-reported model', () => {
       modelOptions: { mode: 'code' },
     });
     expect(processes[0].setModeCalls).toEqual(['code']);
-    expect(await nextEvent(iterator, 'session.configured')).toMatchObject({
-      metadata: { acpSessionMode: 'code' },
+    expect(await nextEvent(iterator, 'engine mode')).toMatchObject({
+      method: 'session.engine-mode-observed',
+      modeId: 'code',
     });
     processes[0].resolvePrompt('end_turn');
 

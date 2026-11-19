@@ -24,6 +24,42 @@ import { eventStreamPosition } from './streamPosition';
 import { observeStopSettled } from './turnAttentionNotifications';
 import type { OrchestrationEvent } from './types';
 
+export function handleSessionEngineModeObservedEvent(
+  event: Extract<
+    OrchestrationEvent,
+    { method: 'session.engine-mode-observed' }
+  >,
+  station?: StationStateScope,
+) {
+  const chatStore = activeChatsStore.forStation(station);
+  const chat = chatStore.getChatForExecutionSession(event.threadId);
+  if (chat && typeof event.modeId === 'string' && event.modeId.length > 0)
+    chatStore.updateChat(
+      event.threadId,
+      observedEngineModeUpdates(event.modeId, chat),
+    );
+}
+
+export function observedEngineModeUpdates(
+  modeId: string,
+  chat: Pick<ChatUIState, 'requestedProviderOptions'> | undefined,
+): Partial<ChatUIState> {
+  const requested = chat?.requestedProviderOptions;
+  const remaining =
+    requested?.mode === modeId
+      ? updateModelRuntimeOption(requested, 'mode', undefined)
+      : undefined;
+  return {
+    currentModeId: modeId,
+    ...(remaining
+      ? {
+          requestedProviderOptions:
+            Object.keys(remaining).length > 0 ? remaining : undefined,
+        }
+      : {}),
+  };
+}
+
 export function handleSessionLifecycleEvent(
   event: Extract<
     OrchestrationEvent,
@@ -58,13 +94,15 @@ export function handleSessionLifecycleEvent(
     typeof event.metadata?.acpSessionMode === 'string'
       ? event.metadata.acpSessionMode
       : undefined;
-  const requestedOptions = currentChat?.requestedProviderOptions;
-  const confirmedMode =
-    reportedMode !== undefined && requestedOptions?.mode === reportedMode;
-  const remainingAfterMode =
-    confirmedMode && requestedOptions
-      ? updateModelRuntimeOption(requestedOptions, 'mode', undefined)
-      : requestedOptions;
+  const observedMode = reportedMode
+    ? observedEngineModeUpdates(reportedMode, currentChat)
+    : {};
+  const remainingAfterMode = Object.hasOwn(
+    observedMode,
+    'requestedProviderOptions',
+  )
+    ? observedMode.requestedProviderOptions
+    : currentChat?.requestedProviderOptions;
   // #4162: a Session's engine connection is fixed when it starts, and the
   // server stamps it on that Session's own `session.started`. Without this a
   // successor Session on another connection kept its predecessor's id.
@@ -92,15 +130,7 @@ export function handleSessionLifecycleEvent(
     orchestrationSessionStarted: true,
     ...startedConnection,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
-    ...(reportedMode ? { currentModeId: reportedMode } : {}),
-    ...(confirmedMode
-      ? {
-          requestedProviderOptions:
-            remainingAfterMode && Object.keys(remainingAfterMode).length > 0
-              ? remainingAfterMode
-              : undefined,
-        }
-      : {}),
+    ...observedMode,
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),
