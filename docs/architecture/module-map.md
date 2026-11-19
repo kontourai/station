@@ -4084,9 +4084,13 @@ and slots are claimed in one SQLite transaction against the Project's
 the conversation inbox under a row key; boot, a turn-terminal subscription and a
 60-second fallback resume rows without repeating an effect. A successful turn
 leaves its slot held until the Task is Done. Cancellation or an unsuccessful
-initial dispatch reports a stopped result. Before publishing, the coordinator
-commits the exact rendered result, which it reuses on transient room-write
-failure or restart. It posts under a stable room intent via
+initial dispatch reports a stopped status. Before publishing, the coordinator
+commits the exact linked status, which it reuses on transient room-write
+failure or restart. Private answer text, prompts and engine diagnostics stay
+out of settlement and sweep messages. The sweep checks whether the Task has
+a stored answer and links the independently authorized Task read. Earlier
+preview text already in the private prepared journal is retained and withheld
+from replay. The coordinator posts under a stable room intent via
 [`coordinatorRoomPublisher`](../../src-server/runtime/routes/project-room-coordinator-runtime.ts),
 which rechecks the Project incarnation, the room and the starter's `execute`
 permission inside the room store's write transaction. `matchPullRequestOpen` in
@@ -4094,7 +4098,8 @@ permission inside the room store's write transaction. `matchPullRequestOpen` in
 `pullRequestWatchPolicy` slot, refusing matching tool calls when a person did
 not ask for a pull request. Coordinator routes and handshake capability are
 available on personal hosts with Project sharing and deployment sign-in
-disabled, because the result can quote a private Task Session.
+disabled. Shared publication needs its own recipient authorization and
+qualification.
 Evidence: `project-room-coordinator.test.ts` (restart, cap and exactly-once, with
 fault injection), `project-room-coordinator-module.test.ts` (the real agent module
 and room store), `project-room-coordinator-runtime.test.ts`,
