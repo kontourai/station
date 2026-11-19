@@ -1,6 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AutomationActionIntent } from '@kontourai/station-contracts/automation';
+import type {
+  AutomationActionIntent,
+  AutomationRule,
+} from '@kontourai/station-contracts/automation';
+import { UNKNOWN_CLIENT_ORIGIN } from '@kontourai/station-contracts/client-origin';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -46,6 +50,10 @@ import {
   automationPolicyFingerprint,
 } from '../automation-intent.js';
 import { createAutomationLedger } from '../automation-ledger.js';
+import {
+  readAutomationTaskProjection,
+  retryAutomationEpisode,
+} from '../automation-operator.js';
 import { AutomationStore } from '../automation-store.js';
 import { normalizeGitHubWorkflowRun } from '../github-workflow-run.js';
 import {
@@ -853,4 +861,577 @@ test('control: without a ceiling the same Auto rule starts at Auto', async () =>
   await w.runtime.tick();
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
   expect(w.adapter.starts[0]?.modelOptions?.approvalMode).toBe('auto');
+});
+
+// ── #4511: authority-only fingerprints, amendments, revocation, people ────
+
+const PERSON_ORIGIN = {
+  ...UNKNOWN_CLIENT_ORIGIN,
+  actor: { kind: 'operator' as const },
+};
+const INTERNAL_ORIGIN = {
+  ...UNKNOWN_CLIENT_ORIGIN,
+  actor: { kind: 'internal' as const },
+};
+
+/** Starts the world's retained action and waits for its first turn. */
+async function running(w: World) {
+  await w.previews.setEnabled('github-automation-actions', true);
+  const { intentId } = w.ledger.listActionIntents()[0]!;
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  await w.runtime.tick();
+  const intent = w.ledger.readIntent(intentId)!;
+  expect(intent.state).toBe('running');
+  return intent;
+}
+
+async function editRule(
+  w: World,
+  edit: (rule: AutomationRule) => Partial<AutomationRule>,
+) {
+  const current = w.store.read().rules.find(({ id }) => id === w.rule.id)!;
+  const {
+    id: _id,
+    mode: _mode,
+    sourceId: _sourceId,
+    ...rest
+  } = {
+    ...current,
+    ...edit(current),
+  };
+  await w.store.updateRule({
+    id: w.rule.id,
+    expectedFingerprint: automationConfigurationFingerprint(w.store.read()),
+    kinds: ['dispatch-task'],
+    rule: rest,
+  });
+}
+
+test('renaming a rule or changing its rate limit does not interrupt its running automation Task (#4511)', async () => {
+  const w = await world();
+  const intent = await running(w);
+  const interrupts = vi.spyOn(w.service, 'interruptTurn');
+  await editRule(w, () => ({
+    name: 'Renamed qualification rule',
+    rateLimit: { maxStartsPerHour: 5 },
+  }));
+  await w.runtime.tick();
+  await w.runtime.tick();
+  expect(interrupts).not.toHaveBeenCalled();
+  const after = w.ledger.readIntent(intent.intentId)!;
+  expect(after.state).toBe('running');
+  expect(after.revocation).toBeUndefined();
+  expect(after.amendments).toBeUndefined();
+  expect(w.graph.readTaskView(intent.taskId!)?.status).not.toBe('blocked');
+  // The mandate keeps the name the Task started under.
+  expect(after.mandate?.ruleName).toBe(QUALIFICATION_RULE.name);
+});
+
+test('disabling a rule stops its Task with a visible reason on the Session and Task; a person may still finish the work (#4511)', async () => {
+  const w = await world({ approvalMode: 'auto' });
+  const intent = await running(w);
+  const sessionId = intent.sessionId!;
+  const interrupts = vi.spyOn(w.service, 'interruptTurn');
+  await setRuleMode(w, w.rule.id, 'off');
+  await w.runtime.tick();
+  expect(interrupts).toHaveBeenCalledWith(sessionId);
+  const stopped = w.ledger.readIntent(intent.intentId)!;
+  expect(stopped.revocation).toMatchObject({
+    cause: 'rule-disabled',
+    message: `Stopped: automation rule “${QUALIFICATION_RULE.name}” was disabled.`,
+  });
+  // Task: blocked, with the reason on its automation projection.
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('blocked');
+  // Session: blocked with the same reason, which is what Needs you shows.
+  const blocked = w.eventStore
+    .listEvents(sessionId)
+    .map((event) => event.payload)
+    .filter((event) => event.method === 'session.state-changed')
+    .at(-1) as { sessionState?: string; reason?: string } | undefined;
+  expect(blocked).toMatchObject({
+    sessionState: 'blocked',
+    reason: stopped.revocation!.message,
+  });
+  // The engine reports the interrupted turn ended; nothing reconciles it yet,
+  // so the Session is still mapped to the revoked action.
+  w.adapter.events.push({
+    method: 'turn.aborted',
+    eventId: 'revoked-turn-aborted',
+    provider: w.adapter.provider,
+    threadId: sessionId,
+    turnId: stopped.turnId!,
+    createdAt: new Date().toISOString(),
+    reason: 'interrupted',
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(sessionId, ['turn.aborted']),
+    ).toBeTruthy(),
+  );
+  // An automation-originated turn is refused, with the reason.
+  await expect(
+    w.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId: sessionId, input: 'automation continues' },
+      },
+      { clientOrigin: INTERNAL_ORIGIN },
+    ),
+  ).rejects.toThrow(/was disabled/);
+  // A person's turn is accepted, outside the rule's unattended authority.
+  await w.service.dispatch(
+    {
+      type: 'sendTurn',
+      input: { threadId: sessionId, input: 'I will finish this by hand' },
+    },
+    { clientOrigin: PERSON_ORIGIN },
+  );
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
+  expect(w.adapter.sends[1]).toMatchObject({
+    input: expect.stringContaining('I will finish this by hand'),
+    principal: undefined,
+  });
+  expect(w.ledger.readIntent(intent.intentId)?.personTakeoverAt).toBeTruthy();
+  // The rule pinned Auto; the person's turn does not inherit it.
+  const posture = w.eventStore
+    .listEvents(sessionId)
+    .map((event) => event.payload)
+    .filter((event) => event.method === 'session.approval-mode-set')
+    .at(-1) as { approvalMode?: string } | undefined;
+  expect(posture?.approvalMode).toBe('ask');
+});
+
+test('an observed revocation still refuses automatic continuation after rule restoration and runtime restart (#4511)', async () => {
+  const w = await world();
+  await editRule(w, (rule) => ({
+    action: {
+      ...(rule.action as NativeAction),
+      budget: { maxTurns: 3, maxTokens: 20000, maxWallRuntimeMs: 60000 },
+    },
+  }));
+  const intent = await running(w);
+  await setRuleMode(w, w.rule.id, 'off');
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent.intentId)?.revocation?.cause).toBe(
+    'rule-disabled',
+  );
+  await setRuleMode(w, w.rule.id, 'live');
+  w.rebootController();
+  w.adapter.events.push({
+    method: 'turn.aborted',
+    eventId: 'restored-rule-first-turn-aborted',
+    provider: w.adapter.provider,
+    threadId: intent.sessionId!,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    reason: 'interrupted',
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(intent.sessionId!, ['turn.aborted']),
+    ).toBeTruthy(),
+  );
+  await expect(
+    w.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId: intent.sessionId!,
+          input: 'automatic continuation after restoration',
+        },
+      },
+      { clientOrigin: INTERNAL_ORIGIN },
+    ),
+  ).rejects.toThrow(/was disabled/);
+  expect(w.adapter.sends).toHaveLength(1);
+});
+
+test('a person turn into a running automation Session takes it over: no automation turn is admitted afterwards (#4511)', async () => {
+  const w = await world();
+  const intent = await running(w);
+  const sessionId = intent.sessionId!;
+  w.adapter.events.push({
+    method: 'turn.completed',
+    eventId: 'takeover-first-turn-done',
+    provider: w.adapter.provider,
+    threadId: sessionId,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    finishReason: 'stop',
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(sessionId, ['turn.completed']),
+    ).toBeTruthy(),
+  );
+  await w.service.dispatch(
+    { type: 'sendTurn', input: { threadId: sessionId, input: 'mine now' } },
+    { clientOrigin: PERSON_ORIGIN },
+  );
+  expect(w.ledger.readIntent(intent.intentId)?.personTakeoverAt).toBeTruthy();
+  await expect(
+    w.service.dispatch(
+      { type: 'sendTurn', input: { threadId: sessionId, input: 'auto' } },
+      { clientOrigin: INTERNAL_ORIGIN },
+    ),
+  ).rejects.toThrow(/took over/);
+});
+
+test.each(['handover-write', 'approval-write'] as const)(
+  'a person turn is refused before provider send if %s fails (#4511)',
+  async (failure) => {
+    const w = await world({ approvalMode: 'auto' });
+    const intent = await running(w);
+    w.adapter.events.push({
+      method: 'turn.completed',
+      eventId: 'handover-first-turn-done',
+      provider: w.adapter.provider,
+      threadId: intent.sessionId!,
+      turnId: intent.turnId!,
+      createdAt: new Date().toISOString(),
+      finishReason: 'stop',
+      invocationId: w.adapter.sends[0]?.invocationId,
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() =>
+      expect(
+        w.eventStore.latestEventByMethods(intent.sessionId!, [
+          'turn.completed',
+        ]),
+      ).toBeTruthy(),
+    );
+    const write =
+      failure === 'handover-write'
+        ? vi.spyOn(w.ledger, 'updateIntent')
+        : vi.spyOn(w.service, 'recordAskWhereUndecided');
+    write.mockImplementation(() => {
+      throw new Error('fixture persistence failure');
+    });
+    try {
+      await expect(
+        w.service.dispatch(
+          {
+            type: 'sendTurn',
+            input: { threadId: intent.sessionId!, input: 'mine now' },
+          },
+          { clientOrigin: PERSON_ORIGIN },
+        ),
+      ).rejects.toThrow('Automation hand-over could not be completed.');
+      expect(w.adapter.sends).toHaveLength(1);
+    } finally {
+      write.mockRestore();
+    }
+    await w.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId: intent.sessionId!, input: 'mine now' },
+      },
+      { clientOrigin: PERSON_ORIGIN },
+    );
+    expect(w.adapter.sends).toHaveLength(2);
+    expect(w.adapter.sends[1]?.principal).toBeUndefined();
+  },
+);
+
+test.each([false, true])(
+  'a settled automation Session refuses automatic continuation and admits a person without inherited Auto (restart=%s)',
+  async (restart) => {
+    const w = await world({ approvalMode: 'auto' });
+    const intent = await running(w);
+    w.adapter.events.push({
+      method: 'turn.completed',
+      eventId: 'handover-first-turn-done',
+      provider: w.adapter.provider,
+      threadId: intent.sessionId!,
+      turnId: intent.turnId!,
+      createdAt: new Date().toISOString(),
+      finishReason: 'stop',
+      invocationId: w.adapter.sends[0]?.invocationId,
+    } as CanonicalRuntimeEvent);
+    await vi.waitFor(() =>
+      expect(
+        w.eventStore.latestEventByMethods(intent.sessionId!, [
+          'turn.completed',
+        ]),
+      ).toBeTruthy(),
+    );
+    await w.runtime.tick();
+    expect(w.ledger.readIntent(intent.intentId)?.state).toBe('completed');
+    if (restart) w.rebootController();
+    await expect(
+      w.service.dispatch(
+        {
+          type: 'sendTurn',
+          input: { threadId: intent.sessionId!, input: 'auto' },
+        },
+        { clientOrigin: INTERNAL_ORIGIN },
+      ),
+    ).rejects.toThrow('Automation authority changed before turn dispatch.');
+    expect(w.adapter.sends).toHaveLength(1);
+    await w.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId: intent.sessionId!, input: 'mine now' },
+      },
+      { clientOrigin: PERSON_ORIGIN },
+    );
+    expect(w.adapter.sends).toHaveLength(2);
+    expect(w.adapter.sends[1]?.principal).toBeUndefined();
+    expect(w.ledger.readIntent(intent.intentId)?.personTakeoverAt).toBeTruthy();
+    const posture = w.eventStore
+      .listEvents(intent.sessionId!)
+      .map((event) => event.payload)
+      .filter((event) => event.method === 'session.approval-mode-set')
+      .at(-1);
+    expect(posture).toMatchObject({ approvalMode: 'ask' });
+  },
+);
+
+test('amending a running rule’s instructions delivers the new text as the Session’s next turn instead of stopping it (#4511)', async () => {
+  const w = await world();
+  const intent = await running(w);
+  const sessionId = intent.sessionId!;
+  const interrupts = vi.spyOn(w.service, 'interruptTurn');
+  await editRule(w, (rule) => ({
+    action: {
+      ...(rule.action as Extract<
+        AutomationRule['action'],
+        { kind: 'dispatch-task' }
+      >),
+      instructions: 'Only read the logs; do not edit files.',
+    },
+  }));
+  await w.runtime.tick();
+  expect(interrupts).not.toHaveBeenCalled();
+  const amended = w.ledger.readIntent(intent.intentId)!;
+  expect(amended.revocation).toBeUndefined();
+  expect(amended.action.instructions).toBe(
+    'Only read the logs; do not edit files.',
+  );
+  expect(amended.amendments).toEqual([
+    expect.objectContaining({ changed: ['instructions'] }),
+  ]);
+  // The mandate is immutable: it still shows the start instructions.
+  expect(amended.mandate?.action.instructions).toBe('Investigate the failure.');
+  // At the turn boundary the notice becomes the next turn, under the rule.
+  w.adapter.events.push({
+    method: 'turn.completed',
+    eventId: 'amend-first-turn-done',
+    provider: w.adapter.provider,
+    threadId: sessionId,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    finishReason: 'stop',
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
+  expect(w.adapter.sends[1]).toMatchObject({
+    input: expect.stringContaining('Only read the logs; do not edit files.'),
+    principal: { kind: 'automation-rule', ruleId: w.rule.id },
+  });
+  await vi.waitFor(async () => {
+    await w.runtime.tick();
+    expect(w.ledger.readIntent(intent.intentId)).toMatchObject({
+      state: 'running',
+      turnId: 'turn-2',
+    });
+  });
+});
+
+test('a pending intent adopts an amendment and starts its Task under the new instructions (#4511)', async () => {
+  const w = await world();
+  const { intentId } = w.ledger.listActionIntents()[0]!;
+  await editRule(w, (rule) => ({
+    action: {
+      ...(rule.action as Extract<
+        AutomationRule['action'],
+        { kind: 'dispatch-task' }
+      >),
+      budget: { maxTurns: 1, maxTokens: 30000, maxWallRuntimeMs: 60000 },
+      instructions: 'Amended before start.',
+    },
+  }));
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(w.adapter.sends[0]?.input).toContain('Amended before start.');
+  expect(w.ledger.readIntent(intentId)?.mandate?.action).toMatchObject({
+    instructions: 'Amended before start.',
+    budget: { maxTokens: 30000 },
+  });
+});
+
+test('approval mode is authority, not an amendment: changing it stops the running Task (#4511)', async () => {
+  const w = await world();
+  const intent = await running(w);
+  await editRule(w, (rule) => ({
+    action: {
+      ...(rule.action as Extract<
+        AutomationRule['action'],
+        { kind: 'dispatch-task' }
+      >),
+      approvalMode: 'auto',
+    },
+  }));
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent.intentId)?.revocation?.cause).toBe(
+    'rule-changed',
+  );
+});
+
+// ── #4513: suppression reasons and outcomes ────────────────────────────────
+
+test('a rule held by maxStartsPerHour records a suppressed(rate-limited) delivery row and waits (#4513)', async () => {
+  const w = await world();
+  await editRule(w, () => ({ rateLimit: { maxStartsPerHour: 1 } }));
+  const first = await running(w);
+  w.adapter.events.push({
+    method: 'turn.completed',
+    eventId: 'rate-first-turn-done',
+    provider: w.adapter.provider,
+    threadId: first.sessionId!,
+    turnId: first.turnId!,
+    createdAt: new Date().toISOString(),
+    finishReason: 'stop',
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(first.sessionId!, ['turn.completed']),
+    ).toBeTruthy(),
+  );
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(first.intentId)?.state).toBe('completed');
+  // A second failure in a new episode, within the hour.
+  const second = laterFailure(w);
+  w.ledger.closeEpisode({ episodeKey: first.episodeKey, now: Date.now() });
+  expect(w.intake(second).outcome).toBe('matched');
+  await w.runtime.tick();
+  const pending = w.ledger
+    .listActionIntents()
+    .find((candidate) => candidate.intentId !== first.intentId)!;
+  expect(pending.state).toBe('pending');
+  expect(
+    w.ledger
+      .listDeliveries()
+      .find((row) => row.deliveryKey === pending.deliveryKey),
+  ).toMatchObject({ outcome: 'suppressed', reason: 'rate-limited' });
+  expect(w.adapter.sends).toHaveLength(1);
+});
+
+test('a refused pending intent keeps policy_changed on its delivery row, never policy_unavailable (#4513)', async () => {
+  const w = await world();
+  const { intentId, deliveryKey } = w.ledger.listActionIntents()[0]!;
+  await setRuleMode(w, w.rule.id, 'off');
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intentId)?.state).toBe('refused');
+  expect(
+    w.ledger.listDeliveries().find((row) => row.deliveryKey === deliveryKey),
+  ).toMatchObject({ outcome: 'refused', reason: 'policy_changed' });
+});
+
+test('retry-episode on an exhausted episode allows exactly one more attempt (#4513)', async () => {
+  const w = await world();
+  const first = await running(w);
+  w.adapter.events.push({
+    method: 'turn.completed',
+    eventId: 'retry-first-turn-done',
+    provider: w.adapter.provider,
+    threadId: first.sessionId!,
+    turnId: first.turnId!,
+    createdAt: new Date().toISOString(),
+    finishReason: 'stop',
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(first.sessionId!, ['turn.completed']),
+    ).toBeTruthy(),
+  );
+  await w.runtime.tick();
+  expect(w.ledger.episode(first.episodeKey)).toMatchObject({
+    state: 'exhausted',
+    attemptCount: 1,
+    maxAttempts: 1,
+  });
+  const retry = () =>
+    retryAutomationEpisode({
+      ledger: w.ledger,
+      read: () => w.store.read(),
+      ruleId: first.ruleId,
+      episodeId: first.episodeId,
+      now: Date.now(),
+    });
+  const retried = retry();
+  expect(retried.kind).toBe('retried');
+  // The retry granted exactly one attempt, still unused: a second retry
+  // is refused, so retries never stack.
+  expect(retry().kind).toBe('not-exhausted');
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
+  const second =
+    retried.kind === 'retried'
+      ? w.ledger.readIntent(retried.intent.intentId)!
+      : undefined;
+  expect(second?.retry).toBe(1);
+  expect(second?.taskId).toBeTruthy();
+  expect(second?.taskId).not.toBe(first.taskId);
+  expect(w.ledger.episode(first.episodeKey)).toMatchObject({
+    attemptCount: 2,
+    maxAttempts: 2,
+  });
+  await w.runtime.tick();
+  w.adapter.events.push({
+    method: 'turn.completed',
+    eventId: 'retry-second-turn-done',
+    provider: w.adapter.provider,
+    threadId: second!.sessionId!,
+    turnId: w.ledger.readIntent(second!.intentId)!.turnId!,
+    createdAt: new Date().toISOString(),
+    finishReason: 'stop',
+    invocationId: w.adapter.sends[1]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(async () => {
+    await w.runtime.tick();
+    expect(w.ledger.readIntent(second!.intentId)?.state).toBe('completed');
+  });
+  // Exhausted again: nothing more starts without another explicit retry.
+  expect(w.ledger.episode(first.episodeKey)?.state).toBe('exhausted');
+  await w.runtime.tick();
+  expect(w.adapter.sends).toHaveLength(2);
+});
+
+test('the Task read projection shows the immutable mandate for that exact Task incarnation only (#4511)', async () => {
+  const w = await world();
+  const intent = await running(w);
+  const task = w.graph.readTaskView(intent.taskId!)!;
+  const projection = readAutomationTaskProjection(w.ledger, task);
+  expect(projection?.mandate).toMatchObject({
+    ruleId: w.rule.id,
+    ruleName: QUALIFICATION_RULE.name,
+    episodeId: intent.episodeId,
+    policyFingerprint: intent.policyFingerprint,
+    event: {
+      fields: expect.objectContaining({
+        repository: 'kontourai/station',
+        'run.html_url': expect.stringMatching(/^https:\/\/github\.com\//),
+      }),
+    },
+    action: { kind: 'dispatch-task', instructions: 'Investigate the failure.' },
+  });
+  expect(projection?.state).toBe('running');
+  // A recreated Task under the same id is a different incarnation.
+  expect(
+    readAutomationTaskProjection(w.ledger, {
+      ...task,
+      createdAt: new Date(Date.now() + 1000).toISOString(),
+    }),
+  ).toBeUndefined();
+  // A Task no automation started has none.
+  expect(
+    readAutomationTaskProjection(w.ledger, { ...task, createdBy: 'person' }),
+  ).toBeUndefined();
 });

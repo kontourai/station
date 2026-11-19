@@ -29448,6 +29448,8 @@ describe('OrchestrationService', () => {
     > = {
       'session.started': 'non-fold',
       'session.configured': 'non-fold',
+      'session.approval-reviewer-observed': 'non-fold',
+      'session.engine-mode-observed': 'non-fold',
       'session.state-changed': 'non-fold',
       'session.stop-settled': 'non-fold',
       'session.cancellation-requested': 'non-fold',

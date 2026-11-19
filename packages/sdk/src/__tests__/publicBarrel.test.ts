@@ -30,6 +30,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'answerShares',
   'analytics',
   'attention',
+  'automations',
   'board',
   'catalog',
   'chatRuntime',

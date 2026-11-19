@@ -35,6 +35,8 @@ import {
   type SourceApprovalActor,
   SourceGrantApprovalStore,
 } from '../../analytics/source-grant-store.js';
+import { acquireAgentIdentityMutationLockAtHome } from '../../domain/agent-registry.js';
+import { agentIncarnationUnderLock } from '../../domain/config-loader-agents.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import {
@@ -739,6 +741,11 @@ import {
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import {
+  projectAutomationEpisode,
+  readAutomationTaskProjection,
+  retryAutomationEpisode,
+} from '../../services/automation/automation-operator.js';
 import { BoardStore } from '../../services/board/board-store.js';
 import { CheckpointIndexStore } from '../../services/checkpoints/checkpoint-index-store.js';
 import { listThreadRecordsWithObjectStatus } from '../../services/checkpoints/checkpoint-read.js';
@@ -5947,6 +5954,10 @@ export function configureRuntimeRoutes(
         events: context.orchestrationEventStore,
       })
     : undefined;
+  // #4511: bound below, once the Automation ledger is composed.
+  let readAutomationTask:
+    | ((task: TaskRecord) => TaskRecord['automation'])
+    | undefined;
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
@@ -5959,6 +5970,7 @@ export function configureRuntimeRoutes(
         listProviders('pullRequest').map((entry) => entry.provider),
       pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
       logger: context.logger,
+      readAutomationTask: (task) => readAutomationTask?.(task),
       workChatConversations: taskInboxProjection,
       onRoomSystemLine: async ({
         task,
@@ -7538,8 +7550,24 @@ export function configureRuntimeRoutes(
               context.projectService
                 .listProjects()
                 .find((project) => project.id === projectId)?.name,
-            agentDefinition: async (agentSlug: string) =>
+            agentDefinition: (agentSlug: string) =>
               context.agentService.getAgent(agentSlug),
+            agentIncarnation: (agentSlug: string, initialize: boolean) =>
+              agentIncarnationUnderLock(
+                context.configLoader.getProjectHomeDir(),
+                agentSlug,
+                initialize,
+              ),
+            withAgentIdentity: async <T>(operation: () => Promise<T>) => {
+              const release = await acquireAgentIdentityMutationLockAtHome(
+                context.configLoader.getProjectHomeDir(),
+              );
+              try {
+                return await operation();
+              } finally {
+                await release();
+              }
+            },
             proposingTurn: (sessionId: string) => {
               const eventStore = context.orchestrationEventStore;
               if (!eventStore) return undefined;
@@ -13058,6 +13086,7 @@ export function configureRuntimeRoutes(
   const {
     schedulerService,
     automationLedger,
+    automationStore,
     automationPreview,
     automationActions: runtimeAutomationActions,
     isolatedRepairs,
@@ -13100,6 +13129,8 @@ export function configureRuntimeRoutes(
   roomMentionNotifications = notificationService;
   projectScheduler = schedulerService;
   automationActions = runtimeAutomationActions;
+  readAutomationTask = (task) =>
+    readAutomationTaskProjection(automationLedger.getExisting(), task);
   durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
   contextEfficiency?.start();
@@ -13455,6 +13486,25 @@ export function configureRuntimeRoutes(
         : {}),
     }),
   );
+  // One operator proof for every Automation and isolated-repair mutation: a
+  // person acting in person (never an agent session or Station Control),
+  // still current, with operator membership; never in hosted mode.
+  const automationOperator = async (request: Request) => {
+    const assertCurrent = async () => {
+      if (
+        isHostedTenantExecutionRequired() ||
+        !isOperatorInPersonNotAgent(request) ||
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        throw new Error('Operator access required');
+      await projectMembershipAuthority(request).operator();
+    };
+    await assertCurrent();
+    return { id: getCachedUser().alias, assertCurrent };
+  };
   context.app.route(
     '/automations',
     createAutomationRoutes(
@@ -13463,6 +13513,25 @@ export function configureRuntimeRoutes(
         listPolls: () => automationLedger.get().listPolls(),
         preview: automationPreview,
         readAuthorityForRequest,
+        ...(isHostedTenantExecutionRequired()
+          ? {}
+          : {
+              store: automationStore,
+              listOpenEpisodes: (limit: number) =>
+                automationLedger
+                  .get()
+                  .listOpenEpisodes(limit)
+                  .map(projectAutomationEpisode),
+              retryEpisode: (ruleId: string, episodeId: string) =>
+                retryAutomationEpisode({
+                  ledger: automationLedger.get(),
+                  read: () => automationStore.read(),
+                  ruleId,
+                  episodeId,
+                  now: Date.now(),
+                }),
+              operator: automationOperator,
+            }),
       },
       context.logger,
     ),
@@ -13471,22 +13540,7 @@ export function configureRuntimeRoutes(
     '/api/isolated-repairs',
     createIsolatedRepairRoutes({
       controller: isolatedRepairs,
-      operator: async (request) => {
-        const assertCurrent = async () => {
-          if (
-            isHostedTenantExecutionRequired() ||
-            !isOperatorInPersonNotAgent(request) ||
-            !isRuntimeRequestPrincipalCurrent(
-              request,
-              context.environmentSecurityService,
-            )
-          )
-            throw new Error('Operator access required');
-          await projectMembershipAuthority(request).operator();
-        };
-        await assertCurrent();
-        return { id: getCachedUser().alias, assertCurrent };
-      },
+      operator: automationOperator,
     }),
   );
   context.app.route(

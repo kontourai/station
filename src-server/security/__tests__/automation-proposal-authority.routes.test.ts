@@ -33,6 +33,14 @@ import {
   GateTestAdapter,
 } from '../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { acquireAgentIdentityMutationLockAtHome } from '../../domain/agent-registry.js';
+import {
+  agentIncarnationUnderLock,
+  createAgentConfig,
+  deleteAgentConfig,
+  loadAgentConfig,
+  updateAgentConfig,
+} from '../../domain/config-loader-agents.js';
 import { createAgentScheduleRoutes } from '../../routes/orchestration/agent-schedule.js';
 import {
   AUTOMATION_PROPOSAL_COPY,
@@ -191,6 +199,7 @@ let service: OrchestrationService;
 let baseUrl: string;
 let port: number;
 let eventStore: EventStore;
+let agentHome: string;
 let automations: AutomationStore;
 let ledger: UntrustedContentLedger;
 let refusals: string[];
@@ -239,8 +248,21 @@ function compose() {
       projectName: (id) => (id === 'local-project-a' ? 'Project A' : undefined),
       agentDefinition: async (slug) => {
         const agent = AGENTS.get(slug);
-        if (!agent) throw new Error('no such agent');
-        return structuredClone(agent);
+        return agent
+          ? structuredClone(agent)
+          : loadAgentConfig(agentHome, slug);
+      },
+      agentIncarnation: (slug, initialize) =>
+        AGENTS.has(slug)
+          ? slug
+          : agentIncarnationUnderLock(agentHome, slug, initialize),
+      withAgentIdentity: async (operation) => {
+        const release = await acquireAgentIdentityMutationLockAtHome(agentHome);
+        try {
+          return await operation();
+        } finally {
+          await release();
+        }
       },
       // As production wires it: the calling turn from a real orchestration
       // service over this file's store.
@@ -274,6 +296,7 @@ function compose() {
 beforeAll(async () => {
   __resetStationServerSelfAttestationForTests();
   const home = makeTempDir('station-automation-proposals-');
+  agentHome = home;
   eventStore = new EventStore(join(home, 'orchestration.sqlite'));
   automations = new AutomationStore(home);
   ledger = new UntrustedContentLedger();
@@ -1060,6 +1083,82 @@ describe('Confirm rechecks what the proposing chat may do now (review P1)', () =
     await refusedAtConfirm(source.body.data.id, `conv-${sessionId}`);
   });
 
+  test.each(['saved again', 'deleted and recreated'] as const)(
+    'a persisted Agent %s with identical bytes retains only its original proposal binding',
+    async (change) => {
+      const slug = `incarnation-${randomUUID().slice(0, 8)}`;
+      const spec = { slug, name: 'Incarnation Writer', prompt: 'Write.' };
+      await createAgentConfig(agentHome, spec);
+      const sessionId = nextSession();
+      const conversationId = `conv-${sessionId}`;
+      const source = await agent('bound', sessionId, 'POST', SOURCES, {
+        ...SOURCE,
+        grants: [{ ...SOURCE.grants[0], agentId: slug }],
+      });
+      expect(source.status).toBe(200);
+      const proposalId = source.body.data.id;
+      if (change === 'deleted and recreated') {
+        await deleteAgentConfig(agentHome, slug);
+        await createAgentConfig(agentHome, spec);
+        await refusedAtConfirm(proposalId, conversationId, { enable: true });
+      } else {
+        await updateAgentConfig(agentHome, slug, { name: spec.name });
+        const response = await person(
+          'POST',
+          answer(conversationId, proposalId, 'confirm'),
+          { enable: true },
+        );
+        expect(response).toMatchObject({
+          status: 200,
+          body: { data: { enabled: true } },
+        });
+        expect(configured().sources).toContainEqual(
+          expect.objectContaining({
+            id: response.body.data.createdId,
+            enabled: true,
+          }),
+        );
+      }
+    },
+  );
+
+  test('a source with no Agent grant can be confirmed while the Agent lock is held', async () => {
+    const release = await acquireAgentIdentityMutationLockAtHome(agentHome);
+    const operation = (async () => {
+      const sessionId = nextSession();
+      const source = await agent('bound', sessionId, 'POST', SOURCES, {
+        ...SOURCE,
+        grants: [],
+      });
+      expect(source.status).toBe(200);
+      return person(
+        'POST',
+        answer(`conv-${sessionId}`, source.body.data.id, 'confirm'),
+        { enable: true },
+      );
+    })();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const response = await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Confirmation waited for the Agent lock')),
+            3_000,
+          );
+        }),
+      ]);
+      expect(response).toMatchObject({
+        status: 200,
+        body: { data: { enabled: true } },
+      });
+    } finally {
+      clearTimeout(timer);
+      await release();
+      await operation;
+    }
+  }, 10_000);
+
   test('an Agent that changes inside the creation lock creates nothing', async () => {
     const sessionId = nextSession();
     const conversationId = `conv-${sessionId}`;
@@ -1101,7 +1200,11 @@ describe('Confirm rechecks what the proposing chat may do now (review P1)', () =
       { enable: true },
     );
     expect(response.status).toBe(200);
-    expect(response.body.data).toMatchObject({ enabled: false });
+    expect(response.body.data).toMatchObject({
+      enabled: false,
+      message:
+        'The reviewed Agent or its Project access changed before activation.',
+    });
     expect(
       configured().sources.find(
         ({ id }) => id === response.body.data.createdId,

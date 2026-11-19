@@ -452,6 +452,10 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     named('Automation rule', 'name', 'an Automation rule'),
   ),
   list_automation_proposals: listed('Automation proposals'),
+  list_automation_sources: listed('Automation sources'),
+  list_automation_rules: listed('Automation rules'),
+  list_automation_deliveries: listed('Automation deliveries'),
+  list_automation_episodes: listed('Automation episodes'),
   update_job: entry(
     'Updated',
     'Updating',

@@ -3102,11 +3102,15 @@ function LiveConversationBody({
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            reportedApprovalReviewer={activeSession.reportedApprovalReviewer}
             approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
             acpApproval={acpApproval}
-            acpCurrentModeId={
-              activeSession.currentModeId ?? advertisedAcpSession.currentModeId
+            acpCurrentModeId={activeSession.currentModeId ?? undefined}
+            acpRequestedModeId={
+              typeof activeSession.requestedProviderOptions?.mode === 'string'
+                ? activeSession.requestedProviderOptions.mode
+                : undefined
             }
             commandQuery={chatInput.commandQuery}
             slashCommands={chatInput.slashCommands}

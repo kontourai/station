@@ -117,6 +117,7 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
   preparedResumeBindingKey?: string;
   externalThreadId: string;
   codexThreadId: string;
+  reportedApprovalReviewer?: import('@kontourai/station-contracts/provider').EngineApprovalReviewer;
   process: CodexProcessLike;
   session: ProviderSession;
   rpcRequestCounter: number;

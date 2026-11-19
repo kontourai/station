@@ -1,0 +1,7 @@
+{
+  "revision": "fd490c7eb5e94222b0425de8e8855ddea94391f3",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed automation exports and client/query examples against the publicBarrel.test.ts delta: automations is explicitly classified as public, consistent with queries.ts and index.ts re-exports. No SDK behavior or tutorial change is needed; the barrel suite passed in the current 20-suite run.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts"]}
+  ]
+}

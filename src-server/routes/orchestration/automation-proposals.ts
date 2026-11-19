@@ -108,16 +108,16 @@ export interface AutomationProposalRoutesDeps {
   /** Hosted Stations have no Automation surface. */
   hosted?: boolean;
   /**
-   * The pair resolved (Project, Agent and the Agent's definition digest)
-   * when this caller could dispatch work to `agentId` in `projectId` itself,
-   * by the one dispatch scope rule; `undefined` when it could not or Station
-   * cannot read it. Asked at proposal time and again at Confirm.
+   * Resolve a current permitted Project/Agent pair under the Agent identity
+   * lock. Only a new proposal may initialize a missing incarnation.
    */
   bind(
     caller: StationControlPolicyCaller,
     projectId: string,
     agentId: string,
+    initialize: boolean,
   ): Promise<AutomationTargetBinding | undefined>;
+  withAgentIdentity<T>(operation: () => Promise<T>): Promise<T>;
   /**
    * `proposingTurnId` over the Session's inferred calling turn (#4882 will
    * make it known): its id when that turn may propose, else `undefined`.
@@ -263,7 +263,9 @@ export function createAutomationProposalRoutes(
         conversationId: caller.conversationId,
         authority: {
           bind: (projectId, agentId) =>
-            deps.bind(caller.policy, projectId, agentId),
+            deps.withAgentIdentity(() =>
+              deps.bind(caller.policy, projectId, agentId, true),
+            ),
         },
         configuration: () => automations.read(),
         proposal: (id) => store.proposal(id),
@@ -486,9 +488,8 @@ export function createAutomationProposalRoutes(
       /**
        * What the proposing chat may do NOW, for what it named THEN (#4830
        * review): the scope rule decided again for the recorded caller, and
-       * each Agent still the one it named (same slug, Project and
-       * definition). Run before the claim, then again inside the store's
-       * lock for creation and for enabling, with the operator's own check.
+       * each Agent still the one it named. The Agent identity lock stays
+       * held until the configuration store commits each mutation.
        */
       const recheck = async () => {
         await operator.assertCurrent();
@@ -499,6 +500,7 @@ export function createAutomationProposalRoutes(
               recorded.proposer,
               binding.projectId,
               binding.agentId,
+              false,
             );
           } catch {
             current = undefined;
@@ -507,8 +509,12 @@ export function createAutomationProposalRoutes(
             throw new BindingChangedError(binding);
         }
       };
+      const withBoundAgentIdentity = <T>(operation: () => Promise<T>) =>
+        recorded.bindings.length > 0
+          ? deps.withAgentIdentity(operation)
+          : operation();
       try {
-        await recheck();
+        await withBoundAgentIdentity(recheck);
       } catch (error) {
         if (error instanceof BindingChangedError)
           return bindingChanged(c, error.message);
@@ -544,20 +550,20 @@ export function createAutomationProposalRoutes(
             ? current.sources.some(({ id }) => id === createdId)
             : current.rules.some(({ id }) => id === createdId);
         if (!exists) {
-          if (proposal.kind === 'source')
-            await automations.createSource({ ...proposal.source }, recheck, {
-              id: createdId,
-            });
-          else {
-            const { sourceProposalId: _pending, ...rule } = proposal.rule;
-            await automations.createRule(
-              { ...rule, sourceId: sourceId! },
-              recheck,
-              {
+          await withBoundAgentIdentity(async () => {
+            if (proposal.kind === 'source')
+              await automations.createSource({ ...proposal.source }, recheck, {
                 id: createdId,
-              },
-            );
-          }
+              });
+            else {
+              const { sourceProposalId: _pending, ...rule } = proposal.rule;
+              await automations.createRule(
+                { ...rule, sourceId: sourceId! },
+                recheck,
+                { id: createdId },
+              );
+            }
+          });
         }
       } catch (error) {
         store.transition(proposal.id, 'confirming', 'open', null, now());
@@ -591,30 +597,22 @@ export function createAutomationProposalRoutes(
       let enableRefusal: string | undefined;
       if (enable) {
         try {
-          await automations.setEnabled(
-            kind === 'source'
-              ? {
-                  kind: 'source',
-                  id: createdId,
-                  expectedFingerprint: automationConfigurationFingerprint(
-                    automations.read(),
-                  ),
-                  enabled: true,
-                }
-              : {
-                  kind: 'rule',
-                  id: createdId,
-                  expectedFingerprint: automationConfigurationFingerprint(
-                    automations.read(),
-                  ),
-                  mode: 'live',
-                },
-            recheck,
-          );
+          await withBoundAgentIdentity(() => {
+            const expectedFingerprint = automationConfigurationFingerprint(
+              automations.read(),
+            );
+            return automations.setEnabled(
+              kind === 'source'
+                ? { kind, id: createdId, expectedFingerprint, enabled: true }
+                : { kind, id: createdId, expectedFingerprint, mode: 'live' },
+              recheck,
+            );
+          });
           enabled = true;
         } catch (error) {
           if (error instanceof BindingChangedError)
-            enableRefusal = error.message;
+            enableRefusal =
+              'The reviewed Agent or its Project access changed before activation.';
           deps.logger.warn('confirmed automation was created but not enabled', {
             proposalId: proposal.id,
             error: errorMessage(error),
@@ -650,7 +648,7 @@ export function createAutomationProposalRoutes(
               ? {
                   message:
                     enableRefusal ??
-                    'Created, but it could not be enabled, so it starts disabled (a source) or observing (a rule).',
+                    'Station could not turn it on during confirmation.',
                 }
               : {}),
           },

@@ -1,0 +1,9 @@
+{
+  "revision": "63af24a2a14f287c232236516834690a3db60364",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-reviewed the Automation Operator Routes text after the route's refusal bodies stopped serializing error.message (route-error-egress gate): a validation refusal is now 409 invalid_automation with a bounded problems list (at most 8 entries of 200 characters, control characters replaced). The documented codes and statuses are unchanged; automations.routes.test.ts still passes.","inputs":["docs/reference/api.md","src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Re-reviewed the automation section after the operator routes' refusal bodies changed shape only (bounded problems instead of a serialized message); the documented verbs, gates and refusals are unchanged.","inputs":["docs/reference/cli.md","src-server/routes/operations/automations.ts"]}
+  ]
+}

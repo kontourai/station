@@ -2182,19 +2182,19 @@ export class OpenCodeNativeSession {
         ? `${model?.providerID as string}/${model?.id as string}`
         : undefined;
     const agent = readString(data.agent);
-    if (
-      (modelId === undefined || modelId === this.lastModel) &&
-      (agent === undefined || agent === this.lastAgent)
-    )
-      return;
-    this.lastModel = modelId ?? this.lastModel;
-    this.lastAgent = agent ?? this.lastAgent;
-    this.emit({
-      method: 'session.configured',
-      sessionId: this.deps.threadId,
-      ...(this.lastModel ? { model: this.lastModel } : {}),
-      ...(this.lastAgent ? { metadata: { mode: this.lastAgent } } : {}),
-    });
+    if (modelId !== undefined && modelId !== this.lastModel) {
+      this.lastModel = modelId;
+      this.emit({
+        method: 'session.configured',
+        sessionId: this.deps.threadId,
+        model: modelId,
+        cwd: this.deps.cwd,
+      });
+    }
+    if (agent !== undefined && agent !== this.lastAgent) {
+      this.lastAgent = agent;
+      this.emit({ method: 'session.engine-mode-observed', modeId: agent });
+    }
   }
 
   private onStepEnded(turn: NativeTurn, data: Record<string, unknown>): void {
