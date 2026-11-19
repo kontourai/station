@@ -1,0 +1,23 @@
+{
+  "revision": "4dc0796e1c9f33244a63ddf564c4fdc5e586e33d",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Verified that the optional blank layout is under More options. Choosing a repository still shows the applicable starter layout. Creation retry uses its retained layout and intent.","inputs":["docs/guides/starter-work.md","src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The blank setup's optional Starter layout moved into More options. The default blank creation and repository checkout steps remain as described in Getting started.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked the workspace choices, supported existing-folder path, unchanged checkout acquisition handoff, and layout browsing within the scrollable form. Blank workspace keeps optional starter selection inside More options.","inputs":["src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the workspace choices, supported existing-folder path, unchanged checkout acquisition handoff, and layout browsing within the scrollable form. Blank workspace keeps optional starter selection inside More options.","inputs":["src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the workspace choices, supported existing-folder path, unchanged checkout acquisition handoff, and layout browsing within the scrollable form. Blank workspace keeps optional starter selection inside More options.","inputs":["src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the workspace choices, supported existing-folder path, unchanged checkout acquisition handoff, and layout browsing within the scrollable form. Blank workspace keeps optional starter selection inside More options.","inputs":["src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"The existing New Project layout capture opens More options before exercising the starter option. The capture still waits for a stable scroll position and uses the same gallery runner.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The existing New Project layout capture opens More options before exercising the starter option. The capture still waits for a stable scroll position and uses the same gallery runner.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The existing New Project layout capture opens More options before exercising the starter option. The capture still waits for a stable scroll position and uses the same gallery runner.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

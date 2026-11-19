@@ -23,7 +23,7 @@ function useProjectDraftValues(partition?: string) {
   const [description, setDescription] = useProjectDraftState('', partition);
   const [directory, setDirectory] = useProjectDraftState('', partition);
   const [startIntent, setStartIntent] =
-    useProjectDraftState<ProjectStartIntent>('workspace', partition);
+    useProjectDraftState<ProjectStartIntent>('blank', partition);
   const [repositoryAcquisition, setRepositoryAcquisition] =
     useProjectDraftState<{
       id: string;
@@ -99,7 +99,7 @@ export function useNewProjectDraft(
     draft.setDescription('');
     draft.setDefaultEnvironment({ kind: 'current' });
     draft.setDirectory('');
-    draft.setStartIntent('workspace');
+    draft.setStartIntent('blank');
     draft.setRepositoryAcquisition(null);
     draft.setNameTouched(false);
     draft.setShowIconChoices(false);
@@ -111,7 +111,7 @@ export function useNewProjectDraft(
   // `/projects/new?directory=<folder>`, with that folder already chosen.
   // biome-ignore lint/correctness/useExhaustiveDependencies: prefill once per opening and draft partition so typing cannot reload it.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || window.location.pathname !== '/projects/new') return;
     const params = new URLSearchParams(window.location.search);
     const token = params.get(PROJECT_CONTINUATION_PARAM);
     const prefill =
@@ -131,7 +131,10 @@ export function useNewProjectDraft(
       draft.setNameTouched(true);
     }
     if (prefill.description) draft.setDescription(prefill.description);
-    if (prefill.directory) draft.setDirectory(prefill.directory);
+    if (prefill.directory) {
+      draft.setStartIntent('workspace');
+      draft.setDirectory(prefill.directory);
+    }
   }, [isOpen, partition]);
 
   // The name and slug the submission will carry, derived once here so the
