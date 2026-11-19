@@ -103,14 +103,26 @@ pub enum ErrorContext {
     Install,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UpdateErrorReason {
+    DiskFull,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateError {
     pub context: ErrorContext,
-    /// The updater's own message, unclassified: this layer cannot tell an
-    /// offline host from a bad signature, so it does not label the text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<UpdateErrorReason>,
+    /// Diagnostic text from the updater.
     pub message: String,
     pub version: Option<String>,
+}
+
+struct InstallFailure {
+    message: String,
+    reason: Option<UpdateErrorReason>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -443,6 +455,7 @@ impl<H: Clone> Controller<H> {
         self.phase = UpdatePhase::Disabled;
         self.error = Some(UpdateError {
             context: ErrorContext::Check,
+            reason: None,
             message,
             version: None,
         });
@@ -589,6 +602,7 @@ impl<H: Clone> Controller<H> {
                 self.phase = resume;
                 self.error = Some(UpdateError {
                     context: ErrorContext::Check,
+                    reason: None,
                     message,
                     version: None,
                 });
@@ -649,6 +663,7 @@ impl<H: Clone> Controller<H> {
                 self.phase = resume.unwrap_or(UpdatePhase::Idle);
                 self.error = Some(UpdateError {
                     context: ErrorContext::Download,
+                    reason: None,
                     message,
                     version: Some(version),
                 });
@@ -721,6 +736,7 @@ impl<H: Clone> Controller<H> {
         };
         self.error = Some(UpdateError {
             context: ErrorContext::Install,
+            reason: None,
             message,
             version: Some(version.clone()),
         });
@@ -730,15 +746,16 @@ impl<H: Clone> Controller<H> {
 
     /// On success the phase stays `installing` until the process restarts.
     /// On failure the cached package stays for a retry.
-    pub fn finish_install(&mut self, result: Result<(), String>) {
+    fn finish_install(&mut self, result: Result<(), InstallFailure>) {
         let UpdatePhase::Installing { version } = &self.phase else {
             return;
         };
-        if let Err(message) = result {
+        if let Err(failure) = result {
             let version = version.clone();
             self.error = Some(UpdateError {
                 context: ErrorContext::Install,
-                message,
+                reason: failure.reason,
+                message: failure.message,
                 version: Some(version.clone()),
             });
             self.phase = UpdatePhase::Ready { version };
@@ -886,9 +903,9 @@ impl<H: UpdateHandle> DesktopUpdater<H> {
     /// Installs the downloaded update through the blocking `install`.
     /// Returns `true` only when the install succeeded and the caller should
     /// now restart; the phase then stays `installing`.
-    pub fn install<F>(&self, install: F) -> bool
+    fn install<F>(&self, install: F) -> bool
     where
-        F: FnOnce(&H, &[u8]) -> Result<(), String>,
+        F: FnOnce(&H, &[u8]) -> Result<(), InstallFailure>,
     {
         let Some((handle, version)) = self.update(Controller::begin_install) else {
             return false;
@@ -1111,6 +1128,26 @@ mod tauri_glue {
                 }
             }
             other => redact_urls(&other.to_string()),
+        }
+    }
+
+    pub(super) fn install_failure(error: tauri_plugin_updater::Error) -> InstallFailure {
+        if let tauri_plugin_updater::Error::Io(io) = &error {
+            if io.kind() == std::io::ErrorKind::StorageFull {
+                // tar retains the I/O kind but its Display omits the cause.
+                let message = match io.get_ref().and_then(|inner| inner.source()) {
+                    Some(cause) => format!("{io}: {cause}"),
+                    None => io.to_string(),
+                };
+                return InstallFailure {
+                    reason: Some(UpdateErrorReason::DiskFull),
+                    message: redact_urls(&message),
+                };
+            }
+        }
+        InstallFailure {
+            reason: None,
+            message: updater_error_text(error),
         }
     }
 
@@ -1390,7 +1427,7 @@ mod tauri_glue {
         let installer = updater.clone();
         let installed = tauri::async_runtime::spawn_blocking(move || {
             // `Update::install` verifies the signature of the bytes first.
-            installer.install(|update, bytes| update.install(bytes).map_err(updater_error_text))
+            installer.install(|update, bytes| update.install(bytes).map_err(install_failure))
         })
         .await
         .map_err(|error| format!("desktop update install task failed: {error}"))?;
@@ -1949,6 +1986,7 @@ mod tests {
             state.error,
             Some(UpdateError {
                 context: ErrorContext::Check,
+                reason: None,
                 message: "This machine's managed policy turns off Station updates".into(),
                 version: None,
             })
@@ -2206,9 +2244,10 @@ mod tests {
         harness.check(Ok(offer("0.1.12")));
         harness.download(Ok(vec![7, 7, 7]));
         let before = harness.emitted().len();
-        assert!(!harness
-            .updater
-            .install(|_, _| Err("failed to move the new app into place".into())));
+        assert!(!harness.updater.install(|_, _| Err(InstallFailure {
+            message: "failed to move the new app into place".into(),
+            reason: None,
+        })));
         assert_eq!(json(&harness.updater.snapshot()), fixture("installFailed"));
         assert_eq!(json(&harness.emitted()[before]), fixture("installing"));
         // The package stays on disk for the retry.
@@ -2228,6 +2267,23 @@ mod tests {
         assert_eq!(installed, vec![7, 7, 7]);
         // A successful install stays `installing` until the restart.
         assert_eq!(json(&harness.updater.snapshot()), fixture("installing"));
+    }
+
+    #[test]
+    fn storage_full_keeps_the_verified_package_retryable_and_reports_the_reason() {
+        let harness = Harness::new(true, None);
+        ready_with_package(&harness, vec![7, 7, 7]);
+        assert!(!harness.updater.install(|_, _| {
+            Err(tauri_glue::install_failure(
+                tauri_plugin_updater::Error::Io(std::io::Error::from(
+                    std::io::ErrorKind::StorageFull,
+                )),
+            ))
+        }));
+        let state = harness.updater.snapshot();
+        assert!(matches!(state.phase, UpdatePhase::Ready { .. }));
+        assert_eq!(json(&state)["error"]["reason"], "disk-full");
+        assert!(harness.updater.install(|_, _| Ok(())));
     }
 
     #[test]

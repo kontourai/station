@@ -101,6 +101,11 @@ followed by Claude's own reply after a background
 child settles is one "finished", not "finished" then "replied". An episode
 made only of engine-opened turns reads "replied".
 
+Completion, failure and stop notices name the chat when Station has its
+title and explain what to review there. The link uses the Session ID.
+Provider response text and raw errors are kept in the chat. Device settings
+that hide notification previews still apply.
+
 What holds it ([finished-alert-hold.ts](../../src-server/services/orchestration/finished-alert-hold.ts),
 read by `OrchestrationService.readFinishedAlertHold`, plus the inbox's
 `hasWaitingFollowUp` composed in

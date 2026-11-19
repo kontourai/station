@@ -41,9 +41,7 @@ describe('useCopyToClipboardToast', () => {
     const { result } = renderHook(() => useCopyToClipboardToast());
 
     await expect(result.current('receipt-path')).resolves.toBe(false);
-    expect(showToast).toHaveBeenCalledWith(
-      "Couldn't copy — this browser refused clipboard access",
-    );
+    expect(showToast).toHaveBeenCalledWith("Couldn't copy to the clipboard");
     expect(showToast).not.toHaveBeenCalledWith('Copied to clipboard');
   });
 

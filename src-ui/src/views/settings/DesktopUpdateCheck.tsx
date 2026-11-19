@@ -7,7 +7,10 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DesktopUpdateRestartDialog } from '../../components/desktop-update/DesktopUpdateRestartDialog';
-import { downloadPercent } from '../../components/desktop-update/desktopUpdatePresentation';
+import {
+  desktopInstallFailureMessage,
+  downloadPercent,
+} from '../../components/desktop-update/desktopUpdatePresentation';
 import { useDesktopRestartServerImpact } from '../../components/desktop-update/useDesktopRestartServerImpact';
 import { useDesktopUpdateState } from '../../components/desktop-update/useDesktopUpdateState';
 import { StatusSummary } from '../../components/StatusSummary';
@@ -93,7 +96,6 @@ const PHASE_BADGES: Record<
 const ERROR_LEADS = {
   check: 'Could not check for desktop app updates.',
   download: 'The download did not complete.',
-  install: 'The update did not install, and Station did not restart.',
 } as const;
 const ERROR_BADGE_LABELS = {
   check: 'Check failed',
@@ -194,8 +196,11 @@ export function DesktopUpdateCheck({
       <StatusLine state={state} />
       {error && (
         <>
-          {/* The updater's text is disclosed verbatim, never classified. */}
-          <p role="alert">{ERROR_LEADS[error.context]}</p>
+          <p role="alert">
+            {error.context === 'install'
+              ? desktopInstallFailureMessage(error.reason)
+              : ERROR_LEADS[error.context]}
+          </p>
           <TechnicalDetails detail={error.message} />
         </>
       )}

@@ -1,4 +1,7 @@
-import type { DesktopUpdateState } from '@kontourai/station-contracts/desktop-update';
+import type {
+  DesktopUpdateError,
+  DesktopUpdateState,
+} from '@kontourai/station-contracts/desktop-update';
 import type { ServerUpdateRunningTurns } from '@kontourai/station-contracts/system-status';
 import { useServerUpdateRunningTurnsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
@@ -9,6 +12,7 @@ import { TechnicalDetails } from '../../views/settings/coreUpdatePresentation';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonList } from '../state';
+import { desktopInstallFailureMessage } from './desktopUpdatePresentation';
 import type { DesktopRestartServerImpact } from './restartImpact';
 import { useDesktopRestartServerImpact } from './useDesktopRestartServerImpact';
 import './DesktopUpdate.css';
@@ -25,7 +29,7 @@ interface DesktopUpdateRestartDialogViewProps {
   turns: TurnsRead;
   installing: boolean;
   /** The last install attempt's failure, when it is the latest outcome. */
-  installError: string | null;
+  installError: Pick<DesktopUpdateError, 'message' | 'reason'> | null;
   onRestart: () => void;
   onClose: () => void;
   returnFocusTarget?: HTMLElement | null;
@@ -34,25 +38,11 @@ interface DesktopUpdateRestartDialogViewProps {
 function ImpactCopy({ impact }: { impact: DesktopRestartServerImpact }) {
   switch (impact) {
     case 'sidecar-restarts':
-      return (
-        <p>
-          Station’s built-in server runs inside this app, so it restarts too.
-        </p>
-      );
+      return <p>Station’s built-in server restarts with the app.</p>;
     case 'service-keeps-running':
-      return (
-        <p>
-          Station’s server runs as a background service on this computer. It
-          keeps running, and so do its agents.
-        </p>
-      );
+      return <p>The Station service and its agents keep running.</p>;
     case 'other-server-keeps-running':
-      return (
-        <p>
-          This app is connected to a Station server that runs outside it. That
-          server keeps running, and so do its agents.
-        </p>
-      );
+      return <p>The connected Station server and its agents keep running.</p>;
     default:
       return (
         <p>
@@ -127,8 +117,14 @@ function DesktopUpdateRestartDialogView({
   const awaitingTurns = turnsMatter && turns.status === 'pending';
   return (
     <Dialog
-      title={`Restart Station to install ${version}?`}
-      closeLabel="Close restart confirmation"
+      title={
+        installing
+          ? 'Installing Station update…'
+          : installError
+            ? 'Station update failed'
+            : 'Restart Station to update?'
+      }
+      closeLabel="Close update dialog"
       onClose={onClose}
       dismissible={!installing}
       hideClose={installing}
@@ -147,26 +143,22 @@ function DesktopUpdateRestartDialogView({
             pending={installing}
             pendingLabel="Installing…"
           >
-            {installError ? 'Retry' : 'Restart now'}
+            {installError ? 'Retry install' : 'Restart now'}
           </Button>
         </>
       }
     >
       <div className="desktop-update-dialog">
-        <p>
-          Station closes, installs version {version} (you have {currentVersion}
-          ), and opens again.
-        </p>
+        {installError && (
+          <p role="alert">
+            {desktopInstallFailureMessage(installError.reason)}
+          </p>
+        )}
+        <p>Installed version {currentVersion}</p>
+        <p>Update version {version}</p>
         <ImpactCopy impact={impact} />
         {turnsMatter && <TurnsCopy turns={turns} />}
-        {installError && (
-          <>
-            <p role="alert">
-              The update did not install, and Station did not restart.
-            </p>
-            <TechnicalDetails detail={installError} />
-          </>
-        )}
+        {installError && <TechnicalDetails detail={installError.message} />}
       </div>
     </Dialog>
   );
@@ -204,10 +196,11 @@ export function DesktopUpdateRestartDialog({
   // answer to this dialog's request.
   const installError = requested
     ? null
-    : (requestError ??
-      (phase.status === 'ready' && state.error?.context === 'install'
-        ? state.error.message
-        : null));
+    : requestError
+      ? { message: requestError }
+      : phase.status === 'ready' && state.error?.context === 'install'
+        ? state.error
+        : null;
 
   if (version === null) return null;
 

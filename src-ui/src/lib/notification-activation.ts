@@ -11,15 +11,12 @@ import { CLIENT_DOCUMENT_SESSION_ID } from '../hooks/clientDocumentSession';
 import { notificationOpenTarget as linkTarget } from './notificationOpen';
 import { openNotificationTargetHere } from './notificationStationOpen';
 
-/** `from <agent> · session <id>` — derived from the envelope, never the title. */
 export function agentAttributionLabel(
   source: Extract<NotificationSource, { kind: 'agent' }>,
+  chatTitle?: string,
 ): string {
-  const session =
-    source.sessionId.length > 12
-      ? source.sessionId.slice(0, 8)
-      : source.sessionId;
-  return `from ${source.agent ?? 'an agent'} · session ${session}`;
+  const agent = `from ${source.agent ?? 'an agent'}`;
+  return chatTitle ? `${agent} · ${chatTitle}` : agent;
 }
 
 /**

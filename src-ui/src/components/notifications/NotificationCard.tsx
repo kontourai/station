@@ -7,6 +7,7 @@ import {
 import { notificationCategoryLabel } from '../../utils/notificationLabels';
 import {
   formatNotificationTime,
+  notificationBody,
   notificationDetail,
 } from '../../utils/notifications';
 import { DISMISS_NOTIFICATION_ACTION } from '../attention/notificationRowActions';
@@ -50,6 +51,7 @@ export function NotificationCard({
     if (focused) cardRef.current?.focus();
   }, [focused]);
   const detail = notificationDetail(notification);
+  const body = notificationBody(notification);
   const notice =
     answerability.status === 'unanswerable' ||
     answerability.status === 'unknown'
@@ -103,9 +105,7 @@ export function NotificationCard({
           </span>
         </div>
         <div className="notification-card__message">{notification.title}</div>
-        {notification.body && (
-          <div className="notification-card__detail">{notification.body}</div>
-        )}
+        {body && <div className="notification-card__detail">{body}</div>}
         {detail && <div className="notification-card__detail">{detail}</div>}
         <NotificationEnvelopeControls
           notification={notification}

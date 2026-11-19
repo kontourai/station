@@ -115,7 +115,7 @@ describe('useDockCopyActions', () => {
 
     await waitFor(() =>
       expect(showToastMock).toHaveBeenCalledWith(
-        "Couldn't copy — this browser refused clipboard access",
+        "Couldn't copy to the clipboard",
       ),
     );
     expect(showToastMock).not.toHaveBeenCalledWith('Copied to clipboard');

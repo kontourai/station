@@ -38,6 +38,7 @@ export function AttentionHistoryItem({
   isDismissPending,
   onAction,
   onClose,
+  beforeAcknowledge,
   onDismiss,
   context = [],
   feedback,
@@ -48,6 +49,7 @@ export function AttentionHistoryItem({
   isDismissPending: boolean;
   onAction: (notificationId: string, actionId: string) => void;
   onClose: () => void;
+  beforeAcknowledge?: () => void;
   onDismiss: (notificationId: string) => void;
   /** Station · Project · Chat · Agent · Engine, from `useInboxContext`. */
   context?: readonly InboxContextPart[];
@@ -90,7 +92,10 @@ export function AttentionHistoryItem({
               id: 'dismiss',
               label: ACKNOWLEDGE_ATTENTION_ACTION.label,
               disabled: acknowledge.isPending,
-              onSelect: () => acknowledge.mutate(item.id),
+              onSelect: () => {
+                beforeAcknowledge?.();
+                acknowledge.mutate(item.id);
+              },
             },
           ]
         : [];

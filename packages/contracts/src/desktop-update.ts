@@ -57,7 +57,9 @@ export type DesktopUpdateErrorContext = 'check' | 'download' | 'install';
 
 export interface DesktopUpdateError {
   context: DesktopUpdateErrorContext;
-  /** The updater's own message, unclassified. */
+  /** Present when the native installer observed that the volume is full. */
+  reason?: 'disk-full';
+  /** Diagnostic text from the updater. */
   message: string;
   version: string | null;
 }

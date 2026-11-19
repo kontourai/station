@@ -1,4 +1,7 @@
-import type { Notification } from '@kontourai/station-contracts/notification';
+import {
+  type Notification,
+  TURN_COMPLETION_NOTIFICATION_SOURCE,
+} from '@kontourai/station-contracts/notification';
 import { relativeTimeFromIso } from './relativeTime';
 
 /**
@@ -32,4 +35,19 @@ export function notificationDetail(
 ): string | undefined {
   const detail = notification.metadata?.detail;
   return typeof detail === 'string' ? detail : undefined;
+}
+
+/** Replace IDs in legacy Station-generated records still in notification history. */
+export function notificationBody(
+  notification: Pick<Notification, 'body' | 'source' | 'metadata'>,
+): string | undefined {
+  const { body, source, metadata } = notification;
+  const threadId = metadata?.threadId;
+  if (
+    source === TURN_COMPLETION_NOTIFICATION_SOURCE &&
+    typeof threadId === 'string' &&
+    body?.endsWith(` in session ${threadId}`)
+  )
+    return 'Open the chat for details.';
+  return body;
 }

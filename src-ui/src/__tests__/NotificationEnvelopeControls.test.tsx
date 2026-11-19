@@ -107,11 +107,11 @@ describe('inbox rows for enveloped notifications (#2587)', () => {
     navigate.mockClear();
   });
 
-  test('attributes an agent notification to its agent and session', async () => {
+  test('attributes a notification to its agent when no chat title is available', async () => {
     preferencesRoute(false);
     renderHistoryItem();
     expect(screen.getByTestId('notification-attribution').textContent).toBe(
-      'from builder · session 6f1c2d3e',
+      'from builder',
     );
   });
 

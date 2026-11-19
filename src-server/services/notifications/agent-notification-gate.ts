@@ -71,6 +71,7 @@ const ALLOW_ALL_AGENT_NOTIFICATIONS: AgentNotificationPreferences = {
 export interface AgentNotificationSessionContext {
   /** The agent slug the session started with (attribution only). */
   readonly agent?: string;
+  readonly chatTitle?: string;
 }
 
 /**
@@ -529,6 +530,7 @@ export class AgentNotificationGate {
           : {}),
         metadata: {
           ...(caller.projectSlug ? { projectSlug: caller.projectSlug } : {}),
+          ...(context?.chatTitle ? { chatTitle: context.chatTitle } : {}),
           ...(link ? { link } : {}),
         },
       },

@@ -62,7 +62,9 @@ Updating has three separate steps:
 3. **Install and restart.** Only **Restart now** installs the download, after
    its digest and signature check, and restarts the app. **Restart now** waits
    for the built-in server’s running-turn check to finish. A failed install leaves the update
-   downloaded and the app running, with the failure shown.
+   downloaded and the app running. If the installer runs out of disk space,
+   free space on the volume where Station is installed, then choose **Retry
+   install**. **Copy details** copies the full diagnostic.
 
 The Updates panel and Settings show check failures with the updater's own
 text; the sidebar control does not announce routine check failures. The

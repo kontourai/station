@@ -36,9 +36,8 @@
  * Station-delegated child whose result returns to its parent announces no
  * finish of its own. Failures, stops, approvals and questions are not held.
  *
- * Body is deliberately minimal (`Agent finished in session <threadId>`) —
- * never the turn's `outputText` — matching archive#1225's guardrail against
- * a push notification leaking response content.
+ * The notice names the chat and what the reader can review there. It omits
+ * the turn's response and provider error.
  *
  * The EventBus callback stays synchronous and delegates to NotificationService's
  * one ordered, rejection-safe async adapter. The inner try/catch records an
@@ -142,6 +141,7 @@ export interface TurnCompletionNotificationOptions {
    * foreground suppression apply. Absent or `undefined`: no Project.
    */
   resolveProjectId?: (threadId: string) => string | undefined;
+  resolveChatTitle?: (threadId: string) => string | undefined;
   /** See {@link TurnCompletionOrchestrationService.readFinishedAlertHold}. */
   readFinishedAlertHold?: (threadId: string) => readonly string[];
   /** Defaults to {@link FINISHED_ALERT_CONFIRM_MS}. */
@@ -299,6 +299,7 @@ async function deliverTurnCompletionPush(input: {
    */
   onActivityCard?: boolean;
   resolveProjectId?: (threadId: string) => string | undefined;
+  resolveChatTitle?: (threadId: string) => string | undefined;
 }): Promise<'scheduled' | 'skipped_no_recipient' | 'skipped_external'> {
   const {
     orchestrationService,
@@ -323,6 +324,16 @@ async function deliverTurnCompletionPush(input: {
   // No subject means no one may read this session: a push would announce a
   // turn to devices whose owner cannot open it.
   if (presenceSubject === undefined) return 'skipped_no_recipient';
+  const chatTitle = input.resolveChatTitle?.(threadId);
+  const chat = chatTitle ? `“${chatTitle}”` : 'the chat';
+  const next = {
+    done: 'see the result',
+    stopped: 'see where work stopped',
+    replied: 'read the reply',
+    failed: 'review the error',
+    'reply-failed': 'review the error',
+  }[outcome];
+
   // No live-stream check here: the delivery router decides per surface
   // (focused + live in-app stream → in-app only). Skipping on any open
   // stream silenced every surface while one idle client stayed connected.
@@ -364,10 +375,7 @@ async function deliverTurnCompletionPush(input: {
               : outcome === 'replied'
                 ? 'Your agent replied'
                 : 'Your agent finished',
-      body:
-        outcome === 'reply-failed'
-          ? `Your agent's reply on its own failed in session ${threadId}`
-          : `Agent ${outcome === 'failed' ? 'failed' : outcome === 'stopped' ? 'stopped' : outcome === 'replied' ? 'replied' : 'finished'} in session ${threadId}`,
+      body: `Open ${chat} to ${next}.`,
       priority:
         outcome === 'failed' || outcome === 'reply-failed' ? 'high' : 'normal',
       dedupeTag: `turn-completion:${threadId}:${turnId}`,
@@ -376,6 +384,7 @@ async function deliverTurnCompletionPush(input: {
         sessionKind: SESSION_KIND,
         threadId,
         turnId,
+        ...(chatTitle ? { chatTitle } : {}),
         ...(onActivityCard ? { [ON_ACTIVITY_CARD_METADATA_KEY]: true } : {}),
       },
     },
@@ -403,7 +412,7 @@ export function resolveTurnCompletionOutcome(
   // station#2235: a recovery-synthesized abort (`recoveryTerminal`) maps
   // here like any abort — deliberately, not by omission. The needs_input
   // attention path schedules no offline push, so this is the crash's ONLY
-  // offline signal ("Agent failed in session …"), the same payoff
+  // offline signal ("Your agent needs attention"), the same payoff
   // archive#3473 claims for the codex-crash push above. The in-app copy is
   // owned by the interrupted-turn banner: the delivery router keeps a
   // focused, live surface to its in-app step, and the client does not toast
@@ -826,6 +835,7 @@ export function wireTurnCompletionNotifications(
         outcome: writing.outcome,
         onActivityCard: writing.onActivityCard,
         resolveProjectId: options.resolveProjectId,
+        resolveChatTitle: options.resolveChatTitle,
       });
     } catch (error) {
       if (writingFinishes.get(threadId) !== writing) return;
@@ -1387,6 +1397,7 @@ export function wireTurnCompletionNotifications(
               event,
             ),
             resolveProjectId: options.resolveProjectId,
+            resolveChatTitle: options.resolveChatTitle,
           });
           turnCompletionNotificationOps.add(1, { outcome, result });
         } catch (error) {
@@ -1536,7 +1547,10 @@ export function wireInternalStopRedispatchFailureNotifications(
   orchestrationService: TurnCompletionOrchestrationService,
   notificationService: NotificationService,
   logger: TurnCompletionLogger,
-  options: Pick<TurnCompletionNotificationOptions, 'resolveProjectId'> = {},
+  options: Pick<
+    TurnCompletionNotificationOptions,
+    'resolveProjectId' | 'resolveChatTitle'
+  > = {},
 ): () => void {
   return eventBus.subscribe((message: TurnCompletionEventMessage) => {
     notificationService.dispatch(
@@ -1557,6 +1571,7 @@ export function wireInternalStopRedispatchFailureNotifications(
             turnId: message.data.turnId,
             outcome: 'failed',
             resolveProjectId: options.resolveProjectId,
+            resolveChatTitle: options.resolveChatTitle,
           });
           turnCompletionNotificationOps.add(1, { outcome: 'failed', result });
         } catch (error) {

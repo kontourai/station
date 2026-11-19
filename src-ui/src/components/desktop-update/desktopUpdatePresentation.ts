@@ -1,4 +1,7 @@
-import type { DesktopUpdateState } from '@kontourai/station-contracts/desktop-update';
+import type {
+  DesktopUpdateError,
+  DesktopUpdateState,
+} from '@kontourai/station-contracts/desktop-update';
 import { formatBytes } from '../../utils/formatBytes';
 
 /**
@@ -59,4 +62,12 @@ export function desktopUpdateControlView(
     default:
       return { kind: 'hidden' };
   }
+}
+
+export function desktopInstallFailureMessage(
+  reason?: DesktopUpdateError['reason'],
+): string {
+  return reason === 'disk-full'
+    ? 'Free up disk space, then retry the update.'
+    : 'The update could not install. Station is still running.';
 }

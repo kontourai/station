@@ -66,9 +66,7 @@ beforeEach(() => {
 function open(state = desktopUpdateFixture('ready')) {
   const onClose = vi.fn();
   render(<DesktopUpdateRestartDialog state={state} onClose={onClose} />);
-  const dialog = screen.getByRole('dialog', {
-    name: 'Restart Station to install 0.1.12?',
-  });
+  const dialog = screen.getByRole('dialog');
   return { dialog, onClose };
 }
 
@@ -88,7 +86,7 @@ describe('DesktopUpdateRestartDialog', () => {
     const { dialog } = open();
     const body = within(dialog);
     expect(
-      body.getByText(/built-in server runs inside this app/),
+      body.getByText(/built-in server restarts with the app/),
     ).not.toBeNull();
     expect(
       body.getByText('Restarting will interrupt 4 running agent turns.'),
@@ -100,9 +98,8 @@ describe('DesktopUpdateRestartDialog', () => {
     expect(facts.runningTurnsQuery).toHaveBeenCalledWith(facts.apiBase, {
       enabled: true,
     });
-    expect(
-      body.getByText(/installs version 0.1.12 \(you have 0.1.11\)/),
-    ).not.toBeNull();
+    expect(body.getByText('Installed version 0.1.11')).not.toBeNull();
+    expect(body.getByText('Update version 0.1.12')).not.toBeNull();
   });
 
   test('an installed service keeps running, and no turns are listed', () => {
@@ -110,9 +107,7 @@ describe('DesktopUpdateRestartDialog', () => {
     const { dialog } = open();
     const body = within(dialog);
     expect(
-      body.getByText(
-        /runs as a background service on this computer\. It keeps running, and so do its agents\./,
-      ),
+      body.getByText(/Station service and its agents keep running/),
     ).not.toBeNull();
     expect(body.queryByRole('listitem')).toBeNull();
     expect(body.queryByText(/interrupted/)).toBeNull();
@@ -128,7 +123,7 @@ describe('DesktopUpdateRestartDialog', () => {
     const { dialog } = open();
     expect(
       within(dialog).getByText(
-        /connected to a Station server that runs outside it/,
+        /connected Station server and its agents keep running/,
       ),
     ).not.toBeNull();
     expect(within(dialog).queryByRole('listitem')).toBeNull();
@@ -231,7 +226,7 @@ describe('DesktopUpdateRestartDialog', () => {
     facts.apiBase = window;
     const { dialog } = open();
     expect(
-      within(dialog).getByText(/built-in server runs inside this app/),
+      within(dialog).getByText(/built-in server restarts with the app/),
     ).not.toBeNull();
   });
 
@@ -262,12 +257,42 @@ describe('DesktopUpdateRestartDialog', () => {
     const { dialog } = open(desktopUpdateFixture('installFailed'));
     const body = within(dialog);
     expect(body.getByRole('alert').textContent).toBe(
-      'The update did not install, and Station did not restart.',
+      'The update could not install. Station is still running.',
     );
     expect(
       body.getByText('failed to move the new app into place'),
     ).not.toBeNull();
-    expect(screen.getByRole('button', { name: 'Retry' })).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Retry install' }),
+    ).not.toBeNull();
+  });
+
+  test('an observed full disk gives a recovery step and copies its full diagnostic', async () => {
+    const state = desktopUpdateFixture('installFailed');
+    const diagnostic =
+      'failed to unpack Station Nightly.app/Contents/Resources/library: No space left on device';
+    state.error = {
+      context: 'install',
+      reason: 'disk-full',
+      message: diagnostic,
+      version: '0.1.12',
+    };
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const previousClipboard = navigator.clipboard;
+    Object.assign(navigator, { clipboard: { writeText } });
+    try {
+      const { dialog } = open(state);
+      const body = within(dialog);
+      expect(body.getByRole('alert').textContent).toBe(
+        'Free up disk space, then retry the update.',
+      );
+      fireEvent.click(body.getByText('Technical details'));
+      fireEvent.click(body.getByRole('button', { name: 'Copy details' }));
+      expect(await body.findByText('Copied to clipboard')).toBeTruthy();
+      expect(writeText).toHaveBeenCalledWith(diagnostic);
+    } finally {
+      Object.assign(navigator, { clipboard: previousClipboard });
+    }
   });
 
   test('while installing it cannot be dismissed', () => {
@@ -277,7 +302,7 @@ describe('DesktopUpdateRestartDialog', () => {
     }) as HTMLButtonElement;
     expect(later.disabled).toBe(true);
     expect(
-      screen.queryByRole('button', { name: 'Close restart confirmation' }),
+      screen.queryByRole('button', { name: 'Close update dialog' }),
     ).toBeNull();
   });
 });
