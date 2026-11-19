@@ -138,6 +138,9 @@ function producerLayout(tag: string, channel: 'preview' | 'stable'): Layout {
       'station-client-build.json',
     ],
     'station-container-sbom-source': ['station-container-source.json'],
+    [`station-android-play-observation-${IOS_BUNDLE_VERSION}`]: [
+      'android-store-authority.json.observation.json',
+    ],
     [`station-android-store-authority-${IOS_BUNDLE_VERSION}`]: [
       'android-store-authority.json',
     ],
@@ -270,6 +273,8 @@ const KNOWN_NON_RELEASE_UPLOADS: Record<string, string> = {
     'scanner scratch; assemble-draft downloads it separately as SBOM input',
   [`station-android-store-authority-${expression('needs.preflight.outputs.android_version_code')}`]:
     'raw Play readback receipt; candidate store authority is assembled separately',
+  [`station-android-play-observation-${expression('needs.preflight.outputs.android_version_code')}`]:
+    'failed Play observation journal; private diagnostic evidence',
   [`station-${expression('inputs.channel')}-ios-verification-failure-${expression('inputs.bundle_version')}`]:
     'failure-only diagnostic IPA',
   [`station-${expression('inputs.channel')}-ios-testflight-${expression('inputs.bundle_version')}`]:
@@ -351,6 +356,7 @@ describe('assemble-draft producer asset admission (#2977)', () => {
         'station-client-build.json',
         'station-container-source.json',
         'android-store-authority.json',
+        'android-store-authority.json.observation.json',
         'source-identity.json',
         'testflight-build.json',
         'summary.json',

@@ -153,6 +153,7 @@ function isPersonRequest(request: Request): boolean {
 }
 
 import { TurnIdempotencySettledError } from '@kontourai/monument';
+import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -178,7 +179,10 @@ import {
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
 import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
-import { AttachmentStageError } from '../../services/orchestration/attachment-staging-service.js';
+import {
+  AttachmentStageError,
+  type AttachmentTurnBinding,
+} from '../../services/orchestration/attachment-staging-service.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -219,7 +223,10 @@ import {
   type ThreadInboxDelivery,
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
-import { foregroundTurnSubmissionDigest } from '../../services/orchestration/turn-submission-digest.js';
+import {
+  foregroundTurnSubmissionDigest,
+  type StagedTurnSubmission,
+} from '../../services/orchestration/turn-submission-digest.js';
 import { verifyMcpPromptOrigin } from '../../services/plugins/mcp-prompt-origin-receipt.js';
 import { isPersonChatRequest } from '../../services/projects/project-chat-defaults.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
@@ -1399,6 +1406,7 @@ interface ForegroundMessageRequest {
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
+  stagedSubmission?: StagedTurnSubmission;
   resolveAttachments?: (binding: {
     threadId: string;
     clientTurnId: string;
@@ -2160,7 +2168,7 @@ export function createOrchestrationRoutes(
     hydrateStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
-      binding: { threadId: string; clientTurnId: string },
+      binding: AttachmentTurnBinding,
       options?: { inspectOnly?: true },
     ) => ChatAttachmentInput[];
     acceptStagedAttachments?: (
@@ -2172,7 +2180,7 @@ export function createOrchestrationRoutes(
     releaseStagedAttachments?: (
       owner: PrincipalRef,
       references: readonly StagedAttachmentReference[],
-      binding: { threadId: string; clientTurnId: string },
+      binding: AttachmentTurnBinding,
     ) => void;
     handoffConversation?: (
       input: ConversationHandoffRequest,
@@ -2862,9 +2870,7 @@ export function createOrchestrationRoutes(
     let stagedAttachmentsForRelease:
       | readonly StagedAttachmentReference[]
       | undefined;
-    let stagedBindingForRelease:
-      | { threadId: string; clientTurnId: string }
-      | undefined;
+    let stagedBindingForRelease: AttachmentTurnBinding | undefined;
     let releasePrincipal: PrincipalRef | undefined;
     let releaseDeliveryReceipt: (() => void) | undefined;
     // #3568: set once this send may wait in its conversation's inbox; a
@@ -3090,6 +3096,9 @@ export function createOrchestrationRoutes(
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
         | undefined;
+      const stagedAttemptId = stagedAttachments?.length
+        ? randomUUID()
+        : undefined;
       if (stagedAttachments?.length && !principal) {
         throw new PrincipalUnresolvedError(
           'Attachment staging requires a resolved request principal.',
@@ -3121,7 +3130,7 @@ export function createOrchestrationRoutes(
       );
       const delegation = resolvedDelegation?.context;
       assertInheritedDelegationToolPolicy(delegation);
-      let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
+      let stagedBinding: AttachmentTurnBinding | undefined;
       const foregroundRequest = {
         ...body,
         ...(verifiedMcpPromptOrigin
@@ -3149,6 +3158,10 @@ export function createOrchestrationRoutes(
             : undefined,
         ...(stagedAttachments?.length
           ? {
+              stagedSubmission: {
+                ownerId: principal!.id,
+                references: stagedAttachments,
+              },
               resolveAttachments: (
                 binding: { threadId: string; clientTurnId: string },
                 options?: { inspectOnly?: true },
@@ -3161,14 +3174,14 @@ export function createOrchestrationRoutes(
                       binding,
                       options,
                     );
-                  stagedBinding = binding;
-                  stagedBindingForRelease = binding;
+                  stagedBinding = { ...binding, attemptId: stagedAttemptId };
+                  stagedBindingForRelease = stagedBinding;
                   stagedAttachmentsForRelease = stagedAttachments;
                   releasePrincipal = principal;
                   return deps.hydrateStagedAttachments!(
                     principal!,
                     stagedAttachments,
-                    binding,
+                    stagedBinding,
                   );
                 })(),
             }
@@ -3262,14 +3275,13 @@ export function createOrchestrationRoutes(
           : undefined;
       if (followUp && followUpBinding) {
         const inbox = deps.threadInbox!;
-        if (
-          orchestrationService.inspectTurnDelivery(
-            followUp.conversationId,
-            followUp.clientTurnId,
-            readAuthorityFor(c),
-            inputDigest,
-          ) === null
-        )
+        const delivery = orchestrationService.inspectTurnDelivery(
+          followUp.conversationId,
+          followUp.clientTurnId,
+          readAuthorityFor(c),
+          inputDigest,
+        );
+        if (delivery === null)
           throw new Error('The requested conversation is unavailable.');
         queueOnBusyRefusal = () => {
           // Files wait in the blob store, not in the entry. A stage the live
@@ -3280,18 +3292,42 @@ export function createOrchestrationRoutes(
             ? (stagedBinding ?? {
                 threadId: followUp.conversationId,
                 clientTurnId: followUp.clientTurnId,
+                attemptId: stagedAttemptId,
               })
             : undefined;
           const settleStage = (queued: boolean) => {
             if (!filesBinding || !stagedAttachments?.length) return;
-            (queued
-              ? deps.acceptStagedAttachments
-              : deps.releaseStagedAttachments)?.(
-              principal!,
-              stagedAttachments,
-              filesBinding,
-            );
+            if (queued)
+              deps.acceptStagedAttachments?.(
+                principal!,
+                stagedAttachments,
+                filesBinding,
+              );
+            else
+              deps.releaseStagedAttachments?.(
+                principal!,
+                stagedAttachments,
+                filesBinding,
+              );
           };
+          if (stagedAttachments?.length) {
+            const pending =
+              orchestrationService.readPendingConversationSubmission(
+                followUp.conversationId,
+                followUp.clientTurnId,
+                readAuthorityFor(c),
+                userId,
+              );
+            if (pending) {
+              if (pending.inputDigest !== inputDigest)
+                throw new ClientTurnInputConflictError();
+              return queuedFollowUpResponse(
+                c,
+                { outcome: 'queued', entry: pending.entry },
+                followUp,
+              );
+            }
+          }
           let attachments: ThreadInboxAttachment[] | undefined;
           if (body.attachments?.length || stagedAttachments?.length) {
             const inputs = filesBinding
@@ -3322,37 +3358,44 @@ export function createOrchestrationRoutes(
               });
             }
           }
-          const submitted = inbox.submit({
-            conversationId: followUp.conversationId,
-            clientTurnId: followUp.clientTurnId,
-            payload: {
-              message: followUp.message,
-              ...followUpBinding,
-              ...(attachments ? { attachments } : {}),
-              ...(followUp.automaticBackground
-                ? { automaticBackground: true as const }
-                : {}),
-              inputDigest,
-              ...(followUp.ambientContext
-                ? { ambientContext: followUp.ambientContext }
-                : {}),
-              ...(followUp.model ? { model: followUp.model } : {}),
-              actor: {
-                userId,
-                ...(principal ? { principal } : {}),
-                ...(ownerAttribution ? { ownerAttribution } : {}),
+          let submitted: ReturnType<ThreadInboxDelivery['submit']> | undefined;
+          try {
+            submitted = inbox.submit({
+              conversationId: followUp.conversationId,
+              clientTurnId: followUp.clientTurnId,
+              payload: {
+                message: followUp.message,
+                ...followUpBinding,
+                ...(attachments ? { attachments } : {}),
+                ...(followUp.automaticBackground
+                  ? { automaticBackground: true as const }
+                  : {}),
+                inputDigest,
+                ...(followUp.ambientContext
+                  ? { ambientContext: followUp.ambientContext }
+                  : {}),
+                ...(followUp.model ? { model: followUp.model } : {}),
+                actor: {
+                  userId,
+                  ...(principal ? { principal } : {}),
+                  ...(ownerAttribution ? { ownerAttribution } : {}),
+                },
+                clientOrigin: foregroundRequest.clientOrigin,
+                ...(foregroundRequest.personAuthored
+                  ? { authoredBy: 'person' as const }
+                  : {}),
               },
-              clientOrigin: foregroundRequest.clientOrigin,
-              ...(foregroundRequest.personAuthored
-                ? { authoredBy: 'person' as const }
-                : {}),
-            },
-          });
-          settleStage(submitted.outcome === 'queued');
+            });
+          } finally {
+            settleStage(submitted?.outcome === 'queued');
+          }
           if (submitted.outcome === 'queued') reopenForSender();
           return queuedFollowUpResponse(c, submitted, followUp);
         };
-        if (inbox.mustQueue(followUp.conversationId)) {
+        if (
+          (!stagedAttachments?.length || delivery.outcome === 'not-received') &&
+          inbox.mustQueue(followUp.conversationId)
+        ) {
           const held = queueOnBusyRefusal();
           if (held) return held;
           // Placement would refuse this sender: the live send answers it.
@@ -3415,7 +3458,8 @@ export function createOrchestrationRoutes(
         });
       }
       return c.json({ success: true, data });
-    } catch (error) {
+    } catch (failure) {
+      let error = failure;
       const ceilingFailure = managedApprovalCeilingFailure(c, error);
       if (ceilingFailure) return ceilingFailure;
       if (error instanceof CreateRequestCapacityError)
@@ -3476,7 +3520,9 @@ export function createOrchestrationRoutes(
           } catch (queueError) {
             const closed = settledRefusal(queueError);
             if (closed) return closed;
-            throw queueError;
+            if (!(queueError instanceof ClientTurnInputConflictError))
+              throw queueError;
+            error = queueError;
           }
         }
       }
@@ -3550,11 +3596,11 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
-      // The engine refused these attachments before anything reached it, so
-      // their binding to this turn proves nothing: release it, or a resend
-      // of the same (restored) chips anywhere else is refused as bound.
+      // This attempt provably sent no files. Release only its lease in case
+      // the winner is still sending a shared stage under the same key.
       if (
-        errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE &&
+        (errorCode(error) === ATTACHMENT_INPUT_UNSUPPORTED_CODE ||
+          errorCode(error) === 'client_turn_input_conflict') &&
         stagedAttachmentsForRelease?.length &&
         stagedBindingForRelease &&
         releasePrincipal

@@ -1,0 +1,21 @@
+{
+  "revision": "3fde8e7757608bf166f4cd140a3860309b193383",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced the private coordinator SQLite file to its exact security home root and registered store entry. Backup recognizes its SQLite path and checkpoints the state before copying. Generic backup and restore owner tests passed.","inputs":["docs/architecture/module-map.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Matched six visible Project Room and Task messages to their production callers and safe next actions. A Task document capability read and local storage failure do not establish deletion. An unknown review or Agent start is checked before sending again. Updated the existing troubleshooting table while retaining the broader #5073 audit.","inputs":["docs/user/concepts.md","src-ui/src/views/project-page/ProjectRoom.tsx","src-ui/src/views/TaskWorkspaceView.tsx","src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"The coordinator database joins the existing security state root inventory. The archives already checkpoint SQLite files by suffix or registry identity. Existing home roots, transport, CLI, and local media tool classifications retain their prior behavior.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The coordinator database joins the existing security state root inventory. The archives already checkpoint SQLite files by suffix or registry identity. Existing home roots, transport, CLI, and local media tool classifications retain their prior behavior.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"The coordinator database joins the existing security state root inventory. The archives already checkpoint SQLite files by suffix or registry identity. Existing home roots, transport, CLI, and local media tool classifications retain their prior behavior.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The coordinator database joins the existing security state root inventory. The archives already checkpoint SQLite files by suffix or registry identity. Existing home roots, transport, CLI, and local media tool classifications retain their prior behavior.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The coordinator database joins the existing security state root inventory. The archives already checkpoint SQLite files by suffix or registry identity. Existing home roots, transport, CLI, and local media tool classifications retain their prior behavior.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated ProjectRoom architecture notes from the canonical module map. Existing topic routes and live-evidence boundaries remain intact.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

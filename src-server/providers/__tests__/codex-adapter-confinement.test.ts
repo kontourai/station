@@ -889,19 +889,36 @@ describe('#3800: workspace configuration cannot widen a confined Codex sandbox',
         confinement: 'workspace',
         plan: NOT_REQUIRED_WORKSPACE,
       });
-      expect(run.outcome).toEqual({ ok: true });
-      for (const [index, mode] of [first, ...later].entries()) {
-        const turn = run.adapter.sendTurn({
-          threadId: `profile-turns-${first}`,
-          input: 'go',
-          modelOptions: { approvalMode: mode },
-        });
-        const request = await waitForNthCall(run.process, 'turn/start', index);
-        expect(request.params).not.toHaveProperty('sandboxPolicy');
-        respond(run.process, request, { turn: { id: `turn-${index}` } });
-        await turn;
+      try {
+        expect(run.outcome).toEqual({ ok: true });
+        for (const [index, mode] of [first, ...later].entries()) {
+          const turnId = `turn-${index}`;
+          const turn = run.adapter.sendTurn({
+            threadId: `profile-turns-${first}`,
+            input: 'go',
+            modelOptions: { approvalMode: mode },
+          });
+          const request = await waitForNthCall(
+            run.process,
+            'turn/start',
+            index,
+          );
+          expect(request.params).not.toHaveProperty('sandboxPolicy');
+          respond(run.process, request, { turn: { id: turnId } });
+          await turn;
+          run.process.stdout.write(
+            `${JSON.stringify({
+              method: 'turn/completed',
+              params: {
+                threadId: threadIdOf(CAPTURED),
+                turn: { id: turnId, status: 'completed' },
+              },
+            })}\n`,
+          );
+        }
+      } finally {
+        await run.cleanup();
       }
-      await run.cleanup();
     },
   );
 

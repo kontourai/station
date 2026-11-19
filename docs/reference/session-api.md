@@ -543,17 +543,17 @@ Sessions. A continuation can move to a new Session (the one it used ended, or
 the request names a model its engine cannot switch to mid-Session), so before
 it may do that Station reads the turn ledger for the key across every Session
 of the conversation. Known original input is compared before replay or a new
-provider effect: changed input returns `client_turn_input_conflict`. Matching input, or legacy unknown proof,
-can replay a started turn (`providerTurnId`); authorized staged attachments
-are bound to that turn. Staged bytes are authorized against the earlier claim's
-Session and read without binding before digest comparison, including retained,
-dead-invoked and reclaimable claims. The production continuation uses the caller's
-read authority across every materialized Session; an unavailable or unreadable
-lineage fails closed before key inspection or staged hydration. The same rule
-applies before inbox admission and to the recorded sender's inspections during
-placement and abandoned-start recovery; an unavailable result is never an empty
-ledger or permission to send. Only after a safe start or replay is chosen
-are they bound to its actual Session; tombstones retain no input proof.
+provider effect. Changed input returns `client_turn_input_conflict`. An exact
+staged retry can replay a started turn (`providerTurnId`) without reading its
+bytes. The turn claim identifies the authenticated uploader and ordered refs.
+Different refs conflict even if the bytes are the same. Unverifiable legacy
+turns cannot acknowledge a staged retry. Station binds the refs only for a
+fresh provider send or the first queue submission. The production continuation
+uses the caller's read authority across every materialized Session. An
+unavailable or unreadable lineage fails closed before key inspection or staged
+hydration. The same rule applies before inbox admission and to the recorded
+sender's inspections during placement and abandoned-start recovery. Retention
+tombstones preserve the key without preserving input proof.
 An identical key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with
 it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
@@ -628,7 +628,9 @@ refusal; a request alone does not prove storage.
   reference is accepted for the held entry (released if it is not queued), the
   entry lists them as `attachments` descriptors (kind, name, MIME type, size;
   never bytes), and placement sends them with the message. The same key with
-  different files is a different message. Without the flag a busy send with
+  different file bytes or different staged refs is a different message. An
+  older inbox entry without exact stage identity cannot acknowledge a staged
+  retry. Without the flag a busy send with
   files is not held. Plain automatic replay may queue; its background
   resource-admission class persists through placement. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that

@@ -7,7 +7,10 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
-import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
+import type {
+  CliPresenceEvidence,
+  ExternalEngineReadinessProjection,
+} from '@kontourai/station-contracts/system-status';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import {
   describeTerminalPtyLoadFailure,
@@ -34,7 +37,7 @@ import {
   systemOps,
 } from '../../telemetry/metrics.js';
 import { raceWithSignal } from '../../utils/bounded-async.js';
-import { detectCliOnPath } from '../../utils/cli-detection.js';
+import { observeCliOnPath } from '../../utils/cli-detection.js';
 import type { UnconnectedACPRegistryEntry } from '../connections/acp.js';
 import {
   readBuildProvenance,
@@ -120,10 +123,8 @@ export interface ExternalEngineReadiness {
 
 interface StatusDiscoverySnapshot {
   credentialsFound: boolean;
-  kiroCliInstalled: boolean;
+  cliPresence: Record<StatusCli, CliPresenceEvidence>;
   ollamaReachable: boolean;
-  codexInstalled: boolean;
-  claudeInstalled: boolean;
   externalEngineReadiness: ExternalEngineReadiness;
   prerequisites: Awaited<ReturnType<typeof getAllPrerequisites>>;
   developerServices: DeveloperServiceStatus[];
@@ -137,12 +138,23 @@ interface DeveloperServiceStatus {
   command?: string;
 }
 
+const STATUS_CLIS = ['kiro-cli', 'codex', 'claude'] as const;
+type StatusCli = (typeof STATUS_CLIS)[number];
+const UNKNOWN_CLI_PRESENCE: CliPresenceEvidence = {
+  state: 'unknown',
+  freshness: 'unknown',
+  observedAt: null,
+  source: null,
+};
+
 const PENDING_DISCOVERY_SNAPSHOT: StatusDiscoverySnapshot = {
   credentialsFound: false,
-  kiroCliInstalled: false,
+  cliPresence: {
+    'kiro-cli': UNKNOWN_CLI_PRESENCE,
+    codex: UNKNOWN_CLI_PRESENCE,
+    claude: UNKNOWN_CLI_PRESENCE,
+  },
   ollamaReachable: false,
-  codexInstalled: false,
-  claudeInstalled: false,
   externalEngineReadiness: { ready: false, source: null, engines: [] },
   prerequisites: [],
   developerServices: [],
@@ -289,7 +301,10 @@ async function discoverDeveloperServices(): Promise<DeveloperServiceStatus[]> {
  *   call succeeds-> the connection's own `enabled`, defaulting to true only
  *                   for an id the live list does not mention at all.
  */
-async function resolveRuntimeConnectionState(deps: SystemStatusDeps): Promise<{
+async function resolveRuntimeConnectionState(
+  deps: SystemStatusDeps,
+  signal: AbortSignal,
+): Promise<{
   isEnabled: (engineId: EngineId) => boolean;
   connectionIdFor: (engineId: EngineId) => EngineConnectionId | undefined;
 }> {
@@ -300,7 +315,7 @@ async function resolveRuntimeConnectionState(deps: SystemStatusDeps): Promise<{
     };
   }
   try {
-    const connections = await deps.listEngineConnectionStates();
+    const connections = await deps.listEngineConnectionStates(signal);
     const disabled = new Set(
       connections.filter((c) => !c.enabled).map((c) => c.engineId),
     );
@@ -774,20 +789,10 @@ function buildSystemRecommendation(input: {
   };
 }
 
-// Coarse CLI-presence probe kept only for the diagnostic `clis` field below
-// and the `prerequisites` install-guide list — NOT the readiness signal. Real
-// chat-readiness for an external engine comes from
-// `resolveExternalEngineReadiness` (CLI resolvable AND authenticated), never
-// from this alone. Shared with native-engine adoption (archive#1575) so both agree
-// on what "installed" means; since #2663 that is `findCliBinaryAsync`'s answer
-// (process, login-shell and well-known install PATHs), the same rule the
-// engine spawns and the readiness probe use. Cancellation and the reason there
-// is no ceiling live with the calls, in `cliPresence` below.
-const whichCmd = detectCliOnPath;
-
 function createStatusDiscoveryCache(deps: SystemStatusDeps) {
   let snapshot: StatusDiscoverySnapshot | undefined;
   let freshUntil = 0;
+  let retryAt = 0;
   let refreshPromise: Promise<void> | undefined;
 
   const refresh = (): Promise<void> => {
@@ -807,33 +812,30 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         return false;
       }
     };
-    /**
-     * The CLI-presence probes, on this refresh's own controller
-     * (station#1815).
-     *
-     * `booleanProbe` already abandons a late answer, so before this the
-     * `which` child outlived the answer nobody would read; the signal is what
-     * ends it. That is the whole of what this line changes.
-     *
-     * No `timeoutMs`: a ceiling of its own would add a SECOND way for these
-     * fields to report "not installed" without a locator having said so, on
-     * a surface that drives the first-run launcher.
-     *
-     * It does not add a first one. `booleanProbe` already commits `false`
-     * when the refresh budget expires, and the snapshot below caches that for
-     * `STATUS_PREREQUISITES_CACHE_TTL_MS` — the same class of flap
-     * `reconcileExternalEngineReadiness` exists to absorb for the field
-     * beside these, and which these three have no equivalent for. That is
-     * pre-existing and is tracked in station#1832; it is recorded here so
-     * this comment is not read as a claim that these fields only ever report
-     * an observed absence.
-     */
-    const cliPresence = (command: string) =>
-      whichCmd(command, { signal: controller.signal });
+    const observePresence = async (
+      command: StatusCli,
+    ): Promise<CliPresenceEvidence> => {
+      const present = await raceWithSignal(
+        observeCliOnPath(command, { signal: controller.signal }),
+        controller.signal,
+      ).catch(() => undefined);
+      if (present !== undefined && !controller.signal.aborted) {
+        return {
+          state: present ? 'present' : 'absent',
+          freshness: 'observed',
+          observedAt: new Date().toISOString(),
+          source: 'path',
+        };
+      }
+      const prior = snapshot?.cliPresence[command];
+      return prior && prior.state !== 'unknown'
+        ? { ...prior, freshness: 'retained' }
+        : UNKNOWN_CLI_PRESENCE;
+    };
 
     refreshPromise = (async () => {
       const runtimeConnectionState = await raceWithSignal(
-        resolveRuntimeConnectionState(deps),
+        resolveRuntimeConnectionState(deps, controller.signal),
         controller.signal,
       ).catch(() => ({
         isEnabled: () => false,
@@ -845,21 +847,21 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
       ).catch(() => []);
       const [
         credentialsFound,
-        kiroCliInstalled,
+        [kiro, codex, claude],
         ollamaReachable,
-        codexInstalled,
-        claudeInstalled,
         externalEngineReadiness,
         prerequisites,
         developerServices,
       ] = await Promise.all([
         booleanProbe(checkBedrockCredentials()),
-        booleanProbe(cliPresence('kiro-cli')),
+        Promise.all([
+          observePresence('kiro-cli'),
+          observePresence('codex'),
+          observePresence('claude'),
+        ]),
         booleanProbe(
           deps.checkOllamaAvailability?.() ?? Promise.resolve(false),
         ),
-        booleanProbe(cliPresence('codex')),
-        booleanProbe(cliPresence('claude')),
         resolveExternalEngineReadiness(
           undefined,
           controller.signal,
@@ -877,10 +879,8 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
       ]);
       snapshot = {
         credentialsFound,
-        kiroCliInstalled,
+        cliPresence: { 'kiro-cli': kiro, codex, claude },
         ollamaReachable,
-        codexInstalled,
-        claudeInstalled,
         // See `reconcileExternalEngineReadiness`: an aborted/errored probe
         // (`cannot_verify`) must not overwrite an engine this cache has
         // already genuinely observed — that flap is what re-armed the
@@ -892,7 +892,15 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         prerequisites,
         developerServices,
       };
-      freshUntil = Date.now() + STATUS_PREREQUISITES_CACHE_TTL_MS;
+      if (
+        Object.values(snapshot.cliPresence).every(
+          (row) => row.freshness === 'observed',
+        )
+      ) {
+        freshUntil = Date.now() + STATUS_PREREQUISITES_CACHE_TTL_MS;
+      } else {
+        retryAt = Date.now() + STATUS_PREREQUISITES_REFRESH_BUDGET_MS;
+      }
     })()
       .catch(() => undefined)
       .finally(() => {
@@ -912,7 +920,7 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         : Date.now() >= freshUntil
           ? 'stale'
           : 'ready';
-      if (state !== 'ready') void refresh();
+      if (state !== 'ready' && Date.now() >= retryAt) void refresh();
       return {
         snapshot: snapshot ?? PENDING_DISCOVERY_SNAPSHOT,
         state,
@@ -1119,10 +1127,8 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
       : discoveryCache.read();
     const {
       credentialsFound,
-      kiroCliInstalled,
+      cliPresence,
       ollamaReachable,
-      codexInstalled,
-      claudeInstalled,
       externalEngineReadiness,
       prerequisites,
       developerServices,
@@ -1237,11 +1243,13 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
           bedrock: credentialsFound,
         },
       },
-      clis: {
-        'kiro-cli': kiroCliInstalled,
-        codex: codexInstalled,
-        claude: claudeInstalled,
-      },
+      clis: Object.fromEntries(
+        STATUS_CLIS.map((command) => [
+          command,
+          cliPresence[command].state === 'present',
+        ]),
+      ),
+      cliPresence,
       developerServices,
       externalEngines: externalEngineReadiness.engines,
       capabilities,

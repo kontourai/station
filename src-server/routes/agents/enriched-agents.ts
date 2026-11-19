@@ -28,6 +28,10 @@ import {
   unsupportedAgentProfileCapabilities,
 } from '../../services/agents/agent-profile-capabilities.js';
 import type { AgentMetadata } from '../../services/agents/agent-service.js';
+import { CATALOG_REFRESHING_REASON } from '../../services/execution-target/execution-target-resolver.js';
+
+export { CATALOG_REFRESHING_REASON } from '../../services/execution-target/execution-target-resolver.js';
+
 import { sessionAgentStartUnavailableReason } from '../../services/orchestration/session-agent-resolution.js';
 import type { Logger } from '../../utils/logger.js';
 import { sleep } from '../../utils/sleep.js';
@@ -390,8 +394,6 @@ export function externalEngineUnavailable(
  */
 const CATALOG_READ_ATTEMPTS = 3;
 const CATALOG_RETRY_DELAY_MS = 150;
-export const CATALOG_REFRESHING_REASON =
-  'Agent catalog is refreshing after a configuration change; retrying automatically.';
 
 /**
  * The catalog's two READ dependencies, bound to the service that owns the

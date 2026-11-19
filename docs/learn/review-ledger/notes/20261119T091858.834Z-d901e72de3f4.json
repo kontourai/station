@@ -1,0 +1,7 @@
+{
+  "revision": "f7359393303870a30a2ee84fd160a64048509644",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Confirmed the Task message builder has a single caller within the coordinator module. Its inputs, generated text, and dispatch path are unchanged after removing the unused export.","inputs":["src-server/services/projects/project-room-coordinator.ts"]}
+  ]
+}

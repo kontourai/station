@@ -101,6 +101,7 @@ import {
   type ProviderTaskStopResult,
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import {
   CredentialProfileEnvironmentError,
@@ -3443,6 +3444,14 @@ export class CodexAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
+    if (
+      record.activeTurnId &&
+      record.terminalPublishedForTurnId !== record.activeTurnId
+    )
+      throw new SendTurnRefusedError(
+        'Codex already has an active turn.',
+        'busy',
+      );
     const turnStartedAt = Date.now();
     const invocationId = input.invocationId;
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
@@ -3907,9 +3916,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     // #2486 review: the SESSION-level bookkeeping is a different claim — "is
     // THIS still the turn Station is tracking" — and must only change for
     // the turn actually interrupted. The RPC round-trip above can outlive a
-    // NEW turn starting (`sendTurn` always overwrites `activeTurnId`
-    // unconditionally); clearing here regardless would clobber that newer
-    // turn's own tracking for an interrupt that was never about it.
+    // successor starting after the old turn's terminal. Clearing here
+    // regardless would clobber the successor's tracking.
     if (record.activeTurnId === targetTurnId) {
       record.activeTurnId = undefined;
     }
