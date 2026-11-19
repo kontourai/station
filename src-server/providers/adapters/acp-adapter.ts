@@ -4968,10 +4968,14 @@ export class AcpAdapter implements ProviderAdapterShape {
       // offers no allow option falls through to the prompt.
       if (
         !needsPerson &&
+        !record.delegation?.denyApprovals &&
         acpApprovalModeAllows(record.approvalMode, params.toolCall?.kind)
       ) {
-        const allowed = mapAcpDecisionToOutcome('accept', params.options);
-        if (allowed.outcome !== 'cancelled') return { outcome: allowed };
+        const once = params.options.find(
+          (option) => option.kind === 'allow_once',
+        );
+        if (once)
+          return { outcome: { outcome: 'selected', optionId: once.optionId } };
       }
 
       // Tool-level session grant: "Allow for this session" covers every later

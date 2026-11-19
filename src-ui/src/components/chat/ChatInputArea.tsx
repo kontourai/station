@@ -2073,7 +2073,10 @@ export function ChatInputArea({
                 />
               ) : (
                 executionMode === EXECUTION_MODE.EXTERNAL &&
-                approvalModeKnobSupported(approvalEngineId) && (
+                approvalModeKnobSupported(
+                  approvalEngineId,
+                  acpApproval?.control,
+                ) && (
                   <ApprovalModeChip
                     // Structural reset (not blur-dependent) for the chip's local
                     // confirm state when the active session changes — this
@@ -2081,6 +2084,7 @@ export function ChatInputArea({
                     // remount otherwise (archive#727 3).
                     key={sessionId}
                     engineConnectionId={approvalEngineId}
+                    acpControl={acpApproval?.control}
                     toolPolicyDelivery={toolPolicyDelivery}
                     sessionOverride={approvalModeOverride?.mode}
                     sessionOverrideState={approvalModeOverride?.state}

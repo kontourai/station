@@ -74,6 +74,7 @@ export function StartApprovalSummary({
           : undefined;
   const resolved = resolveEffectiveApprovalMode({
     engineConnectionId: engine ?? undefined,
+    acpControl: acp?.control,
     sessionOverride: pick,
     agentDefault: actual?.execution?.approvalMode,
     projectDefault,
@@ -81,7 +82,7 @@ export function StartApprovalSummary({
     personalDefault,
     stationDefault: config?.defaultApprovalMode,
   });
-  if (!approvalModeKnobSupported(engine)) return null;
+  if (!approvalModeKnobSupported(engine, acp?.control)) return null;
   // #4518: an inherited default above the managed ceiling starts the chat at
   // the ceiling (the server lowers it), so the chip and the open picker show
   // that. This start's own pick is shown as picked: above the ceiling the

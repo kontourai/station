@@ -236,7 +236,7 @@ export function createCustomAppearanceRoutes(deps: {
             {
               success: false,
               code: 'custom_appearance_identity_required',
-              error: error.message,
+              error: 'The delegated appearance proposal grant expired.',
             },
             403,
           );

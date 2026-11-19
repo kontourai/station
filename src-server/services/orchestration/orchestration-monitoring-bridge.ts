@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { isHtmlReplyPublication } from '@kontourai/station-contracts/html-reply';
 import { isRuntimeEventContentRef } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { providerUsageScope } from '@kontourai/station-shared/usage-fold';
@@ -188,7 +189,10 @@ export class OrchestrationMonitoringBridge {
         provider: context.provider,
         model: context.model,
       });
-    } else if (event.method === 'tool.completed') {
+    } else if (
+      event.method === 'tool.completed' &&
+      !isHtmlReplyPublication(event)
+    ) {
       // Consume the open call, mirroring MetadataHandler: a redelivered
       // completion for a reused id must not pick up a stale start.
       const open = event.toolCallId

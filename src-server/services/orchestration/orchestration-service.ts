@@ -55,9 +55,10 @@ import {
   type ConfinementNetworkPlan,
   STATION_CONFINEMENT_RECORD_METADATA_KEY,
 } from '@kontourai/station-contracts/execution-confinement';
-import type {
-  HtmlReplyPage,
-  HtmlReplyReference,
+import {
+  HTML_REPLY_PUBLICATION_ID_PREFIX,
+  type HtmlReplyPage,
+  type HtmlReplyReference,
 } from '@kontourai/station-contracts/html-reply';
 import type { SessionGrantScope } from '@kontourai/station-contracts/input-request';
 import {
@@ -15842,7 +15843,7 @@ export class OrchestrationService {
       return store.htmlReplyPages().publish(sessionId, conversationId, page, {
         turnStartId: start.eventId,
         commit: (reference, insert) => {
-          const itemId = `html-reply:${reference.pageId}`;
+          const itemId = `${HTML_REPLY_PUBLICATION_ID_PREFIX}${reference.pageId}`;
           const published = this.publishCanonicalEvent(
             {
               eventId: reference.pageId,

@@ -1,3 +1,4 @@
+import { isHtmlReplyPublication } from '@kontourai/station-contracts/html-reply';
 import { parseProjectSessionContextComposed } from '@kontourai/station-contracts/project-session-context';
 import { PROJECT_SESSION_CONTEXT_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -472,8 +473,11 @@ export function assembleTurnProvenanceEnvelopes(
         accumulator.terminal = event;
         break;
       }
-      case 'tool.started':
       case 'tool.completed':
+        if (isHtmlReplyPublication(event)) break;
+        accumulatorFor(key).toolEvents.push(event);
+        break;
+      case 'tool.started':
         accumulatorFor(key).toolEvents.push(event);
         break;
       case 'token-usage.updated':

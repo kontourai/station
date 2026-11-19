@@ -1,3 +1,4 @@
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   type ToolPolicyDelivery,
   toolPolicyDeliveryExplanation,
@@ -45,6 +46,7 @@ const loadComposerModeSheet = () =>
 interface ApprovalModeChipProps {
   /** The session's clean engine-connection identity (for example `codex`). */
   engineConnectionId?: string | null;
+  acpControl?: AcpApprovalControl;
   isNewSession?: boolean;
   /**
    * Resolved from the bound connection's authoritative engine capability
@@ -123,6 +125,7 @@ interface ApprovalModeChipProps {
  */
 function ApprovalModeChipContent({
   engineConnectionId,
+  acpControl,
   isNewSession = false,
   toolPolicyDelivery,
   sessionOverride,
@@ -139,7 +142,7 @@ function ApprovalModeChipContent({
   const policySummary = useManagedPolicySummary();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  if (!approvalModeKnobSupported(engineConnectionId)) {
+  if (!approvalModeKnobSupported(engineConnectionId, acpControl)) {
     return null;
   }
   const policyLabel = toolPolicyDeliveryLabel(toolPolicyDelivery);
@@ -157,6 +160,7 @@ function ApprovalModeChipContent({
   const notApplied = sessionOverrideState === 'not-applied';
   const effective = resolveEffectiveApprovalMode({
     engineConnectionId,
+    acpControl,
     sessionOverride: notApplied ? undefined : sessionOverride,
     agentDefault: notApplied ? undefined : agentDefault,
     projectDefault: !notApplied && isNewSession ? projectDefault : undefined,

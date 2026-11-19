@@ -1,4 +1,7 @@
-import type { HtmlReplyReference } from '@kontourai/station-contracts/html-reply';
+import {
+  HTML_REPLY_PUBLICATION_ID_PREFIX,
+  type HtmlReplyReference,
+} from '@kontourai/station-contracts/html-reply';
 import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import { htmlReplyReference } from './html-reply-reference';
 import { transcriptMcpToolRef } from './mcp-app-tool-ref';
@@ -184,7 +187,11 @@ export function splitToolCallRuns<P extends ToolCallLike>(
           ? (htmlReplyReference(part) ??
             htmlReplyReference(part.output ?? part.result))
           : undefined;
-      if (!reference || part.toolCallId !== `html-reply:${reference.pageId}`)
+      if (
+        !reference ||
+        part.toolCallId !==
+          `${HTML_REPLY_PUBLICATION_ID_PREFIX}${reference.pageId}`
+      )
         pending.push({ part, index });
       if (reference) {
         flushRun();

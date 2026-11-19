@@ -32,8 +32,6 @@ const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set([
   'codex',
   'muse',
   'opencode',
-  'antigravity',
-  'acp',
 ]);
 
 /**
@@ -52,8 +50,14 @@ export function nonAcpApprovalEngine(
     : undefined;
 }
 
-export function approvalModeKnobSupported(engineId?: string | null): boolean {
-  return !!engineId && APPROVAL_MODE_KNOB_ENGINE_IDS.has(engineId);
+export function approvalModeKnobSupported(
+  engineId?: string | null,
+  acpControl?: AcpApprovalControl,
+): boolean {
+  return (
+    acpControl === 'requests' ||
+    (!!engineId && APPROVAL_MODE_KNOB_ENGINE_IDS.has(engineId))
+  );
 }
 
 /**
@@ -312,6 +316,7 @@ interface EffectiveApprovalMode {
  */
 export function resolveEffectiveApprovalMode({
   engineConnectionId,
+  acpControl,
   sessionOverride,
   agentDefault,
   projectDefault,
@@ -320,6 +325,7 @@ export function resolveEffectiveApprovalMode({
   stationDefault,
 }: {
   engineConnectionId?: string | null;
+  acpControl?: AcpApprovalControl;
   sessionOverride?: unknown;
   /** The session's Agent's own default (`execution.approvalMode`). */
   agentDefault?: unknown;
@@ -363,7 +369,7 @@ export function resolveEffectiveApprovalMode({
   }
 
   const agentDefaultMode =
-    approvalModeKnobSupported(engineConnectionId) &&
+    approvalModeKnobSupported(engineConnectionId, acpControl) &&
     isApprovalMode(agentDefault) &&
     agentDefault !== 'connection-default'
       ? agentDefault
@@ -379,7 +385,7 @@ export function resolveEffectiveApprovalMode({
   if (
     !defaultPicked &&
     projectDefaultUnavailable &&
-    approvalModeKnobSupported(engineConnectionId)
+    approvalModeKnobSupported(engineConnectionId, acpControl)
   ) {
     return {
       mode: 'connection-default',
@@ -390,7 +396,7 @@ export function resolveEffectiveApprovalMode({
 
   const projectDefaultMode =
     !defaultPicked &&
-    approvalModeKnobSupported(engineConnectionId) &&
+    approvalModeKnobSupported(engineConnectionId, acpControl) &&
     isApprovalMode(projectDefault?.approvalMode)
       ? projectDefault.approvalMode
       : undefined;
@@ -407,7 +413,7 @@ export function resolveEffectiveApprovalMode({
 
   if (
     !defaultPicked &&
-    approvalModeKnobSupported(engineConnectionId) &&
+    approvalModeKnobSupported(engineConnectionId, acpControl) &&
     isApprovalMode(personalDefault) &&
     personalDefault !== 'connection-default'
   ) {
@@ -424,7 +430,7 @@ export function resolveEffectiveApprovalMode({
   // Settings row's own copy says so too, but the gate is here because this
   // is what every surface reads.
   const stationDefaultMode =
-    approvalModeKnobSupported(engineConnectionId) &&
+    approvalModeKnobSupported(engineConnectionId, acpControl) &&
     isApprovalMode(stationDefault) &&
     stationDefault !== 'connection-default'
       ? stationDefault

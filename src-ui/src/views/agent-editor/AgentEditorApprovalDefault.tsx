@@ -41,6 +41,7 @@ export function AgentEditorApprovalDefault({
   if (
     !approvalModeKnobSupported(
       acpApproval ? acpApproval.engineId : nonAcpApprovalEngine(connectionId),
+      acpApproval?.control,
     )
   ) {
     return null;
