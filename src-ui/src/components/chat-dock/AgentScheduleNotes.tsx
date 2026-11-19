@@ -14,6 +14,7 @@ import {
   usePresenceList,
 } from '../../hooks/usePresenceList';
 import { clockTime } from '../../utils/relativeTime';
+import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
 import { DisclosureToggle } from '../DisclosureToggle';
@@ -80,6 +81,9 @@ export function AgentScheduleNotes({
     !confirmation
   )
     return null;
+  const confirmationFailure = automationConfirmationError
+    ? describeStationFailure(automationConfirmationError).body
+    : undefined;
   const now = Date.now();
   const wakeUpBusy = approveWakeUp.isPending || declineWakeUp.isPending;
   const automationBusy =
@@ -133,7 +137,7 @@ export function AgentScheduleNotes({
               }
               errorMessage={
                 confirmAutomationProposal.variables?.id === item.id
-                  ? automationConfirmationError?.message
+                  ? confirmationFailure
                   : declineAutomationProposal.isError &&
                       declineAutomationProposal.variables === item.id
                     ? "That didn't go through. Try again."

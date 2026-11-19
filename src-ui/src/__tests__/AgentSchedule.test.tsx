@@ -414,12 +414,12 @@ describe('an Automation proposal waits for the person (#4830)', () => {
     },
   );
 
-  test('a binding refusal leaves the proposal open with the remedy from Station', async () => {
+  test('a binding refusal leaves the proposal open with a recovery step', async () => {
     creationRefusal = 'The Agent changed. Decline it and ask the agent again.';
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
     expect((await screen.findByRole('alert')).textContent).toBe(
-      creationRefusal,
+      'The reviewed Agent or its Project access changed. Decline it and ask the Agent again.',
     );
     expect(screen.getByRole('button', { name: 'Decline' })).toBeTruthy();
     expect(screen.queryByRole('status')).toBeNull();

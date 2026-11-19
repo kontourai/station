@@ -7,10 +7,13 @@ import {
   getJson,
   mutateJson,
   orchestrationQueries,
+  readEnvelopeOrThrow,
+  StationHttpError,
 } from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { StationUiError } from '../utils/StationUiError';
 
 /**
  * What an agent scheduled in one conversation: its check-backs, the job and
@@ -46,11 +49,7 @@ async function readData<T>(response: Response): Promise<T> {
     body = undefined;
   }
   if (!response.ok || body?.success !== true || body.data === undefined)
-    throw new Error(
-      typeof body?.error === 'string'
-        ? body.error
-        : `Request failed (${response.status})`,
-    );
+    throw new Error(body?.error ?? `Request failed (${response.status})`);
   return body.data;
 }
 
@@ -199,24 +198,35 @@ export function useAgentSchedule(
       kind: AutomationProposal['kind'];
       enable: boolean;
     }) => {
-      const result = await readData<{
+      const response = await mutateJson(
+        `${base}/automation-proposals/${encodeURIComponent(input.id)}/confirm`,
+        'POST',
+        options(),
+        { enable: input.enable },
+      );
+      const result = await readEnvelopeOrThrow<{
         createdId: string;
         enabled: boolean;
         message?: string;
-      }>(
-        await mutateJson(
-          `${base}/automation-proposals/${encodeURIComponent(input.id)}/confirm`,
-          'POST',
-          options(),
-          { enable: input.enable },
-        ),
-      );
+      }>(response).catch((error: unknown) => {
+        if (
+          error instanceof StationHttpError &&
+          error.status === 409 &&
+          error.code === 'automation_proposal_binding_changed'
+        )
+          throw new StationUiError(
+            'The reviewed Agent or its Project access changed. Decline it and ask the Agent again.',
+          );
+        throw error;
+      });
       if (
         typeof result?.createdId !== 'string' ||
         result.createdId.length === 0 ||
         typeof result.enabled !== 'boolean'
       )
-        throw new Error('Station did not report the confirmation outcome.');
+        throw new StationUiError(
+          'Station did not report the confirmation outcome. Check the proposal before trying again.',
+        );
       return {
         createdId: result.createdId,
         enabled: result.enabled,
