@@ -147,6 +147,7 @@ import {
   type ProjectChatComposerDraft,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
+import { stationViewReadQueryOptions } from '../../lib/queryDefaults';
 import {
   requestTaskShaping,
   TASK_SHAPING_INSTRUCTION,
@@ -803,7 +804,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { resolveModelLabel } = useCatalogModelLabel();
   // The one inbox derivation, shared with the sidebar's Open-chats rows.
   const durableTasks = useTasksQuery();
-  const remoteInboxSessions = useRemoteSessionsQuery();
+  const remoteInboxSessions = useRemoteSessionsQuery(
+    stationViewReadQueryOptions,
+  );
   const inboxItems = useInboxWorkItems(
     agents,
     orchestrationSessions,

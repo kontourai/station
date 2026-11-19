@@ -101,7 +101,10 @@ not mount a plugin or prove MCP resource execution, approval or sandbox behavior
 
 Use opaque `instanceId` and `stateKey` values. Bind the exact contribution
 snapshot at placement time so later rendering cannot be retargeted by a name or
-descriptor-string match.
+descriptor-string match. For a Project layout tab, use the occurrence ID and
+state key returned by the Project pane catalog. The catalog can issue compact
+values when the composed identities exceed the host limit. Manifest
+`drillIns` continue to name the pane descriptor.
 
 ```ts
 import {

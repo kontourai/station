@@ -414,6 +414,13 @@ new device establishes the starting version without showing an upgrade dialog.
 licenses, and links to the privacy policy, license and support. Development
 servers have no license list.
 
+## People and setup access
+
+Open **Settings → People** to see who can connect. If your Device has limited
+access, the section directs you to the Station operator. Under **Settings →
+System**, checking for existing setup also requires permission. Ask the
+Station operator for setup import access.
+
 ## Settings your organization manages
 
 On a machine your organization manages, some rows carry a **Managed by
