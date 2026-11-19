@@ -1483,15 +1483,15 @@
     "list_automation_episodes": {
       "cli": ["automation episodes"]
     },
+    "list_automation_proposals": {
+      "exempt": "agent-self",
+      "reason": "Lists the caller's own Automation proposals."
+    },
     "list_automation_rules": {
       "cli": ["automation rules"]
     },
     "list_automation_sources": {
       "cli": ["automation sources"]
-    },
-    "list_automation_proposals": {
-      "exempt": "agent-self",
-      "reason": "Lists the caller's own Automation proposals."
     },
     "list_conversations": {
       "cli": ["agents conversations"]
