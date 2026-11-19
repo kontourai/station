@@ -15737,21 +15737,35 @@ export class OrchestrationService {
     sessionId: string,
   ):
     | ((conversationId: string, page: HtmlReplyPage) => HtmlReplyReference)
+    | null
     | undefined {
+    const adapterId =
+      this.sessionAdapters.get(sessionId)?.provider ??
+      this.options.eventStore?.readSessionByThread(sessionId)?.provider;
+    if (adapterId !== 'acp') return undefined;
     const turn = this.activeStationControlTurn(sessionId);
-    if (turn?.adapterId !== 'acp') return undefined;
-    const pages = this.options.eventStore?.htmlReplyPages();
-    if (!pages) return undefined;
+    const store = this.options.eventStore;
+    const start = store?.latestOwnTurnStarted(sessionId)?.payload;
+    if (
+      !store ||
+      !turn ||
+      start?.method !== 'turn.started' ||
+      start.turnId !== turn.turnId
+    )
+      return null;
     return (conversationId, page) => {
-      if (!turn.isCurrent() || !this.deltaCoalescer.flushThread(sessionId))
+      if (
+        !turn.isCurrent() ||
+        store.latestOwnTurnStarted(sessionId)?.payload.eventId !==
+          start.eventId ||
+        !this.deltaCoalescer.flushThread(sessionId)
+      )
         throw new Error(
           'The publishing turn ended before the visual reply was ready.',
         );
-      return pages.publish(
-        sessionId,
-        conversationId,
-        page,
-        (reference, insert) => {
+      return store.htmlReplyPages().publish(sessionId, conversationId, page, {
+        turnStartId: start.eventId,
+        commit: (reference, insert) => {
           const itemId = `html-reply:${reference.pageId}`;
           const published = this.publishCanonicalEvent(
             {
@@ -15760,6 +15774,9 @@ export class OrchestrationService {
               provider: 'acp',
               threadId: sessionId,
               turnId: turn.turnId,
+              ...(start.invocationId
+                ? { invocationId: start.invocationId }
+                : {}),
               itemId,
               toolCallId: itemId,
               toolName: 'station-control/html_render',
@@ -15772,7 +15789,7 @@ export class OrchestrationService {
           if (!published)
             throw new Error('The turn could not publish its visual reply.');
         },
-      );
+      });
     };
   }
 
@@ -17002,10 +17019,13 @@ export class OrchestrationService {
       this.acceptedTurnConfinement.delete(event.threadId);
     }
     if (
-      event.method === 'session.exited' ||
-      event.method === 'turn.completed' ||
-      event.method === 'turn.aborted' ||
-      (event.method === 'runtime.error' && !isDeferredRetriableTurnError(event))
+      this.delegatedAppearance.has(event.threadId) &&
+      (event.method === 'session.exited' ||
+        ((event.method === 'turn.completed' ||
+          event.method === 'turn.aborted' ||
+          (event.method === 'runtime.error' &&
+            !isDeferredRetriableTurnError(event))) &&
+          !this.activeTurnIdOfThread(event.threadId)))
     )
       this.delegatedAppearance.delete(event.threadId);
     if (

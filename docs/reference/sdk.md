@@ -591,7 +591,8 @@ authority have no effect. All status fields are compared.
 
 An ACP connection can report `stationApprovalRequests: true` when the host
 supports applying chat approval modes to the engine's ACP permission requests.
-Antigravity uses this field. Older hosts omit it.
+This covers Antigravity and other ACP engines using the standard permission
+callback. Older hosts omit the field.
 
 `useOrchestrationSessionsQuery(config?, requestScope?)` shares one list cache
 per API base and authority. SSE invalidates it promptly, while a 60-second

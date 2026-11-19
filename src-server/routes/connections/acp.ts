@@ -522,9 +522,6 @@ function connectionStatusView(
       sessionId: null,
       mcpServers: [],
     }),
-    ...(acpApprovalControl(cfg.command) === 'requests'
-      ? { stationApprovalRequests: true as const }
-      : {}),
   };
 }
 
@@ -669,9 +666,12 @@ export function createACPRoutes(
   app.get('/connections', async (c) => {
     const allConnections = await installedACPConnections(ctx.configLoader);
     const status = ctx.acpBridge.getStatus();
-    const connections = allConnections.map((cfg) =>
-      connectionStatusView(cfg, status),
-    );
+    const connections = allConnections.map((cfg) => ({
+      ...connectionStatusView(cfg, status),
+      ...(acpApprovalControl(cfg.command) === 'requests'
+        ? { stationApprovalRequests: true as const }
+        : {}),
+    }));
     return c.json({ success: true, data: connections });
   });
 

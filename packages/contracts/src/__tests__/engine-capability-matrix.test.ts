@@ -1175,18 +1175,17 @@ describe('acpApprovalControl (#3290)', () => {
     }
   });
 
-  test('every other command, a wrapper included, leaves the engine to decide', () => {
+  test('external ACP commands use the shared permission-request path', () => {
     for (const command of [
+      'agy',
       'kiro-cli',
       'npx',
       'opencode-ai',
       '/usr/bin/opencode/agent',
-      '',
-      undefined,
-      null,
     ]) {
-      expect(acpStationApprovalEngine(command)).toBeUndefined();
-      expect(acpApprovalControl(command)).toBe('engine');
+      expect(acpApprovalControl(command)).toBe('requests');
     }
+    for (const command of ['', undefined, null])
+      expect(acpApprovalControl(command)).toBe('engine');
   });
 });

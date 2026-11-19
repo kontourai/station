@@ -1119,9 +1119,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   shown as applied: the chip shows what still runs, marked pending, with text
   that differs from Default ("Own settings", or "Ask · kept"), and its name
   says the pick was not applied. A newly recorded decision clears that.
-  Antigravity offers Station's approval modes for the requests it sends.
-  It keeps control of its own tool rules. Other ACP connections show
-  **Approval: Set by engine** with a read-only explanation. Codex's Default likewise names the engine's own settings
+  Other ACP engines, including Antigravity, use Station's approval modes for
+  the requests they send while keeping their own tool rules. If the host
+  has no request-mode support, the chip shows **Approval: Set by engine**. Codex's Default likewise names the engine's own settings
   ("Default — Codex's own settings"), and its description states what
   an unconfigured Codex does there, as a bound on which commands run unasked:
   none that uses the network or writes outside the chat's folder and temp.

@@ -73,6 +73,13 @@ describe('StartApprovalSummary on the engine default', () => {
     ).toBeTruthy();
   });
 
+  test('an Antigravity connection id alone offers no approval picker', () => {
+    const agent = agentOn('antigravity');
+    agents.splice(0, agents.length, agent);
+    render(<StartApprovalSummary agent={agent} onPick={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /^Permissions: / })).toBeNull();
+  });
+
   test('another engine keeps the unconfirmed-mode explanation', () => {
     const agent = agentOn('claude');
     agents.splice(0, agents.length, agent);

@@ -169,6 +169,7 @@ import {
   ForegroundMessageIndeterminateError,
   ForegroundMessageTurnIdentityUnavailableError,
 } from '../../services/execution-target/execution-target-execution.js';
+import { connectedAccountOwnerIdForTurnAccount } from '../../services/identity/connected-account-owner.js';
 import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import {
@@ -4639,6 +4640,7 @@ export function createOrchestrationRoutes(
           !caller?.principal?.elevationEligible ||
           caller.assurance === 'bearer-exposed' ||
           caller.principal.id !== userId ||
+          !connectedAccountOwnerIdForTurnAccount(caller.principal.id) ||
           tenantExecutionContextForRequest(c.req.raw) ||
           resolvedDelegation?.provenance !== 'caller-derived' ||
           delegation?.depth !== 1 ||

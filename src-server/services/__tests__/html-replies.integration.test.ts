@@ -177,6 +177,7 @@ test('the ACP render route records the page with its transcript event before any
         metadata: { connectionId: 'agy', agentSlug: 'agy' },
       },
     });
+    expect((await publish()).status).toBe(409);
     await service.dispatch({
       type: 'sendTurn',
       input: { threadId, input: 'Publish a page' },
@@ -212,6 +213,9 @@ test('the ACP render route records the page with its transcript event before any
       const rendered = await publish();
       expect(rendered.status).toBe(200);
       const { htmlReply } = await rendered.json();
+      const retry = await publish();
+      expect(retry.status).toBe(200);
+      expect(await retry.json()).toEqual({ success: true, htmlReply });
       expect(received).toEqual([htmlReply.pageId]);
       store.appendEvent({
         eventId: 'provider-echo',

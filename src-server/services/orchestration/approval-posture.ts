@@ -35,8 +35,8 @@ import {
 /**
  * Whether this engine's adapter maps `approvalMode` to a native knob.
  *
- * ACP support follows the connection. Station can configure OpenCode's
- * rules at launch or answer the permission requests Antigravity issues.
+ * Station can configure OpenCode at launch and answer standard permission
+ * requests from other ACP engines.
  */
 export function approvalKnobSupported(
   provider: EngineId,

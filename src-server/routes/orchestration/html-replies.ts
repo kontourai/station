@@ -35,6 +35,7 @@ export function createHtmlReplyRoutes(deps: {
     sessionId: string,
   ):
     | ((conversationId: string, page: HtmlReplyPage) => HtmlReplyReference)
+    | null
     | undefined;
   /** The frame origin, only when this request's client can reach it. */
   frameOrigin?(c: Context): string | undefined;
@@ -65,6 +66,11 @@ export function createHtmlReplyRoutes(deps: {
       operation === 'render'
         ? deps.capturePublisher?.(caller.sessionId)
         : undefined;
+    if (publish === null)
+      return c.json(
+        { success: false, error: 'A visual reply needs an active turn.' },
+        409,
+      );
     const body = await readBoundedRequestBody(
       c.req.raw,
       HTML_REPLY_LIMITS.sourceBytes * 6 + 4096,

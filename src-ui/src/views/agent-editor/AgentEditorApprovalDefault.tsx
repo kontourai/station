@@ -8,6 +8,7 @@ import {
   APPROVAL_MODE_OPTIONS,
   acpApprovalFor,
   approvalModeKnobSupported,
+  nonAcpApprovalEngine,
 } from '../../utils/approvalMode';
 import type { AgentEditorFormProps } from './types';
 
@@ -39,7 +40,7 @@ export function AgentEditorApprovalDefault({
   );
   if (
     !approvalModeKnobSupported(
-      acpApproval ? acpApproval.engineId : connectionId,
+      acpApproval ? acpApproval.engineId : nonAcpApprovalEngine(connectionId),
     )
   ) {
     return null;

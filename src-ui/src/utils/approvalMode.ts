@@ -33,6 +33,7 @@ const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set([
   'muse',
   'opencode',
   'antigravity',
+  'acp',
 ]);
 
 /**
@@ -41,6 +42,16 @@ const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set([
  * the Station agent runtime) has no native knob, so the composer chip
  * renders read-only for them.
  */
+export function nonAcpApprovalEngine(
+  connectionId: string | null | undefined,
+): string | undefined {
+  return connectionId === 'claude' ||
+    connectionId === 'codex' ||
+    connectionId === 'muse'
+    ? connectionId
+    : undefined;
+}
+
 export function approvalModeKnobSupported(engineId?: string | null): boolean {
   return !!engineId && APPROVAL_MODE_KNOB_ENGINE_IDS.has(engineId);
 }
@@ -71,7 +82,8 @@ export function acpApprovalFor(
   return {
     control: supported ? control : 'engine',
     engineId: supported
-      ? (acpStationApprovalEngine(connection.command) ?? null)
+      ? (acpStationApprovalEngine(connection.command) ??
+        (control === 'requests' ? 'acp' : null))
       : null,
     ...(connection.name ? { engineName: connection.name } : {}),
   };
@@ -151,6 +163,7 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
       'File edits run on their own; shell commands, web access and MCP tools still ask.',
   },
   never: {
+    acp: 'Station answers ordinary approval requests automatically. The engine controls which tools can run. Questions, plan exits and policy approvals still ask.',
     antigravity:
       'Station answers ordinary approval requests automatically. Antigravity still decides which tools can run. Questions, plan exits and policy approvals still ask.',
     // #3290: nothing asks; the built-in subagents may run (their rules cannot

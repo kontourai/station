@@ -13,6 +13,7 @@ import {
   approvalModeDescription,
   approvalModeKnobSupported,
   approvalModeSourceNote,
+  nonAcpApprovalEngine,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
@@ -62,7 +63,7 @@ export function StartApprovalSummary({
   const acp = acpApprovalFor(
     acpConnections?.find((connection) => connection.id === connectionId),
   );
-  const engine = acp ? acp.engineId : connectionId;
+  const engine = acp ? acp.engineId : nonAcpApprovalEngine(connectionId);
   const personalDefault =
     engine === 'codex'
       ? account.data?.values.interactiveApprovalModes?.codex

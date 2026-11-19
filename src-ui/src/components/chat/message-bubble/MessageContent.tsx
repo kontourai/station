@@ -1,4 +1,5 @@
 import { memo, useContext, useMemo } from 'react';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import type { ChatMessage } from '../../../types';
 import {
   projectedRuntimeErrorRaw,
@@ -156,6 +157,7 @@ function MessageContentComponent({
     );
 
   const approvalsHeld = useContext(ApprovalsHeldContext);
+  const isMobile = useIsMobile();
   const renderToolCall = (part: MessageContentPart, index: number) => (
     <ToolCallDisplay
       key={index}
@@ -297,6 +299,7 @@ function MessageContentComponent({
                 // A settled reasoning-only row starts collapsed: the answer
                 // is not still coming, so there is nothing to follow along.
                 hasAnswerText={isStreamingMessage ? hasAnswerText : true}
+                autoExpand={!isMobile}
               />
             );
           }

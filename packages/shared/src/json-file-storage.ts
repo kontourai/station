@@ -247,7 +247,7 @@ export async function mutateJsonFile<T>(
   path: string,
   fallback: T,
   update: (current: T) => T,
-  options?: Pick<JsonFileWriteOptions, 'maxBytes' | 'label'>,
+  options?: Pick<JsonFileWriteOptions, 'maxBytes' | 'label' | 'assertCurrent'>,
 ): Promise<T> {
   await mkdirAsync(dirname(path), { recursive: true, mode: 0o700 });
   const release = await acquireFileMutationLockAsync(`${path}.mutation`);

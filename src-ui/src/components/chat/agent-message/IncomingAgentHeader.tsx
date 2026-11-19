@@ -131,7 +131,10 @@ export function IncomingAgentCause({
               ? incomingMessageLabel(sender)
               : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
   return (
-    <details className="agent-cause-disclosure">
+    <details
+      className="agent-cause-disclosure"
+      open={sender.kind === 'delegation-result' || undefined}
+    >
       <summary className="agent-cause">
         <InboxGlyph />
         <span>{label}</span>

@@ -75,7 +75,7 @@ A delayed publish cannot recreate pages after the Session was deleted.
 The small `{version, pageId, sessionId}` reference travels in the ordinary MCP
 tool result. During an active ACP turn, Station commits the visual reply's
 transcript entry with the page and suppresses any later engine echo of the same
-reference. The preview stays visible if ACP truncates or omits the tool output.
+reference. Repeating an identical render within that turn reuses the page. The preview stays visible if ACP truncates or omits the tool output.
 Both live and replayed transcript paths recognize the publication. The display
 reference is not authority: the read route checks the same `canUserReadSession`
 predicate used by other history reads, then looks up that Session/page pair.

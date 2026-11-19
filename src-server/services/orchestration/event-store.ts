@@ -4882,7 +4882,7 @@ export class EventStore {
           reference?.sessionId === projectedEvent.threadId &&
           reference.pageId !== projectedEvent.eventId &&
           this.hasEventId(reference.pageId) &&
-          this.htmlReplyPages().read(reference)
+          this.htmlReplyPages().contains(reference)
         )
           projectedEvent.output = { success: true };
       }
