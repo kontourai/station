@@ -1,0 +1,11 @@
+{
+  "revision": "67c9cb2878871b23230e1c6d66681b065e277ebd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the ChatDock projection after the paired browser exposed the missing pending options field. It now keeps requested options distinct from the confirmed Session mode. The Session event, execution target, transport, and read contracts retain their existing shape.","inputs":["src-ui/src/hooks/useDerivedSessions.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the ChatDock projection after the paired browser exposed the missing pending options field. It now keeps requested options distinct from the confirmed Session mode. The Session event, execution target, transport, and read contracts retain their existing shape.","inputs":["src-ui/src/hooks/useDerivedSessions.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the ChatDock projection after the paired browser exposed the missing pending options field. It now keeps requested options distinct from the confirmed Session mode. The Session event, execution target, transport, and read contracts retain their existing shape.","inputs":["src-ui/src/hooks/useDerivedSessions.ts"]}
+  ]
+}
