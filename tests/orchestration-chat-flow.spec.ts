@@ -1,12 +1,15 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   STATION_ENVELOPE_HEADER,
   STATION_ENVELOPE_HEADER_VALUE,
 } from '@kontourai/station-contracts/http';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import { ORCHESTRATION_STREAM_CAUGHT_UP_EVENT } from '@kontourai/station-contracts/runtime-events';
 import { expect, type Locator } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
 import { openCodingView } from './helpers/coding-stack';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
-import { test } from './helpers/fixture-audit';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
@@ -271,6 +274,40 @@ test.describe('Orchestration Chat Flow', () => {
       });
     });
 
+    await page.route('**/api/conversations/conv-1/open', (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      const data: ConversationOpenResolution = {
+        status: 'resolved',
+        currentSessionId: 'session-1',
+        conversation: {
+          id: 'conv-1',
+          source: 'runtime',
+          title: 'Dev Agent Chat',
+          agentSlug: agentId('dev-agent'),
+          projectSlug: 'dev',
+          createdAt: '2026-04-05T11:59:58.000Z',
+          updatedAt: '2026-04-05T11:59:59.000Z',
+          messageCount: 2,
+          mutable: false,
+          answerability: { answerable: true },
+        },
+        execution: {
+          sessionId: 'session-1',
+          agentId: agentId('dev-agent'),
+          provider: 'codex',
+          engineConnectionId: 'codex',
+          model: 'claude-sonnet',
+        },
+        transcript: { available: true, owner: 'runtime', messageCount: 2 },
+        canContinue: true,
+        callerAccess: { continue: true, startChat: true },
+        answerability: { answerable: true },
+        recoveryActions: [],
+      };
+      return route.fulfill({ json: { success: true, data } });
+    });
+
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
     await page.evaluate(() => {
       sessionStorage.setItem(
@@ -369,6 +406,12 @@ test.describe('Orchestration Chat Flow', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator('#chat-workspace-pane')).toBeVisible();
     await expect(page.locator('#chat-dock')).toHaveCount(0);
+    // The server finishes replay before delivering new live requests.
+    await emitMockOrchestrationEvent(
+      page,
+      ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
+      {},
+    );
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
         provider: 'codex',
