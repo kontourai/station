@@ -1,0 +1,29 @@
+{
+  "revision": "5da473816b254756ff52222762a0c1cc2caa9b7a",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The Codex busy guard reads only the current acceptance’s terminal marker. A repeated provider turn ID keeps historical notification attribution without treating its new acceptance as settled.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The reused-ID wire fixture accepts a successor after completion and refuses a further send before it reaches stdin. Existing terminal attribution assertions remain covered.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"The reused-ID wire fixture accepts a successor after completion and refuses a further send before it reaches stdin. Existing terminal attribution assertions remain covered.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]}
+  ]
+}
