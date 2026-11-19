@@ -444,10 +444,10 @@ describe('NewProjectModal starter layout picker', () => {
         'value',
         '',
       );
-      expect(screen.getByLabelText(/Project folder/)).toHaveProperty(
-        'value',
-        '',
-      );
+      expect(screen.queryByLabelText(/Project folder/)).toBeNull();
+      expect(
+        screen.getByRole('radio', { name: /^Blank workspace/ }),
+      ).toHaveProperty('checked', true);
       expect(screen.getByLabelText(/Description/)).toHaveProperty('value', '');
       authorityState.key = 'creating-account-fresh-activation';
       authorityState.recoveryKey = creatingAccount;
@@ -459,7 +459,7 @@ describe('NewProjectModal starter layout picker', () => {
       fireEvent.change(screen.getByPlaceholderText('My Project'), {
         target: { value: 'Quarterly plan' },
       });
-      fireEvent.click(screen.getByRole('radio', { name: /Blank Project/ }));
+      fireEvent.click(screen.getByRole('radio', { name: /^Blank workspace/ }));
       fireEvent.click(screen.getByRole('button', { name: 'Create' }));
       await waitFor(() =>
         expect(setProjectMock).toHaveBeenCalledWith(created.slug),
