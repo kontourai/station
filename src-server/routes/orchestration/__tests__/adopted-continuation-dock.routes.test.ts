@@ -37,11 +37,16 @@ import { ensureStationHomeSchemaSync } from '../../../domain/home-schema-gate.js
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
+  ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
 } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import {
+  createOrchestrationRequestPrincipalResolver,
+  credentialPrincipal,
+} from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
 import { createAdoptedChildExecutionBindingResolver } from '../../../services/orchestration/adopted-child-execution-binding.js';
@@ -185,17 +190,21 @@ class AdoptingEngine implements ProviderAdapterShape {
   readonly adoptions: ProviderSessionAdoptInput[] = [];
   readonly starts: Array<{ threadId: string; cwd?: string }> = [];
   readonly turns: Array<{ threadId: string; input: string }> = [];
+  readonly turnAttachments: ProviderSendTurnInput['attachments'][] = [];
   readonly turnWorkingDirectories: string[] = [];
   private readonly sessions = new Map<string, ProviderSession>();
 
   constructor(
     readonly provider: Engine,
     private readonly probeWorkingDirectory = false,
+    fileInput = false,
   ) {
     this.metadata = {
       displayName: provider,
       description: `${provider} adopted-dock test engine`,
-      capabilities: ['agent-runtime'],
+      capabilities: fileInput
+        ? ['agent-runtime', 'file-input']
+        : ['agent-runtime'],
     };
   }
 
@@ -265,7 +274,7 @@ class AdoptingEngine implements ProviderAdapterShape {
     return session;
   }
 
-  async sendTurn(input: { threadId: string; input: string }) {
+  async sendTurn(input: ProviderSendTurnInput) {
     if (this.probeWorkingDirectory) {
       const cwd = this.sessions.get(input.threadId)?.cwd;
       if (!cwd)
@@ -279,6 +288,7 @@ class AdoptingEngine implements ProviderAdapterShape {
       );
     }
     this.turns.push({ threadId: input.threadId, input: input.input });
+    this.turnAttachments.push(input.attachments);
     return {
       threadId: input.threadId,
       turnId: `${this.provider}-turn-${this.turns.length}`,
@@ -336,6 +346,7 @@ async function fixture(options: {
   engineAgent: boolean;
   boundResources?: boolean;
   unqualifiedProject?: boolean;
+  staging?: AttachmentStagingService;
 }) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = realpathSync.native(makeTempDir('station-adopted-dock-'));
@@ -344,6 +355,9 @@ async function fixture(options: {
   ensureStationHomeSchemaSync(home);
   const security = new EnvironmentSecurityService({ homeDir: home });
   const operator = await security.initialize();
+  const userId = options.staging
+    ? credentialPrincipal(operator.credential, security)!.id
+    : 'operator';
   const loader = new ConfigLoader({ projectHomeDir: home });
   // The engines' own Agents, as boot adoption of a detected engine writes
   // them (`native-engine-adoption.ts`).
@@ -443,7 +457,11 @@ async function fixture(options: {
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
   const engines = {
-    claude: new AdoptingEngine('claude', options.boundResources),
+    claude: new AdoptingEngine(
+      'claude',
+      options.boundResources,
+      !!options.staging,
+    ),
     codex: new AdoptingEngine('codex', options.boundResources),
   };
   const registry: IProviderAdapterRegistry = {
@@ -508,13 +526,41 @@ async function fixture(options: {
       allowedOrigins: [],
     },
   });
+  const staging = options.staging;
+  const stagingDeps: Pick<
+    NonNullable<Parameters<typeof createOrchestrationRoutes>[1]>,
+    | 'hydrateStagedAttachments'
+    | 'acceptStagedAttachments'
+    | 'releaseStagedAttachments'
+  > = staging
+    ? {
+        hydrateStagedAttachments: (principal, refs, binding, mode) =>
+          staging.bindAndHydrate(
+            { principalId: principal.id },
+            refs,
+            binding,
+            mode,
+          ),
+        acceptStagedAttachments: (principal, refs, binding) =>
+          staging.acceptBinding({ principalId: principal.id }, refs, binding),
+        releaseStagedAttachments: (principal, refs, binding) =>
+          staging.releaseBinding({ principalId: principal.id }, refs, binding),
+      }
+    : {};
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
+      ...stagingDeps,
       delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
       eventBus,
       logger: { debug: vi.fn() },
-      getUserId: () => 'operator',
+      ...(staging
+        ? {
+            resolvePrincipal: createOrchestrationRequestPrincipalResolver({
+              environmentSecurityService: security,
+            }),
+          }
+        : { getUserId: () => userId }),
       resolveAgentDispatchActor: createAgentDispatchActorResolver(),
       executeForegroundMessage: (input: { userId: string }) =>
         executeExecutionTargetMessage(
@@ -536,9 +582,9 @@ async function fixture(options: {
       createLogger({ name: 'adopted-dock-test', level: 'error' }),
       undefined,
       service as never,
-      () => 'operator',
+      () => userId,
       undefined,
-      () => readAuthority('operator'),
+      () => readAuthority(userId),
     ),
   );
 
@@ -591,7 +637,7 @@ async function fixture(options: {
       createdAt,
       method: 'session.started',
       sessionId: threadId,
-      metadata: { userId: 'operator' },
+      metadata: { userId },
     } as never);
     // Codex continues only from a completed turn of the source.
     store.appendEvent({
@@ -636,6 +682,7 @@ async function fixture(options: {
     secondRepo,
     selectSecond,
     operator,
+    userId,
     security,
     loader,
     service,
@@ -654,6 +701,80 @@ async function fixture(options: {
 }
 
 describe('#3429: a continued attached conversation opens in the dock', () => {
+  test.each([
+    'same reference',
+    'changed bytes',
+    'same bytes in a new stage',
+  ] as const)('#3678: a foreground retry with %s', async (scenario) => {
+    const staging = new AttachmentStagingService();
+    try {
+      const f = await fixture({ engineAgent: true, staging });
+      const threadId = await f.adopt(f.attached('claude'));
+      const owner = { principalId: f.userId };
+      const upload = (clientAttachmentId: string, dataUrl: string) => {
+        const prepared = staging.prepare(owner, {
+          clientAttachmentId,
+          kind: 'file',
+          name: 'note.txt',
+          mimeType: 'text/plain',
+          size: 2,
+        });
+        return staging.upload(prepared.stageId, prepared.uploadGrant, dataUrl);
+      };
+      const originalBytes = 'data:text/plain;base64,aGk=';
+      const original = upload('original-stage', originalBytes);
+      const input = {
+        ...dockFollowUp('claude', threadId, 'station', 'Review the attachment'),
+        attachmentRefs: [original],
+      };
+      const first = await f.request('/api/orchestration/chat', input);
+      expect(first.status, first.text).toBe(200);
+      expect(f.engines.claude.turnAttachments).toEqual([
+        [expect.objectContaining({ dataUrl: originalBytes })],
+      ]);
+      expect(staging.reconcile(owner, [original.stageId])).toMatchObject([
+        { state: 'accepted' },
+      ]);
+
+      const replacementBytes =
+        scenario === 'changed bytes'
+          ? 'data:text/plain;base64,b2s='
+          : originalBytes;
+      const replacement =
+        scenario === 'same reference'
+          ? original
+          : upload('replacement-stage', replacementBytes);
+      const retry = await f.request('/api/orchestration/chat', {
+        ...input,
+        attachmentRefs: [replacement],
+      });
+      expect(f.engines.claude.turns).toHaveLength(1);
+      if (scenario === 'same reference') {
+        expect(retry.status, retry.text).toBe(200);
+        expect(retry.body).toEqual(first.body);
+      } else {
+        expect.soft(retry.status, retry.text).toBe(409);
+        if (retry.status === 409)
+          expect(retry.body).toMatchObject({
+            code: 'client_turn_input_conflict',
+          });
+        expect(staging.reconcile(owner, [replacement.stageId])).toMatchObject([
+          { state: 'complete', reference: replacement },
+        ]);
+        expect(
+          staging.bindAndHydrate(
+            owner,
+            [replacement],
+            { threadId, clientTurnId: randomUUID() },
+            { inspectOnly: true },
+          ),
+        ).toEqual([expect.objectContaining({ dataUrl: replacementBytes })]);
+      }
+    } finally {
+      staging.dispose();
+    }
+  });
+
   test('#3567: an implicit conversation create replays its original handle and conflicts on changed input', async () => {
     const f = await fixture({ engineAgent: true });
     const input = {
