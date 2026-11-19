@@ -76,7 +76,9 @@ class World {
       agentLabel: async (id) => (id === 'reviewer' ? 'Reviewer' : undefined),
       currentScope: () => scope,
       mayStart: () => this.mayStart,
-      createTask: async (input, key) => {
+      createTask: async (input, key, authorize) => {
+        expect(input.projectId).toBe(scope.localProjectSlug);
+        expect(authorize()).toBe(true);
         const existing = [...this.tasks.values()].find((t) => t.key === key);
         if (existing) return { id: existing.id, createdAt: 't0' };
         this.creates += 1;
