@@ -179,3 +179,21 @@ npm run release:static
 ```
 
 <!-- station:contributor-commands:end -->
+
+## Managed install timeout and recovery
+
+`dependencies:ci` gives the inert pnpm command 600,000 ms on macOS and Linux
+and 1,200,000 ms on Windows. Set
+`STATION_DEPENDENCY_INSTALL_TIMEOUT_MS` to a positive whole number of
+milliseconds before running `npm run dependencies:ci` or `just setup` on a
+slow host. The timeout error reports the budget that applied. Approved
+dependency hooks keep their separate deadlines.
+
+An interrupted install retains `.station-dependency-install` with its receipt
+and any incomplete `node_modules` tree. A retry refuses while that guard
+exists. Check the retained state and establish that the installer and its
+child processes have stopped before recovering the checkout. A PID or a
+receipt's age alone cannot establish that. Once custody is confirmed, move
+the failed guard and incomplete tree together to an owned inspection
+directory and run `npm run dependencies:ci` to install and verify a fresh tree.
+Use a fresh sibling checkout when the original install's state is uncertain.
