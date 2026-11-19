@@ -28,12 +28,14 @@ type CapturedAuthority = NonNullable<
  * on this row, with the way forward.
  */
 export function ExactRequestInline({
+  conversationRow = false,
   reference,
   openHref,
   onOpen,
   quiet,
   open,
 }: {
+  conversationRow?: boolean;
   reference: AttentionRequestReference;
   openHref?: string;
   /** Runs before following `openHref` (the tray closes itself). */
@@ -45,7 +47,7 @@ export function ExactRequestInline({
 }) {
   const authority = useHostRequestAuthorityScope();
   if (!authority?.isCurrent())
-    return (
+    return conversationRow ? null : (
       <div className="exact-request">
         <p className="exact-request__note" role="status">
           Reconnect to this Station to answer this request.
@@ -64,6 +66,7 @@ export function ExactRequestInline({
       // rather than carry a read or an attempt latch across it.
       key={`${authority.authorityKey}|${reference.threadId}|${reference.requestId}|${reference.requestEventId}`}
       authority={authority}
+      conversationRow={conversationRow}
       reference={reference}
       openHref={openHref}
       onOpen={onOpen}
@@ -74,6 +77,7 @@ export function ExactRequestInline({
 }
 
 function ExactRequestDecisionRow({
+  conversationRow,
   authority,
   reference,
   openHref,
@@ -81,6 +85,7 @@ function ExactRequestDecisionRow({
   quiet,
   open,
 }: {
+  conversationRow: boolean;
   authority: CapturedAuthority;
   reference: AttentionRequestReference;
   openHref?: string;
@@ -174,6 +179,54 @@ function ExactRequestDecisionRow({
   }
 
   const loading = query.isLoading;
+  const actions = (
+    <div className="exact-request__actions">
+      {open}
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={!decision.canDecide}
+        aria-busy={loading || response.isPending}
+        onClick={() => decision.decide('decline')}
+      >
+        Deny
+      </Button>
+      <Button
+        size="sm"
+        variant="primary"
+        disabled={!decision.canDecide}
+        aria-busy={loading || response.isPending}
+        onClick={() => decision.decide('accept')}
+      >
+        Approve once
+      </Button>
+    </div>
+  );
+  if (conversationRow) {
+    if (
+      result?.state !== 'open' ||
+      !result.body?.trim() ||
+      !result.canRespond ||
+      result.requiresAnswers ||
+      !decision.current ||
+      !answer.answerAllowed ||
+      query.isError
+    )
+      return null;
+    return (
+      <div className="exact-request inbox-row__approval">
+        <p className="exact-request__body">{result.body}</p>
+        {failure ??
+          (note ? (
+            <p className="exact-request__note" role="status">
+              {note}
+            </p>
+          ) : (
+            actions
+          ))}
+      </div>
+    );
+  }
   return (
     <div className="exact-request" data-testid="exact-request-inline">
       {result?.state === 'open' && (
@@ -221,27 +274,7 @@ function ExactRequestDecisionRow({
         >
           {expanded ? 'Hide details' : 'Details'}
         </button>
-        <div className="exact-request__actions">
-          {open}
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!decision.canDecide}
-            aria-busy={loading || response.isPending}
-            onClick={() => decision.decide('decline')}
-          >
-            Deny
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            disabled={!decision.canDecide}
-            aria-busy={loading || response.isPending}
-            onClick={() => decision.decide('accept')}
-          >
-            Approve once
-          </Button>
-        </div>
+        {actions}
       </div>
     </div>
   );

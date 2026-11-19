@@ -1,0 +1,11 @@
+{
+  "revision": "ba52fb5be6059850e15168bf8000a1c3e78efa57",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the public first screen, existing checked-in Gallery images, and Quickstart and product tour links. The accepted promise and Gallery regeneration sources are unchanged.","inputs":["README.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed Quickstart against Home Start, Run setup, the Connections setup action, and recorded Basis disclosure. Checked links to the scoped concepts and walkthrough. Four local Chromium journeys passed from generated Pages in light and dark at 390 and 1440. No live provider turn, social preview or deployment was exercised.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the four Project choices and four alternatives against the direct-chat, Project and Task entry points. Verified the example uses Goal and the five instructions prompts from BriefSection, with its existing Feature Preview. Traced the selected opening and workspace troubleshooting copy and actions to ProjectPage, ProjectOverviewSection, TaskWorkspaceView and PersonalBoardWorkspace. The table is scoped and does not claim all feature-specific failures.","inputs":["docs/user/concepts.md"]}
+  ]
+}

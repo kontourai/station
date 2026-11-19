@@ -55,7 +55,7 @@
     {
       "id": "server-update-download-policy",
       "label": "Automatic server download",
-      "help": "A Station service downloads an available update by itself on this schedule; it restarts only when someone applies it.",
+      "help": "Choose when the server downloads an update.",
       "scope": "station",
       "section": "system",
       "route": "/settings?view=system&highlight=server-update-download-policy",

@@ -90,6 +90,7 @@ test('a catalog outside allowedUrls gets zero requests from the update check', a
   const requested = recorder();
   const { pluginsDir } = setup();
   expect(await checkPluginUpdates({ pluginsDir, logger })).toEqual({
+    status: 'complete',
     updates: [],
   });
   expect(requested).toEqual([]);

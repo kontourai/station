@@ -24,10 +24,10 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
-Credential recovery ignores successful responses declared as `text/html` or
-`application/xhtml+xml`: a sign-in page or a stale address's HTML fallback
-must not clear a recorded credential rejection or restart authority checks.
-The response remains available to the caller for normal content validation.
+Automatic credential recovery requires a successful JSON response with
+Station's `X-Station-Envelope: 1` marker from the configured origin. Redirected
+responses, proxy fallbacks, and unmarked successes leave the existing credential
+state in place. The response remains available for the caller's content validation.
 
 
 `dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
@@ -512,7 +512,7 @@ This source addition requires a published version that exports `/agent`.
 
 | Group | Exports |
 | --- | --- |
-| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `STATION_AGENT_ID`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
@@ -1314,9 +1314,11 @@ Convenience hook. Returns a function that creates a session, shows Chat, and sen
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
-that Agent; a reference naming another plugin is refused. A clean Agent id from
-`agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
-no Agent matches, the function warns and sends nothing.
+that Agent; a reference naming another plugin is refused. Use `agentId()`
+from `@kontourai/station-sdk/agent` for a clean Agent ID. This entry also
+exports `STATION_AGENT_ID`, the reserved ID for Station's Agent. A plugin
+using this export should account for older hosts whose shared SDK lacks it.
+When no Agent matches, the function warns and sends nothing.
 
 ```tsx
 const sendToChat = useSendToChat('my-plugin:assistant');
@@ -2428,7 +2430,9 @@ Creates a new project. Invalidates `['projects']` on success.
 
 ### `useUpdateProjectMutation()`
 
-Updates a project. Invalidates `['projects']` on success.
+Updates a Project. Pass the host-captured `requestScope` in the mutation
+variables to bind the update and its cache refresh to the selected Station
+and account. Calls without a scope invalidate `['projects']` on success.
 
 ### `useDeleteProjectMutation()`
 
@@ -3538,6 +3542,14 @@ unknown; it must not be replaced with an empty list or inferred from preview.
 Each present dependency row has an `id` and typed `pendingConsent` permission/tier
 entries. Trusted permissions still require separate host-owned approval.
 
+### Update discovery
+
+`usePluginUpdateCheckQuery()` exposes the update records and a
+`complete`, `partial`, or `unavailable` status. Hosts that omit the status
+produce `unknown` coverage. Non-OK responses surface as query errors with the
+HTTP status. The existing `usePluginUpdatesQuery()` still returns the update
+array. Use the status-aware hook when presenting whether the scan completed.
+
 ### Marketplace source hooks
 
 `useRegistrySourcesQuery()` reads `GET /api/registry/sources` through the current
@@ -3606,7 +3618,9 @@ Installs a plugin from a source URL. Invalidates plugins, layouts, and agents ca
 
 For verified registry acquisitions, carry the preview's optional
 `registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
-paths forward it; it is an opaque precondition, not caller-supplied verification.
+paths forward it as an opaque precondition. A preview dependency's
+`registryTrust` is the host's display receipt for that dependency.
+Put its pin in consent and keep the display receipt out of the decision.
 `listPlugins` rows carry the persisted `registryTrust` receipt and fail closed
 when its shape does not match `isPluginRegistryTrust` from
 `@kontourai/station-contracts/registry-trust`.
@@ -3696,8 +3710,8 @@ The preview carries the exact installation, retained content digest, opaque
 `recoveryRevision`, current `grantRevision`, optional `registryTrustRevision`, permission review, skipped components,
 and dependency installation/consent rows. A signed retained package reuses its
 original journal-bound verification under the same applied policy, without
-contacting its registry/source; ready retained children carry their own trust
-revision. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
+contacting its registry/source. Ready retained children carry their own trust
+revision and display receipt. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
 `usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
 recovery consent requires the fresh grant revision, including each dependency
 approval. Never derive approval merely from a cached preview or retry an old
@@ -4314,7 +4328,7 @@ namespace, infer a Layout prefix or choose an execution target.
 
 ```ts
 import { getAgentDisplayName } from '@kontourai/station-sdk';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { agentId } from '@kontourai/station-sdk/agent';
 
 const id = agentId('my-agent');
 getAgentDisplayName(id, [{ slug: id, name: 'My Agent' }]); // 'My Agent'
@@ -4922,6 +4936,10 @@ content, while retaining the observed HTTP status (usually 200).
   claims nothing about pull requests. `useMergePullRequestMutation`
   invalidates every Project's facts query, so a merge through Station moves
   its card on the next read.
+- `createTask` and `createTaskReference` accept an optional `requestScope`
+  in their input, including when called through `useCreateTaskMutation` or
+  `useCreateTaskReferenceMutation`. Pass the same captured scope to both
+  steps when creating a Task and adding its first reference.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
@@ -5127,7 +5145,8 @@ option for conversations without a multi-session lineage.
 ## Workspace checkpoint restore
 
 `previewCheckpointRestore(apiBase, threadId, turnId, requestScope)` returns a
-short-lived, owner-bound preview for the turn's settle checkpoint. It includes
+short-lived, owner-bound preview for the turn's settle checkpoint. Pass
+`'baseline'` as the fifth argument to preview the turn-start checkpoint. It includes
 the preview id, repository root, target and currently observed tree hashes,
 up to 200 changed paths with a truncation flag, and a five-minute expiry.
 `confirmCheckpointRestore` submits that
@@ -5319,6 +5338,12 @@ It checks truthiness, not a literal-boolean schema, and does not validate the
 returned `data`; individual fetchers own any stronger success-payload checks.
 A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`.
+
+Skill save and registry removal mutations expose the HTTP status, code, and
+details on `StationHttpError`. When the code is `skill-not-owned`, the details
+carry the Skill package refusal reason and the separately labelled directory.
+Older hosts can send a plain failure envelope without these fields. Its failure
+still rejects the mutation, and its text remains diagnostic.
 
 Every fetcher under `@kontourai/station-sdk/client` that throws a refusal now
 builds it through the same helper (#2708); the plugin command-effect client

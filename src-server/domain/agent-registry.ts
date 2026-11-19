@@ -284,7 +284,9 @@ async function saveRegistry(
   homeDir: string,
   registry: AgentRegistry,
   expectedSignature: string | null,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   assertRegistry(registry);
   const path = registryPath(homeDir);
   const directory = configDirectory(homeDir, true);
@@ -317,7 +319,9 @@ async function saveRegistry(
     // signature recheck below runs after the lock is held, so in-process
     // interleaving during the awaits is detected exactly like the
     // cross-process races this code already defends against.
-    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`, {
+      signal,
+    });
     try {
       if (
         canonicalStationHome(homeDir) !== homeDir ||
@@ -331,6 +335,7 @@ async function saveRegistry(
       }
       const releaseIdentity = await acquireFileMutationLockAsync(
         identityMutationLockPath(homeDir),
+        { signal },
       );
       try {
         // The identity fence, re-checked under the lock. A file for a default
@@ -394,15 +399,18 @@ function agentFileBindsConnection(
 export async function loadOrCreateAgentRegistry(
   configLoader: ConfigLoader,
   hooks: AgentRegistryReadHooks = {},
+  signal?: AbortSignal,
 ): Promise<AgentRegistry> {
+  signal?.throwIfAborted();
   const homeDir = canonicalStationHome(configLoader.getProjectHomeDir());
   await ensureStationHomeSchema(homeDir);
   for (let attempt = 0; attempt < REGISTRY_LOAD_MAX_ATTEMPTS; attempt += 1) {
+    signal?.throwIfAborted();
     const signature = await registrySignature(homeDir);
     if (signature === null) {
       const seeded = stationRegistry();
       try {
-        await saveRegistry(homeDir, seeded, null);
+        await saveRegistry(homeDir, seeded, null, signal);
         return seeded;
       } catch (error) {
         if (error instanceof AgentRegistryConflictError) continue;
@@ -423,7 +431,9 @@ export async function updateAgentRegistry(
   configLoader: ConfigLoader,
   expectedRevision: number,
   mutate: (current: Readonly<AgentRegistry>) => AgentRegistry,
+  signal?: AbortSignal,
 ): Promise<AgentRegistry> {
+  signal?.throwIfAborted();
   const homeDir = canonicalStationHome(configLoader.getProjectHomeDir());
   await ensureStationHomeSchema(homeDir);
   const signature = await registrySignature(homeDir);
@@ -438,7 +448,7 @@ export async function updateAgentRegistry(
   const updated = mutate(structuredClone(current));
   assertRegistry(updated);
   updated.revision = current.revision + 1;
-  await saveRegistry(homeDir, updated, signature);
+  await saveRegistry(homeDir, updated, signature, signal);
   return updated;
 }
 
@@ -476,6 +486,7 @@ export async function registerEngineConnection(
 }
 
 interface RegisterEngineConnectionOptions {
+  signal?: AbortSignal;
   /**
    * What a recorded decline means for this registration, evaluated inside
    * the same CAS snapshot as the write so a concurrent removal can never
@@ -510,7 +521,11 @@ async function registerEngineConnectionDetailed(
 
   const onDeclined = options.onDeclined ?? 'clear';
   for (let attempt = 0; attempt < REGISTRY_LOAD_MAX_ATTEMPTS; attempt += 1) {
-    const current = await loadOrCreateAgentRegistry(configLoader);
+    const current = await loadOrCreateAgentRegistry(
+      configLoader,
+      {},
+      options.signal,
+    );
     if (
       onDeclined === 'abort' &&
       current.declinedEngineConnections?.includes(String(connectionId))
@@ -556,6 +571,7 @@ async function registerEngineConnectionDetailed(
               }
             : {}),
         }),
+        options.signal,
       );
       return { registry, created: true };
     } catch (error) {
@@ -596,6 +612,7 @@ export type NativeEngineAdoptionOutcome =
 export async function adoptNativeEngineConnection(
   configLoader: ConfigLoader,
   id: string,
+  signal?: AbortSignal,
 ): Promise<NativeEngineAdoptionOutcome> {
   try {
     // The decline/exists checks live INSIDE the registration CAS snapshot:
@@ -605,7 +622,7 @@ export async function adoptNativeEngineConnection(
       configLoader,
       engineConnectionId(id),
       { kind: 'native' },
-      { onDeclined: 'abort' },
+      { onDeclined: 'abort', signal },
     );
     return created ? 'adopted' : 'exists';
   } catch (error) {
@@ -834,21 +851,26 @@ export async function materializeStationAgent(
     ConfigLoader,
     'agentExists' | 'createAgent' | 'mutateAgent'
   >,
+  signal?: AbortSignal,
 ): Promise<StationAgentMaterialization> {
+  signal?.throwIfAborted();
   if (!(await configLoader.agentExists(STATION_AGENT_ID))) {
-    await configLoader.createAgent({
-      slug: STATION_AGENT_ID,
-      name: STATION_AGENT_DISPLAY_NAME,
-      prompt: '',
-      tools: {
-        mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS],
-      },
-      provenance: {
-        origin: 'engine-detection',
-        engineId: STATION_AGENT_ID,
-        detectedAt: new Date().toISOString(),
-      },
-    } as AgentSpec & { slug: string });
+    await configLoader.createAgent(
+      {
+        slug: STATION_AGENT_ID,
+        name: STATION_AGENT_DISPLAY_NAME,
+        prompt: '',
+        tools: {
+          mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS],
+        },
+        provenance: {
+          origin: 'engine-detection',
+          engineId: STATION_AGENT_ID,
+          detectedAt: new Date().toISOString(),
+        },
+      } as AgentSpec & { slug: string },
+      signal,
+    );
     return { created: true, healed: false };
   }
   const healedRecord = await configLoader.mutateAgent(
@@ -863,6 +885,7 @@ export async function materializeStationAgent(
       );
       return healed === current ? null : healed;
     },
+    signal,
   );
   return { created: false, healed: healedRecord !== null };
 }
@@ -939,7 +962,9 @@ export async function materializeEngineAgent(
   configLoader: ConfigLoader,
   id: string,
   name: string,
+  signal?: AbortSignal,
 ): Promise<{ slug: string; created: boolean }> {
+  signal?.throwIfAborted();
   const connectionId = engineConnectionId(id);
   const resolveExisting = () => findEngineAgent(configLoader, id, name);
 
@@ -959,17 +984,20 @@ export async function materializeEngineAgent(
     throw new DefaultAgentMutationError(id);
   }
   try {
-    const { slug } = await configLoader.createAgent({
-      slug: id,
-      name,
-      prompt: '',
-      execution: { agentConnectionId: connectionId },
-      provenance: {
-        origin: 'engine-detection',
-        engineId: id,
-        detectedAt: new Date().toISOString(),
-      },
-    } as AgentSpec & { slug: string });
+    const { slug } = await configLoader.createAgent(
+      {
+        slug: id,
+        name,
+        prompt: '',
+        execution: { agentConnectionId: connectionId },
+        provenance: {
+          origin: 'engine-detection',
+          engineId: id,
+          detectedAt: new Date().toISOString(),
+        },
+      } as AgentSpec & { slug: string },
+      signal,
+    );
     return { slug, created: true };
   } catch (error) {
     // Deliberately not matched on the message — re-ASK the store. If a

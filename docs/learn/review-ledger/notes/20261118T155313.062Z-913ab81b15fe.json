@@ -1,0 +1,69 @@
+{
+  "revision": "d1c3822fa1fa95a522b3b90f845a45b49f368fc8",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed the shared OpenCode provider identity against native Serve and ACP terminal producers. Older OpenCode events need positive ACP stop-reason evidence; the live ACP adapter knows the protocol directly.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the ACP history compatibility change. Native reconciliation with no retained ACP reason preserves its original outcome.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Reviewed the native and ACP producer shapes and their historical readers. A shared OpenCode provider identity alone grants no authority to reinterpret a native gap terminal as an ACP failure.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the native and ACP producer shapes and their historical readers. A shared OpenCode provider identity alone grants no authority to reinterpret a native gap terminal as an ACP failure.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the native and ACP producer shapes and their historical readers. A shared OpenCode provider identity alone grants no authority to reinterpret a native gap terminal as an ACP failure.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the native and ACP producer shapes and their historical readers. A shared OpenCode provider identity alone grants no authority to reinterpret a native gap terminal as an ACP failure.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the legacy transcript part. It keeps failure semantics and safe fixed copy for ACP evidence. Bare native completion receives no synthesized failure.","inputs":["packages/shared/src/runtime-event-projection.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed actual prompt-reply coverage when OpenCode runs over ACP and omits a stop reason. The adapter emits an unconfirmed non-retryable result from the known protocol.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the known protocol at both ACP terminal publication sites. New reasonless ACP replies remain unconfirmed even for the shared OpenCode provider identity.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed persisted ACP and OpenCode-over-ACP terminal fixtures through single, batched, and full status readers and the historical transcript and delegation projections.","inputs":["src-server/services/orchestration/__tests__/event-store.test.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the conditional bounded lookup for displaced terminal evidence. Older OpenCode rows must carry a reason to count as ACP evidence in the lookup, matching full history.","inputs":["src-server/services/orchestration/event-store.ts"]}
+  ]
+}

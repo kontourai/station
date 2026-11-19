@@ -152,13 +152,7 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     Object.freeze(['scripts/generate-basis-mcp-apps.mjs']),
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'verification:policy:gate'])]),
-  // Governance, lint and readiness (2026-09-14). Each was composed only by
-  // the nightly full-regression gate or by a per-machine pre-push hook, so
-  // none of the three could red a pull request; see run-ci-fast.mjs for the
-  // two violations that reached main while the Nightly that owned them was
-  // itself red, and for why readiness runs last of the three.
   Object.freeze(['npm', Object.freeze(['run', 'proof:repo-governance'])]),
-  Object.freeze(['npm', Object.freeze(['run', 'lint:check'])]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'veritas:readiness', '--', '--format', 'json']),
@@ -290,7 +284,7 @@ export function renderVerificationSchedulingSection(lanes = LANES) {
     '',
     renderLaneCatalogTable(lanes),
     '',
-    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. \`lint:check\`, \`proof:repo-governance\`, and \`veritas:readiness\` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached \`main\` unobserved while that Nightly was itself red. \`conduit:conformance:check\`, \`examples:conformance\`, \`product-version:check\`, two package import boundaries and \`gate:test-import-existence\` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
+    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. \`lint:check\`, \`proof:repo-governance\`, and \`veritas:readiness\` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached \`main\` unobserved while that Nightly was itself red. Veritas readiness executes full-repository lint once through its required \`style-standard\` check. \`conduit:conformance:check\`, \`examples:conformance\`, \`product-version:check\`, two package import boundaries and \`gate:test-import-existence\` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
     '',
     '`full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:',
     renderFullRegressionPhaseSchedule(lanes),
@@ -512,6 +506,22 @@ export function verificationPolicyErrors({
   )
     errors.push(
       'ci:fast must run only its fixed bounded static invariant allowlist',
+    );
+  const { evidence } = JSON.parse(
+    readFileSync(resolve(root, '.veritas/repo-map.json'), 'utf8'),
+  );
+  const style = evidence.evidenceChecks.find(
+    (check) => check.id === 'style-standard',
+  );
+  if (
+    manifest.scripts?.['veritas:readiness'] !==
+      'node scripts/run-veritas-readiness.mjs --working-tree' ||
+    !evidence.requiredEvidenceCheckIds.includes('style-standard') ||
+    (style?.runner ?? 'bash') !== 'bash' ||
+    style?.command !== 'npm run lint:check'
+  )
+    errors.push(
+      'ci:fast requires Veritas readiness to execute npm run lint:check as the blocking style-standard check',
     );
   const ciFast = lanes.find((lane) => lane.id === 'ci-fast');
   const fullTests =

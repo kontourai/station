@@ -24,6 +24,7 @@
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { runCli } from '../../../../packages/cli/src/cli.js';
@@ -622,6 +623,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     // The requests the tools send to Station's own routes: a refusal made by
     // a tool's own schema never sends one.
     const routeRequests: string[] = [];
+    const workSearchStatuses: number[] = [];
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
@@ -630,7 +632,13 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         /\/api\/orchestration\/session-activity/.test(url)
       )
         routeRequests.push(new URL(url).pathname);
-      return realFetch(input, init);
+      const response = await realFetch(input, init);
+      if (
+        url.startsWith(base) &&
+        new URL(url).pathname === '/api/conversations/work/search'
+      )
+        workSearchStatuses.push(response.status);
+      return response;
     });
 
     const mcp = createStationControlMcpServer();
@@ -757,6 +765,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       asTool,
       rawRequest,
       routeRequests,
+      workSearchStatuses,
       appendTurn: writeTurn,
       startSession,
       at,
@@ -800,31 +809,99 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     );
 
     test(
-      'bounds admitted metadata scans and still returns indexed hits beyond the scan window',
+      'marks the 2,001st admitted metadata candidate partial and keeps a native-only hit',
       async () => {
-        const { tool, startSession, p1 } = await setup();
-        for (let n = 0; n < 2_001; n += 1)
-          startSession(`scan-${n}`, A, p1, {
-            metadata: { delegationTitle: 'Unrelated metadata' },
-          });
-        const result = await tool(bearer('a-caller'), 'search_conversations', {
-          query: 'zephyrquartz',
+        const { tool, startSession, appendTurn, p1, orchestration } =
+          await setup();
+        const agent = 'scan-agent';
+        const metadata = { agentSlug: agent };
+        startSession('scan-indexed-anchor', A, p1, { metadata });
+        appendTurn('scan-indexed-anchor', 0, {
+          prompt: 'exactbudgetneedle',
+          end: 'completed',
         });
-        expect(result.isError, JSON.stringify(result.body)).toBe(false);
-        expect(result.body.data).toMatchObject({
-          state: 'partial',
-          results: [expect.objectContaining({ conversationId: 'a-anchor' })],
-          incompleteSources: expect.arrayContaining([
-            {
-              source: 'station.conversations',
-              state: 'partial',
-              reason: 'metadata-scan-limit',
+        for (let n = 0; n < 2_000; n += 1)
+          startSession(`scan-exact-${n}`, A, p1, { metadata });
+        const count = async () =>
+          (
+            await orchestration.listSessionReadModel(
+              sessionReadAuthorityFromRequest(A, undefined, undefined),
+              { purpose: 'work-search' },
+            )
+          ).filter((row) => row.assignedAgentSlug === agent).length;
+        const search = () =>
+          tool(bearer('a-caller'), 'search_conversations', {
+            query: 'exactbudgetneedle',
+            agent,
+          });
+        expect(await count()).toBe(2_001); // 2,000 metadata candidates and one indexed hit.
+        expect(await search()).toMatchObject({
+          isError: false,
+          body: {
+            data: {
+              state: 'available',
+              results: [
+                expect.objectContaining({
+                  conversationId: 'scan-indexed-anchor',
+                }),
+              ],
+              incompleteSources: [],
             },
-          ]),
+          },
+        });
+        startSession('scan-exact-overflow', A, p1, { metadata });
+        expect(await count()).toBe(2_002);
+        expect(await search()).toMatchObject({
+          isError: false,
+          body: {
+            data: {
+              state: 'partial',
+              results: [
+                expect.objectContaining({
+                  conversationId: 'scan-indexed-anchor',
+                }),
+              ],
+              incompleteSources: [
+                {
+                  source: 'station.conversations',
+                  state: 'partial',
+                  reason: 'metadata-scan-limit',
+                },
+              ],
+            },
+          },
         });
       },
       scaleLivenessMs(90_000),
     );
+
+    test('reports an ordinary file transcript reader error as a sanitized HTTP 503', async () => {
+      const { asTool, memory, workSearchStatuses } = await setup();
+      const id = 'file-reader-error';
+      await memory.createConversation({
+        id,
+        userId: A,
+        resourceId: 'default',
+        title: 'private fixture transcript',
+        metadata: { projectSlug: 'project-1' },
+      });
+      const realGetConversation = memory.getConversation.bind(memory);
+      const failed = vi
+        .spyOn(memory, 'getConversation')
+        .mockImplementation(async (conversationId) => {
+          if (conversationId === id)
+            throw new Error('fixture private disk error');
+          return realGetConversation(conversationId);
+        });
+      expect(
+        await asTool(
+          bound('a-caller'),
+          '/api/conversations/work/search?query=private+fixture',
+        ),
+      ).toEqual({ success: false, error: 'Search unavailable' });
+      expect(failed).toHaveBeenCalledWith(id);
+      expect(workSearchStatuses).toEqual([503]);
+    });
 
     test('skips an unreadable file lineage without losing readable indexed matches', async () => {
       const { tool, memory, store, startSession, p1, at } = await setup();

@@ -31,7 +31,6 @@ function observation(
       },
       unavailableDetail: async () => '"Unable to load this part of Station."',
       openStateDetail: async () => 'its trigger does report the surface open',
-      baselineDetail: async () => undefined,
       now: () => state.now,
       ...overrides,
     } satisfies LazySurfaceObservation,
@@ -70,11 +69,11 @@ describe('waitForLazySurfaceThrough', () => {
     expect(state.waits).toEqual([10_000, 9_000]);
   });
 
-  test("a rejected chunk is reported by the boundary's own words, immediately, and says waiting will not help", async () => {
+  test('a matching boundary failure is reported immediately with its own words', async () => {
     const { observation: port, state } = observation(['unavailable']);
 
     await expect(waitForLazySurfaceThrough(port, 10_000)).rejects.toThrow(
-      /The Chat actions sheet is unavailable after 1000ms: its lazy chunk failed to load .*Unable to load this part of Station.*React caches a rejected `lazy` import/s,
+      /The Chat actions sheet is unavailable after 1000ms: its boundary reported .*Unable to load this part of Station.*Retry or Reload/s,
     );
     // The whole reason for watching the boundary: a rejected import costs 1 s
     // rather than the budget, and is not reported as a slow surface.
@@ -85,7 +84,7 @@ describe('waitForLazySurfaceThrough', () => {
     const { observation: port } = observation(['timeout']);
 
     await expect(waitForLazySurfaceThrough(port, 10_000)).rejects.toThrow(
-      /did not load within 1000ms.*renders nothing while the chunk is in flight.*cannot distinguish a chunk still loading from one that never started/s,
+      /did not load within 1000ms.*neither the surface nor its failure appeared.*cannot distinguish a chunk still loading from one that never started/s,
     );
   });
 
@@ -145,53 +144,5 @@ describe('waitForLazySurfaceThrough', () => {
     await expect(waitForLazySurfaceThrough(port, 10_000)).rejects.toThrow(
       /reported a screen this wait does not model: invented-screen/,
     );
-  });
-});
-
-/**
- * What replaced a `countVisibleLazyBoundaryErrors baseline` block here.
- *
- * That block never called `countVisibleLazyBoundaryErrors`, and could not: the
- * function reads a page, and this file drives the pure core over a scripted
- * port. One of its two cases passed an `unavailableDetail` override the timeout
- * path never invokes and asserted a regex that holds for a timeout from any
- * cause; the other hand-wrote the finished sentence into the port and asserted
- * the message contained the string it had just written. Both were green under a
- * deletion of the code they were named for, which is worse than not having them
- * — they retired a question they never asked.
- *
- * The question is the ADAPTER's, and it is asked where it can be answered:
- * `src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx` renders real
- * `LazyBoundary` failures in a real browser, counts them, and drives the adapter
- * with a non-zero baseline against a new failure. What stays here is the one
- * part that IS this core's: whether it plumbs the baseline sentence into the
- * timeout message at all.
- */
-describe('the timeout says what it declined to attribute', () => {
-  test('a baseline detail reaches the message, after the open-state sentence', async () => {
-    const { observation: port } = observation(['timeout'], {
-      baselineDetail: async () =>
-        '2 boundary failure(s) were already visible before this interaction and are excluded from attribution.',
-    });
-
-    await expect(waitForLazySurfaceThrough(port, 10_000)).rejects.toThrow(
-      /did not load within 1000ms.*does report the surface open.*2 boundary failure\(s\) were already visible before this interaction and are excluded from attribution\./s,
-    );
-  });
-
-  test('and nothing is appended when nothing was excluded', async () => {
-    // The default port returns `undefined`, which is the ordinary case: no
-    // pre-existing failures, nothing withheld, and no sentence claiming there
-    // was.
-    const { observation: port } = observation(['timeout']);
-
-    let message = '';
-    await waitForLazySurfaceThrough(port, 10_000).catch((error: Error) => {
-      message = error.message;
-    });
-
-    expect(message).toContain('cannot distinguish a chunk still loading');
-    expect(message).not.toContain('excluded from attribution');
-    expect(message.endsWith('does report the surface open.')).toBe(true);
   });
 });

@@ -69,12 +69,13 @@ export function subscribeConversationTitleGeneration(
 export class ConversationTitleGeneration {
   private readonly attempted = new Set<string>();
   private readonly inflight = new Set<Promise<void>>();
+  private stopped = false;
 
   constructor(private readonly deps: ConversationTitleGenerationDeps) {}
 
   /** Called with every committed event. */
   observe(event: CanonicalRuntimeEvent): void {
-    if (event.method !== 'turn.completed') return;
+    if (this.stopped || event.method !== 'turn.completed') return;
     if (this.attempted.has(event.threadId)) return;
     if (!this.deps.enabled()) return;
     const candidate = this.deps.eventStore.conversationTitleGenerationCandidate(
@@ -101,6 +102,11 @@ export class ConversationTitleGeneration {
     void run.finally(() => this.inflight.delete(run));
   }
 
+  /** Revokes title publication while allowing an in-flight model call to settle. */
+  stop(): void {
+    this.stopped = true;
+  }
+
   /** Resolves when every generation started so far has finished. */
   async settled(): Promise<void> {
     while (this.inflight.size > 0) await Promise.allSettled([...this.inflight]);
@@ -116,7 +122,7 @@ export class ConversationTitleGeneration {
         assistantText: this.replyText(event),
       })
     )?.trim();
-    if (!title || isLowContentPrompt(title)) return;
+    if (this.stopped || !title || isLowContentPrompt(title)) return;
     this.deps.eventStore.recordGeneratedConversationTitle(
       event.threadId,
       title,

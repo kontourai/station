@@ -50,6 +50,7 @@ test.describe
       expect(project.id).toBeTruthy();
 
       await page.goto(`/projects/${slug}`);
+      await page.getByText('Open workspace', { exact: true }).click();
       await page
         .getByRole('button', { name: '+ Add pane', exact: true })
         .click();
@@ -267,6 +268,12 @@ test.describe
         element.scrollTop = 0;
       });
       await canvas.scrollIntoViewIfNeeded();
+      await page.keyboard.press('Tab');
+      await expect(move).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(resize).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(removeProject).toBeFocused();
       await expect(removeProject).toBeInViewport();
       const removeBox = await removeProject.boundingBox();
       if (!removeBox) throw new Error('Work Board remove action has no box');
@@ -283,6 +290,42 @@ test.describe
             ?.getAttribute('aria-label');
         }),
       ).toBe(`Remove project ${project.id} from canvas`);
+
+      const beforeCanvasRemove = await authenticatedRequest.get(
+        `${API}/api/spatial-board`,
+      );
+      expect(beforeCanvasRemove.status()).toBe(200);
+      const beforeRemove = (await beforeCanvasRemove.json()).data as Board;
+      const remainingPins = beforeRemove.pins.filter(
+        (candidate) =>
+          candidate.reference.kind !== 'project' ||
+          candidate.reference.id !== project.id,
+      );
+      expect(remainingPins).toHaveLength(beforeRemove.pins.length - 1);
+      await page.mouse.click(
+        removeBox.x + removeBox.width / 2,
+        removeBox.y + removeBox.height / 2,
+      );
+      await expect(removeProject).toHaveCount(0);
+      const afterCanvasRemove = await authenticatedRequest.get(
+        `${API}/api/spatial-board`,
+      );
+      expect(afterCanvasRemove.status()).toBe(200);
+      expect((await afterCanvasRemove.json()).data).toMatchObject({
+        revision: beforeRemove.revision + 1,
+        pins: remainingPins,
+      });
+
+      await page.getByRole('button', { name: 'Undo' }).click();
+      await expect(removeProject).toBeVisible();
+      const afterCanvasUndo = await authenticatedRequest.get(
+        `${API}/api/spatial-board`,
+      );
+      expect(afterCanvasUndo.status()).toBe(200);
+      expect((await afterCanvasUndo.json()).data).toMatchObject({
+        revision: beforeRemove.revision + 2,
+        pins: beforeRemove.pins,
+      });
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -353,6 +396,7 @@ test.describe
       });
 
       await page.goto(`/projects/${slug}`);
+      await page.getByText('Open workspace', { exact: true }).click();
       await page
         .getByRole('button', { name: '+ Add pane', exact: true })
         .click();

@@ -87,7 +87,6 @@ type AgentLike = {
   // member audience also requires the `project` a clone does not keep.
   audience: 'exclude',
   delegation: 'exclude',
-  streaming: 'exclude',
   commands: 'exclude',
   ui: 'exclude',
   provenance: 'exclude',

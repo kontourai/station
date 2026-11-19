@@ -1,0 +1,45 @@
+{
+  "revision": "fcc8209b46b6369bcf8ecea994a1869dcd30e242",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Checked native OpenCode step pairing against the captured stream and receipt projection. A continuation with a missing step start carries usage without the new model observation. The v1 export uses its existing receipt fields.","inputs":["docs/guides/monitoring.md","src-server/analytics/usage-export-reader.ts","src-server/routes/operations/__tests__/usage-export.test.ts","src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the cited monitoring review. The added OpenCode step evidence does not affect the instrumentation populations or loopback checks discussed here.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Reviewed the optional token usage observation against the OpenCode step producer and the cited runtime contracts. Producer trust, MCP host event behavior, and existing event fields retain their documented meaning.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the optional token usage observation against the OpenCode step producer and the cited runtime contracts. Producer trust, MCP host event behavior, and existing event fields retain their documented meaning.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the optional token usage observation against the OpenCode step producer and the cited runtime contracts. Producer trust, MCP host event behavior, and existing event fields retain their documented meaning.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the optional token usage observation against the OpenCode step producer and the cited runtime contracts. Producer trust, MCP host event behavior, and existing event fields retain their documented meaning.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the optional OpenCode evidence against the receipt projection. Provider and model IDs are copied as observed. Connection attribution, pricing, filters and grouping retain their existing semantics.","inputs":["packages/contracts/src/usage-rollup.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the optional OpenCode evidence against the receipt projection. Provider and model IDs are copied as observed. Connection attribution, pricing, filters and grouping retain their existing semantics.","inputs":["packages/contracts/src/usage-rollup.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the optional OpenCode evidence against the receipt projection. Provider and model IDs are copied as observed. Connection attribution, pricing, filters and grouping retain their existing semantics.","inputs":["packages/contracts/src/usage-rollup.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the optional OpenCode evidence against the receipt projection. Provider and model IDs are copied as observed. Connection attribution, pricing, filters and grouping retain their existing semantics.","inputs":["packages/contracts/src/usage-rollup.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the shared receipt projection and callers. An observed step adds one optional field to the receipt while usage counts, timestamps, coverage, and pricing still follow the existing paths.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the shared receipt projection and callers. An observed step adds one optional field to the receipt while usage counts, timestamps, coverage, and pricing still follow the existing paths.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the shared receipt projection and callers. An observed step adds one optional field to the receipt while usage counts, timestamps, coverage, and pricing still follow the existing paths.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the shared receipt projection and callers. An observed step adds one optional field to the receipt while usage counts, timestamps, coverage, and pricing still follow the existing paths.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the shared receipt projection and callers. An observed step adds one optional field to the receipt while usage counts, timestamps, coverage, and pricing still follow the existing paths.","inputs":["src-server/services/orchestration/session-transcript-reads.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the v1 receipt decoder against the export projection. The export strips the local step observation and Project attribution, preserving the closed wire grammar, source custody, ordering and retention bounds.","inputs":["src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the v1 receipt decoder against the export projection. The export strips the local step observation and Project attribution, preserving the closed wire grammar, source custody, ordering and retention bounds.","inputs":["src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the v1 receipt decoder against the export projection. The export strips the local step observation and Project attribution, preserving the closed wire grammar, source custody, ordering and retention bounds.","inputs":["src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the v1 receipt decoder against the export projection. The export strips the local step observation and Project attribution, preserving the closed wire grammar, source custody, ordering and retention bounds.","inputs":["src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the v1 receipt decoder against the export projection. The export strips the local step observation and Project attribution, preserving the closed wire grammar, source custody, ordering and retention bounds.","inputs":["src-server/analytics/usage-export-reader.ts"]}
+  ]
+}

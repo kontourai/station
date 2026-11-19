@@ -1504,6 +1504,15 @@ DELETE /api/plugins/:name
 GET /api/plugins/check-updates
 ```
 
+Plugins shows when an update check was unavailable or incomplete and offers
+a retry. A partial check keeps any updates it found. The view confirms that
+it found no updates only after the eligible sources complete.
+
+When reviewing installation or recovery, inspect the registry verification
+for each dependency to see the claim and pin bound to that
+dependency's consent. The installed view shows the selected plugin's recorded
+receipt.
+
 A registry the [managed policy](managed-policy.md#capability-switches) refuses
 is not asked during an update check, and a plugin installed from it is not
 checked either: its git origin is not fetched, and the response lists it under
@@ -1946,13 +1955,14 @@ by plugin code.
     }
   },
   "ui": {
-    "component": "my-plugin-chat",
-    "quickPrompts": [
-      { "id": "help", "label": "Help", "prompt": "What can you help me with?" }
-    ]
+    "component": "my-plugin-chat"
   }
 }
 ```
+
+Remove `streaming` and `ui.quickPrompts` from Agent source definitions when
+updating to the current schema. Older Agent definitions still load. Layouts
+can continue passing an explicit `AgentQuickPrompt` to `onLaunchPrompt`.
 
 Installed Agent IDs remain clean and globally unique; the installer refuses an
 existing ID rather than adding a namespace prefix. Choose a unique ID if the

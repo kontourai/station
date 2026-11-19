@@ -1,0 +1,47 @@
+{
+  "revision": "7b5806e3e58c0cccafb92fad8d737231e144c1b2",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Followed import status, explicit resume and the completed-receipt branch through actual CLI processes on generated homes. Baseline plain retry replaced the intervening manifest and credential at an uncertain target. The new refusal preserves both until explicit resume, after which only named values are replaced and an omitted credential stays intact. A lost success response left one durable receipt. Status and resume recovered it without writes, and a plain post-completion import created a distinct operation.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/portability.test.ts","packages/cli/src/cli.ts","packages/cli/src/commands/import.ts","packages/cli/src/help.ts"]},
+
+    {"path":"README.md","note":"The CLI reference now documents exact-source resume and the explicit acknowledgment of unfinished target replacements. It also describes the last completed receipt and ordinary new import semantics.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The CLI reference now documents exact-source resume and the explicit acknowledgment of unfinished target replacements. It also describes the last completed receipt and ordinary new import semantics.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The CLI reference now documents exact-source resume and the explicit acknowledgment of unfinished target replacements. It also describes the last completed receipt and ordinary new import semantics.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The CLI reference now documents exact-source resume and the explicit acknowledgment of unfinished target replacements. It also describes the last completed receipt and ordinary new import semantics.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"The CLI reference now documents exact-source resume and the explicit acknowledgment of unfinished target replacements. It also describes the last completed receipt and ordinary new import semantics.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"README.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"packages/cli/README.md","note":"The import dispatcher preserves its ordinary file invocation and adds validation and dispatch for the operation ID on explicit resume. Status retains its read-only path. Existing CLI routes continue through their registered owners.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"The import usage now includes explicit resume for the selected operation. The other help entries retain their documented command scopes.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"The import usage now includes explicit resume for the selected operation. The other help entries retain their documented command scopes.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The import usage now includes explicit resume for the selected operation. The other help entries retain their documented command scopes.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"packages/cli/README.md","note":"The import usage now includes explicit resume for the selected operation. The other help entries retain their documented command scopes.","inputs":["packages/cli/src/help.ts"]}
+  ]
+}

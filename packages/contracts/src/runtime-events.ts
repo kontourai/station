@@ -9,6 +9,7 @@ import type { PrincipalRef } from './principal.js';
 import {
   type ApprovalMode,
   type EngineId,
+  isAcpFamilyEngine,
   PROVIDER_CODEX,
 } from './provider.js';
 import type { ProviderFailure } from './provider-failure.js';
@@ -36,6 +37,10 @@ import type {
  * a silent no-op. (Distinct from the per-session CanonicalRuntimeEvent methods
  * below, which describe agent-runtime events, not EventBus channels.)
  */
+/** A committed attached continuation changed the exact session detail read. */
+export const ATTACHED_SESSION_CONTINUATION_REFRESH =
+  'attached-session-continuation';
+
 export const SERVER_EVENTS = {
   /** Exact answer assessment changed; identity-bearing and intentionally scoped. */
   ANSWER_ASSESSMENT_UPDATED: 'answer.assessment.updated',
@@ -554,7 +559,9 @@ export interface TurnCompletedEvent extends CanonicalRuntimeEventBase {
    * shared vocabulary cannot express it (it then reads `'other'`). Opaque
    * engine text: an ACP agent reports `refusal` or `max_turn_requests` here,
    * which would otherwise be indistinguishable from any other `'other'`
-   * stop. It does not change the turn's outcome: the turn still completed.
+   * stop. Older rows carry this field on the terminal completion; current
+   * ACP producers report unsuccessful stops as runtime.error with the
+   * same bounded reason in details.stopReason.
    */
   stopReason?: string;
   outputText?: SpillableText;
@@ -1014,6 +1021,114 @@ export interface RuntimeErrorEvent
   metadata?: Record<string, unknown>;
 }
 
+const ACP_STOP_FAILURE_CODES = [
+  'acp-turn-refused',
+  'acp-turn-request-limit',
+  'acp-turn-outcome-unknown',
+] as const;
+const ACP_STOP_FAILURE_MESSAGES = [
+  'Request declined.',
+  'Request limit reached.',
+  'Result unconfirmed.',
+] as const;
+
+type AcpCompletionEvidence = {
+  provider: string;
+  finishReason?: unknown;
+  stopReason?: unknown;
+};
+
+function acpStopReasonIndex(stopReason: unknown): 0 | 1 | 2 {
+  return stopReason === 'refusal'
+    ? 0
+    : stopReason === 'max_turn_requests'
+      ? 1
+      : 2;
+}
+
+function isHistoricalAcpStop(event: AcpCompletionEvidence): boolean {
+  // Native OpenCode shares the id but does not supply an ACP stop reason.
+  return (
+    event.finishReason === 'other' &&
+    isAcpFamilyEngine(event.provider) &&
+    (event.provider === 'acp' || Boolean(event.stopReason))
+  );
+}
+
+/** Fixed transcript copy for an inconclusive historical ACP completion. */
+export function acpCompletionFailureMessage(
+  event: AcpCompletionEvidence,
+): string | undefined {
+  if (isHistoricalAcpStop(event))
+    return ACP_STOP_FAILURE_MESSAGES[acpStopReasonIndex(event.stopReason)];
+}
+
+/** Display-safe explanation for both wire shapes at the delegation and notice seams. */
+export function describeAcpTurnStopFailure(event: {
+  method?: unknown;
+  provider?: unknown;
+  finishReason?: unknown;
+  stopReason?: unknown;
+  code?: unknown;
+}): { code: string; message: string } | undefined {
+  if (typeof event.provider !== 'string') return undefined;
+  let index: number | undefined;
+  if (event.method === 'turn.completed') {
+    if (isHistoricalAcpStop({ ...event, provider: event.provider }))
+      index = acpStopReasonIndex(event.stopReason);
+  } else if (
+    event.method === 'runtime.error' &&
+    isAcpFamilyEngine(event.provider)
+  ) {
+    index = ACP_STOP_FAILURE_CODES.findIndex((code) => code === event.code);
+  }
+  const code = index === undefined ? undefined : ACP_STOP_FAILURE_CODES[index];
+  const message =
+    index === undefined ? undefined : ACP_STOP_FAILURE_MESSAGES[index];
+  return code && message ? { code, message } : undefined;
+}
+
+/**
+ * Use the established runtime failure event for a non-successful ACP stop.
+ * Read projections may interpret older rows through this same function
+ * without modifying the raw event or honoring its former success stamp.
+ */
+export function interpretAcpTurnStop(
+  event: TurnCompletedEvent,
+  source?: 'acp-transport',
+): TurnCompletedEvent | ProviderRuntimeErrorEvent {
+  if (
+    source === 'acp-transport'
+      ? event.finishReason !== 'other'
+      : !isHistoricalAcpStop(event)
+  )
+    return event;
+  const index = acpStopReasonIndex(event.stopReason);
+  const {
+    finishReason: _finishReason,
+    stopReason,
+    outputText: _outputText,
+    sessionState: _sessionState,
+    previousState: _previousState,
+    transitionReason: _transitionReason,
+    transitionSource: _transitionSource,
+    ...identity
+  } = event;
+  const unknownOutcome = index === 2;
+  return {
+    ...identity,
+    code: ACP_STOP_FAILURE_CODES[index],
+    message: ACP_STOP_FAILURE_MESSAGES[index],
+    method: 'runtime.error',
+    severity: 'error',
+    kind: unknownOutcome ? 'indeterminate' : 'provider_error',
+    failurePhase: unknownOutcome ? 'indeterminate' : 'failed',
+    retryable: false,
+    retriable: false,
+    ...(stopReason ? { details: { stopReason } } : {}),
+  };
+}
+
 /**
  * archive#3451: the ONE `runtime.error` publish this repo's own
  * audit documents as not proof the turn is over — codex's `'error'`
@@ -1084,6 +1199,7 @@ export interface RuntimeWarningEvent extends CanonicalRuntimeEventBase {
 
 export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
   method: 'token-usage.updated';
+  servedModelObservation?: UsageReceipt['servedModelObservation'];
   /** Separate reported reasoning tokens; tariff rules decide whether output already includes them. */
   reasoningTokens?: number;
   /** Contemporaneous route observation, never reconstructed from the current connection. */

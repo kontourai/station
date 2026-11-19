@@ -1,3 +1,9 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import {
+  type ProjectRecoveryScope,
+  projectCreationRecoveryIdentity,
+} from './project-onboarding-recovery';
+
 /**
  * #5071: Continue a chat in a Project. Everything here is a draft the person
  * reviews: a new Project opens the New project form prefilled, and an
@@ -91,15 +97,6 @@ export function draftProjectFromConversation(
   };
 }
 
-/** The New project form, opened with the draft filled in. */
-export function newProjectHref(draft: ConversationProjectDraft): string {
-  const params = new URLSearchParams();
-  params.set('name', draft.name);
-  params.set('description', draft.description);
-  if (draft.directory) params.set('directory', draft.directory);
-  return `/projects/new?${params.toString()}`;
-}
-
 export function draftTaskFromConversation(
   conversation: ContinuedConversation,
   now: Date,
@@ -110,12 +107,6 @@ export function draftTaskFromConversation(
   };
 }
 
-/**
- * A continuation waiting for its new Project. The next new, empty Project's
- * Setup recommendations offer a Task that cites the chat (toggled, like every
- * recommendation); nothing is created until the person applies them. Kept per
- * browser tab, for an hour.
- */
 export interface PendingContinuation {
   sessionId: string;
   turnId?: string;
@@ -124,29 +115,39 @@ export interface PendingContinuation {
   savedAt: string;
 }
 
-const PENDING_KEY = 'station.continue-in-project.pending';
-/** A continuation older than this was abandoned. */
-const PENDING_TTL_MS = 60 * 60 * 1000;
+type StoredContinuation = PendingContinuation & {
+  projectDraft?: ConversationProjectDraft;
+};
 
-export function rememberPendingContinuation(
-  value: PendingContinuation,
-  storage: Pick<Storage, 'setItem'> | undefined = globalThis.sessionStorage,
-): void {
-  try {
-    storage?.setItem(PENDING_KEY, JSON.stringify(value));
-  } catch {
-    /* Storage refused: the Project still opens; the card offers no chat Task. */
-  }
+export const PROJECT_CONTINUATION_PARAM = 'continuation';
+const PENDING_PREFIX = 'station.continue-in-project.pending';
+const PENDING_TTL_MS = 60 * 60 * 1000;
+type ContinuationStorage = Pick<
+  Storage,
+  'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'
+>;
+
+function continuationKey(
+  scope: ProjectRecoveryScope,
+  kind: 'draft' | 'project',
+  id: string,
+): string {
+  return `${PENDING_PREFIX}:${JSON.stringify([
+    projectCreationRecoveryIdentity(scope),
+    kind,
+    id,
+  ])}`;
 }
 
-export function readPendingContinuation(
+function readStoredContinuation(
+  key: string,
   now: Date,
-  storage: Pick<Storage, 'getItem'> | undefined = globalThis.sessionStorage,
-): PendingContinuation | undefined {
+  storage?: ContinuationStorage,
+): StoredContinuation | undefined {
   try {
-    const raw = storage?.getItem(PENDING_KEY);
+    const raw = (storage ?? globalThis.sessionStorage)?.getItem(key);
     if (!raw) return undefined;
-    const value = JSON.parse(raw) as Partial<PendingContinuation>;
+    const value = JSON.parse(raw) as Partial<StoredContinuation>;
     if (
       typeof value.sessionId !== 'string' ||
       typeof value.title !== 'string' ||
@@ -155,19 +156,104 @@ export function readPendingContinuation(
       (value.turnId !== undefined && typeof value.turnId !== 'string')
     )
       return undefined;
+    const draft = value.projectDraft;
+    if (
+      draft !== undefined &&
+      (typeof draft?.name !== 'string' ||
+        typeof draft.description !== 'string' ||
+        (draft.directory !== undefined && typeof draft.directory !== 'string'))
+    )
+      return undefined;
     const age = now.getTime() - Date.parse(value.savedAt);
     if (!(age >= 0 && age <= PENDING_TTL_MS)) return undefined;
-    return value as PendingContinuation;
+    return value as StoredContinuation;
   } catch {
     return undefined;
   }
 }
 
-export function clearPendingContinuation(
-  storage: Pick<Storage, 'removeItem'> | undefined = globalThis.sessionStorage,
+/** The form URL carries only the identifier of its tab-local draft. */
+export function stageProjectContinuation(
+  scope: ProjectRecoveryScope,
+  value: StoredContinuation,
+  storage?: ContinuationStorage,
+): string | undefined {
+  try {
+    const tabStorage = storage ?? globalThis.sessionStorage;
+    const now = new Date(value.savedAt);
+    for (let index = tabStorage.length - 1; index >= 0; index -= 1) {
+      const key = tabStorage.key(index);
+      if (
+        key === PENDING_PREFIX ||
+        (key?.startsWith(`${PENDING_PREFIX}:`) &&
+          !readStoredContinuation(key, now, tabStorage))
+      )
+        tabStorage.removeItem(key);
+    }
+    const draftId = randomCorrelationId();
+    tabStorage.setItem(
+      continuationKey(scope, 'draft', draftId),
+      JSON.stringify(value),
+    );
+    return draftId;
+  } catch {
+    return undefined;
+  }
+}
+
+export function readProjectContinuationDraft(
+  scope: ProjectRecoveryScope,
+  draftId: string,
+  now = new Date(),
+): ConversationProjectDraft | undefined {
+  return readStoredContinuation(continuationKey(scope, 'draft', draftId), now)
+    ?.projectDraft;
+}
+
+export function bindProjectContinuation(
+  scope: ProjectRecoveryScope,
+  draftId: string,
+  projectId: string,
+  now = new Date(),
+  storage?: ContinuationStorage,
+): void {
+  const draftKey = continuationKey(scope, 'draft', draftId);
+  const value = readStoredContinuation(draftKey, now, storage);
+  if (!value) return;
+  const { projectDraft: _projectDraft, ...taskDraft } = value;
+  try {
+    const tabStorage = storage ?? globalThis.sessionStorage;
+    tabStorage.setItem(
+      continuationKey(scope, 'project', projectId),
+      JSON.stringify(taskDraft),
+    );
+    tabStorage.removeItem(draftKey);
+  } catch {
+    /* Setup recommendations can still run without browser storage. */
+  }
+}
+
+export function readProjectContinuation(
+  scope: ProjectRecoveryScope,
+  projectId: string,
+  now = new Date(),
+  storage?: ContinuationStorage,
+): PendingContinuation | undefined {
+  return readStoredContinuation(
+    continuationKey(scope, 'project', projectId),
+    now,
+    storage,
+  );
+}
+
+export function clearProjectContinuation(
+  scope: ProjectRecoveryScope,
+  projectId: string,
 ): void {
   try {
-    storage?.removeItem(PENDING_KEY);
+    globalThis.sessionStorage.removeItem(
+      continuationKey(scope, 'project', projectId),
+    );
   } catch {
     /* Nothing to clear. */
   }
@@ -212,6 +298,8 @@ export function continuedConversationFromChat(
       (message) =>
         message.role === 'assistant' &&
         message.answerEligible === true &&
+        typeof message.sessionId === 'string' &&
+        message.sessionId.length > 0 &&
         typeof message.turnId === 'string' &&
         message.turnId.length > 0,
     );
