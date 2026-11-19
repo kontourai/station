@@ -14,7 +14,30 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { setClientCredentialResolver } from '../client/http';
+import {
+  type FetchSseConnection,
+  setClientCredentialResolver,
+} from '../client/http';
+
+const transports = vi.hoisted(
+  () => new Map<FetchSseConnection, { settled: boolean }>(),
+);
+vi.mock('../client/http', async (original) => {
+  const http = await original<typeof import('../client/http')>();
+  return {
+    ...http,
+    fetchSSE: (...args: Parameters<typeof http.fetchSSE>) => {
+      const transport = http.fetchSSE(...args);
+      const state = { settled: false };
+      transports.set(transport, state);
+      const settle = () => {
+        state.settled = true;
+      };
+      void transport.completed.then(settle, settle);
+      return transport;
+    },
+  };
+});
 
 // The host's capability handshake has its own suite; here the host serves
 // the shared stream.
@@ -159,15 +182,30 @@ beforeEach(async () => {
   }));
 });
 afterEach(async () => {
-  cleanup();
-  for (const client of clients) client.clear();
-  setClientCredentialResolver(undefined);
-  for (const connection of connections) connection.response.end();
-  server.closeAllConnections();
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve())),
-  );
-  db.close();
+  try {
+    cleanup();
+    // The last subscriber leaves the connection open during the reuse grace.
+    await vi.waitFor(() => {
+      expect([...transports.values()].every((state) => state.settled)).toBe(
+        true,
+      );
+    });
+    await Promise.all([...transports.keys()].map((stream) => stream.completed));
+  } finally {
+    for (const stream of transports.keys()) stream.close();
+    await Promise.allSettled(
+      [...transports.keys()].map((stream) => stream.completed),
+    );
+    transports.clear();
+    for (const client of clients) client.clear();
+    setClientCredentialResolver(undefined);
+    for (const connection of connections) connection.response.end();
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    db.close();
+  }
 });
 
 function wrapper() {

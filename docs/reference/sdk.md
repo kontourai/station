@@ -561,7 +561,11 @@ Browser visibility, focus and online signals can shorten a transient backoff
 once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
-are unchanged.
+are unchanged. Leaving the page aborts the stream unless the browser is
+preserving it in the back-forward cache. When a stream or retry wait settles,
+the SDK removes its listeners from the host targets where it registered them.
+A browser stream needs a window that supports page lifecycle events. The SDK
+stops before reconnecting if that window has retired.
 A stream opening has a 30-second deadline until response headers arrive,
 including credential resolution. `timeoutMs` changes that opening deadline;
 `null` or `0` explicitly disables it. The deadline stops at headers, so it never

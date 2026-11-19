@@ -320,7 +320,9 @@ import {
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { setProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import { ModelCatalogHttpError } from '../../../providers/registries/catalog-http.js';
+import { createConnectionRoutes } from '../../../routes/connections/connections.js';
 import { credentialProfileApplication } from '../../../telemetry/metrics.js';
+import { assertConnectionReady } from '../../execution-target/execution-target-resolver.js';
 import { createCredentialRecoveryModule } from '../../orchestration/credential-recovery-module.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import {
@@ -5103,6 +5105,271 @@ describe('ConnectionService — model inventory membership (station#3747)', () =
     // Knowledge reads vector stores through `/api/connections`, so removing
     // them from the model inventory must not remove them from Station.
     expect(all.map((connection) => connection.id)).toContain('lancedb-builtin');
+  });
+});
+
+describe('ordinary engine inventory and dispatch admission', () => {
+  const providerService = {
+    listProviderConnections: () => [],
+    saveProviderConnection: vi.fn(),
+    deleteProviderConnection: vi.fn(),
+    checkHealth: vi.fn(),
+  };
+
+  test.each(['deadline', 'caller-abort'])(
+    'a %s abandons an incomplete real adapter inspection without advertising freshness',
+    async (cause) => {
+      vi.useFakeTimers();
+      try {
+        const listModels = vi.fn(
+          (_input: { signal?: AbortSignal }) => new Promise(() => {}),
+        );
+        const adapter = {
+          provider: 'codex',
+          metadata: {
+            displayName: 'Codex',
+            description: 'Codex',
+            capabilities: ['agent-runtime'],
+            runtimeId: 'codex',
+            executionClass: 'connected',
+          },
+          getPrerequisites: async () => [],
+          listModels,
+        };
+        const service = createConnectionServiceForTest(
+          providerService,
+          () => [adapter],
+          async () => [],
+          () => ({ connections: [] }),
+          async () => ({}),
+          vi.fn(),
+        );
+        const requester = new AbortController();
+        const response = createConnectionRoutes(service).request('/agents', {
+          signal: requester.signal,
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(listModels).toHaveBeenCalledOnce();
+        if (cause === 'deadline') await vi.advanceTimersByTimeAsync(5_000);
+        else requester.abort();
+        const settled = await response;
+        expect(settled.status).toBe(cause === 'deadline' ? 504 : 503);
+        const body = await settled.json();
+        expect(body).toMatchObject({
+          success: false,
+          code:
+            cause === 'deadline'
+              ? 'connection_inventory_timed_out'
+              : 'connection_inventory_cancelled',
+        });
+        expect(body).not.toHaveProperty('data');
+        expect(listModels.mock.calls[0]?.[0].signal?.aborted).toBe(true);
+        expect(listModels).toHaveBeenCalledOnce();
+
+        const retry = await createConnectionRoutes(service).request('/agents');
+        expect(retry.status).toBe(200);
+        expect(await retry.json()).toMatchObject({
+          success: true,
+          data: [
+            {
+              id: 'codex',
+              config: { inspectionPartial: true },
+              runtimeCatalog: { source: 'none', fetchedAt: null },
+            },
+          ],
+        });
+        // The underlying fixture is still pending. The second read gets
+        // absence of evidence rather than starting a duplicate operation.
+        expect(listModels).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test('three overlapping current reads get their own live adapter observations', async () => {
+    const pending: Array<
+      (models: Array<{ id: string; name: string }>) => void
+    > = [];
+    const adapter = {
+      provider: 'codex',
+      metadata: {
+        displayName: 'Codex',
+        capabilities: ['agent-runtime'],
+        runtimeId: 'codex',
+        executionClass: 'connected',
+      },
+      getPrerequisites: async () => [],
+      listModels: () =>
+        new Promise<Array<{ id: string; name: string }>>((resolve) =>
+          pending.push(resolve),
+        ),
+    };
+    const service = createConnectionServiceForTest(
+      providerService,
+      () => [adapter],
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({}),
+      vi.fn(),
+    );
+    const app = createConnectionRoutes(service);
+    const requests = Array.from({ length: 3 }, () => app.request('/agents'));
+    try {
+      await vi.waitFor(() => expect(pending).toHaveLength(3));
+      pending.forEach((settle, i) =>
+        settle([{ id: `model-${i}`, name: `Model ${i}` }]),
+      );
+      const responses = await Promise.all(requests);
+      for (const response of responses) expect(response.status).toBe(200);
+      expect(
+        await Promise.all(responses.map((response) => response.json())),
+      ).toEqual(
+        expect.arrayContaining(
+          ['model-0', 'model-1', 'model-2'].map((id) =>
+            expect.objectContaining({
+              data: [
+                expect.objectContaining({
+                  status: 'ready',
+                  runtimeCatalog: expect.objectContaining({
+                    source: 'live',
+                    models: [expect.objectContaining({ id })],
+                  }),
+                }),
+              ],
+            }),
+          ),
+        ),
+      );
+    } finally {
+      for (const settle of pending) settle([]);
+      await Promise.all(requests);
+    }
+  });
+
+  test('a completed inventory distinguishes a live catalog from an unavailable engine inspection', async () => {
+    const service = createConnectionServiceForTest(
+      providerService,
+      () => [
+        {
+          provider: 'claude',
+          metadata: {
+            displayName: 'Claude',
+            capabilities: ['agent-runtime'],
+            runtimeId: 'claude',
+            executionClass: 'connected',
+          },
+          getPrerequisites: async () => [],
+          listModels: async () => [
+            { id: 'fixture-model', name: 'Fixture Model' },
+          ],
+        },
+        {
+          provider: 'codex',
+          metadata: {
+            displayName: 'Codex',
+            capabilities: ['agent-runtime'],
+            runtimeId: 'codex',
+            executionClass: 'connected',
+          },
+          getPrerequisites: async () => {
+            throw new Error('locator unavailable');
+          },
+          listModels: async () => {
+            throw new Error('catalog unavailable');
+          },
+        },
+      ],
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({}),
+      vi.fn(),
+    );
+    const response = await createConnectionRoutes(service).request('/agents');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'claude',
+          status: 'ready',
+          runtimeCatalog: expect.objectContaining({
+            source: 'live',
+            fetchedAt: expect.any(String),
+          }),
+        }),
+        expect.objectContaining({
+          id: 'codex',
+          status: 'missing_prerequisites',
+          config: expect.objectContaining({ inspectionPartial: true }),
+          runtimeCatalog: expect.objectContaining({
+            source: 'none',
+            fetchedAt: null,
+          }),
+        }),
+      ]),
+    });
+  });
+
+  test('normal list and dispatch reads agree on a warming ACP connection and its measured handshake', async () => {
+    const observedAt = '2026-11-19T07:00:00.000Z';
+    let available = false;
+    const service = createConnectionServiceForTest(
+      providerService,
+      () => [],
+      async () => [
+        {
+          id: 'fixture-acp',
+          name: 'Fixture Engine',
+          command: 'fixture-acp',
+          enabled: true,
+        },
+      ],
+      () => ({
+        connections: [
+          {
+            id: 'fixture-acp',
+            status: available ? 'available' : 'probing',
+            ...(available ? { handshakeObservedAt: observedAt } : {}),
+          },
+        ],
+      }),
+      async () => ({}),
+      vi.fn(),
+    );
+    const app = createConnectionRoutes(service);
+    const list = async () => (await app.request('/')).json();
+    expect(await list()).toMatchObject({
+      data: [
+        {
+          id: 'fixture-acp',
+          status: 'degraded',
+          config: { acpProbeStatus: 'probing' },
+          lastCheckedAt: null,
+        },
+      ],
+    });
+    const warming = await service.getConnection('fixture-acp');
+    expect(warming).not.toBeNull();
+    expect(() => assertConnectionReady(warming!)).toThrow(
+      /still checking access.*finish, then retry/,
+    );
+
+    available = true;
+    expect(await list()).toMatchObject({
+      data: [
+        {
+          id: 'fixture-acp',
+          status: 'ready',
+          config: { acpProbeStatus: 'available' },
+          lastCheckedAt: observedAt,
+          controlPlaneObservation: { observedAt },
+        },
+      ],
+    });
+    const ready = await service.getConnection('fixture-acp');
+    expect(ready).not.toBeNull();
+    expect(() => assertConnectionReady(ready!)).not.toThrow();
   });
 });
 

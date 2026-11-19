@@ -6,12 +6,34 @@
  * Mirrors ConnectionBannerSource.test.tsx's mock shape for `@kontourai/station-connect`
  * (same shared connection-status signal, no new offline detector).
  */
+import type { FetchSseConnection } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureOrchestrationEventStream as openOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { PERSISTED_QUERY_KEY_PREFIXES } from '../lib/queryPersistence';
+
+import { observeSseFixture, ownSseFixture } from './helpers/ownedSseFixture';
+
+const connections = vi.hoisted(
+  () => new Map<FetchSseConnection, { settled: boolean }>(),
+);
+vi.mock('@kontourai/station-sdk', async (load) => {
+  const sdk = await load<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...sdk,
+    fetchSSE: (...args: Parameters<typeof sdk.fetchSSE>) =>
+      observeSseFixture(connections, sdk.fetchSSE(...args)),
+  };
+});
+
+const retainRelease = ownSseFixture(connections);
+function ensureOrchestrationEventStream(
+  ...args: Parameters<typeof openOrchestrationEventStream>
+) {
+  return retainRelease(openOrchestrationEventStream(...args));
+}
 
 const connectionStatus: {
   status: 'connected' | 'connecting' | 'error';
@@ -199,10 +221,6 @@ describe('useQueryCacheReconnectSync', () => {
  * stubbed, so "woken" means another request was sent.
  */
 describe('useQueryCacheReconnectSync and the live stream', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('cuts the orchestration stream backoff short when health recovers', async () => {
     const apiBase = 'https://reconnect-sync-stream-wake.example.test';
     const fetchMock = vi.fn(
@@ -217,7 +235,7 @@ describe('useQueryCacheReconnectSync and the live stream', () => {
       ).length;
 
     connectionStatus.status = 'error';
-    const release = ensureOrchestrationEventStream(apiBase);
+    ensureOrchestrationEventStream(apiBase);
     const { rerender } = renderHook(() => useQueryCacheReconnectSync(), {
       wrapper: wrapper(new QueryClient()),
     });
@@ -232,6 +250,5 @@ describe('useQueryCacheReconnectSync and the live stream', () => {
     connectionStatus.status = 'connected';
     rerender();
     await vi.waitFor(() => expect(streamRequests()).toBe(2), { timeout: 500 });
-    release();
   });
 });

@@ -94,6 +94,10 @@ in the panel that reported the error.
 | **Couldn't load project knowledge**, **Couldn't load project rules**, **Could not load stores**, **Could not load records** | Select **Retry** in the affected knowledge panel. |
 | **Could not load document categories** | Select **Retry categories**. |
 | **Could not load indexing status** | Select **Retry indexing status**. |
+| **Could not load documents** | Select **Retry** in Project knowledge. |
+| **Migration failed** | Check the reported error and the current knowledge store before retrying migration. |
+| **Knowledge action failed** | Check the reported directory or named files, then retry the index or upload action that failed. |
+| **Could not remove document** or **Could not remove documents** | Reopen Project knowledge and check which documents are still listed before confirming another removal. |
 | **Couldn't index the working directory** | Read the reason shown, correct it, then choose **Index Files** again. |
 | **Unable to load document content** | Close the knowledge document and reopen it from the Project. |
 | **Unable to check Task sharing** | Select **Retry** in Task sharing. |
