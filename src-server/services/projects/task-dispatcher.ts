@@ -228,6 +228,7 @@ export interface TaskDispatchRemoteSessions {
   ): Promise<
     | { kind: 'ready'; agentStart?: TaskDispatchAgentStart }
     | { kind: 'refused'; reason: string }
+    | { kind: 'unavailable'; reason: string }
   >;
   startOrSeed(
     reservation: TaskDispatchReservation,
@@ -340,6 +341,8 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     }
     if (prepared?.kind === 'refused')
       return { kind: 'failed', reason: prepared.reason };
+    if (prepared?.kind === 'unavailable')
+      return { kind: 'unavailable', reason: prepared.reason, retryable: true };
     const agentStart = prepared?.agentStart;
     let admission: Awaited<ReturnType<TaskDispatchGraphState['reserve']>>;
     try {

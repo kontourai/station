@@ -83,6 +83,7 @@ import type {
   AssignmentClaimService,
 } from '../evidence/assignment-claim-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
+import { AgentCatalogRefreshingError } from '../execution-target/execution-target-resolver.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import { captureExecutionWorkspaceBinding } from '../orchestration/execution-workspace-binding.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
@@ -4309,6 +4310,8 @@ export class TaskGraphService {
           );
           if (withDefaults) agentStart = await resolveAgentStart(withDefaults);
         } catch (error) {
+          if (error instanceof AgentCatalogRefreshingError)
+            return { kind: 'unavailable' as const, reason: error.message };
           return {
             kind: 'refused' as const,
             reason: `Agent '${agentId}' cannot start this Task: ${errorMessage(error)}`,
