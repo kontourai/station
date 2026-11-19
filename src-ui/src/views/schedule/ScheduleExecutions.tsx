@@ -26,7 +26,10 @@ export function ScheduleExecutions({
   return (
     <>
       {scheduled.length === 0 ? (
-        <Empty variant="compact" label="Executions appear after an automation runs" />
+        <Empty
+          variant="compact"
+          label="Executions appear after an automation runs"
+        />
       ) : (
         <ul className="schedule__executions" aria-label="Scheduled executions">
           {scheduled.map((run) => (
