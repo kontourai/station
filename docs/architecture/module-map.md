@@ -181,10 +181,13 @@ derives from the Agent's selection and `stationControlToolListable` at the
 engine's assurance (`stationControlAssuranceFor`: Claude `bound`; Codex `bound`
 when its bound channel carries the catalog, otherwise `delegated-custody`; ACP
 `delegated-custody`; other engines none). A section with no offered tool is
-omitted. A delegated session gets the delegated-child section in place of
-orchestration and is never told to use `delegate_task` or `send_message`.
-`list_delegation_targets` is bound-only, so a non-bound engine is pointed at
-`list_agents`. Sections stay within 3,500 bytes and the whole within 12,000;
+omitted. A delegated session gets child instructions and can start another
+tracked child when its recorded depth and inherited tool policy allow it.
+That request stays on the current Station in the caller's Project or global
+space. Station derives the parent and root from the caller's session record.
+`list_delegation_targets` is available within the caller's Project scope.
+Discovery on a saved Station still requires a bound operator.
+Sections stay within 3,500 bytes and the whole within 12,000;
 composition throws rather than truncating.
 
 **Evidence.** The

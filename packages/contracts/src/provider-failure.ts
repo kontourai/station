@@ -86,6 +86,8 @@ export const CODEX_DECISION_UNACKNOWLEDGED_CODE =
 export const CODEX_DECISION_REPLY_REFUSED_CODE = 'engine-decision-not-sent';
 export const TRANSCRIPT_LINE_SKIPPED_CODE = 'transcript-line-skipped';
 export const SESSION_RECOVERY_FAILED_CODE = 'session_recovery_failed';
+export const ACP_RESUME_CONFIGURATION_CHANGED_CODE =
+  'acp_resume_configuration_changed';
 export const MCP_SIGN_IN_REQUIRED_CODE = 'mcp_sign_in_required';
 export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
 export const CONFINED_FULL_ACCESS_UNAVAILABLE_CODE =
@@ -192,6 +194,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [CODEX_DECISION_REPLY_REFUSED_CODE]: 'warning',
   [TRANSCRIPT_LINE_SKIPPED_CODE]: 'warning',
   [SESSION_RECOVERY_FAILED_CODE]: 'unavailable',
+  [ACP_RESUME_CONFIGURATION_CHANGED_CODE]: 'conflict',
   [SESSION_START_INDETERMINATE_CODE]: 'indeterminate',
   [CONFINED_FULL_ACCESS_UNAVAILABLE_CODE]: 'permission_denied',
   [CONFINED_NETWORK_DENIED_CODE]: 'permission_denied',

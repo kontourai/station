@@ -171,10 +171,19 @@ test('mounted export walks more than 500 committed facts and excludes later appe
   expect(received).toEqual(expected);
 });
 
-test('the v1 export remains readable when OpenCode reports a step model', async () => {
+test('the v1 export remains readable when a provider reports richer usage', async () => {
   const f = fixture();
   f.start('own', 'reader', undefined, 'opencode');
   const createdAt = new Date().toISOString();
+  f.store.appendEvent({
+    eventId: 'configured-opencode',
+    provider: 'opencode',
+    threadId: 'own',
+    sessionId: 'own',
+    method: 'session.configured',
+    model: 'org/model',
+    createdAt,
+  });
   f.store.appendEvent({
     eventId: 'usage-opencode',
     provider: 'opencode',
@@ -182,6 +191,25 @@ test('the v1 export remains readable when OpenCode reports a step model', async 
     method: 'token-usage.updated',
     createdAt,
     promptTokens: 10,
+    pricingSnapshot: {
+      id: 'fixture-price',
+      capturedAt: createdAt,
+      source: 'fixture-catalog',
+      currency: 'USD',
+      provider: 'opencode',
+      model: 'org/model',
+      inputPerMillion: 100000,
+    },
+    reasoningTokens: 5,
+    servingRoute: {
+      id: 'fixture-route',
+      modelRevision: 'fixture-model-revision',
+      tariffId: 'fixture-tariff',
+      provenance: {
+        authority: 'provider-reported',
+        sourceRef: 'fixture-report',
+      },
+    },
     servedModelObservation: {
       source: 'opencode-step-started',
       providerId: 'provider',
@@ -203,7 +231,45 @@ test('the v1 export remains readable when OpenCode reports a step model', async 
   expect(page.observations[0]?.receipts[0]).toMatchObject({
     sourceEventId: 'usage-opencode',
     inputTokens: 10,
+    estimatedCost: {
+      amount: 1,
+      currency: 'USD',
+      pricingSnapshotId: 'fixture-price',
+      pricingSnapshotObservedAt: createdAt,
+      pricingSnapshotSource: 'fixture-catalog',
+    },
+    pricing: {
+      pricingSnapshotId: 'fixture-price',
+      pricingSnapshotCapturedAt: createdAt,
+      pricingSnapshotSource: 'fixture-catalog',
+      provider: 'opencode',
+      model: 'org/model',
+      currency: 'USD',
+    },
   });
+
+  // The HTTP JSON path drops undefined automatically. The source projection
+  // must also produce the closed shape when consumed directly.
+  const request = { from: day, to: day, scope: 'individual' as const };
+  const selected = readAuthorizedUsageExport({
+    store: f.store,
+    authority: sessionReadAuthorityFromRequest('reader', undefined, undefined),
+    stationId: 'station-a',
+    request,
+    personalOwnerIds: () => undefined,
+  });
+  const direct = parseUsageExportPage(selected.page, {
+    ...request,
+    expectedStationId: 'station-a',
+  });
+  const receipt = direct.observations[0]?.receipts[0];
+  expect(receipt).toMatchObject({
+    sourceEventId: 'usage-opencode',
+    inputTokens: 10,
+  });
+  expect(receipt).not.toHaveProperty('outputTokens');
+  expect(receipt).not.toHaveProperty('reasoningTokens');
+  expect(receipt).not.toHaveProperty('route');
 });
 
 test('personal nonmembers refuse account scope while retaining individual reads', async () => {
