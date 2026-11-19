@@ -786,9 +786,15 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add pane' }));
 
-    expect(
+    fireEvent.click(
       screen.getByRole('button', { name: /^Open Healthy pane$/ }),
-    ).toBeTruthy();
+    );
+    const picker = screen.getByRole('dialog', { name: 'Add workspace pane' });
+    expect(within(picker).getByRole('alert').textContent).toContain(
+      'Could not load layouts.',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Add Layout' })).toBeNull();
+    expect(navigationMocks.navigate).not.toHaveBeenCalled();
   });
 
   test('opens a layout-bound pane through its Coding host, not another installed layout', async () => {

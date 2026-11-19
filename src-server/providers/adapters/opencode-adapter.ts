@@ -1759,6 +1759,11 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           id: selector,
           name: readString(model?.name) ?? selector,
           originalId: selector,
+          catalogRoute: {
+            providerId,
+            modelId: id,
+            displayName: readString(model?.name),
+          },
         },
       ];
     });

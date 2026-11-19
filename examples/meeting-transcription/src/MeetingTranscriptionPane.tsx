@@ -5,20 +5,27 @@
  * person can reach: this Pane, which the manifest declares under
  * `workspacePanes` and the bundle exports under `components` (#2401).
  */
+
+import { useSendToChat } from '@kontourai/station-sdk';
 import {
+  type AgentId,
   agentId,
   STATION_AGENT_ID,
-} from '@kontourai/station-contracts/agent-identity';
-import { useSendToChat } from '@kontourai/station-sdk';
+} from '@kontourai/station-sdk/agent';
 import { useState } from 'react';
 import { MeetingTranscriptionModal } from './MeetingTranscriptionModal';
 
-const STATION_AGENT = agentId(STATION_AGENT_ID);
-
 export function MeetingTranscriptionPane() {
+  // Installed bundles use the host's SDK, which may predate this export.
+  if (typeof STATION_AGENT_ID !== 'string') {
+    return <p role="status">Update Station to use Meeting Transcription.</p>;
+  }
+  return <MeetingCapture agent={agentId(STATION_AGENT_ID)} />;
+}
+
+function MeetingCapture({ agent }: { agent: AgentId }) {
   const [isOpen, setIsOpen] = useState(false);
-  // The transcript goes to Station's own Agent: this plugin contributes none.
-  const sendToChat = useSendToChat(STATION_AGENT);
+  const sendToChat = useSendToChat(agent);
 
   return (
     <main style={{ padding: 24 }}>

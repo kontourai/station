@@ -57,11 +57,6 @@
       "reason": "Search field draws its own focus border; the global keyboard-focus floor still supplies the keyboard outline."
     },
     {
-      "path": "src-ui/src/components/coding-layout/CodingLayout.css",
-      "selector": ".coding-layout__new-terminal-filter",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
       "path": "src-ui/src/components/coding-layout/FileTreePanel.css",
       "selector": ".file-tree-panel__search-input",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."

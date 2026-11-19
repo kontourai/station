@@ -231,7 +231,7 @@ export function ComposerRunControl({
         // A picker opened from a choice here replaces this panel rather than
         // stacking on it.
         yieldToChildPopover
-        ariaLabel="Run setup"
+        ariaLabel="Agent & model"
         onClose={() => setOpen(false)}
         anchorRef={trigger}
         returnFocusTarget={trigger.current}
@@ -239,8 +239,8 @@ export function ComposerRunControl({
         panelClassName="composer-popover-panel composer-run-panel"
       >
         <ResponsiveDialogHeader
-          title="Run setup"
-          closeLabel="Close run setup"
+          title="Agent & model"
+          closeLabel="Close settings"
           onClose={() => setOpen(false)}
         />
         <ComposerChoiceSummary.Provider value={publish}>

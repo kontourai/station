@@ -122,6 +122,18 @@ const CONSOLE_PROJECTION = {
       status: 'route-back',
       summary: 'evidence failed static checks',
       is_open: true,
+      display_diagnostics: {
+        claims: [
+          {
+            expectationId: 'static-gates-green',
+            reason: 'evidence_rejected',
+            specificReason: 'check_failed',
+            surfaceGaps: [
+              { type: 'check_failed', message: 'The static check failed.' },
+            ],
+          },
+        ],
+      },
       expectations: [
         {
           id: 'static-gates-green',
@@ -307,6 +319,10 @@ describe('FlowRunConsole', () => {
       screen.getByRole('region', { name: 'Gate implement-gate' }),
     ).toBeTruthy();
     expect(screen.getByText('implement-gate · route-back')).toBeTruthy();
+    expect(screen.getByText(/evidence_rejected · check_failed/)).toBeTruthy();
+    expect(
+      screen.getByText('check_failed · The static check failed.'),
+    ).toBeTruthy();
     expect(screen.getAllByText('static-gates-green').length).toBeGreaterThan(0);
     expect(screen.getAllByText('attempt 1 of 3').length).toBeGreaterThan(0);
 

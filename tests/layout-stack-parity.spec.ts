@@ -21,6 +21,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { expect, type Page, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
@@ -28,7 +29,8 @@ import { installPluginWithConsent } from './helpers/install-plugin';
 
 const api = resolveE2EApiBase();
 const projectSlug = 'layout-stack-parity';
-const PLUGIN = 'stack-fx';
+const PLUGIN = 'layout-parity-review-workbench';
+const PLUGIN_LAYOUT = 'review-workspace';
 const evidenceRoot = join(
   process.cwd(),
   '.kontourai',
@@ -59,7 +61,7 @@ const subjects: Subject[] = [
   },
   {
     name: 'the fixture plugin layout',
-    layoutSlug: 'fx',
+    layoutSlug: PLUGIN_LAYOUT,
     navigation: 'Stack Parity navigation',
     first: 'Parity notes',
     second: 'Parity checks',
@@ -141,7 +143,7 @@ test.describe('layout contract fields: built-in Coding and a plugin layout behav
     });
     expect(project.status, await project.clone().text()).toBe(201);
     await applyLayout('builtin:coding');
-    await applyLayout(`plugin:${PLUGIN}:fx`);
+    await applyLayout(`plugin:${PLUGIN}:${PLUGIN_LAYOUT}`);
 
     // The read states the declaration each host is chosen by; the fixture's
     // claim stands because its plugin was granted `layout.primaryChat`.
@@ -257,4 +259,54 @@ test.describe('layout contract fields: built-in Coding and a plugin layout behav
       await expect(page.locator('#chat-dock')).toHaveCount(0);
     });
   }
+
+  test('realistic plugin pane opens from its catalog route and legacy Project bookmark at 390px', async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const response = await authenticatedE2EFetch(
+      `${api}/api/projects/${projectSlug}/panes`,
+    );
+    expect(response.ok).toBe(true);
+    const {
+      data,
+    }: {
+      data: { projectId: string; instances: WorkspacePaneInstance[] };
+    } = await response.json();
+    const descriptorId = `pane:plugin%3A${PLUGIN}:${PLUGIN_LAYOUT}:notes`;
+    const provisioned = data.instances.find(
+      (instance) => instance.descriptorId === descriptorId,
+    );
+    expect(provisioned).toBeDefined();
+    if (!provisioned) throw new Error('Project catalog did not issue the pane');
+    expect(provisioned.instanceId.length).toBeLessThanOrEqual(128);
+    expect(provisioned.stateKey.length).toBeLessThanOrEqual(128);
+
+    const sourceId = `plugin:${PLUGIN}:${PLUGIN_LAYOUT}`;
+    const oldInstanceId = (projectId: string) =>
+      `instance:${encodeURIComponent(`project:${projectId}:source:${sourceId}`)}:${descriptorId}`;
+    expect(oldInstanceId(data.projectId).length).toBeGreaterThan(128);
+    const paneUrl = (id: string) =>
+      `/projects/${projectSlug}/panes/${encodeURIComponent(descriptorId)}/${encodeURIComponent(id)}`;
+    const content = page.getByText('Parity notes drill-in', { exact: true });
+
+    await page.goto(paneUrl(provisioned.instanceId));
+    await expect(content).toBeVisible();
+    await page.goto(paneUrl(oldInstanceId(data.projectId)));
+    await expect(content).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath('plugin-legacy-pane-390.png'),
+      animations: 'disabled',
+    });
+
+    await page.goto(
+      paneUrl(oldInstanceId('00000000-0000-0000-0000-000000000000')),
+    );
+    await expect(
+      page
+        .getByRole('alert')
+        .getByText('Workspace pane not found', { exact: true }),
+    ).toBeVisible();
+    await expect(content).toHaveCount(0);
+  });
 });

@@ -287,10 +287,10 @@ with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
 dock body (full screen on a phone). New-chat and running-chat controls share
 [ComposerRunControl](../../src-ui/src/components/ComposerRunControl.tsx): one
-Agent/model trigger opens Run setup, containing the existing
+Agent/model trigger opens Agent & model, containing the existing
 [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) controls. Long
 trigger labels truncate; the sheet owns the full choices. On desktop a picker
-opened from Run setup takes the panel's place (`yieldToChildPopover` on
+opened from Agent & model takes the panel's place (`yieldToChildPopover` on
 `ResponsiveDialogSurface`) and is clamped inside the composer column
 (`data-popover-boundary`); phones keep stacked sheets. Attach, mic and Start
 share the phone action row. Targets remain at least 44px; picker menus are edge

@@ -11,6 +11,12 @@ An absent Codex tier leaves the session's speed unchanged on continuation;
 `serviceTier: null` explicitly clears it. Legacy `fastMode: false` supplies no
 override. Catalog defaults describe the model, not local CLI configuration.
 
+A `ModelOption` can carry `catalogRoute` when the engine reports separate
+provider and model IDs. Compact labels use the route's display name or model ID
+and can show the provider as secondary detail. Selection uses the exact
+`ModelOption.id`. The catalog route describes an available choice. Turn and
+usage records carry their own serving evidence.
+
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
 `@kontourai/station-contracts/delegation-group` defines the

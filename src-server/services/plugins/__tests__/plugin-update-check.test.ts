@@ -58,7 +58,7 @@ describe('checkPluginUpdates (station#2236)', () => {
     const dir = pluginsDir();
     await expect(
       checkPluginUpdates({ pluginsDir: dir, logger }),
-    ).resolves.toEqual({ updates: [] });
+    ).resolves.toEqual({ status: 'complete', updates: [] });
   });
 
   test('entries without a git checkout and manifest pair are skipped', async () => {
@@ -73,7 +73,7 @@ describe('checkPluginUpdates (station#2236)', () => {
     );
     await expect(
       checkPluginUpdates({ pluginsDir: dir, logger }),
-    ).resolves.toEqual({ updates: [] });
+    ).resolves.toEqual({ status: 'complete', updates: [] });
     expect(logger.debug).not.toHaveBeenCalled();
   });
 
@@ -97,7 +97,7 @@ describe('checkPluginUpdates (station#2236)', () => {
     );
     await expect(
       checkPluginUpdates({ pluginsDir: plugins, logger }),
-    ).resolves.toEqual({ updates: [] });
+    ).resolves.toEqual({ status: 'unavailable', updates: [] });
   });
 
   test('a plugin checkout behind its own upstream reports its behind-count', async () => {
@@ -113,6 +113,7 @@ describe('checkPluginUpdates (station#2236)', () => {
     await expect(
       checkPluginUpdates({ pluginsDir: plugins, logger }),
     ).resolves.toEqual({
+      status: 'complete',
       updates: [
         {
           name: 'drifted',
@@ -122,5 +123,23 @@ describe('checkPluginUpdates (station#2236)', () => {
         },
       ],
     });
+  });
+  test('a failed Git fetch is unavailable rather than a completed empty check', async () => {
+    const root = tempDir('plugin-update-check-offline-');
+    const plugins = join(root, 'plugins');
+    const plugin = join(plugins, 'offline');
+    mkdirSync(plugins);
+    checkoutOneCommitBehind(root, plugin);
+    writeFileSync(
+      join(plugin, 'plugin.json'),
+      JSON.stringify({ name: 'offline', version: '1.0.0' }),
+    );
+    execGitSync(['remote', 'set-url', 'origin', join(root, 'missing-origin')], {
+      cwd: plugin,
+    });
+
+    await expect(
+      checkPluginUpdates({ pluginsDir: plugins, logger }),
+    ).resolves.toEqual({ status: 'unavailable', updates: [] });
   });
 });

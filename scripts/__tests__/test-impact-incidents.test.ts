@@ -75,6 +75,32 @@ const dependencyReasons = (result: ReturnType<typeof select>) =>
       /dependency .*\(#3149\)|import this changed dependency/.test(reason),
     );
 
+describe('dispatch-scope contract dependencies (#3335)', () => {
+  const guard =
+    'src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts';
+
+  test.each([
+    'packages/contracts/src/execution-preparation.ts',
+    'packages/contracts/src/execution-target.ts',
+  ])('retains the posture guard when only %s changes', (path) => {
+    for (const hosted of [false, true]) {
+      const result = select([path], head, hosted);
+      expect(executed(result)).toContain(guard);
+      expect(result.selection.lanes).toContainEqual(
+        expect.objectContaining({ id: 'ci-fast' }),
+      );
+    }
+  });
+
+  test('an unrelated high-fanout contract keeps the guard out of its explicit selection', () => {
+    const result = select(['packages/contracts/src/agent.ts']);
+    expect(executed(result)).not.toContain(guard);
+    expect(result.selection.lanes).toContainEqual(
+      expect.objectContaining({ id: 'ci-fast' }),
+    );
+  });
+});
+
 describe('Nightly regressions outside the import graph', () => {
   test.each([
     [

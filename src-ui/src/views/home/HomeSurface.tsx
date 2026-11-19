@@ -112,13 +112,16 @@ export function HomeSurface({
         id={CONTINUE_SECTION_ID}
       />
     ) : null;
+  const hasRemoteWorkNotice =
+    Boolean(model.remoteReadError) ||
+    model.remoteUnavailable.length > 0 ||
+    model.remoteAuthenticationRequired.length > 0;
   const showRecentWork =
     !continued ||
     model.workLoading ||
     model.workDegraded ||
     model.workError ||
-    model.remoteUnavailable.length > 0 ||
-    model.remoteAuthenticationRequired.length > 0 ||
+    hasRemoteWorkNotice ||
     [
       listedLanes.needsYou,
       listedLanes.running,
@@ -139,6 +142,7 @@ export function HomeSurface({
       workDegraded={model.workDegraded}
       workError={model.workError}
       agents={model.agents}
+      remoteReadError={model.remoteReadError}
       remoteUnavailable={model.remoteUnavailable}
       remoteAuthenticationRequired={model.remoteAuthenticationRequired}
       onOpen={model.continueWork}
@@ -204,7 +208,7 @@ export function HomeSurface({
         <>
           {actions}
           <HomeCoordinatorCard />
-          {!model.firstSession && recentWork}
+          {(!model.firstSession || hasRemoteWorkNotice) && recentWork}
         </>
       )}
     </>

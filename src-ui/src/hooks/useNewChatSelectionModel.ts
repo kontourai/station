@@ -93,7 +93,9 @@ export interface ACPSelectionConnection {
     options?: Array<string | { value: string; name?: string }>;
   }>;
   /** The served model catalog (config option, else the `models` list). */
-  advertisedModels?: Array<{ id: string; name: string }>;
+  advertisedModels?: Array<
+    Pick<SelectableModel, 'id' | 'name' | 'catalogRoute'>
+  >;
 }
 
 /**
@@ -106,7 +108,7 @@ export interface ACPSelectionConnection {
 export function acpCatalogModelOptions(
   acpConnections: ACPSelectionConnection[],
   agentConnectionId: string | undefined,
-): Array<{ id: string; name: string }> {
+): Array<Pick<SelectableModel, 'id' | 'name' | 'catalogRoute'>> {
   if (!agentConnectionId) return [];
   return acpAdvertisedModels(
     acpConnections.find((acp) => acp.id === agentConnectionId),

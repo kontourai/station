@@ -6,6 +6,7 @@
  * performs I/O or imports `readline`/`node:tty`/`node:http`/`fetch`.
  */
 import { normalizeRequestAnswerability } from '@kontourai/station-contracts/orchestration';
+import { isUnevaluatedFlowGateObservation } from '@kontourai/station-contracts/runtime-events';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import type {
   FlowRunSnapshotInput,
@@ -104,7 +105,13 @@ export function derivePendingApprovalsForSession(
   return pending;
 }
 
-const VALID_GATE_VERDICTS = new Set(['pass', 'route-back', 'block', 'wait']);
+const VALID_GATE_VERDICTS = new Set([
+  'pass',
+  'route-back',
+  'block',
+  'wait',
+  'not-evaluated',
+]);
 
 /**
  * Folds `flow.run-attached` (binding: `runId`, `definitionId`, `cwd` —
@@ -143,13 +150,18 @@ export function deriveGateStateForSession(
       continue;
     }
     if (event.method === 'flow.gate-verdict') {
-      const verdict = event.verdict;
+      const unevaluated = isUnevaluatedFlowGateObservation(event);
+      const verdict = unevaluated ? 'not-evaluated' : event.verdict;
       if (typeof verdict === 'string' && VALID_GATE_VERDICTS.has(verdict)) {
         latestVerdict = {
           verdict: verdict as OperateGateVerdict['verdict'],
           gateId: typeof event.gateId === 'string' ? event.gateId : undefined,
           summary:
-            typeof event.summary === 'string' ? event.summary : undefined,
+            unevaluated && event.verdict === 'pass'
+              ? 'No gate outcome was recorded.'
+              : typeof event.summary === 'string'
+                ? event.summary
+                : undefined,
           nextAction:
             typeof event.nextAction === 'string' ? event.nextAction : undefined,
           missing: Array.isArray(event.missing)

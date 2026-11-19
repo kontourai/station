@@ -30,7 +30,10 @@ import type {
   ProviderConnectionConfig,
   RuntimeCatalogStatus,
 } from '@kontourai/station-contracts/tool';
-import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
+import {
+  isSafeToolServerId,
+  readCatalogModelRoute,
+} from '@kontourai/station-contracts/tool';
 import type {
   ProviderAdapterModelCatalog,
   ProviderAdapterShape,
@@ -52,7 +55,10 @@ import {
   acpAdvertisedModelCatalog,
 } from '../acp/acp-handshake-facts.js';
 import type { AcpSessionModelState } from '../acp/acp-process.js';
-import { openCodeModelImageInput } from '../acp/opencode-model-capabilities.js';
+import {
+  openCodeCatalogModel,
+  openCodeModelImageInput,
+} from '../acp/opencode-model-capabilities.js';
 import {
   sanitizeConnectionConfigHome,
   sanitizeConnectionEnvMap,
@@ -494,10 +500,12 @@ function normalizeModelOptionsWithBounds(value: unknown): {
       trimmedResolved !== item.id
         ? trimmedResolved
         : undefined;
+    const catalogRoute = readCatalogModelRoute(item.catalogRoute);
     models.push({
       id: item.id,
       name: item.name,
       originalId,
+      ...(catalogRoute ? { catalogRoute } : {}),
       ...(resolvedModel ? { resolvedModel } : {}),
       ...(capabilities ? { capabilities } : {}),
     });
@@ -908,6 +916,11 @@ export function acpRuntimeCatalogStatus(
       entry.id,
       config,
     );
+    const catalogRoute = openCodeCatalogModel(
+      liveStatus?.id,
+      entry.id,
+      config,
+    )?.catalogRoute;
     const capabilities: ModelOptionCapabilities = {
       ...effort,
       ...(imageInput === undefined ? {} : { imageInput }),
@@ -916,6 +929,7 @@ export function acpRuntimeCatalogStatus(
       id: entry.id,
       name: entry.name,
       originalId: entry.id,
+      ...(catalogRoute ? { catalogRoute } : {}),
       ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
     };
   });
