@@ -4606,6 +4606,42 @@ export function createOrchestrationRoutes(
       );
       const delegation = resolvedDelegation?.context;
       assertInheritedDelegationToolPolicy(delegation);
+      if (
+        resolvedDelegation?.provenance === 'caller-derived' &&
+        delegation &&
+        delegation.depth > 1
+      ) {
+        const authority = stationControlRequestAuthority(c.req.raw);
+        const projectSlug =
+          authority?.kind === 'caller'
+            ? deps.stationControlDispatchScope?.ownProjectSlug(authority.caller)
+            : undefined;
+        const workspace = body.target.workspace;
+        if (
+          body.target.environment?.kind !== 'current' ||
+          authority?.kind !== 'caller' ||
+          ((authority.caller.localProjectId || authority.caller.projectSlug) &&
+            projectSlug === undefined) ||
+          body.sessionId ||
+          (body.parentTaskId &&
+            body.parentTaskId !== delegation.parentConversationId) ||
+          body.taskRoomRequest ||
+          (workspace !== undefined &&
+            (workspace.kind !== 'project' ||
+              workspace.projectSlug !== projectSlug ||
+              workspace.cwd !== undefined))
+        ) {
+          return c.json(
+            {
+              success: false,
+              code: 'delegation_nested_out_of_scope',
+              error:
+                'A delegated Agent can start a new child only in its current Project on this Station.',
+            },
+            403,
+          );
+        }
+      }
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
       if (roomRequest && body.clientTurnId !== roomRequest.operationId)
@@ -5032,13 +5068,38 @@ export function createOrchestrationRoutes(
       // #2377 slice C2b: a tool's discovery on a saved Environment arrives
       // here; another Station needs a bound operator, decided before the
       // route connects or forwards anything.
+      const body = getBody(c) as z.infer<typeof delegationOptionsSchema>;
       const remoteRefused = refuseRemoteForStationControlCaller(
         c,
-        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+        body.environmentId !== undefined,
       );
       if (remoteRefused) return remoteRefused;
+      const scope = deps.stationControlDispatchScope;
+      const authority = stationControlRequestAuthority(c.req.raw);
+      const projectSlug =
+        body.projectSlug ??
+        (authority?.kind === 'caller' &&
+        body.environmentId === undefined &&
+        body.projectPath === undefined
+          ? scope?.ownProjectSlug(authority.caller)
+          : undefined);
+      const refused = refuseOutOfScopeDispatch(c, scope, (ownerId) =>
+        ownerId
+          ? {
+              kind: 'new',
+              ownerId,
+              projectSlug,
+              directory: body.projectPath,
+              remote: body.environmentId !== undefined,
+            }
+          : undefined,
+      );
+      if (refused) return refused;
       try {
-        const data = await deps.discoverDelegationOptions(getBody(c));
+        const data = await deps.discoverDelegationOptions({
+          ...body,
+          ...(projectSlug ? { projectSlug } : {}),
+        });
         return c.json({ success: true, data });
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);

@@ -1,0 +1,309 @@
+{
+  "revision": "dff027672dbe313bb5cb27c0e4e30db305eaef12",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced Station instruction composition from the selected Control tool catalog to scoped discovery and bounded child dispatch. The runtime checks the caller and inherited limits before forwarding or starting a Session.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/conversation-lineage.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Verified that lineage comes from the authenticated calling Session. A nested child stays in the recorded scope and keeps the depth and approval restrictions. The existing child message denial still applies.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts","src-server/runtime/agents/pre-tool-policy.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked the Antigravity launch flag, tool availability, tracked delegation, and explicit transcript replay against startup, dispatch, and conversation tests. The two-engine smoke test observes Station delegation and does not establish native subagent visibility.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts","src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the default deny list and child routing against the contracts and permission owner. Nested children retain inherited depth, denied tools, and approval restrictions.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/agent.ts","src-server/providers/adapters/acp-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/runtime/agents/delegation.ts","src-server/runtime/agents/pre-tool-policy.ts","src-server/runtime/agents/request-delegation.ts","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/tools/station-control-operations-tools.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the recorded caller, route scope, refusal projections, and transcript pin before provider start. Explicit Continue with chat history does not present the predecessor cursor.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/conversation-lineage.ts","src-server/services/orchestration/orchestration-session-state.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed ACP launch and delegation references against the recorded capability and canonical history-replay start.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed references to the Session API against the scoped child dispatch contract and the explicit transcript replay boundary.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The denied-command catalog now omits the unconditional child delegation ban. Child messaging, resource mutations and job denials stay in the catalog. Verified the replacement in the scoped route, lineage and catalog projections.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The added ACP configuration-conflict code describes a definitive pre-spawn refusal. Existing error spellings and retry semantics stay intact.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The added ACP configuration-conflict code describes a definitive pre-spawn refusal. Existing error spellings and retry semantics stay intact.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the added pre-spawn typed refusal and permission-denial-to-terminal assertions. The prior engine-channel and approval checks remain in the focused suite.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the existing ACP approval and resume seams. A stale policy refusal settles its own prompt, while cursor drift is refused before spawn and points to transcript replay. Other prompt results keep their existing mapping.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"The route scopes local target discovery to the authenticated caller and refuses nested remote or unrelated workspaces before dispatch. Existing peer, Task room and portable dispatch paths keep their separate admissions.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked grandchild derivation against the caller record. It uses the stricter depth and retains denied tools and unattended approval restrictions.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked grandchild derivation against the caller record. It uses the stricter depth and retains denied tools and unattended approval restrictions.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked grandchild derivation against the caller record. It uses the stricter depth and retains denied tools and unattended approval restrictions.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked grandchild derivation against the caller record. It uses the stricter depth and retains denied tools and unattended approval restrictions.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked grandchild derivation against the caller record. It uses the stricter depth and retains denied tools and unattended approval restrictions.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the stale-generation signal at the existing pre-tool gate. The ACP adapter reports its refusal without allowing the tool or weakening approval checks.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the stale-generation signal at the existing pre-tool gate. The ACP adapter reports its refusal without allowing the tool or weakening approval checks.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the stale-generation signal at the existing pre-tool gate. The ACP adapter reports its refusal without allowing the tool or weakening approval checks.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the stale-generation signal at the existing pre-tool gate. The ACP adapter reports its refusal without allowing the tool or weakening approval checks.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the stale-generation signal at the existing pre-tool gate. The ACP adapter reports its refusal without allowing the tool or weakening approval checks.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the stale-generation signal at the existing pre-tool gate. The ACP adapter reports its refusal without allowing the tool or weakening approval checks.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The recorded policy still enforces messaging restrictions, and the common derivation limits the child depth. Model-provided lineage remains untrusted.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The recorded policy still enforces messaging restrictions, and the common derivation limits the child depth. Model-provided lineage remains untrusted.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The recorded policy still enforces messaging restrictions, and the common derivation limits the child depth. Model-provided lineage remains untrusted.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The recorded policy still enforces messaging restrictions, and the common derivation limits the child depth. Model-provided lineage remains untrusted.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/architecture.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Removed the unconditional wall-clock Agent reload from bootstrap. Configuration listeners still handle change-driven and explicit reloads. Other startup services and their authority paths are untouched by this edit.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Checked the bootstrap callback removal against explicit and watcher-driven configuration reloads. It removes a scheduled invalidation without changing runtime startup, route composition, or real configuration generation checks.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Explicit Continue with chat history reaches the existing authorized transcript pin and suppresses the native cursor. Ordinary continuation still checks the native execution identity and capability.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Explicit Continue with chat history reaches the existing authorized transcript pin and suppresses the native cursor. Ordinary continuation still checks the native execution identity and capability.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Explicit Continue with chat history reaches the existing authorized transcript pin and suppresses the native cursor. Ordinary continuation still checks the native execution identity and capability.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Explicit Continue with chat history reaches the existing authorized transcript pin and suppresses the native cursor. Ordinary continuation still checks the native execution identity and capability.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Explicit Continue with chat history reaches the existing authorized transcript pin and suppresses the native cursor. Ordinary continuation still checks the native execution identity and capability.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the durable failed-recovery event against the start boundary. Typed refusals preserve their code and classification, while unknown provider effects remain indeterminate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the durable failed-recovery event against the start boundary. Typed refusals preserve their code and classification, while unknown provider effects remain indeterminate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the durable failed-recovery event against the start boundary. Typed refusals preserve their code and classification, while unknown provider effects remain indeterminate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the durable failed-recovery event against the start boundary. Typed refusals preserve their code and classification, while unknown provider effects remain indeterminate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the durable failed-recovery event against the start boundary. Typed refusals preserve their code and classification, while unknown provider effects remain indeterminate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the durable failed-recovery event against the start boundary. Typed refusals preserve their code and classification, while unknown provider effects remain indeterminate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the durable failed-recovery event against the start boundary. Typed refusals preserve their code and classification, while unknown provider effects remain indeterminate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the durable failed-recovery event against the start boundary. Typed refusals preserve their code and classification, while unknown provider effects remain indeterminate.","inputs":["src-server/services/orchestration/orchestration-session-state.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked that the instructions derive nested delegation guidance from the recorded depth and tool policy, after the existing tool selection and assurance checks.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Checked that the instructions derive nested delegation guidance from the recorded depth and tool policy, after the existing tool selection and assurance checks.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Checked that the instructions derive nested delegation guidance from the recorded depth and tool policy, after the existing tool selection and assurance checks.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked that the instructions derive nested delegation guidance from the recorded depth and tool policy, after the existing tool selection and assurance checks.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked that the instructions derive nested delegation guidance from the recorded depth and tool policy, after the existing tool selection and assurance checks.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked the target discovery tool through its canonical route entry. The change does not involve the knowledge tool registration or other operations.","inputs":["src-server/tools/__tests__/station-control-operations-tools.test.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The target discovery tool uses the same scoped route and SDK as the UI. The catalog projection remains in the server and saved environments still require bound operator authority.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The target discovery tool uses the same scoped route and SDK as the UI. The catalog projection remains in the server and saved environments still require bound operator authority.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"The target discovery tool uses the same scoped route and SDK as the UI. The catalog projection remains in the server and saved environments still require bound operator authority.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The target discovery tool uses the same scoped route and SDK as the UI. The catalog projection remains in the server and saved environments still require bound operator authority.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The target discovery tool uses the same scoped route and SDK as the UI. The catalog projection remains in the server and saved environments still require bound operator authority.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The target discovery tool uses the same scoped route and SDK as the UI. The catalog projection remains in the server and saved environments still require bound operator authority.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Verified that target discovery grants only its dedicated route. The route retains own-Project scope and the bound-operator requirement for saved environments.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the shipped topics from the reviewed ACP, orchestration and delegation documentation.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}
