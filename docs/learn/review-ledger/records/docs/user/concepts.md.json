@@ -60,7 +60,13 @@
 
     "src-ui/src/hooks/outboundQueueProjection.ts",
 
-    "src-ui/src/__tests__/useOutboundQueueFlush.test.ts"
+    "src-ui/src/__tests__/useOutboundQueueFlush.test.ts",
+
+    "src-ui/src/views/project-page/ProjectRoom.tsx",
+
+    "src-ui/src/views/TaskWorkspaceView.tsx",
+
+    "src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx"
   ],
 
   "checks": [

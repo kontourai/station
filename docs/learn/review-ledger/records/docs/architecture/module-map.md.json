@@ -1782,7 +1782,9 @@
 
     "src-server/runtime/routes/project-room-coordinator-runtime.ts",
 
-    "src-server/runtime/routes/project-room-agent-runtime.ts"
+    "src-server/runtime/routes/project-room-agent-runtime.ts",
+
+    "packages/shared/src/station-home-store-registry.ts"
   ],
 
   "checks": [
