@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -143,6 +144,8 @@ const fixtures = vi.hoisted(() => ({
   })),
   tasksRefetch: vi.fn(),
   inventoryRefetch: vi.fn(),
+  remoteSessionsError: null as Error | null,
+  remoteSessionsRefetch: vi.fn(),
   remoteSessionsResult: undefined as
     | {
         environments: any[];
@@ -290,7 +293,12 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   // archive#1097: pending by default (`data: undefined`) — proves the local
   // list above never waits on this.
-  useRemoteSessionsQuery: () => ({ data: fixtures.remoteSessionsResult }),
+  useRemoteSessionsQuery: () => ({
+    data: fixtures.remoteSessionsResult,
+    error: fixtures.remoteSessionsError,
+    isError: fixtures.remoteSessionsError !== null,
+    refetch: fixtures.remoteSessionsRefetch,
+  }),
   // Home mounts StarterWorkCard whenever first run is `completed`, which every
   // test here is. The card's own states belong to
   // `components/home/__tests__/StarterWorkCard.test.tsx`; here it is settled on
@@ -333,7 +341,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: vi.fn(),
   }),
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  StationHttpError: (
+    await importOriginal<typeof import('@kontourai/station-sdk/client')>()
+  ).StationHttpError,
   // U1: the layouts read Home makes before routing a row to its Coding layout.
   listProjectLayouts: (_apiBase: string, slug: string) => {
     fixtures.listProjectLayouts(slug);
@@ -826,7 +837,7 @@ describe('HomeView', () => {
     const row = within(
       screen.getByRole('region', { name: 'Recent work' }),
     ).getByRole('button', {
-      name: 'Lives in Coding, station',
+      name: /^Lives in Coding\b/,
     });
     row.focus();
     fireEvent.click(row);
@@ -877,7 +888,7 @@ describe('HomeView', () => {
     fireEvent.click(
       within(screen.getByRole('region', { name: 'Recent work' })).getByRole(
         'button',
-        { name: 'Stays in the dock, station' },
+        { name: /^Stays in the dock\b/ },
       ),
     );
     expect(focus).toHaveBeenCalledTimes(1);
@@ -1943,6 +1954,8 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     fixtures.tasks = [];
     fixtures.chats = {};
     fixtures.continueDecoy = false;
+    fixtures.remoteSessionsError = null;
+    fixtures.remoteSessionsRefetch.mockClear();
     fixtures.remoteSessionsResult = undefined;
   });
 
@@ -2092,6 +2105,50 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeNull();
   });
 
+  test.each([false, true])(
+    'explains denied remote inventory alongside local work when present (%s)',
+    (hasLocalWork) => {
+      fixtures.projects = [];
+      fixtures.continueDecoy = hasLocalWork;
+      if (hasLocalWork) fixtures.sessions = [REMOTE_SESSION];
+      fixtures.remoteSessionsError = new StationHttpError(403, undefined, {
+        code: 'insufficient_scope',
+      });
+      renderHomeView({ continuation: null, onNavigate: vi.fn() });
+
+      const recent = within(
+        screen.getByRole('region', { name: 'Recent work' }),
+      );
+      expect(recent.getByRole('alert').textContent).toContain(
+        'Ask the Station operator for access to remote work.',
+      );
+      expect(recent.queryByText('Nothing here yet')).toBeNull();
+      expect(
+        recent.queryByRole('button', { name: 'Retry remote work' }),
+      ).toBeNull();
+      expect(recent.queryAllByTestId('inbox-row')).toHaveLength(
+        hasLocalWork ? 1 : 0,
+      );
+      expect(
+        screen.queryAllByRole('heading', {
+          name: 'Start your first conversation',
+        }),
+      ).toHaveLength(hasLocalWork ? 0 : 1);
+    },
+  );
+
+  test('can retry a temporary remote-inventory failure on a fresh Station', () => {
+    fixtures.projects = [];
+    fixtures.remoteSessionsError = new StationHttpError(503);
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(
+      screen.getByRole('heading', { name: 'Start your first conversation' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry remote work' }));
+    expect(fixtures.remoteSessionsRefetch).toHaveBeenCalledOnce();
+  });
+
   // a remote fetch failure (a connected environment the server could
   // not reach in time) still never blocks the local list, and degrades to
   // an unobtrusive note rather than an error state.
@@ -2127,7 +2184,8 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeTruthy();
   });
 
-  test('shows an actionable pairing note when a connected SSH tunnel lacks a usable peer bearer', () => {
+  test('shows a pairing note and first-conversation guidance on a fresh Station', () => {
+    fixtures.projects = [];
     fixtures.remoteSessionsResult = {
       environments: [],
       unavailable: [],
@@ -2148,6 +2206,10 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(
       screen.getByText(/Add or replace its pairing credential/i),
     ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Start your first conversation' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
   });
 
   // the local-first invariant — omitting/defaulting remote data

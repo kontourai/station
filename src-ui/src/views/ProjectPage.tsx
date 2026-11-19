@@ -254,9 +254,19 @@ function ProjectOperatorPage({
   const {
     data: layouts = [],
     isLoading: layoutsLoading,
+    isFetching: layoutsFetching,
     isError: layoutsError,
     refetch: refetchLayouts,
-  } = useProjectLayoutsQuery(slug);
+  } = useProjectLayoutsQuery(slug, {
+    // IndexedDB can still hold the list from before an applied layout.
+    refetchOnMount: 'always',
+  });
+  const layoutsPending = layoutsLoading || layoutsFetching;
+  const layoutOpenNotice = layoutsPending
+    ? 'Layouts are still loading.'
+    : layoutsError
+      ? 'Could not load layouts. Close this picker and retry.'
+      : undefined;
   const { data: gitStatus } = useGitStatus(slug, project?.workingDirectory);
   const { data: gitLog = [] } = useGitLog(slug, project?.workingDirectory, 5);
   const {
@@ -274,6 +284,7 @@ function ProjectOperatorPage({
 
   const [showAddLayout, setShowAddLayout] = useState(false);
   const [showAddPane, setShowAddPane] = useState(false);
+  const [layoutOpenBlocked, setLayoutOpenBlocked] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<unknown>(null);
 
@@ -301,10 +312,14 @@ function ProjectOperatorPage({
 
   function openPane(entry: WorkspacePaneAvailabilityCatalogEntry) {
     if (!entry.instance) return;
-    setShowAddPane(false);
     const requiresLayout = workspacePaneRequiresLayoutIdentity(
       entry.descriptor,
     );
+    if (requiresLayout && layoutOpenNotice) {
+      setLayoutOpenBlocked(true);
+      return;
+    }
+    setShowAddPane(false);
     // Every renderer in today's closed `requiresLayout` set reads Coding
     // layout configuration, so Coding is the intentional host capability.
     // Making this generic requires a versioned descriptor field naming its
@@ -372,6 +387,9 @@ function ProjectOperatorPage({
               ? { goal: project.goal }
               : {})}
             gitStatus={gitStatus}
+            invitePeople={() =>
+              navigate(`/projects/${slug}/edit`, { section: 'access' })
+            }
             navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
           />
         )}
@@ -564,7 +582,10 @@ function ProjectOperatorPage({
                     <button
                       type="button"
                       className="project-page__add-btn"
-                      onClick={() => setShowAddPane(true)}
+                      onClick={() => {
+                        setLayoutOpenBlocked(false);
+                        setShowAddPane(true);
+                      }}
                     >
                       + Add pane
                     </button>
@@ -585,7 +606,7 @@ function ProjectOperatorPage({
                 <ProjectLayoutsSection
                   slug={slug}
                   layouts={layouts}
-                  loading={layoutsLoading}
+                  loading={layoutsPending}
                   error={layoutsError}
                   onRetry={() => void refetchLayouts()}
                   setLayout={setLayout}
@@ -671,6 +692,7 @@ function ProjectOperatorPage({
         {extensionAccess.dialog}
         <ProjectWorkspacePaneModal
           show={showAddPane}
+          notice={layoutOpenBlocked ? layoutOpenNotice : undefined}
           entries={paneCatalog.entries}
           loading={paneCatalog.isLoading}
           error={paneCatalog.isError}

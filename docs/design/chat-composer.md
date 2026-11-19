@@ -14,15 +14,15 @@
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
-## Run setup in the composer toolbar
+## Agent & model in the composer toolbar
 
 Reply and start composers share one bottom row inside the input box: attachment,
-voice and other tools on the left, then Run setup immediately beside Send or
+voice and other tools on the left, then Agent & model immediately beside Send or
 Start on the right. If Start wraps, it stays at the trailing edge of the
 toolbar. The reply's next-turn destination notice and conversation status/resync
 action stay above the box when present.
 
-Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
+Agent & model is a quiet ghost pill with overlapping Agent and engine marks, a
 secondary-weight model label, and the shared caret. The Agent mark names the
 Agent, so the label spends its text on the model; without an Agent mark it reads
 Agent · model and the Agent name truncates first, but never below about eight
@@ -32,13 +32,10 @@ follows the model ("Opus · High") and truncates before it; with no effort
 requested the engine default applies and no level is named. Safety warnings stay
 on the marks, and the open panel repeats the mark on the choice that raised it. When the
 Agent now points at another engine (and its Session has not ended; see 3.1), the trigger
-adds "· Agent moved" at every width, 8px after the label and with a plain space after
+adds "· Default differs" at every width, 8px after the label and with a plain space after
 the dot. The label gives way before it, and in narrow composers the label hides,
-keeping marks, the hint without its dot, and caret. Showing the hint on the trigger at
-every width is a decision of #4971: before #4897 a wide composer said "Agent now on …"
-in the Engine chip's caption and a narrow one "Agent moved", and from #4897 the closed
-row said neither. The trigger's accessible name ends with "Agent moved"
-and its description gives the full sentence. On phones, More draft options groups Saved drafts
+keeping marks, the hint without its dot, and caret. The trigger’s accessible
+description names the session engine and Agent default. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
@@ -177,7 +174,7 @@ source and workspace controls, with specialist management still in Settings.
 
 Home and the chat dock share one start composer (`StartComposer`, driven in
 the dock by `NewChatModal`). Both use a heading with the inline Project picker,
-a compact Run setup control beside Start inside the message box, and a Station/location
+a compact Agent & model control beside Start inside the message box, and a Station/location
 line below it.
 
 **New chat** is not a dialog. It opens a draft in the chat dock's body, in place
@@ -218,7 +215,7 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   the person moves focus or clicks away (a window switch does not count).
 
 The Project page opens on Overview and keeps its shared Project Room separate
-from direct Agent conversations. The shared Run setup control sits
+from direct Agent conversations. The shared Agent & model control sits
 inside the composer beside Start and, while the `visual-skills` Feature Preview
 is on, the overflow for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
@@ -249,7 +246,7 @@ coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
 changing or resetting the engine opens a compact **Switch engine** (or
-**Switch agent**) picker; on a phone it replaces Run setup. Its one action
+**Switch agent**) picker; on a phone it replaces Agent & model. Its one action
 switches now, sending the composer's draft as the first turn, prepared like
 any send (mentions, quotes and the size limit), or, with no draft, a fixed
 catch-up turn (the route starts the target Session with a real turn, so
@@ -1017,7 +1014,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### 3.1 Provider and model picker
 
-- Chat replies, Home and dock starts share one **Run setup** button, with the
+- Chat replies, Home and dock starts share one **Agent & model** button, with the
   Agent and engine marks and a compact model label (Agent · model when no
   Agent mark is shown). Identical marks appear
   once; different marks overlap with the smaller engine mark underneath. A missing
@@ -1047,10 +1044,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …" on its own line below the engine name, with no separator, wrapping
-  rather than being cut, and the accessible name says
-  the conversation runs on its engine and the Agent now uses another. The closed Run
-  setup trigger says "Agent moved" (see Run setup in the composer toolbar). Once the Session's
+  marks the Agent row. The stacked engine icon opens the current engine and Agent default. On narrow phones a dot replaces the text badge.
+  The picker identifies the connection in scope. Saving a model choice says
+  "Model selected" while the engine has yet to serve a turn. The closed Run
+  setup trigger says "Default differs" (see Agent & model in the composer toolbar). Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
   "Next turn on …", because the next turn starts a successor
   there. Since the closed trigger has no room for a destination name, the composer also
@@ -1086,8 +1083,8 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   takes its confirmation); the pick is the new chat's own and rides its first
   send. In the dock's New chat draft the picker opens on the popover layer, as
   on Home.
-  On desktop a picker opened from Run setup (approval, model) replaces the
-  panel rather than stacking on it: Run setup hides, the picker opens at the Run
+  On desktop a picker opened from Agent & model (approval, model) replaces the
+  panel rather than stacking on it: Agent & model hides, the picker opens at the Run
   setup trigger and stays inside the composer's column, Escape returns to Run
   setup and a click outside closes both. The approval picker's first line says
   the mode in effect as the engine confirmed it, or that the engine has not
@@ -1157,9 +1154,9 @@ control that takes Send's accent while Send is ready. With no turn, Send alone
 sits at the row's trailing edge. On mobile, Send is an arrow and its mode
 picker a chevron. They appear once the
 composer holds text, an attachment or quoted context. Until then they take no
-room, so Run setup keeps the width an empty draft has no use for. On mobile,
+room, so Agent & model keeps the width an empty draft has no use for. On mobile,
 Stop follows them at the row's trailing edge, so it does not move when they
-appear; Run setup narrows instead. At 390px a running turn's full row (Clear,
+appear; Agent & model narrows instead. At 390px a running turn's full row (Clear,
 Send, mode picker and Stop) still wraps to a second line once the draft holds
 text. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn.
@@ -1295,7 +1292,7 @@ activity labels.
 
 ### Return on this device
 
-**Chat settings → Return in chat** is saved in the existing device-settings
+**Agent & model → Return in chat** is saved in the existing device-settings
 record and applies to software and attached keyboards. Automatic sends on a
 fine-pointer desktop and inserts a new line on coarse-pointer touch devices,
 including tablets and landscape phones. Narrow desktop windows retain desktop
@@ -1607,7 +1604,7 @@ shelves behave as before.
 
 Customize → Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;
-Agent, model, Mode and Approval remain choices inside Run setup. Basis stays
+Agent, model, Mode and Approval remain choices inside Agent & model. Basis stays
 answer-scoped. Chat inventory and Browse turns are conversation overflow actions.
 
 The dev UI proxy uses the production unavailable envelope during API restarts.

@@ -1792,6 +1792,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // into the outcome they report, with the stylesheet resolved so the
   // presence-not-visibility guardrail is exercised rather than assumed.
   'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+  // Real Chromium verification of Web Push Settings with controlled VAPID responses.
+  'src-ui/src/__tests__/browser-push-settings.browser.test.tsx',
   // Real React remount in Chromium isolates a possible renderer livelock.
   'src-ui/src/__tests__/LazyBoundary.browser.test.tsx',
   // #1536 B2: same shape again — launches a real Chromium via

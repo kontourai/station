@@ -458,7 +458,9 @@
 
     "src-server/providers/adapters/claude-instruction-files.ts",
 
-    "src-ui/src/views/ProviderSettingsView.css"
+    "src-ui/src/views/ProviderSettingsView.css",
+
+    "src-ui/src/views/project-page/useMemberProjectSharedWork.ts"
   ],
 
   "checks": [

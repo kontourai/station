@@ -1030,14 +1030,18 @@ test.describe('Orchestration Chat Flow', () => {
     ).toBeGreaterThanOrEqual(detailsBox!.y + detailsBox!.height);
     await expectClearLayout('desktop uncertain delivery');
     const checkStatus = card.getByRole('button', { name: 'Check status' });
-    await Promise.all([
+    const [unavailableStatus] = await Promise.all([
       page.waitForResponse(
         (response) =>
           response.request().method() === 'GET' &&
-          new URL(response.url()).pathname.endsWith(`/requests/${requestId}`),
+          new URL(response.url()).pathname ===
+            `/api/orchestration/sessions/session-1/requests/${requestId}`,
       ),
       checkStatus.click(),
     ]);
+    expect(await unavailableStatus.json()).toMatchObject({
+      data: { state: 'unavailable' },
+    });
     await expect(card.getByRole('alert')).toContainText(
       'Delivery is not confirmed.',
     );

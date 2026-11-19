@@ -45,9 +45,10 @@ export interface FlowRunRouteDeps {
   surveyReview?: SurveyFlowReviewService;
 }
 
-function errorStatus(error: unknown): 400 | 404 | 500 {
+function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
   if (error instanceof FlowRunNotFoundError) return 404;
-  if (error instanceof FlowRunInvalidError) return 400;
+  if (error instanceof FlowRunInvalidError)
+    return error.code === 'flow.run_head.stale' ? 409 : 400;
   return 500;
 }
 
@@ -443,11 +444,11 @@ export function createFlowRunRoutes(
   app.post('/runs/:runId/evaluate', validate(flowEvaluateSchema), async (c) => {
     try {
       const { gate } = getBody(c);
-      const data = await flowRunService.evaluate(
-        c.get('cwd'),
-        param(c, 'runId'),
-        gate,
-      );
+      const isCurrent = deps.isRequestPrincipalCurrent;
+      const args = [c.get('cwd'), param(c, 'runId'), gate] as const;
+      const data = isCurrent
+        ? await flowRunService.evaluate(...args, () => isCurrent(c.req.raw))
+        : await flowRunService.evaluate(...args);
       return c.json({ success: true, data });
     } catch (error: unknown) {
       return c.json(

@@ -160,8 +160,6 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       available: agent.toolsConfig?.available || [],
       autoApprove: agent.toolsConfig?.autoApprove || [],
       askBeforeUse: [...(agent.toolsConfig?.askBeforeUse || [])],
-      // #2613: carried through, not yet editable here (#2658). Modelled so a
-      // save writes back exactly what was loaded; absent stays absent.
       unattendedAutoApprove: agent.toolsConfig?.unattendedAutoApprove || [],
       browser: agent.toolsConfig?.browser !== false,
     },
@@ -217,9 +215,7 @@ export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
       available: [...(agent.toolsConfig?.available || [])],
       autoApprove: [...(agent.toolsConfig?.autoApprove || [])],
       askBeforeUse: [...(agent.toolsConfig?.askBeforeUse || [])],
-      // #2613: a copy starts without the source's unattended opt-in. It is a
-      // standing grant to run with nobody present, and the editor cannot
-      // show it yet (#2658), so a copy must not inherit it unseen.
+      // A copy needs its own opt-in to use tools with nobody present.
       unattendedAutoApprove: [],
       browser: agent.toolsConfig?.browser !== false,
     },

@@ -833,8 +833,31 @@ export function InboxRow({
     enabled: details,
     onOpen: openDetails,
   });
+  const reasonId = `${statusId}-reason`;
+  const durationId = `${statusId}-duration`;
+  const explanation =
+    size === 'slim'
+      ? (status.detail ?? status.reason)
+      : status.reason === status.detail
+        ? undefined
+        : status.reason;
   const describedBy =
-    tooltip && hover.anchor ? `${statusId} ${hoverCardId}` : statusId;
+    [
+      explanation && reasonId,
+      size !== 'slim' && status.since !== undefined && durationId,
+    ]
+      .filter(Boolean)
+      .join(' ') || undefined;
+  const spokenContext = [
+    size === 'slim' && contextLabel,
+    (size === 'slim' || (!actionsInDetails && identity.marks.length > 0)) &&
+      agentText,
+    item.controlMode === 'read-only-attached' && 'third-party session',
+    unread ? 'unread' : readUnknown ? 'read status unknown' : '',
+    hasUnsentDraft && 'unsent draft',
+  ]
+    .filter(Boolean)
+    .join(', ');
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover/focus host for the metadata card; the keyboard paths are the row button (focus opens the card) and Escape (the card closes itself).
     <div
@@ -940,11 +963,8 @@ export function InboxRow({
       <button
         type="button"
         className="chat-dock-inbox__item inbox-row__open"
-        aria-label={`${item.title}${unread ? ', unread' : readUnknown ? ', read status unknown' : ''}, ${contextLabel}${stationLabel ? `, Station: ${stationLabel}` : ''}${item.controlMode === 'read-only-attached' ? `, ${item.agentLabel}, third-party session` : ''}${hasUnsentDraft ? ', unsent draft' : ''}`}
-        // The accessible name is the explicit label above, so the status
-        // (word, and any reason, in full) is offered as the description;
-        // otherwise a screen reader would never hear what state the row is
-        // in or why it failed.
+        // The visible row supplies its name in reading order. Only the
+        // off-screen reason and coarse duration belong in its description.
         aria-describedby={describedBy}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
@@ -972,7 +992,7 @@ export function InboxRow({
               fallback={remoteProject ? 'initials' : 'dot'}
               name={contextLabel}
             />
-            <InboxRowTitle title={item.title} />
+            <InboxRowTitle title={item.title} />{' '}
             {hasUnsentDraft && <DraftMarker />}
             {/* Provenance survives the one-line size: a remote row must
                 never read as local work. */}
@@ -980,7 +1000,7 @@ export function InboxRow({
               <span className="inbox-row__slim-remote">
                 <bdi>{stationLabel}</bdi>
               </span>
-            )}
+            )}{' '}
             <span
               id={statusId}
               className="inbox-row__slim-word"
@@ -993,12 +1013,12 @@ export function InboxRow({
               {/* One line shows only the word; the detail and reason
                   behind it are still the row's description for a screen
                   reader. */}
-              {(status.detail || status.reason) && (
-                <span className="sr-only">
-                  {` · ${status.detail ?? status.reason}`}
+              {explanation && (
+                <span id={reasonId} className="sr-only" aria-hidden="true">
+                  {explanation}
                 </span>
               )}
-            </span>
+            </span>{' '}
             {hasTime && (
               <span className="inbox-row__time">
                 {relativeTime(item.updatedAt, now)}
@@ -1011,7 +1031,7 @@ export function InboxRow({
                 the title leads, with the time beside it in the slot the
                 hover actions take over. */}
             <span className="inbox-row__headline">
-              <InboxRowTitle title={item.title} />
+              <InboxRowTitle title={item.title} />{' '}
               {/* Never a fabricated duration: an item with no real
                   timestamp shows no time. */}
               {hasTime && (
@@ -1019,18 +1039,19 @@ export function InboxRow({
                   {relativeTime(item.updatedAt, now)}
                 </span>
               )}
-            </span>
+            </span>{' '}
             {actionsInDetails ? (
               <>
-                <InboxRowStatusLine id={statusId} status={status} now={now} />
+                <InboxRowStatusLine
+                  id={statusId}
+                  reasonId={reasonId}
+                  durationId={durationId}
+                  status={status}
+                  now={now}
+                />{' '}
                 <span className="inbox-row__meta">
                   {/* Decorative, deliberately: the agent is stated in words
-                      beside it, and this icon sits INSIDE a button that carries
-                      an explicit `aria-label`. Passing no `accessibleLabel` is
-                      what makes `BrandIcon` render `aria-hidden` rather than
-                      `role="img"`, so the row gains a picture and not a second
-                      announcement or a tab stop. An unresolved agent renders no
-                      icon at all, never a stand-in. */}
+                      beside it. The decorative mark adds no announcement or tab stop. */}
                   <IdentityMarks identity={identity} size={20} />
                   <span className="inbox-row__meta-text">
                     <span className="inbox-row__agent">{agentText}</span>
@@ -1048,7 +1069,13 @@ export function InboxRow({
                   size={16}
                   fallbackTitle={agentText}
                 />
-                <InboxRowStatusLine id={statusId} status={status} now={now} />
+                <InboxRowStatusLine
+                  id={statusId}
+                  reasonId={reasonId}
+                  durationId={durationId}
+                  status={status}
+                  now={now}
+                />{' '}
                 <span className="inbox-row__context">
                   {identity.marks.length === 0 && (
                     <>
@@ -1066,7 +1093,7 @@ export function InboxRow({
                   {hasUnsentDraft && <DraftMarker />}
                 </span>
               </span>
-            )}
+            )}{' '}
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 {/* One project mark: its own icon when it has one, else the
@@ -1086,9 +1113,12 @@ export function InboxRow({
                 <span className="inbox-row__project">{contextLabel}</span>
                 {hasUnsentDraft && <DraftMarker />}
               </span>
-            )}
+            )}{' '}
             <InboxRowChips chips={chips} />
           </>
+        )}
+        {spokenContext && (
+          <span className="sr-only">{` ${spokenContext}`}</span>
         )}
       </button>
       {hasActions && (

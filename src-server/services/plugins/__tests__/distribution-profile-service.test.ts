@@ -609,11 +609,7 @@ describe('DistributionProfileService', () => {
     },
   );
 
-  test('refuses a drill-in whose Project occurrence id exceeds the pane host limit (#4130)', () => {
-    // The real names of examples/survey-review-workbench: its one tab's
-    // occurrence id is longer than the 128 characters the pane host and the
-    // navigation store accept, so declaring it a drill-in is refused rather
-    // than silently dropped from the rail.
+  test('resolves a stack drill-in with realistic plugin and layout identities (#4130)', () => {
     const projectHome = home();
     const directory = writePlugin(
       projectHome,
@@ -633,19 +629,36 @@ describe('DistributionProfileService', () => {
       }),
     );
     const service = new DistributionProfileService(projectHome);
-    expect(() =>
-      service.resolveForApply('plugin:survey-review-workbench:survey-review'),
-    ).toThrow('known installed contribution');
-    expect(() =>
-      parsePluginLayoutDeclaration(
-        JSON.parse(readFileSync(join(directory, 'layout.json'), 'utf-8')),
-        'survey-review-workbench',
-        'survey-review',
-      ),
-    ).toThrow(
-      /drill-in 'pane:plugin%3Asurvey-review-workbench:survey-review:workbench' gets a Project occurrence id longer than the 128 characters .*#4130/,
-    );
+    expect(
+      service.resolveForApply('plugin:survey-review-workbench:survey-review')
+        .definition.drillIns,
+    ).toEqual([
+      'pane:plugin%3Asurvey-review-workbench:survey-review:workbench',
+    ]);
   });
+
+  test.each([
+    ['descriptor', 'survey-review-workbench', 'survey-review', 'x'.repeat(100)],
+    ['source', 'p'.repeat(80), 'layout-' + 'x'.repeat(45), 'workbench'],
+  ])(
+    'refuses a stack drill-in whose authored %s exceeds the host limit',
+    (_kind, pluginName, layoutSlug, tab) => {
+      const paneId = `pane:plugin%3A${pluginName}:${layoutSlug}:${tab}`;
+      expect(() =>
+        parsePluginLayoutDeclaration(
+          {
+            name: 'Survey review',
+            slug: layoutSlug,
+            presentation: 'stack',
+            drillIns: [paneId],
+            tabs: [{ id: tab, label: 'Workbench', component: 'workbench' }],
+          },
+          pluginName,
+          layoutSlug,
+        ),
+      ).toThrow(/pane host/);
+    },
+  );
 
   test('accepts the short fixture names the browser parity spec installs', () => {
     expect(

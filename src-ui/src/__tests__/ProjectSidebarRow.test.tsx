@@ -212,7 +212,7 @@ describe('ProjectSidebarRow', () => {
     expect(container.querySelector('.sidebar__project-live-label')).toBeNull();
   });
 
-  test('keeps the hardcoded Board shortcut for a project without the layout', () => {
+  test('keeps the hardcoded Board shortcut for a project without the layout', async () => {
     layoutsQueryMock.mockReturnValue({
       data: [{ slug: 'coding', name: 'Coding', type: 'coding' }],
     });
@@ -226,6 +226,8 @@ describe('ProjectSidebarRow', () => {
       />,
     );
 
+    await screen.findByRole('button', { name: 'Coding' });
+
     // Only the hardcoded shortcut renders "Board" — the real per-project
     // layout list only has Coding here.
     expect(screen.getAllByRole('button', { name: 'Board' })).toHaveLength(1);
@@ -238,7 +240,7 @@ describe('ProjectSidebarRow', () => {
    * answer the route guard acts on, so a reader is never shown a Board they
    * would immediately be redirected out of.
    */
-  test('offers no Board shortcut when the server reports no Builder run', () => {
+  test('offers no Board shortcut when the server reports no Builder run', async () => {
     boardAvailabilityQueryMock.mockReturnValue({
       data: { hasBuilderRun: false },
     });
@@ -254,6 +256,8 @@ describe('ProjectSidebarRow', () => {
         collapsed={false}
       />,
     );
+
+    await screen.findByRole('button', { name: 'Coding' });
 
     // The chip row itself renders — this is the absence of one chip inside
     // it, not the absence of the whole sidebar.
@@ -282,7 +286,7 @@ describe('ProjectSidebarRow', () => {
     });
   });
 
-  test('hides the hardcoded shortcut once the project has a session-board layout instance', () => {
+  test('hides the hardcoded shortcut once the project has a session-board layout instance', async () => {
     layoutsQueryMock.mockReturnValue({
       data: [
         { slug: 'coding', name: 'Coding', type: 'coding' },
@@ -302,6 +306,8 @@ describe('ProjectSidebarRow', () => {
         collapsed={false}
       />,
     );
+
+    await screen.findByRole('button', { name: 'Session Board' });
 
     // Exactly one "Session Board" button remains: the real layout-list
     // entry. If the dedupe regressed, the hardcoded shortcut would add a
@@ -356,7 +362,7 @@ describe('collapsed project view navigation', () => {
     );
   });
   afterEach(() => vi.unstubAllGlobals());
-  test('opens views on demand, selects the layout and returns focus on Escape', () => {
+  test('opens views on demand, selects the layout and returns focus on Escape', async () => {
     layoutsQueryMock.mockReturnValue({
       data: [{ slug: 'coding', name: 'Coding' }],
       isPending: false,
@@ -374,7 +380,7 @@ describe('collapsed project view navigation', () => {
         />
       </StrictMode>,
     );
-    const trigger = screen.getByRole('button', { name: 'Demo Project views' });
+    const trigger = screen.getByRole('button', { name: /^Demo Project views/ });
     trigger.focus();
     fireEvent.click(trigger);
     expect(
@@ -404,7 +410,7 @@ describe('collapsed project view navigation', () => {
     ).toBeNull();
     expect(document.activeElement).toBe(trigger);
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole('button', { name: 'Coding' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Coding' }));
     expect(setLayout).toHaveBeenCalledWith('demo', 'coding');
     expect(onNavigate).toHaveBeenCalledOnce();
     expect(
@@ -428,7 +434,9 @@ describe('collapsed project view navigation', () => {
         collapsed
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Demo Project views' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Demo Project views/ }),
+    );
     const popup = screen.getByRole('dialog', { name: 'Demo Project views' });
     expect(within(popup).getByRole('alert').textContent).toContain(
       'Unable to load views',

@@ -138,7 +138,7 @@ test.describe('Sidebar layout chips and header lockup geometry (#2063)', () => {
     expect(
       Math.abs(mark.x + mark.width / 2 - (rail.x + rail.width / 2)),
     ).toBeLessThanOrEqual(CENTER_TOLERANCE_PX);
-    await page.getByRole('button', { name: 'Dev views', exact: true }).click();
+    await page.getByRole('button', { name: /^Dev views/ }).click();
     await expect(page.getByRole('dialog', { name: 'Dev views' })).toBeVisible();
   });
 

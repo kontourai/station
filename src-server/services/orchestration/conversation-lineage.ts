@@ -2086,10 +2086,11 @@ export class ConversationLineage {
       this.deps.conversationHistoryReader &&
       isSessionReadAuthority(authority)
     ) {
-      return this.deps.conversationHistoryReader.list({
+      const page = await this.deps.conversationHistoryReader.list({
         authority,
         limit: CONVERSATION_HISTORY_MAX_ENTRIES,
-      }).items;
+      });
+      return page.items;
     }
     const sessions = await this.deps.listSessionReadModel(authority, {
       purpose: 'conversation-inventory',

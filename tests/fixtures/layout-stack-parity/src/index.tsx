@@ -18,8 +18,8 @@ function ParityChecks() {
 }
 
 export const components = {
-  'stack-fx-notes': ParityNotes,
-  'stack-fx-checks': ParityChecks,
+  'layout-parity-review-workbench-notes': ParityNotes,
+  'layout-parity-review-workbench-checks': ParityChecks,
 } satisfies Record<string, LayoutComponent>;
 
 export default ParityNotes;

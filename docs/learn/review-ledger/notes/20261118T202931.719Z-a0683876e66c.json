@@ -1,0 +1,19 @@
+{
+  "revision": "04a8544d256044b30ba4df5d0fabe7ba763506e1",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Verified the real CLI first-run fixture, the optional setup decision and current project and chat actions in Chromium. The test records visible-surface time, same-origin JavaScript resource timing and load without equating a zero transfer size to a fresh network fetch. The previous wait ceilings are preserved; one local run cannot establish the slow-host tail.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The added first-run measurement paragraph labels setup and lazy-surface receipts explicitly. It does not change other E2E lanes, scope instructions, resource claims or qualification rules.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The added first-run measurement paragraph labels setup and lazy-surface receipts explicitly. It does not change other E2E lanes, scope instructions, resource claims or qualification rules.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"The added first-run measurement paragraph labels setup and lazy-surface receipts explicitly. It does not change other E2E lanes, scope instructions, resource claims or qualification rules.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"The added first-run measurement paragraph labels setup and lazy-surface receipts explicitly. It does not change other E2E lanes, scope instructions, resource claims or qualification rules.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The added first-run measurement paragraph labels setup and lazy-surface receipts explicitly. It does not change other E2E lanes, scope instructions, resource claims or qualification rules.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"The added first-run measurement paragraph labels setup and lazy-surface receipts explicitly. It does not change other E2E lanes, scope instructions, resource claims or qualification rules.","inputs":["docs/guides/testing.md"]}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "revision": "d701dd72d8f364abf7eb7ef92d3a429aeaf2432f",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the reconnect observation after explicit unsubscribe and re-enable. The effect remains bound to its Station and authority key, captures the live operation generation at execution, and waits for pending cleanup before rechecking. The Settings status cannot inherit the previous browser registration.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]},
+
+    {"path":"docs/privacy-policy.md","note":"Checked the reconnect observation after explicit unsubscribe and re-enable. The effect remains bound to its Station and authority key, captures the live operation generation at execution, and waits for pending cleanup before rechecking. The Settings status cannot inherit the previous browser registration.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Checked the reconnect observation after explicit unsubscribe and re-enable. The effect remains bound to its Station and authority key, captures the live operation generation at execution, and waits for pending cleanup before rechecking. The Settings status cannot inherit the previous browser registration.","inputs":["src-ui/src/hooks/usePushNotifications.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the regression that opts in, unsubscribes, explicitly enables again, then rechecks on reconnect. The actual hook withdraws the subscribed label when the Station no longer confirms the new registration. The focused hook and App suites passed.","inputs":["src-ui/src/hooks/__tests__/usePushNotifications.test.tsx"]}
+  ]
+}

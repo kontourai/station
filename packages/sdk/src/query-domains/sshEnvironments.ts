@@ -1,3 +1,4 @@
+import { isTerminalConnectionStatus } from '@kontourai/station-contracts/http';
 import {
   type OrchestrationSessionEventWindow,
   withNormalizedAnswerability,
@@ -7,7 +8,12 @@ import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
 import { envelopeError } from '../client/api-error-message';
 import { hasCapability } from '../client/capability';
-import { authenticatedFetch, type ClientRequestOptions } from '../client/http';
+import {
+  authenticatedFetch,
+  type ClientRequestOptions,
+  readJsonBody,
+  StationHttpError,
+} from '../client/http';
 import { fetchPublicStationCapabilities } from '../client/publicStationCapabilities';
 import { rethrowDeadline } from '../client/request-deadline';
 import type { QueryConfig } from '../query-core';
@@ -240,9 +246,16 @@ export function fetchOpenSshHosts(): Promise<OpenSshDiscoveryResult> {
  * client-side fan-out.
  */
 export async function fetchRemoteSessions(): Promise<RemoteSessionsResult> {
-  const result = await request<RemoteSessionsResult>('/sessions');
-  // station#1778: `request<T>` asserts `ApiEnvelope<T>` over HTTP — an
-  // assertion, not a validation. This path crosses TWO version boundaries
+  const response = await authenticatedFetch(
+    `${await _getApiBase()}/api/environments/ssh/sessions`,
+  );
+  const envelope = (await readJsonBody(response)) as
+    | ApiEnvelope<RemoteSessionsResult>
+    | undefined;
+  if (!response.ok || !envelope?.success || envelope.data === undefined)
+    throw envelopeError(response, envelope, 'Remote work unavailable');
+  const result = envelope.data;
+  // station#1778: this path crosses TWO version boundaries
   // (this client → its server → a remote Station), so it is the most exposed
   // of them: a server older than ADR 0012 yields summaries whose required
   // `answerability` is `undefined` at runtime.
@@ -359,15 +372,25 @@ export function useOpenSshHostsQuery(
 }
 
 /**
- * station#1097 R3: this query's own loading/error state must never gate the
- * Home work list's local items — callers default `data` to
- * `{environments: [], unavailable: []}` and treat this purely as an
- * additive, independently-arriving source (see `HomeView.tsx`).
+ * station#1097 R3: Home treats this as an independently arriving source.
+ * A failed read rejects with its Station HTTP status, while a successful
+ * inventory can be empty or describe individual unavailable environments.
  */
 export function useRemoteSessionsQuery(
   config?: QueryConfig<RemoteSessionsResult>,
 ) {
-  return useQuery({ ...sshEnvironmentQueries.remoteSessions(), ...config });
+  return useQuery({
+    ...sshEnvironmentQueries.remoteSessions(),
+    ...config,
+    // Home and the dock share this inventory. A late observer of the same
+    // authority must not restart a read that already returned 401 or 403.
+    enabled: ({ state: { error } }) =>
+      config?.enabled !== false &&
+      !(
+        error instanceof StationHttpError &&
+        isTerminalConnectionStatus(error.status)
+      ),
+  });
 }
 
 export function useCreateSshEnvironmentMutation() {

@@ -3077,7 +3077,7 @@ function LiveConversationBody({
             }
             agentRoute={
               activeOrchestrationSession?.modelRoute
-                ? `via ${activeOrchestrationSession.modelRoute.label}`
+                ? activeOrchestrationSession.modelRoute.label
                 : undefined
             }
             onOpenAgentHandoff={

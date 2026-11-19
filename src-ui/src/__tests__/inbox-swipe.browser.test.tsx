@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import type { CDPSession, Page } from '@playwright/test';
+import {
+  type CDPSession,
+  expect as expectBrowser,
+  type Page,
+} from '@playwright/test';
 import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
 import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
@@ -99,11 +103,11 @@ async function swipe(
   dx: number,
   dy = 0,
   {
-    name = 'Review the inbox, Station',
+    name = /^Review the inbox\b/,
     during,
     cancel = false,
   }: {
-    name?: string;
+    name?: string | RegExp;
     during?: () => Promise<void>;
     cancel?: boolean;
   } = {},
@@ -144,9 +148,7 @@ async function mount(page: Page, preview: boolean, mobile = true) {
     },
     { preview, mobile },
   );
-  await page
-    .getByRole('button', { name: 'Review the inbox, Station', exact: true })
-    .waitFor();
+  await page.getByRole('button', { name: /^Review the inbox\b/ }).waitFor();
 }
 
 test('mobile swipes reveal existing actions without opening or stopping a conversation; desktop retains hover controls', async () => {
@@ -165,8 +167,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await mount(page, true);
     const row = page.getByRole('button', {
-      name: 'Review the inbox, Station',
-      exact: true,
+      name: /^Review the inbox\b/,
     });
     const resting = await row.boundingBox();
     if (!resting) throw new Error('Inbox row did not render');
@@ -219,7 +220,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .getByRole('button', { name: 'Dismiss Review the inbox from inbox' })
       .click();
     await page
-      .getByRole('button', { name: 'Review the inbox, Station', exact: true })
+      .getByRole('button', { name: /^Review the inbox\b/ })
       .waitFor({ state: 'hidden' });
     expect(
       await page.evaluate(
@@ -227,9 +228,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       ),
     ).toBe(0);
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Review the inbox, Station', exact: true })
-      .waitFor();
+    await page.getByRole('button', { name: /^Review the inbox\b/ }).waitFor();
 
     await swipe(cdp, page, -90);
     await rail
@@ -246,36 +245,28 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
     await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
-    await expect
-      .poll(() =>
-        page
-          .getByRole('button', {
-            name: 'Plan the next release, Station',
-            exact: true,
-          })
-          .evaluate((node) => document.activeElement === node),
-      )
-      .toBe(true);
+    await expectBrowser(
+      page.getByRole('button', { name: /^Plan the next release\b/ }),
+    ).toBeFocused();
     await page.getByRole('button', { name: 'Snoozed · 1' }).click();
     expect(
       await page
         .getByRole('region', { name: /Snoozed/ })
-        .getByRole('button', { name: 'Review the inbox, Station', exact: true })
+        .getByRole('button', { name: /^Review the inbox\b/ })
         .count(),
     ).toBe(1);
 
     await mount(page, true);
     await swipe(cdp, page, -90);
     await swipe(cdp, page, -90, 0, {
-      name: 'Plan the next release, Station',
+      name: /^Plan the next release\b/,
     });
     expect(await page.locator('.inbox-row--swiped').count()).toBe(1);
     expect(
       await page
         .locator('.inbox-row--swiped')
         .getByRole('button', {
-          name: 'Plan the next release, Station',
-          exact: true,
+          name: /^Plan the next release\b/,
         })
         .count(),
     ).toBe(1);
@@ -325,9 +316,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await page
       .getByRole('button', { name: 'Restore to inbox', exact: true })
       .click();
-    await page
-      .getByRole('button', { name: 'Review the inbox, Station', exact: true })
-      .waitFor();
+    await page.getByRole('button', { name: /^Review the inbox\b/ }).waitFor();
 
     const artifacts = resolve('.surface/inbox-dismiss-swipe');
     await mkdir(artifacts, { recursive: true });
@@ -371,8 +360,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
           ).toBe('0');
           await page
             .getByRole('button', {
-              name: 'Review the inbox, Station',
-              exact: true,
+              name: /^Review the inbox\b/,
             })
             .hover();
           await dismiss.waitFor({ state: 'visible' });

@@ -115,6 +115,26 @@ describe('SSH environments SDK domain', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves a remote inventory refusal and accepts a confirmed empty inventory', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      Response.json({ error: { code: 'insufficient_scope' } }, { status: 403 }),
+    );
+    await expect(fetchRemoteSessions()).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 403,
+      code: 'insufficient_scope',
+    });
+    mockJsonResponse({
+      success: true,
+      data: { environments: [], unavailable: [] },
+    });
+    await expect(fetchRemoteSessions()).resolves.toEqual({
+      environments: [],
+      unavailable: [],
+      authenticationRequired: [],
+    });
+  });
+
   it('addresses the collection without a trailing slash (#799)', async () => {
     // The server registers `/api/environments/ssh` exactly and 404s on
     // `.../ssh/`. Both the list and the create mutation asked for `'/'`, so

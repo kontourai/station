@@ -1161,8 +1161,10 @@ export function CommandPalette() {
               className="command-palette__input"
               type="text"
               role="combobox"
-              aria-expanded="true"
-              aria-controls="command-palette-listbox"
+              aria-expanded={ordered.length > 0}
+              aria-controls={
+                ordered.length > 0 ? 'command-palette-listbox' : undefined
+              }
               aria-autocomplete="list"
               aria-label="Search commands, projects and chats"
               // Focus stays in the input while the arrows move `activeIndex`,

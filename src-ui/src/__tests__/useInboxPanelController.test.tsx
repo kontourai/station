@@ -203,7 +203,7 @@ test('mobile search focuses when mounted and never steals a later keyboard selec
   const search = screen.getByRole('searchbox');
   expect(document.activeElement).toBe(search);
   const row = screen.getByRole('button', {
-    name: 'First selection, Workshop, Station: Receiver Station',
+    name: /^First selection(?=.*Workshop)(?=.*Receiver Station)/,
   });
   row.focus();
   act(() =>
@@ -223,11 +223,11 @@ test("following the project page keeps another Station's same-slug project out",
     vi.fn<Open>(async () => true),
   );
   expect(
-    screen.getByRole('button', { name: 'Second selection, Workshop' }),
+    screen.getByRole('button', { name: /^Second selection\b/ }),
   ).toBeTruthy();
   expect(
     screen.queryByRole('button', {
-      name: 'First selection, Workshop, Station: Receiver Station',
+      name: /^First selection\b/,
     }),
   ).toBeNull();
 });
@@ -243,9 +243,7 @@ test('mobile restores focus when the host closes Inbox while opening its reader'
   const trigger = screen.getByRole('button', { name: 'Inbox' });
   trigger.focus();
   const user = userEvent.setup();
-  await user.click(
-    screen.getByRole('button', { name: 'Second selection, Workshop' }),
-  );
+  await user.click(screen.getByRole('button', { name: /^Second selection\b/ }));
   await waitFor(() => expect(document.activeElement).toBe(trigger));
   expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
 });
@@ -280,11 +278,11 @@ for (const layout of ['desktop', 'mobile'] as const) {
       const { acknowledge } = mount(layout, open);
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       );
       fireEvent.click(
-        screen.getByRole('button', { name: 'Second selection, Workshop' }),
+        screen.getByRole('button', { name: /^Second selection\b/ }),
       );
       const firstActivation = open.mock.calls[0]?.[7];
       expect(firstActivation?.isCurrent?.()).toBe(true);
@@ -315,7 +313,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       const { failures, acknowledge } = mount(layout, open);
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Toggle panel' }));
@@ -324,7 +322,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       expect(window.location.search).toBe('');
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Switch Station' }));
@@ -346,42 +344,42 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await user.type(screen.getByRole('searchbox'), 'second');
       expect(
         screen.queryByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeNull();
       expect(
-        screen.getByRole('button', { name: 'Second selection, Workshop' }),
+        screen.getByRole('button', { name: /^Second selection\b/ }),
       ).toBeTruthy();
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'reviewer');
       expect(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeTruthy();
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'Workshop');
       expect(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeTruthy();
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'Receiver Station');
       expect(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Second selection, Workshop' }),
+        screen.queryByRole('button', { name: /^Second selection\b/ }),
       ).toBeNull();
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'missing');
       expect(screen.getByRole('button', { name: 'Clear filter' })).toBeTruthy();
       expect(
         screen.queryByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeNull();
     },
@@ -408,7 +406,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       );
       await waitFor(() => expect(acknowledge).toHaveBeenCalledOnce());
@@ -426,7 +424,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       );
       await waitFor(() => expect(failures).toHaveBeenCalledOnce());
@@ -444,7 +442,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       });
       fireEvent.click(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       );
       await waitFor(() => expect(failures).toHaveBeenCalledOnce());
@@ -505,14 +503,14 @@ for (const layout of ['desktop', 'mobile'] as const) {
       expect(readInboxDismissals('principal-a')).toEqual({});
       expect(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeTruthy();
       view.unmount();
       view = mount(layout, async () => true, 'principal-b');
       expect(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeTruthy();
     },
@@ -527,7 +525,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       mount(layout, async () => true, 'principal-a', true);
       expect(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -536,7 +534,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       expect(
         screen.getByRole('button', {
-          name: 'First selection, Workshop, Station: Receiver Station',
+          name: /^First selection\b/,
         }),
       ).toBeTruthy();
     },

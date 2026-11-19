@@ -1967,19 +1967,20 @@ screen's own assertion.
 
 Detected surfaces (`tests/helpers/gallery-app-error-state.ts`): the
 `LazyBoundary` row (`.lazy-boundary__error`), the extension-registry
-notification (a `toast-card` carrying `EXTENSIONS_UNAVAILABLE_LABEL`), and the
+notification (a `toast-card` carrying `EXTENSIONS_UNAVAILABLE_LABEL`), the
 route boundary's chunk failure (an `.error-state` titled with the catalog's
-`route.chunk.title` or `route.chunk.offlineTitle`). A surface means a lazily
-loaded part failed, not that a download failed: `LazyBoundary` shows its row for
-any error its child throws, a render error included. NOT detected, because none
+`route.chunk.title` or `route.chunk.offlineTitle`), and a route still suspended
+after its loading window (`.route-pending-recovery`). A surface can appear
+while a script request is still pending or after a render error. The Gallery
+records failed requests independently. NOT detected, because none
 has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
 `RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
 `DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
 their own `unavailable` slot that omits the shared row (several render nothing). The route boundary's
 other error states, its authority failure (`route.authority.title`) and its
 render failure (`route.generic.title`), are not detected either. The route
-surface is matched by its en-US titles only, so a capture in another locale
-does not detect it. No screen shows a detected surface on purpose, checked by
+chunk failure is matched by its en-US titles. The stalled route is matched
+by class in every locale. No screen shows a detected surface on purpose, checked by
 grep; no full capture has been run since route-chunk detection was added. A
 screen that starts to must be exempted by name in
 `APP_ERROR_SURFACE_EXEMPT_SCREENS`.
@@ -3108,6 +3109,28 @@ bucket still uses one Playwright worker and its own
 ports, temporary home, instance build roots, and `test-results/<instance>`
 directory. `STATION_E2E_CAPACITY` is bounded and is for measured,
 deliberately-provisioned hosts—not an edit-loop speed knob.
+
+The first-run Chromium journey records `first-run-surface-timing` samples
+in the suite log. The sample distinguishes the visible surface wait from
+same-origin JavaScript resource timing. A negative resource start offset
+means the browser started that resource before the timed interaction. A
+zero transfer size does not establish a network fetch. A missing resource
+entry is recorded separately from a slow surface.
+
+Each receipt records the checkout revision and whether tracked files differ.
+Only an observed timing entry contributes to a resource conclusion. An
+unavailable observation names the stage and failure class. Keep the existing
+20-second allowances until a slow-host sample establishes the tail.
+
+A clean run at `cbfd9227ce19297fb1ba090e2463c579ff5e154d` with one-minute host
+load 7.1–7.9 observed both setup launchers at 168–169 ms, the unconfigured
+composer at 4 ms, the Connections Models action at 338 ms, the Station Agent
+row at 1.08 s, and Chat actions at 812 ms. Inbox opened in 40–51 ms. The
+browser returned resource durations of 5.0 ms for the Connections frame,
+4.2 ms for the provider view, and 3.6 ms for the Chat actions sheet. Each
+had a zero transfer size. The Agent picker row's recorded script request
+preceded the timed picker interaction, and the Inbox recorded no new
+same-origin script entries during those opens.
 
 `tests/mobile-chat-composer.spec.ts` owns the mobile task-switcher journey:
 at 320px and 390px it covers the header trigger, visual-viewport sheet

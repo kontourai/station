@@ -853,6 +853,47 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(chat?.messages?.at(-1)?.turnId).toBe('turn-compact-2');
   });
 
+  test('different terminal errors for the same turn leave one retry card', () => {
+    const createdAt = '2026-09-19T01:22:59.000Z';
+    handleTurnStartedEvent(
+      {
+        eventId: 'turn-start',
+        provider: 'claude',
+        threadId,
+        createdAt,
+        method: 'turn.started',
+        turnId: 'failed-turn',
+      } as any,
+      activeChatsStore,
+    );
+    for (const message of ['provider request failed', 'engine ended']) {
+      handleRuntimeErrorEvent({
+        eventId: message,
+        provider: 'claude',
+        threadId,
+        createdAt,
+        method: 'runtime.error',
+        turnId: 'failed-turn',
+        severity: 'error',
+        message,
+      } as any);
+    }
+
+    const messages = activeChatsStore.getSnapshot()[threadId]?.messages;
+    expect(messages?.filter((message) => message.role === 'assistant')).toEqual(
+      [],
+    );
+    const cards = messages?.filter((message) =>
+      message.content.includes('[CHAT_ERROR]'),
+    );
+    expect(cards).toEqual([
+      expect.objectContaining({
+        turnId: 'failed-turn',
+        content: '[SYSTEM_EVENT] [CHAT_ERROR] engine ended',
+      }),
+    ]);
+  });
+
   test('station#2235: an interrupted-turn banner settles a live shell the recovery abort never reached', () => {
     const at = '2026-09-19T01:22:59.000Z';
     handleTurnStartedEvent(

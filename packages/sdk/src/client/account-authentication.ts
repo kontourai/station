@@ -8,6 +8,7 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import {
+  GRANTABLE_PROJECT_ROLES,
   PROJECT_MEMBER_ACTIONS,
   PROJECT_MEMBER_ROLES,
   type ProjectInvitationPreview,
@@ -173,7 +174,7 @@ export async function getProjectInvitationPreview(
     .object({
       projectName: z.string().min(1).max(512),
       inviterName: z.string().min(1).max(512),
-      role: z.enum(['viewer', 'contributor', 'admin']),
+      role: z.enum(GRANTABLE_PROJECT_ROLES),
       actions: z.array(z.enum(PROJECT_MEMBER_ACTIONS)),
       expiresAt: z.string().datetime(),
       recipientEmail: z.string().email().nullable(),
