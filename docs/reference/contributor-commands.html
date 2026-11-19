@@ -27,7 +27,7 @@
 <h1 id="contributor-commands">Contributor commands</h1>
 <p>This reference is generated from the paired Unix and Windows recipe metadata in <code>justfile</code>. It is the exact convenience-command interface; the invoked npm scripts and verification coordinator remain the canonical implementation and completion-receipt authorities.</p>
 <h2 id="setup"><code>setup</code></h2>
-<p>Install the lockfile-pinned Node dependency tree.</p>
+<p>Install the lockfile-pinned Node dependency tree. Set <code>STATION_DEPENDENCY_INSTALL_TIMEOUT_MS</code> in positive milliseconds to override the inert install deadline. See <a href="https://github.com/kontourai/station/blob/main/docs/guides/development.md#dependency-install-deadline">dependency install recovery</a>.</p>
 <p>Run: <code>just setup</code></p>
 <h3 id="macos-and-linux">macOS and Linux</h3>
 <pre><code>
