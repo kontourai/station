@@ -722,7 +722,6 @@ describe.skipIf(!posix)('station-weight idle CPU', () => {
        process.stdin.once('data', () => {
          const worker = spawn(process.execPath, ['-e', 'const t0 = process.cpuUsage(); for (;;) { const u = process.cpuUsage(t0); if (u.user + u.system >= 600000) break; } process.stdin.resume();'], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
          process.stdin.once('end', () => worker.stdin.end());
-         worker.once('exit', () => process.stdout.write('worker-exited\\n'));
        });
        process.stdout.write('ready\\n');
        setInterval(() => {}, 1000);`,
