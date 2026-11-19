@@ -14,6 +14,11 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+In **Notifications**, browser Web Push reflects the selected Station’s
+registration. Turning it off removes the local subscription. Station
+reports failed registration cleanup separately.
+[Web Push notifications](https://github.com/kontourai/station/blob/main/docs/guides/web-push-notifications.md)
+
 Use **Keyboard shortcuts** to inspect focus conditions and change bindings
 on this device. On small screens the list is read-only. See the
 [keyboard shortcut guide](../guides/keyboard-shortcuts.md).
