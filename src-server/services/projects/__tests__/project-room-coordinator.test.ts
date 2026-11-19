@@ -382,7 +382,7 @@ describe('ProjectRoomCoordinator', () => {
     expect(w.room.size).toBe(1);
     const [text] = [...w.room.values()];
     expect(text).toContain('**Task finished:** [Fix login](/tasks/task-1)');
-    expect(text).toContain('> Fixed the redirect and added a test.');
+    expect(text).not.toContain('Fixed the redirect and added a test.');
     const row = third.coordinator.view(scope, ROOM).proposals[0]!.tasks[0]!;
     expect(row.state).toBe('done');
     expect(row.resultMessageId).toMatch(/^message-/);
@@ -449,8 +449,70 @@ describe('ProjectRoomCoordinator', () => {
     await restarted.coordinator.reconcile();
     expect(w.publishCalls).toBe(2);
     expect([...w.room.values()]).toEqual([
-      '**Task finished:** [Fix login](/tasks/task-1)\n> Result at settlement.',
+      '**Task finished:** [Fix login](/tasks/task-1)',
     ]);
+  });
+
+  it('publishes a fixed failed status without the engine reason', async () => {
+    const w = new World();
+    const { coordinator, db } = w.open();
+    try {
+      await propose(coordinator, THREE);
+      const [card] = coordinator.view(scope, ROOM).proposals;
+      await coordinator.start({
+        scope,
+        roomId: ROOM,
+        proposalId: card!.proposalId,
+        rowIds: [card!.tasks[0]!.rowId],
+        starter: PERSON,
+      });
+      w.finish('task-1', 'failed');
+      await coordinator.reconcile();
+      expect([...w.room.values()]).toEqual([
+        '**Task stopped:** [Fix login](/tasks/task-1)',
+      ]);
+    } finally {
+      await coordinator.close();
+      db.close();
+    }
+  });
+
+  it('retains a legacy prepared result without replaying it into the Room', async () => {
+    const w = new World();
+    const first = w.open();
+    await propose(first.coordinator, THREE);
+    const [card] = first.coordinator.view(scope, ROOM).proposals;
+    const rowId = card!.tasks[0]!.rowId;
+    await first.coordinator.start({
+      scope,
+      roomId: ROOM,
+      proposalId: card!.proposalId,
+      rowIds: [rowId],
+      starter: PERSON,
+    });
+    const store = new ProjectRoomCoordinatorStore(first.db);
+    const legacy =
+      '**Task finished:** [Fix login](/tasks/task-1)\n> Synthetic legacy Task answer';
+    expect(
+      store.transition(rowId, ['working'], {
+        outcome: 'completed',
+        resultText: legacy,
+      }),
+    ).toMatchObject({ resultText: legacy });
+    await first.coordinator.close();
+    first.db.close();
+    const restarted = w.open();
+    await restarted.coordinator.reconcile();
+    expect(w.room.size).toBe(0);
+    expect(
+      new ProjectRoomCoordinatorStore(restarted.db).row(rowId),
+    ).toMatchObject({
+      resultText: legacy,
+      resultWithheld: expect.any(String),
+      state: 'done',
+    });
+    await restarted.coordinator.close();
+    restarted.db.close();
   });
 
   it('posts nothing for a starter who lost access, and still frees the slot', async () => {
@@ -560,9 +622,9 @@ describe('ProjectRoomCoordinator', () => {
     const lines = posted.split('\n').filter((line) => line.startsWith('- '));
     expect(lines).toHaveLength(3);
     expect(lines[0]).toContain('[Fix login](/tasks/task-1)');
-    expect(lines[0]).toContain(
-      '“Tried the OAuth path; the callback URL is wrong in staging.”',
-    );
+    expect(lines[0]).toContain('A written answer is available in the Task.');
+    expect(posted).not.toContain('the callback URL is wrong in staging');
+    expect(posted).not.toContain('Fix the login redirect.');
     expect(lines[1]).toContain('Reported: No output yet.');
     expect(lines[2]).toContain('Waiting on: a free slot');
   });

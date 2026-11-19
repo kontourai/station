@@ -167,20 +167,6 @@ const INSTRUCTIONS = [
   'Set pullRequest true only when the person asked for a pull request.',
 ].join('\n');
 
-function excerpt(text: string, max: number): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length <= max ? flat : `${flat.slice(0, max - 1)}…`;
-}
-
-function quote(text: string, max: number): string {
-  const trimmed = text.trim();
-  const cut = trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
-  return cut
-    .split('\n')
-    .map((line) => `> ${line}`)
-    .join('\n');
-}
-
 /** Markdown link text without brackets that would end it early. */
 function linkText(text: string): string {
   return text.replace(/[[\]]/g, '');
@@ -190,6 +176,13 @@ function taskLink(row: Pick<CoordinatorRowRecord, 'title' | 'taskId'>) {
   return row.taskId
     ? `[${linkText(row.title)}](${coordinatorTaskPath(row.taskId)})`
     : `**${linkText(row.title)}**`;
+}
+
+function settledTaskNotice(
+  row: Pick<CoordinatorRowRecord, 'title' | 'taskId'>,
+  outcome: NonNullable<CoordinatorRowRecord['outcome']>,
+): string {
+  return `**Task ${outcome === 'completed' ? 'finished' : 'stopped'}:** ${taskLink(row)}`;
 }
 
 /** The first turn a coordinator Task receives. */
@@ -253,7 +246,7 @@ export class ProjectRoomCoordinator {
         title: row.title,
         state: row.state,
         ...(row.refusal
-          ? { result: excerpt(row.refusal, 200) }
+          ? { result: 'Start refused' }
           : row.outcome
             ? { result: row.outcome }
             : {}),
@@ -593,50 +586,24 @@ export class ProjectRoomCoordinator {
     });
   }
 
-  private async prepareResult(
-    row: CoordinatorRowRecord & {
-      conversationId: string;
-      sessionId: string;
-      taskId: string;
-      starterId: string;
-    },
-  ): Promise<
-    { outcome: 'completed' | 'failed'; resultText: string } | undefined
-  > {
-    const status = this.ports.readTask(row.taskId)?.status;
-    if (status === 'done') {
-      const answer = await this.ports.assistantText({
-        sessionId: row.sessionId,
-        ownerUserId: row.starterId,
-      });
-      return {
-        outcome: 'completed',
-        resultText: [
-          `**Task finished:** ${taskLink(row)}`,
-          answer
-            ? quote(answer, PROJECT_ROOM_COORDINATOR_LIMITS.resultExcerptChars)
-            : '_It finished without a written answer; open the Task for its work._',
-        ].join('\n'),
-      };
-    }
-    const entry = this.ports.turnEntry(
-      row.conversationId,
-      firstTurnKey(row.rowId),
-    );
-    let reason: string | undefined;
-    if (status === 'canceled') reason = 'Its Task was canceled.';
-    else if (entry?.state === 'refused')
-      reason = entry.reason ?? 'Its first message was refused.';
-    else if (entry?.state === 'sent' && entry.sessionId && entry.turnId) {
-      const terminal = this.ports.turnTerminal(entry.sessionId, entry.turnId);
-      if (terminal?.kind === 'failed') reason = terminal.reason;
-    }
-    return reason
-      ? {
-          outcome: 'failed',
-          resultText: `**Task stopped:** ${taskLink(row)}. ${excerpt(reason, 300)}`,
-        }
-      : undefined;
+  private taskOutcome(
+    taskId: string,
+    conversationId: string,
+    rowId: string,
+  ): CoordinatorRowRecord['outcome'] {
+    const status = this.ports.readTask(taskId)?.status;
+    if (status === 'done') return 'completed';
+    if (status === 'canceled') return 'failed';
+    const entry = this.ports.turnEntry(conversationId, firstTurnKey(rowId));
+    if (entry?.state === 'refused') return 'failed';
+    if (
+      entry?.state === 'sent' &&
+      entry.sessionId &&
+      entry.turnId &&
+      this.ports.turnTerminal(entry.sessionId, entry.turnId)?.kind === 'failed'
+    )
+      return 'failed';
+    return undefined;
   }
 
   /** Persist the exact room payload before attempting its idempotent write. */
@@ -645,30 +612,34 @@ export class ProjectRoomCoordinator {
     if (!conversationId || !sessionId || !taskId || !starterId) return;
     let { outcome, resultText } = row;
     if (!outcome || !resultText) {
-      const result = await this.prepareResult({
-        ...row,
-        conversationId,
-        sessionId,
-        taskId,
-        starterId,
-      });
-      if (!result || !this.store.transition(row.rowId, ['working'], result))
+      outcome = this.taskOutcome(taskId, conversationId, row.rowId);
+      if (!outcome) return;
+      resultText = settledTaskNotice(row, outcome);
+      if (
+        !this.store.transition(row.rowId, ['working'], { outcome, resultText })
+      )
         return;
-      ({ outcome, resultText } = result);
     }
     let resultMessageId: string | undefined;
     let resultWithheld: string | undefined;
-    try {
-      resultMessageId = this.ports.publishForStarter({
-        scope: row.scope,
-        roomId: row.roomId,
-        starterId,
-        intentId: intentFor('result', row.rowId),
-        text: resultText,
-      });
-    } catch (error) {
-      if (!(error instanceof CoordinatorResultWithheld)) throw error;
-      resultWithheld = error.message;
+    if (resultText !== settledTaskNotice(row, outcome)) {
+      // An earlier preview may have prepared a private excerpt. Preserve the
+      // stored text without replaying it or replacing an already-posted intent.
+      resultWithheld =
+        'Earlier Room result withheld. Open the Task for its work.';
+    } else {
+      try {
+        resultMessageId = this.ports.publishForStarter({
+          scope: row.scope,
+          roomId: row.roomId,
+          starterId,
+          intentId: intentFor('result', row.rowId),
+          text: resultText,
+        });
+      } catch (error) {
+        if (!(error instanceof CoordinatorResultWithheld)) throw error;
+        resultWithheld = error.message;
+      }
     }
     const settled = this.store.transition(row.rowId, ['working'], {
       state: outcome === 'completed' ? 'done' : 'failed',
@@ -700,9 +671,8 @@ export class ProjectRoomCoordinator {
   }
 
   /**
-   * The status sweep: one line per open coordinator Task, from what it was
-   * asked and its stored output, never its status alone. Posted to the room
-   * as the coordinator, under the asking person's current authority.
+   * The status sweep checks for a stored answer for each open Task.
+   * Room history gets the result link and availability, not private bytes.
    */
   async sweep(input: {
     scope: ProjectMembershipScope;
@@ -719,7 +689,6 @@ export class ProjectRoomCoordinator {
       .slice(0, PROJECT_ROOM_COORDINATOR_LIMITS.sweepTasks);
     const lines: string[] = [];
     for (const row of rows) {
-      const asked = excerpt(row.prompt, 120);
       let output = 'No output yet.';
       let waiting = 'nothing';
       if (row.state === 'waiting') waiting = 'a free slot';
@@ -729,8 +698,7 @@ export class ProjectRoomCoordinator {
           sessionId: row.sessionId,
           ownerUserId: row.starterId,
         });
-        if (text)
-          output = `“${excerpt(text, PROJECT_ROOM_COORDINATOR_LIMITS.sweepExcerptChars)}”`;
+        if (text) output = 'A written answer is available in the Task.';
         const status = row.taskId
           ? this.ports.readTask(row.taskId)?.status
           : undefined;
@@ -743,7 +711,7 @@ export class ProjectRoomCoordinator {
           waiting = 'its turn in the chat queue';
       }
       lines.push(
-        `- ${taskLink(row)}. Asked: ${asked} Reported: ${output} Waiting on: ${waiting}.`,
+        `- ${taskLink(row)}. Reported: ${output} Waiting on: ${waiting}.`,
       );
     }
     const text = lines.length

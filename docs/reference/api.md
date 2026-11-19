@@ -1482,9 +1482,9 @@ answers 404 with `code: 'feature_preview_disabled'` while the preview is off.
   card's proposed rows to waiting as the caller, starts as many as the
   Project's limit allows, and returns the view. Repeating it changes nothing.
 - `POST …/room/coordinator/sweep` (execute), body the room guards, posts one
-  message in `#general` with a line per open coordinator Task (what it was
-  asked, its latest stored answer, what it waits on) and returns
-  `{ messageId, tasks }`.
+  message in `#general` with a line per open coordinator Task. Each line
+  links the Task, reports whether a written answer exists, and says what it
+  waits on. The route returns `{ messageId, tasks }`.
 - `PUT /api/projects/:slug/room-coordinator`, body
   `{ startWithoutAsking, maxConcurrentTasks (1–10), pullRequests:
   'when-asked' | 'allowed' }`, sets `ProjectConfig.roomCoordinator`. The
@@ -1497,9 +1497,11 @@ did not ask for a pull request has recognized opener calls refused when they
 pass through Station's pre-tool policy. This includes supported `gh`, `glab`
 and forge MCP forms. Each row keys its Task, first turn and room result. A
 successful turn holds its slot until the Task is Done. Restart resumes durable
-work without repeating these effects. Station posts a result only while the
-starter may still start work in the same Project incarnation. The coordinator
-routes are available through the Room and Project APIs.
+work without repeating these effects. Station posts a linked settlement only
+while the starter may still start work in the same Project incarnation.
+The Task entry point owns access to the Task's actual answer and failure details.
+Earlier preview result text that differs from the link-only message stays in
+the private coordinator journal and is withheld from replay into Room history.
 
 ## Task deliverables and linked work chats
 
