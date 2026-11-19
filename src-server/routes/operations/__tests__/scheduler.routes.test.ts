@@ -11,7 +11,10 @@ import {
   SchedulerStorageCorruptError,
   SchedulerStorageUnavailableError,
 } from '../../../services/scheduling/scheduler-ledger.js';
-import { SchedulerScheduleInvalidError } from '../../../services/scheduling/scheduler-service.js';
+import {
+  SchedulerScheduleInvalidError,
+  SchedulerService,
+} from '../../../services/scheduling/scheduler-service.js';
 
 const metricMocks = vi.hoisted(() => ({ schedulerJobRunsAdd: vi.fn() }));
 
@@ -238,6 +241,62 @@ describe('Scheduler Routes', () => {
       cron: '0 9 * * *',
       enabled: true,
     });
+  });
+
+  test('GET /status diagnoses bad rows only for the current operator', async () => {
+    const svc = {
+      ...createMockService(),
+      readBuiltinRowIssues: vi.fn(() => [
+        { jobId: 'damaged-id', name: 'damaged', reason: 'invalid-json' },
+      ]),
+    };
+    svc.getStatus = vi.fn().mockResolvedValue({
+      providers: {
+        'built-in': { ...mockStatus.providers.builtin, id: 'built-in' },
+      },
+    });
+    const app = createSchedulerRoutes(svc as any, logger as any, {
+      mayReadSchedulerRowIssues: (request) =>
+        request.headers.get('x-fixture-operator') === 'yes',
+    });
+    const ordinary = await json(await app.request('/status'));
+    expect(ordinary.data.providers['built-in']).not.toHaveProperty('rowIssues');
+    expect(svc.readBuiltinRowIssues).not.toHaveBeenCalled();
+    const operator = await json(
+      await app.request('/status', {
+        headers: { 'x-fixture-operator': 'yes' },
+      }),
+    );
+    expect(operator.data.providers['built-in'].rowIssues).toEqual([
+      { jobId: 'damaged-id', name: 'damaged', reason: 'invalid-json' },
+    ]);
+    expect(svc.readBuiltinRowIssues).toHaveBeenCalledOnce();
+  });
+
+  test('GET /jobs forecasts a Monday week with the stored cron zone through the DST change', async () => {
+    const svc = {
+      ...createMockService(),
+      projectWeek: SchedulerService.prototype.projectWeek,
+    };
+    svc.listJobs.mockResolvedValue([
+      {
+        ...mockJob,
+        cron: undefined,
+        schedule: {
+          kind: 'cron',
+          expr: '0 9 * * *',
+          timezone: 'America/New_York',
+        },
+      },
+    ] as any);
+    const app = createSchedulerRoutes(svc as any, logger as any);
+    const response = await app.request('/jobs?weekStart=2026-03-02');
+    expect(response.status).toBe(200);
+    const jobs = (await json(response)).data;
+    expect(jobs[0].weekOccurrences.times).toContain('2026-03-07T14:00:00.000Z');
+    expect(jobs[0].weekOccurrences.times).toContain('2026-03-08T13:00:00.000Z');
+    expect(jobs[0].schedule.timezone).toBe('America/New_York');
+    expect((await app.request('/jobs?weekStart=2026-03-08')).status).toBe(400);
   });
 
   test('GET /jobs returns 500 on error', async () => {

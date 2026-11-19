@@ -5,6 +5,7 @@
  */
 
 import {
+  nextOccurrence,
   nextOccurrences,
   type Schedule,
   validateSchedule,
@@ -160,6 +161,55 @@ export class SchedulerService {
           : 0,
       },
     };
+  }
+
+  /** A Monday UTC range padded for all supported display time zones. */
+  projectWeek(jobs: SchedulerJob[], weekStart: string): SchedulerJob[] {
+    const monday = Date.parse(weekStart + 'T00:00:00.000Z');
+    if (
+      !Number.isFinite(monday) ||
+      new Date(monday).toISOString().slice(0, 10) !== weekStart ||
+      new Date(monday).getUTCDay() !== 1
+    )
+      throw new SchedulerScheduleInvalidError(
+        'Schedule week must start on a Monday (YYYY-MM-DD).',
+      );
+    const dayMs = 86_400_000;
+    const start = monday - dayMs;
+    const end = monday + 8 * dayMs;
+    const max = 64;
+    return jobs.map((job) => {
+      const schedule =
+        job.schedule ??
+        (job.cron ? { kind: 'cron' as const, expr: job.cron } : undefined);
+      const times: string[] = [];
+      if (!job.enabled || !schedule || validateSchedule(schedule))
+        return { ...job, weekOccurrences: { times, truncated: false } };
+      let next: number | null;
+      if (schedule.kind === 'every') {
+        const anchor = Date.parse(job.nextRun ?? '');
+        next = Number.isFinite(anchor)
+          ? anchor +
+            Math.max(0, Math.ceil((start - anchor) / schedule.everyMs)) *
+              schedule.everyMs
+          : null;
+      } else {
+        next = nextOccurrence(schedule, start - 1);
+      }
+      while (next !== null && next < end && times.length < max) {
+        times.push(new Date(next).toISOString());
+        const subsequent = nextOccurrence(schedule, next);
+        next = subsequent !== null && subsequent > next ? subsequent : null;
+      }
+      return {
+        ...job,
+        weekOccurrences: { times, truncated: next !== null && next < end },
+      };
+    });
+  }
+
+  readBuiltinRowIssues() {
+    return this.builtin.readRowIssues();
   }
 
   async getStatus(): Promise<{
