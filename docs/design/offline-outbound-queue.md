@@ -271,6 +271,10 @@ the painted rows (so the failure shows) and forgets the copy. A connection switc
 sign-out clears it, and a read that began before a clear cannot repopulate it.
 Inbox rows warm it after a short hover or keyboard-focus dwell, one read at a
 time.
+A fresh transcript head read can propose a materialized Session for rebinding
+while the chat still holds the Session it had when that read started. The open
+read then verifies the new binding. Settled history pages keep their transcript
+through later Session changes.
 
 Raw `orchestration-sessions` remain excluded from query persistence: they inherit
 `resumeCursor`, model routing, runtime diagnostics and prompt-derived titles.
