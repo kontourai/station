@@ -176,12 +176,30 @@ test('the v1 export remains readable when a provider reports richer usage', asyn
   f.start('own', 'reader', undefined, 'opencode');
   const createdAt = new Date().toISOString();
   f.store.appendEvent({
+    eventId: 'configured-opencode',
+    provider: 'opencode',
+    threadId: 'own',
+    sessionId: 'own',
+    method: 'session.configured',
+    model: 'org/model',
+    createdAt,
+  });
+  f.store.appendEvent({
     eventId: 'usage-opencode',
     provider: 'opencode',
     threadId: 'own',
     method: 'token-usage.updated',
     createdAt,
     promptTokens: 10,
+    pricingSnapshot: {
+      id: 'fixture-price',
+      capturedAt: createdAt,
+      source: 'fixture-catalog',
+      currency: 'USD',
+      provider: 'opencode',
+      model: 'org/model',
+      inputPerMillion: 100000,
+    },
     reasoningTokens: 5,
     servingRoute: {
       id: 'fixture-route',
@@ -213,6 +231,21 @@ test('the v1 export remains readable when a provider reports richer usage', asyn
   expect(page.observations[0]?.receipts[0]).toMatchObject({
     sourceEventId: 'usage-opencode',
     inputTokens: 10,
+    estimatedCost: {
+      amount: 1,
+      currency: 'USD',
+      pricingSnapshotId: 'fixture-price',
+      pricingSnapshotObservedAt: createdAt,
+      pricingSnapshotSource: 'fixture-catalog',
+    },
+    pricing: {
+      pricingSnapshotId: 'fixture-price',
+      pricingSnapshotCapturedAt: createdAt,
+      pricingSnapshotSource: 'fixture-catalog',
+      provider: 'opencode',
+      model: 'org/model',
+      currency: 'USD',
+    },
   });
 
   // The HTTP JSON path drops undefined automatically. The source projection
