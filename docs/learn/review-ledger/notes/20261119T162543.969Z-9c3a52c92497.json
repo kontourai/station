@@ -1,0 +1,7 @@
+{
+  "revision": "af1cea05a8e1cc36f8eec6b6bf3b01626d75b1a5",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Traced owner-final infrastructure cause through the reporter. Expiry between checks preserves exit 80 and names the upcoming check in the cause while omitting failingStep. Existing started-step and stopped-terminal coverage passed.","inputs":["docs/reference/verification-receipts.md","scripts/lib/verification-reporter.mjs"]}
+  ]
+}

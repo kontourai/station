@@ -40,7 +40,8 @@ const PUBLIC_RECIPES = [
 ] as const;
 const RECIPE_DESCRIPTIONS = {
   default: 'List Station contributor commands.',
-  setup: 'Install the lockfile-pinned Node dependency tree.',
+  setup:
+    'Install the lockfile-pinned Node dependency tree. Set `STATION_DEPENDENCY_INSTALL_TIMEOUT_MS` in positive milliseconds to override the inert install deadline. See [dependency install recovery](https://github.com/kontourai/station/blob/main/docs/guides/development.md#dependency-install-deadline).',
   doctor: 'Report Station readiness through the repository CLI.',
   dev: 'Start a local Station instance.',
   check: "Run Station's canonical static verification lane.",

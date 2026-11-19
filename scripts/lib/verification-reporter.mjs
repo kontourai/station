@@ -18,7 +18,10 @@ import receiptSchema from '../../schemas/verification-receipt.schema.json' with 
   type: 'json',
 };
 import { withoutAnsi } from './ansi-escape.mjs';
-import { CI_FAST_STEP_MARKER_PATTERN } from './ci-fast-step-marker.mjs';
+import {
+  CI_FAST_PRELAUNCH_CAUSE_PATTERN,
+  CI_FAST_STEP_MARKER_PATTERN,
+} from './ci-fast-step-marker.mjs';
 import { writeReceiptSecurely } from './test-reliability.mjs';
 import {
   releaseVerificationArtifactMutation,
@@ -1209,6 +1212,7 @@ export function summarizeVerificationOutput({
   const failingStep =
     attributableStep &&
     !stopped &&
+    !CI_FAST_PRELAUNCH_CAUSE_PATTERN.test(ownerFinalCause ?? '') &&
     (terminal.status !== 'completed' || exitedNonZero)
       ? attributableStep
       : null;

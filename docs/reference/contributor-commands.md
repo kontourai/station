@@ -5,7 +5,7 @@ This reference is generated from the paired Unix and Windows recipe metadata in 
 
 ## `setup`
 
-Install the lockfile-pinned Node dependency tree.
+Install the lockfile-pinned Node dependency tree. Set `STATION_DEPENDENCY_INSTALL_TIMEOUT_MS` in positive milliseconds to override the inert install deadline. See [dependency install recovery](https://github.com/kontourai/station/blob/main/docs/guides/development.md#dependency-install-deadline).
 
 Run: `just setup`
 

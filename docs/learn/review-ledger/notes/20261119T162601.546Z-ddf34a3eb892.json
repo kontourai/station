@@ -1,0 +1,7 @@
+{
+  "revision": "af1cea05a8e1cc36f8eec6b6bf3b01626d75b1a5",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the owned pnpm fixture and bounded receipt enumeration. Receipt sizes, private payload and path exclusions, retry identity, failure phases and deadline settlement are still asserted. The fixture root uses tracked OS temporary storage. No dependency-security guide prose change is required.","inputs":["scripts/__tests__/pnpm-advisory-command.test.ts"]}
+  ]
+}
