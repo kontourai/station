@@ -1,30 +1,8 @@
 import { join } from 'node:path';
-import * as projection from '@kontourai/station-shared/runtime-event-projection';
-import { describe, expect, test, vi } from 'vitest';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
+import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
-
-// A pass-through, counted: the listing must ask the transcript projection,
-// and only once per read however many pages and unresolved rows it meets.
-const projected = vi.hoisted(() => ({ calls: 0 }));
-vi.mock(
-  '@kontourai/station-shared/runtime-event-projection',
-  async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import('@kontourai/station-shared/runtime-event-projection')
-      >();
-    return {
-      ...actual,
-      projectRuntimeEventsToMessages: (
-        ...args: Parameters<typeof actual.projectRuntimeEventsToMessages>
-      ) => {
-        projected.calls += 1;
-        return actual.projectRuntimeEventsToMessages(...args);
-      },
-    };
-  },
-);
 
 const tempRoot = trackTempDirs();
 
@@ -202,8 +180,7 @@ function listedCompletions(store: EventStore, threadId: string, limit: number) {
 
 /** The settled tool rows of the transcript, as its read path builds it. */
 function transcriptCompletions(store: EventStore, threadId: string) {
-  return projection
-    .projectRuntimeEventsToMessages(store.listEventPayloads(threadId))
+  return projectRuntimeEventsToMessages(store.listEventPayloads(threadId))
     .flatMap((message) => message.parts)
     .filter(
       (part) =>
@@ -230,7 +207,13 @@ describe('the Session inventory lists tool results exactly as the transcript sho
       for (let index = 0; index < 1000; index += 1) {
         const threadId = `station:1:session:differential-${index}`;
         const events = generateSession(random, threadId);
-        for (const event of events) store.appendEvent(event as never);
+        const split = Math.floor(events.length / 2);
+        for (const event of events.slice(0, split))
+          store.appendEvent(event as never);
+        // Prefixes with an unresolved row leave a live fold for the suffix.
+        store.listSessionInventoryEvents(threadId, { group: 'execution' });
+        for (const event of events.slice(split))
+          store.appendEvent(event as never);
         // Pages of three exercise continuations and the per-read cache.
         const listed = listedCompletions(store, threadId, 3).sort();
         const shown = transcriptCompletions(store, threadId).sort();
@@ -255,7 +238,7 @@ describe('the Session inventory lists tool results exactly as the transcript sho
     }
   });
 
-  test('one call id carrying 10k events costs one projection and one cursor, however many pages', ({
+  test('one call id carrying 10k events reuses its projection across pages and reads only the new late result', ({
     skip,
   }) => {
     // This case asserts cache reuse, not uncached correctness.
@@ -308,9 +291,23 @@ describe('the Session inventory lists tool results exactly as the transcript sho
         }
       ).db;
       let captured: { sql: string; args: unknown[] } | undefined;
+      let projectionRows = 0;
       const prepare = db.prepare.bind(db);
       db.prepare = (sql: string) => {
         const statement = prepare(sql);
+        if (
+          /SELECT (?:sequence, CASE|payload FROM orchestration_events\s+WHERE thread_id)/.test(
+            sql,
+          )
+        ) {
+          return {
+            all: (...args: unknown[]) => {
+              const rows = statement.all(...args);
+              projectionRows += rows.length;
+              return rows;
+            },
+          };
+        }
         if (!sql.includes('station_unresolved_completion_stands'))
           return statement;
         return {
@@ -320,9 +317,30 @@ describe('the Session inventory lists tool results exactly as the transcript sho
           },
         };
       };
-      projected.calls = 0;
       const listed = listedCompletions(store, threadId, 20);
+      expect(projectionRows).toBe(10_001);
+      projectionRows = 0;
+      store.appendEvent({
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-10-24T16:00:02.000Z',
+        eventId: 'late-result',
+        turnId: 'turn-1',
+        method: 'tool.completed',
+        toolCallId: 'same',
+        toolName: 'Bash',
+        itemId: 'same',
+        status: 'success',
+        output: 'late outcome',
+      });
+      const appended = listedCompletions(store, threadId, 20);
       db.prepare = prepare;
+      expect(projectionRows).toBe(1);
+      expect(appended).toContain('late-result');
+      expect(appended).not.toContain('same-9997');
+      expect(appended.sort()).toEqual(
+        transcriptCompletions(store, threadId).sort(),
+      );
       if (!captured) throw new Error('the listing statement was not observed');
       const plan = prepare(`EXPLAIN QUERY PLAN ${captured.sql}`)
         .all(...captured.args)
@@ -331,10 +349,7 @@ describe('the Session inventory lists tool results exactly as the transcript sho
         plan.filter((detail) => /\borchestration_events\b/.test(detail)),
       ).toHaveLength(1);
       // 250 pages of 20, one projection for the whole read.
-      expect(projected.calls).toBe(1);
-      expect(listed.sort()).toEqual(
-        transcriptCompletions(store, threadId).sort(),
-      );
+      expect(listed).toContain('same-9997');
     } finally {
       store.close?.();
     }
