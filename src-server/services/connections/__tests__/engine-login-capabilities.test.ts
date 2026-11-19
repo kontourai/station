@@ -159,6 +159,39 @@ describe('a CLI that cannot be asked is unavailable, not unsupported', () => {
     expect(deps.runCommand).not.toHaveBeenCalled();
   });
 
+  test('observes an installed CLI immediately after a failed lookup', async () => {
+    let installed = false;
+    const observe = createEngineLoginCapabilityObserver(
+      stubDeps(
+        { 'codex login --help': CODEX_LOGIN_HELP_STDOUT },
+        { binary: (command) => (installed ? command : null) },
+      ),
+    );
+    expect((await observe('codex')).unavailableReason).toMatch(/not found/);
+    installed = true;
+
+    expect(loginMechanisms(await observe('codex'))).toContain('device-code');
+  });
+
+  test.each([{ timedOut: true }, { outputTruncated: true }])(
+    'discards incomplete help and retries without a cached answer (%j)',
+    async (partial) => {
+      const deps = stubDeps({ 'codex login --help': CODEX_LOGIN_HELP_STDOUT });
+      deps.runCommand.mockResolvedValueOnce({
+        stdout: CODEX_LOGIN_HELP_STDOUT,
+        stderr: '',
+        code: 0,
+        ...partial,
+      });
+      const observe = createEngineLoginCapabilityObserver(deps);
+
+      const incomplete = await observe('codex');
+      expect(incomplete.unavailableReason).toMatch(/could not be asked/);
+      expect(incomplete.evidence).toEqual([]);
+      expect(loginMechanisms(await observe('codex'))).toContain('device-code');
+    },
+  );
+
   test('a probe that produced no result reports why, rather than reporting absence', async () => {
     const deps = stubDeps({});
     const capabilities =

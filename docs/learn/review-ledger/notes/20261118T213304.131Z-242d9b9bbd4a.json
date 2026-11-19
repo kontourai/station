@@ -1,0 +1,23 @@
+{
+  "revision": "8244cae89bb7a2e64d2c0ef839b0dad8aa0c8f05",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed profile and host-wide busy responses against the manager's admission checks and the existing device-code POST route. Every active or unresolved-stop process reserves capacity, and a full host refuses another profile with 429.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the unconfirmed-stop recovery guidance against process tree termination and the startup ownership sweep. The host operator verifies the launcher and its descendants before restarting Station. A host restart is the fallback when the operator cannot confirm tree exit.","inputs":["docs/guides/connections.md","src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the device-code host-slot clarification and checked its Terminal and integration references. The added capacity behavior applies to the existing profile sign-in leaf.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the device-code host-slot clarification and checked its Terminal and integration references. The added capacity behavior applies to the existing profile sign-in leaf.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed Connections recovery against the machine relationship guide. Process ownership and recovery belong to the Station host operator when the sign-in starts from a paired Device.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the current and unresolved-stop slot accounting against the Connections and Agent guides. A cancelled or expired login reserves capacity until owned tree exit is confirmed. The existing profile enrollment and authorization checks still govern startup.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the current and unresolved-stop slot accounting against the Connections and Agent guides. A cancelled or expired login reserves capacity until owned tree exit is confirmed. The existing profile enrollment and authorization checks still govern startup.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the current and unresolved-stop slot accounting against the Connections and Agent guides. A cancelled or expired login reserves capacity until owned tree exit is confirmed. The existing profile enrollment and authorization checks still govern startup.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the current and unresolved-stop slot accounting against the Connections and Agent guides. A cancelled or expired login reserves capacity until owned tree exit is confirmed. The existing profile enrollment and authorization checks still govern startup.","inputs":["src-server/services/connections/device-code-login.ts"]}
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "revision": "c209fd871672489460642c29081c15571e7d1610",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed DELETE cancellation and POST replacement admission against the selected-profile device-code leaf. DELETE returns the cancelled record. POST rejects a replacement with 429 while the preceding process tree is stopping or its exit remains unconfirmed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the API amendment and citing Terminal and integration references. The new reply describes the existing device-code profile route and its owned sign-in process.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the API amendment and citing Terminal and integration references. The new reply describes the existing device-code profile route and its owned sign-in process.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed cancellation with a process that can finish writing a credential during shutdown. Station acknowledges cancellation and fences replacement launches for that profile until process exit is confirmed. The engine still verifies sign-in and owns the credential. The existing setup, account, and Agent guidance applies.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed cancellation with a process that can finish writing a credential during shutdown. Station acknowledges cancellation and fences replacement launches for that profile until process exit is confirmed. The engine still verifies sign-in and owns the credential. The existing setup, account, and Agent guidance applies.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed cancellation with a process that can finish writing a credential during shutdown. Station acknowledges cancellation and fences replacement launches for that profile until process exit is confirmed. The engine still verifies sign-in and owns the credential. The existing setup, account, and Agent guidance applies.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed cancellation with a process that can finish writing a credential during shutdown. Station acknowledges cancellation and fences replacement launches for that profile until process exit is confirmed. The engine still verifies sign-in and owns the credential. The existing setup, account, and Agent guidance applies.","inputs":["src-server/services/connections/device-code-login.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the process-heavy classification for the synthetic device-code launcher, its TERM-resistant child, and bounded POSIX status probes. The test uses its own profile and process registry. The manifest continues to enforce explicit coverage for direct child-process imports.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the process-heavy classification for the synthetic device-code launcher, its TERM-resistant child, and bounded POSIX status probes. The test uses its own profile and process registry. The manifest continues to enforce explicit coverage for direct child-process imports.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
