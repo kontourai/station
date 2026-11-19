@@ -1421,7 +1421,7 @@ export class ConversationLineage {
       detail,
       requested,
       messages,
-      resumeSupported,
+      boundary?.policy === 'continue-from-history' ? false : resumeSupported,
     );
     if (this.deps.nativeMemoryOwnsTranscriptFor?.(requested.provider))
       return launch;

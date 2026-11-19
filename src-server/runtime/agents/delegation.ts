@@ -72,9 +72,19 @@ export function createChildDelegationContext(options: {
 }): AgentDelegationContext {
   const policy = resolveDelegationPolicy(options.spec);
   const currentDepth = options.current?.depth ?? 0;
-  if (currentDepth >= policy.maxDepth) {
-    throw new DelegationDepthLimitError(policy.maxDepth);
+  const maxDepth = Math.min(
+    policy.maxDepth,
+    options.current?.maxDepth ?? policy.maxDepth,
+  );
+  if (currentDepth >= maxDepth) {
+    throw new DelegationDepthLimitError(maxDepth);
   }
+  const blockedTools = [
+    ...new Set([
+      ...policy.blockedTools,
+      ...(options.current?.blockedTools ?? []),
+    ]),
+  ];
 
   const inherited = (options.current?.toolAllowlistConstraints ?? []).map(
     (group) => [...group],
@@ -86,7 +96,7 @@ export function createChildDelegationContext(options: {
   return {
     mode: 'isolated-child',
     depth: currentDepth + 1,
-    maxDepth: policy.maxDepth,
+    maxDepth,
     parentAgentSlug: agentId(options.agentSlug),
     parentConversationId: options.conversationId,
     ...(options.sessionId ? { parentSessionId: options.sessionId } : {}),
@@ -97,10 +107,10 @@ export function createChildDelegationContext(options: {
       ? { allowedTools: policy.allowedTools }
       : {}),
     ...(inherited.length ? { toolAllowlistConstraints: inherited } : {}),
-    ...(policy.blockedTools.length > 0
-      ? { blockedTools: policy.blockedTools }
+    ...(blockedTools.length > 0 ? { blockedTools } : {}),
+    ...(policy.denyApprovals || options.current?.denyApprovals
+      ? { denyApprovals: true }
       : {}),
-    ...(policy.denyApprovals ? { denyApprovals: true } : {}),
   };
 }
 

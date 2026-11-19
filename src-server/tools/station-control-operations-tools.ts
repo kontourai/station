@@ -11,6 +11,7 @@ import {
   createJob,
   deleteJob,
   disableJob,
+  discoverDelegationOptions,
   enableJob,
   fetchAchievements,
   fetchUsage,
@@ -46,7 +47,6 @@ import {
   continueDelegatedTask,
   delegateTask,
   discoverDelegationEnvironments,
-  discoverDelegationOptions,
   executeExecutionTargetMessage,
   interruptDelegatedTask,
   listDelegatedTasks,
@@ -852,7 +852,13 @@ export function registerOperationsTools(
         ),
     },
     async (input) =>
-      delegationToolResult(() => discoverDelegationOptions(input)),
+      delegationToolResult(() =>
+        discoverDelegationOptions(
+          controlApiBase(),
+          input,
+          controlRequestOptions(),
+        ),
+      ),
   );
 
   server.toolWithSchema(

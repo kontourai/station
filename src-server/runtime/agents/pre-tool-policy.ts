@@ -75,7 +75,7 @@ export type PreToolPolicyDecision =
        */
       toolGrant?: true;
     }
-  | { behavior: 'deny'; denial: ToolCallDenial }
+  | { behavior: 'deny'; denial: ToolCallDenial; staleGeneration?: true }
   | { behavior: 'ask'; required?: true; guardianReason?: string }
   | { behavior: 'defer' };
 
@@ -533,11 +533,14 @@ export function createStagedPreToolPolicyEvaluator(
         agentSlug: invocation.agentSlug,
         conversationId: invocation.conversationId,
       });
-      return deny(
-        'stale_generation',
-        tool.toolName,
-        "was blocked because the agent's runtime configuration changed mid-run. Retry the request.",
-      );
+      return {
+        ...deny(
+          'stale_generation',
+          tool.toolName,
+          "was blocked because the agent's runtime configuration changed mid-run. Start a new chat.",
+        ),
+        staleGeneration: true,
+      };
     }
 
     if (

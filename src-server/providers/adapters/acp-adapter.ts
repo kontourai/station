@@ -1,3 +1,4 @@
+import { ACP_RESUME_CONFIGURATION_CHANGED_CODE } from '@kontourai/station-contracts/provider-failure';
 import {
   interpretAcpTurnStop,
   PROVIDER_TURN_TRIGGER,
@@ -859,6 +860,7 @@ export interface AcpSessionRecord {
    */
   approvedTools: Set<string>;
   preToolPolicy?: StagedPreToolPolicyEvaluator;
+  staleToolPolicyTurnId?: string;
   delegation?: InvocationContext['delegation'];
   activeTurnId?: string;
   /**
@@ -1841,8 +1843,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         }),
       );
       if (currentFingerprint !== input.resumeCursor.connectionFingerprint) {
-        throw new Error(
-          'This conversation was started under a different engine connection configuration and cannot be resumed.',
+        throw new SessionStartRefusedError(
+          'This conversation was started under a different engine connection configuration. Open Reset agent context and choose Continue with chat history to start a new Session in this conversation.',
+          ACP_RESUME_CONFIGURATION_CHANGED_CODE,
         );
       }
     }
@@ -4862,6 +4865,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       let guardianReason: string | undefined;
       if (toolName && record.preToolPolicy) {
+        const turnId = record.activeTurnId;
         const decision = await record.preToolPolicy(
           {
             toolName,
@@ -4907,6 +4911,13 @@ export class AcpAdapter implements ProviderAdapterShape {
           );
         }
         if (decision.behavior === 'deny') {
+          if (
+            decision.staleGeneration &&
+            turnId !== undefined &&
+            this.ownsActiveTurn(record.session.threadId, record, turnId)
+          ) {
+            record.staleToolPolicyTurnId = turnId;
+          }
           return {
             outcome: mapAcpDecisionToOutcome('decline', params.options),
           };
@@ -6385,6 +6396,36 @@ export class AcpAdapter implements ProviderAdapterShape {
     );
   }
 
+  private failStaleToolPolicyTurn(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+  ): boolean {
+    if (record.staleToolPolicyTurnId !== turnId) return false;
+    record.staleToolPolicyTurnId = undefined;
+    record.turnErrorNotifications = undefined;
+    this.settleRequestsAtPromptEnd(record, threadId, turnId);
+    this.settlePromptEndState(record, threadId, turnId, 'unresolved');
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      turnId,
+      ...this.turnOrigin(record, turnId),
+      method: 'runtime.error',
+      ...providerFailure('permission_denied'),
+      severity: 'error',
+      code: 'stale_generation',
+      message:
+        'Station blocked this tool because the Agent configuration changed. Start a new chat to retry with the current configuration.',
+    } satisfies ProviderRuntimeErrorEvent);
+    record.session.status = 'error';
+    record.session.updatedAt = new Date().toISOString();
+    record.activeTurnId = undefined;
+    return true;
+  }
+
   private bindPromptSettlement(
     record: AcpSessionRecord,
     threadId: string,
@@ -6430,6 +6471,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           });
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
+        if (
+          response.stopReason !== 'cancelled' &&
+          this.failStaleToolPolicyTurn(record, threadId, turnId)
+        )
+          return;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
         this.settlePromptEndState(
@@ -6461,6 +6507,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.quarantinedTurnIds?.delete(turnId);
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
+        if (this.failStaleToolPolicyTurn(record, threadId, turnId)) return;
         // #2265: a classified provider-plan quota exhaustion publishes
         // fixed safe copy plus bounded facts — never the engine's raw
         // message, and never the co-reported notification text (which is
