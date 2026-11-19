@@ -2,7 +2,8 @@
 
 Station product telemetry is server-side only and sends no prompts, paths, repository names, hostnames, branches, account identities, or other free text. It does not read third-party vendor configuration or credential homes.
 
-First run asks one usage-sharing question. Detailed is unavailable in the
+Home offers an optional **Review choices** action when usage sharing needs
+review. Opening it shows the combined choice. Detailed is unavailable in the
 combined choice when Kontour's build-provided receiver accepts Lite only.
 A fresh install preselects Anonymous usage counts. Reopened prompts use the
 existing saved choices, including a Detailed preference awaiting renewed
@@ -55,6 +56,9 @@ surface: Save choice, Not now, close, Escape or backdrop dismissal. Save first
 persists the chosen preference, then records the displayed notice revision;
 saving Don't share therefore cannot temporarily enable a count. Closing during
 a pending Save does not record early; that save owns the notice after persistence.
+Dismissal closes immediately. A visible-notice write can complete afterward.
+A usage-sharing-only save applies through the Station settings store without
+waiting for Agent configuration or nearby discovery.
 A failed choice
 save records no notice. A failed notice write leaves the saved preference intact,
 reports that separate failure and keeps counts paused. Viewing Privacy & sharing
