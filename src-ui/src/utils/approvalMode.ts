@@ -154,6 +154,9 @@ export const APPROVAL_MODE_OPTIONS: Array<{
  * `APPROVAL_MODE_OPTIONS` is the fallback for any other mode, or for a runtime
  * the chip doesn't recognize.
  */
+const ACP_FULL_ACCESS_DESCRIPTION =
+  'Approves ordinary requests automatically. Engine rules and required approvals still apply.';
+
 const ENGINE_MODE_DESCRIPTIONS: Partial<
   Record<ApprovalMode, Partial<Record<string, string>>>
 > = {
@@ -167,9 +170,8 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
       'File edits run on their own; shell commands, web access and MCP tools still ask.',
   },
   never: {
-    acp: 'Station answers ordinary approval requests automatically. The engine controls which tools can run. Questions, plan exits and policy approvals still ask.',
-    antigravity:
-      'Station answers ordinary approval requests automatically. Antigravity still decides which tools can run. Questions, plan exits and policy approvals still ask.',
+    acp: ACP_FULL_ACCESS_DESCRIPTION,
+    antigravity: ACP_FULL_ACCESS_DESCRIPTION,
     // #3290: nothing asks; the built-in subagents may run (their rules cannot
     // ask either); plan mode's own edit block stays.
     opencode:
