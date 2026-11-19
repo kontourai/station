@@ -1163,11 +1163,10 @@ describe('RegionToolbarControls', () => {
   /**
    * #917, measured in real Chromium over the cascade-resolved `index.css` and
    * `chat.css` (jsdom does no layout). A phone-width toolbar is over-full: the
-   * brand, the action cluster and the region fieldset cannot all have their
-   * natural width, and the brand is the member that gives. The fieldset is the
-   * row's LAST member since the account menu moved to the sidebar footer, so a
-   * fieldset that shrank would pack below its fixed-size toggles, or slide
-   * under the cluster before it.
+   * lockup, action cluster and region fieldset compete for the same row.
+   * Use the shell's shrinkable lockup and connection chip with a 150px
+   * preferred connection width. The other actions and the fieldset keep
+   * their width, and the connection and toggles must remain hittable.
    */
   describe.skipIf(!chromiumAvailable)('in a real browser', () => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
@@ -1197,10 +1196,18 @@ describe('RegionToolbarControls', () => {
   <head><style>${css}</style></head>
   <body style="margin:0">
     <header class="app-toolbar">
-      <span class="app-toolbar__brand">Station on the workshop machine</span>
+      <button type="button" class="app-toolbar__sidebar-toggle" aria-label="Toggle menu">☰</button>
+      <div class="app-toolbar__lockup">
+        <span class="app-toolbar__logo" aria-hidden="true"></span>
+        <span class="app-toolbar__brand" aria-hidden="true">Station on the workshop machine</span>
+      </div>
       <div class="app-toolbar__spacer"></div>
       <div class="app-toolbar__actions">
-        <button type="button" data-testid="last-action" style="width:150px">Connection</button>
+        <button type="button" class="app-toolbar__icon-btn app-toolbar__conn app-toolbar__conn--compact" style="width:150px" aria-label="Choose Station">
+          <span class="app-toolbar__conn-label">Workshop Station with a long name</span>
+        </button>
+        <button type="button" class="app-toolbar__icon-btn" aria-label="Notifications">!</button>
+        <button type="button" class="app-toolbar__icon-btn" data-testid="last-action" aria-label="More actions">…</button>
       </div>
       ${regions}
     </header>
@@ -1213,8 +1220,24 @@ describe('RegionToolbarControls', () => {
           ].filter((button) => button.getBoundingClientRect().width > 0);
           const first = toggles.at(0)?.getBoundingClientRect();
           const last = toggles.at(-1)?.getBoundingClientRect();
+          const actions = [
+            ...document.querySelectorAll('.app-toolbar__actions > button'),
+          ];
+          const hittable = [...actions, ...toggles].filter((button) => {
+            const bounds = button.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              bounds.left + bounds.width / 2,
+              bounds.top + bounds.height / 2,
+            );
+            return hit !== null && button.contains(hit);
+          });
           return {
             toggles: toggles.length,
+            hittable: hittable.length,
+            connectionWidth:
+              document
+                .querySelector('.app-toolbar__conn')
+                ?.getBoundingClientRect().width ?? 0,
             fieldsetRight: fieldset?.getBoundingClientRect().right ?? 0,
             firstToggleLeft: first?.left ?? Number.NEGATIVE_INFINITY,
             lastToggleRight: last?.right ?? Number.POSITIVE_INFINITY,
@@ -1226,6 +1249,9 @@ describe('RegionToolbarControls', () => {
         });
         // Bottom and Right: Left has no default toggle while it is unused.
         expect(measured.toggles).toBe(2);
+        expect(measured.connectionWidth).toBeLessThan(150);
+        expect(measured.connectionWidth).toBeGreaterThanOrEqual(44);
+        expect(measured.hittable).toBe(5);
         expect(
           measured.lastToggleRight,
           'the last region toggle overflows its fieldset',
