@@ -314,7 +314,7 @@ test.describe('Project forms', () => {
     await seedProjectFormRoutes(page);
   });
 
-  test('new project prioritizes working directory and derives the name from the path leaf', async ({
+  test('an existing folder suggests a name from its path leaf', async ({
     page,
   }) => {
     const nonexistentProjectRequests: string[] = [];
@@ -330,6 +330,8 @@ test.describe('Project forms', () => {
     ).toBeVisible();
     await expect.poll(() => nonexistentProjectRequests).toEqual([]);
 
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await fillStable(page, 'input[placeholder="~/code/my-project"]', '/tmp');
 
     const nameInput = page.locator('input[placeholder="My Project"]');
@@ -600,6 +602,8 @@ test.describe('Project forms', () => {
       await expect(overlay).toHaveCSS('overflow', 'hidden');
 
       await page.getByPlaceholder('My Project').fill('Keyboard-safe project');
+      await page.getByRole('radio', { name: /^From a repository/ }).check();
+      await page.getByText('Use an existing folder', { exact: true }).click();
       await page
         .getByPlaceholder('~/code/my-project')
         .fill('/tmp/keyboard-safe');
@@ -696,6 +700,8 @@ test.describe('Project forms', () => {
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
 
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     const directory = page.getByPlaceholder('~/code/my-project');
     const browseButton = page.getByRole('button', {
       name: 'Browse for a folder',
@@ -834,6 +840,8 @@ test.describe('Project forms', () => {
 
     // A trailing slash keeps every mocked suggestion eligible, so the
     // dropdown is genuinely open when the pointer goes for the footer.
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await fillStable(page, 'input[placeholder="~/code/my-project"]', '/tmp/');
     await expect(page.locator('.path-autocomplete__option')).toBeVisible();
     await expect(page.locator('input[placeholder="My Project"]')).toHaveValue(

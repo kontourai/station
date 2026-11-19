@@ -1,0 +1,15 @@
+{
+  "revision": "ac147d7a64f0795d5d61eb0c77f344d5a97a5e07",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the history inventory callers and documented session contract. The existing async lineage entry points resolve the yielded history page with its same field shape, ordering, pagination, and owner-scoped authorization; continuation and Monument durability boundaries are unaffected.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the history inventory callers and documented session contract. The existing async lineage entry points resolve the yielded history page with its same field shape, ordering, pagination, and owner-scoped authorization; continuation and Monument durability boundaries are unaffected.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the history inventory callers and documented session contract. The existing async lineage entry points resolve the yielded history page with its same field shape, ordering, pagination, and owner-scoped authorization; continuation and Monument durability boundaries are unaffected.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the history inventory callers and documented session contract. The existing async lineage entry points resolve the yielded history page with its same field shape, ordering, pagination, and owner-scoped authorization; continuation and Monument durability boundaries are unaffected.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked the history inventory callers and documented session contract. The existing async lineage entry points resolve the yielded history page with its same field shape, ordering, pagination, and owner-scoped authorization; continuation and Monument durability boundaries are unaffected.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}
