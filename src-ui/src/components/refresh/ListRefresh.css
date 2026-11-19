@@ -54,7 +54,10 @@
 
 .list-refresh__actions {
   display: inline-flex;
+  min-inline-size: 44px;
+  min-block-size: 44px;
   align-items: center;
+  justify-content: center;
 }
 
 .list-refresh__actions[data-coarse-pointer] .action-overflow__trigger {
