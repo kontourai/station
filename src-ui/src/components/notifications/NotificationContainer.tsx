@@ -156,6 +156,10 @@ function ToastCard({
   const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
   const headline =
     firstLine.length > 160 ? `${firstLine.slice(0, 157)}…` : firstLine;
+  const attribution =
+    typeof notification.metadata?.attribution === 'string'
+      ? notification.metadata.attribution
+      : undefined;
   const details = [
     headline !== message ? message : undefined,
     notification.metadata?.detail
@@ -266,6 +270,9 @@ function ToastCard({
               {notification.toolPreview}
             </div>
           ) : null}
+          {attribution && (
+            <div className="toast-card__conversation">{attribution}</div>
+          )}
           {details ? (
             <details
               className="toast-card__diagnostics"

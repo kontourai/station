@@ -48,7 +48,7 @@ export function showEnvelopeNotificationToast(
     source
       ? {
           ...metadata,
-          detail: agentAttributionLabel(
+          attribution: agentAttributionLabel(
             source,
             typeof metadata?.chatTitle === 'string'
               ? metadata.chatTitle

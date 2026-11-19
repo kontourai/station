@@ -149,6 +149,25 @@ describe('NotificationContainer', () => {
     expect(dismissToast).toHaveBeenCalledWith('tool-1');
   });
 
+  test('shows the chat attribution outside the diagnostic disclosure', () => {
+    notifications = [
+      {
+        id: 'chat-notice',
+        message: 'Review required',
+        timestamp: Date.now(),
+        dismissed: false,
+        metadata: {
+          attribution: 'from builder · Fix login',
+          detail: 'Review info',
+        },
+      },
+    ];
+    render(<NotificationContainer />);
+    expect(
+      screen.getByText('from builder · Fix login').closest('details'),
+    ).toBeNull();
+  });
+
   test('a dismissed toast stays inert through its exit and then leaves the stack', () => {
     vi.useFakeTimers();
     try {

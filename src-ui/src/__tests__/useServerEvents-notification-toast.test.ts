@@ -255,7 +255,7 @@ describe('handleNotificationDeliveredToast for an enveloped delivery (#2587)', (
     expect(actions?.map((action: { label: string }) => action.label)).toEqual([
       'Open',
     ]);
-    expect(metadata.detail).toBe('from builder · Fix login');
+    expect(metadata.attribution).toBe('from builder · Fix login');
   });
 });
 
