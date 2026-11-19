@@ -171,7 +171,7 @@ test('mounted export walks more than 500 committed facts and excludes later appe
   expect(received).toEqual(expected);
 });
 
-test('the v1 export remains readable when OpenCode reports a step model', async () => {
+test('the v1 export remains readable when a provider reports richer usage', async () => {
   const f = fixture();
   f.start('own', 'reader', undefined, 'opencode');
   const createdAt = new Date().toISOString();
@@ -182,6 +182,16 @@ test('the v1 export remains readable when OpenCode reports a step model', async 
     method: 'token-usage.updated',
     createdAt,
     promptTokens: 10,
+    reasoningTokens: 5,
+    servingRoute: {
+      id: 'fixture-route',
+      modelRevision: 'fixture-model-revision',
+      tariffId: 'fixture-tariff',
+      provenance: {
+        authority: 'provider-reported',
+        sourceRef: 'fixture-report',
+      },
+    },
     servedModelObservation: {
       source: 'opencode-step-started',
       providerId: 'provider',
@@ -204,6 +214,29 @@ test('the v1 export remains readable when OpenCode reports a step model', async 
     sourceEventId: 'usage-opencode',
     inputTokens: 10,
   });
+
+  // The HTTP JSON path drops undefined automatically. The source projection
+  // must also produce the closed shape when consumed directly.
+  const request = { from: day, to: day, scope: 'individual' as const };
+  const selected = readAuthorizedUsageExport({
+    store: f.store,
+    authority: sessionReadAuthorityFromRequest('reader', undefined, undefined),
+    stationId: 'station-a',
+    request,
+    personalOwnerIds: () => undefined,
+  });
+  const direct = parseUsageExportPage(selected.page, {
+    ...request,
+    expectedStationId: 'station-a',
+  });
+  const receipt = direct.observations[0]?.receipts[0];
+  expect(receipt).toMatchObject({
+    sourceEventId: 'usage-opencode',
+    inputTokens: 10,
+  });
+  expect(receipt).not.toHaveProperty('outputTokens');
+  expect(receipt).not.toHaveProperty('reasoningTokens');
+  expect(receipt).not.toHaveProperty('route');
 });
 
 test('personal nonmembers refuse account scope while retaining individual reads', async () => {

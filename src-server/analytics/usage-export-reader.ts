@@ -8,6 +8,7 @@ import type {
   UsageExportPage,
   UsageExportRequest,
 } from '@kontourai/station-contracts/usage-export';
+import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import type { EventStore } from '../services/orchestration/event-store.js';
 import { usageReceiptsForEventRow } from '../services/orchestration/session-transcript-reads.js';
 
@@ -109,6 +110,33 @@ export function usageExportOwnerIds(
   if (!members?.includes(authority.userId))
     throw new UsageExportRejected('usage_export_authority_changed', 403);
   return [...new Set(members)].sort();
+}
+
+// Version 1 readers reject extra receipt keys. Richer local usage
+// observations require their own wire revision.
+function usageExportV1Receipt({
+  projectSlug: _project,
+  servedModelObservation: _servedModel,
+  connectionId: _connection,
+  modelConnectionId: _modelConnection,
+  reasoningTokens: _reasoning,
+  route: _route,
+  retailEquivalent: _retailEquivalent,
+  conversationId,
+  inputTokens,
+  outputTokens,
+  cacheReadTokens,
+  cacheWriteTokens,
+  ...receipt
+}: UsageReceipt): UsageReceipt {
+  return {
+    ...receipt,
+    ...(conversationId !== undefined ? { conversationId } : {}),
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+    ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+  };
 }
 
 export function readAuthorizedUsageExport(input: {
@@ -250,13 +278,8 @@ export function readAuthorizedUsageExport(input: {
             }
           : {
               globalSequence: row.globalSequence,
-              // The v1 export has a closed receipt grammar.
               receipts: usageReceiptsForEventRow(row.usage, stationId).map(
-                ({
-                  projectSlug: _project,
-                  servedModelObservation: _model,
-                  ...receipt
-                }) => receipt,
+                usageExportV1Receipt,
               ),
             },
       ),
