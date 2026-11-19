@@ -10,6 +10,7 @@ import {
   isFirstSendFailure,
   SESSION_STATUS_WORDS,
 } from '@kontourai/station-contracts/session-attention';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
   OrchestrationSessionSummary,
@@ -72,6 +73,8 @@ export interface HomeWorkItem {
   model?: string;
   /** Present only when this row is represented by the canonical conversation inventory. */
   conversationUpdatedAt?: string;
+  /** A completed local delegation whose Session remains ready for follow-up. */
+  resumableDelegationResult?: true;
   /** Epoch ms of the inventory version the current user last viewed. */
   acknowledgedAt?: number;
   /**
@@ -416,6 +419,17 @@ function buildSessionWorkItem(
   });
   const cwdLabel = sessionCwdLabel(session);
   const lifecycleLabel = orchestrationLifecycleLabel(session);
+  const resumableDelegationResult =
+    !provenance &&
+    session.controlMode !== 'read-only-attached' &&
+    session.delegation?.taskId &&
+    (session.delegation.environmentKind === undefined ||
+      session.delegation.environmentKind === 'current') &&
+    session.status === 'ready' &&
+    lifecycleLabel === 'Completed' &&
+    session.lifecycleState !== undefined &&
+    sessionLifecycleOutcome(session.lifecycleState) === 'completed';
+
   // archive#1783: the serving Station's own observation, read off the
   // summary's required decoration (ADR 0012) and never recomputed here.
   //
@@ -495,6 +509,9 @@ function buildSessionWorkItem(
         ? Date.parse(session.createdAt) || sessionRecency(session)
         : sessionRecency(session),
     lifecycleLabel,
+    ...(resumableDelegationResult
+      ? { resumableDelegationResult: true as const }
+      : {}),
     ...(isTerminalLifecycle(lifecycleLabel) &&
     Number.isFinite(Date.parse(session.lifecycleChangedAt ?? ''))
       ? { terminalAt: Date.parse(session.lifecycleChangedAt!) }

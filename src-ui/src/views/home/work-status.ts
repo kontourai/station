@@ -37,7 +37,7 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *  elsewhere                                     (Idle)
  *  N sub-agents, owned cleanup, no progress, running, scheduled (Running)
  *  draft                                         (Drafts)
- *  done                                          (finished)
+ *  done                       (finished, or idle after a resumable result is read)
  *  idle                                          (Idle)
  *
  * THE ONLY SOURCE OF STATUS WORDS. Every list, card, sheet, pane, banner and
@@ -279,7 +279,10 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     case 'Completed':
       return {
         rung: 'done',
-        lane: 'finished',
+        lane:
+          item.resumableDelegationResult && item.unread === false
+            ? 'idle'
+            : 'finished',
         tone: 'neutral',
         word: SESSION_STATUS_WORDS.done,
       };
@@ -291,6 +294,15 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         word: SESSION_STATUS_WORDS.idle,
       };
   }
+}
+
+export function hasUnseenDelegationResult(item: HomeWorkItem): boolean {
+  return (
+    item.resumableDelegationResult === true &&
+    item.unread === true &&
+    item.lifecycleLabel === 'Completed' &&
+    rungFor(item, undefined).lane === 'finished'
+  );
 }
 
 /**
