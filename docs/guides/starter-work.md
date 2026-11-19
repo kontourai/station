@@ -14,7 +14,8 @@ feature only where those owners are available. Hosted tenant execution has no
 personal-home Starter route.
 
 New Project starts with **Blank workspace** or **From a repository**. Both
-can choose an installed layout. Selecting a Git checkout keeps the Coding
+can choose an installed layout. Blank workspace puts that choice under **More
+options**. Selecting a Git checkout keeps the Coding
 recommendation when it is available. Add documents and connected tools after
 creation in **Files & connections**. Saved creation requests retain their
 original destination and starter, including earlier requests that open Sources

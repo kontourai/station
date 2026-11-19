@@ -319,6 +319,12 @@ function chooseExistingFolder() {
   fireEvent.click(screen.getByText('Use an existing folder', { exact: true }));
 }
 
+function browseStarterLayouts() {
+  if (!screen.queryByRole('button', { name: 'Browse all' }))
+    fireEvent.click(screen.getByText('More options', { exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+}
+
 describe('NewProjectModal starter layout picker', () => {
   test('real path mounting keeps initial name focus and preserves focus on the selected intent', () => {
     savedCreationFixture.realPath = true;
@@ -757,6 +763,7 @@ describe('NewProjectModal starter layout picker', () => {
     );
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
+    fireEvent.click(screen.getByText('More options', { exact: true }));
     expect(screen.getByText('Recent on this device')).toBeTruthy();
     const buttons = screen.getAllByRole('button', { name: /Review|Coding/ });
     expect(buttons[0].textContent).toContain('Review');
@@ -797,7 +804,7 @@ describe('NewProjectModal starter layout picker', () => {
         screen.getByLabelText('Repository subdirectory (optional)'),
         { target: { value: 'packages/app' } },
       );
-      fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+      browseStarterLayouts();
       expect(
         screen.queryByRole('button', { name: 'Acquire repository' }),
       ).toBeNull();
@@ -881,7 +888,7 @@ describe('NewProjectModal starter layout picker', () => {
     fireEvent.change(screen.getByLabelText(/Emoji or symbol/), {
       target: { value: '🚀' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
     const browser = screen.getByRole('dialog', {
       name: /Browse installed layouts/,
     });
@@ -907,7 +914,7 @@ describe('NewProjectModal starter layout picker', () => {
 
   test('applies only the selected canonical ID and records it after success', async () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
     fireEvent.click(
       within(
         screen.getByRole('dialog', { name: /Browse installed layouts/ }),
@@ -1198,7 +1205,7 @@ describe('NewProjectModal starter layout picker', () => {
       new Error('Starter could not apply'),
     );
     const view = render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
     fireEvent.click(
       within(
         screen.getByRole('dialog', { name: /Browse installed layouts/ }),
@@ -1361,7 +1368,7 @@ describe('NewProjectModal copy density and layout browser placement (station#182
       document.querySelector('.new-project-layout-browser__actions'),
     ).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
 
     expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
     const retainedForm = document.querySelector('.new-project-modal__form');
@@ -1431,7 +1438,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
       target: { value: 'Draft Keeper' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
     expect(
       screen.getByRole('dialog', { name: /Browse installed layouts/ }),
     ).toBeTruthy();
@@ -1451,7 +1458,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
       target: { value: 'Draft Keeper' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
 
     // The browser step's OWN backdrop, reached through its panel rather than
     // as the document's first overlay: this flow renders one surface today and
@@ -1474,7 +1481,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
       target: { value: 'Draft Keeper' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
     expect(
       screen.getByRole('dialog', { name: /Browse installed layouts/ }),
     ).toBeTruthy();
@@ -1495,7 +1502,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 
   test('the header close button while browsing is scoped "Close layout browser" and also returns to the draft, never "Close new project"', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
 
     expect(
       screen.queryByRole('button', { name: 'Close new project' }),
@@ -1529,7 +1536,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 
   test('HIGH: returning from the layout browser moves focus into the form instead of leaving it on document.body', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+    browseStarterLayouts();
     // Forward transition already lands focus on the browser's own heading —
     // establishing that document.body is not simply the jsdom default.
     expect(document.activeElement).toBe(

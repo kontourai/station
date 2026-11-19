@@ -359,7 +359,7 @@
        paint the Starter-layout card through the footer. Bind the panel to the
        overlay's definite content height; min-height:0 then lets the form's
        plain wrapper become the one bounded scrollport. */
-    height: 100%;
+    height: min(100%, 40rem);
     min-height: 0;
     overflow: hidden;
     padding: 1.1rem;

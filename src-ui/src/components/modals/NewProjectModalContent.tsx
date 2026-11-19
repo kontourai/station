@@ -218,6 +218,17 @@ function NewProjectDetails({
       Icon: FolderGlyph,
     },
   ] as const;
+  const layoutPicker =
+    workspaceSelected || draft.startIntent === 'blank' ? (
+      <NewProjectStarterPicker
+        codingStarter={starter.codingStarter}
+        gitWorkspaceDetected={starter.gitWorkspaceDetected}
+        recentLayouts={starter.recentLayouts}
+        selectedLayoutId={starter.selectedLayoutId}
+        onSelect={starter.selectLayout}
+        onBrowse={() => starter.setShowLayoutBrowser(true)}
+      />
+    ) : null;
   return (
     <>
       <NewProjectIdentityInput state={state} inputRef={nameRef} />
@@ -290,17 +301,9 @@ function NewProjectDetails({
           value={draft.defaultEnvironment}
           onChange={draft.setDefaultEnvironment}
         />
+        {!workspaceSelected && layoutPicker}
       </details>
-      {(draft.startIntent === 'workspace' || draft.startIntent === 'blank') && (
-        <NewProjectStarterPicker
-          codingStarter={starter.codingStarter}
-          gitWorkspaceDetected={starter.gitWorkspaceDetected}
-          recentLayouts={starter.recentLayouts}
-          selectedLayoutId={starter.selectedLayoutId}
-          onSelect={starter.selectLayout}
-          onBrowse={() => starter.setShowLayoutBrowser(true)}
-        />
-      )}
+      {workspaceSelected && layoutPicker}
       {submission.error && (
         <div className="new-project-modal__error">{submission.error}</div>
       )}
