@@ -3023,6 +3023,16 @@ earlier transcript and the successor that can start on the next send. The
 current Session and execution binding become available only with an observed
 Session.
 
+The reset dialog saves the request key and selected policy before sending the
+reservation. It stores them under the verified Station, author, conversation
+and predecessor Session. After a lost reply, reopening checks the original
+key with Station. Cancellation requires a matching reserved status. An older
+unscoped browser record can supply a status lookup key. The dialog offers an
+action only after Station confirms the same reservation and current author
+and predecessor. If verification fails, the record stays a hint. The
+conversation-open read can still expose the durable fresh-context continuation
+under its own authorization.
+
 `@kontourai/station-contracts/project-supervision` names opt-in supervision,
 Task incarnation, checkpoint, coordinator and known wait facts. The server
 reconciles through the existing inbox; it does not infer a new workflow DAG.

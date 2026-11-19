@@ -7,7 +7,7 @@ import {
   type ConversationContextBoundaryEligibility,
   conversationContextBoundaryEligibility,
 } from '../components/chat-dock/conversationContextBoundaryEligibility';
-import { writeConversationContextBoundaryUiState } from '../components/chat-dock/conversationContextBoundaryUiState';
+import { rememberContextBoundaryIntent } from '../components/chat-dock/conversationContextBoundaryUiState';
 
 const reserve = vi.fn();
 const cancel = vi.fn();
@@ -43,6 +43,32 @@ const stopEligibility: ConversationContextBoundaryEligibility = {
   reason: 'Stop the agent first.',
 };
 
+const authority = {
+  namespace: 'station-resolve-author',
+  actorId: 'operator',
+  isCurrent: () => true,
+};
+const scope = { ...authority, conversationId: 'c', sessionId: 's' };
+const observedBoundary = (state: string) => ({
+  boundaryId: 'b',
+  conversationId: 'c',
+  predecessorSessionId: 's',
+  successorSessionId: 'successor',
+  actorId: authority.actorId,
+  policy: 'continue-from-history',
+  status: state,
+  priorTranscriptInjected: true,
+});
+
+function seedRememberedBoundary(state: string) {
+  rememberContextBoundaryIntent(scope, {
+    idempotencyKey: 'k',
+    policy: 'continue-from-history',
+    boundaryId: 'b',
+  });
+  status.mockReturnValue({ data: observedBoundary(state) });
+}
+
 function renderDialog(
   eligibility = reserveEligibility,
   overrides: Partial<
@@ -54,6 +80,7 @@ function renderDialog(
 ) {
   const props = {
     apiBase: 'http://station.test',
+    authority,
     conversationId: 'c',
     sessionId: 's',
     eligibility,
@@ -100,6 +127,7 @@ describe('ConversationContextResetDialog', () => {
           policy: 'empty-next-cold-start',
           expectedCurrentSessionId: 's',
         }),
+        undefined,
       ),
     );
     expect(dispatchWithReceipt).not.toHaveBeenCalled();
@@ -167,6 +195,7 @@ describe('ConversationContextResetDialog', () => {
         { type: 'stopSession', threadId: 's' },
         'http://station.test',
         100,
+        undefined,
       ),
     );
     await vi.waitFor(() =>
@@ -232,13 +261,7 @@ describe('ConversationContextResetDialog', () => {
   });
 
   test('reopened after reserving a history reset, it says the agent continues rather than the default fresh start', () => {
-    writeConversationContextBoundaryUiState('k', {
-      boundaryId: 'b',
-      conversationId: 'c',
-      policy: 'continue-from-history',
-      status: 'reserved',
-      priorTranscriptInjected: true,
-    } as never);
+    seedRememberedBoundary('reserved');
     renderDialog();
     expect(screen.getByRole('status').textContent).toBe(
       'Ready. On your next message the agent continues from chat history.',
@@ -255,13 +278,7 @@ describe('ConversationContextResetDialog', () => {
   test.each(['reserved', 'claimed', 'indeterminate', 'failed'] as const)(
     'a held %s reservation locks the reset choice to the reserved policy',
     (status) => {
-      writeConversationContextBoundaryUiState('k', {
-        boundaryId: 'b',
-        conversationId: 'c',
-        policy: 'continue-from-history',
-        status,
-        priorTranscriptInjected: true,
-      } as never);
+      seedRememberedBoundary(status);
       renderDialog();
       const history = screen.getByRole('radio', {
         name: 'Continue with chat history',
@@ -293,28 +310,14 @@ describe('ConversationContextResetDialog', () => {
             policy: 'continue-from-history',
             idempotencyKey: 'k',
           }),
+          undefined,
         );
       }
     },
   );
 
   test('the status line reports the server-observed reserved policy', () => {
-    status.mockReturnValue({
-      data: {
-        boundaryId: 'b',
-        conversationId: 'c',
-        policy: 'continue-from-history',
-        status: 'reserved',
-        priorTranscriptInjected: true,
-      },
-    });
-    writeConversationContextBoundaryUiState('k', {
-      boundaryId: 'b',
-      conversationId: 'c',
-      policy: 'continue-from-history',
-      status: 'reserved',
-      priorTranscriptInjected: true,
-    } as never);
+    seedRememberedBoundary('reserved');
     renderDialog();
     expect(screen.getByRole('status').textContent).toBe(
       'Ready. On your next message the agent continues from chat history.',

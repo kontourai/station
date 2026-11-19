@@ -638,7 +638,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { apiBase } = useApiBase();
   const workObservation = useWorkObservation();
   const requestAuthority = useHostRequestAuthorityScope();
-  const { namespace: authorityNamespace } = useAuthorityPersistence();
+  const {
+    namespace: authorityNamespace,
+    observation: authorityObservation,
+    status: authorityStatus,
+  } = useAuthorityPersistence();
   // Inbox rows warm this Station's transcript windows under the same key the
   // dock's readers use (`useTranscriptWindowPrefetch`).
   const transcriptPrefetchTarget = useMemo(
@@ -1293,6 +1297,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     apiBase,
     activeSession: hostConversation ? activeSession : null,
     allSessions: allSessions.filter((session) => chatBelongsToStation(session)),
+    contextBoundaryAuthority:
+      authorityStatus === 'verified' &&
+      authorityNamespace &&
+      authorityObservation &&
+      requestAuthority
+        ? {
+            namespace: authorityNamespace,
+            actorId: authorityObservation.principal.id,
+            requestScope: requestAuthority,
+            isCurrent: requestAuthority.isCurrent,
+          }
+        : undefined,
   });
   const {
     handoffSource,
