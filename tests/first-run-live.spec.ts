@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import type { Server } from 'node:http';
 import { loadavg } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -9,11 +10,9 @@ import {
   expect,
   test,
 } from './helpers/authenticated-request';
+import { monitorBrowserHealth } from './helpers/browser-health';
 import { LAZY_CHUNK_ALLOWANCE_MS } from './helpers/lazy-chunk-allowance';
-import {
-  countVisibleLazyBoundaryErrors,
-  waitForLazySurface,
-} from './helpers/lazy-surface-readiness';
+import { waitForLazySurface } from './helpers/lazy-surface-readiness';
 import { waitForLocalUiAccessReadiness } from './helpers/local-ui-access-readiness';
 import {
   closeFixtureServer,
@@ -51,6 +50,7 @@ const REPLY = 'First live Station chat works on mobile.';
 
 // Preserve the existing ceilings until repeated measurements cover the slow hosts.
 const SETUP_LAUNCHER_TIMEOUT_MS = 20_000;
+const SETUP_CHAPTER_TIMEOUT_MS = 20_000;
 const UNCONFIGURED_COMPOSER_TIMEOUT_MS = 20_000;
 const STATION_AGENT_PICKER_TIMEOUT_MS = 20_000;
 
@@ -173,52 +173,6 @@ async function recordSurfaceTiming(
   }
 }
 
-async function openPendingSetup(
-  page: Page,
-  authenticatedRequest: AuthenticatedE2ERequest,
-) {
-  // The source CLI runner records current Lite notices at startup. Require
-  // the server's recorded decision before asserting the no-disclosure path.
-  const response = await authenticatedRequest.get(
-    '/api/usage-telemetry/status',
-  );
-  expect(response.ok()).toBe(true);
-  const { data } = (await response.json()) as {
-    data: {
-      publishers: Record<
-        string,
-        { tier: string; reason?: string; userChoice?: string }
-      >;
-      liteInventoryRevision: string;
-      liteNotices?: Record<string, { inventoryRevision: string }>;
-    };
-  };
-  for (const id of ['kontour', 'operator']) {
-    const publisher = data.publishers[id];
-    expect(publisher).toBeDefined();
-    expect(['off', 'lite']).toContain(publisher?.tier);
-    expect(publisher?.reason).not.toBe('DNT');
-    expect(publisher?.userChoice).not.toBe('full');
-    if (publisher?.tier === 'lite')
-      expect(data.liteNotices?.[id]?.inventoryRevision).toBe(
-        data.liteInventoryRevision,
-      );
-  }
-  await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
-  await expect(
-    page.getByTestId('usage-telemetry-disclosure-modal'),
-  ).toHaveCount(0);
-
-  const chapter = page.getByTestId('first-run-engines');
-  await expect(chapter).toHaveCount(0);
-  await page
-    .getByTestId('first-run-home-card')
-    .getByRole('button', { name: 'Open setup' })
-    .click();
-  await expect(chapter).toBeVisible();
-  return chapter;
-}
-
 /**
  * How long the streamed reply may take to appear.
  *
@@ -271,6 +225,64 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => performance.setResourceTimingBufferSize(1500));
 });
 
+async function openSetupWithoutTelemetryEndpoint(
+  page: Page,
+  request: AuthenticatedE2ERequest,
+) {
+  const [disclosure, status] = await Promise.all([
+    request.get('/api/usage-telemetry/disclosure'),
+    request.get('/api/usage-telemetry/status'),
+  ]);
+  await expect(disclosure).toBeOK();
+  await expect(status).toBeOK();
+  expect(await disclosure.json()).toMatchObject({
+    data: { endpointConfigured: false },
+  });
+  const { data: telemetry } = (await status.json()) as {
+    data: {
+      authorEndpoint?: string;
+      publishers: Record<
+        string,
+        { tier: string; reason?: string; userChoice?: string }
+      >;
+      liteInventoryRevision: string;
+      liteNotices?: Record<string, { inventoryRevision: string }>;
+    };
+  };
+  expect(telemetry.authorEndpoint ?? null).toBeNull();
+  for (const id of ['kontour', 'operator']) {
+    const publisher = telemetry.publishers[id];
+    expect(publisher).toBeDefined();
+    expect(['off', 'lite']).toContain(publisher?.tier);
+    expect(publisher?.reason).not.toBe('DNT');
+    expect(publisher?.userChoice).not.toBe('full');
+    if (publisher?.tier === 'lite')
+      expect(telemetry.liteNotices?.[id]?.inventoryRevision).toBe(
+        telemetry.liteInventoryRevision,
+      );
+  }
+
+  // A dormant fresh home presents setup as an optional Home action.
+  await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
+  await page
+    .getByTestId('first-run-home-card')
+    .getByRole('button', { name: 'Open setup' })
+    .click();
+  await expect(page.getByTestId('first-run-engines')).toBeVisible({
+    timeout: SETUP_CHAPTER_TIMEOUT_MS,
+  });
+  await expect(page.getByTestId('first-run-disclosure')).toHaveCount(0);
+  await expect(
+    page.getByTestId('usage-telemetry-disclosure-modal'),
+  ).toHaveCount(0);
+}
+
+function newProjectAction(page: Page) {
+  return page
+    .getByRole('region', { name: 'Work actions' })
+    .getByRole('button', { name: /New Project/ });
+}
+
 // archive#1628: a short, dedicated desktop check that a fresh temp-home server
 // boots to Home's zero-project empty state with no dead end — deliberately
 // not a full chat round-trip (no ollama fixture) so the 'first-run' bucket's
@@ -285,20 +297,21 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   page,
   authenticatedRequest,
 }) => {
-  const consoleErrors: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() !== 'error') return;
-    const url = message.location().url;
-    // The normal first-run browser has no remote runner inventory grant.
-    // Keep any other response or script error in the assertion below.
+  const browserHealth = await monitorBrowserHealth(page);
+  const unexpectedRejections: string[] = [];
+  page.on('response', (response) => {
+    const status = response.status();
+    if (status < 400 || status >= 500) return;
+    const method = response.request().method();
+    const { pathname } = new URL(response.url());
+    // The paired browser lacks orchestration:operate on cross-host SSH inventory.
     if (
-      baseURL &&
-      url === new URL('/api/environments/ssh/sessions', baseURL).href &&
-      message.text() ===
-        'Failed to load resource: the server responded with a status of 403 (Forbidden)'
+      status === 403 &&
+      method === 'GET' &&
+      pathname === '/api/environments/ssh/sessions'
     )
       return;
-    consoleErrors.push(message.text());
+    unexpectedRejections.push(`${method} ${pathname}: ${status}`);
   });
 
   if (!baseURL) throw new Error('First-run suite requires a UI base URL');
@@ -325,7 +338,9 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
 
   await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
 
-  const chapter = await openPendingSetup(page, authenticatedRequest);
+  await openSetupWithoutTelemetryEndpoint(page, authenticatedRequest);
+  const chapter = page.getByTestId('first-run-engines');
+  await expect(page.getByRole('dialog')).toHaveCount(1);
   await expect(page.getByText('Step 1 of 3')).toBeVisible();
   await expect(page.getByRole('dialog').filter({ has: chapter })).toBeVisible();
 
@@ -355,7 +370,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
     timeout: 20_000,
   });
   await expect(chapter).toHaveCount(0);
-  // The saved first-run decision leaves the setup card available after reload.
+  // Deferring setup keeps both telemetry disclosure surfaces absent.
   await expect(
     page.getByTestId('usage-telemetry-disclosure-modal'),
   ).toHaveCount(0);
@@ -370,21 +385,19 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   await expect(startAgent).toBeDisabled();
   await goal.fill('Help me get started');
   await expect(startAgent).toBeEnabled();
-  const openLocalProject = page
-    .getByRole('region', { name: 'Work actions' })
-    .getByRole('button', { name: /New Project/ });
-  await expect(openLocalProject).toBeVisible();
-  await expect(openLocalProject).toBeEnabled();
+  await expect(newProjectAction(page)).toBeVisible();
+  await expect(newProjectAction(page)).toBeEnabled();
 
   await expect(page.getByText(/^Error:/)).toHaveCount(0);
-  expect(consoleErrors).toEqual([]);
+  browserHealth.assertHealthy();
+  expect(unexpectedRejections).toEqual([]);
 });
 
 test('phone first run recovers from no provider to a real streamed reply', async ({
   baseURL,
   page,
   authenticatedRequest,
-}) => {
+}, testInfo) => {
   // Measured, not guessed (#1617). On a host under sibling load this journey
   // spent 62.3 s reaching its last step — the streamed reply — with that step's
   // own 30 s budget still ahead, so 90 s could not cover a slow reply even
@@ -485,7 +498,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await authenticatedRequest.get('/config/app')
     ).json()) as { data?: { firstRun?: { status?: string } } };
     if (firstRunStatus.data?.firstRun?.status === 'pending') {
-      await openPendingSetup(page, authenticatedRequest);
+      await openSetupWithoutTelemetryEndpoint(page, authenticatedRequest);
       await chapter.getByRole('button', { name: 'Not now' }).click();
       await expect
         .poll(
@@ -502,17 +515,20 @@ test('phone first run recovers from no provider to a real streamed reply', async
       expect(firstRunStatus.data?.firstRun?.status).toBe('skipped');
       await expect(chapter).toHaveCount(0);
     }
-    await page
-      .getByRole('region', { name: 'Work actions' })
-      .getByRole('button', { name: /New Project/ })
-      .click();
+    await newProjectAction(page).click();
 
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
+    const projectFolder = testInfo.outputPath('project-workspace');
+    mkdirSync(projectFolder, { recursive: true, mode: 0o700 });
+    execFileSync('git', ['init', '--initial-branch=main', projectFolder], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
     await page
       .locator('input[placeholder="~/code/my-project"]')
-      .fill(`${REPO_ROOT}/`);
+      .fill(projectFolder);
     await page
       .locator('input[placeholder="My Project"]')
       .fill('Mobile Dogfood');
@@ -580,6 +596,22 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // Dismissing first-run is durable. Recovery remains available where it is
     // relevant without covering the project workspace with the launcher again.
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
+    // archive#3733 gave every Connections section ONE add action, named for what it
+    // adds; the picker it opens is a route now, not a dialog (archive#3877 —
+    // same structural staleness, a different shipped change).
+    //
+    // #1642: this is the site with real evidence, and the evidence says it was
+    // never a missing control. Three independently retained failure captures show
+    // the same page — `heading "Connections"` beside `status "Loading view"` — for
+    // the whole 15 s action timeout, twice with the shell header reading "Can't
+    // connect". The view had not mounted. The route needs TWO lazy chunks under
+    // one Suspense boundary (`ConnectionsSectionFrame` and `ProviderSettingsView`,
+    // both in `AppViewContent`), so a slow second chunk withholds the first one's
+    // action too — and the URL and the "Connections" heading both settle OUTSIDE
+    // that boundary, which is why every signal this step had was already green.
+    //
+    // The phone moves this page action out of the desktop header's slot.
+    // The exact button name identifies the real action in either placement.
     const addModelConnection = page.getByRole('button', {
       name: 'Add model connection',
       exact: true,
@@ -590,20 +622,6 @@ test('phone first run recovers from no provider to a real streamed reply', async
         .click();
       await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
 
-      // archive#3733 gave every Connections section ONE add action, named for what it
-      // adds; the picker it opens is a route now, not a dialog (archive#3877 —
-      // same structural staleness, a different shipped change).
-      //
-      // #1642: this is the site with real evidence, and the evidence says it was
-      // never a missing control. Three independently retained failure captures show
-      // the same page — `heading "Connections"` beside `status "Loading view"` — for
-      // the whole 15 s action timeout, twice with the shell header reading "Can't
-      // connect". The view had not mounted. The route needs TWO lazy chunks under
-      // one Suspense boundary (`ConnectionsSectionFrame` and `ProviderSettingsView`,
-      // both in `AppViewContent`), so a slow second chunk withholds the first one's
-      // action too — and the URL and the "Connections" heading both settle OUTSIDE
-      // that boundary, which is why every signal this step had was already green.
-      //
       await waitForRouteViewTarget(
         {
           viewName: 'The Connections → Models view',
@@ -652,6 +670,18 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await page.goto(
       `${baseURL}/projects/mobile-dogfood/layouts/coding?dock=open`,
     );
+    // #1642: this goto re-mounts the dock, so it passes through the same layout
+    // gate as the first one and gets the same wait. Waiting for the region before
+    // the header control inside it also puts the two in the order they can
+    // actually arrive — a control cannot appear before the region hosting it.
+    //
+    // This is the ONE bound this change lowers, and deliberately: the trigger
+    // below carried 20 s, which was really covering the layout resolution that
+    // now has its own wait above. Once the region is up the mobile header renders
+    // with it — `isMobile` is a synchronous `matchMedia` read, and no query sits
+    // between them — so what is left for the trigger is a render, which the
+    // runner's default covers. A budget kept here would be funding the same wait
+    // twice and would hide which of the two actually ran long.
     await waitForRouteViewTarget(
       {
         viewName: 'The Coding layout view, reopened',
@@ -664,24 +694,70 @@ test('phone first run recovers from no provider to a real streamed reply', async
       },
       PROJECT_LAYOUT_READINESS_TIMEOUT_MS,
     );
-    const draft = chatDock.getByRole('region', {
-      name: 'New chat',
+    // The mobile dock opens on Inbox without an active conversation.
+    // Selecting the seeded chat reveals that conversation's actions.
+    const taskDialog = page.getByRole('region', { name: 'Inbox', exact: true });
+    await waitForLazySurface(
+      page,
+      {
+        surfaceName: 'The Inbox on the reopened Coding layout',
+        surface: taskDialog,
+        surfaceId: 'mobile-inbox',
+      },
+      LAZY_CHUNK_ALLOWANCE_MS,
+    );
+    await taskDialog
+      .getByRole('button', {
+        name: 'Station Assistant Chat, Mobile Dogfood',
+        exact: true,
+      })
+      .click();
+    await expect(taskDialog).toBeHidden();
+    const chatActions = page.getByRole('button', {
+      name: 'Chat actions',
       exact: true,
     });
+    await expect(chatActions).toBeVisible();
+    const chatActionsMenu = page.getByRole('menu', { name: 'Chat actions' });
+    await recordSurfaceTiming(page, 'chat-actions', async () => {
+      await chatActions.click();
+      await waitForLazySurface(
+        page,
+        {
+          surfaceName: 'The Chat actions sheet',
+          surface: chatActionsMenu,
+          openIndicator: page.locator(
+            'button[aria-label="Chat actions"][aria-expanded="true"]',
+          ),
+          surfaceId: 'chat-actions',
+        },
+        LAZY_CHUNK_ALLOWANCE_MS,
+      );
+    });
+    const draft = page
+      .getByRole('region', { name: 'New chat', exact: true })
+      .getByRole('form', { name: 'Start work' });
     await recordSurfaceTiming(page, 'new-chat-draft', async () => {
-      await chatDock
-        .getByRole('button', { name: 'New chat', exact: true })
+      await chatActionsMenu
+        .getByRole('menuitem', { name: 'New chat', exact: true })
         .click();
+      await expect(chatActionsMenu).toHaveCount(0);
       await expect(draft).toBeVisible();
     });
-    const form = draft.getByRole('form', { name: 'Start work' });
+    // The single runnable engine is selected by the real draft composer.
+    await expect(
+      draft.getByRole('button', {
+        name: `Station Assistant · ${MODEL}`,
+        exact: true,
+      }),
+    ).toBeVisible();
     const stationAgent = page
       .getByRole('dialog', { name: 'Choose agent' })
       .getByRole('button', { name: /^Station Assistant(?: |$)/ })
       .first();
     await recordSurfaceTiming(page, 'station-agent-picker', async () => {
       await (
-        await runSetupControl(form, (panel) =>
+        await runSetupControl(draft, (panel) =>
           panel.getByRole('button', { name: /^Agent:/ }),
         )
       ).click();
@@ -690,11 +766,13 @@ test('phone first run recovers from no provider to a real streamed reply', async
       });
     });
     await stationAgent.click();
-    await closeRunSetup(form);
-    const composer = form.getByRole('textbox');
-    await composer.fill('Confirm the live first-run path');
-    await expect(composer).toHaveValue('Confirm the live first-run path');
-    await form.getByRole('button', { name: 'Start', exact: true }).click();
+    await closeRunSetup(draft);
+    const goal = draft.getByRole('textbox', {
+      name: 'What would you like done?',
+    });
+    await goal.fill('Confirm the live first-run path');
+    await expect(goal).toHaveValue('Confirm the live first-run path');
+    await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await expect
       .poll(() => chatRequests.length, {
         timeout: CHAT_REQUEST_RECORDED_TIMEOUT_MS,
@@ -703,45 +781,24 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await expect(page.getByText(REPLY, { exact: true })).toBeVisible({
       timeout: STREAMED_REPLY_TIMEOUT_MS,
     });
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get('chat'))
-      .toBeTruthy();
+    expect(chatRequests).toHaveLength(1);
+    expect(chatRequests[0]).toMatchObject({
+      model: MODEL,
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: expect.stringContaining('Confirm the live first-run path'),
+        }),
+      ]),
+    });
+
     const currentChat = new URL(page.url()).searchParams.get('chat');
-
-    const chatActions = chatDock.getByRole('button', {
-      name: 'Chat actions',
-      exact: true,
-    });
-    await expect(chatActions).toBeVisible();
-    const chatActionsMenu = page.getByRole('menu', { name: 'Chat actions' });
-    const previousErrors = await countVisibleLazyBoundaryErrors(page);
-    await recordSurfaceTiming(page, 'chat-actions', async () => {
-      await chatActions.click();
-      await waitForLazySurface(
-        page,
-        {
-          surfaceName: 'The Chat actions sheet',
-          surface: chatActionsMenu,
-          baselineUnavailableCount: previousErrors,
-        },
-        LAZY_CHUNK_ALLOWANCE_MS,
-      );
-    });
-    await expect(
-      chatActionsMenu.getByRole('menuitem', { name: 'New chat', exact: true }),
-    ).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(chatActionsMenu).toHaveCount(0);
-
+    expect(currentChat).toBeTruthy();
     const taskSwitcher = page.getByRole('button', {
       name: /^(Inbox|Back to chat)$/,
     });
-    const taskDialog = page.getByRole('region', { name: 'Inbox', exact: true });
     // Await the inbox's lazy boundary before acting on its rows.
     const openTaskSwitcher = async (occasion: string) => {
-      // Counted before each click, for the same reason as the sheet above: only a
-      // boundary failure that appears across THIS interaction is this sheet's.
-      const boundaryErrorsBefore = await countVisibleLazyBoundaryErrors(page);
       await recordSurfaceTiming(page, `inbox-${occasion}`, async () => {
         await taskSwitcher.click();
         await waitForLazySurface(
@@ -749,7 +806,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
           {
             surfaceName: `The Inbox (${occasion})`,
             surface: taskDialog,
-            baselineUnavailableCount: boundaryErrorsBefore,
+            surfaceId: 'mobile-inbox',
           },
           LAZY_CHUNK_ALLOWANCE_MS,
         );
@@ -766,13 +823,18 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // nothing to wait on until the product derives the distinction. Leaving the
     // runner default in place keeps that visible instead of dressing it up.
     await expect(taskRows).toHaveCount(2);
-    await expect(
-      taskDialog.locator('.chat-dock-inbox__item[aria-current="true"]'),
-    ).toHaveCount(1);
-    const currentTaskIndex = await taskRows.evaluateAll((rows) =>
-      rows.findIndex((row) => row.getAttribute('aria-current') === 'true'),
+    const selectedRow = taskDialog.locator(
+      '.chat-dock-inbox__item[aria-current="true"]',
     );
-    expect(currentTaskIndex).toBeGreaterThanOrEqual(0);
+    await expect(selectedRow).toHaveCount(1);
+    // Activation can reorder the collection. Track the row's identity.
+    const currentRowKey = await selectedRow.evaluate((button) =>
+      button.closest('[data-row-key]')?.getAttribute('data-row-key'),
+    );
+    expect(currentRowKey).toBeTruthy();
+    const originalChat = taskDialog
+      .locator(`[data-row-key=${JSON.stringify(currentRowKey)}]`)
+      .locator('.chat-dock-inbox__item');
     await taskDialog
       .locator('.chat-dock-inbox__item:not([aria-current="true"])')
       .click();
@@ -781,27 +843,19 @@ test('phone first run recovers from no provider to a real streamed reply', async
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .not.toBe(currentChat);
     await openTaskSwitcher('reopened to return to the first task');
-    await taskRows.nth(currentTaskIndex).click();
+    await originalChat.click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('chat'))
+      .toBe(currentChat);
     await expect(taskDialog).toBeHidden();
     await openTaskSwitcher('reopened to read back the restored selection');
-    await expect(taskRows.nth(currentTaskIndex)).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    await expect(originalChat).toHaveAttribute('aria-current', 'true');
     await page
       .getByRole('button', { name: 'Back to chat', exact: true })
       .click();
 
+    await expect(page.getByText(REPLY, { exact: true })).toBeVisible();
     expect(chatRequests).toHaveLength(1);
-    expect(chatRequests[0]).toMatchObject({
-      model: MODEL,
-      messages: expect.arrayContaining([
-        expect.objectContaining({
-          role: 'user',
-          content: expect.stringContaining('Confirm the live first-run path'),
-        }),
-      ]),
-    });
 
     expect(
       await page.evaluate(

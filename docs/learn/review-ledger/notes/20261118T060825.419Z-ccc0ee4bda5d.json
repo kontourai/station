@@ -1,0 +1,15 @@
+{
+  "revision": "5268e20ee2db1a8cd9740eee67e04673a09b673f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked explicit IStreamResult and memory-adapter inputs after moving span settlement. The runtime caller supplies the same result and adapter. The source change does not change engine submission, request admission, or the observed span outcomes.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked explicit IStreamResult and memory-adapter inputs after moving span settlement. The runtime caller supplies the same result and adapter. The source change does not change engine submission, request admission, or the observed span outcomes.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked explicit IStreamResult and memory-adapter inputs after moving span settlement. The runtime caller supplies the same result and adapter. The source change does not change engine submission, request admission, or the observed span outcomes.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked explicit IStreamResult and memory-adapter inputs after moving span settlement. The runtime caller supplies the same result and adapter. The source change does not change engine submission, request admission, or the observed span outcomes.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the optional result read for pre-invocation errors, which now uses optional chaining before collecting usage. Missing usage remains absent and confirmed span status stays with primary stream settlement.","inputs":["src-server/routes/chat/chat-lifecycle.ts"]}
+  ]
+}

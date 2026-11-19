@@ -94,7 +94,13 @@ function setup() {
       if (!skillService.isSkillWritable(name, projectHomeDir)) {
         return {
           success: false,
-          message: `Skill '${name}' is served from /packages/${name}, which this update does not own; it would have written a second copy to ${projectHomeDir}/skills/${name}`,
+          message: 'The backing package is read-only.',
+          reason: 'not-owned',
+          writeRefusal: {
+            reason: 'canonical-package',
+            detail: 'The backing package is read-only.',
+            packageDirectory: `/packages/${name}`,
+          },
         };
       }
       const effectiveName = updates.name ?? name;
@@ -219,15 +225,23 @@ describe('Skill Routes', () => {
     skillService.removeSkill.mockResolvedValue({
       success: false,
       reason: 'not-owned',
-      message:
-        "Cannot remove 'shipper': it is served from /plugins/acme/skills/shipper, which is not a skills root Station writes.",
+      message: 'The backing package is read-only.',
+      writeRefusal: {
+        reason: 'outside-writable-root',
+        detail: 'The backing package is read-only.',
+        packageDirectory: '/plugins/acme/skills/shipper',
+      },
     });
 
     const res = await app.request('/shipper', { method: 'DELETE' });
     const body = await json(res);
 
     expect(res.status).toBe(409);
-    expect(body.error).toContain('is not a skills root Station writes');
+    expect(body).toMatchObject({
+      code: 'skill-not-owned',
+      error: 'The backing package is read-only.',
+      details: { packageDirectory: '/plugins/acme/skills/shipper' },
+    });
   });
 
   // …and a message that happens to read like a refusal is still a 404 without
@@ -303,50 +317,24 @@ describe('Skill Routes', () => {
     expect(updates.provenance).toBeUndefined();
   });
 
-  test('PUT /:name refuses command metadata on a read-only skill with 409', async () => {
+  test('PUT /:name forwards ownership refusals without parsing their prose', async () => {
     const { app, skillService } = setup();
     skillService.isSkillWritable.mockReturnValue(false);
-
-    const res = await app.request('/canonical-skill', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: { enabled: true } }),
-    });
-    const body = await json(res);
-
-    expect(res.status).toBe(409);
-    expect(body.error).toContain('install it to your workspace');
-    expect(skillService.updateLocalSkill).not.toHaveBeenCalled();
-  });
-
-  test('PUT /:name forwards the service refusal for a read-only skill body as 400', async () => {
-    // The route no longer answers this one itself: its 409 covers a command
-    // declaration only, and the SERVICE refuses every field on a package it
-    // does not own. What is asserted here is the route's half — the request
-    // reaches the service, and the service's own reason is what the caller is
-    // told, verbatim, rather than a generic failure.
-    const { app, skillService } = setup();
-    skillService.isSkillWritable.mockReturnValue(false);
-
     const res = await app.request('/canonical-skill', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body: 'Edited' }),
     });
-    const body = await json(res);
-
-    expect(res.status).toBe(400);
-    expect(body.success).toBe(false);
-    expect(body.error).toBe(
-      "Skill 'canonical-skill' is served from /packages/canonical-skill, which this update does not own; it would have written a second copy to /home/test/skills/canonical-skill",
-    );
-    // The ROUTE did not refuse it: its 409 is for a command declaration, and a
-    // body edit is not one.
-    expect(skillService.updateLocalSkill).toHaveBeenCalledWith(
-      'canonical-skill',
-      { body: 'Edited' },
-      '/home/test',
-    );
+    expect(res.status).toBe(409);
+    expect(await json(res)).toMatchObject({
+      success: false,
+      code: 'skill-not-owned',
+      error: 'The backing package is read-only.',
+      details: {
+        reason: 'canonical-package',
+        packageDirectory: '/packages/canonical-skill',
+      },
+    });
   });
 
   test('PUT /:name refuses a command word another skill already holds', async () => {
@@ -763,7 +751,11 @@ describe('DELETE /:name refusal body, through the real service', () => {
       // The defect this test exists for: an object interpolated into prose.
       expect(body.error).not.toContain('[object Object]');
       // …and the explanation the reader needs is the one that is there.
-      expect(body.error).toContain('is not a skills root Station writes');
+      expect(body).toMatchObject({
+        code: 'skill-not-owned',
+        error: 'Station does not write the directory this package resolves to.',
+        details: { reason: 'outside-writable-root', packageDirectory: served },
+      });
       expect(existsSync(served), "a plugin's package was deleted").toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });

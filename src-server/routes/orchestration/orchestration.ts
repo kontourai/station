@@ -74,6 +74,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
+  ATTACHED_SESSION_CONTINUATION_REFRESH,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -8050,9 +8051,7 @@ export function createOrchestrationRoutes(
           if (
             evt.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
           ) {
-            const updatedThreadId = (
-              evt.data as { threadId?: unknown } | undefined
-            )?.threadId;
+            const updatedThreadId = evt.data?.threadId;
             if (
               typeof updatedThreadId !== 'string' ||
               (threadId !== undefined && updatedThreadId !== threadId) ||
@@ -8069,7 +8068,12 @@ export function createOrchestrationRoutes(
             forward({
               event: SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
               threadId: updatedThreadId,
-              data: JSON.stringify({ threadId: updatedThreadId }),
+              data: JSON.stringify({
+                threadId: updatedThreadId,
+                ...(evt.data?.reason === ATTACHED_SESSION_CONTINUATION_REFRESH
+                  ? { reason: ATTACHED_SESSION_CONTINUATION_REFRESH }
+                  : {}),
+              }),
             });
             return;
           }

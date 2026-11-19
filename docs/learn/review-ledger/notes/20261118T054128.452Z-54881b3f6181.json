@@ -1,0 +1,21 @@
+{
+  "revision": "612037fb9adae935220bad1bc3d4bae12c782a17",
+
+  "notes": [
+    {"path":"docs/user/sharing-answers.md","note":"Reviewed the phone answer actions sheet, its shared Task picker and the separate desktop action menu. An existing eligible answer reserves the intrinsic size of its real loaded and unavailable labels during the lazy import. The sizing elements are inaccessible and cannot activate the action. Ineligible answers create no slot. Existing provenance, Task authority, fork, share and menu actions retain their documented routes.","inputs":["src-ui/src/components/chat/TurnActionsMenu.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the phone answer sheet's bottom alignment and interactive geometry. A lazy Add to Task row keeps the close target in the same place through loading, and the expanded rating reason and bug-report action wrap inside the sheet at narrow width. The general dialog, touch-target and dock geometry guidance remains accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the phone answer sheet's bottom alignment and interactive geometry. A lazy Add to Task row keeps the close target in the same place through loading, and the expanded rating reason and bug-report action wrap inside the sheet at narrow width. The general dialog, touch-target and dock geometry guidance remains accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the phone answer sheet's bottom alignment and interactive geometry. A lazy Add to Task row keeps the close target in the same place through loading, and the expanded rating reason and bug-report action wrap inside the sheet at narrow width. The general dialog, touch-target and dock geometry guidance remains accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed the phone answer sheet's bottom alignment and interactive geometry. A lazy Add to Task row keeps the close target in the same place through loading, and the expanded rating reason and bug-report action wrap inside the sheet at narrow width. The general dialog, touch-target and dock geometry guidance remains accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the phone answer sheet's bottom alignment and interactive geometry. A lazy Add to Task row keeps the close target in the same place through loading, and the expanded rating reason and bug-report action wrap inside the sheet at narrow width. The general dialog, touch-target and dock geometry guidance remains accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the phone answer sheet's bottom alignment and interactive geometry. A lazy Add to Task row keeps the close target in the same place through loading, and the expanded rating reason and bug-report action wrap inside the sheet at narrow width. The general dialog, touch-target and dock geometry guidance remains accurate.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the preserved mobile answer-geometry, Task authority and retry cases. The browser holds the real lazy action chunk until the pointer is down, confirms the loaded action before releasing the pointer, and verifies the close and unavailable state. The mobile suite continues to cover the shipped composer and its explicit fixture flows without claiming physical keyboard or installed-shell acceptance.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

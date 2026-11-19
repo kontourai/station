@@ -5744,11 +5744,18 @@ same current source, stages/validates the replacement, and retains the existing
 package on refusal. A missing source or provenance cannot choose another source.
 The marketplace's Open skill action returns to the existing installed Library.
 
-### Uninstall Skill from Registry
+### Skill package write refusals
 
-`DELETE /api/registry/skills/:id` returns SkillService's removal result and uses
-the same reload behavior. Package-owned read-only Skills retain their owner's
-mutation rules.
+`PUT /api/skills/:name` and `DELETE /api/skills/:name` return HTTP 409 with
+`code: "skill-not-owned"` when Station refuses a discovered Skill package.
+The response's `details` is a `SkillWriteRefusal`: a reason, a fixed explanation,
+and a separate `packageDirectory` when there is a known directory. Display the
+directory as labelled path data. Invalid input and missing Skills use HTTP 400
+and 404 respectively. Command word conflicts have their own HTTP 409 response.
+
+`DELETE /api/registry/skills/:id` uses the same ownership refusal code and
+details. The registry endpoint keeps its `message` field and reloads installed
+Skills after a successful removal.
 
 ### List Available Plugins (Registry)
 
@@ -6594,8 +6601,9 @@ identity fields are null. The response data is
 `{state, results, limit, resultWindow?, incompleteSources}`. Incomplete native
 search, scan/read budgets or additional matches means `state: partial`, never a
 conclusive miss. The metadata matching budget covers 2,000 filtered, admitted
-conversations; up to 32 file transcripts are read per call. Indexed native hits
-remain eligible beyond the metadata budget. Local incomplete entries use
+conversations; up to 32 file transcripts are read per call. Indexed native hits without file records
+remain eligible beyond the metadata budget. File-backed candidates still use
+both budgets when they have an indexed hit. Local incomplete entries use
 `station.conversations` / `metadata-scan-limit`, or `station.files` /
 `transcript-read-limit` or `conversation-lineage-too-long`. Overlong file
 lineages are skipped; their titles are not returned.

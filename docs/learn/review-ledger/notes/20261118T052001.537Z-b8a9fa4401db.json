@@ -1,0 +1,7 @@
+{
+  "revision": "01c279fc33de53992bdba369a80d1e6ee255b61b",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Verified shell frame, section, row and action owners in their implementations and Settings callers. Checked the installed kit spacing scale, Station legacy aliases, and Chromium computed text and gap values under both densities. The new authoring guidance leaves package boundaries and existing interaction requirements intact.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

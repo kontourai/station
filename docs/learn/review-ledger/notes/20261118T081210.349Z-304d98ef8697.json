@@ -1,0 +1,9 @@
+{
+  "revision": "f8b5a31db85bddb74576aed23dd0a12b43528dcb",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Reviewed the offline shell install contract and getting-started account in light of the production theme asset change. The same synchronous startup URL remains in the precache, and the worker revision now includes its emitted bytes. The change introduces no new cache scope, credentials, queue delivery or first-visit offline behavior. The real Vite build fixture checks a script-only change revises the worker.","inputs":["scripts/vite-offline-shell.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the offline shell install contract and getting-started account in light of the production theme asset change. The same synchronous startup URL remains in the precache, and the worker revision now includes its emitted bytes. The change introduces no new cache scope, credentials, queue delivery or first-visit offline behavior. The real Vite build fixture checks a script-only change revises the worker.","inputs":["scripts/vite-offline-shell.ts"]}
+  ]
+}

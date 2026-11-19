@@ -11,6 +11,7 @@ import {
   CLAUDE_ARTIFACT_TOOL_NAME,
   parseClaudeArtifactPublish,
 } from '@kontourai/station-contracts/claude-artifact';
+import { CLAUDE_PROXY_VERSION_FAILURE } from '@kontourai/station-contracts/connection';
 import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -54,6 +55,7 @@ import { claudeSourceResumeCursor } from './claude-resume-cursor.js';
 import {
   type ClaudeSdkTurnContext,
   type ClaudeSdkTurnLedger,
+  claudeReplyWasStopped,
   claudeTurnTerminalMetadata,
   clearClaudeSdkTurns,
   ensureClaudeTurnStartPublished,
@@ -226,6 +228,7 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
+  configuredClaudeEndpoint?: boolean;
   /** Set only for the temporary delivery Agent and its matching authored MCP server. */
   deliveryProbeServerId?: string;
   requireNativeResumeIdentity?: true;
@@ -896,6 +899,7 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'stream_event') {
+    if (claudeReplyWasStopped(record, message)) return;
     const streamEvent = message.event as any;
     if (
       message.parent_tool_use_id === null &&
@@ -987,11 +991,15 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'result') {
-    const usageLimit = takeClaudeUsageLimitDetails(record, message);
     // #2324: the result closes the turn it names (its user uuids), else the
     // running turn — never "whichever turn Station allocated last". Resolved
     // before anything is published so its usage lands on the same turn.
     const target = resolveClaudeResultTarget(record, message);
+    if (target.kind === 'stale-stop') {
+      record.interruptedResultObserved = true;
+      return;
+    }
+    const usageLimit = takeClaudeUsageLimitDetails(record, message);
     const resultTurn =
       target.kind === 'turn' && target.turn.kind !== 'untracked'
         ? target.turn
@@ -1065,12 +1073,18 @@ export function mapClaudeSdkMessage({
       record.session.status = outcome === 'binding-dead' ? 'dead' : 'error';
       if (target.kind === 'turn') settleClaudeResultTarget(turnContext, target);
       clearClaudeSdkTurns(turnContext);
+      const failureText = claudeResultFailureText(message);
+      const proxyVersionFailure =
+        outcome === 'failed' &&
+        !usageLimit &&
+        record.configuredClaudeEndpoint &&
+        /\binvalid_request_error\b/.test(failureText) &&
+        /\bdoes not support this model; version \d+\.\d+(?:\.\d+)? or newer is required\b/.test(
+          failureText,
+        );
       const startupFailure =
-        outcome === 'failed' && !usageLimit
-          ? classifyEngineStartupFailure(
-              'claude',
-              claudeResultFailureText(message),
-            )
+        outcome === 'failed' && !usageLimit && !proxyVersionFailure
+          ? classifyEngineStartupFailure('claude', failureText)
           : undefined;
       publish({
         eventId: crypto.randomUUID(),
@@ -1097,7 +1111,9 @@ export function mapClaudeSdkMessage({
             ? ENGINE_SESSION_BINDING_DEAD_CODE
             : ENGINE_TURN_FAILED_CODE,
         retriable: false,
-        message: claudeResultFailureText(message),
+        message: proxyVersionFailure
+          ? CLAUDE_PROXY_VERSION_FAILURE
+          : failureText,
         ...(startupFailure ? engineStartupFailureEvent(startupFailure) : {}),
         ...(usageLimit ? { details: { ...usageLimit } } : {}),
         // #2324 review F1: a failed turn the engine opened on its own ends
@@ -1255,6 +1271,11 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'assistant') {
+    if (
+      message.parent_tool_use_id === null &&
+      claudeReplyWasStopped(record, message)
+    )
+      return;
     if (message.parent_tool_use_id === null && message.error === 'rate_limit')
       record.usageLimitReply = true;
     // #2324: before the model capture below — a frame that starts a turn

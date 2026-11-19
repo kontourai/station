@@ -165,8 +165,12 @@ and inspect the current store's persisted envelope when testing migrations.
 
 Local unsharded changed-test diagnostics retain up to 32 explicit test targets even when broader
 verification is deferred. Their failures block fast feedback; their passes remain
-provisional and do not satisfy the deferred obligations. Broad import expansion
-and larger selections stay deferred within the existing feedback budget.
+provisional and leave the broader obligations pending. When the deferral drops
+related discovery for a changed UI component, directly importing UI suites
+join the explicit fallback if the combined selection fits within 32. The
+summary reports when the cap omits those additions, and the selection artifact
+lists their paths. Normal related discovery and hosted planning use their
+existing budgets.
 
 
 Use this route for weak-test cleanup, fixture repairs, and performance work. The owning modules are in the [module map](../architecture/module-map.md#browser-test-evidence). Run `npm run gate:for -- <paths>` before editing; it prints the current fixture policy command when the change touches this surface.
@@ -696,8 +700,12 @@ targets and executes no test, is incomplete. Hosted `fast-checks` still passes
 such a plan when its bounded mapped tests and invariants pass, but it reports
 the pass as provisional with a warning that names the deferred
 lanes, and the required `Source verification policy` status stays success with
-a provisional note in its description. An E2E, desktop or pre-push deferral is owned outside the selection and
-leaves the run complete.
+a provisional note in its description. The `fast-checks` aggregate output
+triggers the `Mark fast-checks provisional` workflow step. The source policy
+publisher reads that step's name and conclusion from the jobs API. The required `Merge-queue regression` job can still admit the candidate based on
+the exact bounded integration plan and its successful receipts. Main
+qualification owns the deferred full corpus. An E2E, desktop or pre-push
+deferral is owned outside the selection and leaves the run complete.
 
 A companion Vitest reporter keeps failed-test error names, primary messages,
 nested causes, stacks and durations separate. Excerpts prefer the observed
@@ -1915,6 +1923,26 @@ a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.
 
+#### Named lazy-surface readiness
+
+The [lazy boundary](../../src-ui/src/components/LazyBoundary.tsx) keeps a
+loader's original promise separate from the tracing promise React receives.
+This lets a caller reuse its settled promise across mounts. A rejected import
+can be retried through the boundary, which creates a fresh lazy attempt.
+
+The live first-run journey observes **Chat actions** and **Inbox** by their
+stable `data-lazy-surface` IDs on visible failure rows. An unrelated failure
+can appear, clear, or coexist without changing that observation. The displayed
+message names the affected surface, and the shared row offers Retry and Reload.
+Custom History chrome uses the same row.
+
+A boundary failure identifies the UI that failed. Gallery uses its existing
+request evidence to determine whether an app asset failed to load. The
+[Chromium remount and Retry fixture](../../src-ui/src/__tests__/LazyBoundary.browser.test.tsx)
+and the
+[readiness adapter fixture](../../src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx)
+cover those contracts with controlled loaders and saved failure markup.
+
 #### Gallery app error states and the after-photo control record
 
 When a lazily loaded part of the product fails, it shows an error surface and
@@ -1947,7 +1975,7 @@ any error its child throws, a render error included. NOT detected, because none
 has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
 `RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
 `DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
-their own `unavailable` slot (several render nothing). The route boundary's
+their own `unavailable` slot that omits the shared row (several render nothing). The route boundary's
 other error states, its authority failure (`route.authority.title`) and its
 render failure (`route.generic.title`), are not detected either. The route
 surface is matched by its en-US titles only, so a capture in another locale
@@ -2578,7 +2606,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, documentation, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Veritas readiness executes full-repository lint once through its required `style-standard` check. `conduit:conformance:check`, `examples:conformance`, `product-version:check`, two package import boundaries and `gate:test-import-existence` joined on 2026-11-13 for the same reason: each ran only in full qualification, and a stale generated conformance artifact kept main qualification red for about six days. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.
@@ -2750,8 +2778,12 @@ full-corpus call on the merge queue's critical path.
 validates the plan, exact candidate SHA and base, including its explicit
 coverage deferrals. The required aggregate accepts only successful diff,
 plan and `fast-checks` jobs plus an exact `integration-ready=true` output.
-Missing, invalid, foreign, cancelled or unavailable evidence blocks integration;
-it does not start an expensive fallback corpus. The required
+Missing, invalid, foreign, cancelled or unavailable evidence blocks integration.
+If an owned related-discovery child reaches its timeout and settles cleanly,
+the hosted plan runs the mapped exact suites plus bounded direct UI component
+importers. The plan names the timeout and retains the `ci-fast` deferral.
+Those shard results are diagnostic and the aggregate and queue decision block
+admission. A refused launch or failed cleanup still stops planning. The required
 `Source verification policy` status for the queue head is published from
 inside the merge-group run once `fast-checks` settles; the post-run lifecycle
 reconcile recomputes the same verdict from the same jobs and stays the

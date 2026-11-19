@@ -1,0 +1,13 @@
+{
+  "revision": "69b34e54f3e5ab988089eae1392e25ca4019675f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the mobile dock journey and critical browser proof. The restored chat and selected Inbox project assertions still run after Escape, a real pointer click, and an observed dock-height transition. Touch measurements and execution-request checks retain their bounds.","inputs":["tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the mobile dock journey and critical browser proof. The restored chat and selected Inbox project assertions still run after Escape, a real pointer click, and an observed dock-height transition. Touch measurements and execution-request checks retain their bounds.","inputs":["tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the mobile dock journey and critical browser proof. The restored chat and selected Inbox project assertions still run after Escape, a real pointer click, and an observed dock-height transition. Touch measurements and execution-request checks retain their bounds.","inputs":["tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the mobile dock journey and critical browser proof. The restored chat and selected Inbox project assertions still run after Escape, a real pointer click, and an observed dock-height transition. Touch measurements and execution-request checks retain their bounds.","inputs":["tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

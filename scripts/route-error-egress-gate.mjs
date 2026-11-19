@@ -13,8 +13,6 @@ import { toPosixPath } from './lib/posix-path.mjs';
 export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/agents/skills.ts :: route POST / :: result.message :: 1',
   'src-server/routes/agents/skills.ts :: route POST /local :: result.message :: 1',
-  'src-server/routes/agents/skills.ts :: route PUT /:name :: result.message :: 1',
-  'src-server/routes/agents/skills.ts :: route DELETE /:name :: result.message :: 1',
   'src-server/routes/agents/tools.ts :: route POST /:serverId/ui/call :: error.message :: 1',
   'src-server/routes/agents/unattended-grants-routes.ts :: route POST / :: error.message :: 1',
   'src-server/routes/agents/unattended-grants-routes.ts :: route POST /revoke :: error.message :: 1',

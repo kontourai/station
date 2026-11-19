@@ -886,7 +886,9 @@
 
     "packages/sdk/src/query-domains/customAppearanceLibrary.ts",
 
-    "packages/sdk/src/query-domains/customAppearanceMutation.ts"
+    "packages/sdk/src/query-domains/customAppearanceMutation.ts",
+
+    "packages/sdk/src/query-domains/workspaceProjectMutations.ts"
   ],
 
   "checks": [

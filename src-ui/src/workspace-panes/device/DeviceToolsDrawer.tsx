@@ -21,9 +21,11 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
-import { CloseGlyph } from '../../components/icons/Glyph';
+import { IconButton } from '../../components/IconButton';
+import { CloseGlyph, RefreshGlyph } from '../../components/icons/Glyph';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { DeviceReproductionPicker } from './DeviceReproductionPicker';
 import {
@@ -131,16 +133,44 @@ function unreadableLine<T>(readBack: DeviceReadBack<T>): string | null {
     : null;
 }
 
-function locationLine(location: DeviceLocationReadBack): string {
-  if (location.state === 'read')
-    return `Reported by the device: ${formatCoordinate(location.value.latitude)}, ${formatCoordinate(location.value.longitude)}`;
-  if (location.state === 'last-set') {
-    const at = new Date(location.setAt).toLocaleTimeString();
-    return location.value
-      ? `Last set from Station at ${at}: ${formatCoordinate(location.value.latitude)}, ${formatCoordinate(location.value.longitude)}. This device cannot report its location back.`
-      : `Cleared from Station at ${at}. This device cannot report its location back.`;
-  }
-  return UNREADABLE_COPY[location.reason];
+function LocationReadback({ location }: { location?: DeviceLocationReadBack }) {
+  if (!location || location.state === 'unreadable')
+    return (
+      <p className="device-tools__line" role="status">
+        {location ? unreadableLine(location) : '—'}
+      </p>
+    );
+
+  const { value } = location;
+  const coordinates = value
+    ? `${formatCoordinate(value.latitude)}, ${formatCoordinate(value.longitude)}`
+    : null;
+  return (
+    <div className="device-tools__row" role="status">
+      {location.state === 'read' ? (
+        <span className="device-tools__label">Reported by device</span>
+      ) : (
+        <span className="device-tools__label">
+          {value ? 'Last set from Station' : 'Cleared from Station'}
+          {' · '}
+          <time dateTime={location.setAt}>
+            {new Date(location.setAt).toLocaleTimeString([], {
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
+          </time>
+        </span>
+      )}
+      {coordinates ? (
+        <code className="device-tools__value">{coordinates}</code>
+      ) : null}
+      {location.state === 'last-set' ? (
+        <p className="device-tools__muted">
+          This device cannot report its location back.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 /** Which part of the device tools the ⋯ menu opened. */
@@ -278,24 +308,20 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
         <h3 className="device-tools__title" id={headingId}>
           {VIEW_TITLE[view]}
         </h3>
-        <Button
+        <IconButton
           aria-label="Refresh device values"
           onClick={() => void snapshot.refetch()}
           pending={snapshot.isFetching}
-          pendingLabel="Reading…"
-          size="sm"
+          pendingLabel={null}
         >
-          Refresh
-        </Button>
-        <Button
+          <RefreshGlyph />
+        </IconButton>
+        <IconButton
           aria-label={`Close ${VIEW_TITLE[view].toLowerCase()}`}
-          className="device-tools__close"
           onClick={props.onClose}
-          size="sm"
-          variant="ghost"
         >
           <CloseGlyph />
-        </Button>
+        </IconButton>
       </div>
       <div className="device-tools__body">
         {action.isError ? (
@@ -949,23 +975,21 @@ function LocationSection({
   const typed = latitude.trim() !== '' || longitude.trim() !== '';
   return (
     <Section title="Location">
-      <p className="device-tools__line" role="status">
-        {location ? locationLine(location) : '—'}
-      </p>
-      <fieldset
-        aria-label="Location presets"
-        className="device-tools__actions device-tools__fieldset"
-      >
-        {LOCATION_PRESETS.map((preset) => (
-          <Button
-            disabled={busy}
-            key={preset.label}
-            onClick={() => onSet(preset.latitude, preset.longitude)}
-            size="sm"
-          >
-            {preset.label}
-          </Button>
-        ))}
+      <LocationReadback location={location} />
+      <fieldset className="device-tools__fieldset">
+        <legend className="device-tools__label">Set to a preset</legend>
+        <div className="device-tools__actions">
+          {LOCATION_PRESETS.map((preset) => (
+            <Button
+              disabled={busy}
+              key={preset.label}
+              onClick={() => onSet(preset.latitude, preset.longitude)}
+              size="sm"
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </div>
       </fieldset>
       <div className="device-tools__coordinates">
         <label className="device-tools__field" htmlFor={latId}>
@@ -993,23 +1017,29 @@ function LocationSection({
           example 51.5074 and -0.1278 (a decimal comma works too).
         </p>
       ) : null}
-      <div className="device-tools__actions">
-        <Button
-          disabled={!valid || (busy && !pending)}
-          onClick={() => valid && onSet(lat, lon)}
-          pending={pending}
-          pendingLabel="Setting…"
-          size="sm"
-          variant="primary"
-        >
-          Set location
-        </Button>
-        {canClear ? (
-          <Button disabled={busy} onClick={onClear} size="sm">
-            Clear
+      <ActionRow
+        className="device-tools__actions device-tools__location-actions"
+        overflowLabel="More location actions"
+        secondary={
+          canClear ? (
+            <Button disabled={busy} onClick={onClear} size="sm" variant="ghost">
+              Clear location
+            </Button>
+          ) : null
+        }
+        primary={
+          <Button
+            disabled={!valid || (busy && !pending)}
+            onClick={() => valid && onSet(lat, lon)}
+            pending={pending}
+            pendingLabel="Setting…"
+            size="sm"
+            variant="primary"
+          >
+            Set location
           </Button>
-        ) : null}
-      </div>
+        }
+      />
     </Section>
   );
 }

@@ -85,6 +85,7 @@ import { NoticeAction } from '../notifications/NoticeAction';
 import { RowMenu, type RowMenuItem } from '../notifications/RowMenu';
 import { SkeletonList } from '../state';
 import { ExactRequestInline } from './ExactRequestInline';
+import { GuardianApprovalReason } from './GuardianApprovalReason';
 import './AttentionCard.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
@@ -189,6 +190,9 @@ export function AttentionCard({
             item.body && (
               <div className="attention-item__detail">{item.body}</div>
             )
+          )}
+          {item.kind === 'approval' && !item.requestReference && (
+            <GuardianApprovalReason reason={item.guardianReason} />
           )}
           {item.kind === 'gate-route-back' && (
             <GateRouteBackDetail item={item} />

@@ -135,6 +135,7 @@ function createConnections(
 
 function createAdapter(
   options: {
+    provider?: AcpAdapterOptions['provider'];
     imageCapability?: boolean;
     loadSessionCapability?: boolean;
     /** Advertise `sessionCapabilities.resume` (`{}`) at initialize. */
@@ -171,6 +172,7 @@ function createAdapter(
 } {
   const processes: FakeAcpProcess[] = [];
   const adapter = new AcpAdapter({
+    provider: options.provider,
     getConnections: async () =>
       createConnections(options.connectionOverrides ?? []),
     logger: options.logger ?? {
@@ -1404,7 +1406,11 @@ describe('AcpAdapter', () => {
       const evaluator = vi
         .fn()
         .mockResolvedValueOnce({ behavior: 'defer' })
-        .mockResolvedValueOnce({ behavior: 'ask', required: true });
+        .mockResolvedValueOnce({
+          behavior: 'ask',
+          required: true,
+          guardianReason: 'The only-if-asked rule requires a person.',
+        });
       const { adapter, processes } = createAdapter({
         resolvePreToolPolicy: async () => evaluator,
       });
@@ -1437,7 +1443,10 @@ describe('AcpAdapter', () => {
         'mcp__tools__write',
       );
       const required = await nextEvent(iterator, 'required request.opened');
-      expect(required.method).toBe('request.opened');
+      expect(required).toMatchObject({
+        method: 'request.opened',
+        guardianReason: 'The only-if-asked rule requires a person.',
+      });
       await adapter.respondToRequest(
         'required-ask',
         String(required.requestId),
@@ -1664,7 +1673,7 @@ describe('AcpAdapter', () => {
        * guardian whose verdict the test sets. Only the guardian's model call
        * is replaced.
        */
-      function guardianPolicy(decision: 'allow' | 'deny') {
+      function guardianPolicy(decision: 'allow' | 'deny' | 'defer') {
         const reviewToolCall = vi.fn(async () => ({
           decision,
           reason: `guardian says ${decision}`,
@@ -1685,7 +1694,7 @@ describe('AcpAdapter', () => {
       }
       async function start(
         threadId: string,
-        decision: 'allow' | 'deny',
+        decision: 'allow' | 'deny' | 'defer',
         metadata: Record<string, unknown> = {},
       ) {
         const { evaluator, reviewToolCall } = guardianPolicy(decision);
@@ -1712,6 +1721,20 @@ describe('AcpAdapter', () => {
           reviewToolCall,
         };
       }
+      test('an unattended enforce guardian defer declines the ACP request immediately', async () => {
+        const { adapter, client, reviewToolCall } = await start(
+          'thread-guardian-defer',
+          'defer',
+        );
+        await expect(
+          requestPermission(client, 'deferred', 'mcp__tools__write'),
+        ).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        expect(reviewToolCall).toHaveBeenCalledOnce();
+        await adapter.stopAll();
+      });
+
       const planExits = [
         ['switch', { name: 'mcp__tools__exit', kind: 'switch_mode' }],
         ['exit-plan', { name: 'ExitPlanMode' }],
@@ -4433,7 +4456,7 @@ describe('AcpAdapter', () => {
     expect(await adapter.hasSession('thread-other')).toBe(false);
   });
 
-  test('#354 a refusal or exhausted request budget completes the turn but keeps the ACP stop reason', async () => {
+  test('#354 refusal and request budget exhaustion settle as non-retryable failures with their provider reason', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
@@ -4458,7 +4481,7 @@ describe('AcpAdapter', () => {
       completions.push(
         (await nextEvent(
           iterator,
-          `turn.completed (${stopReason})`,
+          `terminal (${stopReason})`,
         )) as unknown as Record<string, unknown>,
       );
     }
@@ -4467,14 +4490,43 @@ describe('AcpAdapter', () => {
     expect(ended).toMatchObject({ finishReason: 'stop' });
     expect(ended).not.toHaveProperty('stopReason');
     expect(refused).toMatchObject({
-      method: 'turn.completed',
-      finishReason: 'other',
-      stopReason: 'refusal',
+      method: 'runtime.error',
+      code: 'acp-turn-refused',
+      retryable: false,
+      details: { stopReason: 'refusal' },
     });
     expect(exhausted).toMatchObject({
-      method: 'turn.completed',
-      finishReason: 'other',
-      stopReason: 'max_turn_requests',
+      method: 'runtime.error',
+      code: 'acp-turn-request-limit',
+      retryable: false,
+      details: { stopReason: 'max_turn_requests' },
+    });
+    await adapter.stopAll();
+  });
+
+  test('OpenCode over ACP reports an unconfirmed result when its actual prompt reply omits the reason', async () => {
+    const { adapter, processes } = createAdapter({ provider: 'opencode' });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'opencode',
+      threadId: 'thread-stop',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-stop', input: 'work' });
+    await nextEvent(iterator, 'turn.started');
+
+    // Exercise a protocol reply from an implementation that omitted stopReason.
+    processes[0].resolvePrompt(
+      undefined as unknown as Parameters<FakeAcpProcess['resolvePrompt']>[0],
+    );
+    expect(await nextEvent(iterator, 'runtime.error')).toMatchObject({
+      provider: 'opencode',
+      method: 'runtime.error',
+      code: 'acp-turn-outcome-unknown',
+      retryable: false,
     });
     await adapter.stopAll();
   });
