@@ -1025,6 +1025,7 @@ describe('TaskWorkspaceView', () => {
       automation: {
         state: 'running',
         amendments: [],
+        personTakeoverAt: '2026-11-06T00:01:00.000Z',
         revocation: {
           at: '2026-11-06T00:00:00.000Z',
           cause: 'rule-disabled',
@@ -1067,6 +1068,11 @@ describe('TaskWorkspaceView', () => {
     expect(
       within(block).getByText(
         'Stopped: automation rule “Diagnose” was disabled.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(block).getByText(
+        'A person took over this Task’s chat using their own permissions.',
       ),
     ).toBeTruthy();
     expect(within(block).getByText('Diagnose the failing run.')).toBeTruthy();

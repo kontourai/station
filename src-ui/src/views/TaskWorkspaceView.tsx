@@ -1340,8 +1340,7 @@ function AutomationMandateSection({
       ) : null}
       {automation.personTakeoverAt ? (
         <p className="task-workspace__work-item-note">
-          A person took over this Task’s chat; it runs under their own
-          authority.
+          A person took over this Task’s chat using their own permissions.
         </p>
       ) : null}
       <dl className="task-workspace__details">
