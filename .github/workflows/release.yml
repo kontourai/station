@@ -246,7 +246,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
-        run: npx tauri build --no-sign --target ${{ matrix.target }} --config ${{ runner.temp }}/tauri.release.conf.json
+        # The sealing step owns the DMG. Tauri only needs to produce the app.
+        run: npx tauri build --no-sign --bundles app --target ${{ matrix.target }} --config ${{ runner.temp }}/tauri.release.conf.json
       - name: Seal, notarize, and derive canonical macOS artifacts
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -524,7 +525,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           STATION_CLIENT_BUILD_REUSE: '1'
         with:
-          args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
+          args: --target x86_64-unknown-linux-gnu --bundles appimage --config ${{ github.workspace }}/src-desktop/tauri.linux-appimage.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
       - name: Verify emitted Linux package metadata
         run: |
           find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.AppImage" | grep -q .
@@ -1000,7 +1001,7 @@ jobs:
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.amd64 }}
-          format: cyclonedx-json
+          format: cyclonedx-json@1.6
           output-file: ${{ runner.temp }}/station-container-syft-amd64.cdx.json
           syft-version: v1.51.0
           upload-artifact: false
@@ -1009,7 +1010,7 @@ jobs:
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.arm64 }}
-          format: cyclonedx-json
+          format: cyclonedx-json@1.6
           output-file: ${{ runner.temp }}/station-container-syft-arm64.cdx.json
           syft-version: v1.51.0
           upload-artifact: false

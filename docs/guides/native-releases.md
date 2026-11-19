@@ -81,9 +81,10 @@ the authoritative lock graph rather than guessing from installed layout.
 `@cyclonedx/cyclonedx-npm` remains pinned to `6.0.1`; `src-desktop/Cargo.toml`
 records the matching `cargo-cyclonedx` tool pin `0.5.9`. The container producer
 also pins `anchore/sbom-action` at
-`3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` and Syft `1.51.0`: after push it
+`66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c` and Syft `1.51.0`: after push it
 scans `ghcr.io/kontourai/station@sha256:...` (never a mutable tag) as
-CycloneDX JSON. Its nonempty package inventory is bound to the recorded image
+CycloneDX 1.6 JSON, the version the release validator requires. Its nonempty
+package inventory is bound to the recorded image
 digest, source SHA, and two-platform descriptor, transferred as a runner
 scratch artifact, and converted to the canonical `container/image` fragment.
 Scratch source is never admitted to `release-assets` or uploaded to the draft;
@@ -423,6 +424,9 @@ run time. This is only an available configured subset, and fleet/CLI
 completion remains `NOT_VERIFIED`.
 
 ## macOS installer disk image
+
+Tagged builds ask Tauri to produce only the application bundle. The release
+packager seals that app and owns disk image creation.
 
 Stable RC/final and Nightly disk images open as an installer window: fixed
 660×400 icon view, toolbar, sidebar, path bar and status bar hidden, 128-point

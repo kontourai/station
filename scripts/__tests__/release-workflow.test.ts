@@ -1223,7 +1223,7 @@ describe('native release workflow topology', () => {
     ).toMatchObject({
       uses: ANCHORE_SBOM_ACTION,
       with: {
-        format: 'cyclonedx-json',
+        format: 'cyclonedx-json@1.6',
         image:
           'ghcr.io/$' +
           '{{ github.repository }}@$' +
@@ -1241,6 +1241,7 @@ describe('native release workflow topology', () => {
     ).toMatchObject({
       uses: ANCHORE_SBOM_ACTION,
       with: {
+        format: 'cyclonedx-json@1.6',
         image:
           'ghcr.io/$' +
           '{{ github.repository }}@$' +
@@ -1412,7 +1413,7 @@ describe('native release workflow topology', () => {
     });
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').run,
-    ).toContain('--no-sign');
+    ).toContain('--no-sign --bundles app');
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').env,
     ).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
@@ -1541,7 +1542,7 @@ describe('native release workflow topology', () => {
 
   it('builds deb and rpm before the signed AppImage overlay without post-sign mutation', () => {
     const debAndRpm = `args: --target x86_64-unknown-linux-gnu --bundles deb,rpm --config ${githubExpression('runner.temp')}/tauri.version.conf.json`;
-    const appImage = `args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${githubExpression('runner.temp')}/tauri.release.conf.json`;
+    const appImage = `args: --target x86_64-unknown-linux-gnu --bundles appimage --config ${githubExpression('github.workspace')}/src-desktop/tauri.linux-appimage.conf.json --config ${githubExpression('runner.temp')}/tauri.release.conf.json`;
     expect(release).toContain(
       'node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.version.conf.json"',
     );
@@ -1869,7 +1870,7 @@ describe('native release workflow topology', () => {
 
     expect(release).not.toContain('--config src-desktop/tauri.conf.json');
     expect(release).toContain(
-      `npx tauri build --no-sign --target ${githubExpression('matrix.target')} --config ${tagConfig}`,
+      `npx tauri build --no-sign --bundles app --target ${githubExpression('matrix.target')} --config ${tagConfig}`,
     );
     expect(release).toContain(
       `args: --target x86_64-pc-windows-msvc --config ${githubExpression('runner.temp')}/tauri.windows.release.conf.json --config ${tagConfig}`,
@@ -1878,7 +1879,7 @@ describe('native release workflow topology', () => {
       `args: --target x86_64-unknown-linux-gnu --bundles deb,rpm --config ${versionConfig}`,
     );
     expect(release).toContain(
-      `args: --target x86_64-unknown-linux-gnu --bundles appimage --config src-desktop/tauri.linux-appimage.conf.json --config ${tagConfig}`,
+      `args: --target x86_64-unknown-linux-gnu --bundles appimage --config ${githubExpression('github.workspace')}/src-desktop/tauri.linux-appimage.conf.json --config ${tagConfig}`,
     );
     expect(release).toContain(
       'npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json"',
