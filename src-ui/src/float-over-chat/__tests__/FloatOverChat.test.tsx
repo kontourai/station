@@ -576,11 +576,11 @@ describe('the control indicator', () => {
     const { area } = chatArea();
     renderFloat(area);
     await screen.findByTestId('float-canvas');
-    const dot = screen.getByRole('button', {
+    const dot = await screen.findByRole('button', {
       name: 'Floating browser controls. You are in control.',
     });
     expect(dot.dataset.tone).toBe('you');
-    openPill();
+    fireEvent.click(dot);
     expect(
       within(
         screen.getByRole('toolbar', { name: 'Floating browser' }),
