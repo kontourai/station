@@ -2,8 +2,8 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
-import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { SchedulerService } from '../../../src-server/services/scheduling/scheduler-service.js';
+import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
 const run = {
