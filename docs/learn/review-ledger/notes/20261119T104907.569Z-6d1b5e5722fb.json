@@ -1,0 +1,25 @@
+{
+  "revision": "30234de8c5308af9e19297670f92837c6291747f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Automation takeover label on Task Details. It describes the person using their own permissions in plain language. The recorded stop reason, Task Room access, shared document view, layout and the historical shared-document capture claims retain their behavior.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed the Automation takeover label on Task Details. It describes the person using their own permissions in plain language. The recorded stop reason, Task Room access, shared document view, layout and the historical shared-document capture claims retain their behavior.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the Automation takeover label on Task Details. It describes the person using their own permissions in plain language. The recorded stop reason, Task Room access, shared document view, layout and the historical shared-document capture claims retain their behavior.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the Automation takeover label on Task Details. It describes the person using their own permissions in plain language. The recorded stop reason, Task Room access, shared document view, layout and the historical shared-document capture claims retain their behavior.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the Automation takeover label on Task Details. It describes the person using their own permissions in plain language. The recorded stop reason, Task Room access, shared document view, layout and the historical shared-document capture claims retain their behavior.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the Automation takeover label on Task Details. It describes the person using their own permissions in plain language. The recorded stop reason, Task Room access, shared document view, layout and the historical shared-document capture claims retain their behavior.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the Automation takeover label on Task Details. It describes the person using their own permissions in plain language. The recorded stop reason, Task Room access, shared document view, layout and the historical shared-document capture claims retain their behavior.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the Automation takeover label on Task Details. It describes the person using their own permissions in plain language. The recorded stop reason, Task Room access, shared document view, layout and the historical shared-document capture claims retain their behavior.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"The existing mounted Automation mandate fixture now shows the takeover label alongside the actual stop reason and retained mandate. All 81 Task workspace cases passed.","inputs":["src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The existing mounted Automation mandate fixture now shows the takeover label alongside the actual stop reason and retained mandate. All 81 Task workspace cases passed.","inputs":["src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]}
+  ]
+}
