@@ -1412,7 +1412,7 @@ export function NewChatModal({
   const draftModel = draftAgent ? start.modelFor(draftAgent) : undefined;
   const draftModelLabel =
     draftModel?.engineName && draftModel.executionAgentId
-      ? `${draftModel.engineName} · ${draftModel.label}`
+      ? `${draftModel.label} · ${draftModel.engineName}`
       : draftModel?.label;
   const agentChip: StartAgentChip =
     runtimeLoading ||

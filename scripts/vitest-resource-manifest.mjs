@@ -47,6 +47,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // #4441: standalone scaffolds retain their real synchronous npm install
+  // and esbuild output under an explicit 30-second guard.
+  'packages/shared/src/__tests__/plugin-scaffold.test.ts',
+
   // Checks prompt closure and the room's real 15-second idle recheck bound.
   'src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts',
   // #4204 measures main-thread approval latency while a real room worker
@@ -1034,6 +1038,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // resource classification the manifest gate requires for any direct
   // child_process importer.
   'src-server/services/connections/__tests__/credential-enrolment.integration.test.ts',
+  // #2036: runs a synthetic launcher and a TERM-resistant child in a private profile.
+  'src-server/services/connections/__tests__/device-code-login.process.test.ts',
   // #2787: drives the bounded-capture helper against real single-shot
   // children, one of which writes 64 MiB to prove the rejection path. It
   // imports no child_process itself; the helper under test does.

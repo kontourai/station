@@ -5,8 +5,10 @@
 import type {
   SkillProvenance,
   SkillSourceContext,
+  SkillWriteRefusal,
 } from '@kontourai/station-contracts/catalog';
 import { type Context, Hono } from 'hono';
+import { SkillNotFoundError } from '../../domain/config-loader-storage.js';
 import { SkillCommandRefusedError } from '../../services/agents/skill-command-validation.js';
 import {
   isSafeSkillName,
@@ -42,6 +44,13 @@ function writeFailure(c: Context, error: unknown) {
     return c.json({ success: false, error: error.publicMessage }, error.status);
   }
   return c.json({ success: false, error: errorMessage(error) }, 400);
+}
+
+function ownershipRefused(c: Context, details: SkillWriteRefusal) {
+  return c.json(
+    { success: false, code: 'skill-not-owned', error: details.detail, details },
+    409,
+  );
 }
 
 /**
@@ -162,26 +171,6 @@ export function createSkillRoutes(
     try {
       const name = param(c, 'name');
       const { data: body, sourceContext } = splitSourceContext(c, getBody(c));
-      const declaresCommandMetadata =
-        body.command !== undefined || body.variables !== undefined;
-
-      // A canonical package skill or a plugin's skill is served from a root
-      // Station must not write to, so its `SKILL.md` cannot carry the
-      // declaration. Refuse with the action that would make it possible rather
-      // than silently writing a shadow copy into the workspace.
-      if (
-        declaresCommandMetadata &&
-        !skillService.isSkillWritable(name, getProjectHomeDir())
-      ) {
-        return c.json(
-          {
-            success: false,
-            error: `'${name}' is read-only — install it to your workspace to make it a command`,
-          },
-          409,
-        );
-      }
-
       // `updatedFrom` records WHO changed it; `createdFrom` is not touched,
       // because an agent editing a user's skill does not become its author.
       const updates = sourceContext
@@ -199,11 +188,24 @@ export function createSkillRoutes(
         getProjectHomeDir(),
       );
       if (!result.success) {
-        return c.json({ success: false, error: result.message }, 400);
+        if (result.reason === 'not-owned' && result.writeRefusal) {
+          return ownershipRefused(c, result.writeRefusal);
+        }
+        return c.json(
+          { success: false, error: 'The changes could not be saved.' },
+          400,
+        );
       }
       return c.json({ success: true, data: result });
     } catch (error: unknown) {
-      return writeFailure(c, error);
+      if (error instanceof SkillNotFoundError)
+        return c.json({ success: false, error: 'Skill not found.' }, 404);
+      if (error instanceof SkillCommandRefusedError)
+        return writeFailure(c, error);
+      return c.json(
+        { success: false, error: 'The changes could not be saved.' },
+        400,
+      );
     }
   });
 
@@ -326,27 +328,18 @@ export function createSkillRoutes(
       const name = param(c, 'name');
       const result = await skillService.removeSkill(name, getProjectHomeDir());
       if (!result.success) {
-        // A package Station does not own is a 409: the request is understood
-        // and the skill exists; what is refused is Station's authority over
-        // it. 404 said the skill was not there, which is a different and false
-        // answer. Read from the service's own `reason` — deriving it by
-        // matching the human message meant any rewording silently reverted
-        // every ownership refusal to that false 404.
-        //
-        // PUT answers 400 for the same refusal (its 409 covers a different
-        // condition, a command declaration on a read-only package). The two
-        // verbs disagreeing is a real inconsistency, filed as #1669 rather
-        // than changed here: a client-visible status change on PUT does not
-        // belong in a fix round.
-        return c.json(
-          { success: false, error: result.message },
-          result.reason === 'not-owned' ? 409 : 404,
-        );
+        if (result.reason === 'not-owned' && result.writeRefusal) {
+          return ownershipRefused(c, result.writeRefusal);
+        }
+        return c.json({ success: false, error: 'Skill not found.' }, 404);
       }
       skillOps.add(1, { operation: 'delete' });
       return c.json({ success: true });
-    } catch (error: unknown) {
-      return c.json({ success: false, error: errorMessage(error) }, 400);
+    } catch {
+      return c.json(
+        { success: false, error: 'The skill could not be removed.' },
+        400,
+      );
     }
   });
 

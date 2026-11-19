@@ -305,7 +305,7 @@ export function useIntegrationQuery(
   config?: QueryConfig<IntegrationViewModel>,
 ) {
   return useApiQuery(
-    id ? ['integrations', id] : ['integrations'],
+    ['integrations', id ?? null],
     () =>
       requestIntegration<IntegrationViewModel>(`/${encodeURIComponent(id!)}`),
     { ...config, enabled: !!id && (config?.enabled ?? true) },

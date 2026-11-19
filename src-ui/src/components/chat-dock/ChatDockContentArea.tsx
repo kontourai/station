@@ -36,6 +36,9 @@ const loadSkillExperiencePanel = () =>
 
 interface ChatDockContentAreaProps {
   activeSession: ChatSession | null;
+  transcriptSnapshotRef?: ComponentProps<
+    typeof ChatDockBody
+  >['transcriptSnapshotRef'];
   connection?: import('../../connections/station-connection').StationConnection;
   workingDirectory?: string | null;
   /**
@@ -116,6 +119,7 @@ interface ChatDockContentAreaProps {
 
 function ChatDockContentAreaImpl({
   activeSession,
+  transcriptSnapshotRef,
   connection,
   workingDirectory,
   activeOrchestrationSession,
@@ -262,6 +266,7 @@ function ChatDockContentAreaImpl({
             <ChatDockBody
               connection={connection}
               activeSession={activeSession}
+              transcriptSnapshotRef={transcriptSnapshotRef}
               workingDirectory={workingDirectory}
               activeOrchestrationSession={activeOrchestrationSession}
               activeOrchestrationSessionRead={activeOrchestrationSessionRead}

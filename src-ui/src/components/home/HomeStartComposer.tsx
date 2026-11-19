@@ -456,7 +456,7 @@ export function HomeStartComposer({
   const effectiveChoice = agent ? start.modelFor(agent) : undefined;
   const modelLabel =
     effectiveChoice?.engineName && effectiveChoice.executionAgentId
-      ? `${effectiveChoice.engineName} · ${effectiveChoice.label}`
+      ? `${effectiveChoice.label} · ${effectiveChoice.engineName}`
       : effectiveChoice?.label;
   const agentChip: StartAgentChip = loading
     ? { status: 'loading' }

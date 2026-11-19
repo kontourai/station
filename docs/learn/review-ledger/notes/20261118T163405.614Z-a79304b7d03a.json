@@ -1,0 +1,7 @@
+{
+  "revision": "d9f8e19ea9695781744c2f8d0b2b54e92171f411",
+
+  "notes": [
+    {"path":"docs/third-party/provider-icons.md","note":"Followed the bundled mask and Hermes rendering into the existing lazy mark chunk. Checked mark lookup, explicit glyph and local image precedence, and fallback behavior. The native-client initial JavaScript bundle measured 429946 gzip bytes against the 430000-byte ceiling, and 58 focused tests passed including the loaded Gemini mark.","inputs":["docs/third-party/provider-icons.md","src-ui/src/components/icons/BrandIcon.tsx","src-ui/src/components/icons/BrandMarks.tsx"]}
+  ]
+}

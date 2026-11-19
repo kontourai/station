@@ -1,0 +1,9 @@
+{
+  "revision": "14020ef4464d377aee20e2838a2edd174a777fb0",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed disabled integration detail reads against the independent inventory cache. A disabled detail no longer reads the inventory as a single connection. Enabled detail keys and list invalidation remain unchanged. Browser proof uses the normal Add tool server entry with an already populated inventory and independent Station readback.","inputs":["packages/sdk/src/query-domains/catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed disabled integration detail reads against the independent inventory cache. A disabled detail no longer reads the inventory as a single connection. Enabled detail keys and list invalidation remain unchanged. Browser proof uses the normal Add tool server entry with an already populated inventory and independent Station readback.","inputs":["packages/sdk/src/query-domains/catalog.ts"]}
+  ]
+}

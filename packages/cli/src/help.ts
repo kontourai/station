@@ -572,6 +572,8 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Import a previously exported configuration file',
     usage: [
       'station import <file>  (requiredEnvNames is an untrusted informational hint; Station fails closed when a configured stored credential reference is missing during hydration)',
+      'station import --status  (show local progress and the expected receipt path)',
+      'station import <file> --resume=<operation-id>  (acknowledge retry or recover a completed receipt)',
     ],
   },
   plugin: {

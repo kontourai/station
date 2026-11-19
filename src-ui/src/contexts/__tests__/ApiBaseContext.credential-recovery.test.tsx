@@ -26,6 +26,10 @@
 // @vitest-environment jsdom
 
 import { useConnections } from '@kontourai/station-connect';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -117,6 +121,15 @@ import { ApiBaseProvider } from '../ApiBaseContext';
 
 const BANNER = /Request access to reconnect/i;
 
+function stationJson() {
+  return new Response('{"success":true}', {
+    headers: {
+      'content-type': 'application/json',
+      [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+    },
+  });
+}
+
 type ConnectionsApi = ReturnType<typeof useConnections>;
 
 /** Captures the live connections API so a test can state its own baseline. */
@@ -197,7 +210,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     // probe, no reload, no navigation. `act` flushes the store update and the
     // effects it causes, so asserting straight after it is the "within one
     // render" claim rather than an eventual-consistency one: no `waitFor`.
-    fetchByPath({ '/api/': async () => new Response('{"success":true}') });
+    fetchByPath({ '/api/': async () => stationJson() });
     await act(async () => {
       await authenticatedFetch(`${origin}/api/settings`);
     });
@@ -205,7 +218,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     expect(screen.queryByText(BANNER)).toBeNull();
   });
 
-  it('keeps access recovery stable across repeated HTML fallbacks after a 401', async () => {
+  it('keeps the access banner and authority generation across unverified successes', async () => {
     const origin = window.location.origin;
     await renderShell();
     fetchByPath();
@@ -215,28 +228,32 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     expect(await screen.findByText(BANNER)).toBeTruthy();
     const id = connections!.activeConnection!.id;
     const authority = connections!.credentialAuthorityGeneration(id);
-    fetchByPath({
-      '/api/': async () =>
-        new Response('<!doctype html><title>Fallback</title>', {
-          headers: { 'content-type': 'text/html; charset=utf-8' },
+    for (const reply of [
+      () =>
+        new Response('<!doctype html>', {
+          headers: { 'content-type': 'text/html' },
         }),
-    });
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+      () => new Response('proxy fallback'),
+      () =>
+        new Response('{}', { headers: { 'content-type': 'application/json' } }),
+      () =>
+        Object.defineProperties(stationJson(), {
+          url: { value: 'https://unrelated.example/api/auth/authority' },
+          redirected: { value: true },
+        }),
+    ]) {
+      fetchByPath({ '/api/': async () => reply() });
       await act(async () => {
-        const response = await authenticatedFetch(
-          `${origin}/api/auth/authority`,
-        );
-        await expect(response.json()).rejects.toThrow();
+        expect(
+          (await authenticatedFetch(`${origin}/api/auth/authority`)).status,
+        ).toBe(200);
       });
       expect(screen.queryByText(BANNER)).toBeTruthy();
       expect(connections!.credentialAuthorityGeneration(id)).toBe(authority);
     }
     // A real JSON response can still retire the rejection.
     fetchByPath({
-      '/api/': async () =>
-        new Response('{"success":true}', {
-          headers: { 'content-type': 'application/json' },
-        }),
+      '/api/': async () => stationJson(),
     });
     await act(async () => {
       await authenticatedFetch(`${origin}/api/settings`);
@@ -302,7 +319,7 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     fetchByPath({
       '/api/projects': async () => {
         await slowSuccess;
-        return new Response('{"success":true}');
+        return stationJson();
       },
     });
 

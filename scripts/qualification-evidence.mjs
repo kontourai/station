@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, writeFileSync } from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -85,24 +86,36 @@ export async function github(
     !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
   )
     throw new Error('GitHub API must use HTTPS');
-  const response = await fetch(`${base}/repos/${repository}/${path}`, {
-    method,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      ...(env.GH_TOKEN ? { Authorization: `Bearer ${env.GH_TOKEN}` } : {}),
-      'Content-Type': 'application/json',
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-    redirect: 'error',
-  });
-  if (!response.ok)
-    throw new Error(
-      `GitHub ${method} ${path.split('?')[0]}: HTTP ${response.status}`,
-    );
-  return response.status === 204 || responseBody === 'none'
-    ? null
-    : response.json();
+  const signal = AbortSignal.timeout(30_000);
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(`${base}/repos/${repository}/${path}`, {
+      method,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        ...(env.GH_TOKEN ? { Authorization: `Bearer ${env.GH_TOKEN}` } : {}),
+        'Content-Type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+      redirect: 'error',
+    });
+    if (
+      method === 'GET' &&
+      [502, 503, 504].includes(response.status) &&
+      attempt < 2
+    ) {
+      await response.body?.cancel();
+      await delay(250 * 2 ** attempt, undefined, { signal });
+      continue;
+    }
+    if (!response.ok)
+      throw new Error(
+        `GitHub ${method} ${path.split('?')[0]}: HTTP ${response.status}`,
+      );
+    return response.status === 204 || responseBody === 'none'
+      ? null
+      : response.json();
+  }
 }
 
 export async function listGithub(path, key, options) {
