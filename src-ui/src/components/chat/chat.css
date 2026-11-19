@@ -2437,6 +2437,7 @@
 .turn-footer__actions {
   display: flex;
   align-items: center;
+  align-self: flex-end;
   justify-content: flex-end;
   flex: 0 1 auto;
   flex-wrap: wrap;
