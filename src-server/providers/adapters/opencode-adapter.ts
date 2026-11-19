@@ -673,11 +673,17 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     }
   }
 
-  /**
-   * A.5: a governed start's rules must be what OpenCode will enforce. The
-   * project's own OpenCode code runs outside any mode (#3924), and a saved
-   * approval outranks the session's rules.
-   */
+  private async assertInspectableProjectConfig(cwd: string): Promise<void> {
+    const findings = await (
+      this.options.findProjectCode ?? defaultFindProjectCode
+    )(cwd);
+    if (findings.length > 0)
+      throw new ApprovalGovernanceRefusedError(
+        `Station can't apply its approval mode to OpenCode, so the chat was not started: ${openCodeProjectCodeRefusal(findings)}.`,
+      );
+  }
+
+  /** A.5: saved approvals must not outrank a governed session's rules. */
   private async assertGovernable(
     client: OpenCodeServeClient,
     cwd: string,
@@ -685,13 +691,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     agent: string,
   ): Promise<OpenCodeNativeRule[]> {
     if (floor !== 'confined') return [];
-    const code = await (this.options.findProjectCode ?? defaultFindProjectCode)(
-      cwd,
-    );
-    if (code.length > 0)
-      throw new ApprovalGovernanceRefusedError(
-        `Station can't apply its approval mode to OpenCode, so the chat was not started: ${openCodeProjectCodeRefusal(code)}.`,
-      );
+    await this.assertInspectableProjectConfig(cwd);
     const [agentRules, savedAnswer] = await Promise.all([
       this.agentRules(client, agent),
       client.request<{ data?: unknown }>('GET', '/api/permission/saved'),
@@ -739,6 +739,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     const agent = requestedAcpSessionMode(input.modelOptions);
     if (agent && !isOpenCodeGovernedMode(agent))
       throw new ApprovalGovernanceRefusedError(governedModeRefusal(agent));
+    // The pool can spawn OpenCode in this directory.
+    if (floor === 'confined')
+      await this.assertInspectableProjectConfig(plan.cwd);
     // The governance check needs no tool servers; it reads from a server
     // that has none added.
     const lease = await this.verifiedLease(
@@ -784,6 +787,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         OPENCODE_NATIVE_UNSUPPORTED_SETTING,
         `Station runs this OpenCode chat over ACP: ${unsupported}.`,
       );
+    // Direct starts and starts reusing a preflight both check the launch cwd.
+    const floor = acpApprovalFloor(
+      acpAppliedApprovalMode(
+        readApprovalMode(input.modelOptions),
+        input.confinement,
+      ),
+    );
+    if (plan && floor === 'confined')
+      await this.assertInspectableProjectConfig(plan.cwd);
+
     // Station's tool servers decide which server the session may share.
     let mcp: OpenCodeNativeMcp | undefined;
     if (plan) {
