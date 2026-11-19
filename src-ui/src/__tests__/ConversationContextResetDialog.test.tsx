@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ChatHttpError } from '@kontourai/station-sdk/client';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConversationContextResetDialog } from '../components/chat-dock/ConversationContextResetDialog';
@@ -180,6 +181,47 @@ describe('ConversationContextResetDialog', () => {
       ),
     );
   });
+
+  test.each([403, 409])(
+    'keeps the original key after a first-attempt HTTP %s with no confirmed reservation',
+    async (httpStatus) => {
+      reserve.mockRejectedValue(
+        new ChatHttpError(httpStatus, 'Request refused'),
+      );
+      const refetch = vi.fn().mockResolvedValue({
+        isError: true,
+        error: new ChatHttpError(
+          404,
+          'Conversation context boundary not found',
+        ),
+      });
+      status.mockReturnValue({ refetch });
+      renderDialog();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset agent context' }),
+      );
+      await screen.findByText(
+        "Station couldn't confirm the reset. Check its status before continuing.",
+      );
+      const request = reserve.mock.calls[0]?.[2];
+      expect(request.idempotencyKey).toBeTruthy();
+      expect(status).toHaveBeenCalledWith(
+        'c',
+        request.idempotencyKey,
+        'http://station.test',
+        expect.objectContaining({ enabled: true }),
+      );
+      expect(screen.queryByRole('button', { name: 'Cancel reset' })).toBeNull();
+      expect(screen.queryByText(/Ready\. On your next message/)).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Check reset status' }),
+      );
+      expect(refetch).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry reset' }));
+      await vi.waitFor(() => expect(reserve).toHaveBeenCalledTimes(2));
+      expect(reserve.mock.calls[1]?.[2]).toEqual(request);
+    },
+  );
 
   test('stops a ready Session, confirms its lifecycle, then reserves the boundary', async () => {
     dispatchWithReceipt.mockResolvedValueOnce({
