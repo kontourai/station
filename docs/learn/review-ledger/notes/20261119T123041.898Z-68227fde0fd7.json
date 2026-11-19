@@ -1,0 +1,113 @@
+{
+  "revision": "258b2997245867a31eae3e5243213111ad3152a1",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/build.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/build.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/build.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/build.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/build.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/build.rs"]},
+
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/connection-list-recovery.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_proof_key.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_proof_key.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_proof_key.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_proof_key.rs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_proof_key.rs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_relay_redemption.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_station_key_custody.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_station_key_custody.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_station_key_custody.rs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Reviewed Rust 1.100 formatter-only changes: wrapping, indentation and optional trailing commas. Identifiers, values, control flow, authority, serialization and native behavior remain unchanged; existing compile/runtime/provider evidence limits are retained.","inputs":["src-desktop/src/native_station_key_custody.rs"]}
+  ]
+}
