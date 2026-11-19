@@ -1,0 +1,25 @@
+{
+  "revision": "c40174ced42b66f359fbe88d2b5f39d9ae1d0a03",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the shared answer footer’s base alignment and narrow reading-edge override with the actual loaded CSS. The action row still shrinks and wraps within its allocation. Rendered dock and Inbox measurements kept Basis, Copy, More and both rating controls focusable and hit-testable.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The browser fixture now reports the exact Session in the Conversation open response and ends stream replay before delivering the live approval. The original pane approval, action and touch-target assertions pass through the normal UI path.","inputs":["docs/conformance/tool-policy-delivery.md","tests/orchestration-chat-flow.spec.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the shared answer footer’s base alignment and narrow reading-edge override with the actual loaded CSS. The action row still shrinks and wraps within its allocation. Rendered dock and Inbox measurements kept Basis, Copy, More and both rating controls focusable and hit-testable.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the shared answer footer’s base alignment and narrow reading-edge override with the actual loaded CSS. The action row still shrinks and wraps within its allocation. Rendered dock and Inbox measurements kept Basis, Copy, More and both rating controls focusable and hit-testable.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the shared answer footer’s base alignment and narrow reading-edge override with the actual loaded CSS. The action row still shrinks and wraps within its allocation. Rendered dock and Inbox measurements kept Basis, Copy, More and both rating controls focusable and hit-testable.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the shared answer footer’s base alignment and narrow reading-edge override with the actual loaded CSS. The action row still shrinks and wraps within its allocation. Rendered dock and Inbox measurements kept Basis, Copy, More and both rating controls focusable and hit-testable.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/reference/api.md","note":"The tunnel fixture now declares that the inbox key has no pending binding change. Its receiver admission controls still refuse the persisted onward target and the allowed local target reaches the receiver dispatch seam.","inputs":["docs/reference/api.md","src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The tunnel fixture now declares that the inbox key has no pending binding change. Its receiver admission controls still refuse the persisted onward target and the allowed local target reaches the receiver dispatch seam.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"The browser fixture now reports the exact Session in the Conversation open response and ends stream replay before delivering the live approval. The original pane approval, action and touch-target assertions pass through the normal UI path.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the shared answer footer’s base alignment and narrow reading-edge override with the actual loaded CSS. The action row still shrinks and wraps within its allocation. Rendered dock and Inbox measurements kept Basis, Copy, More and both rating controls focusable and hit-testable.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

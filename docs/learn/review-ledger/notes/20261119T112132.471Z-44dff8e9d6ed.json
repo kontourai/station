@@ -1,0 +1,27 @@
+{
+  "revision": "d38c5285ec6c9f8f666bc81172316d4ce401fbb1",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the host theme notification and initial-result coverage against the versioned CSS serializers. Expected theme tokens still match the exact RGB channels in the host projection. Both DOM environments pass. App transport, resource isolation and result delivery rules remain as documented.","inputs":["src-ui/src/__tests__/MCPToolUIFrame.test.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"The selected Station keeps focus while the existing unsaved-work decision is pending. Aria-disabled communicates the wait and the existing switch guard still blocks duplicate activation. The confirmation and cancellation paths, keyboard navigation, connection selection, and reachability behavior remain as documented.","inputs":["src-ui/src/components/header/StationSwitcherMenu.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"The existing pane pop-out failure test now holds the request through a frame, observes a pending disabled control and loss of focus, then verifies restoration. Removing the production hand-back failed the exact focus assertion. Plugin pane capability and host requirements remain as documented.","inputs":["src-ui/src/workspace-panes/__tests__/WorkspacePaneHost.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The managed jsdom dev dependency now resolves 31.0.1. Its focus fixup exposed a premature menu dismissal. The mounted Station decision and original focus hand-back controls now exercise the expected focus transitions and cover the affected responsive UI claims.","inputs":["package.json#/devDependencies/jsdom"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the Basis package manifest delta. Only the test-only jsdom range changes from 31.0.0 to 31.0.1 and the managed lock resolves that version. Workspace build, script and dependency lifecycle guidance remains applicable.","inputs":["packages/basis-pane/package.json"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the exact Dependabot package resolution delta. The managed root, Basis and Connect test environments resolve jsdom 31.0.1 and lose the old DOM/CSS test runtime packages. The installed dependency availability controls passed. Product dependencies and disclosed privacy data flows remain as documented.","inputs":["pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/privacy-policy.md","note":"Reviewed the exact Dependabot package resolution delta. The managed root, Basis and Connect test environments resolve jsdom 31.0.1 and lose the old DOM/CSS test runtime packages. The installed dependency availability controls passed. Product dependencies and disclosed privacy data flows remain as documented.","inputs":["pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed the exact Dependabot package resolution delta. The managed root, Basis and Connect test environments resolve jsdom 31.0.1 and lose the old DOM/CSS test runtime packages. The installed dependency availability controls passed. Product dependencies and disclosed privacy data flows remain as documented.","inputs":["pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the resolved snapshot delta and importer consistency. The Vitest jsdom peer snapshots consolidate to 31.0.1. The lockfile sync gate and installed dependency controls passed. This dev test-runtime change adds no shipped service or data flow.","inputs":["pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/privacy-policy.md","note":"Reviewed the resolved snapshot delta and importer consistency. The Vitest jsdom peer snapshots consolidate to 31.0.1. The lockfile sync gate and installed dependency controls passed. This dev test-runtime change adds no shipped service or data flow.","inputs":["pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed the resolved snapshot delta and importer consistency. The Vitest jsdom peer snapshots consolidate to 31.0.1. The lockfile sync gate and installed dependency controls passed. This dev test-runtime change adds no shipped service or data flow.","inputs":["pnpm-lock.yaml#/snapshots"]}
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "revision": "167d7cd84967fdf51a9420d8c4d75816ee3708f5",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"The ACP terminal publication now gets its existing unavailable classification from the shared map. Checked the surrounding ACP runtime dispatch. This leaves the tool delivery mechanism and extension routing unchanged.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The Home shelf fixture now gives the inventory an explicit public list type without an assertion. Its actual unread, read and no-invented-identity assertions stay in place.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the ACP terminal path against the existing tool-policy delivery owners. A transport-close projection uses the shared unavailable map. It does not alter grants, approval modes or tool delivery.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"The ACP transport close remains a runtime error with unavailable classification and an unknown provider result. The adapter now obtains its kind through the shared code map. No adapter control path changed.","inputs":["docs/design/acp-chat-architecture.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"The same mounted Home fixture retains its actual inventory payload and shelf assertions. The public type now checks the literal rows without a cast.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/acp.md","note":"The shared code map now owns the existing unavailable classification for a closed ACP connection. Adapter tests assert its terminal kind, phase, retry metadata and distinct guidance.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The mapped transport close is handled only in ACP event publication. Agent binding, model choice and existing permission behavior are unchanged.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Compared the ACP transport close with the existing connector and session guidance. The repair retains explicit recovery language and the same unavailable outcome.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"The ACP transport-close fixture now verifies its emitted failure metadata together with the existing message and missing quota details. Test and development workflow guidance is unchanged.","inputs":["docs/guides/development.md","src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"The Home fixture uses the same inventory observations and work rows. The type refinement leaves the plugin and Home role boundaries in place.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Retained explicit recovery guidance for ACP transport close through the typed code map. The existing delegate and Station Control callers still see the same bounded classification.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the ACP transport-close producer and delegation projection. The same diagnostic code continues to carry unavailable and the existing failed phase. No HTTP route or payload shape changed.","inputs":["docs/reference/api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The CLI delegation diagnostics continue to receive the previously emitted ACP close code and manual recovery wording. The shared failure mapping supplies the adapter kind.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The published provider failure map recognizes the existing ACP transport-close wire code. It resolves to the same unavailable classification the adapter previously constructed directly, retaining the existing phase and retry metadata.","inputs":["docs/reference/contracts.md","packages/contracts/src/provider-failure.ts","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The SDK consults the public provider failure map for coded failures. This adds the ACP transport-close code with the same unavailable kind the live producer already sends.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The shared map now supplies the existing ACP close classification. Session history, request admission and terminal event shape retain their existing contracts.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The current ACP documentation continues to describe a closed connection as an unavailable engine and an unknown provider result. The adapter now uses the shared failure-code mapping.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The same public delegation diagnostics report an unavailable ACP connection with a fixed recovery sentence. The example still uses its existing setup and permission contracts.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

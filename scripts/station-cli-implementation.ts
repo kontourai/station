@@ -53,6 +53,7 @@ export async function runStationCliImplementation(): Promise<void> {
     isInteractive: Boolean(process.stdin.isTTY),
   }).catch((error: unknown) => {
     reportCliError(error);
-    process.exit(1);
+    // Let Windows console writes drain before Node tears down the event loop.
+    process.exitCode = 1;
   });
 }

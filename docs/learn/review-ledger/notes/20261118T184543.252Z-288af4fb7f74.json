@@ -1,0 +1,273 @@
+{
+  "revision": "b641f4f394b409b2d2cb8f43d18c73ee0bf4f993",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the ordinary Queue path from browser request through route admission, durable inbox read and placement. A missing workspace on a Station-managed directory keeps the captured Session identity. Explicit mismatches still take the live validation path. A changed Session refuses placement and same-key retry.","inputs":["docs/design/chat-composer.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked the foreground request schema and Queue admission, along with the continue route's post-authority key check. Existing scope, target, approval, admission, attachment, and typed busy paths keep their current rules.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Checked the recorded sender continuation port. It passes the server-stored Session pin into the existing foreground execution context. Auth, scope, request shape, route mount, and all other runtime composition stay in their existing owners.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked lineage selection and reservation. Only an inbox pin supplied by Station is checked before and after the asynchronous delivery read. The ordinary continuation and answerability paths keep their existing authority.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked lineage selection and reservation. Only an inbox pin supplied by Station is checked before and after the asynchronous delivery read. The ordinary continuation and answerability paths keep their existing authority.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked lineage selection and reservation. Only an inbox pin supplied by Station is checked before and after the asynchronous delivery read. The ordinary continuation and answerability paths keep their existing authority.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked lineage selection and reservation. Only an inbox pin supplied by Station is checked before and after the asynchronous delivery read. The ordinary continuation and answerability paths keep their existing authority.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked lineage selection and reservation. Only an inbox pin supplied by Station is checked before and after the asynchronous delivery read. The ordinary continuation and answerability paths keep their existing authority.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the service forwarder. The new optional private inbox field reaches ConversationLineage unchanged. Other read projections and service commands keep their existing behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the stored optional Session pin, legacy entries, actor revalidation, placement refusal, and same-key handling. The pin is private and never appears in the projected inbox.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the stored optional Session pin, legacy entries, actor revalidation, placement refusal, and same-key handling. The pin is private and never appears in the projected inbox.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the stored optional Session pin, legacy entries, actor revalidation, placement refusal, and same-key handling. The pin is private and never appears in the projected inbox.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the foreground execution context. The pinned inbox placement fails closed without a live binding reader and forwards the pin through the current authority-checked continuation resolver. Explicit workspace and Project validation remain at their existing owner.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the foreground execution context. The pinned inbox placement fails closed without a live binding reader and forwards the pin through the current authority-checked continuation resolver. Explicit workspace and Project validation remain at their existing owner.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the foreground execution context. The pinned inbox placement fails closed without a live binding reader and forwards the pin through the current authority-checked continuation resolver. Explicit workspace and Project validation remain at their existing owner.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Checked the foreground execution context. The pinned inbox placement fails closed without a live binding reader and forwards the pin through the current authority-checked continuation resolver. Explicit workspace and Project validation remain at their existing owner.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the foreground execution context. The pinned inbox placement fails closed without a live binding reader and forwards the pin through the current authority-checked continuation resolver. Explicit workspace and Project validation remain at their existing owner.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked that only an omitted workspace with the matching Station-managed directory may pick up the Session pin, and that the forwarding continuation checks it locally. Explicit directory, Project, saved Environment, Agent-definition and handoff constraints remain at their existing owners.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked route evidence for accepted managed-folder custody, another reader, one placement, replacement before or during placement, and same-key retry refusal. Negative control restored the old omitted-workspace guard and the admission assertion failed.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked route evidence for accepted managed-folder custody, another reader, one placement, replacement before or during placement, and same-key retry refusal. Negative control restored the old omitted-workspace guard and the admission assertion failed.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]}
+  ]
+}

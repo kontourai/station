@@ -1,0 +1,73 @@
+{
+  "revision": "c08467bbb7d8c8c816b33d01ec8da74d6daa666d",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed inbox post-tool delivery, its already-admitted person mark, the exact turn receipt and persistence. The archival event now retains the existing mark. No unmarked or agent-origin input is promoted, and receipt, framing and reference authority semantics remain accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the positive person mark and TS/SQLite parity. An explicitly null sender is refused alongside other present sender metadata. The SQL guardian policy and private reference authority remain unchanged.","inputs":["src-server/services/orchestration/turn-authorship.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the positive person mark and TS/SQLite parity. An explicitly null sender is refused alongside other present sender metadata. The SQL guardian policy and private reference authority remain unchanged.","inputs":["src-server/services/orchestration/turn-authorship.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed transcript owner and action presentation. Named incoming agents and Station-authored inputs use a neutral Copy message label, and the compact sender disclosure keeps one copy action. Recorded sender identity, provenance framing, sender links, and Checkpoint behavior remain accurate.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed transcript owner and action presentation. Named incoming agents and Station-authored inputs use a neutral Copy message label, and the compact sender disclosure keeps one copy action. Recorded sender identity, provenance framing, sender links, and Checkpoint behavior remain accurate.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed transcript owner and action presentation. Named incoming agents and Station-authored inputs use a neutral Copy message label, and the compact sender disclosure keeps one copy action. Recorded sender identity, provenance framing, sender links, and Checkpoint behavior remain accurate.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Reviewed the existing reader’s framed sender, coordinator and compact disclosure cases. They now check the accessible copy label, preserve ordinary person copy, and retain the existing exact sender-link assertions.","inputs":["src-ui/src/__tests__/ConversationReader.test.tsx"]}
+  ]
+}

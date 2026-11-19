@@ -676,7 +676,9 @@
 
     "packages/contracts/src/project-room-coordinator.ts",
 
-    "src-server/runtime/routes/project-room-coordinator-runtime.ts"
+    "src-server/runtime/routes/project-room-coordinator-runtime.ts",
+
+    "src-server/routes/chat/conversation-work-search.ts"
   ],
 
   "checks": [

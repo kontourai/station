@@ -22,6 +22,10 @@ import {
 } from '@kontourai/station-contracts/session-lifecycle';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
+import {
+  delegatedRuntimeFailureGuidance,
+  nativeUsageLimitReason,
+} from '../../providers/delegated-runtime-failure.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import {
   formatProviderQuotaEventText,
@@ -456,6 +460,11 @@ function projectTerminalAttribution(options: {
   }
 
   if (options.terminalEvent?.method === 'runtime.error') {
+    const guidance =
+      nativeUsageLimitReason(options.terminalEvent)?.detail ??
+      delegatedRuntimeFailureGuidance(options.terminalEvent.code);
+    if (guidance) return { kind: 'runtime_error', detail: guidance };
+
     // #2265: a classified provider-plan quota exhaustion carries its
     // wait/check/reset guidance in the notice itself, composed ONLY from
     // re-validated bounded facts. The reset text is provider-reported

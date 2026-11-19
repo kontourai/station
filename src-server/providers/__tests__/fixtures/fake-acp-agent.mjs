@@ -418,6 +418,17 @@ const app = acp
   .onRequest('session/prompt', async ({ params, client }) => {
     record({ method: 'session/prompt', prompt: params.prompt });
     if (fail === 'auth-required-on-prompt') throw authRequired();
+    if (fail === 'internal-error-on-prompt')
+      throw acp.RequestError.internalError(
+        undefined,
+        'fixture provider refused the catalog model',
+      );
+    if (fail === 'exit-on-prompt') {
+      process.exitCode = 0;
+      process.stdin.destroy();
+      return new Promise(() => {});
+    }
+
     for (const step of promptSteps ?? defaultSteps())
       await runStep(step, params.sessionId, client);
     return { stopReason: 'end_turn', ...(profile.promptResponse ?? {}) };

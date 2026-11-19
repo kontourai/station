@@ -36,6 +36,7 @@ import {
   type StationControlCaller,
   stationControlCallerPrincipal,
 } from '../../../tools/station-control-shared.js';
+import { createChatRoutes } from '../chat.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 import { prepareChatRequest } from '../chat-request-preparation.js';
 import {
@@ -637,6 +638,57 @@ describe('Station-agent conversation storage (#3112)', () => {
         code: 'conversation_lineage_too_long',
       });
     }
+  });
+
+  test('the direct chat route stamps new file ownership without adopting legacy records', async () => {
+    modelMode.fail = false;
+    const ctx = chatCtx(memoryAdapter);
+    ctx.activeAgents.set('default', agent);
+    ctx.memoryAdapters.set('default', memoryAdapter);
+    const app = createChatRoutes({
+      ...ctx,
+      fileConversationOwnerId: () => OWNER,
+      orchestrationEventStore: eventStore,
+    });
+    const send = (conversationId?: string) =>
+      app.request('/station/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          input: 'A direct chat with a canonical owner',
+          options: { conversationId, userId: 'body-supplied-owner' },
+        }),
+      });
+
+    const created = await send();
+    const createdBody = await created.text();
+    expect(created.status, createdBody).toBe(200);
+    expect(createdBody).toContain('An answer.');
+    const owned = await memoryAdapter.getConversationsByUserId(OWNER);
+    expect(owned).toHaveLength(1);
+    expect(owned[0]?.resourceId).toBe('default');
+    expect(createdBody).toContain(
+      `"conversationId":${JSON.stringify(owned[0]?.id)}`,
+    );
+    expect(
+      await memoryAdapter.getConversationsByUserId('body-supplied-owner'),
+    ).toEqual([]);
+
+    await memoryAdapter.createConversation({
+      id: 'legacy-owner-record',
+      resourceId: SLUG,
+      userId: 'old-os-alias',
+      title: 'Existing chat',
+      metadata: {},
+    });
+    const continued = await send('legacy-owner-record');
+    expect(continued.status).toBe(200);
+    expect(await continued.text()).toContain('An answer.');
+    expect(
+      await memoryAdapter.getConversation('legacy-owner-record'),
+    ).toMatchObject({
+      userId: 'old-os-alias',
+    });
   });
 
   test('a page of conversations is not shortened by successor records it skips', async () => {

@@ -22955,7 +22955,7 @@ describe('OrchestrationService', () => {
 
     const first = service.dispatch(command);
     await vi.waitFor(() => expect(claude.startSession).toHaveBeenCalledOnce());
-    await expect(service.dispatch(command)).rejects.toThrow('already starting');
+    await expect(service.dispatch(command)).rejects.toThrow('The session is still starting.');
 
     const now = new Date().toISOString();
     pending.resolve({
