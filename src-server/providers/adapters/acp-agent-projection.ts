@@ -17,7 +17,8 @@
  * - No `permissions` block. With none, the agent service resolves every
  *   tool request to "ask", so each call reaches Station's own
  *   `session/request_permission` policy. Live: a `tools: ['*']` agent with no
- *   permissions asked before `fs_write`.
+ *   permissions asked before `fs_write`. Keep workspace reads at that gate
+ *   too, where Station can check the target and its authored policy.
  *
  * `prompt` is sent empty. Station already delivers the agent's authored
  * prompt on the first turn (`channel: 'first-turn'`, session-agent-

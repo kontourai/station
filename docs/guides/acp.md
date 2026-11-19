@@ -438,7 +438,7 @@ Live motivation — this is a user-visible bug fix, not hygiene.
 callback**: in ACP mode Kiro asks the *client* for a fresh access token
 instead of re-reading its own still-valid on-disk credential
 (kirodotdev/Kiro#10416). Under `--agent-engine v3` it asks eagerly, before
-answering `initialize`; under the default engine it asks lazily, **on
+answering `initialize`; in the v2 release tested below it asks lazily, **on
 expiry** — so a long Station chat previously received `{}` *as its refreshed
 token* and then failed downstream in a confusing way.
 
@@ -475,7 +475,7 @@ the client answering each way:
 
 | engine | inbound ext requests | old `{}` | `-32601` refusal |
 |---|---|---|---|
-| default (`v2`) | **none** | initialize OK, session/new OK | initialize OK, **session/new OK** |
+| v2 (the default in 2.16.0) | **none** | initialize OK, session/new OK | initialize OK, **session/new OK** |
 | `--agent-engine v3` | auth callback + `_kiro/terminal/shell_type` | initialize OK, session/new OK | initialize OK, **session/new FAILS** |
 
 Two things follow, and both matter more than the intuition they replace:
@@ -491,9 +491,8 @@ Two things follow, and both matter more than the intuition they replace:
   remove. Tracked as a follow-up, where a reviewed allowlist entry is the
   correct home for it once the shape is known.
 
-The default path is unaffected. `--agent-engine v3` is opt-in and cannot
-start a session under this policy; that is disclosed rather than papered
-over, and the probe and the chat path now agree — both fail, which is true.
+The v2 path was unaffected on 2.16.0. On that release, the v3 engine
+failed in both the probe and the chat path under this policy.
 
 **Superseded on kiro-cli 2.35.0 (live, 2026-11-13).** `_kiro/terminal/shell_type`
 is a request with params `{sessionId}`, sent during `session/new`. Answered
@@ -1000,6 +999,23 @@ and `modeId` ([acp-agent-projection.ts](../../src-server/providers/adapters/acp-
 - `prompt` is empty. Station already delivers the agent's prompt on the
   first turn, and sending it here would deliver it twice.
 - The list holds at most 50 entries. A longer list is refused, not cut.
+
+Station reads KAS tool identity and consent metadata when KAS asks for approval.
+Interactive and delegated KAS sessions can automatically read files, list
+directories, search for files, and grep using KAS's built-in tools. Station
+checks its tool policy first and verifies that the requested path and its
+resolved target are within the session workspace and outside sensitive paths.
+Directory requests can target the workspace root. Station checks the requested
+directory itself without scanning its descendants.
+
+Writes and commands can use an authored auto-approval rule or an approval
+guardian allow. Calls that still need approval can prompt in interactive
+sessions. Delegated sessions with approvals disabled decline those calls and
+send Station's reason when KAS offers a one-time deny option.
+
+Interactive session grants stay in Station and each allowed call receives a
+one-time ACP response. Station can enforce its policy on calls that KAS sends
+through the permission gate.
 
 The session must report the mode as `_meta.kiro.resource.source.origin`
 `client`. If the engine started in a mode of that id with another origin (for
