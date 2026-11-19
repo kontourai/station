@@ -112,30 +112,71 @@ export function usageExportOwnerIds(
   return [...new Set(members)].sort();
 }
 
-// Version 1 readers reject extra receipt keys. Richer local usage
-// observations require their own wire revision.
-function usageExportV1Receipt({
-  projectSlug: _project,
-  servedModelObservation: _servedModel,
-  connectionId: _connection,
-  modelConnectionId: _modelConnection,
-  reasoningTokens: _reasoning,
-  route: _route,
-  retailEquivalent: _retailEquivalent,
-  conversationId,
-  inputTokens,
-  outputTokens,
-  cacheReadTokens,
-  cacheWriteTokens,
-  ...receipt
-}: UsageReceipt): UsageReceipt {
+function pickDefined<T extends object, K extends keyof T>(
+  source: T,
+  keys: readonly K[],
+): Partial<Pick<T, K>> {
+  const selected: Partial<Pick<T, K>> = {};
+  for (const key of keys) {
+    const value = source[key];
+    if (value !== undefined) selected[key] = value;
+  }
+  return selected;
+}
+
+// Keep this projection within the closed schema-1 receipt grammar.
+// New fields on local receipts do not extend the export contract.
+function usageExportV1Receipt(receipt: UsageReceipt): UsageReceipt {
+  const { id, stationId, provider, pricing, reportedCost, estimatedCost } =
+    receipt;
   return {
-    ...receipt,
-    ...(conversationId !== undefined ? { conversationId } : {}),
-    ...(inputTokens !== undefined ? { inputTokens } : {}),
-    ...(outputTokens !== undefined ? { outputTokens } : {}),
-    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
-    ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+    id,
+    stationId,
+    provider,
+    ...pickDefined(receipt, [
+      'sourceEventId',
+      'sourceSequence',
+      'model',
+      'accountKey',
+      'threadId',
+      'turnId',
+      'conversationId',
+      'taskId',
+      'occurredAt',
+      'observedAt',
+      'inputTokens',
+      'outputTokens',
+      'cacheReadTokens',
+      'cacheWriteTokens',
+    ]),
+    ...(reportedCost && {
+      reportedCost: {
+        amount: reportedCost.amount,
+        currency: reportedCost.currency,
+      },
+    }),
+    ...(estimatedCost && {
+      estimatedCost: {
+        amount: estimatedCost.amount,
+        currency: estimatedCost.currency,
+        pricingSnapshotId: estimatedCost.pricingSnapshotId,
+        ...pickDefined(estimatedCost, [
+          'pricingSnapshotObservedAt',
+          'pricingSnapshotSource',
+        ]),
+      },
+    }),
+    pricing: {
+      status: pricing.status,
+      ...pickDefined(pricing, [
+        'pricingSnapshotId',
+        'pricingSnapshotCapturedAt',
+        'pricingSnapshotSource',
+        'provider',
+        'model',
+        'currency',
+      ]),
+    },
   };
 }
 
