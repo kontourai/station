@@ -1,0 +1,7 @@
+{
+  "revision": "08086609fe726283ad2f3b9d8b2880f9b4195dd9",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Updated Kiro v3/KAS permission handling (tool identity/consent parsing, verified interactive and delegated workspace reads, one-time session-grant answers, and _meta.kiro.rejectionReason) verified by focused tests and live kiro-cli 3.5.0 runs.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}
