@@ -1545,30 +1545,31 @@ describe('AttachedSessionFollowService', () => {
       undefined,
       undefined,
     );
-    const publicHistory = () => reader.list({ authority, limit: 10 }).items;
-    const order = () => publicHistory().map((row) => row.id);
+    const publicHistory = async () =>
+      (await reader.list({ authority, limit: 10 })).items;
+    const order = async () => (await publicHistory()).map((row) => row.id);
     const service = new AttachedSessionFollowService(options);
     await service.pollNow();
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     oldEvents = [];
     // A real metadata repair also corrects an old inflated timestamp, without a sweep.
     store.upsertSession({
       ...persistedAttachment(),
       updatedAt: '2026-10-11T00:00:00.000Z',
     });
-    expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+    expect(await order()).toEqual([session.threadId, newerDescriptor.threadId]);
     descriptor = { ...descriptor, sourceHandle: 'order-replacement-handle' };
     await service.pollNow();
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     cursor = 21;
     await service.pollNow();
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     descriptor = {
       ...descriptor,
       affinity: { kind: 'fixture-source-home', ref: 'order-home' },
     };
     await service.pollNow();
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     // A stale metadata boundary is repaired from the already durable source event.
     store.upsertSession({
       ...persistedAttachment(),
@@ -1585,9 +1586,10 @@ describe('AttachedSessionFollowService', () => {
     expect(
       persistedAttachment().attachedSource?.completedBoundary?.observedEventId,
     ).toBe(older.eventId);
-    expect(order()).toEqual([newerDescriptor.threadId, session.threadId]);
+    expect(await order()).toEqual([newerDescriptor.threadId, session.threadId]);
     expect(
-      publicHistory().find((row) => row.id === session.threadId)?.updatedAt,
+      (await publicHistory()).find((row) => row.id === session.threadId)
+        ?.updatedAt,
     ).toBe(older.createdAt);
 
     const advanced = {
@@ -1600,7 +1602,10 @@ describe('AttachedSessionFollowService', () => {
     const emit = vi.spyOn(eventBus, 'emit');
     try {
       await service.pollNow();
-      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect(await order()).toEqual([
+        session.threadId,
+        newerDescriptor.threadId,
+      ]);
       expect(persistedAttachment()).toEqual(before);
       expect(audit.counts()).toEqual({ session: 0, history: 1 });
       const committed = {
@@ -1615,12 +1620,18 @@ describe('AttachedSessionFollowService', () => {
         'post-commit publication fault',
       );
       emit.mockRestore();
-      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
-      expect(publicHistory()[0]?.updatedAt).toBe(committed.createdAt);
+      expect(await order()).toEqual([
+        session.threadId,
+        newerDescriptor.threadId,
+      ]);
+      expect((await publicHistory())[0]?.updatedAt).toBe(committed.createdAt);
       expect(summary().lastEventAt).toBe(committed.createdAt);
       expect(persistedAttachment()).toEqual(before);
       await new AttachedSessionFollowService(options).pollNow();
-      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect(await order()).toEqual([
+        session.threadId,
+        newerDescriptor.threadId,
+      ]);
       expect(persistedAttachment()).toEqual(before);
       expect(audit.counts()).toEqual({ session: 0, history: 2 });
       // The original follower still has its pre-failure cached clock.
@@ -1630,8 +1641,11 @@ describe('AttachedSessionFollowService', () => {
         resumeCursor: { cursor: 40 },
         updatedAt: committed.createdAt,
       });
-      expect(publicHistory()[0]?.updatedAt).toBe(committed.createdAt);
-      expect(order()).toEqual([session.threadId, newerDescriptor.threadId]);
+      expect((await publicHistory())[0]?.updatedAt).toBe(committed.createdAt);
+      expect(await order()).toEqual([
+        session.threadId,
+        newerDescriptor.threadId,
+      ]);
       expect(
         store
           .listEvents(session.threadId)
