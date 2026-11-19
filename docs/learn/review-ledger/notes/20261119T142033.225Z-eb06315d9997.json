@@ -1,0 +1,9 @@
+{
+  "revision": "fa532cb86ecca541fa2e2bb29c807164e69d662c",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the embedded example against examples/self-configuring-agent/agent.json and the real Agent loader. The guide once again lists the shipped delegate_task entry under available tools. The four read-only auto-approvals and the documented authority and approval checks are unchanged. The focused conformance case reproduced the hosted diff and passed after the one-line documentation fix.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the citing ADR and Session API delegation and request-authority references. The example now matches the existing shipped configuration. It changes no runtime authority, Session controls, route contract, or historical ADR status.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}
