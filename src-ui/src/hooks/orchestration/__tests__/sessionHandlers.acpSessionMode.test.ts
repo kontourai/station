@@ -72,6 +72,47 @@ describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
     });
   });
 
+  test('a delayed model acknowledgement keeps the newer mode pending', () => {
+    activeChatsStore.updateChat(threadId, {
+      requestedModel: 'next-model',
+      providerOptions: { effort: 'low' },
+      requestedProviderOptions: { effort: 'high', mode: 'plan' },
+      currentModeId: 'build',
+    });
+    handleSessionLifecycleEvent({
+      eventId: 'evt-earlier-model',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-09-11T00:00:00.000Z',
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: {
+        effectiveModel: 'next-model',
+        effectiveModelOptions: { effort: 'high' },
+        acpSessionMode: 'build',
+      },
+    });
+
+    expect(activeChatsStore.getSnapshot()[threadId]).toMatchObject({
+      currentModeId: 'build',
+      requestedProviderOptions: { mode: 'plan' },
+      providerOptions: { effort: 'high' },
+    });
+    handleSessionLifecycleEvent({
+      eventId: 'evt-next-mode',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-09-11T00:00:01.000Z',
+      method: 'session.configured',
+      sessionId: threadId,
+      metadata: { acpSessionMode: 'plan' },
+    });
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.currentModeId).toBe('plan');
+    expect(chat?.requestedProviderOptions).toBeUndefined();
+    expect(chat?.providerOptions).toEqual({ effort: 'high' });
+  });
+
   test('session.started does not invent a current mode', () => {
     handleSessionLifecycleEvent({
       eventId: 'evt-start',

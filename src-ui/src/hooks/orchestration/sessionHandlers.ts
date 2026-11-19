@@ -14,6 +14,7 @@ import { serverTurnLive } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
+  pendingNonModelOptions,
   replaceModelControlOptions,
   updateModelRuntimeOption,
 } from '../../utils/modelCapabilities';
@@ -60,6 +61,10 @@ export function handleSessionLifecycleEvent(
   const requestedOptions = currentChat?.requestedProviderOptions;
   const confirmedMode =
     reportedMode !== undefined && requestedOptions?.mode === reportedMode;
+  const remainingAfterMode =
+    confirmedMode && requestedOptions
+      ? updateModelRuntimeOption(requestedOptions, 'mode', undefined)
+      : requestedOptions;
   // #4162: a Session's engine connection is fixed when it starts, and the
   // server stamps it on that Session's own `session.started`. Without this a
   // successor Session on another connection kept its predecessor's id.
@@ -88,13 +93,12 @@ export function handleSessionLifecycleEvent(
     ...startedConnection,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
     ...(reportedMode ? { currentModeId: reportedMode } : {}),
-    ...(confirmedMode && requestedOptions
+    ...(confirmedMode
       ? {
-          requestedProviderOptions: updateModelRuntimeOption(
-            requestedOptions,
-            'mode',
-            undefined,
-          ),
+          requestedProviderOptions:
+            remainingAfterMode && Object.keys(remainingAfterMode).length > 0
+              ? remainingAfterMode
+              : undefined,
         }
       : {}),
     ...(effectiveModel
@@ -112,7 +116,10 @@ export function handleSessionLifecycleEvent(
             currentChat?.requestedProviderOptions,
             effectiveModelOptions,
           )
-            ? { requestedProviderOptions: undefined }
+            ? {
+                requestedProviderOptions:
+                  pendingNonModelOptions(remainingAfterMode),
+              }
             : {}),
           ...(currentChat?.requestedModel !== null
             ? { modelSource: currentChat?.requestedModelSource }

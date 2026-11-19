@@ -20,6 +20,7 @@ import { newerConversationActivity } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
+  pendingNonModelOptions,
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { reconcileChildWorkSnapshot } from './childWorkHandlers';
@@ -498,7 +499,11 @@ function planSnapshot(
                   chat?.requestedProviderOptions,
                   session.effectiveModelOptions,
                 )
-                  ? { requestedProviderOptions: undefined }
+                  ? {
+                      requestedProviderOptions: pendingNonModelOptions(
+                        chat?.requestedProviderOptions,
+                      ),
+                    }
                   : {}),
                 ...(chat?.requestedModel !== null
                   ? {
