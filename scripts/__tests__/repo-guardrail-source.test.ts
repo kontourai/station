@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test, vi } from 'vitest';
 import {
+  collectCalledModuleImports,
   collectPaneHostCompositionFindings,
   createRequiredSourceReader,
 } from '../repo-guardrail-source.mjs';
@@ -179,4 +180,18 @@ describe('pane-host composition guardrail', () => {
       'getBuiltinWorkspacePaneRenderer must delegate selection to the builtin workspace pane registry.',
     );
   });
+});
+
+test('guardrail call ownership follows the imported binding through an alias but ignores a local shadow', () => {
+  const source = `
+    import { lookup as lookupRegistration, subscribe } from '@kontourai/station-sdk';
+    lookupRegistration();
+    function local() {
+      const subscribe = () => undefined;
+      subscribe();
+    }
+  `;
+  expect(collectCalledModuleImports(source, '@kontourai/station-sdk')).toEqual(
+    new Set(['lookup']),
+  );
 });
