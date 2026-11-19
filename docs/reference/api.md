@@ -2808,7 +2808,10 @@ appended (a prompt, assistant text, a tool result, host images, a turn
 completing, ending unfinished or failing), never on lifecycle bookkeeping.
 `GET /api/conversations` items carry it as `readState.version`, or
 `readState: { version, unavailable: true }` when the caller's read state
-cannot be read; the conversations are listed either way.
+cannot be read; the conversations are listed either way. On a personal Station,
+the runtime inventory includes the candidate owners of the caller's current
+personal conversation account and checks each returned Session's read access.
+Hosted inventory remains bound to the request's tenant and exact owner.
 
 ```http
 POST /api/conversations/:id/acknowledgement

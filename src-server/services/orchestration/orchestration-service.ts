@@ -3561,6 +3561,9 @@ export class OrchestrationService {
       this.conversationHistoryReader = new ConversationHistoryReadService({
         readDurabilityProfile: this.durabilityProfileForProvider,
         eventStore: options.eventStore,
+        ownerUserIdsFor: (authority) =>
+          this.sessionAuthz.transcriptOwnerConstraint(authority).ownerUserIds ??
+          [],
         canReadSession: (threadId, authority) =>
           this.sessionAuthz.canReadSession(threadId, authority),
         hydratePersistedSession: (threadId) => {
