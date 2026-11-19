@@ -195,11 +195,13 @@ describe('native-platform-boundary', () => {
       '../dist-desktop-runtime/dist-server': null,
       '../dist-desktop-runtime/node_modules': null,
       '../dist-desktop-runtime/examples': null,
+      '../schemas': null,
     });
     expect(EXPECTED_APPIMAGE_RUNTIME_FILES).toEqual({
       'usr/share/Station/dist-server': '../dist-desktop-runtime/dist-server',
       'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
       'usr/share/Station/examples': '../dist-desktop-runtime/examples',
+      'usr/share/Station/schemas': '../schemas',
     });
     expect(
       findTauriResourceBoundaryViolations(
@@ -209,6 +211,7 @@ describe('native-platform-boundary', () => {
         [
           TAURI_APPIMAGE_CONFIG,
           JSON.stringify({
+            build: { features: ['appimage-runtime'] },
             bundle: {
               resources: EXPECTED_APPIMAGE_REMOVED_RESOURCES,
               linux: { appimage: { files: EXPECTED_APPIMAGE_RUNTIME_FILES } },
@@ -238,6 +241,7 @@ describe('native-platform-boundary', () => {
         [
           TAURI_APPIMAGE_CONFIG,
           JSON.stringify({
+            build: { features: ['appimage-runtime'] },
             bundle: {
               resources: EXPECTED_APPIMAGE_REMOVED_RESOURCES,
               linux: { appimage: { files: EXPECTED_APPIMAGE_RUNTIME_FILES } },

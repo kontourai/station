@@ -557,7 +557,12 @@ jobs:
           mkdir -p "$appimage_root"
           (cd "$appimage_root" && "$appimage" --appimage-extract >/dev/null)
           appimage_manifest=$(find "$appimage_root/squashfs-root" -type f -name station-build.json -print)
-          test "$(printf '%s\n' "$appimage_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          appimage_runtime="$appimage_root/squashfs-root/usr/share/Station"
+          test "$appimage_manifest" = "$appimage_runtime/dist-server/station-build.json"
+          test -f "$appimage_runtime/dist-server/command-station.js"
+          test -f "$appimage_runtime/dist-server/instance-registry-bridge.js"
+          test -d "$appimage_runtime/node_modules"
+          test -d "$appimage_runtime/schemas/agent-plugins"
           node scripts/release-client-build-provenance.mjs verify --source-sha "$sha" --expected "$expected" --actual "$appimage_manifest"
       - name: Stage canonical signed Linux artifacts
         run: |

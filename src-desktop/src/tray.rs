@@ -910,7 +910,7 @@ struct LocalClientBuildManifest {
 /// Read only its packaged resource; service HTTP/mtime/environment metadata
 /// would conflate backend deployment and local artifact provenance.
 fn local_client_build_label(app: &AppHandle) -> Option<String> {
-    let resource_dir = app.path().resource_dir().ok()?;
+    let resource_dir = crate::desktop_runtime_resource_dir(app).ok()?;
     let manifest =
         read_local_client_build_manifest(&resource_dir.join("dist-server/station-build.json"))?;
     compact_utc_build_label(&manifest.built_at)

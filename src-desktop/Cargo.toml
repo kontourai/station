@@ -22,6 +22,8 @@ default = []
 webdriver = ["dep:tauri-plugin-wdio-webdriver"]
 # Release inspection is opt-in for Nightly diagnostics. Debug builds retain it without this feature.
 native-devtools = ["tauri/devtools"]
+# The AppImage overlay places the desktop runtime outside linuxdeploy's usr/lib scan.
+appimage-runtime = []
 
 [build-dependencies]
 tauri-build = { version = "=2.7.1", features = [] }
