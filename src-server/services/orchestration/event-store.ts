@@ -3885,22 +3885,27 @@ export class EventStore {
     const previous = cacheable
       ? this.unresolvedProjectionHeads.get(threadId)
       : undefined;
-    const extendsPrevious =
+    const canResume =
       previous &&
-      previous.highWater < highWater &&
-      readAnchor(previous.highWater) === previous.globalSequence;
+      previous.highWater <= highWater &&
+      (previous.highWater === highWater
+        ? globalSequence
+        : readAnchor(previous.highWater)) === previous.globalSequence;
     // Remove the mutable fold before advancing it. A read or decode error
     // cannot leave a partially advanced projection published at an old mark.
-    if (extendsPrevious) this.unresolvedProjectionHeads.delete(threadId);
-    const projection = extendsPrevious
+    if (canResume) this.unresolvedProjectionHeads.delete(threadId);
+    const projection = canResume
       ? previous.projection
       : createStandingUnresolvedCompletionProjection();
-    let sequence = extendsPrevious ? previous.highWater : -1;
+    let sequence = canResume ? previous.highWater : -1;
+    // Nonempty text can establish an assistant row's turn ownership. Keep
+    // that distinction when omitting the display body from the projection.
     const page = this.readStatement(
       `SELECT sequence, CASE
         WHEN method IN ('content.text-delta', 'content.reasoning-delta')
-          THEN json_object('method', method, 'threadId', thread_id,
-            'createdAt', created_at, 'delta',
+          AND json_extract(payload, '$.method') = method
+          THEN json_object('method', method, 'threadId', json_extract(payload, '$.threadId'),
+            'createdAt', json_extract(payload, '$.createdAt'), 'delta',
             CASE WHEN json_extract(payload, '$.delta') <> '' THEN 'x' ELSE '' END)
         WHEN method = 'turn.completed' AND json_type(payload, '$.outputText') = 'text'
           THEN json_set(payload, '$.outputText',
@@ -3911,7 +3916,7 @@ export class EventStore {
         WHERE thread_id = ? AND sequence > ? AND sequence <= ?
         ORDER BY sequence ASC LIMIT ?`,
     );
-    for (;;) {
+    while (sequence < highWater) {
       const rows = page.all(
         threadId,
         sequence,

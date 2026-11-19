@@ -318,7 +318,40 @@ export function createStandingUnresolvedCompletionProjection() {
       return standing.snapshot;
     },
     append(event: CanonicalRuntimeEvent) {
-      if (filter(event)) projection.append(event);
+      if (!filter(event)) return;
+      if (
+        event.method === 'tool.started' ||
+        event.method === 'tool.completed'
+      ) {
+        const {
+          method,
+          eventId,
+          threadId,
+          turnId,
+          createdAt,
+          provider,
+          toolCallId,
+          toolName,
+          itemId,
+        } = event;
+        const identity = {
+          eventId,
+          threadId,
+          turnId,
+          createdAt,
+          provider,
+          toolCallId,
+          toolName,
+          itemId,
+        };
+        projection.append(
+          method === 'tool.completed'
+            ? { ...identity, method, status: event.status }
+            : { ...identity, method },
+        );
+        return;
+      }
+      projection.append(event);
     },
   };
 }
@@ -540,6 +573,29 @@ function createRuntimeMessageProjection(
     }
   };
 
+  const indexAssistantRow = (
+    role: ConversationMessage['role'],
+    beforeSteer: boolean,
+    rowIndex: number,
+  ) => {
+    // station#1558: only an assistant row carries a turn's activity, and only
+    // the FIRST row emitted for a turn identity owns it — a re-emission would
+    // otherwise redirect a late result away from the row that shows the call.
+    const emittedKey =
+      role === 'assistant' ? turnKey(turnSessionId, turnIdentity) : undefined;
+    // A pre-steer segment never owns the turn: the turn is still open, so
+    // its later start-less completions belong to the live buffer, and after
+    // the terminal the row that owns the turn is the one emitted last.
+    if (emittedKey && beforeSteer) preSteerRowIndex = rowIndex;
+    if (
+      emittedKey &&
+      !beforeSteer &&
+      !assistantMessageIndexByTurn.has(emittedKey)
+    ) {
+      assistantMessageIndexByTurn.set(emittedKey, rowIndex);
+    }
+  };
+
   const pushMessage = (
     role: ConversationMessage['role'],
     p: MessagePart[],
@@ -550,6 +606,12 @@ function createRuntimeMessageProjection(
      */
     beforeSteer = false,
   ) => {
+    if (standingUnresolved) {
+      // The inventory checks whether an assistant row owns the turn.
+      // Its stored index is never used to look up message content.
+      indexAssistantRow(role, beforeSteer, 0);
+      return;
+    }
     const reportedModel = turnReportedModel ?? sessionReportedModel;
     // station#1410: only an assistant turn that both has an observed turn
     // identity AND reached a terminal event has an envelope. An open or
@@ -600,25 +662,10 @@ function createRuntimeMessageProjection(
             ? `${turnAnchorEventId}:${role}`
             : `proj-${messages.length}`,
       role,
-      parts: standingUnresolved ? [] : p,
+      parts: p,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     });
-    // station#1558: only an assistant row carries a turn's activity, and only
-    // the FIRST row emitted for a turn identity owns it — a re-emission would
-    // otherwise redirect a late result away from the row that shows the call.
-    const emittedKey =
-      role === 'assistant' ? turnKey(turnSessionId, turnIdentity) : undefined;
-    // A pre-steer segment never owns the turn: the turn is still open, so
-    // its later start-less completions belong to the live buffer, and after
-    // the terminal the row that owns the turn is the one emitted last.
-    if (emittedKey && beforeSteer) preSteerRowIndex = messages.length - 1;
-    if (
-      emittedKey &&
-      !beforeSteer &&
-      !assistantMessageIndexByTurn.has(emittedKey)
-    ) {
-      assistantMessageIndexByTurn.set(emittedKey, messages.length - 1);
-    }
+    indexAssistantRow(role, beforeSteer, messages.length - 1);
   };
 
   // A reply shown as a spilled outputText's preview names its reference on
@@ -789,6 +836,7 @@ function createRuntimeMessageProjection(
     toolPart: MessagePart,
     ev: Extract<CanonicalRuntimeEvent, { method: 'tool.completed' }>,
   ) => {
+    if (standingUnresolved) return;
     const files = toolResultFileParts(ev);
     if (files.length === 0) return;
     for (const list of [parts, ...messages.map((message) => message.parts)]) {
@@ -847,6 +895,7 @@ function createRuntimeMessageProjection(
     ev: { eventId?: string; createdAt?: string },
     text: { betweenTurns: string; duringTurn: string },
   ) => {
+    if (standingUnresolved) return;
     if (turnOpen) heldMarkers.push({ ev, text });
     else pushTranscriptMarker(ev, text, false);
   };
@@ -922,6 +971,7 @@ function createRuntimeMessageProjection(
           }
           turnAnchorEventId = ev.eventId;
           stamp(ev.createdAt);
+          if (standingUnresolved) break;
           const steerParts: MessagePart[] = [];
           const steerInput = agentMessageInput({
             ...ev,
@@ -992,6 +1042,7 @@ function createRuntimeMessageProjection(
         // model without its own reportedModel invalidates any carried-over
         // sessionReportedModel — it belongs to the prior model generation.
         noteModelGeneration(turnModel, turnReportedModel);
+        if (standingUnresolved) break;
         const userParts: MessagePart[] = [];
         const turnInput = agentMessageInput({
           ...ev,
@@ -1118,7 +1169,8 @@ function createRuntimeMessageProjection(
             state: 'call',
             ...(ev.spilledContent ? { contentThreadId: ev.threadId } : {}),
           };
-          messages[startNamedTurnIndex]!.parts.push(latePart);
+          if (!standingUnresolved)
+            messages[startNamedTurnIndex]!.parts.push(latePart);
           carriedToolsByCallId.set(ev.toolCallId, {
             part: latePart,
             turnKey: startNamedTurnKey,
@@ -1368,7 +1420,7 @@ function createRuntimeMessageProjection(
           terminalToolsByEventId.set(ev.eventId, part);
           recordStandingCompletion(ev.eventId, isUnresolved);
           if (namedTurnIndex !== undefined) {
-            messages[namedTurnIndex]!.parts.push(part);
+            if (!standingUnresolved) messages[namedTurnIndex]!.parts.push(part);
           } else {
             // Either the event names the turn currently being folded, or it
             // names one whose `turn.started` fell outside this bounded window
@@ -1397,7 +1449,7 @@ function createRuntimeMessageProjection(
       }
       case 'tool.progress': {
         const existing = toolsByCallId.get(ev.toolCallId);
-        if (existing) {
+        if (existing && !standingUnresolved) {
           existing.progressMessage = ev.message;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
         }
@@ -1425,7 +1477,7 @@ function createRuntimeMessageProjection(
               eventId: ev.eventId,
               kind,
               requester,
-              message,
+              message: standingUnresolved ? '' : message,
               outcome: 'pending',
             },
           };
@@ -1503,10 +1555,12 @@ function createRuntimeMessageProjection(
           else delete target.approvalRuleGrant;
           // docs/design/event-content-spill.md: what a surface must load
           // whole before it offers Allow.
-          approvalRequestByPart.set(target, ev);
-          if (ev.spilledContent || hasRuntimeEventContentRefs(target.args))
-            target.approvalContentEvent = ev;
-          else delete target.approvalContentEvent;
+          if (!standingUnresolved) {
+            approvalRequestByPart.set(target, ev);
+            if (ev.spilledContent || hasRuntimeEventContentRefs(target.args))
+              target.approvalContentEvent = ev;
+            else delete target.approvalContentEvent;
+          }
           target.state = 'awaiting-approval';
           approvalTargets.set(ev.requestId, target);
           openApprovalParts.set(approvalKey(ev.threadId, ev.requestId), {
@@ -1558,7 +1612,7 @@ function createRuntimeMessageProjection(
       }
       case 'turn.aborted': {
         const revoked = turnKey(ev.threadId, ev.turnId);
-        if (revoked) revokedAnswerTurns.add(revoked);
+        if (revoked && !standingUnresolved) revokedAnswerTurns.add(revoked);
         turnSessionId ??= ev.threadId;
         adoptTerminalIdentity(ev.turnId);
         turnSeenInPart = false;
@@ -1740,6 +1794,7 @@ function createRuntimeMessageProjection(
         // the banner, so the banner reads after what the user actually saw
         // — not before it.
         if (turnOpen) emitAssistantTurn();
+        if (standingUnresolved) break;
         pushMessage('user', [
           {
             type: 'text',
