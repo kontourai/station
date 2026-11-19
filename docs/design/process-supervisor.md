@@ -839,9 +839,16 @@ verification, and fault injection.
   the serving generation's process identity in its run lease. Teardown
   stops through the control channel (`station stop`), and the lease is
   released only once the supervisor, the UI listener and that generation
-  are all gone. These are covered by unit tests of the classification,
-  health and e2e helpers. Neither a dogfood reconcile nor the e2e suite was
-  run against a supervised instance for this change.
+  are all gone. The helper tests cover classification, health, and cleanup.
+  The isolated E2E browser suite also exercised a supervised launch and
+  teardown. A separate dogfood run used the real reconciler to install, build,
+  and promote a CI-qualified detached release through fixture-local HTTPS.
+  After `station restart`, the same supervisor served a new core generation.
+  The next reconcile reported `current` with zero recoveries. The same
+  terminal Session kept its shell PID and state and accepted another command.
+  The existing Agent transcript remained readable, and a follow-up turn
+  continued its conversation in a successor Session. Operator tailnet routing
+  and live deployment need their own evidence.
 - **Phase 2 evidence (terminal workloads).** The package's real-process
   tests
   ([`workloads.test.ts`](../../packages/supervisor/src/__tests__/workloads.test.ts))

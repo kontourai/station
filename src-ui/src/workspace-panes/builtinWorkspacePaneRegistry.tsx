@@ -130,6 +130,7 @@ import { TaskRoomEditorPane } from './TaskRoomEditorPane';
 import { useWorkspacePaneBoundIdentity } from './useWorkspacePaneBoundIdentity';
 import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailable';
 import { useWorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
+import { describeWorkspacePaneOpenRefusal } from './workspacePaneHostOpenOutcome';
 
 export {
   isCanonicalBuiltinBrowserPreviewDescriptor,
@@ -445,18 +446,7 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
         projectId,
       );
       if (!preview) return;
-      // #1596 names three click paths; this is not one of them, and its
-      // outcome is deliberately still unsurfaced: the row selection and the
-      // navigation intent above are what the reader sees, and they happen
-      // whether or not the preview occurrence is admitted. Reporting a
-      // refusal here needs a place in this pane's own chrome to put it.
-      // In a DOCK region (#2047) the refusal is certain, not incidental: File
-      // Preview is no region surface, so the region host's admission refuses
-      // it and there is no `setLayout` to fall back on — a file click in a
-      // docked Files pane selects the row and opens nothing until #2049
-      // gives regions instance-keyed panes. `docs/design/placement.md` says
-      // so in the #2047 paragraph.
-      paneHostOpen.open(
+      const outcome = paneHostOpen.open(
         preview,
         createFilePreviewPaneStatePreparation(
           window.localStorage,
@@ -470,6 +460,8 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
           },
         ),
       );
+      if (!outcome.ok)
+        toastStore.show(describeWorkspacePaneOpenRefusal(outcome.reason));
     },
     [
       layoutSlug,

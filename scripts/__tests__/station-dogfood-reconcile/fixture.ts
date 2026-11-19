@@ -87,6 +87,7 @@ type FakeOptions = {
   currentUnhealthy?: boolean;
   dirty?: 'before' | 'after';
   installFailure?: boolean;
+  missingInstallLifecycle?: boolean;
   failedListener?: 'api' | 'voice' | 'ui';
   recoveryFailure?: boolean;
   recoveryHistoryLength?: number;
@@ -317,7 +318,23 @@ export function createFixture(
     }
     if (command === 'git' && args.includes('worktree')) {
       if (args.includes('add')) {
-        mkdirSync(args.at(-2) as string, { recursive: true });
+        const checkout = args.at(-2) as string;
+        mkdirSync(checkout, { recursive: true });
+        writeFileSync(
+          path.join(checkout, 'package.json'),
+          JSON.stringify({
+            packageManager: 'pnpm@11.25.0',
+            scripts: options.missingInstallLifecycle
+              ? {}
+              : {
+                  'dependencies:ci': 'node scripts/dependency-lifecycle.mjs ci',
+                },
+          }),
+        );
+        writeFileSync(
+          path.join(checkout, 'pnpm-lock.yaml'),
+          "lockfileVersion: '9.0'\n",
+        );
       } else if (args.includes('remove')) {
         rmSync(args.at(-1) as string, { recursive: true, force: true });
       }
@@ -417,6 +434,24 @@ export function createFixture(
       );
     }
     if (command === 'npm') {
+      // The candidate has only the managed pnpm lockfile. Raw npm install
+      // commands cannot stage it, even when no failure was injected.
+      const checkout = runOptions.cwd;
+      if (
+        args.length !== 2 ||
+        args[0] !== 'run' ||
+        args[1] !== 'dependencies:ci' ||
+        !checkout ||
+        !existsSync(path.join(checkout, 'pnpm-lock.yaml')) ||
+        existsSync(path.join(checkout, 'package-lock.json')) ||
+        existsSync(path.join(checkout, 'npm-shrinkwrap.json'))
+      ) {
+        return result(
+          1,
+          '',
+          'expected the managed pnpm dependency lifecycle in the candidate checkout',
+        );
+      }
       return options.installFailure
         ? result(1, '', 'dependency install failed')
         : result();

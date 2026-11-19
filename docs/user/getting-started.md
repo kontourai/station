@@ -515,9 +515,9 @@ would. Write what you want done
 and choose **Start**. You do not need to choose anything first; the controls
 show what **Start** will use:
 
-- The combined Run setup button shows the Agent's icon and the Model's name,
+- The combined Agent & model button shows the Agent's icon and the Model's name,
   followed by the thinking effort when you chose one (for example
-  **Opus · High**). It opens **Run setup**. Its Agent choice
+  **Opus · High**). It opens **Agent & model**. Its Agent choice
   lists **Station**, **Coding apps**, and **My agents**, with readiness and setup
   actions. Its Model choice opens the
   **Engine & model** picker, which also offers alternative engines when they
@@ -534,10 +534,10 @@ show what **Start** will use:
   now: your draft, or a catch-up request when there is none, is the first
   message.
   Full access, a pending or refused approval change, and a conversation override
-  add a warning glyph to the combined button; open Run setup to see the same
+  add a warning glyph to the combined button; open Agent & model to see the same
   glyph on the choice that raised it. When the conversation's Agent now points
-  at another engine, the button adds **Agent moved**; Run setup's Engine &
-  model choice names where. If the conversation's engine session has already
+  at another engine, the button adds **Default differs**. The panel names the
+  session engine and the Agent default. If the conversation's engine session has already
   ended, a **Next turn starts on …** line above the message box says where the
   next turn goes instead.
   In the model picker, while a reply you sent is still running, the other
@@ -586,7 +586,7 @@ and **Edit**. If delivery is uncertain, use **Check** before sending a
 changed copy. Station keeps the original pending message.
 
 To move a chat you already have to a paired Station, open the Agent picker in
-**Run setup** and choose that Station; the dialog becomes **Continue
+**Agent & model** and choose that Station; the dialog becomes **Continue
 elsewhere**. Pick its engine and
 one of its Projects, then **Continue on <Station>**. A new chat opens there,
 and its Agent gets this chat's messages as context. The new chat shows messages
@@ -1150,7 +1150,7 @@ Drafts are stored in this browser or app on this device, not synced to other
 devices. Station keeps the 20 newest saved drafts, with up to five images per
 draft, and lists any dropped or unreadable images. The trash icon clears the
 current message. Hold or focus
-either icon to read its label. Choose **Chat settings → Return in chat** to change
+either icon to read its label. Choose **Agent & model → Return in chat** to change
 Return behavior on this device. Touch devices default to a new line; desktop
 Return sends. Shift+Return adds a line and Ctrl/Cmd+Return sends.
 
@@ -1218,7 +1218,7 @@ unavailable.
 
 ## Start Your First Task
 
-1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its Project control or **Run setup** to change the Agent, Model or Approval settings.
+1. Open a Project and choose **New Task**. The normal chat composer opens in **New Task** mode, focused for your idea. Use its Project control or **Agent & model** to change the Agent, Model or Approval settings.
 2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
 3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its brief and references; accepting does not assign an Agent or start an execution Session.
 
@@ -1487,6 +1487,9 @@ engine, the continuation is still created and you continue it from
 **Chat**; the dock says why it cannot open it.
 
 See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
+
+If **Recent work** can’t load sessions from another Station, Home shows an
+explanation alongside any work it could load locally.
 
 ## Arrange Work You Already Own
 

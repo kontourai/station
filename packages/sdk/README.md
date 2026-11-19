@@ -89,6 +89,9 @@ Plugin install mutations expose typed current parent/dependency permission statu
 through `PluginInstallResult`. See the canonical [Plugin Query Hooks reference](../../docs/reference/sdk.md#plugin-query-hooks)
 for older-server unknown-status handling and registry result types.
 
+Use [the status-aware plugin update hook](../../docs/reference/sdk.md#update-discovery)
+to distinguish a completed empty scan from unavailable or partial coverage.
+
 ## Plugin publisher counts
 
 `useTelemetry()` captures the calling Pane's kernel capability and returns

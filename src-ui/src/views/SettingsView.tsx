@@ -88,7 +88,7 @@ import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { OfflineReadingSection } from './settings/OfflineReadingSection';
 import { OpenAppearanceButton } from './settings/OpenAppearanceButton';
 import { PairingSection } from './settings/PairingSection';
-import { PeopleSection } from './settings/PeopleSection';
+import { PeopleReadRefusal, PeopleSection } from './settings/PeopleSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -412,6 +412,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
+  const peopleSelected = activeSection === 'people' && !searchQuery.trim();
+  const peopleDeniedByEntryGate =
+    peopleSelected &&
+    !sectionVisible('people') &&
+    isPluginVisibilityForbidden(pluginVisibilityDirectory.error);
   /** Whether the current view selects any section in this scope group. */
   const groupVisible = (group: SettingsNavGroup) =>
     SETTINGS_SECTIONS.some(
@@ -1199,7 +1204,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             )}
 
             {/* ── Station scope ── */}
-            {groupVisible('this-station') && (
+            {(groupVisible('this-station') || peopleDeniedByEntryGate) && (
               <section
                 aria-label="This Station settings"
                 className="settings__scope-group"
@@ -1255,10 +1260,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
-                {/* #3557: people, their Station group and their tokens.
-              Operator-only (the same gate as device hosts); the section
-              renders nothing for a caller the route refuses. */}
-                {sectionVisible('people') && <PeopleSection />}
+                {peopleDeniedByEntryGate && <PeopleReadRefusal />}
+                {sectionVisible('people') && (
+                  <PeopleSection showReadRefusal={peopleSelected} />
+                )}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,

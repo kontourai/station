@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
 import { ComposerChoice } from '../ComposerChoice';
+import { SettingsGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -39,6 +40,7 @@ export function AcpSessionModeChip({
         aria-label={`Session mode: ${selectedLabel}. Mode ${selectedLabel}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Mode"
+        icon={<SettingsGlyph />}
         value={selectedLabel}
         valueClassName="chat-input__approval-chip-label"
       />

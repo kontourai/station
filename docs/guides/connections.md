@@ -107,6 +107,13 @@ confirms authentication. **Cancel** stops a pending login. Returning to the
 account resumes status checks. Login capabilities come from the installed CLI;
 unsupported or unreadable installations remain unavailable.
 
+If Station cannot confirm that a device-code sign-in process stopped, it keeps
+the host slot reserved. Ask the Station host operator to verify that the
+launcher and all its descendants have stopped before restarting Station. If the
+operator cannot verify the whole process tree, restart the host before resuming
+device-code sign-in. Check the selected profile's sign-in status before
+starting another attempt.
+
 Muse Code (#1942) signs in with a device code too: Station runs the bare
 `muse login`, offered only while `muse login --help` still says "approve a code
 in your browser", and relays its link and code. Sign-in state comes from
@@ -631,8 +638,8 @@ is shown.
 The UI owners are [saved relay routes](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx),
 [Project detail](../../src-ui/src/views/ProjectPage.tsx), and the
 [member Project view](../../src-ui/src/views/project-page/MemberProjectPage.tsx).
-Its captured-scope list and detail reads live in
-[ProjectsContext](../../src-ui/src/contexts/ProjectsContext.tsx) and use the
+Its [shared-work hooks](../../src-ui/src/views/project-page/useMemberProjectSharedWork.ts)
+read the list and detail with the captured Project scope through the
 [shared-task SDK readers](../../packages/sdk/src/client/project-shared-tasks.ts).
 
 No direct HTTP fallback is used. The CLI continues to refuse these routes as
@@ -989,8 +996,10 @@ Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
 persist their default Agents. Automatic adoption respects an engine's recorded
 removal and refuses an identity already bound to another connection. It does
-not sign the engine in. See
-[startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
+not sign the engine in. During shutdown, adoption stops waiting for a
+contended registry or Agent lock. Committed connections stay registered, and
+the next startup can create any default Agent whose write was interrupted.
+See [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
 and the [Agent registry](../../src-server/domain/agent-registry.ts).
 The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.

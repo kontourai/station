@@ -281,9 +281,8 @@ and never for an ACP-bound or unresolved Agent.
 ## Messages and locale formatting
 
 [src-ui/src/i18n/](../../src-ui/src/i18n/) holds Station UI's message catalog
-and locale formatters. Today it covers only the route shell (loading, chunk,
-authority and generic route errors: 10 keys), and the UI always runs in
-`en-US`; `navigator.language` is not read. Settings rows use their own
+and locale formatters. It covers the route shell's loading, stalled-route
+recovery, chunk, authority and generic error states. The UI runs in `en-US`; `navigator.language` is not read. Settings rows use their own
 `SETTINGS_MESSAGES` table in `views/settings/settings-catalog.ts`.
 
 - Read a message with `const { message } = useLocale()` and call

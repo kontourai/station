@@ -895,6 +895,21 @@ is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
 
+## Flow gate evaluation
+
+`POST /api/projects/:slug/flow/runs/:runId/evaluate` returns Flow's committed
+outcomes and run state. For a named gate on an already completed run, Station
+binds re-evaluation to the prior run head. A concurrent head change returns
+409. When the evaluation reopens that run, `data.reopened` identifies the
+observed gate, verdict, missing expectations and any bounded diagnostics
+recorded by Flow.
+
+The run console exposes `display_diagnostics` beside a recorded gate outcome.
+The projection carries expectation identifiers, available reason text and
+bounded gap messages. Historical outcomes can omit diagnostics. A session
+completion check that finds the run already complete emits `not-evaluated`
+instead of claiming a fresh pass.
+
 ## Integration capability status and Task write-back
 
 `GET /api/integrations/status` is an operator-in-person read, not available to
@@ -1823,11 +1838,12 @@ conflict, 404 for a missing pin, 413 for capacity, and a redacted 503 for unavai
 storage. Successful results use `{success: true, data}`. PUT also requires the
 body pin ID to match the path.
 
-Cleanup accepts full references that the caller observed as missing. The store
-checks they belong to the board and removes matching pins; it does not rerun
-owner resolution inside that write. Undo swaps one prior bounded snapshot and
-advances revision; it is not an unbounded edit history. Hosted mode does not
-mount these personal-storage routes.
+Cleanup accepts full references that the caller observed as missing. The route
+checks the revision and pin identities, then resolves only those references
+using the caller's request. It returns 409 if any selected reference is no
+longer confirmed missing. The store checks the revision again before removing
+pins. Owners can change after the observation. Undo swaps one prior bounded
+snapshot and advances the revision. These routes are mounted in personal mode.
 
 ## Agent Management
 
@@ -5357,7 +5373,11 @@ cleans the staged directory without installing it. `valid: true` also carries
 `contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
 matching `registryTrust` (the verified receipt and pin, or `{state: "none"}`,
 in the shape `GET /api/plugins` uses), the observed `installationRevision`, `existingDataScope`, and permission/dependency
-consent information. The optional top-level `hasBundle` reports whether the staged
+consent information. Each inspected dependency can carry `registryTrust`
+alongside its `consent.registryTrustRevision`. This displays its own receipt
+and pin. Recovery previews include the same per-dependency projection from
+retained verification. Older hosts can omit the receipt.
+The optional top-level `hasBundle` reports whether the staged
 source already contains `dist/bundle.js`. It is not a manifest field or runtime
 readiness. Installation can build client code from `manifest.entrypoint` even
 when `hasBundle` is false. Where native loading consent is required and remains
@@ -5430,9 +5450,14 @@ records compensation and retained-state limits.
 
 `GET /api/plugins/check-updates` is operator-only. It reads installed names and
 checks git/registry update sources. Results use the installed manifest name as
-`name`, even when a registry entry ID differs. A caught top-level check failure
-currently returns 200 with `{updates: []}`; that legacy result cannot prove
-there were no available updates. Under a [managed policy](../guides/managed-policy.md#capability-switches)
+`name`, even when a registry entry ID differs. A 200 response includes `updates`
+and `status`. `complete` means every eligible source was checked. `partial`
+means some checks failed and the response retains updates from successful
+sources. `unavailable` means no eligible source completed. A scan that cannot
+read the installed inventory returns HTTP 500. Older servers may omit
+`status`, leaving coverage unknown.
+
+Under a [managed policy](../guides/managed-policy.md#capability-switches)
 `limits.registries.allowedUrls`, a plugin installed from a registry the policy
 refuses is not checked (its git origin is not fetched); it is listed in
 `managedByPolicy` as `{name, message}` with the policy sentence, not as an
@@ -7435,6 +7460,14 @@ revocation refuses an in-flight read. Profile management and manual enrolment
 retain their separate authority requirements. The operator exception covers
 only this read and GET/POST/DELETE of the existing profile device-code login
 leaf; it does not add `engine:login` to the operator's default scope set.
+DELETE acknowledges a cancellation even while POST is still checking CLI
+capabilities or profile sign-in status. The pending POST then returns a
+`409` with outcome `cancelled`, and no login process starts.
+Cancelling a running login acknowledges the cancellation immediately.
+A replacement for that profile returns `429` while exit of the previous
+process tree is pending or unconfirmed. Those process trees occupy host
+sign-in slots alongside active sign-ins. A full host returns `429` for sign-in
+attempts on other profiles too.
 See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
 
 ## Remote task engines

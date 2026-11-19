@@ -148,6 +148,7 @@ const PersonalBoardView = lazy(() =>
 
 interface AppViewContentProps {
   currentView: NavigationView;
+  stationUnavailable?: boolean;
   agents: AgentSummary[];
   apiBase: string;
   availableModels: Array<{ id: string; name: string }>;
@@ -201,6 +202,7 @@ export function AppViewContent(props: AppViewContentProps) {
       <RouteViewBoundary
         routeKey={routeKey}
         pendingSurfaceId={pendingSurfaceId}
+        stationUnavailable={props.stationUnavailable}
         pendingBody={
           <RoutePendingSkeleton view={props.currentView} spec={frameSpec} />
         }

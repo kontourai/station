@@ -346,12 +346,6 @@ interface AgentSpec {
   delegation?: AgentDelegationPolicy;
   maxSteps?: number | null;
   guardrails?: AgentGuardrails;
-  /** @deprecated Ignored; accepted so existing agent files load (#3879). */
-  streaming?: {
-    useNewPipeline?: boolean;
-    enableThinking?: boolean;
-    debugStreaming?: boolean;
-  };
   tools?: AgentTools;
   commands?: Record<string, SlashCommand>;
   ui?: AgentUIConfig;
@@ -389,7 +383,6 @@ interface SlashCommandParam {
 
 interface AgentUIConfig {
   component?: string;
-  quickPrompts?: AgentQuickPrompt[];
   workflowShortcuts?: string[];
 }
 

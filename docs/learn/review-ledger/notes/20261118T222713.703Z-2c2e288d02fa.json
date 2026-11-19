@@ -1,0 +1,35 @@
+{
+  "revision": "b69850cbcf31857d22901e1cf73c020a582b1d74",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Traced plan validation, actual slice outputs and aggregate receipts after changing the zsh setup condition. The admitted test set and the ordinary deferral/quorum contract keep their existing shape. The workflow contract and CLI owner tests passed.","inputs":[".veritas/README.md",".github/workflows/ci.yml","scripts/fast-checks-shard.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the same statics, selector/plan and merge-queue consumers. Linux zsh preparation is now conditional on the selected slice. Existing aggregate admission, required test execution and changed-set policy still apply.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml","scripts/fast-checks-shard.mjs"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Compared the workflow delta with the delegation owner and evidence described here. Only shared zsh preparation depends on the slice. Delegation claim operations and consumers receive no code or receipt changes.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Checked workflow ownership and installer provenance. The unchanged Ubuntu bootstrap still comes from the immutable workflow commit when zsh is needed. Dependency install, source scan and advisory lanes keep their existing gates.","inputs":["docs/guides/dependency-security.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Checked CI admission and dependency preparation. The updated slicer reports selected Linux zsh fixtures and the workflow keeps preflight when an older slicer omits the output. Plan identity, budgets and receipts keep their existing rules.","inputs":["docs/guides/development.md",".github/workflows/ci.yml","scripts/fast-checks-shard.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Compared CI prerequisite routing with the transfer-controller validation claims. The named controller paths and verification contracts are outside the changed prerequisite. The proof here covers selection and workflow shape only.","inputs":["docs/guides/home-transfer-controller.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked hosted shard jobs and labels against runner allocation guidance. Conditional preparation affects an already-assigned Ubuntu shard. Physical host leases and routing remain separate.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked the supplemental dispatch schema edges against evidence routing. They supply one exact guard without discharging ci-fast. Product-law authoring, known-bad controls and explicit deferral semantics still apply.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Compared the CI workflow patch with source, queue and release boundaries. The Linux fixture predicate only changes shard preparation. Release authorization, exact identities and promotion requirements remain in their documented workflows.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked the workflow and script ownership tables. The slicer remains a standalone Node entry before dependency installation. The new metadata and supplemental manifest edges fit those existing owners.","inputs":["docs/guides/repository-layout.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Rechecked Ubuntu bootstrap retry and preflight bytes, dependency-free slice output, fail-closed legacy behavior and test routing. Replay of the real #5268 slice without zsh returned 171 planned tests and no zsh prerequisite. Positive controls cover both Linux installer suites. Each dispatch schema change now selects its guard while preserving ci-fast deferral. The described bootstrap behavior still applies when the step runs.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/__tests__/ci-workflow-contract.test.ts","scripts/__tests__/fast-checks-shard-cli.test.ts","scripts/fast-checks-shard.mjs","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Compared shared CI routing with Work Board trust claims. No Work Board files or authorization boundary change. The coverage result here is limited to the shard prerequisite and explicit selector edges.","inputs":["docs/guides/work-board-security.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked workspace setup against the conditional preflight. CLI slice stays dependency-free. The workspace install, package resolution and downstream runner receipts retain their existing contracts.","inputs":["docs/guides/workspace-packages.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Checked the browser prerequisite and ordinary fast-checks state. The Chromium setup and reference workflow keep their existing scope. The replay is a Linux dependency decision, with no performance qualification.","inputs":["docs/reference/interactive-workspace-performance.md",".github/workflows/ci.yml"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Checked CI statics/browser smoke and the shard aggregate. The browser leg, exact receipt validation and timeout policies are unchanged. Shard zsh provisioning applies only where the selected installer fixtures need it.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml","scripts/fast-checks-shard.mjs"]}
+  ]
+}

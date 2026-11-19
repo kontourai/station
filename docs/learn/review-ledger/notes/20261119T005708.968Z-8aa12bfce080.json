@@ -1,0 +1,73 @@
+{
+  "revision": "2fa3ee32e9c00463983ec22b66b22bdb2238857f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced AppViewContent through the keyed route fallback, Settings through the selected People and System owners, and Home through its remote inventory read. The route frame stays mounted. Typed read refusals change presentation and automatic retry for these views while the existing authority and query owners still supply the facts.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/HomeView.test.tsx","src-ui/src/app-shell/AppViewContent.tsx","src-ui/src/components/setup/ExistingSetupImportStepper.tsx","src-ui/src/lib/queryDefaults.ts","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The testing guide now names a stalled route as a Gallery failure even without a rejected download. The Operations context still routes contributors to the same verification topics.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Home and the dock still share composer and work composition. Only the SSH inventory retry option and the Home recent-work presentation changed, downstream of the composer.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/design/developer-surface.md","note":"The App callsite now passes connection availability to its pending route fallback. The developer shortcut registrations and Developer route composition continue through their existing paths.","inputs":["docs/design/developer-surface.md","src-ui/src/App.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"The dock still derives contextual commands and work relationships from the existing sources. Its shared SSH inventory now settles a denied read once for both observers.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the main outlet and dock callsite. The mounted shell and pane placement retain the same owners while a pending route shows recovery. The dock query option only affects SSH inventory retry.","inputs":["docs/design/placement.md","src-ui/src/App.tsx","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Verified People stays gated for search and broad Settings views. Explicit entry can explain a settled refusal. The System source check is a read that keeps its transient recovery. Settings drafts and write handlers follow the same paths.","inputs":["docs/design/settings-architecture.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"HomeView fixture changes exercise partial work on SSH inventory refusal through the existing Home model. Plugin and Home role bindings keep their existing mounts and selection.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"The Settings guide adds an access explanation for the selected People and System sections. Agent efficiency settings and the guide’s existing Settings links still resolve.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The testing guide describes Gallery capture failures for a stalled route independently of script request failures. The code-quality guidance still points to its established test and review workflow.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"The Settings guide’s new access paragraph describes existing controls in People and System. Its feature preview paths and toggle guidance are outside that presentation change.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the SDK reference’s SSH inventory status addition. The Station integration guide still routes SDK callers to the same interface and examples.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"The native transport-capacity protection remains in the default read retry policy and its selected-view consumers delegate to it for transient failures.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/lib/queryDefaults.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Traced People’s selected read refusal through the existing SDK read and visibility gate. The operator passkey and step-up mutation paths remain the authority for group and token changes.","inputs":["docs/guides/operator-passkeys.md","src-ui/src/views/settings/PeopleSection.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the HomeView fixture changes. They exercise the SSH inventory contribution and keep the existing host and plugin surface registrations intact.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The dock’s SSH read now uses the selected-view retry policy. Its responsive layout, actions and navigation still use the existing shell and dock controls.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"The Gallery detects the bounded fallback by class and can reject a screenshot while its script request is still pending. The separate rejected-chunk heuristic still requires its request evidence. The browser fixture checks detection without English copy.","inputs":["docs/guides/testing.md","tests/helpers/gallery-app-error-state.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"The App change passes the existing connection state to the route outlet. Notification registration, subscription and push handling retain their existing callers.","inputs":["docs/guides/web-push-notifications.md","src-ui/src/App.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked that the catalog covers the stalled route via literal route-shell lookups and that the pseudo-locale derives the same keys. The pending fallback uses the existing ErrorState and Button.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/reference/api.md","note":"The dock’s SSH inventory now stops automatic retry after a typed denial. This patch changes no routes, headers or auth admission and the dock still consumes the same orchestration APIs.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"The dock’s new policy is confined to its SSH inventory query. Its existing config, preferences and launch settings read/write calls remain in place.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the remote inventory client, envelope error parser and successful aggregate. A 401 or 403 remains an HTTP refusal, an empty success remains valid, and individual unavailable environments stay represented in a successful aggregate.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Verified that selected People sees a settled denial explanation via the same leaf identity. Parameter canonicalization, highlight logic and unrelated page selection continue through their existing code.","inputs":["docs/reference/settings-deep-links.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The Settings edit is limited to showing the People read refusal on explicit entry. The telemetry read, controller and toggles retain the existing settings paths.","inputs":["docs/reference/usage-telemetry.md","src-ui/src/views/SettingsView.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Confirmed that partial SSH inventory failure keeps local Home work, and neither the dock work grouping nor its ownership rules changed. Recovery describes the unavailable remote read.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced Recent work from the typed SSH inventory read through Home’s state to its local rows. A refused remote read shows an explanation without inventing an empty aggregate, while available local work remains visible.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/views/home/HomeSurface.tsx","src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"The dock change only affects its shared SSH inventory query. Personal Board pin, capture, arrangement and linked work paths still use the same owners.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Confirmed the direct People URL can explain an access refusal and System distinguishes a denied source read from a retryable error. Successful setup source reads still drive the existing import flow.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/user/work-board.md","note":"The default read retry and write scheduling policy remain as documented. The new opt-in option is used for selected Settings and SSH inventory reads, outside the Work Board’s queries.","inputs":["docs/user/work-board.md","src-ui/src/lib/queryDefaults.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The SSH inventory status and success semantics are documented in the SDK reference. The change follows the existing SDK client and query boundaries.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked that the Gallery guide still names the fixture and verification lanes and records an app error for the stalled route. Script classification and heavy check rules continue through the existing routes.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"The testing guide clarifies Gallery detection for a stalled client route. The server evidence and owner routing remain in their existing sections.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Validated that the linked Gallery guide accounts for a stalled route before screenshot attribution. The UI primitives and viewport requirements retain their existing owners.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"The linked testing guide now distinguishes a route timeout from a rejected download in the Gallery. Browser fault injection and fixture routes still use the existing helpers.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

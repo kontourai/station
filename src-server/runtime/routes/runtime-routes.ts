@@ -2993,6 +2993,11 @@ export function configureRuntimeRoutes(
     '/api/spatial-board/resolved',
     bindConversationReadAuthority,
   );
+  context.app.on(
+    'POST',
+    '/api/spatial-board/cleanup',
+    bindConversationReadAuthority,
+  );
   context.app.use(
     '/api/analytics/source-enrollments/*',
     bindConversationReadAuthority,
@@ -6380,6 +6385,17 @@ export function configureRuntimeRoutes(
         // back to any default identity.
         resolve: async (request, taskId, capability) =>
           resolveRoomPerson(request, taskId, capability),
+        matchesMemberPublication: (request, taskId, expected) => {
+          const admitted = taskMemberAdmission.admit(
+            request,
+            taskId,
+            'discuss',
+          );
+          return (
+            admitted?.member.principal.id === expected.principalId &&
+            admitted.shareId === expected.shareId
+          );
+        },
         isCurrent: (request, expected, taskId, capability) => {
           if (!isRequestPrincipalCurrent(request)) return false;
           const now = resolveRoomPerson(request, taskId, capability);

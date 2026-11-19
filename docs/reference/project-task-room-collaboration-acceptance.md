@@ -2,6 +2,19 @@
 
 `tests/project-task-room-collaboration.spec.ts` is the retained real-browser acceptance fixture for the personal Station Task room. It starts an isolated production server/UI, creates a Project and Task through shipped HTTP/UI entry points, pairs a second browser as a distinct device, and targets the rendered Task workspace rather than injected pane props.
 
+The [guest Task journey](../../tests/project-guest-shared-task-live.spec.ts) uses an
+operator browser to publish a Task and invite a Commenter. A second browser
+creates its own account, accepts the invitation, requests approval and lands on
+the brief. The fixture approves the browser and promotes its scope through the
+operator API. After that, both browsers exchange messages. The guest keeps an
+unsent draft through an incoming reply, reopens the Task after reload and loses
+access after revocation. This is a controlled one-host journey. First-time
+participants still need to try the approval screens themselves.
+
+The recipient sees the Project name, Task title and brief before the reply box.
+[Phone capture](../reviews/project-sharing-20261117/task-brief-phone.png) ·
+[Desktop capture](../reviews/project-sharing-20261117/task-brief-desktop.png)
+
 The separate `renders Task collaboration member names and avatars` case in
 that file uses an explicit browser history and SSE fixture to render two member
 names and the header stack at 390 and 1440 pixels in both themes. It checks

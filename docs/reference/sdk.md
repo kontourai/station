@@ -24,10 +24,10 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
-Credential recovery ignores successful responses declared as `text/html` or
-`application/xhtml+xml`: a sign-in page or a stale address's HTML fallback
-must not clear a recorded credential rejection or restart authority checks.
-The response remains available to the caller for normal content validation.
+Automatic credential recovery requires a successful JSON response with
+Station's `X-Station-Envelope: 1` marker from the configured origin. Redirected
+responses, proxy fallbacks, and unmarked successes leave the existing credential
+state in place. The response remains available for the caller's content validation.
 
 
 `dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
@@ -512,7 +512,7 @@ This source addition requires a published version that exports `/agent`.
 
 | Group | Exports |
 | --- | --- |
-| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `STATION_AGENT_ID`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
@@ -1072,7 +1072,18 @@ omitting config still use the ambient API base; other room read/edit hooks
 retain their existing contracts. An old receiver that rejects the additive
 message field cannot silently accept it for a different Task.
 
-These personal-Station clients do not establish invited,
+While the recipient reads Chat, `watchProjectSharedTaskHistory` requests an
+event stream from the selected publication’s history endpoint. A change frame
+contains only `{}`. The client re-reads the authorized human history for text.
+Older hosts can still serve the ordinary history read and manual refresh.
+
+For a human reply from account entry, `appendProjectTaskRoomHumanMessage`
+accepts `expectedMember: { principalId, shareId }` alongside
+`expectedTaskCreatedAt`. Capture these from the signed-in account and selected
+publication. The receiver requires matching current member and publication
+authority. Retry an unconfirmed reply with the same proposal ID, time and text.
+
+These personal-Station agent clients do not establish invited,
 remote or anonymous-public participation. See [request ownership and limits](../design/task-room-agent-requests.md).
 
 
@@ -1314,9 +1325,11 @@ Convenience hook. Returns a function that creates a session, shows Chat, and sen
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
-that Agent; a reference naming another plugin is refused. A clean Agent id from
-`agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
-no Agent matches, the function warns and sends nothing.
+that Agent; a reference naming another plugin is refused. Use `agentId()`
+from `@kontourai/station-sdk/agent` for a clean Agent ID. This entry also
+exports `STATION_AGENT_ID`, the reserved ID for Station's Agent. A plugin
+using this export should account for older hosts whose shared SDK lacks it.
+When no Agent matches, the function warns and sends nothing.
 
 ```tsx
 const sendToChat = useSendToChat('my-plugin:assistant');
@@ -1963,7 +1976,10 @@ scope contract rather than assuming every SDK query is interchangeable.
 { apiBase?, requestScope?, signal? })` reads one read-only history page of a
 session on a connected SSH environment's Station. A conversation surface
 passes its owning connection's `apiBase` and `requestScope`; without them
-the host's configured Station is used. These are the rows `useRemoteSessionsQuery` lists.
+the host's configured Station is used. `useRemoteSessionsQuery` lists these rows.
+A rejected inventory read carries its HTTP status as a `StationHttpError`.
+A successful inventory can have zero remote sessions and can identify individual
+unavailable environments.
 This Station relays the remote's bounded `window-v1` read over the
 environment's tunnel and peer bearer, and labels the page with its own
 `environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the
@@ -3540,6 +3556,14 @@ unknown; it must not be replaced with an empty list or inferred from preview.
 Each present dependency row has an `id` and typed `pendingConsent` permission/tier
 entries. Trusted permissions still require separate host-owned approval.
 
+### Update discovery
+
+`usePluginUpdateCheckQuery()` exposes the update records and a
+`complete`, `partial`, or `unavailable` status. Hosts that omit the status
+produce `unknown` coverage. Non-OK responses surface as query errors with the
+HTTP status. The existing `usePluginUpdatesQuery()` still returns the update
+array. Use the status-aware hook when presenting whether the scan completed.
+
 ### Marketplace source hooks
 
 `useRegistrySourcesQuery()` reads `GET /api/registry/sources` through the current
@@ -3608,7 +3632,9 @@ Installs a plugin from a source URL. Invalidates plugins, layouts, and agents ca
 
 For verified registry acquisitions, carry the preview's optional
 `registryTrustRevision` in root and dependency consent. The normal SDK/CLI/UI
-paths forward it; it is an opaque precondition, not caller-supplied verification.
+paths forward it as an opaque precondition. A preview dependency's
+`registryTrust` is the host's display receipt for that dependency.
+Put its pin in consent and keep the display receipt out of the decision.
 `listPlugins` rows carry the persisted `registryTrust` receipt and fail closed
 when its shape does not match `isPluginRegistryTrust` from
 `@kontourai/station-contracts/registry-trust`.
@@ -3698,8 +3724,8 @@ The preview carries the exact installation, retained content digest, opaque
 `recoveryRevision`, current `grantRevision`, optional `registryTrustRevision`, permission review, skipped components,
 and dependency installation/consent rows. A signed retained package reuses its
 original journal-bound verification under the same applied policy, without
-contacting its registry/source; ready retained children carry their own trust
-revision. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
+contacting its registry/source. Ready retained children carry their own trust
+revision and display receipt. These are review preconditions, not permission grants. Show the review and obtain an explicit decision before calling
 `usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
 recovery consent requires the fresh grant revision, including each dependency
 approval. Never derive approval merely from a cached preview or retry an old
@@ -4316,7 +4342,7 @@ namespace, infer a Layout prefix or choose an execution target.
 
 ```ts
 import { getAgentDisplayName } from '@kontourai/station-sdk';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { agentId } from '@kontourai/station-sdk/agent';
 
 const id = agentId('my-agent');
 getAgentDisplayName(id, [{ slug: id, name: 'My Agent' }]); // 'My Agent'

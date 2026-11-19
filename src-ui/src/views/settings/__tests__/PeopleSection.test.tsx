@@ -865,6 +865,19 @@ describe('People section', () => {
     expect(await screen.findByText('Nothing here yet')).toBeTruthy();
   });
 
+  test('an explicitly opened People section explains a denied read once', async () => {
+    handler = () => json({ error: { code: 'insufficient_scope' } }, 403);
+    mount(<PeopleSection showReadRefusal />);
+    await screen.findByText(
+      'Ask the Station operator to review who can connect.',
+    );
+    expect(
+      calls.filter((call) => call.path === '/api/pairing/people'),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText('What each group allows')).toBeNull();
+  });
+
   test('a caller the route refuses sees no People section at all', async () => {
     handler = () => json({ error: { code: 'insufficient_scope' } }, 403);
     const { client, container } = mount(<PeopleSection />);

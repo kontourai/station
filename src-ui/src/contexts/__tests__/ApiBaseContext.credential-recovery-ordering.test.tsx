@@ -17,6 +17,10 @@
 // @vitest-environment jsdom
 
 import { useConnections } from '@kontourai/station-connect';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -201,7 +205,17 @@ describe('with Web Locks installed, the banner follows the awaited response', ()
       screen.queryByRole('status')?.textContent ?? 'NO RESTRICTION',
     ).toMatch(BANNER);
 
-    fetchByPath({ '/api/': async () => new Response('{"success":true}') });
+    fetchByPath({
+      '/api/settings': async () =>
+        Response.json(
+          { success: true },
+          {
+            headers: {
+              [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+            },
+          },
+        ),
+    });
     await act(async () => {
       await authenticatedFetch(`${origin}/api/settings`);
     });

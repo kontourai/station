@@ -91,7 +91,7 @@ function sendToChatTarget(
  * @param agent - The Agent to send messages to (required). Either
  *                plugin-qualified, `'<plugin>:<agent>'`, which sends only when
  *                the named plugin contributed that Agent, or a clean Agent id made with
- *                `agentId('station')` from `@kontourai/station-contracts/agent-identity`.
+ *                `agentId()` from `@kontourai/station-sdk/agent`.
  *                The hook derives the Agent's identity from the qualified form
  *                itself; a Layout or Pane never supplies a prefix.
  * @returns Function to send a message and open chat. When no Agent matches, it
