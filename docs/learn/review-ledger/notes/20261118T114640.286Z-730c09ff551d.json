@@ -1,0 +1,11 @@
+{
+  "revision": "8b7cceab33e35629ad49f8388ff370489ed95196",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked canonical token conversion in the routed Project Styles. The layout modal keeps its previous dimensions and responsive behavior. Knowledge rows and upload actions use the shared palette and readable text tokens.","inputs":["docs/guides/responsive-ui.md","src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"docs/user/settings.md","note":"The Project Settings routes and functionality are unchanged. The migrated Knowledge and Layouts styles now use canonical theme, font and status tokens.","inputs":["docs/user/settings.md","src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"docs/guides/connections.md","note":"Confirmed the route stylesheet is the authority for the Models picker and overview. Its colors now use the canonical theme and status tokens, with existing selectors, sizing and order retained.","inputs":["docs/guides/connections.md","src-ui/src/views/ProviderSettingsView.css"]}
+  ]
+}

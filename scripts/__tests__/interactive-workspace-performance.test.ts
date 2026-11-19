@@ -27,6 +27,7 @@ import {
   referenceAdapterDiagnostics,
   referenceEvaluatorExitFailure,
   runInteractiveWorkspacePerformance,
+  sweepReferenceFixtures,
 } from '../interactive-workspace-performance.mjs';
 import {
   closedControlReason,
@@ -1294,6 +1295,106 @@ describe('interactive workspace performance contract', () => {
         performanceReportReceipt({ reasonCodes: [reason] }).reasonCodes,
       ).toEqual([]);
     }
+  });
+
+  it('publishes every fixture through the hosted receipt consumer after budget and setup failures', async () => {
+    const selected = {
+      ...config,
+      fixtures: config.fixtures.filter((fixture: { id: string }) =>
+        [
+          'local-input-apply',
+          'remote-apply',
+          'reconnect-10k-operations',
+          'long-session-bounded-growth',
+        ].includes(fixture.id),
+      ),
+    };
+    const { observations } = validateProductionBridgeEvidence(
+      config,
+      bridgeEvidence(),
+    );
+    const output = tempOutput();
+    const attempted: string[] = [];
+    const written: string[] = [];
+    const { report, failures } = await sweepReferenceFixtures(selected, {
+      expectedRevision: 'a'.repeat(40),
+      platformName: 'win32',
+      unavailableReason: (id: string) =>
+        id === 'long-session-bounded-growth'
+          ? 'ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN'
+          : undefined,
+      retainReport: (retained: unknown) => {
+        const serialized = JSON.stringify(retained);
+        writeFileSync(output, serialized);
+        written.push(serialized);
+      },
+      runFixture: async (fixture: { id: string }) => {
+        attempted.push(fixture.id);
+        if (fixture.id === 'remote-apply') throw new Error('setup refused');
+        const observation = observations.find(
+          (row: Observation) => row.fixtureId === fixture.id,
+        );
+        const failed = fixture.id === 'local-input-apply';
+        const run = referenceRun([
+          failed
+            ? { ...observation, counts: { failures: 1, degraded: 0 } }
+            : observation,
+        ]);
+        const result = evaluateInteractiveWorkspacePerformance(
+          { ...selected, fixtures: [fixture] },
+          run,
+          {
+            mode: 'reference',
+            now: () => new Date(),
+            expectedRevision: 'a'.repeat(40),
+          },
+        );
+        return { exitCode: failed ? 1 : 0, report: { ...result, run } };
+      },
+    });
+    expect(attempted).toEqual([
+      'local-input-apply',
+      'remote-apply',
+      'reconnect-10k-operations',
+    ]);
+    expect(JSON.parse(written[0])).toMatchObject({
+      fixtures: [
+        { fixtureId: 'local-input-apply', status: 'NOT_VERIFIED' },
+        { fixtureId: 'remote-apply', status: 'NOT_VERIFIED' },
+        { fixtureId: 'reconnect-10k-operations', status: 'NOT_VERIFIED' },
+        { fixtureId: 'long-session-bounded-growth', status: 'NOT_VERIFIED' },
+      ],
+    });
+    expect(report.summary).toMatchObject({ PASS: 1, FAIL: 1, NOT_VERIFIED: 2 });
+    expect(failures).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('exited 1 for local-input-apply'),
+        'remote-apply: fixture execution failed before a report was available',
+      ]),
+    );
+    expect(failures.join(' ')).not.toContain('reconnect-10k-operations');
+    const [line] = performanceReceiptLogLines(resolve(output, '..'));
+    const receipt = JSON.parse(
+      line.slice(line.indexOf('receipt=') + 'receipt='.length),
+    );
+    expect(receipt.fixtures).toMatchObject([
+      { fixtureId: 'local-input-apply', status: 'FAIL' },
+      {
+        fixtureId: 'remote-apply',
+        status: 'NOT_VERIFIED',
+        reasonCodes: expect.arrayContaining([
+          'REFERENCE_FIXTURE_EXECUTION_FAILED',
+        ]),
+      },
+      { fixtureId: 'reconnect-10k-operations', status: 'PASS' },
+      {
+        fixtureId: 'long-session-bounded-growth',
+        status: 'NOT_VERIFIED',
+        reasonCodes: expect.arrayContaining([
+          'ONE_HOUR_REFERENCE_OBSERVATION_NOT_RUN',
+        ]),
+      },
+    ]);
   });
 
   it('keeps unavailable real seams per-fixture NOT_VERIFIED and propagates adapter counts', () => {

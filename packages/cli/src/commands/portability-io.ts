@@ -25,7 +25,11 @@ import {
   applyIntegrationTrustOverlay,
   migrateIntegrationTrustOverlay,
 } from '@kontourai/station-shared/integration-trust-overlay';
-import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
+import {
+  mutateJsonFile,
+  publishJsonFileWithOwnedLock,
+  writeJsonFile,
+} from '@kontourai/station-shared/json-file-storage';
 import {
   acquireFileMutationLock,
   acquireFileMutationLockAsync,
@@ -36,6 +40,7 @@ import {
   toolServerIntegrationMutationLockPath,
 } from '@kontourai/station-shared/tool-server-credential-store';
 import { PROJECT_HOME } from './helpers.js';
+import { completedImportLedgerPath } from './import-progress.js';
 import { withoutManagedNoOpsOffline } from './managed-settings-guard.js';
 
 export interface PortabilitySnapshot {
@@ -64,19 +69,16 @@ export function readAppConfig(projectHome = PROJECT_HOME): AppConfig {
 export function writeAppConfigGuidance(
   guidance: Partial<AppConfig>,
   projectHome = PROJECT_HOME,
-): AppConfig {
-  const next = {
-    ...readAppConfig(projectHome),
-    // #4517: an import may not change a setting the managed policy locks.
-    ...withoutManagedNoOpsOffline(guidance as Record<string, unknown>),
-  };
-  mkdirSync(join(projectHome, 'config'), { recursive: true });
-  writeFileSync(
+): Promise<AppConfig> {
+  return mutateJsonFile<AppConfig>(
     join(projectHome, 'config', 'app.json'),
-    JSON.stringify(next, null, 2),
-    'utf-8',
+    {} as AppConfig,
+    (current) => ({
+      ...current,
+      // #4517: an import may not change a setting the managed policy locks.
+      ...withoutManagedNoOpsOffline(guidance as Record<string, unknown>),
+    }),
   );
-  return next;
 }
 
 export function listAgents(projectHome = PROJECT_HOME): GuidanceAgentExport[] {
@@ -104,13 +106,10 @@ export function writeAgent(
   slug: string,
   spec: AgentSpec,
   projectHome = PROJECT_HOME,
-): void {
-  const agentDir = join(AGENTS_DIR_FOR(projectHome), slug);
-  mkdirSync(agentDir, { recursive: true });
-  writeFileSync(
-    join(agentDir, 'agent.json'),
-    JSON.stringify(spec, null, 2),
-    'utf-8',
+): Promise<void> {
+  return writeJsonFile(
+    join(AGENTS_DIR_FOR(projectHome), slug, 'agent.json'),
+    spec,
   );
 }
 
@@ -347,26 +346,26 @@ function sanitizeArtifactHint(value: unknown): string {
   return '<non-scalar entry>';
 }
 
-export function writeImportLedger(
+export async function writeImportLedger(
   entry: PortabilityImportLedgerEntry,
   notes: string | null,
   projectHome = PROJECT_HOME,
-): { ledgerPath: string; notesPath?: string } {
+): Promise<{ ledgerPath: string; notesPath?: string }> {
   const importsDir = join(projectHome, 'imports');
-  mkdirSync(importsDir, { recursive: true });
+  mkdirSync(importsDir, { recursive: true, mode: 0o700 });
 
   let notesPath: string | undefined;
   if (notes) {
     notesPath = join(importsDir, `${entry.id}.notes.md`);
-    writeFileSync(notesPath, notes, 'utf-8');
+    writeFileSync(notesPath, notes, { encoding: 'utf-8', mode: 0o600 });
   }
 
   const fullEntry = {
     ...entry,
     notesPath,
   };
-  const ledgerPath = join(importsDir, `${entry.id}.json`);
-  writeFileSync(ledgerPath, JSON.stringify(fullEntry, null, 2), 'utf-8');
+  const ledgerPath = completedImportLedgerPath(projectHome, entry.id);
+  await publishJsonFileWithOwnedLock(ledgerPath, fullEntry);
   return { ledgerPath, notesPath };
 }
 

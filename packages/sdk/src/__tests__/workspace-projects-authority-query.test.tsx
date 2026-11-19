@@ -5,8 +5,8 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../client/http';
+import { useCreateProjectMutation } from '../index';
 import {
-  useCreateProjectMutation,
   useProjectQuery,
   useProjectsQuery,
   useReorderProjectsMutation,

@@ -82,19 +82,44 @@ vi.mock(
       await importOriginal<
         typeof import('@kontourai/station-shared/windows-path-trust')
       >();
-    const runTrust = (operation: string, run: () => void) => {
+    type TrustRunner = typeof actual.runWindowsTrustCommand;
+    const runTrust = (
+      operation: string,
+      run: TrustRunner,
+      apply: (runner: TrustRunner) => void,
+    ) => {
       const call = ++windowsTrust.hardened;
       const started = performance.now();
-      const report = (event: string) => {
+      const report = (
+        event: string,
+        details?: {
+          preparationMs: number;
+          processMs: number;
+          status: number | null;
+          timedOut: boolean;
+        },
+      ) => {
         if (process.platform === 'win32')
           console.info(
-            `[local-grant-trust] ${JSON.stringify({ event, operation, call, phase: windowsTrust.phase, elapsedMs: Math.round(performance.now() - started) })}`,
+            `[local-grant-trust] ${JSON.stringify({ event, operation, call, phase: windowsTrust.phase, elapsedMs: Math.round(performance.now() - started), ...details })}`,
           );
       };
       report('started');
       let outcome = 'threw';
       try {
-        run();
+        apply((...args) => {
+          const processStarted = performance.now();
+          const result = run(...args);
+          const errorCode = (result.error as NodeJS.ErrnoException | undefined)
+            ?.code;
+          report('process-returned', {
+            preparationMs: Math.round(processStarted - started),
+            processMs: Math.round(performance.now() - processStarted),
+            status: result.status,
+            timedOut: errorCode === 'ETIMEDOUT',
+          });
+          return result;
+        });
         outcome = 'returned';
       } finally {
         report(outcome);
@@ -106,15 +131,19 @@ vi.mock(
         ...args: Parameters<typeof actual.ensureWindowsDirectoriesTrusted>
       ) => {
         if (!windowsTrust.real) return;
-        runTrust('directory', () =>
-          actual.ensureWindowsDirectoriesTrusted(...args),
+        const [run, paths] = args;
+        runTrust('directory', run, (runner) =>
+          actual.ensureWindowsDirectoriesTrusted(runner, paths),
         );
       },
       hardenWindowsPathsTrusted: (
         ...args: Parameters<typeof actual.hardenWindowsPathsTrusted>
       ) => {
         if (!windowsTrust.real) return;
-        runTrust('empty-file', () => actual.hardenWindowsPathsTrusted(...args));
+        const [run, targets] = args;
+        runTrust('empty-file', run, (runner) =>
+          actual.hardenWindowsPathsTrusted(runner, targets),
+        );
       },
     };
   },

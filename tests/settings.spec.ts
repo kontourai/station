@@ -13,6 +13,10 @@ async function goToSettings(page: import('@playwright/test').Page) {
   // left in the header or the sidebar footer — so the route, not the control,
   // is what this asks for.
   await openHeaderSettings(page);
+  await expect(page).toHaveURL(/\/settings(?:\?|$)/);
+  await expect(
+    page.getByRole('heading', { name: 'Settings', exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole('searchbox', { name: 'Filter settings' }),
   ).toBeVisible();
@@ -123,26 +127,67 @@ test.describe('Settings', () => {
     await goToSettings(page);
   });
 
-  test('Customize offers management links at a thumb-sized target', async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole('button', { name: 'Toggle menu' }).click();
-    await page.getByRole('button', { name: 'Customize', exact: true }).click();
-    const chooser = page.getByRole('dialog', { name: 'Customize' });
-    for (const label of ['Agents', 'Skills', 'Engines & Models', 'Plugins']) {
-      const entry = chooser.getByRole('link', { name: label, exact: true });
-      await expect(entry).toBeVisible();
-      await expect
-        .poll(async () => (await entry.boundingBox())?.height ?? 0)
-        .toBeGreaterThanOrEqual(44);
-    }
-    await expect(
-      chooser.getByRole('link', { name: 'Registry', exact: true }),
-    ).toHaveCount(0);
-    await expect(
-      chooser.getByRole('link', { name: 'Developer', exact: true }),
-    ).toHaveCount(0);
+  test.describe('mobile Customize', () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test('Customize offers management links at a thumb-sized target', async ({
+      page,
+    }) => {
+      // Chromium can report 43.99998 for a 44px CSS border box.
+      const cssSubpixelEpsilon = 0.001;
+      const touchFloor = 44;
+      await page.getByRole('button', { name: 'Toggle menu' }).click();
+      await page
+        .getByRole('button', { name: 'Customize', exact: true })
+        .click();
+      const chooser = page.getByRole('dialog', { name: 'Customize' });
+      for (const label of [
+        'Agents',
+        'Skills',
+        'Connections',
+        'Plugins',
+        'Appearance',
+        'Settings',
+      ]) {
+        const entry = chooser.getByRole('link', { name: label, exact: true });
+        await expect(entry).toBeVisible();
+        await entry.scrollIntoViewIfNeeded();
+        expect(
+          await entry.evaluate((element) =>
+            Number.parseFloat(getComputedStyle(element).minHeight),
+          ),
+          `${label} CSS touch floor`,
+        ).toBeGreaterThanOrEqual(touchFloor);
+        await expect
+          .poll(
+            async () => {
+              const box = await entry.boundingBox();
+              return box ? Math.min(box.width, box.height) : 0;
+            },
+            { message: `${label} rendered touch target` },
+          )
+          .toBeGreaterThanOrEqual(touchFloor - cssSubpixelEpsilon);
+        await expect
+          .poll(
+            () =>
+              entry.evaluate((element) => {
+                const rect = element.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                return [rect.top + 1, rect.bottom - 1].every((y) =>
+                  element.contains(document.elementFromPoint(x, y)),
+                );
+              }),
+            { message: `${label} hit area` },
+          )
+          .toBe(true);
+      }
+      await expect(
+        chooser.getByRole('link', { name: 'Registry', exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        chooser.getByRole('link', { name: 'Developer', exact: true }),
+      ).toHaveCount(0);
+    });
   });
 
   test('desktop Settings has one rail of topics that stay within Settings', async ({
@@ -159,7 +204,7 @@ test.describe('Settings', () => {
         (element) => element.scrollWidth <= element.clientWidth,
       ),
     ).toBe(true);
-    await expect(nav.getByRole('link')).toHaveCount(9);
+    await expect(nav.getByRole('link')).toHaveCount(10);
     for (const link of await nav.getByRole('link').all()) {
       await expect(link).toHaveAttribute('href', /\/settings\?view=/);
       const box = (await link.boundingBox())!;

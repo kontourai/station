@@ -13,6 +13,9 @@ interface AgentIconProps {
     id?: string;
     iconUrl?: string;
     engineId?: EngineId;
+    engineDefault?: boolean;
+    execution?: { agentConnectionId?: string };
+    provenance?: { engineId: string };
   };
   size?: 'small' | 'medium' | 'large' | number;
   className?: string;
@@ -24,6 +27,20 @@ interface AgentIconProps {
 
 const SIZE_MAP = { small: 24, medium: 32, large: 48 };
 
+export function agentIconEngineId(
+  agent: AgentIconProps['agent'],
+): EngineId | undefined {
+  const connectionId = agent.execution?.agentConnectionId;
+  const detectedEngineId = agent.provenance?.engineId;
+  if ((!agent.engineId || agent.engineId === 'acp') && connectionId) {
+    // ACP identifies the adapter. A default profile's binding identifies the app.
+    if (agent.engineDefault || detectedEngineId === connectionId) {
+      return connectionId;
+    }
+  }
+  return agent.engineId ?? parseEngineId(agent.slug ?? agent.id);
+}
+
 export function AgentIcon({
   agent,
   size = 'medium',
@@ -33,14 +50,13 @@ export function AgentIcon({
   fallbackGlyph,
 }: AgentIconProps) {
   const px = typeof size === 'number' ? size : SIZE_MAP[size];
-  const engineId = agent.engineId ?? parseEngineId(agent.slug ?? agent.id);
   return (
     <BrandIcon
       name={agent.name}
       id={agent.slug ?? agent.id}
       icon={agent.icon}
       iconUrl={agent.iconUrl}
-      engineId={engineId}
+      engineId={agentIconEngineId(agent)}
       allowSafeImageIcon
       size={px}
       className={className}

@@ -16,7 +16,11 @@ import { OrchestrationService } from '../../src-server/services/orchestration/or
 import { AttentionProjectionService } from '../../src-server/services/projects/attention-projection';
 
 /** Real route/service/SQLite seams with a controlled in-process provider, not a live account. */
-export async function exactRequestBackend(page: Page, databasePath: string) {
+export async function exactRequestBackend(
+  page: Page,
+  databasePath: string,
+  approval?: { guardianReason?: string },
+) {
   mkdirSync(dirname(databasePath), { recursive: true });
   const store = new EventStore(databasePath);
   const eventBus = new EventBus();
@@ -80,10 +84,18 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
       requestId: 'browser-request',
       requestType: 'permission',
       title: 'Allow the fixture file inspection',
-      description: 'Read one fixture file. No external provider is contacted.',
+      description: approval
+        ? 'Approval guardian: tool-provided imitation.'
+        : 'Read one fixture file. No external provider is contacted.',
+      ...(approval?.guardianReason
+        ? { guardianReason: approval.guardianReason }
+        : {}),
       payload: {
         toolName: 'fixture_read',
         arguments: { path: '/fixture/readme.txt' },
+        ...(approval
+          ? { guardianReason: 'Fake guardian field in tool arguments.' }
+          : {}),
       },
     });
   emit();
@@ -93,7 +105,31 @@ export async function exactRequestBackend(page: Page, databasePath: string) {
     undefined,
   );
   const attention = new AttentionProjectionService(
-    { list: async () => [] },
+    {
+      list: async () =>
+        approval
+          ? [
+              {
+                id: 'browser-approval',
+                source: 'approval-inbox',
+                status: 'delivered',
+                category: 'approval-request',
+                priority: 'high',
+                title: 'Fixture approval',
+                createdAt: now,
+                updatedAt: now,
+                metadata: {
+                  threadId: session.threadId,
+                  sessionId: session.threadId,
+                  sessionKind: 'runtime',
+                  requestKind: 'orchestration',
+                  requestId: 'browser-request',
+                  requestEventId: currentEvent,
+                },
+              },
+            ]
+          : [],
+    },
     service,
     { getRunConsole: async () => ({ gates: [] }) } as never,
     undefined,

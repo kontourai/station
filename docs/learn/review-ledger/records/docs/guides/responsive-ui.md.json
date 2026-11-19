@@ -164,6 +164,10 @@
 
     "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1",
 
+    "src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx",
+
+    "tests/chat-dock-inbox-open.spec.ts",
+
     "src-ui/src/components/chat-dock/CommandLauncher.tsx",
 
     "src-ui/src/components/chat-dock/ActiveWorkContextFrame.tsx",

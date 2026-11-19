@@ -1,0 +1,7 @@
+{
+  "revision": "b2d38f18fa50a34da31d425767b79e1e1f255260",
+
+  "notes": [
+    {"path":"docs/plans/README.md","note":"Regenerated the plan index from tracked files and inspected its one-line addition. The new link opens the Station UI style audit.","inputs":["docs/plans/README.md"]}
+  ]
+}

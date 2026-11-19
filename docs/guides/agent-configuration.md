@@ -567,10 +567,9 @@ grant approvals. Otherwise the denial stands, as before. The counts are kept
 per conversation, so a successor Session continues them. They live in server
 memory, so a restart starts them again.
 
-An escalated request does not show the guardian's reason yet (#4849). It
-reads like any other approval for the call, with nothing saying the guardian
-refused it. The reason is only in the server log ("Approval guardian kept
-refusing; asking the person instead").
+An escalated request quotes the guardian’s reason under **Approval guardian**
+in the Inbox and request inspector. The quote is separate from the tool’s
+description. It carries the rule the guardian named in its explanation.
 
 Structured generation now reaches the configured model on both VoltAgent and
 Strands. Previously, their schema adapter errors made guardian reviews fall back
@@ -583,10 +582,12 @@ Tool names, descriptions and arguments remain untrusted model input. Fencing
 keeps them separate from the guardian's instructions, but a prompt-injected tool
 argument can still persuade the model to return `allow`.
 
-Attended chat ignores `unattendedAutoApprove`; when the guardian defers, it asks
-the person as before. External engines (Claude Code, ACP) do not deliver Station's
-unattended checks ([delivery boundary](../conformance/tool-policy-delivery.md)),
-so the opt-in has no effect on them.
+Attended chat ignores `unattendedAutoApprove`. An enforce-mode defer in
+attended chat leaves the ordinary approval path in charge. When the configured
+external policy hook observes an unattended turn, an enforce-mode defer denies
+the call before it reaches the engine’s approval flow. The managed unattended
+opt-in still applies only to Station’s own engine. See the
+[tool policy delivery boundary](../conformance/tool-policy-delivery.md).
 
 ### Tool purpose display support
 

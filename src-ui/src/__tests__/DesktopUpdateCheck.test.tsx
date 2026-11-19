@@ -34,11 +34,10 @@ vi.mock('../platform/useBundledServerStatus', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  useOrchestrationSessionsQuery: () => ({
-    data: [],
+  useServerUpdateRunningTurnsQuery: () => ({
+    data: { turns: [], hiddenCount: 0 },
     isError: false,
     isFetching: false,
-    refetch: vi.fn(),
   }),
 }));
 
@@ -72,7 +71,7 @@ describe('Desktop app updates settings card', () => {
   test('shows the persisted policy and saves a change natively', async () => {
     const fake = await mount('available');
     const select = screen.getByLabelText(
-      'Automatic download',
+      'Automatic desktop app download',
     ) as HTMLSelectElement;
     expect(select.value).toBe('after-24h');
     expect(
@@ -107,7 +106,7 @@ describe('Desktop app updates settings card', () => {
       desktop_update_set_policy: () =>
         Promise.reject(new Error('write desktop update settings: denied')),
     });
-    fireEvent.change(screen.getByLabelText('Automatic download'), {
+    fireEvent.change(screen.getByLabelText('Automatic desktop app download'), {
       target: { value: 'immediately' },
     });
     expect((await screen.findByRole('alert')).textContent).toBe(
@@ -170,7 +169,9 @@ describe('Desktop app updates settings card', () => {
     await mount('disabled');
     expect(screen.getByRole('status').textContent).toBe('No update channel');
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.queryByLabelText('Automatic download')).toBeNull();
+    expect(
+      screen.queryByLabelText('Automatic desktop app download'),
+    ).toBeNull();
   });
 
   test('download and install failures are disclosed with their text', async () => {

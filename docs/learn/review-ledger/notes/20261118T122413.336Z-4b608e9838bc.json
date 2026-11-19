@@ -1,0 +1,7 @@
+{
+  "revision": "039b26c8ccd8459b99776db97a59b9a45bc48933",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"The explicit source scan includes the permissions subtree only when it exists. Wording now states conditional coverage, and the live-document path gate and all 14 owner tests pass.","inputs":["docs/design/native-capabilities.md"]}
+  ]
+}
