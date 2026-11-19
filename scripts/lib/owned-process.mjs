@@ -292,7 +292,7 @@ export function executeOwnedProcess(
      * that outlive it are the point of a tree kill), and resolves undefined.
      *
      * Strict mode waits past the current batch of child exit callbacks
-     * before checking the leader and signalling synchronously.
+     * before checking the leader. The POSIX signal follows synchronously.
      * @param {{ onlyWhileLeaderUnreaped?: boolean }} [options]
      */
     forceTerminate: (options) =>

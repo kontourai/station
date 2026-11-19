@@ -167,11 +167,11 @@ signalled only when it is affirmatively shown to qualify.
 - **C. A child the run spawned, through its own handle.** The control
   engine processes the Agent SDK starts (see *Control request* below) are
   spawned by the run, which keeps each one's `ChildProcess`. They are
-  signalled only through that handle's `kill`, and only while Node has not
-  reaped them: right before each signal, `exitCode` and `signalCode` must
-  both still be null. Node records them in the callback that reaps the
-  child, and an unreaped pid cannot be reused, so the handle still names the
-  process the run spawned. Every path that ends them goes through that
+  signalled only through that handle's `kill`. The synchronous guard
+  refuses once Node records `exitCode` or `signalCode` in the child's exit
+  callback. This check assumes it is outside a sibling's exit callback
+  from the same reaping batch, where the target's status may still be
+  pending. Every path that ends them goes through that
   `kill`: the run's cleanup (SIGTERM, then SIGKILL after 5 s), the SDK's
   own close and escalation, its kill-all when the run's process exits, and
   the abort signal Node wires to `kill`. No environment is read for this:
