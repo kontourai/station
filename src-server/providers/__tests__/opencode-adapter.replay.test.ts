@@ -1586,9 +1586,18 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     unlinkSync(configDir);
     writeFileSync(join(cwd, 'opencode.json'), '{"formatter":false}');
     await h.adapter.preflightStart(input);
+    expect(h.leaser.acquired).toHaveLength(1);
+
+    writeFileSync(configDir, 'ordinary text');
+    await expect(h.adapter.startSession(input)).rejects.toMatchObject(refusal);
+    expect(h.leaser.acquired).toHaveLength(1);
+    expect(h.leaser.released).toBe(1);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+
+    unlinkSync(configDir);
     const session = await h.adapter.startSession(input);
     expect(session.resumeCursor).toMatchObject({ transport: 'native' });
-    expect(h.leaser.acquired).toHaveLength(1);
+    expect(h.leaser.acquired).toHaveLength(2);
   });
 
   test('a governed start sends Station rules and pins a governed agent', async () => {

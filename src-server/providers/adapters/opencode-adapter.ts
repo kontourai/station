@@ -778,6 +778,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       !isOpenCodeResumeCursor(input.resumeCursor)
     )
       throw new Error('This OpenCode resume cursor is not one Station wrote.');
+    const preflight = this.preflightLeases.get(input.threadId);
     const config = await this.connection(input);
     const plan = await this.nativePlan(input, config);
     const unsupported = this.nativeUnsupported(input);
@@ -794,8 +795,18 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         input.confinement,
       ),
     );
-    if (plan && floor === 'confined')
-      await this.assertInspectableProjectConfig(plan.cwd);
+    if (plan && floor === 'confined') {
+      try {
+        await this.assertInspectableProjectConfig(plan.cwd);
+      } catch (error) {
+        if (
+          preflight?.planKey === nativePlanKey(plan) &&
+          this.preflightLeases.get(input.threadId) === preflight
+        )
+          this.takePreflightLease(input.threadId)?.lease.release();
+        throw error;
+      }
+    }
 
     // Station's tool servers decide which server the session may share.
     let mcp: OpenCodeNativeMcp | undefined;
