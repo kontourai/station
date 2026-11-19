@@ -1,0 +1,31 @@
+{
+  "revision": "b9ee884988a1093a9a9b42993ca311aa1ba68865",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Updated Nightly resource guidance to describe sequential macOS and iOS staging, the longer critical path, concurrent Android and Windows staging, and publication still requiring successful native staging.","inputs":["docs/guides/releasing.md","scripts/__tests__/native-release-promotion.test.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed macOS and iOS staging order against the exact-source plan, protected signing jobs, and artifact assembly. iOS now waits for macOS to settle and retains its plan admission. Android, Windows, byte and provider authority, and required stage success are preserved.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"The source-identity guard still requires the native cohort plan. The workflow entry contract independently checks the added macOS ordering dependency and the successful-plan condition.","inputs":["scripts/__tests__/native-release-promotion.test.ts"]}
+  ]
+}
