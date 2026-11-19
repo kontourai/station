@@ -30,6 +30,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'answerShares',
   'analytics',
   'attention',
+  'automations',
   'board',
   'catalog',
   'chatRuntime',
@@ -100,6 +101,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
     'Published only from the documented learning-review-query subpath; keep scoped owner lifecycle reads and mutations outside the eager root entry.',
   privateInsights:
     'Published only from the documented private-insights-query subpath for the scoped personal Insights surface; keep private query validators and saved-view controls outside the eager root entry.',
+  projectRoomCoordinator:
+    'Published through the documented project-room-coordinator subpath. The main entry does not load Room approval and sweep queries.',
   projectRoomAgents:
     'Agent request hooks are published through projectRooms on the documented project-rooms subpath, outside the eager root entry.',
   taskRelationships:

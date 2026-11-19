@@ -101,6 +101,7 @@ import {
   type ProviderTaskStopResult,
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
+  SendTurnRefusedError,
 } from '../adapter-shape.js';
 import {
   CredentialProfileEnvironmentError,
@@ -170,6 +171,7 @@ import {
 import { CODEX_APPROVAL_ACKNOWLEDGEMENT } from './codex-approval-delivery.js';
 import {
   codexSandboxModeOfPolicy,
+  mapCodexApprovalReviewer,
   mapCodexKnobsToApprovalMode,
   planCodexTurnSandbox,
   readCodexSandboxPolicy,
@@ -2615,6 +2617,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         );
       }
 
+      const reportedReviewer = mapCodexApprovalReviewer(
+        extractStringField(result, 'approvalsReviewer'),
+      );
+      if (input.confinement === 'workspace' && reportedReviewer === 'automatic')
+        throw new ConfinementRefusedError(
+          'confinement_not_observed',
+          'Codex reported automatic approval review, but this workspace session requires a person to review escalations. Check the Codex approval reviewer requirements before restarting the session.',
+        );
+
       const codexThread = extractThread(result);
       const offeredNames = new Set(offeredTools.map((tool) => tool.name));
       if (!boundTools && catalogWithdrawn)
@@ -2792,6 +2803,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           this.provider,
           describeCodexSandboxGap(sandboxEvidence),
         );
+      record.reportedApprovalReviewer = reportedReviewer;
       this.transport.setCodexThreadId(record, codexThread.id);
       this.options.nativeSessionOwnership?.claim(
         nativeSessionIdentityKey(
@@ -2871,6 +2883,7 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
             : undefined,
           codexThreadId: codexThread.id,
+          reportedApprovalReviewer: reportedReviewer,
           ...(confinementRecord
             ? { [STATION_CONFINEMENT_RECORD_METADATA_KEY]: confinementRecord }
             : {}),
@@ -3431,6 +3444,14 @@ export class CodexAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
+    if (
+      record.activeTurnId &&
+      record.terminalPublishedForTurnId !== record.activeTurnId
+    )
+      throw new SendTurnRefusedError(
+        'Codex already has an active turn.',
+        'busy',
+      );
     const turnStartedAt = Date.now();
     const invocationId = input.invocationId;
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
@@ -3895,9 +3916,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     // #2486 review: the SESSION-level bookkeeping is a different claim — "is
     // THIS still the turn Station is tracking" — and must only change for
     // the turn actually interrupted. The RPC round-trip above can outlive a
-    // NEW turn starting (`sendTurn` always overwrites `activeTurnId`
-    // unconditionally); clearing here regardless would clobber that newer
-    // turn's own tracking for an interrupt that was never about it.
+    // successor starting after the old turn's terminal. Clearing here
+    // regardless would clobber the successor's tracking.
     if (record.activeTurnId === targetTurnId) {
       record.activeTurnId = undefined;
     }

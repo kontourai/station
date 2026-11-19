@@ -1,0 +1,17 @@
+{
+  "revision": "af1cea05a8e1cc36f8eec6b6bf3b01626d75b1a5",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"Reviewed the fifteen-minute feedback budget, selector reserve, step launch marker and owner-final infrastructure exit in the runner. The change only attributes expiry between steps and preserves lane composition, deadlines, evidence scope and promotion claims.","inputs":["scripts/run-ci-fast.mjs"]},
+
+    {"path":".veritas/README.md","note":"Reviewed the fifteen-minute feedback budget, selector reserve, step launch marker and owner-final infrastructure exit in the runner. The change only attributes expiry between steps and preserves lane composition, deadlines, evidence scope and promotion claims.","inputs":["scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the fifteen-minute feedback budget, selector reserve, step launch marker and owner-final infrastructure exit in the runner. The change only attributes expiry between steps and preserves lane composition, deadlines, evidence scope and promotion claims.","inputs":["scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the fifteen-minute feedback budget, selector reserve, step launch marker and owner-final infrastructure exit in the runner. The change only attributes expiry between steps and preserves lane composition, deadlines, evidence scope and promotion claims.","inputs":["scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the fifteen-minute feedback budget, selector reserve, step launch marker and owner-final infrastructure exit in the runner. The change only attributes expiry between steps and preserves lane composition, deadlines, evidence scope and promotion claims.","inputs":["scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the fifteen-minute feedback budget, selector reserve, step launch marker and owner-final infrastructure exit in the runner. The change only attributes expiry between steps and preserves lane composition, deadlines, evidence scope and promotion claims.","inputs":["scripts/run-ci-fast.mjs"]}
+  ]
+}

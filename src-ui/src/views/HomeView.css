@@ -7,7 +7,7 @@
     var(--k-space-3),
     calc(clamp(24px, 5vw, 64px) - var(--dock-bottom-clearance, 0px))
   );
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .home-view__intro {

@@ -22,6 +22,115 @@ const TIMERS = new Set([
   'command:audit',
   'npm',
 ]);
+const SIGNALS = new Set(['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGABRT']);
+
+function observedSignal(signal) {
+  return signal === null ? null : SIGNALS.has(signal) ? signal : 'other';
+}
+
+function auditReceiptWriter(outputRoot, id) {
+  let available = true;
+  const prefix = path.join(outputRoot, id);
+  function warn() {
+    if (available)
+      console.warn(
+        'Dependency audit diagnostics unavailable; audit verdict is unchanged',
+      );
+    available = false;
+  }
+  function persist(suffix, value) {
+    if (!available) return;
+    try {
+      const json = JSON.stringify(value);
+      if (Buffer.byteLength(json) > MAX_RECORD_BYTES)
+        throw new Error('diagnostic bound');
+      const target = `${prefix}.${suffix}.json`;
+      const temporary = `${target}.tmp`;
+      writeFileSync(temporary, json, { flag: 'wx', mode: 0o600 });
+      renameSync(temporary, target);
+    } catch {
+      warn();
+    }
+  }
+  return { persist, warn };
+}
+
+const PNPM_PHASES = new Set([
+  'toolchain',
+  'launch',
+  'process',
+  'cleanup',
+  'output',
+  'decode',
+]);
+
+/** Wrapper observations only; no package-manager stdout or stderr in receipts. */
+export function createPnpmAuditAttemptDiagnostics({
+  attempt,
+  outputRoot,
+  timeoutMs,
+}) {
+  const id = randomUUID();
+  const started = performance.now();
+  const facts = {
+    schemaVersion: 1,
+    id,
+    packageManager: 'pnpm',
+    scope: 'workspace',
+    attempt,
+    startedAt: new Date().toISOString(),
+    timeoutMs,
+    parentNodeVersion: process.version,
+  };
+  const { persist, warn } = auditReceiptWriter(outputRoot, id);
+  let phase = 'toolchain';
+  let phaseStarted = started;
+  const observedPhaseMs = {};
+  try {
+    if (!Number.isSafeInteger(attempt) || attempt < 1)
+      throw new Error('diagnostic identity');
+    mkdirSync(outputRoot, { recursive: true });
+    persist('started', { ...facts, state: 'started', complete: false });
+  } catch {
+    warn();
+  }
+  return {
+    get currentPhase() {
+      return phase;
+    },
+    enter(next) {
+      if (!PNPM_PHASES.has(next)) return;
+      const now = performance.now();
+      observedPhaseMs[phase] = now - phaseStarted;
+      phase = next;
+      phaseStarted = now;
+    },
+    settle({ status, signal, failurePhases }) {
+      const now = performance.now();
+      observedPhaseMs[phase] = now - phaseStarted;
+      persist('terminal', {
+        ...facts,
+        state: 'settled',
+        complete: true,
+        finishedAt: new Date().toISOString(),
+        elapsedMs: now - started,
+        observedPhaseMs,
+        status: Number.isInteger(status) ? status : null,
+        signal: observedSignal(signal),
+        outcome: failurePhases.length
+          ? 'operational-failure'
+          : 'response-decoded',
+        failurePhases: [
+          ...new Set(
+            failurePhases.filter(
+              (name) => name === 'deadline' || PNPM_PHASES.has(name),
+            ),
+          ),
+        ],
+      });
+    },
+  };
+}
 
 /** Diagnostics only: no raw npm output, paths, URLs, or package names persist. */
 export function createAuditAttemptDiagnostics({
@@ -51,36 +160,11 @@ export function createAuditAttemptDiagnostics({
     captureTruncated: false,
   };
   let privateLogs;
-  let available = true;
+  const { persist, warn } = auditReceiptWriter(outputRoot, id);
   let progressWrites = 0;
   let line = '';
   let dropping = false;
   let lines = 0;
-  const prefix = path.join(outputRoot, id);
-
-  function warn() {
-    if (available)
-      console.warn(
-        'Dependency audit diagnostics unavailable; audit verdict is unchanged',
-      );
-    available = false;
-  }
-
-  function persist(suffix, value) {
-    if (!available) return;
-    try {
-      const json = JSON.stringify(value);
-      if (Buffer.byteLength(json) > MAX_RECORD_BYTES)
-        throw new Error('diagnostic bound');
-      const target = `${prefix}.${suffix}.json`;
-      const temporary = `${target}.tmp`;
-      writeFileSync(temporary, json, { flag: 'wx', mode: 0o600 });
-      renameSync(temporary, target);
-    } catch {
-      warn();
-    }
-  }
-
   try {
     if (
       !['root', 'sdk', 'shared'].includes(scope) ||
@@ -202,12 +286,6 @@ export function createAuditAttemptDiagnostics({
     },
     settle({ status, signal, operationalCode }) {
       if (line && !dropping) acceptLine(line);
-      const allowedSignals = new Set([
-        'SIGTERM',
-        'SIGKILL',
-        'SIGINT',
-        'SIGABRT',
-      ]);
       const allowedCodes = new Set([
         'ENOENT',
         'EACCES',
@@ -221,12 +299,7 @@ export function createAuditAttemptDiagnostics({
         elapsedMs:
           childStarted === undefined ? null : performance.now() - childStarted,
         status: Number.isInteger(status) ? status : null,
-        signal:
-          signal === null
-            ? null
-            : allowedSignals.has(signal)
-              ? signal
-              : 'other',
+        signal: observedSignal(signal),
         operationalCode: allowedCodes.has(operationalCode)
           ? operationalCode
           : typeof operationalCode === 'string'

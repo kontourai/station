@@ -129,7 +129,7 @@ vite or vitest configs are accepted limits, left to review.
 
 ## Retention
 
-- **Turn dedup:** when both original and incoming input digests are known, a mismatch answers `conflict` before replay, contention or dead-owner reclaim. Reclaim preserves only the original digest; legacy input stays unknown. Digest-less callers retain legacy behavior. `turnDedupMaxEntries` is a soft cap on all rows; eviction is oldest first
+- **Turn dedup:** when both original and incoming input digests are known, a mismatch answers `conflict` before replay, contention or dead-owner reclaim. Reclaim preserves the original digest. A witnessed request requires matching additional proof for replay. A dead owner’s pre-effect reservation with matching original content can acquire that witness atomically when a new owner reclaims it. Digest-less callers retain legacy behavior. `turnDedupMaxEntries` is a soft cap on all rows; eviction is oldest first
   among resolved rows only. The optional positive `turnDedupMinResolvedEntries`
   floor stops eviction once that many resolved rows remain and cannot exceed
   the cap. Omitting it preserves the original policy. A host may instead set `turnDedupResolvedRetentionMs`: resolved rows remain

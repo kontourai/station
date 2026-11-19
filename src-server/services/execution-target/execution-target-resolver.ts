@@ -48,6 +48,15 @@ import {
 } from '../../utils/path-containment.js';
 import { expandTilde } from '../../utils/paths.js';
 
+export const CATALOG_REFRESHING_REASON =
+  'Agent catalog is refreshing after a configuration change; retrying automatically.';
+
+export class AgentCatalogRefreshingError extends Error {
+  constructor() {
+    super(CATALOG_REFRESHING_REASON);
+  }
+}
+
 /**
  * Private capability for reaching one Environment. It may contain transport
  * authority and therefore must never cross an API, SDK, CLI, MCP, or UI
@@ -198,6 +207,15 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
   // ConnectionConfig.status `station connections list` shows, read now.
   if (connection.status !== 'ready') {
     const blockers = describeConnectionBlockers(connection);
+    if (
+      !blockers &&
+      connection.type === 'acp' &&
+      connection.config.acpProbeStatus === 'probing'
+    ) {
+      throw new Error(
+        `Engine connection '${connection.id}' is still checking access (status: ${connection.status}). Wait for the engine check to finish, then retry.`,
+      );
+    }
     throw new Error(
       `Engine connection '${connection.id}' is not ready for execution (status: ${connection.status})${
         blockers
@@ -627,6 +645,11 @@ export async function resolveExecutionTarget(
         agent.unavailableReason ||
           `Agent '${resolvedAgentId}' is unavailable under this machine's managed policy`,
       );
+    if (
+      access.kind === 'current' &&
+      agent.unavailableReason === CATALOG_REFRESHING_REASON
+    )
+      throw new AgentCatalogRefreshingError();
     throw new Error(
       agent.unavailableReason || `Agent '${resolvedAgentId}' is unavailable`,
     );

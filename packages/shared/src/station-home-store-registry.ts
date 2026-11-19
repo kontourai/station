@@ -318,6 +318,7 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     ['authentication', 'outside-agent-oauth.sqlite'],
     ['security', 'project-membership.sqlite'],
     ['security', 'project-room-agent.sqlite'],
+    ['security', 'project-room-coordinator.sqlite'],
     ['security', 'project-rooms.sqlite'],
     ['security', 'native-surfaces.sqlite'],
     ['security', 'native-device-proof-replay.sqlite'],

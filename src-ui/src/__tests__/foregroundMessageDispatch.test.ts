@@ -275,6 +275,17 @@ describe('dispatchForeground target', () => {
     expect(dispatchedTarget()).not.toHaveProperty('model');
   });
 
+  test('carries a requested ACP mode without overriding the selected model', async () => {
+    await dispatchForeground(
+      baseInput({
+        agentSlug: 'opencode',
+        requestedModel: null,
+        requestedProviderOptions: { mode: 'plan', effort: 'high' },
+      }),
+    );
+    expect(dispatchedTarget().model).toEqual({ options: { mode: 'plan' } });
+  });
+
   test('an explicit override is sent with its options', async () => {
     await dispatchForeground(
       baseInput({

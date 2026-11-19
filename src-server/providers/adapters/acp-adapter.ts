@@ -3334,26 +3334,33 @@ export class AcpAdapter implements ProviderAdapterShape {
         governedModeRefusal(requestedMode),
       );
     }
-    if (requestedMode && requestedMode !== record.currentModeId) {
-      const catalog = turnCatalog;
-      if (catalog.modes.length === 0) {
-        throw new Error(
-          `ACP mode option unavailable: this session did not advertise a session mode.`,
+    if (requestedMode && requestedMode !== turnCatalog.currentModeId) {
+      if (turnCatalog.modes.length === 0) {
+        throw new SendTurnRefusedError(
+          'ACP mode option unavailable: this session did not advertise a session mode.',
+          'input_unsupported',
         );
       }
-      const appliedMode = await applyAdvertisedAcpSessionMode(
-        record.process,
-        { ...catalog, currentModeId: record.currentModeId },
-        requestedMode,
-        record.connectionId,
-      );
-      record.currentModeId = appliedMode.currentModeId;
-      record.acpModeCatalog = {
-        ...catalog,
-        currentModeId: appliedMode.currentModeId,
-      };
-      if (appliedMode.configOptions) {
-        record.configOptions = appliedMode.configOptions;
+      try {
+        const appliedMode = await applyAdvertisedAcpSessionMode(
+          record.process,
+          turnCatalog,
+          requestedMode,
+          record.connectionId,
+        );
+        record.currentModeId = appliedMode.currentModeId;
+        record.acpModeCatalog = {
+          ...turnCatalog,
+          currentModeId: appliedMode.currentModeId,
+        };
+        if (appliedMode.configOptions) {
+          record.configOptions = appliedMode.configOptions;
+        }
+      } catch (error) {
+        throw new SendTurnRefusedError(
+          errorMessage(error),
+          'input_unsupported',
+        );
       }
     }
     const turnEffort = requestedAcpEffort(input.modelOptions);
@@ -3410,6 +3417,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.turnErrorNotificationsSuppressed =
       (record.quarantinedTurnIds?.size ?? 0) > 0;
 
+    const observedMode = record.acpModeCatalog?.currentModeId;
+    if (requestedMode && observedMode) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.engine-mode-observed',
+        modeId: observedMode,
+      });
+    }
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -5248,6 +5266,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         error,
       );
     });
+    // Mode observations belong to the process that reported them.
+    if (record.acpModeCatalog)
+      record.acpModeCatalog = {
+        ...record.acpModeCatalog,
+        currentModeId: undefined,
+      };
     if (configOptions) {
       record.configOptions = configOptions;
       try {
@@ -5255,6 +5279,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // governs, it runs build unless the chat chose plan.
         if (floor && !record.currentModeId) record.currentModeId = 'build';
         const catalog = advertisedAcpSessionModes({ configOptions });
+        if (catalog.modes.length > 0) record.acpModeCatalog = catalog;
         if (
           record.currentModeId &&
           catalog.currentModeId !== record.currentModeId &&
@@ -5266,6 +5291,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             record.currentModeId,
             record.connectionId,
           );
+          record.acpModeCatalog = {
+            ...catalog,
+            currentModeId: applied.currentModeId,
+          };
           if (applied.configOptions)
             record.configOptions = applied.configOptions;
         }

@@ -8,6 +8,7 @@ export {
 export type {
   ConnectionHealthCheckResult,
   ConnectionHealthCoordinatorOptions,
+  ConnectionHealthFailureEvidence,
   ConnectionHealthSnapshot,
   ConnectionRouteResult,
 } from './core/ConnectionHealthCoordinator';

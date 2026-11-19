@@ -1,6 +1,6 @@
 # Settings you may not have found
 
-Most Settings rows explain themselves. This page covers five sections that
+Most Settings rows explain themselves. This page covers six sections that
 change what Station offers rather than how it looks. Open **Settings**, pick a
 page in the left rail, or search for a setting by name. You can also find any
 Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-palette)
@@ -9,6 +9,7 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Section | Page | Saved |
 | --- | --- | --- |
 | Feature previews | **Advanced** | On this Station |
+| GitHub automations | **Advanced** | On this Station |
 | Developer tools | **Advanced** | To your account when you are signed in, otherwise on this device |
 | Shared answers | **Privacy & sharing** | On this Station |
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
@@ -106,6 +107,52 @@ copied and keep working as before. Turning the preview off restores the old
 behavior: no brief or memory, and the rules inject only on Station's engine
 when knowledge search is configured.
 
+### Coordinator in #general
+
+With the **Coordinator in #general** preview on (`project-room-coordinator`),
+the Agent you ask in a Project Room's `#general` channel works as the
+Project's coordinator. Send work, updates and questions as they come up. Each
+reply ends with a line saying where your message went:
+
+- **Answered here**: a quick question gets its answer in the channel and
+  starts nothing.
+- **Proposed Tasks**: new work appears on a card under the reply, one row per
+  Task with its title, Agent, and whether it runs in the Project folder or its
+  own worktree. Press **Start** on a row or **Start all**. Three separate
+  requests in one message become three rows.
+- **Sent to Task**: a follow-up about work a coordinator Task is already
+  doing goes to that Task's chat, and the reply links the Task.
+
+When a Task is marked Done, the coordinator posts one linked status message
+in `#general`, including after a Station restart. An initial turn that succeeds
+leaves the Task open until it is marked Done. A cancellation or first-turn
+failure posts a stopped status with its Task link. **Status sweep**, at the
+top of `#general`, posts one line per open Task with its link, whether a
+written answer exists, and what it is waiting on. Open the Task to read its
+work under your own access. Cards show a short reason when a Task cannot
+start. Private Task output and diagnostic details stay out of the channel.
+Each request starts a fresh coordinator Session that reads the Project brief
+and memory, the channel's recent messages and a short report per Task. The
+conversation never needs compacting.
+
+Project settings → **Coordinator** sets the limits. Station enforces them;
+they are not instructions to the model:
+
+- **Start without asking**: start proposed Tasks at once instead of showing
+  the card first. Off by default.
+- **Tasks at once**: how many coordinator Tasks work at the same time, 1–10
+  (default 2). The rest show **Waiting for a slot** and start as one finishes.
+- **Pull requests**: **Only when you ask** (default) lets a Task use Station-guarded
+  pull-request tools when your message asked for a pull request. The card counts
+  tool refusals. External credentials and tools follow their own policies. **Whenever the Task needs one** allows them.
+
+The coordinator works where the Project Room runs, including from a paired
+phone. A coordinator Task's result is posted only while the person who started
+it may still start work in the Project; otherwise the Task finishes without a
+message in the channel. The limits count Tasks started from `#general`, not
+other Tasks in the Project. The preview is available on personal Stations
+with Project sharing and separate deployment sign-in disabled.
+
 ### Pause, archive, delete
 
 The last section of Project settings stops or removes a Project's work.
@@ -130,7 +177,7 @@ always offered:
 own automations. See
 [Project schedules](automations.md#project-schedules).
 
-## Feature previews
+## Project pull requests
 
 Project settings → **Pull requests** uses the Project's repository and the
 connected Station's provider capabilities. A missing repository offers
@@ -141,6 +188,8 @@ has native merge-request views but no automatic feedback adapter yet. Bitbucket
 and Azure DevOps remain usable as Git repositories; native pull-request
 integration is not implemented. For self-managed GitLab, set the comma-separated hostname list `STATION_GITLAB_HOSTS` on the Station host and sign in with `glab` for each instance.
 A readable checkout is also needed for Station's review of each new head.
+
+## Feature previews
 
 **Paired Station chats** lets New Chat use another paired Station. Choose its
 Project; the chat header says **Via <Station>**. Full access, folder selection,
@@ -210,6 +259,7 @@ only when this Station's build can run it; if none is, the section says
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 | `project-sharing-setting` | Project sharing setting | Shows **Project sharing with local accounts** under **Settings → System**, where the Station operator turns on invitations with username and password accounts and picks the sign-in address. | Only the control is the preview. Applying restarts Station through its process supervisor. Turning the preview off keeps the saved choice in force; environment variables set by the deployment always win. See [deployment authentication](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#turn-it-on-from-settings). |
 | `project-coordination` | Project brief, memory and models | Starts every new Session in a Project with its goal, instructions and memory notes on every engine, and adds Brief, Memory, Models and effort, and Usage to Project settings ([details](#project-brief-memory-and-models)). | Adds the brief and memory index to each new Session's first turn, which costs tokens. Copies a Project's rules into its brief once. Turning it off stops adding them; saved briefs and notes remain. |
+| `project-room-coordinator` | Coordinator in #general | Makes the Agent you ask in a Project's `#general` its coordinator: it answers, proposes Tasks on a card with **Start** and **Start all**, or sends your message to a running Task, and posts a link when each Task settles ([details](#coordinator-in-general)). Adds Project settings → **Coordinator**. | Each Task runs an agent and can spend model credits. Station enforces how many coordinator Tasks run at once, when they can start, and when guarded tools can open pull requests. Turning it off stops routing, starts and these refusals. Requires a personal Station with Project sharing and separate deployment sign-in disabled. |
 | `session-cli-reads` | Session reads from the station CLI | Lets a person wait on, digest and list their own Sessions from the CLI: `station sessions wait`, `station sessions digest` and `station activity`. | Read-only. A wait holds one connection for up to 50 seconds at a time, from a bounded per-person pool. |
 
 For **Crash-durable Station Agent**, an output-limit message means you should start a new turn to continue. Recovery replay for finished turns (completed, failed or cancelled) expires after seven days; this cleanup does not delete conversation history.
@@ -371,6 +421,15 @@ added. While connected, the app also learns the LAN, Tailscale and Tailscale
 HTTPS addresses the Station reports, marked "found automatically". The app saved on a phone or desktop
 lists those addresses but still connects only through its saved one; see
 [Station routes](https://github.com/kontourai/station/blob/main/docs/design/station-routes.md).
+
+## GitHub automations
+
+With **GitHub automation observations** on, this section lists the Automation
+sources, rules, open episodes and recent deliveries. Each count is the number
+of rows listed under it. A delivery held by a limit shows `suppressed` with the
+reason. An exhausted episode offers **Retry episode**, which allows exactly one
+more attempt under the rule as it is now. Creating and editing rules uses
+`station automation`; see the [CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#automation).
 
 ## Shared answers
 

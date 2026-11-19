@@ -1119,7 +1119,9 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   that differs from Default ("Own settings", or "Ask · kept"), and its name
   says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
   shows **Approval: Set by engine**, which opens a read-only explanation and
-  offers no mode. Codex's Default likewise names the engine's own settings
+  offers no mode. Signed-in users can save personal approval defaults for
+  Codex, Claude, and Muse where the selected Station permits personal defaults.
+  Codex's Default likewise names the engine's own settings
   ("Default — Codex's own settings"), and its description states what
   an unconfigured Codex does there, as a bound on which commands run unasked:
   none that uses the network or writes outside the chat's folder and temp.
@@ -1130,10 +1132,17 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   writable, for a trusted host folder and under Station's `station-workspace`
   profile).
   An engine's advertised Mode (OpenCode's build or plan agent)
-  is a separate picker beside it, never a replacement for it. While Station
+  is a separate picker beside it. In an existing chat, the picker stages the
+  request for the next send even when the model is engine-selected. The chip
+  shows it as pending until the engine reports the mode. If the model picker
+  is available only at start, the composer offers the model and its advertised
+  thinking effort when starting a new chat. While Station
   governs OpenCode it offers only build and plan; on OpenCode's own settings
   it lists every agent. A refusal because Station's approval mode cannot
   apply names the OpenCode setting and the next step, and offers no Retry.
+  Confirming Full access closes Run Setup. If Station refuses, the notice shows
+  the outcome first and keeps the operator's instructions under **Full access
+  recovery**.
 - The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
   their individual focus indicator.
 - Drafts and Clear message are icon actions in the secondary row, leaving the
@@ -1153,6 +1162,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   model, and there is no engine history to carry over. The session list that
   says so is re-read after every send that did not take, and a turn in flight
   outranks it, so a running first turn never reopens Model.
+
+- An ACP mode pick stays pending until the engine confirms it. Station records
+  confirmed ACP and native OpenCode modes as Session observations without
+  changing the Session's model, directory or lifecycle. The Session summary
+  restores the last confirmed mode after reconnecting.
 
 ### Turn activity and follow-up delivery
 

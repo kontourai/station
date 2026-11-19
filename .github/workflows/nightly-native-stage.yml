@@ -216,9 +216,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # The four platform builds need only the plan and start together. None reads
-  # another's output; assemble-desktop is the only join (macOS and Windows).
-  # Nightly therefore holds two macOS runners at once (macOS and iOS).
+  # Android, macOS and Windows start from the plan. iOS waits for the macOS
+  # build to finish so this cohort requests one hosted macOS runner at a time.
   stage-android:
     name: Build Android (sign arm64 AAB + APK)
     needs: plan-cohort
@@ -500,8 +499,9 @@ jobs:
 
   stage-ios:
     name: Build iOS
-    needs: plan-cohort
-    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    # macOS completion orders the builds. The plan still owns iOS admission.
+    needs: [plan-cohort, stage-macos]
+    if: ${{ !cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     permissions:
       contents: read
       id-token: write

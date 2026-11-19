@@ -24,6 +24,7 @@ import {
 } from '../knowledge-store/adapters/shared/observation-file.js';
 import type { KnowledgeRootObservation } from '../knowledge-store/knowledge-record-observation.js';
 import { assertNoPrivateRootOverlap } from '../knowledge-store/root-path-privacy.js';
+import { hasLocalKnowledgeMetadata } from '../services/knowledge/knowledge-storage.js';
 import {
   FileWriteConflictError,
   mutateJsonFile,
@@ -155,9 +156,7 @@ export class FileStorageAdapter implements IStorageAdapter {
           hasWorkingDirectory: !!config.workingDirectory,
           workingDirectory: config.workingDirectory,
           layoutCount,
-          hasKnowledge: pathExists(
-            join(dir, name, 'documents', 'metadata.json'),
-          ),
+          hasKnowledge: hasLocalKnowledgeMetadata(this.projectHomeDir, name),
           defaultProviderId:
             withoutLockedProjectOverrides(config).defaultProviderId,
           ...(config.position !== undefined
@@ -1064,14 +1063,4 @@ function readLayoutRecordNames(path: string): string[] {
   return readDirectoryNames(path).filter(
     (name) => name.endsWith('.json') && entryKind(join(path, name)) === 'file',
   );
-}
-
-function pathExists(path: string): boolean {
-  try {
-    statSync(path);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
 }

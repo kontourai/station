@@ -11,6 +11,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { resolveProjectCheckoutStaleThresholds } from '@kontourai/station-contracts/project-checkout-freshness';
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import {
   READ_MARKER_MARK_PATH,
   READ_MARKER_SUMMARY_PATH,
@@ -35,6 +36,8 @@ import {
   type SourceApprovalActor,
   SourceGrantApprovalStore,
 } from '../../analytics/source-grant-store.js';
+import { acquireAgentIdentityMutationLockAtHome } from '../../domain/agent-registry.js';
+import { agentIncarnationUnderLock } from '../../domain/config-loader-agents.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import {
@@ -221,6 +224,7 @@ import {
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
+import { COORDINATOR_ACTOR } from '../../services/projects/project-room-coordinator.js';
 import { notifyProjectRoomMention } from '../../services/projects/project-room-mention-notifications.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import {
@@ -248,6 +252,7 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
+import { matchPullRequestOpen } from '../../services/pull-requests/pull-request-watch-guard.js';
 import { readTelemetryCompanionPrerequisites } from '../../services/telemetry-companion.js';
 import {
   prepareTelemetryCompanionArchive,
@@ -293,6 +298,7 @@ import {
 } from '../request-read-authority-context.js';
 import { createProjectRoomAccess } from './project-room-access.js';
 import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
+import { composeProjectRoomCoordinatorRuntime } from './project-room-coordinator-runtime.js';
 import { createProjectRoomTaskContext } from './project-room-task-context.js';
 import { createProjectSharingStepUp } from './project-sharing-step-up.js';
 import { createTaskInboxProjection } from './task-inbox-projection.js';
@@ -401,7 +407,10 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
+import {
+  servesCoordinatorSession,
+  servesProjectRoomCoordinator,
+} from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
   materializeEngineAgent,
@@ -739,6 +748,11 @@ import {
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import {
+  projectAutomationEpisode,
+  readAutomationTaskProjection,
+  retryAutomationEpisode,
+} from '../../services/automation/automation-operator.js';
 import { BoardStore } from '../../services/board/board-store.js';
 import { CheckpointIndexStore } from '../../services/checkpoints/checkpoint-index-store.js';
 import { listThreadRecordsWithObjectStatus } from '../../services/checkpoints/checkpoint-read.js';
@@ -3297,6 +3311,9 @@ export function configureRuntimeRoutes(
         description:
           'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
       });
+  const sharedProjectRooms = Boolean(
+    context.projectMembership || context.deploymentAuthentication,
+  );
   configureRuntimePublicRoutes(
     context.app,
     context.environmentSecurityService,
@@ -3305,6 +3322,7 @@ export function configureRuntimeRoutes(
         enabled: () => true,
         disabled: () => false,
       }) === true,
+    sharedProjectRooms,
   );
   // Shared between the public local-grant route below and the authenticated
   // `/api/pairing/**` host routes so a same-user self-authorization and an
@@ -5948,6 +5966,10 @@ export function configureRuntimeRoutes(
         events: context.orchestrationEventStore,
       })
     : undefined;
+  // #4511: bound below, once the Automation ledger is composed.
+  let readAutomationTask:
+    | ((task: TaskRecord) => TaskRecord['automation'])
+    | undefined;
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
@@ -5960,6 +5982,7 @@ export function configureRuntimeRoutes(
         listProviders('pullRequest').map((entry) => entry.provider),
       pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
       logger: context.logger,
+      readAutomationTask: (task) => readAutomationTask?.(task),
       workChatConversations: taskInboxProjection,
       onRoomSystemLine: async ({
         task,
@@ -7539,8 +7562,24 @@ export function configureRuntimeRoutes(
               context.projectService
                 .listProjects()
                 .find((project) => project.id === projectId)?.name,
-            agentDefinition: async (agentSlug: string) =>
+            agentDefinition: (agentSlug: string) =>
               context.agentService.getAgent(agentSlug),
+            agentIncarnation: (agentSlug: string, initialize: boolean) =>
+              agentIncarnationUnderLock(
+                context.configLoader.getProjectHomeDir(),
+                agentSlug,
+                initialize,
+              ),
+            withAgentIdentity: async <T>(operation: () => Promise<T>) => {
+              const release = await acquireAgentIdentityMutationLockAtHome(
+                context.configLoader.getProjectHomeDir(),
+              );
+              try {
+                return await operation();
+              } finally {
+                await release();
+              }
+            },
             proposingTurn: (sessionId: string) => {
               const eventStore = context.orchestrationEventStore;
               if (!eventStore) return undefined;
@@ -9970,6 +10009,70 @@ export function configureRuntimeRoutes(
       });
     },
   );
+  const roomCoordinatorPreview = servesProjectRoomCoordinator({
+    hosted: Boolean(hostedTenantRegistry) || isHostedTenantExecutionRequired(),
+    sharedProjectRooms,
+  })
+    ? context.featurePreviews.bind({
+        id: 'project-room-coordinator',
+        label: 'Coordinator in #general',
+        description:
+          "Make the Agent you ask in a Project's #general its coordinator: it answers, proposes Tasks you start from a card, or passes your message to a running Task, and posts each result back. Each Task runs an agent and can spend model credits.",
+      })
+    : undefined;
+  const coordinatorScope = (
+    slug: string,
+  ): ProjectMembershipScope | undefined => {
+    try {
+      const project = context.storageAdapter.getProject(slug);
+      const record = (
+        contributionResolution.manifests as ProjectManifestStore
+      ).readRecord(slug);
+      if (!project || !record) return undefined;
+      return {
+        stationId:
+          context.environmentSecurityService.devicePairing.environmentId(),
+        localProjectId: project.id,
+        localProjectSlug: slug,
+        portableProjectId: parseProjectPortableIdentity(record).id,
+      };
+    } catch {
+      return undefined;
+    }
+  };
+  const roomCoordinator =
+    roomCoordinatorPreview && threadInbox && context.orchestrationEventStore
+      ? composeProjectRoomCoordinatorRuntime({
+          home: roomHome,
+          preview: roomCoordinatorPreview,
+          rooms: roomStore.store,
+          getProject: (slug) => {
+            try {
+              return context.storageAdapter.getProject(slug);
+            } catch {
+              return undefined;
+            }
+          },
+          currentScope: coordinatorScope,
+          mayStart: (userId, localProjectId) =>
+            principalMayInProject(userId, localProjectId, 'execute'),
+          agentName: async (agentId) => {
+            try {
+              return (await context.agentService.getAgent(agentId)).name;
+            } catch {
+              return undefined;
+            }
+          },
+          taskGraph: context.taskGraphService,
+          dispatcher: context.taskDispatcher,
+          inbox: threadInbox,
+          eventStore: context.orchestrationEventStore,
+          sessions: context.orchestrationService,
+          authorityFor: readAuthorityForExecution,
+          eventBus: context.eventBus,
+          logger: context.logger,
+        })
+      : undefined;
   let roomAgentRuntime:
     | ReturnType<typeof createProjectRoomAgentRuntime>
     | undefined;
@@ -9985,6 +10088,7 @@ export function configureRuntimeRoutes(
       projectRoomService.close();
       roomClose = (async () => {
         try {
+          await roomCoordinator?.close();
           await roomPublication?.close();
         } finally {
           try {
@@ -10059,6 +10163,7 @@ export function configureRuntimeRoutes(
           context.orchestrationService.getProviderAdapter(provider),
       },
     }),
+    roomCoordinator?.coordinator,
   );
   roomPublication = createProjectRoomAgentPublication({
     eventBus: context.eventBus,
@@ -10068,6 +10173,24 @@ export function configureRuntimeRoutes(
     '/api/projects',
     createProjectRoomRoutes(projectRoomService, {
       module: roomAgentRuntime.module,
+      ...(roomCoordinator
+        ? {
+            coordinator: {
+              enabled: roomCoordinator.enabled,
+              service: roomCoordinator.coordinator,
+              roomId: (scope) => roomStore.store.lookupRoom(scope)?.roomId,
+              // A sweep is a new message each time, under the asking
+              // person's current room authority.
+              post: (authority, text) =>
+                roomStore.store.append(
+                  authority.scope,
+                  COORDINATOR_ACTOR,
+                  { intentId: randomUUID(), text },
+                  authority.assertCurrent,
+                ).messageId,
+            },
+          }
+        : {}),
       observe: (authority, handle) =>
         roomPublication!.watch(authority, handle.requestId),
       withAuthority: async (
@@ -10779,6 +10902,7 @@ export function configureRuntimeRoutes(
           scopedTerminals.sessions?.endProject(projectId),
         projectLifecycle: projectLifecycle.lifecycle,
         projectLifecyclePreview: projectLifecycle.pauseArchivePreview,
+        roomCoordinatorPreview,
         projectSchedules: {
           count: async (projectId) =>
             (await projectScheduler?.listJobs())?.filter(
@@ -11198,9 +11322,21 @@ export function configureRuntimeRoutes(
       '/api/pull-request-feedback',
       createPullRequestFeedbackRoutes(...pullRequestFeedback.routeArgs),
     );
-  if (pullRequestFeedback?.pullRequestWatchPolicy)
+  // #5066's watch refusals, then #5063's: a `#general` coordinator Task the
+  // person did not ask for a pull request may not open one.
+  const watchPolicy = pullRequestFeedback?.pullRequestWatchPolicy;
+  const coordinatorPolicy = roomCoordinator?.coordinator;
+  if (watchPolicy || coordinatorPolicy)
     context.bindPullRequestWatchPolicy?.(
-      pullRequestFeedback.pullRequestWatchPolicy,
+      (input) =>
+        watchPolicy?.(input) ??
+        coordinatorPolicy?.guard({
+          conversationId: input.conversationId,
+          opensPullRequest: matchPullRequestOpen(
+            input.operationName,
+            input.toolArgs,
+          ),
+        }),
     );
   context.app.route(
     '/api/pull-requests',
@@ -13059,6 +13195,7 @@ export function configureRuntimeRoutes(
   const {
     schedulerService,
     automationLedger,
+    automationStore,
     automationPreview,
     automationActions: runtimeAutomationActions,
     isolatedRepairs,
@@ -13101,6 +13238,8 @@ export function configureRuntimeRoutes(
   roomMentionNotifications = notificationService;
   projectScheduler = schedulerService;
   automationActions = runtimeAutomationActions;
+  readAutomationTask = (task) =>
+    readAutomationTaskProjection(automationLedger.getExisting(), task);
   durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
   contextEfficiency?.start();
@@ -13456,6 +13595,25 @@ export function configureRuntimeRoutes(
         : {}),
     }),
   );
+  // One operator proof for every Automation and isolated-repair mutation: a
+  // person acting in person (never an agent session or Station Control),
+  // still current, with operator membership; never in hosted mode.
+  const automationOperator = async (request: Request) => {
+    const assertCurrent = async () => {
+      if (
+        isHostedTenantExecutionRequired() ||
+        !isOperatorInPersonNotAgent(request) ||
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        throw new Error('Operator access required');
+      await projectMembershipAuthority(request).operator();
+    };
+    await assertCurrent();
+    return { id: getCachedUser().alias, assertCurrent };
+  };
   context.app.route(
     '/automations',
     createAutomationRoutes(
@@ -13464,6 +13622,25 @@ export function configureRuntimeRoutes(
         listPolls: () => automationLedger.get().listPolls(),
         preview: automationPreview,
         readAuthorityForRequest,
+        ...(isHostedTenantExecutionRequired()
+          ? {}
+          : {
+              store: automationStore,
+              listOpenEpisodes: (limit: number) =>
+                automationLedger
+                  .get()
+                  .listOpenEpisodes(limit)
+                  .map(projectAutomationEpisode),
+              retryEpisode: (ruleId: string, episodeId: string) =>
+                retryAutomationEpisode({
+                  ledger: automationLedger.get(),
+                  read: () => automationStore.read(),
+                  ruleId,
+                  episodeId,
+                  now: Date.now(),
+                }),
+              operator: automationOperator,
+            }),
       },
       context.logger,
     ),
@@ -13472,22 +13649,7 @@ export function configureRuntimeRoutes(
     '/api/isolated-repairs',
     createIsolatedRepairRoutes({
       controller: isolatedRepairs,
-      operator: async (request) => {
-        const assertCurrent = async () => {
-          if (
-            isHostedTenantExecutionRequired() ||
-            !isOperatorInPersonNotAgent(request) ||
-            !isRuntimeRequestPrincipalCurrent(
-              request,
-              context.environmentSecurityService,
-            )
-          )
-            throw new Error('Operator access required');
-          await projectMembershipAuthority(request).operator();
-        };
-        await assertCurrent();
-        return { id: getCachedUser().alias, assertCurrent };
-      },
+      operator: automationOperator,
     }),
   );
   context.app.route(
@@ -13849,10 +14011,12 @@ export function configureRuntimePublicRoutes(
     'getPublicHandshake' | 'createPublicProof'
   >,
   peerChatEnabled: () => boolean = () => false,
+  sharedProjectRooms = false,
 ): void {
   app.get(PUBLIC_STATION_HANDSHAKE_PATH, async (c) => {
     const handshake = await environmentSecurityService.getPublicHandshake(
       peerChatEnabled(),
+      sharedProjectRooms,
     );
     // Recorded from the served document rather than from the constants, so the
     // metric can never claim a contract the response did not actually carry.

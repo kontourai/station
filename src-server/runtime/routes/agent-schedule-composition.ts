@@ -137,6 +137,8 @@ export interface AutomationProposalCompositionDeps {
    * is the Agent's own Project slug. Throws when there is no such Agent.
    */
   agentDefinition(agentSlug: string): Promise<{ readonly project?: string }>;
+  agentIncarnation(agentSlug: string, initialize: boolean): string | undefined;
+  withAgentIdentity<T>(operation: () => Promise<T>): Promise<T>;
   /** `proposingTurnId` over the Session's inferred calling turn (#4882). */
   proposingTurn(sessionId: string): string | undefined;
   untrustedContent(conversationId: string): Promise<boolean>;
@@ -476,13 +478,14 @@ export function composeAgentSchedule(
    * dispatch answers, for the Project (with `execute`) and for the Agent's own
    * Project, as its recorded owner. An operator's bound caller reaches every
    * Project, so the Project and the Agent must also exist. The Agent is read
-   * once, and pinned by its own Project and a digest of its definition, so
-   * Confirm can tell a moved, deleted or replaced Agent from the same one.
+   * once under the identity fence. Confirm checks its Project, definition
+   * digest and incarnation as well as the recorded caller's scope.
    */
   const bindAutomationTarget: AutomationProposalRoutesDeps['bind'] = async (
     caller,
     projectId,
     agentId,
+    initialize,
   ) => {
     if (!proposals) return undefined;
     const ownerId = caller.principal?.elevationEligible
@@ -513,12 +516,15 @@ export function composeAgentSchedule(
             remote: false,
           });
     if (stationControlScopeRefusal(caller, agentTarget)) return undefined;
+    const agentIncarnation = proposals.agentIncarnation(agentId, initialize);
+    if (!agentIncarnation) return undefined;
     return {
       projectId,
       projectSlug,
       agentId,
       agentProject,
       agentDigest: agentDefinitionDigest(definition),
+      agentIncarnation,
     };
   };
   const automationProposalRouteDeps: AutomationProposalRoutesDeps = {
@@ -527,6 +533,8 @@ export function composeAgentSchedule(
     automations: proposals?.automations,
     hosted: deps.hosted,
     bind: bindAutomationTarget,
+    withAgentIdentity: (operation) =>
+      proposals ? proposals.withAgentIdentity(operation) : operation(),
     // Unwired, fail closed: no caller may propose.
     proposingTurn: (sessionId) => proposals?.proposingTurn(sessionId),
     untrustedContent: async (conversationId) =>

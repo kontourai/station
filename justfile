@@ -7,12 +7,12 @@ set windows-shell := ["cmd.exe", "/D", "/E:ON", "/V:OFF", "/C"]
 default:
     @just --list
 
-# Install the lockfile-pinned Node dependency tree.
+# Install the lockfile-pinned Node dependency tree. Set `STATION_DEPENDENCY_INSTALL_TIMEOUT_MS` in positive milliseconds to override the inert install deadline. See [dependency install recovery](https://github.com/kontourai/station/blob/main/docs/guides/development.md#dependency-install-deadline).
 [unix]
 setup:
     npm run dependencies:ci
 
-# Install the lockfile-pinned Node dependency tree.
+# Install the lockfile-pinned Node dependency tree. Set `STATION_DEPENDENCY_INSTALL_TIMEOUT_MS` in positive milliseconds to override the inert install deadline. See [dependency install recovery](https://github.com/kontourai/station/blob/main/docs/guides/development.md#dependency-install-deadline).
 [windows]
 [script("cmd.exe", "/D", "/E:ON", "/V:OFF", "/C")]
 setup:

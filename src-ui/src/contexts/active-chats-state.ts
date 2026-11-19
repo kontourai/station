@@ -17,6 +17,7 @@ import type {
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalMode,
+  type EngineApprovalReviewer,
   type EngineId,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
@@ -649,6 +650,7 @@ export type ChatUIState = {
    * chip can show a pending state instead of overclaiming.
    */
   lastAppliedApprovalMode?: ApprovalMode;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /**
    * Whether the engine refused the recorded full access on its latest turn
    * (`turn.started` metadata `approvalEscalationRejected`). Not persisted,

@@ -1,0 +1,7 @@
+{
+  "revision": "aaee9b7409817392d68ef5500077042ea98a3ae2",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Scoped delta review (#4513): docs/user/settings.md changed only by adding a GitHub automations section and making its CLI link absolute; the feature-preview rows this guide relies on (GitHub automation observations, Isolated GitHub repairs) are unchanged. The guide's own repair policy note was reviewed earlier in this change against repair-controller.ts and the #4575 tests.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]}
+  ]
+}

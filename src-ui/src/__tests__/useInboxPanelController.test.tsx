@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
 import type { InboxPanelControllerOptions } from '../components/chat-dock/useInboxPanelController';
+import { useListRefresh } from '../components/refresh/ListRefresh';
 import { conversationStateKey } from '../connections/station-state';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { navigationStore } from '../contexts/navigation-store';
@@ -72,6 +73,10 @@ function Harness({
   const [open, setOpen] = useState(true),
     [station, setStation] = useState('station-a'),
     [failed, setFailed] = useState(loadError);
+  const refresh = useListRefresh({
+    scope: station,
+    refresh: async () => setFailed(false),
+  });
   const authority = {
     apiBase: 'http://' + station,
     authorityKey: station,
@@ -136,11 +141,7 @@ function Harness({
           exiting={!open}
           onCloseChat={() => {}}
           onOpenHistory={() => {}}
-          sync={{
-            failed,
-            refreshing: false,
-            onRefresh: () => setFailed(false),
-          }}
+          sync={{ failed, pending: false, updating: false, refresh }}
         />
       ) : (
         <MobileInboxPanel
@@ -150,7 +151,7 @@ function Harness({
           triggerRef={triggerRef}
           onClose={() => setOpen(false)}
           loadError={failed}
-          onRetryLoad={() => setFailed(false)}
+          refresh={refresh}
         />
       )}
     </>

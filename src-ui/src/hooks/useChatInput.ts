@@ -425,7 +425,7 @@ export function useChatInput({
       activeChatState?.turnInFlight ?? false,
     );
   const modelSelectionReason = continuationOverrideUnsupported
-    ? 'This engine can choose a model for a new chat, but cannot change it in an existing conversation.'
+    ? 'Choose a model and any advertised thinking effort when starting a new chat with this engine.'
     : engineModelSelection.state === 'unsupported'
       ? 'This engine does not support model selection for a chat session.'
       : availableModels.length === 0
@@ -1138,32 +1138,18 @@ export function useChatInput({
   const handleAcpSessionModeChange = useCallback(
     (modeId: string) => {
       if (!sessionId) return;
-      const previousMode =
-        activeChatState?.requestedProviderOptions?.mode ??
-        activeChatState?.currentModeId;
-      if (previousMode === modeId) return;
+      const current = activeChatsStore.getSnapshot()[sessionId];
+      const requested = current?.requestedProviderOptions;
+      if ((requested?.mode ?? current?.currentModeId) === modeId) return;
       updateChat(sessionId, {
-        currentModeId: modeId,
-        requestedProviderOptions: {
-          ...(activeChatState?.requestedProviderOptions ??
-            activeChatState?.providerOptions ??
-            {}),
-          mode: modeId,
-        },
-      });
-      addEphemeralMessage(sessionId, {
-        role: 'system',
-        content: `Session mode changed to **${modeId}**`,
+        requestedProviderOptions: updateModelRuntimeOption(
+          requested ?? current?.providerOptions ?? {},
+          'mode',
+          modeId,
+        ),
       });
     },
-    [
-      activeChatState?.currentModeId,
-      activeChatState?.providerOptions,
-      activeChatState?.requestedProviderOptions,
-      sessionId,
-      updateChat,
-      addEphemeralMessage,
-    ],
+    [sessionId, updateChat],
   );
 
   const handleModelReset = useCallback(() => {

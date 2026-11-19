@@ -86,8 +86,11 @@ async function foregroundRequest(input: ForegroundInput) {
   // No approval posture rides the options (#2436): the server applies the
   // conversation's recorded pick, else the Agent's and this Station's
   // defaults at a session start, whatever path sends the turn.
+  const requestedMode = input.requestedProviderOptions?.mode;
   const modelOptions = defaultRequested
-    ? undefined
+    ? typeof requestedMode === 'string'
+      ? { mode: requestedMode }
+      : undefined
     : (input.requestedProviderOptions ?? input.providerOptions);
   const requestedModel = defaultRequested ? undefined : resolved.modelId;
   const attachments = input.attachments ?? [];

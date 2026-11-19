@@ -626,6 +626,15 @@ export function modelLaunchTelemetryAttributes(
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never' | 'connection-default';
 
+/** Who the provider reports it would use to review eligible escalations. */
+export type EngineApprovalReviewer = 'user' | 'automatic' | 'unknown';
+
+export function isEngineApprovalReviewer(
+  value: unknown,
+): value is EngineApprovalReviewer {
+  return value === 'user' || value === 'automatic' || value === 'unknown';
+}
+
 export const APPROVAL_MODES: readonly ApprovalMode[] = [
   'ask',
   'auto',

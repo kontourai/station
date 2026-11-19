@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
+import { ciFastStepId, ciFastStepMarker } from './lib/ci-fast-step-marker.mjs';
 import {
   assertVerificationHost,
   LiveServiceVerificationError,
@@ -433,13 +433,15 @@ export function runCiFast({
     // `index === 0` names the selector; a statics-only lane has none.
     const index = selector ? position : position + 1;
     const iterationStartedAt = now();
-    // Name the step before it starts: a direct `node` step prints no npm
-    // header, and the reporter attributes a failure to the last boundary.
-    report(ciFastStepMarker(command, args));
     const timeout =
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
-    if (timeout <= 0)
-      throw new CiFastInfrastructureError(CI_FAST_BUDGET_EXCEEDED_CAUSE);
+    if (timeout <= 0) {
+      throw new CiFastInfrastructureError(
+        `${CI_FAST_BUDGET_EXCEEDED_CAUSE} before launching ${ciFastStepId(command, args)}`,
+      );
+    }
+    // Name only an attempted launch, including direct node commands.
+    report(ciFastStepMarker(command, args));
     // #2855: the selector learns when its related discovery must end: a
     // pinned share of its allowance, instead of a fixed 60s. The statics need
     // no deadline of their own.

@@ -18,6 +18,7 @@ import {
   PROJECT_CHAT_APPROVAL_POSTURES,
   PROJECT_CHAT_DEFAULT_SELECTIONS,
 } from '@kontourai/station-contracts/project-chat-defaults';
+import { MAX_COORDINATOR_CONCURRENT_TASKS } from '@kontourai/station-contracts/project-room-coordinator';
 import {
   PROJECT_GOAL_MAX_CHARS,
   PROJECT_INSTRUCTIONS_MAX_CHARS,
@@ -135,6 +136,19 @@ const projectSchema = z
           .int()
           .min(1)
           .max(MAX_PULL_REQUEST_FIX_ATTEMPTS),
+      })
+      .strict()
+      .optional(),
+    // #5063: server-written by `PUT /:slug/room-coordinator` only.
+    roomCoordinator: z
+      .object({
+        startWithoutAsking: z.boolean(),
+        maxConcurrentTasks: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_COORDINATOR_CONCURRENT_TASKS),
+        pullRequests: z.enum(['when-asked', 'allowed']),
       })
       .strict()
       .optional(),

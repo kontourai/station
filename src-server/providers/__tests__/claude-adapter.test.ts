@@ -12245,7 +12245,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'missing',
           category: 'required',
         },
@@ -12255,7 +12255,7 @@ echo '{"loggedIn":true}'
         readBundledVersion: () => '2.1.224',
       }).getPrerequisites?.();
       expect(readiness?.[0]?.description).toBe(
-        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
+        'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
       );
     });
 
@@ -12266,7 +12266,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'installed',
           category: 'required',
         },
@@ -12288,7 +12288,7 @@ echo '{"loggedIn":true}'
         (prerequisite) => prerequisite.id === 'claude-cli',
       );
       expect(cli?.description).toBe(
-        `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+        `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
       );
       // The install status and the sentence come from ONE resolution: the
       // findBinary handed to the shared builder must answer with the same
@@ -12309,7 +12309,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'missing',
           category: 'required',
         },
@@ -12321,7 +12321,7 @@ echo '{"loggedIn":true}'
       const prerequisites = await adapter.getPrerequisites?.();
 
       expect(prerequisites?.[0]?.description).toBe(
-        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
+        'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
       );
       expect(
         mockBuildCliRuntimePrerequisites.mock.calls[0][0].findBinary('claude'),
@@ -12372,7 +12372,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12391,7 +12391,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12405,7 +12405,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12419,7 +12419,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
         );
       });
 
@@ -12470,7 +12470,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
+          `Required to launch the Claude engine. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
         );
       });
 
@@ -12488,7 +12488,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
         );
       });
 
@@ -12507,7 +12507,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
         );
       });
 
@@ -12556,7 +12556,7 @@ echo '{"loggedIn":true}'
         );
         // Second inspection re-probes rather than inheriting that failure.
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
         expect(runCommand).toHaveBeenCalledTimes(2);
         // ...and the successful observation IS durable.
@@ -12799,7 +12799,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12814,7 +12814,7 @@ echo '{"loggedIn":true}'
         const prerequisites = await adapter.getPrerequisites?.();
 
         expect(prerequisites?.[0]?.description).toBe(
-          'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
+          'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
         );
         expect(runCommand).not.toHaveBeenCalled();
       });
@@ -12882,7 +12882,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12906,7 +12906,7 @@ echo '{"loggedIn":true}'
         expect(runCommand).toHaveBeenCalledWith(NATIVE, ['--version']);
         expect(runCommand).not.toHaveBeenCalledWith(SHIM, ['--version']);
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12925,7 +12925,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12959,7 +12959,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: CLIJS,
         });
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12969,7 +12969,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12983,7 +12983,7 @@ echo '{"loggedIn":true}'
         const prerequisites = await adapter.getPrerequisites?.();
 
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
+          `Required to launch the Claude engine. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
         );
         // Install status still reflects the resolver's own answer: a `claude`
         // IS on PATH, Station just cannot hand that entry to the SDK.

@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -118,6 +119,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   // resolution route is the first thing in this file to call it.
   projectResourceResolutions: { add: vi.fn() },
   projectManifestBackfills: { add: vi.fn() },
+  knowledgeStoreTransactionOps: { add: vi.fn() },
 }));
 
 const { realpath } = await import('node:fs/promises');
@@ -127,6 +129,9 @@ const { ProjectService } = await import(
 );
 const { FileStorageAdapter } = await import(
   '../../../domain/file-storage-adapter.js'
+);
+const { defaultKnowledgeStorageDir, saveKnowledgeMeta } = await import(
+  '../../../services/knowledge/knowledge-storage.js'
 );
 const {
   FileStorageAlreadyExistsError,
@@ -456,13 +461,28 @@ describe('Project Routes', () => {
       body: JSON.stringify({ slug: 'main', name: 'Main', type: 'chat' }),
     });
     expect(layout.status).toBe(201);
-    // The owner reads knowledge presence from this legacy flat file.
-    mkdirSync(join(projectHomeDir, 'projects', 'shared', 'documents'), {
-      recursive: true,
-    });
-    writeFileSync(
-      join(projectHomeDir, 'projects', 'shared', 'documents', 'metadata.json'),
-      '[]\n',
+    const namespace = 'policy';
+    await saveKnowledgeMeta(
+      {
+        dataDir: projectHomeDir,
+        projectSlug: 'shared',
+        storageDir: defaultKnowledgeStorageDir(
+          projectHomeDir,
+          'shared',
+          namespace,
+        ),
+      },
+      [
+        {
+          id: 'rollout-policy',
+          filename: 'policy.md',
+          path: 'policy.md',
+          namespace,
+          source: 'upload',
+          chunkCount: 0,
+          createdAt: '2026-08-01T00:00:00.000Z',
+        },
+      ],
     );
 
     const response = await app.request('/');
@@ -495,6 +515,139 @@ describe('Project Routes', () => {
         },
       ],
     });
+  });
+
+  test('Project listing observes current and legacy knowledge files without crossing replaced roots', async () => {
+    const home = createTempProjectHome();
+    const storage = new FileStorageAdapter(home);
+    const project = {
+      id: 'project-shared',
+      slug: 'shared',
+      name: 'Shared',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    };
+    await putProject(storage, project);
+    await putProject(storage, {
+      ...project,
+      id: 'project-private',
+      slug: 'private',
+      name: 'Private',
+    });
+    const projectService = new ProjectService(storage);
+    const operator = createProjectRoutes(projectService, storage, home, {
+      listAgents: async () => [],
+    });
+
+    const sharedRoot = join(home, 'projects', 'shared');
+    const sharedKnowledge = join(sharedRoot, 'knowledge');
+    const sharedDocuments = join(sharedRoot, 'documents');
+    const privateNamespace = defaultKnowledgeStorageDir(
+      home,
+      'private',
+      'default',
+    );
+    await saveKnowledgeMeta(
+      { dataDir: home, projectSlug: 'private', storageDir: privateNamespace },
+      [],
+    );
+
+    const assertListing = async (expected: boolean) => {
+      const response = await operator.request('/');
+      expect(response.status).toBe(200);
+      expect(await json(response)).toMatchObject({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'project-shared',
+            hasKnowledge: expected,
+          }),
+          expect.objectContaining({
+            id: 'project-private',
+            hasKnowledge: true,
+          }),
+        ]),
+      });
+    };
+
+    mkdirSync(join(sharedKnowledge, 'empty'), { recursive: true });
+    await assertListing(false);
+    await saveKnowledgeMeta(
+      {
+        dataDir: home,
+        projectSlug: 'shared',
+        storageDir: defaultKnowledgeStorageDir(home, 'shared', 'empty'),
+      },
+      [],
+    );
+    await assertListing(true);
+    rmSync(sharedKnowledge, { recursive: true });
+    await assertListing(false);
+
+    writeFileSync(sharedKnowledge, 'not a directory');
+    await assertListing(false);
+    rmSync(sharedKnowledge);
+    symlinkSync(
+      join(home, 'projects', 'private', 'knowledge'),
+      sharedKnowledge,
+      'junction',
+    );
+    await assertListing(false);
+    rmSync(sharedKnowledge);
+
+    mkdirSync(join(sharedDocuments, 'metadata.json'), { recursive: true });
+    await assertListing(false);
+    rmSync(join(sharedDocuments, 'metadata.json'), { recursive: true });
+    writeFileSync(join(sharedDocuments, 'metadata-reports.json'), '[]\n');
+    await assertListing(true);
+    rmSync(join(sharedDocuments, 'metadata-reports.json'));
+    writeFileSync(join(sharedDocuments, 'metadata.json'), '[]\n');
+    await assertListing(true);
+
+    const member = createProjectRoutes(projectService, storage, home, {
+      listAgents: async () => [],
+      projectCatalogueCurrent: async () => true,
+      memberProjectAdmissions: async () => [
+        {
+          scope: {
+            stationId: 'station',
+            localProjectId: 'project-shared',
+            portableProjectId: 'portable-shared',
+            localProjectSlug: 'shared',
+          },
+          actions: ['view'],
+        },
+      ],
+    });
+    const response = await member.request('/');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    const result = await json(response);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]).toMatchObject({ slug: 'shared' });
+    expect(result.data[0]).not.toHaveProperty('hasKnowledge');
+
+    await storage.deleteProject('shared');
+    const afterDelete = await operator.request('/');
+    expect(afterDelete.status).toBe(200);
+    expect(await json(afterDelete)).toMatchObject({
+      data: [
+        expect.objectContaining({ id: 'project-private', hasKnowledge: true }),
+      ],
+    });
+    await putProject(storage, { ...project, id: 'project-shared-replacement' });
+    const afterReplacement = await operator.request('/');
+    expect(afterReplacement.status).toBe(200);
+    expect(await json(afterReplacement)).toMatchObject({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'project-shared-replacement',
+          hasKnowledge: false,
+        }),
+      ]),
+    });
+    const staleAdmission = await member.request('/');
+    expect(staleAdmission.status).toBe(200);
+    expect(await json(staleAdmission)).toMatchObject({ data: [] });
   });
 
   test('GET /icon-candidates returns only bounded artwork from the selected workspace', async () => {

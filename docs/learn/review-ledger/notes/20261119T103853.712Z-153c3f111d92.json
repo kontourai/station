@@ -1,0 +1,9 @@
+{
+  "revision": "f81e8cd0af8e7c42ea8ba73619a36538927a885b",
+
+  "notes": [
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed the runtime composition after merging current main. The Automation operator and Task mandate wiring are separate from Flow observation and review. Current Automation route, retention and authority tests passed.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed pairing route scope reconciliation. The existing Home transfer and person-only read marker classifications remain intact. Automation mutations use access management plus the existing in-person operator check. Pairing and proposal authority owner suites passed all 229 cases.","inputs":["docs/guides/home-transfer-controller.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

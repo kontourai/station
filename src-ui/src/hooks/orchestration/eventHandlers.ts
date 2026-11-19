@@ -1,4 +1,5 @@
 import type { OrchestrationConversationStreamBinding } from '@kontourai/station-contracts/orchestration';
+import { isEngineApprovalReviewer } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -44,6 +45,7 @@ import { isReplayThread } from './replay/replay-registry';
 import { recordSequencedLiveEvent } from './sequencedLiveEvents';
 import {
   handleApprovalModeSetEvent,
+  handleSessionEngineModeObservedEvent,
   handleSessionExitedEvent,
   handleSessionLifecycleEvent,
   handleSessionStateChangedEvent,
@@ -298,6 +300,18 @@ function dispatchProjectedOrchestrationEvent(
     case 'session.started':
     case 'session.configured':
       handleSessionLifecycleEvent(event, station);
+      return;
+    case 'session.engine-mode-observed':
+      handleSessionEngineModeObservedEvent(event, station);
+      return;
+    case 'session.approval-reviewer-observed':
+      if (
+        event.provider === 'codex' &&
+        isEngineApprovalReviewer(event.reviewer)
+      )
+        chatStore.updateChat(event.threadId, {
+          reportedApprovalReviewer: event.reviewer,
+        });
       return;
     case 'session.state-changed':
       handleSessionStateChangedEvent(event, undefined, station ?? apiBase);

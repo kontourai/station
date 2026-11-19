@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { witnessedTurnInputDigest } from '@kontourai/monument';
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import {
   type ChatAttachmentInput,
   parseChatAttachmentDataUrl,
@@ -11,6 +13,11 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import { SendTurnRefusedError } from '../../providers/adapter-shape.js';
+
+export interface StagedTurnSubmission {
+  ownerId: string;
+  references: readonly StagedAttachmentReference[];
+}
 
 export class TurnSubmissionUnsupportedError extends SendTurnRefusedError {
   readonly code = CLIENT_TURN_INPUT_UNSUPPORTED_CODE;
@@ -116,23 +123,31 @@ function turnSubmissionDigest(input: {
   modelId?: string;
   modelOptions?: Record<string, unknown>;
   attachments?: ChatAttachmentInput[];
+  stagedSubmission?: StagedTurnSubmission;
   skillExperience?: SkillExperienceStartInputV1;
   scope?: unknown;
 }): string {
   if (validateChatAttachments(input.attachments ?? []))
     throw new TurnSubmissionUnsupportedError();
-  const attachments = (input.attachments ?? []).map((attachment) => {
-    const parsed = parseChatAttachmentDataUrl(attachment.dataUrl);
-    if (!parsed) throw new TurnSubmissionUnsupportedError();
-    return {
-      kind: attachment.kind,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      contentDigest: createHash('sha256')
-        .update(Buffer.from(parsed.base64, 'base64'))
-        .digest('hex'),
-    };
-  });
+  const attachments =
+    input.stagedSubmission?.references.map((reference) => ({
+      kind: reference.kind,
+      name: reference.name,
+      mimeType: reference.mimeType,
+      contentDigest: reference.digest.slice('sha256-'.length),
+    })) ??
+    (input.attachments ?? []).map((attachment) => {
+      const parsed = parseChatAttachmentDataUrl(attachment.dataUrl);
+      if (!parsed) throw new TurnSubmissionUnsupportedError();
+      return {
+        kind: attachment.kind,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        contentDigest: createHash('sha256')
+          .update(Buffer.from(parsed.base64, 'base64'))
+          .digest('hex'),
+      };
+    });
   const document = {
     domain: 'station.orchestration.turn-submission',
     version: 1,
@@ -144,7 +159,20 @@ function turnSubmissionDigest(input: {
     skillExperience: input.skillExperience ?? null,
     scope: input.scope ?? null,
   };
-  return `station-turn-submission/v1:sha256:${createHash('sha256').update(canonicalJson(document)).digest('hex')}`;
+  const contentDigest = `station-turn-submission/v1:sha256:${createHash('sha256').update(canonicalJson(document)).digest('hex')}`;
+  if (!input.stagedSubmission?.references.length) return contentDigest;
+  const refsDigest = chatTurnSubmissionDigest({
+    owner: input.stagedSubmission.ownerId,
+    refs: input.stagedSubmission.references.map(
+      ({ stageId, clientAttachmentId, source, size }) => ({
+        stageId,
+        clientAttachmentId,
+        source,
+        size,
+      }),
+    ),
+  });
+  return witnessedTurnInputDigest(contentDigest, refsDigest);
 }
 
 /** Direct orchestration callers have no earlier foreground composition step. */
@@ -184,6 +212,7 @@ export function foregroundTurnSubmissionDigest(input: {
   target: ExecutionTarget;
   ambientContext?: string;
   attachments?: ChatAttachmentInput[];
+  stagedSubmission?: StagedTurnSubmission;
   skillExperience?: SkillExperienceStartInputV1;
   ephemeral?: boolean;
   expectedInputRequest?: unknown;
@@ -199,6 +228,9 @@ export function foregroundTurnSubmissionDigest(input: {
       ? { modelId: input.target.model.override }
       : {}),
     ...(input.attachments ? { attachments: input.attachments } : {}),
+    ...(input.stagedSubmission
+      ? { stagedSubmission: input.stagedSubmission }
+      : {}),
     ...(input.skillExperience
       ? { skillExperience: input.skillExperience }
       : {}),

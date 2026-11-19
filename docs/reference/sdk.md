@@ -561,7 +561,11 @@ Browser visibility, focus and online signals can shorten a transient backoff
 once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
-are unchanged.
+are unchanged. Leaving the page aborts the stream unless the browser is
+preserving it in the back-forward cache. When a stream or retry wait settles,
+the SDK removes its listeners from the host targets where it registered them.
+A browser stream needs a window that supports page lifecycle events. The SDK
+stops before reconnecting if that window has retired.
 A stream opening has a 30-second deadline until response headers arrive,
 including credential resolution. `timeoutMs` changes that opening deadline;
 `null` or `0` explicitly disables it. The deadline stops at headers, so it never
@@ -1020,6 +1024,24 @@ scope, currentness callback and live signal at entry. Published
 result reads capture the reference and Task scope before dispatch, require the
 sequence and both digests, and verify the returned Markdown content digest. No
 shared provider execution is enabled by this SDK surface.
+
+### Project Room coordinator
+
+`@kontourai/station-sdk/project-room-coordinator` reaches the `#general`
+coordinator's [routes](api.md#the-coordinator-in-general):
+`getProjectRoomCoordinator`, `startProjectRoomCoordinatorTasks` (some rows,
+or every proposed row when none are named), `runProjectRoomStatusSweep` and
+`setProjectRoomCoordinatorSettings`. Room calls take the room's
+`ApiRequestScope` and guards, like the other room clients. Its React hooks are
+`useProjectRoomCoordinatorCapability` (the `projectRoomCoordinator` flag,
+asked only when enabled), `useProjectRoomCoordinator` (one query per
+Project's `#general`, rechecked every five seconds while a Task waits, starts
+or works), `useStartProjectRoomCoordinatorTasks`, `useProjectRoomStatusSweep`
+and `useSetProjectRoomCoordinatorSettingsMutation`. Gate on the capability and
+the `project-room-coordinator` Feature Preview; with the preview off every
+route answers `feature_preview_disabled`. See the
+[client](../../packages/sdk/src/client/project-room-coordinator.ts) and
+[hooks](../../packages/sdk/src/query-domains/projectRoomCoordinator.ts).
 
 ### Task room agent requests
 
@@ -7238,19 +7260,37 @@ consider updating the host. No operator or private-vault credential is returned.
 See [the source journey](../guides/monitoring.md#connect-a-personal-source-in-insights)
 for expiry, source/Device revalidation and remaining qualification limits.
 
-### Observe-only Automation deliveries
+### Automation operator surface
 
-`listAutomationDeliveries(apiBase, { limit? }, options?)` from
-`@kontourai/station-sdk/client` reads `GET /automations/deliveries` as the
-management caller. It returns `AutomationDeliveryPage` with `deliveries` and
-`polls`, including partial coverage and source failures. Each delivery may
+`@kontourai/station-sdk/client` has one function per
+`AUTOMATION_OPERATOR_SURFACE` verb (#4513): `listAutomationDeliveries(apiBase,
+{ limit? })`, `listAutomationEpisodes`, `retryAutomationEpisode(apiBase,
+{ ruleId, episodeId })`, `listAutomationSources`, `createAutomationSource`,
+`enableAutomationSource(apiBase, id, expectedFingerprint)`,
+`disableAutomationSource`, `deleteAutomationSource`, `listAutomationRules`,
+`createAutomationRule`, `updateAutomationRule(apiBase, id, { ...rule,
+expectedFingerprint })`, `enableAutomationRule(apiBase, id,
+expectedFingerprint)`, `disableAutomationRule` and `deleteAutomationRule`.
+Each accepts `ClientRequestOptions`.
+
+`listAutomationDeliveries` returns `AutomationDeliveryPage` with `deliveries`
+and `polls`, including partial coverage and source failures. Each delivery may
 carry `decisions`: one `AutomationRuleDecision` per matched `observe` or `live`
 rule with its mode, outcome (`would-start`, `suppressed` with a reason, or
-`intent-retained`) and a bounded action snapshot. The server requires
-**GitHub automation observations** in Feature previews. A `StationHttpError`
-preserves the preview refusal's code and Settings link; a 404 from an older
-host reports the unsupported capability. No mutation or agent invocation is
-performed. See [Automation intake](../design/automations.md#observe-only-github-preview).
+`intent-retained`) and a bounded action snapshot. `listAutomationRules` and
+`listAutomationSources` return the `configurationFingerprint` the enable and
+update functions name. Rule functions take `AutomationDispatchRuleInput`
+(`dispatch-task` only); sources are disabled `github-poll` sources
+(`AutomationPollSourceInput`).
+
+Reads need a management caller; every change is refused unless the operator
+makes it in person (never an agent session). Everything except the disable and
+delete functions needs **GitHub automation observations** in Feature previews.
+A `StationHttpError` preserves the server's code: `feature_preview_disabled`
+with its Settings link, `automation_not_found` for a missing rule, source or
+episode, `operator_required`, or a retry refusal such as `not-exhausted`. Any
+other 404 (an older host) reports the unsupported capability. See
+[Operator surface](../design/automations.md#operator-surface).
 
 ### Personal conversation resolution and turn directory
 

@@ -167,11 +167,12 @@ approval paths.
 
 With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
 escalations of a `host` session automatically without opening a Station
-approval card. The Ask
-chip confirms the approval-policy mapping only; Station does not currently
-report the effective reviewer. Its picker option and the chip's accessible name
-name that gap; the chip's hover tooltip carries only the policy boundary.
-Ask alone is not evidence that a person must approve every sandbox escalation.
+approval card. The approval sheet shows the reviewer Codex reported for the
+current native thread as You, Automatic, or Unknown. Station records startup,
+resume, fork, and subsequent settings reports independently of the approval
+mode. The last report is restored on reconnect. An explicit workspace start
+is refused if Codex reports an automatic reviewer in conflict with the
+human-reviewer configuration.
 See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
 
 This mapping was checked against Codex CLI 0.162.1's generated app-server
