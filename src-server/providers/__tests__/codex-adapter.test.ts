@@ -201,6 +201,21 @@ function writeServerMessage(
   transport.handleStdoutLine(record, JSON.stringify(message));
 }
 
+function completeServerTurn(
+  adapter: CodexAdapter,
+  threadId: string,
+  codexThreadId: string,
+  turnId: string,
+): void {
+  writeServerMessage(adapter, threadId, {
+    method: 'turn/completed',
+    params: {
+      threadId: codexThreadId,
+      turn: { id: turnId, status: 'completed' },
+    },
+  });
+}
+
 async function respondToQuotaRead(
   process: FakeCodexProcess,
   payload: unknown,
@@ -2551,6 +2566,12 @@ describe('CodexAdapter', () => {
     // Confirms the premise: interruptTurn has not resolved (its RPC is
     // still pending), so it has not touched activeTurnId yet.
     expect(record.activeTurnId).toBe('turn-1');
+    completeServerTurn(
+      adapter,
+      'thread-cross-turn',
+      'codex-thread-cross-turn',
+      'turn-1',
+    );
     const sendTurnTwoPromise = adapter.sendTurn({
       threadId: 'thread-cross-turn',
       input: 'second turn',
@@ -3066,8 +3087,14 @@ describe('CodexAdapter', () => {
       const interruptPromise = adapter.interruptTurn(threadId);
       await flushIo();
 
-      // WHILE the cascade is still in flight, a NEW turn starts on the same
-      // record (mirrors a user sending another message mid-Stop).
+      // The parent settles while the child's interrupt is still in flight.
+      // A successor can start before the old interrupt finishes unwinding.
+      completeServerTurn(
+        adapter,
+        threadId,
+        record.codexThreadId,
+        PARENT_TURN_ID,
+      );
       const sendTurnPromise = adapter.sendTurn({
         threadId,
         input: 'a second message, sent while Stop is still cascading',
@@ -3376,6 +3403,17 @@ describe('CodexAdapter', () => {
         id: String(4 + index),
         result: { turn: { id: turnId } },
       });
+      await withTimeout(send, 'reused sendTurn');
+      const requestCount = processHandle.stdin.lines.length;
+      const refusal = adapter
+        .sendTurn({ threadId: 'thread-ambient', input: 'Overlapping send' })
+        .catch((error: unknown) => error);
+      await flushIo();
+      expect(processHandle.stdin.lines).toHaveLength(requestCount);
+      await expect(refusal).resolves.toMatchObject({
+        name: 'SendTurnRefusedError',
+        kind: 'busy',
+      });
       writeServerMessage(adapter, 'thread-ambient', {
         method: 'turn/completed',
         params: {
@@ -3383,7 +3421,6 @@ describe('CodexAdapter', () => {
           turn: { id: turnId, status: 'completed' },
         },
       });
-      await withTimeout(send, 'reused sendTurn');
       expect(await nextEvent(iterator, 'turn.started')).toMatchObject({
         turnId,
         invocationId,
@@ -5536,6 +5573,12 @@ describe('CodexAdapter', () => {
       result: { turn: { id: 'turn-approval-1' } },
     });
     await withTimeout(firstTurnPromise, 'sendTurn 1');
+    completeServerTurn(
+      adapter,
+      'thread-approval',
+      'codex-thread-approval',
+      'turn-approval-1',
+    );
     await flushIo();
 
     // Second turn carries an explicit override — the override reaches the
@@ -5988,13 +6031,15 @@ describe('CodexAdapter', () => {
           ...(turn.confinement ? { confinement: turn.confinement } : {}),
         });
         await flushIo();
+        const turnId = `turn-${threadId}-${id}`;
         writeServerMessage(adapter, threadId, {
           id: String(id),
-          result: { turn: { id: `turn-${threadId}-${id}` } },
+          result: { turn: { id: turnId } },
         });
         id += 1;
         await withTimeout(sent, `sendTurn ${threadId}`);
         metadata.push((await nextOf(iterator, 'turn.started')).metadata);
+        completeServerTurn(adapter, threadId, `codex-${threadId}`, turnId);
       }
       const params = processHandle.stdin.lines
         .map(parseLine)

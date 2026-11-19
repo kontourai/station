@@ -24,6 +24,7 @@ import {
   nextOccurrence,
   type Schedule,
   type ScheduledJob,
+  validateSchedule,
 } from '@kontourai/ephemeris';
 import type {
   ExternalMonitorConfig,
@@ -36,6 +37,7 @@ import {
   type SchedulerJob,
   type SchedulerLogEntry,
   type SchedulerProviderStats,
+  type SchedulerRowIssue,
 } from '@kontourai/station-contracts/scheduler';
 import {
   exactProcessIdentity,
@@ -611,6 +613,7 @@ export interface SchedulerLedger {
   remove(name: string, expectedJobId?: string): SchedulerRemoveOutcome;
   list(): SchedulerReadOutcome<StoredSchedulerJob[]>;
   listViews(now?: number): SchedulerReadOutcome<SchedulerJob[]>;
+  rowIssues(): SchedulerReadOutcome<SchedulerRowIssue[]>;
   /**
    * `held` (#5069): a due job it answers `true` for is left unclaimed, its
    * occurrence neither run nor recorded, so the job runs once it is released
@@ -1338,28 +1341,68 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     return this.read(() => this.listUnsafe());
   }
 
+  private readJobRows() {
+    const rows = this.db
+      .prepare(
+        'SELECT job_id, name, data FROM scheduler_jobs ORDER BY created_at ASC',
+      )
+      .all() as Array<{ job_id: string; name: string; data: string }>;
+    const jobs: Array<{ jobId: string; job: StoredSchedulerJob }> = [];
+    const issues: SchedulerRowIssue[] = [];
+    for (const row of rows) {
+      try {
+        const job = freezeJob(parseStoredJob(row.data));
+        if (
+          job.name !== row.name ||
+          typeof job.createdAt !== 'string' ||
+          typeof job.enabled !== 'boolean' ||
+          (job.cron !== undefined && typeof job.cron !== 'string') ||
+          (job.schedule !== undefined &&
+            (!job.schedule ||
+              !['at', 'every', 'cron'].includes(job.schedule.kind)))
+        )
+          throw new MalformedSchedulerJob('invalid-job');
+        const schedule = toScheduledJob(job)?.schedule;
+        if (
+          schedule &&
+          (validateSchedule(schedule) !== null ||
+            (schedule.kind === 'at' &&
+              !Number.isFinite(new Date(schedule.timeMs).getTime())) ||
+            (schedule.kind === 'every' &&
+              !Number.isFinite(
+                new Date(Date.now() + schedule.everyMs).getTime(),
+              )))
+        )
+          throw new MalformedSchedulerJob('invalid-job');
+        jobs.push({ jobId: row.job_id, job });
+      } catch (error) {
+        if (!(error instanceof MalformedSchedulerJob)) throw error;
+        issues.push({
+          jobId: row.job_id,
+          name: row.name,
+          reason: error.reason,
+        });
+      }
+    }
+    return { jobs, issues };
+  }
+
+  rowIssues(): SchedulerReadOutcome<SchedulerRowIssue[]> {
+    return this.read(() => this.readJobRows().issues);
+  }
+
   private listUnsafe(): StoredSchedulerJob[] {
-    return this.db
-      .prepare('SELECT data FROM scheduler_jobs ORDER BY created_at ASC')
-      .all()
-      .map((row) => freezeJob(parseStoredJob((row as { data: string }).data)));
+    return this.readJobRows().jobs.map(({ job }) => job);
   }
 
   listViews(now = Date.now()): SchedulerReadOutcome<SchedulerJob[]> {
     return this.read(() =>
-      (
-        this.db
-          .prepare(
-            'SELECT job_id, data FROM scheduler_jobs ORDER BY created_at ASC',
-          )
-          .all() as Array<{ job_id: string; data: string }>
-      ).map((row) => {
-        const job = freezeJob(parseStoredJob(row.data));
+      this.readJobRows().jobs.map(({ jobId, job }) => {
         const last = this.logsUnsafe(job.name, 1).at(-1);
         const scheduled = job.enabled ? toScheduledJob(job) : null;
         const next = scheduled ? nextOccurrence(scheduled.schedule, now) : null;
         const { createdBy, failureCountResetAt, ...rest } = job;
-        const lastSuccessAt = this.lastSuccessUnsafe(row.job_id);
+        const lastSuccessAt = this.lastSuccessUnsafe(jobId);
         return {
           ...rest,
           // Only who created it is public; the replayed actor stays private.
@@ -1380,7 +1423,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           provider: 'built-in',
           unattendedPrincipal: {
             kind: 'scheduled-job' as const,
-            jobId: row.job_id,
+            jobId: jobId,
           },
           lastRun: last?.startedAt,
           nextRun: next === null ? undefined : new Date(next).toISOString(),
@@ -4465,22 +4508,26 @@ function toScheduledJob(stored: StoredSchedulerJob): ScheduledJob | null {
   };
 }
 
-function parseStoredJob(value: string): StoredSchedulerJob {
-  try {
-    const parsed = JSON.parse(value) as StoredSchedulerJob;
-    if (
-      !parsed ||
-      typeof parsed.name !== 'string' ||
-      typeof parsed.prompt !== 'string'
-    ) {
-      throw new Error('invalid scheduler job record');
-    }
-    return parsed;
-  } catch (error) {
-    throw new Error('Scheduler ledger contains corrupt job state', {
-      cause: error,
-    });
+class MalformedSchedulerJob extends Error {
+  constructor(readonly reason: SchedulerRowIssue['reason']) {
+    super('Scheduler ledger contains corrupt job state');
   }
+}
+
+function parseStoredJob(value: string): StoredSchedulerJob {
+  let parsed: StoredSchedulerJob;
+  try {
+    parsed = JSON.parse(value) as StoredSchedulerJob;
+  } catch {
+    throw new MalformedSchedulerJob('invalid-json');
+  }
+  if (
+    !parsed ||
+    typeof parsed.name !== 'string' ||
+    typeof parsed.prompt !== 'string'
+  )
+    throw new MalformedSchedulerJob('invalid-job');
+  return parsed;
 }
 
 function boundedIdentity(value: unknown): value is string {

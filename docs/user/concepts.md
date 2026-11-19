@@ -103,6 +103,8 @@ in the panel that reported the error.
 | **Unable to check Task sharing** | Select **Retry** in Task sharing. |
 | **Tool access unavailable** | Select **Retry tool access**. |
 | **Project tools unavailable** | Select **Retry Project tools**. |
+| **Agent request storage unavailable.** | Reopen the Room in a fresh tab with browser storage allowed. Check the Room for any earlier Agent request before sending again. |
+| **Agent start could not be confirmed. Check its answer before retrying.** | Check for the Agent’s answer in the Room before using the saved request’s retry. |
 
 #### Task work and results
 
@@ -110,6 +112,7 @@ in the panel that reported the error.
 | --- | --- |
 | **Unable to load tasks**, **Couldn’t read agent runs.**, **Couldn’t refresh pull requests** | Select **Retry** in the Project's Tasks list or board. |
 | **Subtasks unavailable.**, **Work chats unavailable.**, **Unable to load kept answers**, **Couldn’t read the Task memory**, **Could not load the pull request watch** | Select **Retry** in the Task panel that reported the error. |
+| **Task room document is unavailable.** | Reopen the Task on its owning Station to check Room access. |
 | **Chat selection unavailable.** | Select **Retry selection** to reload the recent chat choices. |
 | **Chat link unavailable. Select a chat and try again.** | Select a chat again before retrying the link. |
 | **Couldn’t load Task outputs:** | Select **Retry outputs**. |
@@ -117,6 +120,9 @@ in the panel that reported the error.
 | **Couldn’t refresh Timeline.** | Select **Retry Timeline**. |
 | **Some Screens are unavailable.** | Select **Retry unavailable Screens**. |
 | **Couldn’t refresh Review.** | Select **Retry Review**. |
+| **Code review unavailable** | Select **Reload review data** to check the review. If the panel says access changed, reopen the Task first. |
+| **Request recovery could not be saved** | Allow browser storage, then select **Check status** to read the review state before requesting a review again. |
+| **Request outcome unknown** | Select **Check request** to check whether Station received that review request. |
 | **Couldn’t load this Screen.** | Select **Retry Screen** in the Screen detail. |
 | **Couldn’t load this item.** | Select **Retry item**. |
 | **Couldn’t load clips.** or **Couldn’t load this clip.** | Select **Retry clips** for the list or **Retry clip** for the open clip. |

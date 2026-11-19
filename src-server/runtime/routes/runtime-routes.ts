@@ -11,6 +11,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { resolveProjectCheckoutStaleThresholds } from '@kontourai/station-contracts/project-checkout-freshness';
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import {
   READ_MARKER_MARK_PATH,
   READ_MARKER_SUMMARY_PATH,
@@ -223,6 +224,7 @@ import {
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
+import { COORDINATOR_ACTOR } from '../../services/projects/project-room-coordinator.js';
 import { notifyProjectRoomMention } from '../../services/projects/project-room-mention-notifications.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import {
@@ -250,6 +252,7 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
+import { matchPullRequestOpen } from '../../services/pull-requests/pull-request-watch-guard.js';
 import { readTelemetryCompanionPrerequisites } from '../../services/telemetry-companion.js';
 import {
   prepareTelemetryCompanionArchive,
@@ -295,6 +298,7 @@ import {
 } from '../request-read-authority-context.js';
 import { createProjectRoomAccess } from './project-room-access.js';
 import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
+import { composeProjectRoomCoordinatorRuntime } from './project-room-coordinator-runtime.js';
 import { createProjectRoomTaskContext } from './project-room-task-context.js';
 import { createProjectSharingStepUp } from './project-sharing-step-up.js';
 import { createTaskInboxProjection } from './task-inbox-projection.js';
@@ -403,7 +407,10 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
+import {
+  servesCoordinatorSession,
+  servesProjectRoomCoordinator,
+} from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
   materializeEngineAgent,
@@ -3303,6 +3310,9 @@ export function configureRuntimeRoutes(
         description:
           'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
       });
+  const sharedProjectRooms = Boolean(
+    context.projectMembership || context.deploymentAuthentication,
+  );
   configureRuntimePublicRoutes(
     context.app,
     context.environmentSecurityService,
@@ -3311,6 +3321,7 @@ export function configureRuntimeRoutes(
         enabled: () => true,
         disabled: () => false,
       }) === true,
+    sharedProjectRooms,
   );
   // Shared between the public local-grant route below and the authenticated
   // `/api/pairing/**` host routes so a same-user self-authorization and an
@@ -9997,6 +10008,70 @@ export function configureRuntimeRoutes(
       });
     },
   );
+  const roomCoordinatorPreview = servesProjectRoomCoordinator({
+    hosted: Boolean(hostedTenantRegistry) || isHostedTenantExecutionRequired(),
+    sharedProjectRooms,
+  })
+    ? context.featurePreviews.bind({
+        id: 'project-room-coordinator',
+        label: 'Coordinator in #general',
+        description:
+          "Make the Agent you ask in a Project's #general its coordinator: it answers, proposes Tasks you start from a card, or passes your message to a running Task, and posts each result back. Each Task runs an agent and can spend model credits.",
+      })
+    : undefined;
+  const coordinatorScope = (
+    slug: string,
+  ): ProjectMembershipScope | undefined => {
+    try {
+      const project = context.storageAdapter.getProject(slug);
+      const record = (
+        contributionResolution.manifests as ProjectManifestStore
+      ).readRecord(slug);
+      if (!project || !record) return undefined;
+      return {
+        stationId:
+          context.environmentSecurityService.devicePairing.environmentId(),
+        localProjectId: project.id,
+        localProjectSlug: slug,
+        portableProjectId: parseProjectPortableIdentity(record).id,
+      };
+    } catch {
+      return undefined;
+    }
+  };
+  const roomCoordinator =
+    roomCoordinatorPreview && threadInbox && context.orchestrationEventStore
+      ? composeProjectRoomCoordinatorRuntime({
+          home: roomHome,
+          preview: roomCoordinatorPreview,
+          rooms: roomStore.store,
+          getProject: (slug) => {
+            try {
+              return context.storageAdapter.getProject(slug);
+            } catch {
+              return undefined;
+            }
+          },
+          currentScope: coordinatorScope,
+          mayStart: (userId, localProjectId) =>
+            principalMayInProject(userId, localProjectId, 'execute'),
+          agentName: async (agentId) => {
+            try {
+              return (await context.agentService.getAgent(agentId)).name;
+            } catch {
+              return undefined;
+            }
+          },
+          taskGraph: context.taskGraphService,
+          dispatcher: context.taskDispatcher,
+          inbox: threadInbox,
+          eventStore: context.orchestrationEventStore,
+          sessions: context.orchestrationService,
+          authorityFor: readAuthorityForExecution,
+          eventBus: context.eventBus,
+          logger: context.logger,
+        })
+      : undefined;
   let roomAgentRuntime:
     | ReturnType<typeof createProjectRoomAgentRuntime>
     | undefined;
@@ -10012,6 +10087,7 @@ export function configureRuntimeRoutes(
       projectRoomService.close();
       roomClose = (async () => {
         try {
+          await roomCoordinator?.close();
           await roomPublication?.close();
         } finally {
           try {
@@ -10086,6 +10162,7 @@ export function configureRuntimeRoutes(
           context.orchestrationService.getProviderAdapter(provider),
       },
     }),
+    roomCoordinator?.coordinator,
   );
   roomPublication = createProjectRoomAgentPublication({
     eventBus: context.eventBus,
@@ -10095,6 +10172,24 @@ export function configureRuntimeRoutes(
     '/api/projects',
     createProjectRoomRoutes(projectRoomService, {
       module: roomAgentRuntime.module,
+      ...(roomCoordinator
+        ? {
+            coordinator: {
+              enabled: roomCoordinator.enabled,
+              service: roomCoordinator.coordinator,
+              roomId: (scope) => roomStore.store.lookupRoom(scope)?.roomId,
+              // A sweep is a new message each time, under the asking
+              // person's current room authority.
+              post: (authority, text) =>
+                roomStore.store.append(
+                  authority.scope,
+                  COORDINATOR_ACTOR,
+                  { intentId: randomUUID(), text },
+                  authority.assertCurrent,
+                ).messageId,
+            },
+          }
+        : {}),
       observe: (authority, handle) =>
         roomPublication!.watch(authority, handle.requestId),
       withAuthority: async (
@@ -10806,6 +10901,7 @@ export function configureRuntimeRoutes(
           scopedTerminals.sessions?.endProject(projectId),
         projectLifecycle: projectLifecycle.lifecycle,
         projectLifecyclePreview: projectLifecycle.pauseArchivePreview,
+        roomCoordinatorPreview,
         projectSchedules: {
           count: async (projectId) =>
             (await projectScheduler?.listJobs())?.filter(
@@ -11225,9 +11321,21 @@ export function configureRuntimeRoutes(
       '/api/pull-request-feedback',
       createPullRequestFeedbackRoutes(...pullRequestFeedback.routeArgs),
     );
-  if (pullRequestFeedback?.pullRequestWatchPolicy)
+  // #5066's watch refusals, then #5063's: a `#general` coordinator Task the
+  // person did not ask for a pull request may not open one.
+  const watchPolicy = pullRequestFeedback?.pullRequestWatchPolicy;
+  const coordinatorPolicy = roomCoordinator?.coordinator;
+  if (watchPolicy || coordinatorPolicy)
     context.bindPullRequestWatchPolicy?.(
-      pullRequestFeedback.pullRequestWatchPolicy,
+      (input) =>
+        watchPolicy?.(input) ??
+        coordinatorPolicy?.guard({
+          conversationId: input.conversationId,
+          opensPullRequest: matchPullRequestOpen(
+            input.operationName,
+            input.toolArgs,
+          ),
+        }),
     );
   context.app.route(
     '/api/pull-requests',
@@ -13896,10 +14004,12 @@ export function configureRuntimePublicRoutes(
     'getPublicHandshake' | 'createPublicProof'
   >,
   peerChatEnabled: () => boolean = () => false,
+  sharedProjectRooms = false,
 ): void {
   app.get(PUBLIC_STATION_HANDSHAKE_PATH, async (c) => {
     const handshake = await environmentSecurityService.getPublicHandshake(
       peerChatEnabled(),
+      sharedProjectRooms,
     );
     // Recorded from the served document rather than from the constants, so the
     // metric can never claim a contract the response did not actually carry.

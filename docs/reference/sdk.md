@@ -1025,6 +1025,24 @@ result reads capture the reference and Task scope before dispatch, require the
 sequence and both digests, and verify the returned Markdown content digest. No
 shared provider execution is enabled by this SDK surface.
 
+### Project Room coordinator
+
+`@kontourai/station-sdk/project-room-coordinator` reaches the `#general`
+coordinator's [routes](api.md#the-coordinator-in-general):
+`getProjectRoomCoordinator`, `startProjectRoomCoordinatorTasks` (some rows,
+or every proposed row when none are named), `runProjectRoomStatusSweep` and
+`setProjectRoomCoordinatorSettings`. Room calls take the room's
+`ApiRequestScope` and guards, like the other room clients. Its React hooks are
+`useProjectRoomCoordinatorCapability` (the `projectRoomCoordinator` flag,
+asked only when enabled), `useProjectRoomCoordinator` (one query per
+Project's `#general`, rechecked every five seconds while a Task waits, starts
+or works), `useStartProjectRoomCoordinatorTasks`, `useProjectRoomStatusSweep`
+and `useSetProjectRoomCoordinatorSettingsMutation`. Gate on the capability and
+the `project-room-coordinator` Feature Preview; with the preview off every
+route answers `feature_preview_disabled`. See the
+[client](../../packages/sdk/src/client/project-room-coordinator.ts) and
+[hooks](../../packages/sdk/src/query-domains/projectRoomCoordinator.ts).
+
 ### Task room agent requests
 
 `@kontourai/station-sdk/client` exports `fetchTaskRoomAgentRequests`,

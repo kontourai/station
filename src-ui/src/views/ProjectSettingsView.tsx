@@ -1,3 +1,4 @@
+import { PROJECT_ROOM_COORDINATOR_PREVIEW_ID } from '@kontourai/station-contracts/project-room-coordinator';
 import { PULL_REQUEST_FEEDBACK_PREVIEW_ID } from '@kontourai/station-contracts/pull-request-feedback';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
@@ -66,6 +67,7 @@ import { ProjectSchedulesSection } from './project-settings/ProjectSchedulesSect
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { ProjectUsageSection } from './project-settings/ProjectUsageSection';
 import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
+import { RoomCoordinatorSection } from './project-settings/RoomCoordinatorSection';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
@@ -91,6 +93,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
   ['pull-requests', 'Pull requests'],
+  ['coordinator', 'Coordinator'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
@@ -215,17 +218,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const settingsSections = PROJECT_SETTINGS_SECTIONS.filter(
     ([id]) => projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id),
   );
-  // Like Schedules: always a section (so a link to it survives a reload),
-  // offered in the list and rendered only with its Feature Preview, which a
-  // Station that cannot serve agent feedback never registers.
   const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
-  const {
-    activeSection,
-    hrefForSection,
-    navigateToSection,
-  } = // Every section stays navigable, so a link to a preview's section
-    // survives a reload before the preview flags load; the list and the
-    // panels show it only with its preview (like agent feedback).
+  const roomCoordinator = previewFlags.has(PROJECT_ROOM_COORDINATOR_PREVIEW_ID);
+  // Keep preview section links navigable while their flags load.
+  const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
       'workspace',
@@ -468,7 +464,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           label="Project settings sections"
           pickerLabel="Project settings section"
           items={settingsSections
-            .filter(([id]) => id !== 'overview' || projectOverviewOn)
+            .filter(
+              ([id]) =>
+                (id !== 'overview' || projectOverviewOn) &&
+                (id !== 'coordinator' || roomCoordinator),
+            )
             .map(([id, label]) => ({
               key: id,
               label,
@@ -936,6 +936,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               onSources={() => navigateToSection('resources')}
             />
           </div>
+
+          {roomCoordinator && (
+            <div
+              className="project-settings__panel"
+              hidden={activeSection !== 'coordinator'}
+            >
+              <RoomCoordinatorSection
+                slug={slug}
+                settings={project?.roomCoordinator}
+                onSaved={refetchProject}
+              />
+            </div>
+          )}
 
           <div
             className="project-settings__panel"

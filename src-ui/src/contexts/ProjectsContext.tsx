@@ -15,6 +15,7 @@ import type {
 import type { ProjectCheckoutFreshness } from '@kontourai/station-contracts/project-checkout-freshness';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
+import type { ProjectRoomCoordinatorSettings } from '@kontourai/station-contracts/project-room-coordinator';
 import type { ProjectPullRequestWatchSettings } from '@kontourai/station-contracts/pull-request-watch';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConnectionReadTarget } from '@kontourai/station-sdk';
@@ -358,6 +359,8 @@ export interface ProjectConfig extends ProjectMetadata {
   /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
   overviewAutoResolveDays?: number;
   pullRequestWatch?: ProjectPullRequestWatchSettings;
+  /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
+  roomCoordinator?: ProjectRoomCoordinatorSettings;
   createdAt: string;
   updatedAt: string;
 }

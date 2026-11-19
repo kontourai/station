@@ -99,6 +99,8 @@ function fixture() {
       object: { type: 'commit', sha: base },
     },
     error: '',
+    jobReadFailures: 0,
+    jobEvidenceReads: 0,
     truncate: false,
     reads: 0,
     mainRefReads: 0,
@@ -168,6 +170,9 @@ function fixture() {
         path,
       );
       if (jobRoute) {
+        state.jobEvidenceReads += 1;
+        if (state.jobEvidenceReads <= state.jobReadFailures)
+          return new Response('', { status: 502 });
         const selected = state.jobs.get(Number(jobRoute[1])) ?? [];
         return json({ total_count: selected.length, jobs: selected });
       }
@@ -501,6 +506,24 @@ describe('source verification reconciler API boundary', () => {
       expect(state.posts.at(-1)?.state).toBe('pending');
     },
   );
+  test('recovers a transient jobs GET and still reconciles two complete snapshots', async () => {
+    const { state, execute } = fixture();
+    state.jobReadFailures = 2;
+
+    expect((await execute()).state).toBe('success');
+    expect(state.jobEvidenceReads).toBe(4);
+    expect(state.posts).toMatchObject([{ state: 'success' }]);
+  });
+
+  test('exhausted jobs GET recovery publishes only pending', async () => {
+    const { state, execute } = fixture();
+    state.jobReadFailures = 3;
+
+    await expect(execute()).rejects.toThrow('GitHub API 502');
+    expect(state.jobEvidenceReads).toBe(3);
+    expect(state.posts).toMatchObject([{ state: 'pending' }]);
+  });
+
   test('workflow lifecycle reconciles a later source completion after an earlier pending event', async () => {
     const { state, execute } = fixture();
     state.jobs.get(10)![2].status = 'in_progress';

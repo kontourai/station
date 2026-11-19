@@ -1476,6 +1476,50 @@ treating the notification stream as a durable message log. Presence expires and
 is not resurrected after restart. Slow readers are closed after the bounded
 write deadline. See the [transport decision](../decisions/project-room-realtime.md).
 
+### The coordinator in #general
+
+Behind the `project-room-coordinator` Feature Preview and the
+`projectRoomCoordinator` capability flag (personal Stations with Project sharing and
+deployment sign-in disabled), an Agent
+request in a Project's default channel is answered by the Project's
+coordinator. Its answer ends with a `<station_routing>` block that Station
+parses (`parseCoordinatorReply`) and replaces with a line saying where the
+message went: answered in place, proposed Tasks (a card), or sent to a
+coordinator Task's chat. The leaves exist under `/:slug/room` only. Each
+answers 404 with `code: 'feature_preview_disabled'` while the preview is off.
+
+- `GET /api/projects/:slug/room/coordinator` (the room's view action) returns
+  `ProjectRoomCoordinatorView`: the Project's effective
+  `ProjectRoomCoordinatorSettings`, how many coordinator Tasks are working and
+  waiting, and the newest 20 cards, each with its message id and rows.
+  Card refusals give a recovery step. Detailed Task diagnostics stay in the
+  private coordinator journal.
+- `POST …/room/coordinator/proposals/:proposalId/start` (execute), body the
+  room guards plus optional `rowIds` (absent is **Start all**), moves the
+  card's proposed rows to waiting as the caller, starts as many as the
+  Project's limit allows, and returns the view. Repeating it changes nothing.
+- `POST …/room/coordinator/sweep` (execute), body the room guards, posts one
+  message in `#general` with a line per open coordinator Task. Each line
+  links the Task, reports whether a written answer exists, and says what it
+  waits on. The route returns `{ messageId, tasks }`.
+- `PUT /api/projects/:slug/room-coordinator`, body
+  `{ startWithoutAsking, maxConcurrentTasks (1–10), pullRequests:
+  'when-asked' | 'allowed' }`, sets `ProjectConfig.roomCoordinator`. The
+  runtime Project guard admits only the Project's owner.
+
+Station enforces the limits itself: rows claim slots in one SQLite
+transaction against `maxConcurrentTasks`, Tasks are created only on Start
+(or at once when `startWithoutAsking`), and a coordinator Task whose person
+did not ask for a pull request has recognized opener calls refused when they
+pass through Station's pre-tool policy. This includes supported `gh`, `glab`
+and forge MCP forms. Each row keys its Task, first turn and room result. A
+successful turn holds its slot until the Task is Done. Restart resumes durable
+work without repeating these effects. Station posts a linked settlement only
+while the starter may still start work in the same Project incarnation.
+The Task entry point owns access to the Task's actual answer and failure details.
+Earlier preview result text that differs from the link-only message stays in
+the private coordinator journal and is withheld from replay into Room history.
+
 ## Task deliverables and linked work chats
 
 The dedicated `createTaskRelationshipRoutes` factory is mounted by runtime
@@ -5932,7 +5976,16 @@ exist). Provider status job counts are scoped to readable jobs.
 
 `GET /scheduler/status` returns `{success: true, data: {providers}}`. Each entry
 contains the provider's status plus its ID and display name; this is not one
-universal `{running, provider}` object.
+universal `{running, provider}` object. The Station operator may also receive
+`rowIssues` for built-in jobs that cannot be decoded or have invalid required
+fields. Each diagnostic contains only the stored job name, immutable job ID,
+and reason. Healthy jobs continue to appear and can still be run or edited.
+SQLite file integrity failures keep their separate recovery outcome.
+
+The Schedule calendar uses the same authorized job list. An optional
+`weekStart=YYYY-MM-DD` Monday and optional `displayZone` add a per-day bounded `weekOccurrences` forecast in UTC
+to each returned job. The display time zone only groups and formats these
+instants. The scheduler's stored time zone continues to govern execution.
 
 ### Preview Cron Schedule
 

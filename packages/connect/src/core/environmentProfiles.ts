@@ -118,6 +118,23 @@ const FAILURE_COPY: Record<
     // with no lastError at all still uses.
     short: "This device isn't authorised on this Station",
   }),
+  'authentication-rate-limited': (host) => ({
+    summary: `${host} is temporarily limiting sign-in checks.`,
+    action: 'Wait a moment and try again.',
+  }),
+  'access-scope-refused': (host) => ({
+    summary: `Your current access does not cover this check on ${host}.`,
+    action:
+      'Ask the Station operator to check what this account or device is allowed to access.',
+  }),
+  'relay-authority-unavailable': (host) => ({
+    summary: `Station access could not be verified for ${host} on this device.`,
+    action: 'Open Connections and check the selected Station and account.',
+  }),
+  'access-check-unavailable': (host) => ({
+    summary: `The access check for ${host} could not start.`,
+    action: 'Check the saved address in Connections and try again.',
+  }),
   'unsupported-capability-version': (host) => ({
     summary: `${host} is running an older Station than this app needs.`,
     action: `Update Station on ${host}, then try again.`,

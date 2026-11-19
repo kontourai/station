@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { fetchGitHubEvidence } from './lib/github-evidence-fetch.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SOURCE_VERIFICATION_CONTEXT = 'Source verification policy';
@@ -344,7 +345,7 @@ export async function reconcileSourceVerification({
   if (!SHA.test(sha ?? '')) throw new Error('Missing exact source head');
   let wrote = false;
   const request = async (path, body) => {
-    const response = await fetch(
+    const response = await fetchGitHubEvidence(
       `${apiUrl}/repos/${repository}${path ? `/${path}` : ''}`,
       {
         method: body ? 'POST' : 'GET',
@@ -354,7 +355,6 @@ export async function reconcileSourceVerification({
           'Content-Type': 'application/json',
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
-        signal: AbortSignal.timeout(30_000),
       },
     );
     if (!response.ok) throw new Error(`GitHub API ${response.status}: ${path}`);
