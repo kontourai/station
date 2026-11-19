@@ -91,11 +91,18 @@ function start(
   args: string[] = [],
   input: 'pipe' | 'ignore' = 'ignore',
 ) {
-  const child = spawn(process.execPath, ['-e', script, ...args], {
-    env,
-    stdio: [input, 'pipe', 'ignore'],
-    windowsHide: true,
-  });
+  const nodeArgs = ['-e', script, ...args];
+  const options = { env, windowsHide: true };
+  const child =
+    input === 'pipe'
+      ? spawn(process.execPath, nodeArgs, {
+          ...options,
+          stdio: ['pipe', 'pipe', 'ignore'],
+        })
+      : spawn(process.execPath, nodeArgs, {
+          ...options,
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
   children.push(child);
   const firstLine = new Promise<string>((resolveLine) =>
     child.stdout.once('data', (chunk) => resolveLine(String(chunk).trim())),
