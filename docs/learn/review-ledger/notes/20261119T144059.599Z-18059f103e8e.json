@@ -1,0 +1,19 @@
+{
+  "revision": "aa93c32f11dfbf7da5d0d01383f232b8e5410c61",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the system status route composition and the cited context and public surfaces. The optional AbortSignal annotation describes the existing provider-state forwarding. The call, handlers and output shapes remain as documented. Actual server-test and scripts typechecks and 250 Engine/Project focused cases passed.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed the system status route composition and the cited context and public surfaces. The optional AbortSignal annotation describes the existing provider-state forwarding. The call, handlers and output shapes remain as documented. Actual server-test and scripts typechecks and 250 Engine/Project focused cases passed.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the system status route composition and the cited context and public surfaces. The optional AbortSignal annotation describes the existing provider-state forwarding. The call, handlers and output shapes remain as documented. Actual server-test and scripts typechecks and 250 Engine/Project focused cases passed.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the system status route composition and the cited context and public surfaces. The optional AbortSignal annotation describes the existing provider-state forwarding. The call, handlers and output shapes remain as documented. Actual server-test and scripts typechecks and 250 Engine/Project focused cases passed.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Reviewed the system status route composition and the cited context and public surfaces. The optional AbortSignal annotation describes the existing provider-state forwarding. The call, handlers and output shapes remain as documented. Actual server-test and scripts typechecks and 250 Engine/Project focused cases passed.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the system status route composition and the cited context and public surfaces. The optional AbortSignal annotation describes the existing provider-state forwarding. The call, handlers and output shapes remain as documented. Actual server-test and scripts typechecks and 250 Engine/Project focused cases passed.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the system status route composition and the cited context and public surfaces. The optional AbortSignal annotation describes the existing provider-state forwarding. The call, handlers and output shapes remain as documented. Actual server-test and scripts typechecks and 250 Engine/Project focused cases passed.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}
