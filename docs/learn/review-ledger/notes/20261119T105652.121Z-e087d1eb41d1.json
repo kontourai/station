@@ -1,0 +1,27 @@
+{
+  "revision": "b0ace7c3e7a34fff5c459cc2ee850f143bb1d8ed",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed the Xcode 27 Rust prerequisite against swift-rs 1.0.8 symbol globalization and the hosted undefined-entry-point failure. Only llvm-tools installation changes; SDK minimum, signing, native staging, authority and provider gates remain unchanged. Mobile release guidance now names the prerequisite.","inputs":[".github/workflows/testflight-delivery.yml"]}
+  ]
+}
