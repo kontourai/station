@@ -598,6 +598,7 @@ import {
   stationKnowledgeRuntimeIdentity,
 } from './station-control-runtime-env.js';
 import { startStoreIntegrityVerification } from './store-integrity-verification.js';
+import { startToolProgressCompaction } from './tool-progress-compaction-schedule.js';
 
 interface PersistedAgentActivationTransaction {
   preparationState: RuntimeAgentPreparationState;
@@ -1266,6 +1267,7 @@ export class StationRuntime {
    * init when `gracefulShutdown` exits the process (archive#3218 review).
    */
   private stopStoreIntegrityVerification?: () => void;
+  private stopToolProgressCompaction?: () => void;
   private stopHealthChecks?: () => Promise<void>;
   private readonly operationalEventPublisher: OperationalEventPublisher;
   private readonly pluginOperationalEventSubscriptions: PluginOperationalEventSubscriptionService;
@@ -1377,6 +1379,7 @@ export class StationRuntime {
    */
   private projectCoordination?: ProjectCoordinationRuntime;
   private openCodeNativeEnginePreview?: FeaturePreviewSelector;
+  private toolProgressCompactionPreview!: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1812,6 +1815,14 @@ export class StationRuntime {
       this.bindMemberPasskeysPreview();
       this.bindAccountSharingSettingPreview();
       this.bindCoordinatorSessionPreview();
+      // #5078: the scheduled pass is the only consumer; it selects at every
+      // pass (tool-progress-compaction-schedule.ts).
+      this.toolProgressCompactionPreview = this.featurePreviews.bind({
+        id: 'tool-progress-compaction',
+        label: 'Compact old tool progress',
+        description:
+          'Every 30 minutes, permanently delete tool progress updates that a later update replaced, in finished tool calls of turns older than 30 days. Each call keeps its last update, so transcripts look the same. The database file keeps its size; Station reuses the freed space.',
+      });
       this.openCodeNativeEnginePreview = this.featurePreviews.bind({
         id: 'opencode-native-engine',
         label: 'OpenCode native engine',
@@ -5816,6 +5827,14 @@ export class StationRuntime {
       databasePath: this.orchestrationDatabasePath,
       logger: this.logger,
     });
+    // #5078: same schedule shape; off unless the Feature Preview is on.
+    this.stopToolProgressCompaction?.();
+    this.stopToolProgressCompaction = startToolProgressCompaction({
+      timers: this.timers,
+      eventStore: this.orchestrationEventStore,
+      preview: this.toolProgressCompactionPreview,
+      logger: this.logger,
+    }).stop;
   }
 
   /**
@@ -6323,6 +6342,7 @@ export class StationRuntime {
     // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
     // reason as the line above — prototype-built doubles have no fields.
     this.stopStoreIntegrityVerification?.();
+    this.stopToolProgressCompaction?.();
     if (this.shutdownPromise) return this.shutdownPromise;
     // Settle any in-flight initialize() before tearing down — its rejection
     // is expected here (we are shutting down under it) and must not escape

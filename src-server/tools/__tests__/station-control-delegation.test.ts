@@ -6464,6 +6464,86 @@ describe('#5077 task event cursors are bounded by the per-thread high water', ()
     });
   });
 
+  // #5078: compaction deletes superseded tool.progress rows below the head.
+  // Paging the compacted thread returns every other row at its own sequence,
+  // ends at the same cursor, and a cursor issued before compaction that now
+  // points into a gap still resumes.
+  test('pages a thread compacted by tool.progress compaction', async () => {
+    installCurrentStationFetch();
+    const { observeDelegatedTaskEvents } = await import(
+      '../station-control-delegation.js'
+    );
+    await withDelegatedTask(async ({ eventStore, service }) => {
+      const at = '2026-01-01T00:00:00.000Z';
+      const append = (event: Record<string, unknown>) =>
+        eventStore.appendEvent({
+          provider: 'claude',
+          threadId: TASK_ID,
+          turnId: 'turn-1',
+          createdAt: at,
+          ...event,
+        } as never);
+      append({ eventId: 'turn-start', method: 'turn.started', prompt: 'go' });
+      append({
+        eventId: 'tool-start',
+        method: 'tool.started',
+        itemId: 'call',
+        toolCallId: 'call',
+        toolName: 'shell',
+      });
+      for (const id of ['progress-1', 'progress-2', 'progress-3'])
+        append({
+          eventId: id,
+          method: 'tool.progress',
+          itemId: 'call',
+          toolCallId: 'call',
+          message: id,
+          progress: 0.5,
+        });
+      append({
+        eventId: 'tool-done',
+        method: 'tool.completed',
+        itemId: 'call',
+        toolCallId: 'call',
+        toolName: 'shell',
+        status: 'success',
+      });
+      append({
+        eventId: 'turn-done',
+        method: 'turn.completed',
+        finishReason: 'stop',
+      });
+      const page = (cursor: string | undefined) =>
+        observeDelegatedTaskEvents(
+          { taskId: TASK_ID, cursor, limit: 3, readAuthority: authority },
+          service as never,
+        );
+      const before = await pageThrough(page);
+      const pass = await eventStore.compactSettledToolProgress({
+        cutoff: '2100-01-01T00:00:00.000Z',
+        maxRows: 100,
+      });
+      expect(pass.rowsDeleted).toBe(2);
+      const after = await pageThrough(page);
+      expect(after.seen).toEqual(
+        before.seen.filter(
+          ({ eventId }) => eventId !== 'progress-1' && eventId !== 'progress-2',
+        ),
+      );
+      expect(after.cursors.at(-1)).toBe(before.cursors.at(-1));
+      expect(after.eventCount).toBe(before.eventCount - 2);
+      // A cursor issued at the now-deleted progress-1 resumes past the gap.
+      const progressOne = before.seen.find(
+        ({ eventId }) => eventId === 'progress-1',
+      )!;
+      await expect(
+        page(`station-task-events:v1:${progressOne.sequence}`),
+      ).resolves.toMatchObject({
+        events: [{ eventId: 'progress-3' }, { eventId: 'tool-done' }, {}],
+      });
+    });
+  });
+
   test('still refuses a cursor beyond the high water of a gapped thread', async () => {
     installCurrentStationFetch();
     const { observeDelegatedTaskEvents } = await import(

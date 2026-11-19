@@ -1,0 +1,19 @@
+{
+  "revision": "62ed1140670029b135dead04768de9eb3b2c99ae",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"#5078 delta only: four station.orchestration.tool_progress_compaction.* instruments (passes by outcome, rows/bytes by table, duration). Checked citing docs; none enumerates these instruments except monitoring.md and the generated metrics reference, both updated in this PR.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#5078 delta only: four station.orchestration.tool_progress_compaction.* instruments (passes by outcome, rows/bytes by table, duration). Checked citing docs; none enumerates these instruments except monitoring.md and the generated metrics reference, both updated in this PR.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"#5078 delta only: four station.orchestration.tool_progress_compaction.* instruments (passes by outcome, rows/bytes by table, duration). Checked citing docs; none enumerates these instruments except monitoring.md and the generated metrics reference, both updated in this PR.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#5078 delta only: four station.orchestration.tool_progress_compaction.* instruments (passes by outcome, rows/bytes by table, duration). Checked citing docs; none enumerates these instruments except monitoring.md and the generated metrics reference, both updated in this PR.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"#5078 delta only: four station.orchestration.tool_progress_compaction.* instruments (passes by outcome, rows/bytes by table, duration). Checked citing docs; none enumerates these instruments except monitoring.md and the generated metrics reference, both updated in this PR.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#5078 delta only: four station.orchestration.tool_progress_compaction.* instruments (passes by outcome, rows/bytes by table, duration). Checked citing docs; none enumerates these instruments except monitoring.md and the generated metrics reference, both updated in this PR.","inputs":["src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"#5078 delta only: four station.orchestration.tool_progress_compaction.* instruments (passes by outcome, rows/bytes by table, duration). Checked citing docs; none enumerates these instruments except monitoring.md and the generated metrics reference, both updated in this PR.","inputs":["src-server/telemetry/metrics.ts"]}
+  ]
+}

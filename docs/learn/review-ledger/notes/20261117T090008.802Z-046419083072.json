@@ -1,0 +1,7 @@
+{
+  "revision": "62ed1140670029b135dead04768de9eb3b2c99ae",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"#5078: added Event store retention: preview and kill switch, cutoff env, schedule bounds, file-space behaviour (no VACUUM; freed pages reused) and the four tool_progress_compaction metrics; checked against tool-progress-compaction-schedule.ts, event-store.ts and metrics.ts. Rest of the guide unchanged.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

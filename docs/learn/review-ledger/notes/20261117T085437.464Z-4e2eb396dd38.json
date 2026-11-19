@@ -1,0 +1,11 @@
+{
+  "revision": "62ed1140670029b135dead04768de9eb3b2c99ae",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"#5078: added ToolProgressCompaction to the sessions branch module list beside SessionDigest; checked learning reader and docs reachability claims still hold.","inputs":["docs/learn/atlas.json"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#5078: added ToolProgressCompaction to the sessions branch module list beside SessionDigest; checked learning reader and docs reachability claims still hold.","inputs":["docs/learn/atlas.json"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"#5078: added ToolProgressCompaction to the sessions branch module list beside SessionDigest; checked learning reader and docs reachability claims still hold.","inputs":["docs/learn/atlas.json"]}
+  ]
+}

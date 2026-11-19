@@ -1319,6 +1319,42 @@ to an export directory before they leave the configured retention window. Files
 that do not use Station's `events-YYYY-MM-DD.ndjson` naming scheme are excluded
 from automatic retention.
 
+## Event store retention
+
+The orchestration event store (`<STATION_HOME>/data/orchestration.sqlite`)
+keeps every event a thread recorded until the thread is deleted, with one
+exception: when the `tool-progress-compaction`
+[Feature Preview](../user/settings.md#feature-previews) is on, a scheduled pass
+deletes `tool.progress` rows that a later update of the same finished call
+replaced, in settled turns older than the cutoff. Content deltas and every
+other event are kept. The [decision record](../decisions/tool-progress-compaction.md)
+lists the exact rules and what the deletion changes for readers.
+
+- The first pass runs 10 minutes after start, then every 30 minutes. Each pass
+  deletes at most 5,000 rows, at most 200 per write transaction.
+- `STATION_TOOL_PROGRESS_COMPACTION=off` (or `0`) stops every pass even when
+  the preview is on. `STATION_TOOL_PROGRESS_COMPACTION_MIN_AGE_DAYS` sets the
+  cutoff in whole days (1 to 3650, default 30); any other value keeps 30.
+- The database file does not shrink. SQLite reuses the freed pages for new
+  events, so the file grows again only once new events outweigh them. To
+  return the space to the disk, stop Station and run `VACUUM` on the file.
+
+Each pass records:
+
+- `station.orchestration.tool_progress_compaction.passes`, by `outcome`:
+  `completed` (the scan reached the end of the table), `partial` (it stopped
+  at its page limit), `budget_exhausted` (it hit 5,000 rows), `disabled`
+  (preview off), `killed` (environment switch), `skipped_running` or `failed`
+- `station.orchestration.tool_progress_compaction.rows` and `.bytes`, by
+  `table`: `events` for deleted event rows and their payload bytes, `content`
+  for out-of-line content rows that only those events referenced
+- `station.orchestration.tool_progress_compaction.duration` (ms), the wall
+  time of a pass including its yields
+
+A pass that deletes anything also logs `Compacted superseded tool progress
+rows` with the same totals and the number of threads. No thread, turn or
+call identity is a metric dimension.
+
 <a id="a-counter-is-not-a-local-read-path-station1686"></a>
 
 ## Local evidence and the historical migration shadow

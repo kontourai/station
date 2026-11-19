@@ -1,0 +1,9 @@
+{
+  "revision": "62ed1140670029b135dead04768de9eb3b2c99ae",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"#5078: added the tool-progress-compaction Feature Preview row; checked against the bind in station-runtime.ts and the schedule (both switches read at every pass, off by default).","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"#5078: added the tool-progress-compaction Feature Preview row; checked against the bind in station-runtime.ts and the schedule (both switches read at every pass, off by default).","inputs":["docs/user/settings.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "62ed1140670029b135dead04768de9eb3b2c99ae",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"#5078: added the tool-progress-compaction preview row; checked label, off default, effects and the kill switch against the bind in station-runtime.ts and the schedule.","inputs":["docs/user/settings.md"]}
+  ]
+}

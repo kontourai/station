@@ -479,6 +479,12 @@ import {
   MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES,
 } from './thread-tool-result-adapter.js';
 import {
+  deleteSupersededToolProgress,
+  scanToolProgressRows,
+  selectSupersededToolProgress,
+  type ToolProgressCompactionTotals,
+} from './tool-progress-compaction.js';
+import {
   cjkSearchTerms,
   messageOwnerScopeKey,
   messageTenantScopeKey,
@@ -1164,6 +1170,14 @@ const STANDING_UNRESOLVED_CACHE_MAX = 8;
  * hydrated attachment data, so the bound is on thread count, not history.
  */
 const SESSION_PROJECTION_CACHE_MAX = 2048;
+/**
+ * `tool.progress` compaction bounds (docs/decisions/tool-progress-compaction.md):
+ * rows per write transaction, index entries per scanned page, and pages per
+ * pass. A transaction holds the write lock for one thread's small batch.
+ */
+const TOOL_PROGRESS_COMPACTION_ROWS_PER_TRANSACTION = 200;
+const TOOL_PROGRESS_COMPACTION_PAGE_ROWS = 500;
+const TOOL_PROGRESS_COMPACTION_PAGES_PER_PASS = 40;
 
 /** SQLite function: whether the exact input read would serve this row. */
 const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
@@ -2849,7 +2863,9 @@ export class EventStore {
    * Per-thread session projection facts and event count, keyed by the
    * thread's highest `global_sequence` (#4992). Every write that can change a
    * thread's projection (an append, which also maintains its fact and request
-   * rows, or the thread's deletion) moves or removes that mark, and global
+   * rows, or the thread's deletion) moves or removes that mark; `tool.progress`
+   * compaction, which deletes rows below the mark, drops the entry instead
+   * (`forgetThreadReadCaches`). Global
    * sequences come from a monotonic high-water and are never reused. So an
    * entry whose mark still matches describes exactly the rows a fresh read
    * would fold. Rows are stored unhydrated and frozen; attachment data is
@@ -2865,6 +2881,8 @@ export class EventStore {
   >();
   /** Set only while the projection is computed for the cache above. */
   private deferAttachmentHydration = false;
+  /** Rowid after which the next `tool.progress` compaction pass scans. */
+  private toolProgressCompactionCursor = 0;
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
   private usageExportActivation?: () => string;
@@ -7604,6 +7622,152 @@ export class EventStore {
 
   deleteThreadInBackground(threadId: string): Promise<void> {
     return this.writeInBackground(threadId, () => this.deleteThread(threadId));
+  }
+
+  /**
+   * One bounded pass of `tool.progress` compaction
+   * (docs/decisions/tool-progress-compaction.md). Which rows qualify is
+   * decided in `tool-progress-compaction.ts`. Each transaction covers one
+   * thread and at most {@link TOOL_PROGRESS_COMPACTION_ROWS_PER_TRANSACTION}
+   * rows and runs on that thread's background write queue, so the pass
+   * yields between transactions. The pass resumes from an in-process cursor
+   * over the method index and stops after `maxRows` deletions or
+   * {@link TOOL_PROGRESS_COMPACTION_PAGES_PER_PASS} scanned pages.
+   */
+  async compactSettledToolProgress(options: {
+    cutoff: string;
+    maxRows: number;
+    signal?: AbortSignal;
+  }): Promise<
+    ToolProgressCompactionTotals & {
+      threads: number;
+      cycleCompleted: boolean;
+      budgetExhausted: boolean;
+    }
+  > {
+    const pass = {
+      rowsDeleted: 0,
+      payloadBytes: 0,
+      contentRowsDeleted: 0,
+      contentBytes: 0,
+      threads: 0,
+      cycleCompleted: false,
+      budgetExhausted: false,
+    };
+    for (
+      let page = 0;
+      page < TOOL_PROGRESS_COMPACTION_PAGES_PER_PASS;
+      page += 1
+    ) {
+      if (this.isClosed || options.signal?.aborted) break;
+      const fromRowId = this.toolProgressCompactionCursor;
+      const rows = scanToolProgressRows(
+        this.db,
+        fromRowId,
+        TOOL_PROGRESS_COMPACTION_PAGE_ROWS,
+      );
+      if (rows.length === 0) {
+        this.toolProgressCompactionCursor = 0;
+        pass.cycleCompleted = true;
+        break;
+      }
+      const toRowId = rows.at(-1)!.rowId;
+      for (const threadId of new Set(rows.map((row) => row.threadId))) {
+        if (this.isClosed || options.signal?.aborted) return pass;
+        const range = { threadId, fromRowId, toRowId, cutoff: options.cutoff };
+        if (
+          await this.compactToolProgressThread(range, pass, options.maxRows)
+        ) {
+          // The cursor stays at this page; the next pass re-reads it.
+          pass.budgetExhausted = true;
+          return pass;
+        }
+      }
+      this.toolProgressCompactionCursor = toRowId;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    return pass;
+  }
+
+  /** True when the pass budget ran out on this thread. */
+  private async compactToolProgressThread(
+    range: {
+      threadId: string;
+      fromRowId: number;
+      toRowId: number;
+      cutoff: string;
+    },
+    pass: ToolProgressCompactionTotals & { threads: number },
+    maxRows: number,
+  ): Promise<boolean> {
+    let touched = false;
+    for (;;) {
+      const limit = Math.min(
+        TOOL_PROGRESS_COMPACTION_ROWS_PER_TRANSACTION,
+        maxRows - pass.rowsDeleted,
+      );
+      if (limit <= 0) return true;
+      if (this.isClosed) return false;
+      const batch = await this.writeInBackground(range.threadId, () =>
+        this.deleteSupersededToolProgressBatch({ ...range, limit }),
+      );
+      pass.rowsDeleted += batch.rowsDeleted;
+      pass.payloadBytes += batch.payloadBytes;
+      pass.contentRowsDeleted += batch.contentRowsDeleted;
+      pass.contentBytes += batch.contentBytes;
+      if (batch.rowsDeleted > 0 && !touched) {
+        touched = true;
+        pass.threads += 1;
+      }
+      if (batch.rowsDeleted < limit) return false;
+    }
+  }
+
+  /**
+   * Selection reads row metadata before the transaction opens; the delete
+   * re-checks what a concurrent writer could change (see
+   * `tool-progress-compaction.ts`).
+   */
+  private deleteSupersededToolProgressBatch(
+    input: Parameters<typeof selectSupersededToolProgress>[1],
+  ): ToolProgressCompactionTotals {
+    const selected = selectSupersededToolProgress(this.db, input);
+    if (selected.length === 0)
+      return {
+        rowsDeleted: 0,
+        payloadBytes: 0,
+        contentRowsDeleted: 0,
+        contentBytes: 0,
+      };
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const batch = deleteSupersededToolProgress(
+        this.db,
+        input.threadId,
+        selected,
+      );
+      // A deletion below the thread's head leaves its MAX(global_sequence)
+      // cache key where it was, so the derived reads are dropped here, in the
+      // same transaction as the delete.
+      if (batch.rowsDeleted > 0) this.forgetThreadReadCaches(input.threadId);
+      this.db.exec('COMMIT');
+      return batch;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /**
+   * Drop every derived per-thread read this process cached for `threadId`.
+   * For writes that remove rows below the thread's head, which no cache key
+   * can observe.
+   */
+  private forgetThreadReadCaches(threadId: string): void {
+    this.sessionProjectionCache.delete(threadId);
+    const prefix = `${threadId}\u0000`;
+    for (const key of [...this.standingUnresolvedCache.keys()])
+      if (key.startsWith(prefix)) this.standingUnresolvedCache.delete(key);
   }
 
   /** A retry-capable publisher must leave the loop free for locked room-worker authorization. */

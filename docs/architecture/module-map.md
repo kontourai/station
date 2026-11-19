@@ -40,6 +40,7 @@ The optional [Durable Station Agent](#durable-station-agent) owner sits above th
 | [StationOrchestrationInstructions](#stationorchestrationinstructions) | Compose the Station tool guidance an Agent receives from the tools its session is actually offered. | `src-server/runtime/agents/station-orchestration-instructions.ts` |
 | [SessionMessageDelivery](#sessionmessagedelivery) | Put one message into another Session once: start a turn, steer the running one, or answer busy. | `packages/monument/src/session-message-delivery.ts` |
 | [SessionDigest](#sessiondigest) | Account for a Session's turns from recorded events alone, in pages that never exceed a byte cap. | `src-server/services/orchestration/session-digest.ts` |
+| [ToolProgressCompaction](#toolprogresscompaction) | Delete superseded `tool.progress` rows of settled, old tool calls without changing what any transcript shows. | `src-server/services/orchestration/tool-progress-compaction.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [ColorThemes](#colorthemes) | Resolve a stored named palette and put it in force before first paint without changing Station's default. | `src-ui/src/lib/color-theme-catalog.ts` |
@@ -2036,6 +2037,33 @@ and remote targets over real events, and the
 pin the bounds. Their presence is not an executed receipt against a real engine.
 See [agent configuration](../guides/self-configuring-agent.md#project-activity)
 for the tool-level behavior.
+
+## ToolProgressCompaction
+
+**Intent and Interface.** The one sanctioned deletion from the otherwise
+append-only orchestration event log
+([decision](../decisions/tool-progress-compaction.md)).
+[`tool-progress-compaction.ts`](../../src-server/services/orchestration/tool-progress-compaction.ts)
+selects superseded `tool.progress` rows of one thread page from row metadata
+and deletes them, with the out-of-line content only they referenced.
+`EventStore.compactSettledToolProgress` runs a bounded pass: per-thread
+transactions of at most 200 rows on the thread's background write queue, a
+5,000-row budget, an in-process rowid cursor over the method index, and
+`forgetThreadReadCaches` in the same transaction as each delete.
+
+**Composition.** [`tool-progress-compaction-schedule.ts`](../../src-server/runtime/bootstrap/tool-progress-compaction-schedule.ts)
+starts beside store integrity verification in `StationRuntime.startHealthChecks`,
+selects the `tool-progress-compaction` Feature Preview and the
+`STATION_TOOL_PROGRESS_COMPACTION` kill switch at every pass, and records the
+`station.orchestration.tool_progress_compaction.*` metrics. Shutdown aborts a
+pass in flight.
+
+**Seam and tests.** [`tool-progress-compaction.test.ts`](../../src-server/services/orchestration/__tests__/tool-progress-compaction.test.ts)
+compares the transcript projection, an answer-share view, `readAnswerBasis`,
+event paging, projection facts and cached counts before and after a pass over
+a real SQLite store, and checks each retention rule. The schedule test covers
+the switches and metrics; `get_task_events` paging over a compacted thread is
+in `station-control-delegation.test.ts`.
 
 ## CoordinatorWakeDelivery
 

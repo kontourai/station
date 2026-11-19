@@ -38,4 +38,5 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [task-tracker-followups](./task-tracker-followups.md) | current | Bounded GitHub follow-ups for tracker-backed Tasks |
 | [telemetry-tiers](./telemetry-tiers.md) | current | Per-publisher Station telemetry tiers and consent boundaries |
 | [terminal-same-origin-only](./terminal-same-origin-only.md) | current | Terminals use only the same-origin socket; the port + 1 listener is removed |
+| [tool-progress-compaction](./tool-progress-compaction.md) | current | The event store may delete superseded tool.progress rows of settled calls; every other row stays append-only |
 | [user-color-themes](./user-color-themes.md) | current | Named color themes layered on the shipped design tokens, Station unchanged by default |
