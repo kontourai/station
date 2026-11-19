@@ -38,6 +38,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectLayoutsQuery: () => ({ data: undefined }),
   useBoardAvailabilityQuery: () => ({ data: undefined }),
   useOrchestrationSessionsQuery: () => ({ data: [] }),
+  useAttentionQuery: () => ({ data: undefined }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   useFeaturePreviewsQuery: () => ({ data: [] }),
 }));

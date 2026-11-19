@@ -71,7 +71,7 @@ test.describe
         );
     });
 
-    test('registers, accepts, pairs, reads shared content, then loses revoked scope', async ({
+    test('opens a Task invitation, exchanges feedback, returns and loses revoked access', async ({
       browser,
       page: operator,
     }, testInfo) => {
@@ -90,7 +90,7 @@ test.describe
       };
       const shared = await createProject(
         live.api,
-        { name: 'Shared acceptance', slug: 'shared-acceptance' },
+        { name: 'Release planning', slug: 'shared-acceptance' },
         operatorOptions,
       );
       const privateProject = await createProject(
@@ -125,13 +125,13 @@ test.describe
       };
       const sharedTask = await createTask(
         shared.slug,
-        'Guest-visible acceptance Task',
+        'Review the launch checklist',
       );
       const privateTask = await createTask(
         privateProject.slug,
         'Private ordinary Task marker',
       );
-      const messageMarker = 'Guest-visible real human message';
+      const messageMarker = 'Can you check the rollout window?';
       const openRoom = await fetch(
         `${live.api}/api/tasks/${encodeURIComponent(sharedTask.id)}/room`,
         { headers: operatorHeaders },
@@ -157,7 +157,8 @@ test.describe
         `Message post failed: ${await message.clone().text()}`,
       ).toBe(200);
       await message.text();
-      const documentMarker = 'Guest-visible real shared document';
+      const documentMarker =
+        'The rollout is scheduled for Friday at 10 am. Please check the time and flag anything we should change.';
       const planResponse = await fetch(
         `${live.api}/api/tasks/${encodeURIComponent(sharedTask.id)}/room/edit-plan`,
         {
@@ -206,31 +207,38 @@ test.describe
       expect(enabled.kind).toBe('enabled');
       if (enabled.kind !== 'enabled')
         throw new Error('Sharing was not enabled');
-      const invitation = await changeProjectAccess(
-        live.api,
-        shared.slug,
-        {
-          kind: 'invite',
-          scope: enabled.view.scope,
-          email: null,
-          role: 'viewer',
-          expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-        },
-        operatorOptions,
+      await operator.goto(
+        `${live.ui}/tasks/${encodeURIComponent(sharedTask.id)}`,
       );
-      expect(invitation.kind).toBe('invited');
-      if (invitation.kind !== 'invited')
-        throw new Error('Invitation was not created');
-      const publishResponse = await fetch(
-        `${live.api}/api/projects/${shared.slug}/shared-work/${encodeURIComponent(sharedTask.id)}`,
-        { method: 'PUT', headers: operatorHeaders },
+      await operator.getByText('Share · Private', { exact: true }).click();
+      await operator
+        .getByRole('button', { name: 'Share Task', exact: true })
+        .click();
+      await operator.getByRole('button', { name: 'Invite a teammate' }).click();
+      const inviteDialog = operator.getByRole('dialog', {
+        name: 'Review the launch checklist',
+      });
+      await expect(inviteDialog.getByLabel('Project role')).toHaveValue(
+        'commenter',
       );
-      expect(publishResponse.status).toBe(201);
-      const publication = (await publishResponse.json()).data as {
-        shareId: string;
-      };
-
-      const guestContext = await browser.newContext({ colorScheme: 'dark' });
+      await inviteDialog
+        .getByRole('button', { name: 'Create invitation' })
+        .click();
+      await inviteDialog
+        .getByText('Invitation link', { exact: true })
+        .first()
+        .click();
+      const inviteUrl = await inviteDialog
+        .getByRole('textbox', { name: 'Invitation link' })
+        .inputValue();
+      const shareId = new URLSearchParams(new URL(inviteUrl).hash.slice(1)).get(
+        'share',
+      );
+      expect(shareId).toBeTruthy();
+      const guestContext = await browser.newContext({
+        colorScheme: 'dark',
+        viewport: { width: 1440, height: 900 },
+      });
       const guest = await guestContext.newPage();
       const guestAuthorization: string[] = [];
       guest.on('request', (request) => {
@@ -238,19 +246,14 @@ test.describe
         if (value) guestAuthorization.push(value);
       });
       try {
-        await guest.goto(
-          `${live.ui}/account/join#invitation=${encodeURIComponent(invitation.token)}`,
-        );
+        await guest.goto(inviteUrl);
         await guest.getByRole('button', { name: 'Create an account' }).click();
         await guest.getByLabel('Username').fill('guest.viewer');
         await guest.getByLabel('Password').fill('Guest-acceptance-Aa1!234567');
-        await guest.getByRole('button', { name: 'Create account' }).click();
-        await guest.getByLabel('Password').fill('Guest-acceptance-Aa1!234567');
-        await guest.getByRole('button', { name: 'Sign in' }).click();
-        await guest.getByRole('button', { name: 'Accept invitation' }).click();
         await guest
-          .getByRole('button', { name: 'Request access for this browser' })
+          .getByRole('button', { name: 'Create account and sign in' })
           .click();
+        await guest.getByRole('button', { name: 'Accept invitation' }).click();
         await guest.getByRole('button', { name: 'Request access' }).click();
 
         const deadline = Date.now() + 15_000;
@@ -286,7 +289,7 @@ test.describe
         expect(confirmation.status).toBe(200);
 
         await expect(
-          guest.getByRole('heading', { name: 'Available Projects' }),
+          guest.getByRole('button', { name: 'All shared Projects' }),
         ).toBeVisible({ timeout: 15_000 });
 
         // Exact admitted Device identity, read from the real operator
@@ -358,16 +361,66 @@ test.describe
           });
 
         const openSharedTaskContent = async () => {
-          await guest
-            .getByRole('button', { name: 'Read Project details' })
-            .click();
-          await guest.getByRole('button', { name: 'Read shared Task' }).click();
+          await expect(guest.getByText(documentMarker)).toBeVisible();
+          await guest.getByRole('tab', { name: 'Chat', exact: true }).click();
           await expect(guest.getByText(messageMarker)).toBeVisible();
           await guest.getByRole('tab', { name: 'Brief', exact: true }).click();
           await expect(guest.getByText(documentMarker)).toBeVisible();
         };
 
         await openSharedTaskContent();
+        await guest.getByRole('tab', { name: 'Chat', exact: true }).click();
+        await expect(
+          guest.getByText(/check your Project role and browser access/),
+        ).toBeVisible();
+        const promoted = await fetch(
+          `${live.api}/api/pairing/devices/${admittedDeviceId}/scope`,
+          {
+            method: 'POST',
+            headers: operatorHeaders,
+            body: JSON.stringify({
+              scope: ['orchestration:read', 'orchestration:operate'],
+            }),
+          },
+        );
+        expect(promoted.status).toBe(200);
+        await guest.getByRole('button', { name: 'Check reply access' }).click();
+        await guest
+          .getByRole('textbox', { name: 'Reply to this Task' })
+          .fill('Friday at 10 works for support.');
+        await guest.getByRole('button', { name: 'Send reply' }).click();
+        await expect(
+          guest.getByText('Friday at 10 works for support.', { exact: true }),
+        ).toBeVisible();
+        await inviteDialog
+          .getByRole('button', { name: 'Close invitation' })
+          .click();
+        await operator
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
+        await expect(
+          operator.getByText('Friday at 10 works for support.', {
+            exact: true,
+          }),
+        ).toBeVisible();
+        const draftReply = guest.getByRole('textbox', {
+          name: 'Reply to this Task',
+        });
+        await draftReply.fill('One more thing');
+        await operator
+          .getByRole('textbox', { name: 'Message the Task' })
+          .fill('Thanks. I will confirm with release engineering.');
+        await operator
+          .getByRole('button', { name: 'Send to task room' })
+          .click();
+        await expect(
+          guest.getByText('Thanks. I will confirm with release engineering.', {
+            exact: true,
+          }),
+        ).toBeVisible({ timeout: 15000 });
+        await expect(draftReply).toHaveValue('One more thing');
+        await draftReply.fill('');
+        await guest.getByRole('tab', { name: 'Brief', exact: true }).click();
         const darkTheme = await guest.evaluate(() =>
           document.documentElement.getAttribute('data-theme'),
         );
@@ -384,6 +437,8 @@ test.describe
         // measured minimum (the room's Close button) is ~41.6px by design.
         expect(darkLayout.palette).toBeTruthy();
         await capture('guest-shared-task-wide-dark.png');
+        await guest.setViewportSize({ width: 390, height: 844 });
+        await capture('guest-shared-task-narrow-dark.png');
 
         // The app theme is the LOCAL device-settings preference, not the
         // media query: seed the exact persisted envelope the canonical
@@ -400,7 +455,7 @@ test.describe
         });
         await guest.reload();
         await expect(
-          guest.getByRole('heading', { name: 'Available Projects' }),
+          guest.getByRole('button', { name: 'All shared Projects' }),
         ).toBeVisible({ timeout: 15_000 });
         await openSharedTaskContent();
         const lightTheme = await guest.evaluate(() =>
@@ -416,6 +471,8 @@ test.describe
         ).toBe(false);
         expect(lightLayout.smallestTarget).toBeGreaterThanOrEqual(44);
         await capture('guest-shared-task-narrow-light.png');
+        await guest.setViewportSize({ width: 1440, height: 900 });
+        await capture('guest-shared-task-wide-light.png');
 
         const guestRead = (path: string) =>
           guest.evaluate(async (requestPath) => {
@@ -467,7 +524,7 @@ test.describe
           {
             method: 'DELETE',
             headers: operatorHeaders,
-            body: JSON.stringify({ shareId: publication.shareId }),
+            body: JSON.stringify({ shareId }),
           },
         );
         expect(unshared.status).toBe(200);

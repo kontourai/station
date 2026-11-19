@@ -122,6 +122,11 @@ environment defaults; DO_NOT_TRACK always wins.
 After migration only `telemetryTier` is persisted. Legacy boolean writes are
 translated into tier changes under the same authorization rules.
 
+
+Open **Settings → Privacy & sharing → What usage sharing includes** to review
+the fields this Station reports. The disclosure is separate from the sharing
+choice and does not change it.
+
 ## Disclosure and activation
 
 Telemetry has per-publisher `off`, `lite`, and `full` tiers. Kontour/operator default to Lite; third-party plugin publishers default Off and require explicit opt-in;

@@ -620,10 +620,20 @@ describe('dogfood authenticated health', () => {
       bootId: '11111111-1111-4111-8111-111111111111',
     };
     const apiPaths: string[] = [];
+    const authorization: Array<string | undefined> = [];
+    const credential = 'a'.repeat(43);
+    let requiresCredential = false;
     const apiPort = await reserveConsecutivePorts();
     const api = createServer((req, res) => {
       apiPaths.push(req.url ?? '');
-      if (req.url === '/api/system/status') return;
+      authorization.push(req.headers.authorization);
+      if (
+        requiresCredential &&
+        req.headers.authorization !== `Bearer ${credential}`
+      ) {
+        res.writeHead(401).end();
+        return;
+      }
       res.end(JSON.stringify(identity));
     });
     await listenNodeServer(api, apiPort);
@@ -653,11 +663,23 @@ describe('dogfood authenticated health', () => {
     closers.push(() => closeServer(ui));
     const root = mkdtempSync(join(tmpdir(), 'station-health-'));
     mkdirSync(join(root, '.station', 'instances'), { recursive: true });
+    mkdirSync(join(root, 'security'), { mode: 0o700 });
+    const credentialFile = join(root, 'security', 'environment.json');
+    writeFileSync(
+      credentialFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        environmentId: '11111111-1111-4111-8111-111111111111',
+        credential,
+      }),
+      { mode: 0o600 },
+    );
     const state = join(root, '.station', 'instances', 'phone.json');
     writeFileSync(
       state,
       JSON.stringify({
         ...identity,
+        baseDir: root,
         build: { sha: identity.sha },
         serverPid: process.pid,
         serverFingerprint: currentProcessFingerprint(),
@@ -675,6 +697,28 @@ describe('dogfood authenticated health', () => {
     });
     expect(apiPaths).toEqual(['/api/system/identity']);
     expect(websocketPaths).toEqual(['/__station/health']);
+    expect(authorization).toEqual([undefined]);
+    requiresCredential = true;
+    authorization.length = 0;
+    await expect(probeDogfoodHealth(state)).resolves.toMatchObject({
+      healthy: true,
+      failedChecks: [],
+    });
+    expect(authorization).toEqual([undefined, `Bearer ${credential}`]);
+    authorization.length = 0;
+    chmodSync(credentialFile, 0o644);
+    await expect(probeDogfoodHealth(state)).resolves.toMatchObject({
+      healthy: false,
+      checks: expect.arrayContaining([
+        {
+          name: 'api',
+          healthy: false,
+          reason: 'owned Station identity credential unavailable',
+        },
+      ]),
+    });
+    expect(authorization).toEqual([undefined]);
+    chmodSync(credentialFile, 0o600);
     writeFileSync(
       state,
       JSON.stringify({
@@ -705,10 +749,12 @@ describe('dogfood authenticated health', () => {
       }),
       { mode: 0o600 },
     );
+    authorization.length = 0;
     await expect(probeDogfoodHealth(state)).resolves.toMatchObject({
       healthy: false,
-      failedChecks: expect.arrayContaining(['process']),
+      failedChecks: expect.arrayContaining(['process', 'api']),
     });
+    expect(authorization).toEqual([undefined]);
 
     writeFileSync(
       state,

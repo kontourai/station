@@ -173,6 +173,28 @@ export function AgentEditorToolsTab({
           );
         })}
       </div>
+      <section className="editor-field" aria-label="Unattended approvals">
+        <span className="editor-label">Unattended approvals</span>
+        {form.tools.unattendedAutoApprove.length > 0 ? (
+          <>
+            <p className="editor-hint">
+              Configured for Station runs with nobody available to approve.
+            </p>
+            <ul className="agent-tools__approval-patterns">
+              {[...new Set(form.tools.unattendedAutoApprove)].map((pattern) => (
+                <li key={pattern}>
+                  <code>{pattern}</code>
+                  {pattern === '*' && ' (all tools)'}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="editor-hint">
+            No unattended approval patterns configured.
+          </p>
+        )}
+      </section>
       {browsing && !disabled && (
         <Dialog
           title="Add tools"

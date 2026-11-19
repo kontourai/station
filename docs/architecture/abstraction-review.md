@@ -245,14 +245,12 @@ and relay transports need separate qualification.
 
 ### Staging must use the candidate's dependency contract
 
-Dogfood candidate preparation still runs raw `npm ci` before building a detached
-release, while the current repository has a pnpm lockfile and managed installer.
-Its fixture accepts any npm command, so a green fixture cannot establish
-package-manager compatibility. [#2776](https://github.com/kontourai/station/issues/2776)
-tracks the real candidate caller, a stricter fixture, and a disposable managed
-installation check. This audit inspected the mismatch; it did not stage a live
-release or exercise promotion/rollback. The
-[deployment guide](../guides/deployment.md) retains that qualification limit.
+The dogfood reconciler runs each detached candidate's
+`npm run dependencies:ci` before building it. The pnpm-only fixture checks the
+command and exercises missing lifecycle, install failure and build failure
+while the prior release keeps serving. A disposable reconcile additionally
+completed the real managed install and build. The
+[deployment guide](../guides/deployment.md) describes the operator path.
 
 ### Composition owners are difficult to learn as a single page
 

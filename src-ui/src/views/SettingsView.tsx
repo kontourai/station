@@ -85,10 +85,11 @@ import { FeaturePreviewsSection } from './settings/FeaturePreviewsSection';
 import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
+import { ModelPickerPreferencesRow } from './settings/ModelPickerPreferencesRow';
 import { OfflineReadingSection } from './settings/OfflineReadingSection';
 import { OpenAppearanceButton } from './settings/OpenAppearanceButton';
 import { PairingSection } from './settings/PairingSection';
-import { PeopleSection } from './settings/PeopleSection';
+import { PeopleReadRefusal, PeopleSection } from './settings/PeopleSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -412,6 +413,11 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   );
   const sectionVisible = (section: string) =>
     visibleSections.has(section as never);
+  const peopleSelected = activeSection === 'people' && !searchQuery.trim();
+  const peopleDeniedByEntryGate =
+    peopleSelected &&
+    !sectionVisible('people') &&
+    isPluginVisibilityForbidden(pluginVisibilityDirectory.error);
   /** Whether the current view selects any section in this scope group. */
   const groupVisible = (group: SettingsNavGroup) =>
     SETTINGS_SECTIONS.some(
@@ -1199,7 +1205,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
             )}
 
             {/* ── Station scope ── */}
-            {groupVisible('this-station') && (
+            {(groupVisible('this-station') || peopleDeniedByEntryGate) && (
               <section
                 aria-label="This Station settings"
                 className="settings__scope-group"
@@ -1221,12 +1227,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       provenance={stationProvenance}
                     />
                     <ExistingSetupImportStepper />
-                    {/* #2182: who may sign in to this Station. It has no
-                  catalog row of its own (giving it one is out of scope —
-                  see the epic), so it had to be placed by hand when the card
-                  it used to sit in was dissolved. System is where this page
-                  already keeps Station administration: updates, log level,
-                  export and import, and the two resets. */}
                     {/* #4305: whether this Station shares Projects with local
                   accounts at all; the account list below manages them. */}
                     <AccountSharingSection />
@@ -1255,10 +1255,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
-                {/* #3557: people, their Station group and their tokens.
-              Operator-only (the same gate as device hosts); the section
-              renders nothing for a caller the route refuses. */}
-                {sectionVisible('people') && <PeopleSection />}
+                {peopleDeniedByEntryGate && <PeopleReadRefusal />}
+                {sectionVisible('people') && (
+                  <PeopleSection showReadRefusal={peopleSelected} />
+                )}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,
@@ -1667,6 +1667,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="device"
                       projectOverride={projectOverride}
                     />
+                    <ModelPickerPreferencesRow />
                     {/* #585: one control names all device-local delivery
                   outcomes. The in-chat gear panel renders the same options
                   from the same mapping module. */}

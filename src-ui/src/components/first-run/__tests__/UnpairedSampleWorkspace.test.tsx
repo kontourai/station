@@ -65,6 +65,22 @@ describe('UnpairedSampleWorkspace', () => {
     }
   });
 
+  test.each([
+    ['Open sample inbox', 'Review the draft'],
+    ['Open sample Schedule', 'Weekly digest'],
+  ])('%s opens its sample from Customize', async (shortcut, heading) => {
+    render(<UnpairedSampleWorkspace onConnect={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Skip the tour' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: shortcut }));
+
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: heading }),
+    );
+  });
+
   test('skip ends the tour without pairing and leaves connect available', async () => {
     const onConnect = vi.fn();
     render(<UnpairedSampleWorkspace onConnect={onConnect} />);

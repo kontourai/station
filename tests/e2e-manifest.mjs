@@ -2087,7 +2087,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Real isolated Station and synthetic one-host operator/guest browsers prove invitation registration and acceptance, immutable account-bound Device approval, restricted Project/shared Task reads, private and management denial, unshare, and independent membership revocation. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
+      'Real isolated Station and synthetic one-host operator/guest browsers prove invitation registration and acceptance, account-bound Device approval and promotion through the operator API, landing on the exact shared brief, two-way Task discussion, draft preservation, return after reload, private and management denial, unshare, and independent membership revocation. This is diagnostic one-host evidence, not two-human, two-machine, provider, mail, model, or native acceptance.',
     exceptions: [],
   },
   {

@@ -597,7 +597,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
   const taskSwitcher = page.getByRole('region', { name: 'Inbox', exact: true });
   await taskSwitcher
-    .getByRole('button', { name: 'Reference dispatch, default' })
+    .getByRole('button', { name: /^Reference dispatch.*default/ })
     .click();
   const answer = page.getByText(quote.excerpt, { exact: true });
   await expect(answer).toBeVisible();
@@ -1868,7 +1868,7 @@ test('a Task inventory outage does not block the mobile inbox or New chat', asyn
   await menu.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect.poll(() => taskFailures).toBeGreaterThan(failedReads);
   await expect(
-    menu.getByRole('button', { name: 'Station Chat, Default' }).first(),
+    menu.getByRole('button', { name: /^Station Chat.*Default/i }).first(),
   ).toBeVisible();
   await page
     .getByTestId('chat-dock-mobile-header')
@@ -1903,17 +1903,15 @@ test('switches between mobile tasks and restores the exact active chat context',
   const menu = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(menu).toBeVisible();
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
-  // Shared inbox rows (archive#3312): the row button's accessible name is
-  // "{title}, {project}" and the state renders as the row's status line
-  // ("Running"/"Waiting on you"), so state discrimination filters on the
-  // status text rather than the old raw-text accessible name.
+  // Match the conversation and its Project. The same title appears in two
+  // lanes, so the visible status distinguishes the rows.
   await expect(
     menu
-      .getByRole('button', { name: 'Station Chat, Default' })
+      .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Running' }),
   ).toBeVisible();
   const reviewRow = menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' });
   await expect(reviewRow).toBeVisible();
   const reviewBox = await reviewRow.boundingBox();
@@ -1951,14 +1949,14 @@ test('switches between mobile tasks and restores the exact active chat context',
 
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Running' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
 
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
@@ -1981,7 +1979,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // unanchored title match would resolve to both. The delegated row is titled
   // by its task, "Worker task · delegated review".
   await menu
-    .getByRole('button', { name: /^Worker task · delegated review,/i })
+    .getByRole('button', { name: /^Worker task · delegated review(?:\s|$)/i })
     .click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -1994,7 +1992,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // the chat dock. Returning to the prior chat restores its in-memory draft.
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-review');
@@ -2005,7 +2003,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await expect(
     menu
-      .getByRole('button', { name: 'Station Chat, Default' })
+      .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
@@ -2026,7 +2024,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await page
     .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Running' })
     .click();
   expect(new URL(page.url()).searchParams.get('chat')).toBe('conv-running');
@@ -2034,7 +2032,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // The task retains its canonical identity after opening.
   await page
     .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: /^Worker task · delegated review,/i })
+    .getByRole('button', { name: /^Worker task · delegated review(?:\s|$)/i })
     .click();
   await expect
     .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -2042,7 +2040,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   await page
     .getByRole('region', { name: 'Inbox', exact: true })
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(textarea).toHaveValue('return to this draft');
@@ -2706,7 +2704,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
   // must survive: Escape dismisses a sheet, it does not undo a task switch.
   await switcher.click();
   await menu
-    .getByRole('button', { name: 'Station Chat, Default' })
+    .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
   await expect(menu).toBeHidden();
@@ -3235,7 +3233,10 @@ test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
       });
       await trigger.click();
       await expect(
-        page.getByRole('dialog', { name: 'Run setup', exact: true }),
+        page.getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        }),
       ).toBeVisible();
       await closeRunSetup(page);
       await expect(textarea).toHaveValue('Landscape draft');
@@ -3279,7 +3280,10 @@ test.describe('landscape iPhone (touch, so the phone chrome applies)', () => {
       });
       await trigger.click();
       await expect(
-        page.getByRole('dialog', { name: 'Run setup', exact: true }),
+        page.getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        }),
       ).toBeVisible();
       await closeRunSetup(page);
       await expect(textarea).toHaveValue(
@@ -3405,7 +3409,7 @@ for (const viewport of [
     );
     await expect(page.locator('.chat-dock__counter')).toBeHidden();
     await expect(
-      page.locator('.chat-dock__header').getByTitle('Chat settings'),
+      page.locator('.chat-dock__header').getByTitle('Agent & model'),
     ).toBeHidden();
     // The dock's tab-action row is desktop-only now; its mobile equivalents are
     // the one-row header's own controls. Same guarantee as before: every session
@@ -3435,7 +3439,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of ['New chat', 'Inbox', 'Chat settings']) {
+    for (const name of ['New chat', 'Inbox', 'Agent & model']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -3455,13 +3459,13 @@ for (const viewport of [
     );
     await moreActions.click();
     await mobileActions
-      .getByRole('menuitem', { name: 'Chat settings' })
+      .getByRole('menuitem', { name: 'Agent & model' })
       .click();
     await expect(
-      page.getByText('Chat settings', { exact: true }),
+      page.getByText('Agent & model', { exact: true }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Done' }).click();
-    await expect(page.getByText('Chat settings', { exact: true })).toBeHidden();
+    await expect(page.getByText('Agent & model', { exact: true })).toBeHidden();
     await expandMobileDock(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     const selectedModel = await runSetupControl(page, (panel) =>
@@ -3727,7 +3731,10 @@ for (const viewport of [
     const composerBox = await page.locator('.chat-input').boundingBox();
     await closeRunSetup(page);
     await expect(
-      page.getByRole('dialog', { name: 'Run setup', exact: true }),
+      page.getByRole('dialog', {
+        name: 'Agent & model',
+        exact: true,
+      }),
     ).toBeHidden();
     const railControlBox = await page
       .locator('.chat-input')
@@ -4709,7 +4716,7 @@ for (const width of [320, 390, 600]) {
     );
     await expect(controls).toHaveCount(3);
     const railBox = await page
-      .getByRole('dialog', { name: 'Run setup', exact: true })
+      .getByRole('dialog', { name: 'Agent & model', exact: true })
       .boundingBox();
     expect(railBox).not.toBeNull();
     for (const control of await controls.all()) {
@@ -4752,7 +4759,7 @@ test('profiles switching between authoritative conversations', async ({
       for (const state of ['Waiting on you', 'Running', 'Waiting on you']) {
         await switcher.click();
         await menu
-          .getByRole('button', { name: 'Station Chat, Default' })
+          .getByRole('button', { name: /^Station Chat.*Default/i })
           .filter({ hasText: state })
           .click();
         await expect(menu).toBeHidden();
@@ -4824,7 +4831,10 @@ for (const width of [320, 390, 1280]) {
         /^Engine & model: Claude Selected Test Model/,
       );
       const bounds = (await page
-        .getByRole('dialog', { name: 'Run setup', exact: true })
+        .getByRole('dialog', {
+          name: 'Agent & model',
+          exact: true,
+        })
         .boundingBox())!;
       const approval = await runSetupControl(page, (panel) =>
         panel.getByRole('button', { name: /^Approval mode:/ }),

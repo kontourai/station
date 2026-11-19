@@ -635,6 +635,20 @@ describe('SessionModelPicker', () => {
     expect(document.activeElement).toBe(close);
   });
 
+  test('discloses the exact route-qualified ID for the selected model', () => {
+    const id = 'zai-coding-plan/glm-5.3-flash';
+    renderPicker({
+      models: [{ id, name: 'GLM-5.3-Flash', providerName: 'Z.ai' }],
+      currentModel: id,
+    });
+    expect(
+      screen.getByRole('button', { name: /^GLM-5\.3-Flash.*Z\.ai/ }),
+    ).toBeTruthy();
+    const modelId = screen.getByText('Model ID', { selector: 'summary' });
+    fireEvent.click(modelId);
+    expect(screen.getByText(id, { selector: 'code' }).textContent).toBe(id);
+  });
+
   test('switches providers and keeps duplicate model names unambiguous', () => {
     const props = renderPicker({
       currentProviderId: 'codex-work',

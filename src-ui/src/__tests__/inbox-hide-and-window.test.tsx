@@ -147,7 +147,7 @@ function mount(items: HomeWorkItem[]) {
 
 const row = (title: string, container: HTMLElement = document.body) =>
   within(container).queryByRole('button', {
-    name: new RegExp(`^${title}, Station`),
+    name: new RegExp(`^${title}(?:\\s|$)`),
   });
 const search = (value: string) =>
   fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
