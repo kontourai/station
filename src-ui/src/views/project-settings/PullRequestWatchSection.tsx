@@ -5,8 +5,8 @@ import {
   type ProjectPullRequestWatchSettings,
 } from '@kontourai/station-contracts/pull-request-watch';
 import { useSetProjectPullRequestWatchMutation } from '@kontourai/station-sdk';
+import type { ReactNode } from 'react';
 import { PageRow } from '../../components/PageRow';
-import { PageSection } from '../../components/PageSection';
 import { ErrorState } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -26,10 +26,12 @@ export function PullRequestWatchSection({
   slug,
   settings,
   onSaved,
+  children,
 }: {
   slug: string;
   settings: ProjectPullRequestWatchSettings | undefined;
   onSaved(): void;
+  children?: ReactNode;
 }) {
   const preview = useSurfaceVisibilityFlags().has(
     PULL_REQUEST_FEEDBACK_PREVIEW_ID,
@@ -41,12 +43,7 @@ export function PullRequestWatchSection({
   const save = useSetProjectPullRequestWatchMutation(slug);
   const disabled = save.isPending || !preview;
   return (
-    <PageSection
-      id="section-pull-requests"
-      className="project-settings__section"
-      title="Pull requests"
-      description="Tasks watch the pull requests they open and report when each is ready. Merging stays with you."
-    >
+    <>
       {!preview && (
         <p>
           Turn on Pull request agent feedback in Settings → Feature previews to
@@ -55,7 +52,7 @@ export function PullRequestWatchSection({
       )}
       <PageRow
         label="Watch Task pull requests"
-        description="Wake the Task's agent when CI fails or a reviewer writes. Changes reach Tasks without their own choice."
+        description="Send failing checks and review comments to the Task's agent. Each Task can override this."
         control={
           <Toggle
             id="project-pull-request-watch"
@@ -70,7 +67,7 @@ export function PullRequestWatchSection({
       />
       <PageRow
         label="Fix attempts"
-        description="After this many, the Task waits for you with the failing check named."
+        description="Pause for you after this many attempts to fix failing checks."
         control={
           <select
             id="project-pull-request-fix-attempts"
@@ -100,6 +97,7 @@ export function PullRequestWatchSection({
           description={userFacingErrorMessage(save.error)}
         />
       )}
-    </PageSection>
+      {children}
+    </>
   );
 }

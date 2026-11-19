@@ -100,6 +100,10 @@
 
     "src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx",
 
+    "src-ui/src/contexts/VoiceProviderContext.tsx",
+
+    "src-ui/src/hooks/useServerCapabilities.ts",
+
     "src-ui/src/views/settings/ModelPickerPreferencesRow.tsx",
 
     "src-ui/src/views/settings/UsageDisclosureRow.tsx",

@@ -441,12 +441,16 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
       false,
       true,
     );
-    for (const [cookie, status] of [
-      [`__Host-station-device=${h.operator.credential}`, 404],
-      [`__Host-station-device=${desktop.credential}`, 401],
-      [`__Host-station-device=${h.first.credential}`, 403],
-      [signed.cookie, 404],
-      ['', 401],
+    for (const [cookie, status, code] of [
+      [`__Host-station-device=${h.operator.credential}`, 404, undefined],
+      [
+        `__Host-station-device=${desktop.credential}`,
+        403,
+        'operator_session_required',
+      ],
+      [`__Host-station-device=${h.first.credential}`, 403, undefined],
+      [signed.cookie, 404, undefined],
+      ['', 401, undefined],
     ] as const) {
       const unknown = await h.read(
         cookie,
@@ -457,6 +461,8 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
         `/api/pairing/device-access-transactions/${id}`,
       );
       expect(unknown.status).toBe(status);
+      if (code)
+        expect(await unknown.clone().json()).toMatchObject({ error: { code } });
       expect(guarded.status).toBe(unknown.status);
       expect(Buffer.from(await guarded.arrayBuffer())).toEqual(
         Buffer.from(await unknown.arrayBuffer()),
@@ -1666,8 +1672,10 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
         headers,
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      expect(result.status).toBe(401);
-      expect(await result.json()).toEqual({ error: 'authentication_required' });
+      expect(result.status).toBe(403);
+      expect(await result.json()).toMatchObject({
+        error: { code: 'operator_credential_required' },
+      });
     }
   });
 
@@ -2704,23 +2712,43 @@ describe('S4 authority matrix for the independent host and Device paths', () => 
         environment,
       );
       expect(list.status).toBe(authority === 'internal' ? 401 : 200);
-      for (const [method, path] of [
-        ['GET', '/api/pairing/device-access-transactions/unknown'],
-        ['PUT', '/api/pairing/people/human:test:casey/group'],
-        ['POST', '/api/pairing/people/human:test:casey/tokens'],
-        ['DELETE', '/api/pairing/people/human:test:casey/tokens/unknown'],
-        ['DELETE', '/api/pairing/operator-passkeys/unknown'],
-      ]) {
+      for (const [method, path, localGrantRefusal] of [
+        [
+          'GET',
+          '/api/pairing/device-access-transactions/unknown',
+          'operator_session_required',
+        ],
+        [
+          'PUT',
+          '/api/pairing/people/human:test:casey/group',
+          'operator_credential_required',
+        ],
+        [
+          'POST',
+          '/api/pairing/people/human:test:casey/tokens',
+          'operator_credential_required',
+        ],
+        [
+          'DELETE',
+          '/api/pairing/people/human:test:casey/tokens/unknown',
+          'operator_credential_required',
+        ],
+        ['DELETE', '/api/pairing/operator-passkeys/unknown', undefined],
+      ] as const) {
         const response = await h.api.request(
           path,
           { method, headers },
           environment,
         );
-        expect(response.status).toBe(authority === 'ui-bootstrap' ? 403 : 401);
-        expect(await response.json()).toEqual(
+        const code =
           authority === 'ui-bootstrap'
-            ? { error: { code: 'insufficient_scope' } }
-            : { error: 'authentication_required' },
+            ? 'insufficient_scope'
+            : authority === 'local-grant'
+              ? localGrantRefusal
+              : undefined;
+        expect(response.status, path).toBe(code ? 403 : 401);
+        expect(await response.json(), path).toMatchObject(
+          code ? { error: { code } } : { error: 'authentication_required' },
         );
       }
       const scope = await h.api.request(

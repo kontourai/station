@@ -82,6 +82,17 @@ function canonicalHost(host: string): string {
   return host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
 }
 
+export function isConfiguredGitLabHost(host: string): boolean {
+  const canonical = canonicalHost(host);
+  return (
+    canonical === 'gitlab.com' ||
+    (process.env.STATION_GITLAB_HOSTS ?? '').split(',').some((entry) => {
+      const configured = entry.trim().toLowerCase();
+      return /^[a-z0-9.-]+$/.test(configured) && configured === canonical;
+    })
+  );
+}
+
 function listStateArgs(state?: string): string[] {
   switch (state) {
     case undefined:
@@ -197,9 +208,8 @@ export class GitLabPullRequestProvider implements IPullRequestProvider {
   readonly offeredCapabilities = offeredCapabilities;
   readonly offeredMergeMethods = offeredMergeMethods;
 
-  /** v1 intentionally does not auto-claim self-managed GitLab hosts. */
   canServeHost(host: string): boolean {
-    return canonicalHost(host) === 'gitlab.com';
+    return isConfiguredGitLabHost(host);
   }
 
   constructor(

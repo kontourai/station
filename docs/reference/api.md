@@ -1195,6 +1195,15 @@ routes, so an agent's request is refused (`403`,
 A promoted record is searchable once its store is reindexed
 (`POST /api/knowledge/index/rebuild`); promotion does not index it.
 
+## Legacy Project conversation list
+
+`GET /api/projects/:slug/conversations` returns HTTP 503 with code
+`project_conversations_unavailable` when the Project read is admitted. The
+legacy file-memory inventory lacks an authoritative Project binding; admission
+to the selected Project cannot establish which records belong to it.
+Existing transport and Project admission refusals still apply. The Project UI
+uses the scoped Project Room and Task room endpoints for its conversation list.
+
 ## Shared Project Room
 
 Project Rooms use `/api/projects/:slug/room`. Their identity binds the Station,
@@ -4793,8 +4802,10 @@ or bytes returns 404; a provider fetch failure returns 502.
 ### Search Users
 
 `GET /api/users/search?q=<query>` returns the directory provider's result array.
-An empty query returns `[]`. A caught provider failure also returns `[]` with
-200, so this legacy response cannot distinguish a failed search from no matches.
+An empty query or a successful search with no matches returns `[]` with HTTP
+200. An unavailable provider returns HTTP 503 with `success: false`, code
+`user_directory_unavailable`, and a correlation ID. Station keeps the provider
+failure in its server log.
 
 ### Lookup User by Alias
 
@@ -7736,9 +7747,9 @@ People `GET` is admitted by the pairing family's operator/local-grant boundary;
 `access:devices` and operator sessions do not admit it. The passkey-session
 browser therefore cannot open Settings People or its token controls today. Changing a group needs the operator
 credential (host CLI), or an operator passkey session followed by per-action
-step-up. The current refusal status for other callers, including Desktop/host
-grants, is tracked in [#4109](https://github.com/kontourai/station/issues/4109);
-the SDK currently treats that `401` as a dead credential and removes it.
+step-up. A current Desktop or other admitted Device without operator write
+authority receives `403 operator_credential_required`. An invalid or revoked
+credential receives `401`.
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
   with a group assignment, a live device tied to them, or a personal access
@@ -7788,9 +7799,9 @@ person_not_found` unless a live device is tied to the person) mints one, and
 `DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
 operator-minted token is bounded by the person's Station group rather than
 by their devices. Only the operator credential (host CLI) or an operator passkey
-session with step-up can mint or revoke another person's tokens. The desktop's
-local grant lists them; its current write refusal status is tracked in
-[#4109](https://github.com/kontourai/station/issues/4109). A token is refused
+session with step-up can mint or revoke another person's tokens. The Desktop's
+current local grant can list them and receives `403 operator_credential_required`
+on writes. A token is refused
 (`403`) on a Project’s member-administration
 routes (`GET /api/projects/:slug/access`, `GET .../access/enablement` and `POST
 /api/projects/:slug/access/**`).

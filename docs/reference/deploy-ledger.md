@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-19T15:17:06Z | nightly-npm | 0.12.0-nightly.20261119.44548231154 | `8ad9f36` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44548231154) |
 | 2026-11-19T12:21:25Z | nightly-npm | 0.12.0-nightly.20261119.44521362145 | `4ff27ef` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44521362145) |
 | 2026-11-19T09:05:24Z | nightly-npm | 0.12.0-nightly.20261119.44491283677 | `0cae72e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44491283677) |
 | 2026-11-18T22:07:34Z | nightly-desktop | 0.2.0-nightly.20261118.3 | `9d18d0c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44395247316) |
@@ -506,6 +507,34 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-19T15:17:06Z · nightly-npm · 0.12.0-nightly.20261119.44548231154
+
+- Ship SHA: `8ad9f364f84680d954072e329f1f4f45f13f7f03`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261119.44548231154 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `4ff27ef` ([full sha](https://github.com/kontourai/station/commit/4ff27ef00bcaff986dfa1fb9d0718421815615e8)):
+
+**Features**
+
+- [#5281](https://github.com/kontourai/station/pull/5281) feat(projects): improve repository setup and review defaults
+
+**Fixes**
+
+- [#5318](https://github.com/kontourai/station/pull/5318) fix(native): satisfy the delivery Rust formatting gate
+- [#5312](https://github.com/kontourai/station/pull/5312) fix(ci): install LLVM tools for Xcode 27 Swift bridge linking
+- [#5311](https://github.com/kontourai/station/pull/5311) fix(chat,settings): recover resets and guard status reads
+- [#5310](https://github.com/kontourai/station/pull/5310) fix(history): bound long-running Room and Session refreshes
+- [#5313](https://github.com/kontourai/station/pull/5313) fix(release): restore Stable mobile staging
+- [#5308](https://github.com/kontourai/station/pull/5308) fix(qualification): restore source guardrail verdicts
+
+**Other**
+
+- [#5314](https://github.com/kontourai/station/pull/5314) build(deps-dev): adopt jsdom 31 with focus compatibility
 
 ## 2026-11-19T12:21:25Z · nightly-npm · 0.12.0-nightly.20261119.44521362145
 

@@ -368,6 +368,12 @@ container port mapping do not establish reachability or TLS termination for
 that socket. Terminal has a similar dedicated-listener boundary. No networking
 change or live voice qualification is implied by this diagram review.
 
+The selected Station's authority query supplies capability observations to
+[`useServerCapabilities`](../src-ui/src/hooks/useServerCapabilities.ts).
+Each successful observation owns its STT/TTS placeholders and retires them
+when the observation is superseded, fails, or unmounts. The shared registry
+keeps provider objects owned by browser and plugin registrations.
+
 The SDK's [voiceRegistry](../packages/sdk/src/voice/registry.ts) registers
 Device-side STT/TTS implementations; its other public voice session/realtime
 interfaces have separate consumers. Registering one is not registration of a

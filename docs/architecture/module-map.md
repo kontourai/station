@@ -4087,8 +4087,10 @@ leaves its slot held until the Task is Done. Cancellation or an unsuccessful
 initial dispatch reports a stopped status. Before publishing, the coordinator
 commits the exact linked status, which it reuses on transient room-write
 failure or restart. Private answer text, prompts and engine diagnostics stay
-out of settlement and sweep messages. The sweep checks whether the Task has
-a stored answer and links the independently authorized Task read. Earlier
+out of settlement and sweep messages. Refusal cards project reviewed public
+messages or fixed guidance. Detailed start and dispatch diagnostics stay in
+the private coordinator journal. The sweep checks whether the Task has a
+stored answer and links the independently authorized Task read. Earlier
 preview text already in the private prepared journal is retained and withheld
 from replay. The coordinator posts under a stable room intent via
 [`coordinatorRoomPublisher`](../../src-server/runtime/routes/project-room-coordinator-runtime.ts),

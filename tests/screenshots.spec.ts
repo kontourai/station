@@ -2960,6 +2960,18 @@ function pullRequestWatchScreens(): Screen[] {
                   fixAttempts: 3,
                   maxFixAttempts: 3,
                 },
+                {
+                  identity: identity('63'),
+                  url: 'https://github.com/acme/widgets/pull/63',
+                  watch: {
+                    state: 'review-needed',
+                    headSha: 'c3d4e5f60718293a4b5c6d7e8f90123456789012',
+                    detail:
+                      'Required findings were dismissed. Choose Review again.',
+                  },
+                  fixAttempts: 1,
+                  maxFixAttempts: 3,
+                },
               ],
               refusals: [
                 {
@@ -3030,6 +3042,7 @@ function pullRequestWatchScreens(): Screen[] {
           });
           await expect(panel).toBeVisible();
           await expect(panel.getByText('Ready for you')).toBeVisible();
+          await expect(panel.getByText('Review needs you')).toBeVisible();
           await expect(
             panel.getByText('Still failing: ci / unit-tests, ci / lint'),
           ).toBeVisible();
@@ -3064,6 +3077,7 @@ function pullRequestWatchScreens(): Screen[] {
       const projectSlug = `gallery-pr-setting-${theme}-${viewport.width}`;
       let projectFixture: ReturnType<typeof preview> | undefined;
       let projectCreated = false;
+      let previousHeadReview = false;
       const projectScreen: Screen = {
         name: `project-pull-requests-${theme}-${form}`,
         title: `Project pull request setting — ${theme}, ${viewport.width}px`,
@@ -3073,9 +3087,29 @@ function pullRequestWatchScreens(): Screen[] {
         async beforeGoto(page) {
           projectFixture = preview(page);
           await projectFixture.enable();
+          const flags = await projectFixture.request.get(
+            `${resolveE2EApiBase()}/api/feature-previews`,
+          );
+          previousHeadReview = (await flags.json()).data.find(
+            (entry: { id: string }) => entry.id === 'pull-request-head-review',
+          ).enabled;
+          expect(
+            (
+              await projectFixture.request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/pull-request-head-review`,
+                { data: { enabled: true } },
+              )
+            ).ok(),
+          ).toBe(true);
           const project = await projectFixture.request.post(
             `${resolveE2EApiBase()}/api/projects`,
-            { data: { name: projectSlug, slug: projectSlug } },
+            {
+              data: {
+                name: projectSlug,
+                slug: projectSlug,
+                workingDirectory: process.cwd(),
+              },
+            },
           );
           expect(project.ok()).toBe(true);
           projectCreated = true;
@@ -3084,6 +3118,19 @@ function pullRequestWatchScreens(): Screen[] {
             { data: { enabled: true, maxFixAttempts: 3 } },
           );
           expect(set.ok()).toBe(true);
+          const defaults = await projectFixture.request.put(
+            `${resolveE2EApiBase()}/api/pull-request-feedback/projects/${projectSlug}/defaults`,
+            {
+              data: {
+                settings: {
+                  fixFailingChecks: true,
+                  addressReviewComments: true,
+                  reviewEachHead: true,
+                },
+              },
+            },
+          );
+          expect(defaults.ok(), await defaults.text()).toBe(true);
         },
         async afterGoto(page) {
           const toggle = page.getByRole('switch', {
@@ -3095,6 +3142,27 @@ function pullRequestWatchScreens(): Screen[] {
           await expect(
             page.getByRole('combobox', { name: 'Fix attempts' }),
           ).toHaveValue('3');
+          await expect(
+            page.getByRole('heading', { name: 'Other Task pull requests' }),
+          ).toBeVisible();
+          const groupHeading = page.getByRole('heading', {
+            name: 'Other Task pull requests',
+          });
+          const headingBox = await groupHeading.boundingBox();
+          expect(headingBox).not.toBeNull();
+          const rowBottom = await page
+            .getByRole('combobox', { name: 'Fix attempts' })
+            .evaluate(
+              (element) =>
+                element.closest('.page-row')!.getBoundingClientRect().bottom,
+            );
+          expect(headingBox!.y - rowBottom).toBeGreaterThanOrEqual(16);
+          await expect(
+            page.getByRole('switch', { name: 'Review each new head' }),
+          ).toBeChecked();
+          await expect(
+            page.getByRole('link', { name: 'Agent feedback', exact: true }),
+          ).toHaveCount(0);
         },
         async cleanup() {
           try {
@@ -3105,11 +3173,67 @@ function pullRequestWatchScreens(): Screen[] {
               expect(deleted.ok()).toBe(true);
             }
           } finally {
+            expect(
+              (
+                await projectFixture!.request.put(
+                  `${resolveE2EApiBase()}/api/feature-previews/pull-request-head-review`,
+                  { data: { enabled: previousHeadReview } },
+                )
+              ).ok(),
+            ).toBe(true);
             await projectFixture?.restore();
           }
         },
       };
-      return [taskScreen, projectScreen];
+      const noRepositorySlug = `gallery-pr-no-repo-${theme}-${viewport.width}`;
+      let noRepositoryFixture: ReturnType<typeof preview> | undefined;
+      let noRepositoryCreated = false;
+      const noRepositoryScreen: Screen = {
+        name: `project-pull-requests-no-repository-${theme}-${form}`,
+        title: `Project pull requests setup — ${theme}, ${viewport.width}px`,
+        path: `/projects/${noRepositorySlug}/edit?section=pull-requests`,
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          noRepositoryFixture = preview(page);
+          await noRepositoryFixture.enable();
+          const created = await noRepositoryFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: 'Design notes', slug: noRepositorySlug } },
+          );
+          expect(created.ok(), await created.text()).toBe(true);
+          noRepositoryCreated = true;
+        },
+        async afterGoto(page) {
+          await expect(
+            page.getByText('Add a repository to use pull requests'),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('button', { name: 'Open Sources' }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('switch', { name: 'Watch Task pull requests' }),
+          ).toHaveCount(0);
+          await expect(
+            page.getByRole('button', { name: 'Save', exact: true }),
+          ).toHaveCount(0);
+        },
+        async cleanup() {
+          try {
+            if (noRepositoryCreated)
+              expect(
+                (
+                  await noRepositoryFixture!.request.delete(
+                    `${resolveE2EApiBase()}/api/projects/${noRepositorySlug}`,
+                  )
+                ).ok(),
+              ).toBe(true);
+          } finally {
+            await noRepositoryFixture?.restore();
+          }
+        },
+      };
+      return [taskScreen, projectScreen, noRepositoryScreen];
     }),
   );
 }

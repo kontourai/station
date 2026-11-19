@@ -128,9 +128,11 @@ leaves the Task open until it is marked Done. A cancellation or first-turn
 failure posts a stopped status with its Task link. **Status sweep**, at the
 top of `#general`, posts one line per open Task with its link, whether a
 written answer exists, and what it is waiting on. Open the Task to read its
-work under your own access. Each request starts a fresh coordinator Session that reads the
-Project brief and memory, the channel's recent messages and a short report per
-Task, so the conversation never needs compacting.
+work under your own access. Cards show a short reason when a Task cannot
+start. Private Task output and diagnostic details stay out of the channel.
+Each request starts a fresh coordinator Session that reads the Project brief
+and memory, the channel's recent messages and a short report per Task. The
+conversation never needs compacting.
 
 Project settings → **Coordinator** sets the limits. Station enforces them;
 they are not instructions to the model:
@@ -173,6 +175,18 @@ always offered:
 **Schedules** (the `project-schedules` Feature Preview) lists the Project's
 own automations. See
 [Project schedules](automations.md#project-schedules).
+
+## Project pull requests
+
+Project settings → **Pull requests** uses the Project's repository and the
+connected Station's provider capabilities. A missing repository offers
+**Open Sources**; a valid remote without automatic feedback shows that limit
+without asking you to replace the repository. Stored choices are preserved.
+Today GitHub supports automatic feedback and Task-branch discovery. GitLab.com
+has native merge-request views but no automatic feedback adapter yet. Bitbucket
+and Azure DevOps remain usable as Git repositories; native pull-request
+integration is not implemented. For self-managed GitLab, set the comma-separated hostname list `STATION_GITLAB_HOSTS` on the Station host and sign in with `glab` for each instance.
+A readable checkout is also needed for Station's review of each new head.
 
 ## Feature previews
 
@@ -224,7 +238,7 @@ only when this Station's build can run it; if none is, the section says
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
 | `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
-| `pull-request-agent-feedback` | Pull request agent feedback | Sends a chat's agent one message when a pull request it owns has failing checks, unresolved review threads or a merge conflict. Turn it on per pull request from the pull request's ⋯ in a chat's Details, or once for a Project in its settings' Agent feedback. Tasks can also watch the pull requests they keep (Project settings → **Pull requests**, or **Watch pull requests** on a Task). | Uses the host's `gh` login and one GitHub API request per pull request every few minutes. Off by default, personal Stations only. Waits while the agent works or waits on you; pauses after 3 rounds on one push. A watching Task gets a set number of fix attempts, then waits for you; its agent may not merge, arm auto-merge or force-push, and asks you before changing CI configuration. |
+| `pull-request-agent-feedback` | Pull request agent feedback | Sends a chat's agent one message when a pull request it owns has failing checks, unresolved review threads or a merge conflict. Turn it on per pull request from the pull request's ⋯ in a chat's Details, or once for a Project in **Pull requests**. Tasks can also watch the pull requests they keep (Project settings → **Pull requests**, or **Watch pull requests** on a Task). | Uses the host's `gh` login and one GitHub API request per pull request every few minutes. Off by default, personal Stations only. Waits while the agent works or waits on you; pauses after 3 rounds on one push. A watching Task gets a set number of fix attempts, then waits for you; its agent may not merge, arm auto-merge or force-push, and asks you before changing CI configuration. |
 | `pull-request-head-review` | Pull request head review | Runs Station's independent review once on each new head of a pull request a chat owns, and sends its required findings to the agent. Turn it on per pull request with "Review each new head". | Needs Pull request agent feedback. Uses reviewer agents (provider charges may apply); at most one review per Project at a time and 10 per day. Reviews the Project's checkout and never fetches. Pull requests already set to review resume when you turn this on. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
@@ -359,6 +373,10 @@ off and enables no source by itself. Disabling it stops new work; operator audit
 and cleanup remain available. See [setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/agent-efficiency.md#run-an-isolated-github-repair).
 
 Turning a preview on affects everyone who uses this Station.
+
+**Settings → Voice** shows the providers available for this Station and this
+device. If a saved choice disappears after a Station switch or a failed
+capability check, the control shows an available provider or an empty list.
 
 For **Local speech**, choose **Station (local)** in **Settings → Voice →
 Speech-to-text** after enabling the preview. Click the composer microphone to

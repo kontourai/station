@@ -1,0 +1,11 @@
+{
+  "revision": "fae29b87a120e7dbfdead4e1d4d2b7003fbda98a",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the Device admission and operator step-up assertions against runtime-routes. The tests distinguish a current Device that needs a credential or session (403) from a missing or revoked authentication context (401). Consent settlement, cancellation, and the depicted cancelled review are unaffected by these test expectation repairs.","inputs":["src-server/runtime/consent/__tests__/operator-sessions.test.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed the Device admission and operator step-up assertions against runtime-routes. The tests distinguish a current Device that needs a credential or session (403) from a missing or revoked authentication context (401). Consent settlement, cancellation, and the depicted cancelled review are unaffected by these test expectation repairs.","inputs":["src-server/runtime/consent/__tests__/operator-sessions.test.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-cancelled.png","note":"Reviewed the Device admission and operator step-up assertions against runtime-routes. The tests distinguish a current Device that needs a credential or session (403) from a missing or revoked authentication context (401). Consent settlement, cancellation, and the depicted cancelled review are unaffected by these test expectation repairs.","inputs":["src-server/runtime/consent/__tests__/operator-sessions.test.ts"]}
+  ]
+}

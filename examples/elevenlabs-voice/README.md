@@ -1,47 +1,47 @@
-# elevenlabs-voice — example plugin
+# ElevenLabs voice example
 
-Voice plugin example with legacy STT/TTS implementations and a separately
-injected realtime adapter. It is **not currently a qualified working reference**:
-[#2784](https://github.com/kontourai/station/issues/2784) tracks differences between
-the legacy token/audio/transcript code and the provider's documented protocol.
-
-The package contains:
-- `plugin.json` — canonical `entrypoint`, `settings`, and supported permissions
-- `plugin.mjs` — server module: attempts to exchange the server-held API key for a signed URL
-- `src/ElevenLabsSTTProvider.ts` — legacy microphone/PCM and transcript implementation
-- `src/ElevenLabsTTSProvider.ts` — legacy text submission and accumulated MP3 playback
-- `src/index.ts` — host activation registers legacy STT/TTS plus a truthfully unconfigured realtime adapter and returns exact-registration cleanup
+The plugin registers ElevenLabs Scribe v2 Realtime speech-to-text and
+WebSocket text-to-speech through the Station SDK. A separate realtime voice
+adapter remains unconfigured until its owner supplies a concrete transport.
 
 ## Install for development
 
-1. Copy this directory outside the repo (plugins live in separate repos)
-2. Preview and install the copied directory through the supported local target:
-   `station plugin preview ./elevenlabs-voice`, then `station plugin install ./elevenlabs-voice`.
-3. Review the trusted `plugin.server` request through the host's separate review.
-   Configure the key in the server process as `ELEVENLABS_API_KEY` or through its
-   declared plugin setting. This package does not load a copied plugin's `.env`.
+1. Copy this directory to a plugin workspace.
+2. Preview and install it with `station plugin preview ./elevenlabs-voice`
+   and `station plugin install ./elevenlabs-voice` on a supported local target.
+3. Review the trusted `plugin.server` request. Enter the key in the plugin
+   settings or supply `ELEVENLABS_API_KEY` to the server process. Keep that key
+   on the server. Set the optional TTS voice ID in the plugin settings.
 
-Station builds the declared `src/index.ts` entrypoint during installation.
+Station builds the declared `src/index.ts` entry point. Its activation registers
+the browser providers and returns cleanup that closes active sockets and audio
+resources and releases its registry entries.
 
-When the admitted browser bundle loads, its `activate({ apiBase })` registers
-legacy STT/TTS and an unconfigured realtime adapter. The host retains the
-returned cleanup for withdrawal/reload. Installation alone does not establish
-activation or provider readiness. A concrete transport can replace that registration
-without losing disposal ownership. Its ephemeral signed endpoint stays in a
-transport lease closure and must not be logged or persisted.
+## Protocol
 
-## Credentialed smoke
+The browser requests a short-lived authorization from Station with the normal
+authenticated SDK client. The server exchanges its key for the appropriate
+single-use token and returns a non-cacheable WebSocket URL. Keep that URL out
+of logs and settings. [Single-use token API](https://elevenlabs.io/docs/api-reference/tokens/create)
 
-The root command
+Scribe connects to the realtime endpoint with the `scribe_v2_realtime` model
+and voice-activity segmentation. It sends base64 PCM at 16 kHz in JSON frames,
+shows partial text, and accumulates committed segments. Stopping preserves the
+displayed transcript and retires the current capture. The connection can close
+before the provider commits the last partial segment. [Realtime STT protocol](https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime)
+
+TTS opens the voice's authenticated stream-input endpoint, sends initialization,
+text and end-of-input frames, then decodes and plays the assembled MP3 after the
+final message. [TTS WebSocket protocol](https://elevenlabs.io/docs/api-reference/text-to-speech/v-1-text-to-speech-voice-id-stream-input)
+
+## Verification
+
+The local tests execute plugin activation and its server minting module with
+scripted WebSockets, controlled responses and synthetic audio. They exercise
+token types, transcript segments, TTS playback lifecycle, denial and
+cancellation. Live provider, billing and physical microphone/playback
+acceptance remain unverified.
+
 `node scripts/voice-realtime-live-smoke.mjs --provider elevenlabs-realtime`
-has no concrete ElevenLabs runner. Missing credentials return `NOT_VERIFIED`;
-supplying one still returns `NOT_VERIFIED` until a transport is implemented.
-That command does not validate the legacy STT/TTS path.
-
-The provider's [token API](https://elevenlabs.io/docs/api-reference/tokens/create)
-returns a token, while this example expects a signed URL. Its
-[STT protocol](https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime)
-uses JSON audio messages and `message_type` transcript events; the legacy client
-sends raw PCM buffers and reads `type: "transcript"`. A local mocked-client probe
-confirmed that current transcript events are ignored. No live audio or provider
-request was performed during this audit.
+reports `NOT_VERIFIED` until a concrete credential-safe realtime transport is
+supplied. That separate smoke command does not exercise these STT/TTS classes.

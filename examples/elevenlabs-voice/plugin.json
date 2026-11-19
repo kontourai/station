@@ -2,7 +2,7 @@
   "name": "elevenlabs-voice",
   "displayName": "ElevenLabs Voice",
   "version": "0.1.0",
-  "description": "ElevenLabs Scribe v2 STT and streaming TTS via signed WebSocket tokens.",
+  "description": "ElevenLabs Scribe v2 Realtime STT and WebSocket TTS using single-use browser tokens.",
   "entrypoint": "src/index.ts",
   "permissions": ["plugin.server"],
   "serverModule": "plugin.mjs",

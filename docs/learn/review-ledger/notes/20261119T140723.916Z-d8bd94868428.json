@@ -1,0 +1,9 @@
+{
+  "revision": "9a5c9ba321a946bbf52b8d8f5964e48232309eca",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Rechecked the final measured stack clearance including the kit-space gap around Inbox focus outlines. The existing shared reader classifies valid silent envelopes before either a sound or lazy toast. The paired renderer-failure test verifies ordinary presentation for malformed envelopes and silence for valid ones. The latest browser cases also checked retained silent and failed history rows, reduced motion, and backdrop ownership in the open Notifications panel.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationContainer.tsx","src-ui/src/lib/notification-envelope-toast.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"The final event listener invokes the shared envelope reader for interruption classification. Rendering and navigation remain behind the existing dynamic import. No change to subscription authority or invalidations. The unchanged production initial UI limit passed with the validated classifier.","inputs":["docs/patterns/frontend.md","src-ui/src/hooks/useServerEventsListener.ts"]}
+  ]
+}
