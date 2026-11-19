@@ -127,7 +127,8 @@ function orchestrationSection(
     lines.push('Delegate only to an Agent the user named.');
   }
   lines.push(
-    'Report missing/unready targets. Never switch Agent/model unasked or fall back to shell `station`, `claude` or `codex`.',
+    'If the requested Agent or model is unavailable, report what the catalog offers. Use another Agent or model only when the user authorizes it. Do not dispatch through a shell CLI.',
+    'Give the child one outcome, the evidence or files it needs, and the expected result. If it cannot read files without approval, include the relevant evidence in the brief.',
     'Use a fresh `clientTurnId` per `delegate_task`; reuse only for an identical retry. New review/re-check: new task/brief.',
   );
   const follow: string[] = [];

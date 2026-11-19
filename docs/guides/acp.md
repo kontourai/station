@@ -1737,7 +1737,7 @@ server’s `ACPProbe` diagnostics instead of looking for a connection-level
 
 ### Delegate from a connected engine
 
-An ACP Agent with Station Control can call `list_delegation_targets` to see
+An Agent connected over ACP can use Station Control to call `list_delegation_targets` to see
 available Agents, their engines, and the model IDs this Station offers for
 them. Use those IDs with `delegate_task` when the work needs a separate Agent.
 Station records the returned Task and Session under the caller and delivers the
