@@ -283,7 +283,9 @@ test.describe('Settings', () => {
     page,
   }) => {
     await page.goto('/settings?keep=1&view=unknown');
-    await page.waitForSelector('.settings__section-nav');
+    await page
+      .getByRole('navigation', { name: 'Settings sections', exact: true })
+      .waitFor();
     await expect(page).toHaveURL('/settings?keep=1');
     await expect(
       page.getByRole('link', { name: 'General', exact: true }),
@@ -333,7 +335,9 @@ test.describe('Settings', () => {
 
   test('legacy section deep links remain supported', async ({ page }) => {
     await page.goto('/settings?section=knowledge');
-    await page.waitForSelector('.settings__section-nav');
+    await page
+      .getByRole('navigation', { name: 'Settings sections', exact: true })
+      .waitFor();
     await expect(page.locator('#section-knowledge')).toBeInViewport();
   });
 
@@ -368,9 +372,11 @@ test.describe('Settings', () => {
       await page.fill('#systemPrompt', SENTINEL);
       await saveSettingsAndVerifyPersistence(page, SENTINEL);
       await page.reload();
-      await page.waitForSelector('.settings__section-nav', {
-        timeout: 10_000,
-      });
+      await page
+        .getByRole('navigation', { name: 'Settings sections', exact: true })
+        .waitFor({
+          timeout: 10_000,
+        });
       await openAgentDefaults(page);
       await expect(page.locator('#systemPrompt')).toHaveValue(SENTINEL);
     } finally {
@@ -602,7 +608,9 @@ test.describe('Settings', () => {
     await filter.blur();
     await expect(filter).toHaveCSS('font-size', '16px');
     await filter.fill('');
-    await expect(page.locator('.settings__section-nav')).toBeHidden();
+    await expect(
+      page.getByRole('navigation', { name: 'Settings sections', exact: true }),
+    ).toBeHidden();
     const picker = page.getByRole('combobox', { name: 'Settings section' });
     await expect(picker).toBeVisible();
     expect((await picker.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -691,7 +699,9 @@ test.describe('Settings', () => {
 
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).not.toBeVisible();
-    await expect(page.locator('.settings__section-nav')).toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'Settings sections', exact: true }),
+    ).toBeVisible();
     await expect(page.locator('#systemPrompt')).toHaveValue(
       'Dirty edit for close-guard test',
     );
@@ -702,7 +712,9 @@ test.describe('Settings', () => {
       .getByRole('dialog')
       .getByRole('button', { name: 'Discard' })
       .click();
-    await expect(page.locator('.settings__section-nav')).not.toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'Settings sections', exact: true }),
+    ).not.toBeVisible();
   });
 
   test('notifications switch announces its description', async ({ page }) => {

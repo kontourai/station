@@ -708,7 +708,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     );
     await taskDialog
       .getByRole('button', {
-        name: 'Station Assistant Chat, Mobile Dogfood',
+        name: 'Station Assistant Chat Idle Station Assistant Mobile Dogfood',
         exact: true,
       })
       .click();
