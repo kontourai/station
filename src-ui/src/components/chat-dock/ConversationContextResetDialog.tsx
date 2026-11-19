@@ -18,6 +18,8 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatSession } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { ActionRow } from '../ActionRow';
+import { Button } from '../Button';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -364,34 +366,37 @@ export function ConversationContextResetDialog({
           </p>
         )}
         {error && <p role="alert">{error}</p>}
-        {eligibility.kind === 'reserve' && couldRetry && (
-          <button type="button" onClick={reserve} disabled={pending || !scope}>
-            {pending
-              ? 'Applying…'
-              : stored
-                ? 'Retry reset'
-                : 'Reset agent context'}
-          </button>
-        )}
-        {eligibility.kind === 'stop-session' && !statusValue && !stored && (
-          <button
-            type="button"
-            onClick={stopThenReserve}
-            disabled={pending || !scope}
-          >
-            {pending ? 'Stopping agent…' : 'Stop agent and reset'}
-          </button>
-        )}
-        {stored && !statusValue && !pending && (
-          <button type="button" onClick={() => void refetch()}>
-            Check reset status
-          </button>
-        )}
-        {canCancel && (
-          <button type="button" onClick={cancel} disabled={pending}>
-            Cancel reset
-          </button>
-        )}
+        <ActionRow
+          overflowLabel="More reset actions"
+          primary={
+            eligibility.kind === 'reserve' && couldRetry ? (
+              <Button onClick={reserve} disabled={pending || !scope}>
+                {pending
+                  ? 'Applying…'
+                  : stored
+                    ? 'Retry reset'
+                    : 'Reset agent context'}
+              </Button>
+            ) : eligibility.kind === 'stop-session' &&
+              !statusValue &&
+              !stored ? (
+              <Button onClick={stopThenReserve} disabled={pending || !scope}>
+                {pending ? 'Stopping agent…' : 'Stop agent and reset'}
+              </Button>
+            ) : undefined
+          }
+          secondary={
+            canCancel ? (
+              <Button onClick={cancel} disabled={pending} variant="secondary">
+                Cancel reset
+              </Button>
+            ) : stored && !statusValue && !pending ? (
+              <Button onClick={refetch} variant="secondary">
+                Check reset status
+              </Button>
+            ) : undefined
+          }
+        />
       </div>
     </ResponsiveDialogSurface>
   );
