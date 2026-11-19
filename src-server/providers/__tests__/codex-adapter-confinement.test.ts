@@ -176,6 +176,7 @@ async function start(input: {
    * nothing).
    */
   reportedApprovalPolicy?: string;
+  reportedReviewer?: string | null;
   resume?: boolean;
   /** Arguments the connection itself adds to the app-server spawn. */
   connectionArgs?: string[];
@@ -233,6 +234,12 @@ async function start(input: {
     input.reportedApprovalPolicy ??
     request.params.approvalPolicy ??
     CAPTURED.approvalPolicy;
+  if (input.reportedReviewer === null) delete result.approvalsReviewer;
+  else if (
+    input.confinement === 'workspace' ||
+    input.reportedReviewer !== undefined
+  )
+    result.approvalsReviewer = input.reportedReviewer ?? 'user';
   const profiled =
     (spawnArgs ?? []).includes('default_permissions="station-workspace"') &&
     request.params.sandbox === undefined;
@@ -346,6 +353,57 @@ describe('#2494: Codex confinement posture is read back from its response', () =
       expect(run.sessionStarted).toBeUndefined();
       expect(run.process.killed).toBe(true);
       await run.cleanup();
+    },
+  );
+
+  test.each([
+    [false, 'auto_review'],
+    [true, 'guardian_subagent'],
+  ] as const)(
+    'refuses a workspace start (resume=%s) that reports the automatic reviewer %s',
+    async (resume, reportedReviewer) => {
+      const run = await start({
+        threadId: `workspace-reviewer-${reportedReviewer}`,
+        approvalMode: 'auto',
+        confinement: 'workspace',
+        plan: NOT_REQUIRED_WORKSPACE,
+        reportedReviewer,
+        resume,
+      });
+      try {
+        expect(run.outcome).toMatchObject({
+          ok: false,
+          error: {
+            code: 'confinement_not_observed',
+            message: expect.stringContaining(
+              'reported automatic approval review',
+            ),
+          },
+        });
+        expect(run.sessionStarted).toBeUndefined();
+        expect(run.process.killed).toBe(true);
+      } finally {
+        await run.cleanup();
+      }
+    },
+  );
+
+  test.each(['user', null])(
+    'accepts a workspace Auto start with reviewer report %s',
+    async (reportedReviewer) => {
+      const run = await start({
+        threadId: `workspace-reviewer-${reportedReviewer}`,
+        approvalMode: 'auto',
+        confinement: 'workspace',
+        plan: NOT_REQUIRED_WORKSPACE,
+        reportedReviewer,
+      });
+      try {
+        expect(run.outcome).toEqual({ ok: true });
+        expect(run.sessionStarted).toBeDefined();
+      } finally {
+        await run.cleanup();
+      }
     },
   );
 
@@ -811,6 +869,7 @@ describe('#3800: workspace configuration cannot widen a confined Codex sandbox',
     expect(request.params.sandbox).toBe('read-only');
     const result = structuredClone(CAPTURED);
     result.approvalPolicy = 'never';
+    result.approvalsReviewer = 'user';
     result.sandbox = { type: 'readOnly', networkAccess: false };
     result.activePermissionProfile = null;
     respond(process, request, result);

@@ -4,6 +4,7 @@ import type {
   ToolPolicyDelivery,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
+import type { EngineApprovalReviewer } from '@kontourai/station-contracts/provider';
 import {
   EXECUTION_MODE,
   type ExecutionMode,
@@ -270,6 +271,7 @@ interface ChatInputAreaProps {
   approvalModeStationDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /**
    * The session approval override: the pending pick, else the confirmed one
    * (`sessionApprovalOverride`, #2334). Not read from `modelRuntimeOptions`,
@@ -278,6 +280,7 @@ interface ChatInputAreaProps {
   approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
+  acpRequestedModeId?: string;
   /**
    * #3290: an ACP session's approval control, from its connection
    * (`acpApprovalControl`). `engineId` is the engine identity the approval
@@ -542,10 +545,12 @@ export function ChatInputArea({
   approvalModeStationDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  reportedApprovalReviewer,
   approvalModeOverride,
   acpSessionModes = [],
   acpApproval,
   acpCurrentModeId,
+  acpRequestedModeId,
   commandQuery,
   slashCommands,
   onInputChange,
@@ -2051,11 +2056,8 @@ export function ChatInputArea({
                   <AcpSessionModeChip
                     key={sessionId}
                     modes={modeChoices}
-                    currentModeId={
-                      typeof modelRuntimeOptions?.mode === 'string'
-                        ? modelRuntimeOptions.mode
-                        : acpCurrentModeId
-                    }
+                    currentModeId={acpCurrentModeId}
+                    requestedModeId={acpRequestedModeId}
                     onChange={onAcpSessionModeChange}
                   />
                 </React.Suspense>
@@ -2101,6 +2103,7 @@ export function ChatInputArea({
                     }
                     stationDefault={approvalModeStationDefault}
                     lastAppliedApprovalMode={lastAppliedApprovalMode}
+                    reportedApprovalReviewer={reportedApprovalReviewer}
                     onChange={onApprovalModeChange}
                   />
                 )

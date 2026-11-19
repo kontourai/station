@@ -76,6 +76,15 @@ describe('Codex reviewer inheritance', () => {
         },
       });
       await session;
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          method: 'session.started',
+          metadata: expect.objectContaining({
+            reportedApprovalReviewer:
+              approvalsReviewer === 'user' ? 'user' : 'automatic',
+          }),
+        }),
+      );
       const turn = adapter.sendTurn({
         threadId: THREAD,
         input: 'run a command',
@@ -93,6 +102,27 @@ describe('Codex reviewer inheritance', () => {
         result: { turn: { id: 'turn-1' } },
       });
       await turn;
+      const updateReviewer = (threadId: string, approvalsReviewer: string) =>
+        emit(process, {
+          method: 'thread/settings/updated',
+          params: { threadId, threadSettings: { approvalsReviewer } },
+        });
+      await updateReviewer('foreign-thread', 'future-reviewer');
+      expect(
+        events.filter(
+          (event) => event.method === 'session.approval-reviewer-observed',
+        ),
+      ).toEqual([]);
+      await updateReviewer('codex-thread', 'guardian_subagent');
+      await updateReviewer('codex-thread', 'future-reviewer');
+      const updates = events.flatMap((event) =>
+        event.method === 'session.approval-reviewer-observed'
+          ? [event.reviewer]
+          : [],
+      );
+      expect(updates).toEqual(
+        approvalsReviewer === 'user' ? ['automatic', 'unknown'] : ['unknown'],
+      );
       // Settings are not an approval request. The engine must actually ask.
       expect(
         events.filter((event) => event.method === 'request.opened'),

@@ -20,6 +20,7 @@ import type {
 } from '@kontourai/station-contracts/input-request';
 import type {
   ApprovalMode,
+  EngineApprovalReviewer,
   EngineId,
   ProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
@@ -459,6 +460,7 @@ export interface ChatSession {
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
   lastAppliedApprovalMode?: ApprovalMode;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /** See ChatUIState.approvalEscalationRejected (active-chats-state.ts, #2436). */
   approvalEscalationRejected?: boolean;
   /** #3290: the engine's latest turn could not take the recorded posture. */

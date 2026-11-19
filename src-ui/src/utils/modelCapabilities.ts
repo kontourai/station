@@ -241,6 +241,15 @@ export function replaceModelControlOptions(
   return { ...next, ...applied };
 }
 
+/** A model acknowledgement cannot settle a separate mode request. */
+export function pendingNonModelOptions(
+  requested: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!requested) return undefined;
+  const pending = replaceModelControlOptions(requested);
+  return Object.keys(pending).length > 0 ? pending : undefined;
+}
+
 export function updateModelRuntimeOption(
   current: Record<string, unknown>,
   key: string,

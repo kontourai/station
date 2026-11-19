@@ -12,7 +12,8 @@ import {
 interface AcpSessionModeSheetProps {
   triggerRef: RefObject<HTMLButtonElement | null>;
   modes: AdvertisedAcpMode[];
-  currentModeId: string;
+  currentModeId?: string;
+  pendingName?: string;
   onClose: () => void;
   onSelect: (modeId: string) => void;
 }
@@ -21,6 +22,7 @@ export function AcpSessionModeSheet({
   triggerRef,
   modes,
   currentModeId,
+  pendingName,
   onClose,
   onSelect,
 }: AcpSessionModeSheetProps) {
@@ -42,11 +44,16 @@ export function AcpSessionModeSheet({
         closeLabel="Close session mode picker"
         onClose={onClose}
       />
-      {modes.some((mode) => acpModeAboveCeiling(mode.id)) ? (
-        <div className="composer-mode-sheet__notes">
+      <div className="composer-mode-sheet__notes">
+        {modes.some((mode) => acpModeAboveCeiling(mode.id)) && (
           <ManagedApprovalCeilingNote className="composer-mode-sheet__confirm-body" />
-        </div>
-      ) : null}
+        )}
+        <p className="composer-mode-sheet__confirm-body">
+          {pendingName
+            ? `Station will request ${pendingName} on your next send.`
+            : 'Station requests a new mode when you send your next message.'}
+        </p>
+      </div>
       <div role="radiogroup" aria-label="Session mode">
         {modes.map((mode) => {
           const isSelected = mode.id === currentModeId;

@@ -1,8 +1,23 @@
 import type {
   ApprovalMode,
+  EngineApprovalReviewer,
   StationConfinement,
 } from '@kontourai/station-contracts/provider';
 import { readApprovalMode } from '@kontourai/station-contracts/provider';
+
+export function mapCodexApprovalReviewer(
+  value: unknown,
+): EngineApprovalReviewer {
+  switch (value) {
+    case 'user':
+      return 'user';
+    case 'auto_review':
+    case 'guardian_subagent':
+      return 'automatic';
+    default:
+      return 'unknown';
+  }
+}
 
 /**
  * Codex's own vocabulary for `thread/start` (and `turn/start`)'s
