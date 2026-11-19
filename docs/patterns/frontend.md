@@ -166,6 +166,9 @@ with its feature. A new rule should have real consumers and one style owner.
   and [PageRow](../../src-ui/src/components/PageRow.tsx). The row owns its
   label, density-sensitive description and internal spacing. Compare the
   description at both densities before adding a feature override.
+- Use `PageSectionGroup` for a named group inside a settings section. It owns
+  the space above the group, heading size, and gap before its controls.
+  Avoid browser-default heading margins and nested cards inside a settings card.
 - `StatusSummary` (`src-ui/src/components/StatusSummary.tsx`) groups a resource
   name, version, status badge, and subdued check time. Desktop and server
   updates use it in both Updates and System settings. Pass the badge from

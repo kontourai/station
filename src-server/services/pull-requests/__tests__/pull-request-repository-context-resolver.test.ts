@@ -303,9 +303,33 @@ describe('PullRequestRepositoryContextResolver', () => {
       ).resolves.toEqual({
         available: false,
         reason: 'Checkout uses unsupported forge bitbucket.org',
+        cause: 'unsupported-forge',
       });
     }
   });
+  test.each([
+    'https://dev.azure.com/org/project/_git/widgets',
+    'git@ssh.dev.azure.com:v3/org/project/widgets',
+    'https://org.visualstudio.com/project/_git/widgets',
+  ])(
+    'recognizes %s as an attached remote without a PR adapter',
+    async (url) => {
+      const readGit = git();
+      const resolver = new PullRequestRepositoryContextResolver({
+        git: async (args) => ({ ...(await readGit(args)), stderr: '' }),
+        readRemotes: async () => ({
+          ok: true,
+          remotes: [{ name: 'origin', url }],
+        }),
+      });
+      await expect(
+        resolver.resolve({ projectWorkingDirectory: '/checkout' }),
+      ).resolves.toMatchObject({
+        available: false,
+        cause: 'unsupported-forge',
+      });
+    },
+  );
 
   /**
    * #2474: reading pull request #N needs the repository, not a pushed branch.
@@ -602,6 +626,7 @@ describe('PullRequestRepositoryContextResolver', () => {
     ).resolves.toEqual({
       available: false,
       reason: 'Checkout uses unsupported forge bitbucket.org',
+      cause: 'unsupported-forge',
     });
   });
 

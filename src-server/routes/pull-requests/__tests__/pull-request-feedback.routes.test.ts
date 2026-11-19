@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   findUnclassifiedRuntimeHttpRoutes,
@@ -168,10 +169,24 @@ describe('pull request feedback routes', () => {
           body: JSON.stringify({ identity: PR }),
         },
       );
+    const mayChange = async () =>
+      (
+        await readJson<{ data: { viewerMayChange: boolean } }>(
+          await t.app.request(
+            '/api/pull-request-feedback/conversations/chat-a',
+          ),
+        )
+      ).data.viewerMayChange;
+    expect(await mayChange()).toBe(true);
     t.state.mayContinue = false;
+    expect(await mayChange()).toBe(false);
     expect((await sendAgain()).status).toBe(404);
     expect(t.store.claim(prKey)?.condition).toMatchObject({ state: 'paused' });
     t.state.mayContinue = true;
+    t.state.person = false;
+    expect(await mayChange()).toBe(false);
+    t.state.person = true;
+    expect(await mayChange()).toBe(true);
     expect((await sendAgain()).status).toBe(200);
     expect(t.store.claim(prKey)?.condition).toBeUndefined();
   });

@@ -429,6 +429,33 @@ describe('a person turning feedback off in the chat ends the watch for that pull
     });
   const viewer = { userId: OWNER, canRead: () => true };
 
+  it('enabling head review keeps the Task watch and its fix budget across sync', async () => {
+    const t = await setup({ project: { enabled: true, maxFixAttempts: 3 } });
+    t.watch.sync();
+    const watch = t.store.claim(PR_KEY)!.watch!;
+    t.store.setWatch(PR_KEY, { ...watch, extra: 1 });
+    const result = await ownershipFor(t).write({
+      conversationId: CONVERSATION,
+      identity: IDENTITY,
+      settings: {
+        fixFailingChecks: true,
+        addressReviewComments: true,
+        reviewEachHead: true,
+      },
+      viewer,
+    });
+    expect(result.kind).toBe('ok');
+    t.watch.sync();
+    expect(t.store.claim(PR_KEY)).toMatchObject({
+      watch: { ...watch, extra: 1 },
+      settings: { reviewEachHead: true },
+    });
+    expect(t.watch.view(t.task).pullRequests[0]?.watch.state).not.toBe(
+      'elsewhere',
+    );
+    expect((await t.bash('gh pr merge 42 --auto')).behavior).toBe('deny');
+  });
+
   it('both sending switches off through the switches write: the next sync leaves it off', async () => {
     const t = await setup({ project: { enabled: true, maxFixAttempts: 3 } });
     t.watch.sync();

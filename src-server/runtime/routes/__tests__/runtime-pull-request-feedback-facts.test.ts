@@ -74,7 +74,15 @@ function failing(): PullRequestFeedbackObservation {
   };
 }
 
-async function setup() {
+async function setup({
+  headReview = false,
+  observed = true,
+  reviewOnly = false,
+}: {
+  headReview?: boolean;
+  observed?: boolean;
+  reviewOnly?: boolean;
+} = {}) {
   let runtime: PullRequestFeedbackRuntime | undefined;
   const h = station({
     placementRefusal: (input) => runtime?.placementRefusal(input),
@@ -91,20 +99,33 @@ async function setup() {
     identity: PR,
     conversationId: CONVERSATION,
     settings: {
-      fixFailingChecks: true,
+      fixFailingChecks: !reviewOnly,
       addressReviewComments: false,
-      reviewEachHead: false,
+      reviewEachHead: headReview,
     },
     enabledBy: OWNER,
     now: '2026-11-10T12:00:00.000Z',
   });
   const observation = failing();
-  seed.writeObservation(PR_KEY, {
-    observation,
-    observedAt: observation.observedAt,
-    unchangedSince: observation.observedAt,
-    digest: JSON.stringify(observation),
-  });
+  if (observed)
+    seed.writeObservation(PR_KEY, {
+      observation,
+      observedAt: observation.observedAt,
+      unchangedSince: observation.observedAt,
+      digest: JSON.stringify(observation),
+    });
+  if (reviewOnly)
+    seed.writeHeadReview({
+      prKey: PR_KEY,
+      headSha: HEAD,
+      state: 'reviewed',
+      requiredIds: [],
+      findings: [],
+      others: 0,
+      startedAt: observation.observedAt,
+      settledAt: observation.observedAt,
+      rerun: 0,
+    });
   seed.close();
   const state = { enabled: true, reads: true, current: true };
   runtime = composePullRequestFeedbackRuntime({
@@ -143,6 +164,45 @@ async function setup() {
 }
 
 describe('the composed Task board feedback fact', () => {
+  it('projects a current head awaiting Station review to the board, only to a reader of its chat', async () => {
+    const { runtime, state, run } = await setup({ headReview: true });
+    expect(runtime.factFor(PR, REQUEST, run)).toMatchObject({
+      state: 'reviewing',
+      headSha: HEAD,
+    });
+    state.reads = false;
+    expect(runtime.factFor(PR, REQUEST, run)).toBeUndefined();
+  });
+  it('keeps review enabled before its first forge observation, even if the board reads a clean head first', async () => {
+    const { runtime, run } = await setup({ headReview: true, observed: false });
+    expect(runtime.factFor(PR, REQUEST, run)).toEqual({
+      state: 'reviewing',
+      reviewEachHead: true,
+    });
+  });
+  it('keeps the review hold while a feedback turn is fixing, even if the board still has an idle run', async () => {
+    const { h, runtime, delivery, run } = await setup({ headReview: true });
+    h.adapter.holdTurns = true;
+    expect((await delivery.deliver(CONVERSATION)).kind).toBe('queued');
+    await eventually(() => expect(h.inbox.mustQueue(CONVERSATION)).toBe(true));
+    expect(runtime.factFor(PR, REQUEST, run)).toMatchObject({
+      state: 'reviewing',
+      reviewEachHead: true,
+      headSha: HEAD,
+    });
+    h.adapter.complete();
+  });
+  it('a clear review-only claim does not say auto-fix is on', async () => {
+    const { runtime, run } = await setup({
+      headReview: true,
+      reviewOnly: true,
+    });
+    expect(runtime.factFor(PR, REQUEST, run)).toEqual({
+      state: 'reviewed',
+      reviewEachHead: true,
+      headSha: HEAD,
+    });
+  });
   it('fixing while the turn Station started for the failing checks runs, then sent', async () => {
     const { h, runtime, delivery, run } = await setup();
     expect(runtime.factFor(PR, REQUEST, run)).toEqual({

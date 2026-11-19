@@ -571,6 +571,7 @@ export function composePullRequestFeedbackRuntime(
   const watch = tasks
     ? new PullRequestWatch({
         enabled,
+        headReviewHold: (prKey) => headReview.watchHold(prKey),
         store: () => holder.forWrite(),
         readStore: () => holder.forRead(),
         liveTasks: () => tasks.listTasks().filter(live),
@@ -631,6 +632,7 @@ export function composePullRequestFeedbackRuntime(
     store: () => holder.forRead(),
     enabled,
     headReviewEnabled,
+    headReviewHold: (prKey) => headReview.watchHold(prKey),
     session,
     mayContinue: (conversationId, userId) =>
       inbox.mayContinue(conversationId, userId),
@@ -893,6 +895,8 @@ export function composePullRequestFeedbackRuntime(
         ),
         store,
         openTurnKey,
+        reviewHold: headReview.watchHold(pullRequestFeedbackKey(identity)),
+        headReviewEnabled: headReviewEnabled(),
         ...(taskSessionId
           ? { taskConversationId: conversationOf(taskSessionId) }
           : {}),

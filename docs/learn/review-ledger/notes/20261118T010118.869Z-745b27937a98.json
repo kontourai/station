@@ -1,0 +1,19 @@
+{
+  "revision": "c456d8cb8fd603cd4d5f684355d536596658fcf2",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Reviewed PageSectionGroup against its live PageSection.tsx implementation, additive page-layout selectors and actual PR-default group consumer. It supplies a shared h3 heading size and vertical separation without changing existing section and row rules. Four 390/1440 light/dark settings renders passed with no Gallery findings.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the settings composition delta: one Pull requests destination uses existing independent stores and routes; published agent-feedback section links normalize there; Save remains for dirty page drafts. Sources, unrelated controls, page root, and header owner remain unchanged. Historical shell-wrapper measurements retain their explicit dated status. Focused settings and source-navigation cases pass.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Reviewed the settings composition delta: one Pull requests destination uses existing independent stores and routes; published agent-feedback section links normalize there; Save remains for dirty page drafts. Sources, unrelated controls, page root, and header owner remain unchanged. Historical shell-wrapper measurements retain their explicit dated status. Focused settings and source-navigation cases pass.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Reviewed the settings composition delta: one Pull requests destination uses existing independent stores and routes; published agent-feedback section links normalize there; Save remains for dirty page drafts. Sources, unrelated controls, page root, and header owner remain unchanged. Historical shell-wrapper measurements retain their explicit dated status. Focused settings and source-navigation cases pass.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the added repository/read-refresh/focus settings cases and updated PR section alias assertion. Existing Sources knowledge registration, indexing, member visibility and management tests are unchanged. The knowledge guide makes no new claim from this PR; its storage and authorization explanation is unaffected.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the documentation delta: Project Pull requests now shares one destination and requires the canonical repository context; setup/retry preserves choices. Feature preview IDs, default-off behavior, live selector enforcement, settings scopes and agent context paths are unchanged. This does not change the engine or context efficiency claims.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the documentation delta: Project Pull requests now shares one destination and requires the canonical repository context; setup/retry preserves choices. Feature preview IDs, default-off behavior, live selector enforcement, settings scopes and agent context paths are unchanged. This does not change the engine or context efficiency claims.","inputs":["docs/user/settings.md"]}
+  ]
+}

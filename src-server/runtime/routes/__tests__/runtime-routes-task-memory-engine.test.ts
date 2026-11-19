@@ -814,6 +814,7 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     expect(read.json.data).toEqual({
       conversationId: conversation,
       pullRequests: [],
+      viewerMayChange: true,
     });
   });
 
