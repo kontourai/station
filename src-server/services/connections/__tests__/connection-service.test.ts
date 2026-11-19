@@ -5221,16 +5221,26 @@ describe('ordinary engine inventory and dispatch admission', () => {
         settle([{ id: `model-${i}`, name: `Model ${i}` }]),
       );
       const responses = await Promise.all(requests);
-      const modelIds: string[] = [];
-      for (const response of responses) {
-        expect(response.status).toBe(200);
-        const body = await response.json();
-        expect(body).toMatchObject({
-          data: [{ status: 'ready', runtimeCatalog: { source: 'live' } }],
-        });
-        modelIds.push(body.data[0].runtimeCatalog.models[0].id);
-      }
-      expect(modelIds.sort()).toEqual(['model-0', 'model-1', 'model-2']);
+      for (const response of responses) expect(response.status).toBe(200);
+      expect(
+        await Promise.all(responses.map((response) => response.json())),
+      ).toEqual(
+        expect.arrayContaining(
+          ['model-0', 'model-1', 'model-2'].map((id) =>
+            expect.objectContaining({
+              data: [
+                expect.objectContaining({
+                  status: 'ready',
+                  runtimeCatalog: expect.objectContaining({
+                    source: 'live',
+                    models: [expect.objectContaining({ id })],
+                  }),
+                }),
+              ],
+            }),
+          ),
+        ),
+      );
     } finally {
       for (const settle of pending) settle([]);
       await Promise.all(requests);
@@ -5327,14 +5337,17 @@ describe('ordinary engine inventory and dispatch admission', () => {
       async () => ({}),
       vi.fn(),
     );
-    const list = async () =>
-      (await (await createConnectionRoutes(service).request('/')).json())
-        .data[0];
+    const app = createConnectionRoutes(service);
+    const list = async () => (await app.request('/')).json();
     expect(await list()).toMatchObject({
-      id: 'fixture-acp',
-      status: 'degraded',
-      config: { acpProbeStatus: 'probing' },
-      lastCheckedAt: null,
+      data: [
+        {
+          id: 'fixture-acp',
+          status: 'degraded',
+          config: { acpProbeStatus: 'probing' },
+          lastCheckedAt: null,
+        },
+      ],
     });
     const warming = await service.getConnection('fixture-acp');
     expect(warming).not.toBeNull();
@@ -5344,11 +5357,15 @@ describe('ordinary engine inventory and dispatch admission', () => {
 
     available = true;
     expect(await list()).toMatchObject({
-      id: 'fixture-acp',
-      status: 'ready',
-      config: { acpProbeStatus: 'available' },
-      lastCheckedAt: observedAt,
-      controlPlaneObservation: { observedAt },
+      data: [
+        {
+          id: 'fixture-acp',
+          status: 'ready',
+          config: { acpProbeStatus: 'available' },
+          lastCheckedAt: observedAt,
+          controlPlaneObservation: { observedAt },
+        },
+      ],
     });
     const ready = await service.getConnection('fixture-acp');
     expect(ready).not.toBeNull();

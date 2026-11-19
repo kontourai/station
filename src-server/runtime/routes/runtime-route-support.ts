@@ -308,7 +308,7 @@ export function createRuntimeSystemRouteDeps(
     // the SAME call `enriched-agents.ts` uses to decide whether to manufacture
     // a selectable agent, so chat readiness and agent availability cannot
     // disagree (station#1194).
-    listEngineConnectionStates: (signal) =>
+    listEngineConnectionStates: (signal?: AbortSignal) =>
       context.connectionService.listEngineConnectionStates(signal),
     listUnconnectedACPRegistryEntries: () =>
       listUnconnectedACPRegistryEntries(context.configLoader),
