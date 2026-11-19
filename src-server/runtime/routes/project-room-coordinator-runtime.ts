@@ -27,11 +27,11 @@ import { submitStationFramedTurn } from '../../services/orchestration/station-tu
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
   COORDINATOR_ACTOR,
+  CoordinatorResultWithheld,
   ProjectRoomCoordinator,
 } from '../../services/projects/project-room-coordinator.js';
 import { openProjectRoomCoordinatorStore } from '../../services/projects/project-room-coordinator-store.js';
 import type { ProjectRoomStore } from '../../services/projects/project-room-store.js';
-import { ProjectRoomRefusal } from '../../services/projects/project-room-store.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import { readStoredScheduledTurnTerminal } from '../../services/scheduling/scheduled-conversation-runs.js';
@@ -94,16 +94,17 @@ export function coordinatorRoomPublisher(
     const current = () => {
       const now = deps.currentScope(scope.localProjectSlug);
       if (!now || !sameScope(now, scope))
-        throw new ProjectRoomRefusal('conflict');
+        throw new CoordinatorResultWithheld('The Project or room changed.');
       if (deps.rooms.lookupRoom(scope)?.roomId !== roomId)
-        throw new ProjectRoomRefusal('conflict');
+        throw new CoordinatorResultWithheld('The Project or room changed.');
       if (!deps.mayStart(starterId, scope.localProjectId))
-        throw new ProjectRoomRefusal('forbidden');
+        throw new CoordinatorResultWithheld('The starter lost access.');
     };
     current();
     return deps.rooms.append(
       scope,
       COORDINATOR_ACTOR,
+      CoordinatorResultWithheld,
       { intentId: input.intentId, text: input.text },
       current,
     ).messageId;

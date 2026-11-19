@@ -190,6 +190,7 @@ export interface StationCapabilityDeployment {
   /** A hosted tenant registry is configured (`STATION_HOSTED_TENANT_REGISTRY_FILE`). */
   hosted: boolean;
   peerChatEnabled?: boolean;
+  sharedProjectRooms?: boolean;
 }
 
 /**
@@ -241,14 +242,11 @@ function servesScheduledConversationTarget(
   return !deployment.hosted;
 }
 
-/**
- * #5063: the `#general` coordinator sends each Task its first message
- * through the conversation inbox, which hosted Stations do not compose.
- */
-function servesProjectRoomCoordinator(
+/** Coordinator results may include output from a private Task Session. */
+export function servesProjectRoomCoordinator(
   deployment: StationCapabilityDeployment,
 ): boolean {
-  return !deployment.hosted;
+  return !deployment.hosted && !deployment.sharedProjectRooms;
 }
 
 /** Hosted Stations have no conversation inbox through which to wake a coordinator. */

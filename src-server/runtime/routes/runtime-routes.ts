@@ -403,7 +403,10 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
+import {
+  servesCoordinatorSession,
+  servesProjectRoomCoordinator,
+} from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
   materializeEngineAgent,
@@ -3298,6 +3301,9 @@ export function configureRuntimeRoutes(
         description:
           'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
       });
+  const sharedProjectRooms = Boolean(
+    context.projectMembership || context.deploymentAuthentication,
+  );
   configureRuntimePublicRoutes(
     context.app,
     context.environmentSecurityService,
@@ -3306,6 +3312,7 @@ export function configureRuntimeRoutes(
         enabled: () => true,
         disabled: () => false,
       }) === true,
+    sharedProjectRooms,
   );
   // Shared between the public local-grant route below and the authenticated
   // `/api/pairing/**` host routes so a same-user self-authorization and an
@@ -9963,14 +9970,17 @@ export function configureRuntimeRoutes(
       });
     },
   );
-  // #5063: the coordinator in `#general`, behind its preview. Bound always,
-  // so the preview is offered; composed where Task turns can be queued.
-  const roomCoordinatorPreview = context.featurePreviews.bind({
-    id: 'project-room-coordinator',
-    label: 'Coordinator in #general',
-    description:
-      "Make the Agent you ask in a Project's #general its coordinator: it answers, proposes Tasks you start from a card, or passes your message to a running Task, and posts each result back. Each Task runs an agent and can spend model credits.",
-  });
+  const roomCoordinatorPreview = servesProjectRoomCoordinator({
+    hosted: Boolean(hostedTenantRegistry) || isHostedTenantExecutionRequired(),
+    sharedProjectRooms,
+  })
+    ? context.featurePreviews.bind({
+        id: 'project-room-coordinator',
+        label: 'Coordinator in #general',
+        description:
+          "Make the Agent you ask in a Project's #general its coordinator: it answers, proposes Tasks you start from a card, or passes your message to a running Task, and posts each result back. Each Task runs an agent and can spend model credits.",
+      })
+    : undefined;
   const coordinatorScope = (
     slug: string,
   ): ProjectMembershipScope | undefined => {
@@ -9992,7 +10002,7 @@ export function configureRuntimeRoutes(
     }
   };
   const roomCoordinator =
-    threadInbox && context.orchestrationEventStore
+    roomCoordinatorPreview && threadInbox && context.orchestrationEventStore
       ? composeProjectRoomCoordinatorRuntime({
           home: roomHome,
           preview: roomCoordinatorPreview,
@@ -13908,10 +13918,12 @@ export function configureRuntimePublicRoutes(
     'getPublicHandshake' | 'createPublicProof'
   >,
   peerChatEnabled: () => boolean = () => false,
+  sharedProjectRooms = false,
 ): void {
   app.get(PUBLIC_STATION_HANDSHAKE_PATH, async (c) => {
     const handshake = await environmentSecurityService.getPublicHandshake(
       peerChatEnabled(),
+      sharedProjectRooms,
     );
     // Recorded from the served document rather than from the constants, so the
     // metric can never claim a contract the response did not actually carry.

@@ -51,6 +51,7 @@ const rowSchema = z
     conversationId: z.string().min(1).optional(),
     refusal: z.string().min(1).optional(),
     outcome: z.enum(['completed', 'failed']).optional(),
+    resultText: z.string().min(1).optional(),
     resultMessageId: z.string().min(1).optional(),
     /** The result could not be posted: the starter or the room changed. */
     resultWithheld: z.string().min(1).optional(),

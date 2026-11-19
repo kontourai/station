@@ -4070,13 +4070,19 @@ and slots are claimed in one SQLite transaction against the Project's
 `createTaskIdempotent` keyed by the row, dispatches it through the canonical
 `TaskDispatcher` as the person who pressed Start, and queues the first turn through
 the conversation inbox under a row key; boot, a turn-terminal subscription and a
-60-second fallback resume rows without repeating an effect. A settled row's result is
-posted once (a stable room intent) by
+60-second fallback resume rows without repeating an effect. A successful turn
+leaves its slot held until the Task is Done. Cancellation or an unsuccessful
+initial dispatch reports a stopped result. Before publishing, the coordinator
+commits the exact rendered result, which it reuses on transient room-write
+failure or restart. It posts under a stable room intent via
 [`coordinatorRoomPublisher`](../../src-server/runtime/routes/project-room-coordinator-runtime.ts),
 which rechecks the Project incarnation, the room and the starter's `execute`
 permission inside the room store's write transaction. `matchPullRequestOpen` in
 `pull-request-watch-guard.ts` feeds the coordinator's stage of the
-`pullRequestWatchPolicy` slot, refusing pull requests a person did not ask for.
+`pullRequestWatchPolicy` slot, refusing matching tool calls when a person did
+not ask for a pull request. Coordinator routes and handshake capability are
+available on personal hosts with Project sharing and deployment sign-in
+disabled, because the result can quote a private Task Session.
 Evidence: `project-room-coordinator.test.ts` (restart, cap and exactly-once, with
 fault injection), `project-room-coordinator-module.test.ts` (the real agent module
 and room store), `project-room-coordinator-runtime.test.ts`,

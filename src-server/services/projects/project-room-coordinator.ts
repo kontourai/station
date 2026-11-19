@@ -578,55 +578,68 @@ export class ProjectRoomCoordinator {
     });
   }
 
-  /**
-   * Settle a working row once its first turn has ended (or its Task ended),
-   * post its one result message, and free its slot.
-   */
-  private async settleRow(row: CoordinatorRowRecord): Promise<void> {
-    if (!row.conversationId || !row.sessionId || !row.taskId || !row.starterId)
-      return;
+  private async prepareResult(
+    row: CoordinatorRowRecord & {
+      conversationId: string;
+      sessionId: string;
+      taskId: string;
+      starterId: string;
+    },
+  ): Promise<
+    { outcome: 'completed' | 'failed'; resultText: string } | undefined
+  > {
+    const status = this.ports.readTask(row.taskId)?.status;
+    if (status === 'done') {
+      const answer = await this.ports.assistantText({
+        sessionId: row.sessionId,
+        ownerUserId: row.starterId,
+      });
+      return {
+        outcome: 'completed',
+        resultText: [
+          `**Task finished:** ${taskLink(row)}`,
+          answer
+            ? quote(answer, PROJECT_ROOM_COORDINATOR_LIMITS.resultExcerptChars)
+            : '_It finished without a written answer; open the Task for its work._',
+        ].join('\n'),
+      };
+    }
     const entry = this.ports.turnEntry(
       row.conversationId,
       firstTurnKey(row.rowId),
     );
-    let outcome:
-      | { kind: 'completed'; turnId?: string }
-      | { kind: 'failed'; reason: string }
-      | undefined;
-    if (entry?.state === 'refused')
-      outcome = {
-        kind: 'failed',
-        reason: entry.reason ?? 'Its first message was refused.',
-      };
+    let reason: string | undefined;
+    if (status === 'canceled') reason = 'Its Task was canceled.';
+    else if (entry?.state === 'refused')
+      reason = entry.reason ?? 'Its first message was refused.';
     else if (entry?.state === 'sent' && entry.sessionId && entry.turnId) {
       const terminal = this.ports.turnTerminal(entry.sessionId, entry.turnId);
-      if (terminal?.kind === 'completed')
-        outcome = { kind: 'completed', turnId: entry.turnId };
-      else if (terminal?.kind === 'failed')
-        outcome = { kind: 'failed', reason: terminal.reason };
+      if (terminal?.kind === 'failed') reason = terminal.reason;
     }
-    if (!outcome) {
-      const status = this.ports.readTask(row.taskId)?.status;
-      if (status === 'done') outcome = { kind: 'completed' };
-      else if (status === 'canceled')
-        outcome = { kind: 'failed', reason: 'Its Task was canceled.' };
-    }
-    if (!outcome) return;
-    let text: string;
-    if (outcome.kind === 'completed') {
-      const answer = await this.ports.assistantText({
-        sessionId: entry?.sessionId ?? row.sessionId,
-        ...(outcome.turnId ? { turnId: outcome.turnId } : {}),
-        ownerUserId: row.starterId,
+    return reason
+      ? {
+          outcome: 'failed',
+          resultText: `**Task stopped:** ${taskLink(row)}. ${excerpt(reason, 300)}`,
+        }
+      : undefined;
+  }
+
+  /** Persist the exact room payload before attempting its idempotent write. */
+  private async settleRow(row: CoordinatorRowRecord): Promise<void> {
+    const { conversationId, sessionId, taskId, starterId } = row;
+    if (!conversationId || !sessionId || !taskId || !starterId) return;
+    let { outcome, resultText } = row;
+    if (!outcome || !resultText) {
+      const result = await this.prepareResult({
+        ...row,
+        conversationId,
+        sessionId,
+        taskId,
+        starterId,
       });
-      text = [
-        `**Task finished:** ${taskLink(row)}`,
-        answer
-          ? quote(answer, PROJECT_ROOM_COORDINATOR_LIMITS.resultExcerptChars)
-          : '_It finished without a written answer; open the Task for its work._',
-      ].join('\n');
-    } else {
-      text = `**Task stopped:** ${taskLink(row)}. ${excerpt(outcome.reason, 300)}`;
+      if (!result || !this.store.transition(row.rowId, ['working'], result))
+        return;
+      ({ outcome, resultText } = result);
     }
     let resultMessageId: string | undefined;
     let resultWithheld: string | undefined;
@@ -634,17 +647,16 @@ export class ProjectRoomCoordinator {
       resultMessageId = this.ports.publishForStarter({
         scope: row.scope,
         roomId: row.roomId,
-        starterId: row.starterId,
+        starterId,
         intentId: intentFor('result', row.rowId),
-        text,
+        text: resultText,
       });
     } catch (error) {
-      // The Project, the room or the starter's access changed: post nothing.
-      resultWithheld = excerpt(errorMessage(error), 200);
+      if (!(error instanceof CoordinatorResultWithheld)) throw error;
+      resultWithheld = error.message;
     }
     const settled = this.store.transition(row.rowId, ['working'], {
-      state: outcome.kind === 'completed' ? 'done' : 'failed',
-      outcome: outcome.kind,
+      state: outcome === 'completed' ? 'done' : 'failed',
       ...(resultMessageId ? { resultMessageId } : {}),
       ...(resultWithheld ? { resultWithheld } : {}),
     });
@@ -765,3 +777,6 @@ export class CoordinatorRefusal extends Error {
     super(`Project Room coordinator refused: ${code}`);
   }
 }
+
+/** Background publication lost its authority for the recorded room. */
+export class CoordinatorResultWithheld extends Error {}

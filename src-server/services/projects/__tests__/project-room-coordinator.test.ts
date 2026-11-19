@@ -6,6 +6,7 @@ import type { ProjectMembershipScope } from '@kontourai/station-contracts/projec
 import type { ProjectRoomCoordinatorSettings } from '@kontourai/station-contracts/project-room-coordinator';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  CoordinatorResultWithheld,
   ProjectRoomCoordinator,
   type ProjectRoomCoordinatorPorts,
 } from '../project-room-coordinator.js';
@@ -62,6 +63,7 @@ class World {
   crashAfterCreate = new Set<string>();
   mayStart = true;
   dieAfterPublish = false;
+  failPublication = false;
 
   open(): { coordinator: ProjectRoomCoordinator; db: DatabaseSync } {
     const db = new DatabaseSync(join(this.dir, 'coordinator.sqlite'));
@@ -132,7 +134,9 @@ class World {
       assistantText: async ({ sessionId }) => this.answers.get(sessionId),
       publishForStarter: ({ intentId, text }) => {
         this.publishCalls += 1;
-        if (!this.mayStart) throw new Error('access changed');
+        if (!this.mayStart)
+          throw new CoordinatorResultWithheld('The starter lost access.');
+        if (this.failPublication) throw new Error('temporary SQLite failure');
         // The room store accepts one message per intent.
         if (!this.room.has(intentId)) this.room.set(intentId, text);
         // The process dies once the room has the message and before the
@@ -350,8 +354,14 @@ describe('ProjectRoomCoordinator', () => {
     await coordinator.reconcile();
     expect(w.dispatchedTasks).toHaveLength(2);
 
-    w.finish('task-1', 'completed', 'Fixed the redirect.');
+    w.finish('task-1', 'completed', 'Initial investigation finished.');
     coordinator.observe('session-task-1');
+    await coordinator.reconcile();
+    expect(w.dispatchedTasks).toHaveLength(2);
+    expect(w.room.size).toBe(0);
+
+    w.tasks.get('task-1')!.status = 'done';
+    w.answers.set('session-task-1', 'Fixed the redirect.');
     await coordinator.reconcile();
     view = coordinator.view(scope, ROOM);
     expect(view.proposals[0]!.tasks.map((t) => t.state)).toEqual([
@@ -376,6 +386,7 @@ describe('ProjectRoomCoordinator', () => {
     });
     // The Task finishes while Station is down: no event reaches anyone.
     w.finish('task-1', 'completed', 'Fixed the redirect and added a test.');
+    w.tasks.get('task-1')!.status = 'done';
     first.db.close();
 
     // Boot reconciliation alone posts it: no turn event will ever arrive.
@@ -410,6 +421,7 @@ describe('ProjectRoomCoordinator', () => {
       starter: PERSON,
     });
     w.finish('task-1', 'completed', 'Fixed the redirect.');
+    w.tasks.get('task-1')!.status = 'done';
     w.dieAfterPublish = true;
     // The dying process's own pass ends with its database gone.
     await first.coordinator.reconcile().catch(() => undefined);
@@ -427,6 +439,40 @@ describe('ProjectRoomCoordinator', () => {
     ).toBe('done');
   });
 
+  it('retries a transient room write after restart with the original result text', async () => {
+    const w = world();
+    const first = w.open();
+    await propose(first.coordinator, THREE);
+    const [card] = first.coordinator.view(scope, ROOM).proposals;
+    await first.coordinator.start({
+      scope,
+      roomId: ROOM,
+      proposalId: card!.proposalId,
+      rowIds: [card!.tasks[0]!.rowId],
+      starter: PERSON,
+    });
+    w.finish('task-1', 'completed', 'Result at settlement.');
+    w.tasks.get('task-1')!.status = 'done';
+    w.failPublication = true;
+    await first.coordinator.reconcile();
+    expect(w.room.size).toBe(0);
+    expect(
+      first.coordinator.view(scope, ROOM).proposals[0]!.tasks[0]!.state,
+    ).toBe('working');
+    await first.coordinator.close();
+    first.db.close();
+
+    w.failPublication = false;
+    w.answers.set('session-task-1', 'A later unrelated turn.');
+    const restarted = w.open();
+    await restarted.coordinator.reconcile();
+    await restarted.coordinator.reconcile();
+    expect(w.publishCalls).toBe(2);
+    expect([...w.room.values()]).toEqual([
+      '**Task finished:** [Fix login](/tasks/task-1)\n> Result at settlement.',
+    ]);
+  });
+
   it('posts nothing for a starter who lost access, and still frees the slot', async () => {
     const w = world();
     w.settings.maxConcurrentTasks = 1;
@@ -440,6 +486,7 @@ describe('ProjectRoomCoordinator', () => {
       starter: PERSON,
     });
     w.finish('task-1', 'completed', 'Done.');
+    w.tasks.get('task-1')!.status = 'done';
     w.mayStart = false;
     await coordinator.reconcile();
     expect(w.room.size).toBe(0);

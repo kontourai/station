@@ -122,9 +122,11 @@ reply ends with a line saying where your message went:
 - **Sent to Task**: a follow-up about work a coordinator Task is already
   doing goes to that Task's chat, and the reply links the Task.
 
-When a Task's first turn ends, the coordinator posts one message in
-`#general` that links the Task and quotes its answer, also after a Station
-restart. **Status sweep**, at the top of `#general`, posts one line per open
+When a Task is marked Done, the coordinator posts one message in
+`#general` that links the Task and quotes its latest stored answer, also after
+a Station restart. An initial turn that succeeds leaves the Task open until
+it is marked Done. A cancellation or first-turn failure posts a stopped
+result. **Status sweep**, at the top of `#general`, posts one line per open
 Task: what it was asked, what it last reported in its own words, and what it
 is waiting on. Each request starts a fresh coordinator Session that reads the
 Project brief and memory, the channel's recent messages and a short report per
@@ -137,15 +139,16 @@ they are not instructions to the model:
   the card first. Off by default.
 - **Tasks at once**: how many coordinator Tasks work at the same time, 1–10
   (default 2). The rest show **Waiting for a slot** and start as one finishes.
-- **Pull requests**: **Only when you ask** (default) lets a Task open a pull
-  request only when your message asked for one; Station refuses the rest, and
-  the card counts each refusal. **Whenever the Task needs one** allows them.
+- **Pull requests**: **Only when you ask** (default) lets a Task use Station-guarded
+  pull-request tools when your message asked for a pull request. The card counts
+  tool refusals. External credentials and tools follow their own policies. **Whenever the Task needs one** allows them.
 
 The coordinator works where the Project Room runs, including from a paired
 phone. A coordinator Task's result is posted only while the person who started
 it may still start work in the Project; otherwise the Task finishes without a
 message in the channel. The limits count Tasks started from `#general`, not
-other Tasks in the Project. Hosted Stations do not offer it.
+other Tasks in the Project. The preview is available on personal Stations
+with Project sharing and separate deployment sign-in disabled.
 
 ### Pause, archive, delete
 
@@ -241,7 +244,7 @@ only when this Station's build can run it; if none is, the section says
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 | `project-sharing-setting` | Project sharing setting | Shows **Project sharing with local accounts** under **Settings → System**, where the Station operator turns on invitations with username and password accounts and picks the sign-in address. | Only the control is the preview. Applying restarts Station through its process supervisor. Turning the preview off keeps the saved choice in force; environment variables set by the deployment always win. See [deployment authentication](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#turn-it-on-from-settings). |
 | `project-coordination` | Project brief, memory and models | Starts every new Session in a Project with its goal, instructions and memory notes on every engine, and adds Brief, Memory, Models and effort, and Usage to Project settings ([details](#project-brief-memory-and-models)). | Adds the brief and memory index to each new Session's first turn, which costs tokens. Copies a Project's rules into its brief once. Turning it off stops adding them; saved briefs and notes remain. |
-| `project-room-coordinator` | Coordinator in #general | Makes the Agent you ask in a Project's `#general` its coordinator: it answers, proposes Tasks on a card with **Start** and **Start all**, or sends your message to a running Task, and posts each Task's result back ([details](#coordinator-in-general)). Adds Project settings → **Coordinator**. | Each Task runs an agent and can spend model credits. Station enforces the Project's limits: Tasks at once, propose before start, and pull requests only when asked. Turning it off stops new routing, starts and pull request refusals; running Tasks finish in their own chats. Personal Stations only. |
+| `project-room-coordinator` | Coordinator in #general | Makes the Agent you ask in a Project's `#general` its coordinator: it answers, proposes Tasks on a card with **Start** and **Start all**, or sends your message to a running Task, and posts each Task's result back ([details](#coordinator-in-general)). Adds Project settings → **Coordinator**. | Each Task runs an agent and can spend model credits. Station enforces how many coordinator Tasks run at once, when they can start, and when guarded tools can open pull requests. Turning it off stops routing, starts and these refusals. Requires a personal Station with Project sharing and separate deployment sign-in disabled. |
 | `session-cli-reads` | Session reads from the station CLI | Lets a person wait on, digest and list their own Sessions from the CLI: `station sessions wait`, `station sessions digest` and `station activity`. | Read-only. A wait holds one connection for up to 50 seconds at a time, from a bounded per-person pool. |
 
 For **Crash-durable Station Agent**, an output-limit message means you should start a new turn to continue. Recovery replay for finished turns (completed, failed or cancelled) expires after seven days; this cleanup does not delete conversation history.
