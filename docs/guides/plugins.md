@@ -677,6 +677,16 @@ specific repair guidance. Fix or restore the manifest, then choose **Reload
 plugins**. Station does not invent a version or expose normal settings, update,
 permission, or removal controls until the manifest validates again.
 
+Installed dependency and update readers use the selected package's physical
+directory. They read a bounded regular manifest under that directory. Inventory
+and update checks accept a manifest reference whose target stays within the
+selected package. The dependency build path still requires a regular manifest
+at the package root. Station checks that the selected dependency remains
+current under its content lock before building or publishing. Directory
+containment is checked when the path is
+resolved. Concurrent changes to parent directories and Windows reparse
+behavior require separate platform verification.
+
 ### Recover interrupted activation
 
 An **Activation pending** plugin retains its code and data while its runtime
