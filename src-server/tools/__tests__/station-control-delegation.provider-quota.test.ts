@@ -70,6 +70,70 @@ function failedSession(): Record<string, unknown> {
 }
 
 describe('delegation provider-plan quota projection (#2265)', () => {
+  for (const provider of ['codex', 'claude']) {
+    test(`${provider} account limits reach status and events with bounded recovery facts`, () => {
+      const resetAt = '2026-09-21T18:55:29.000Z';
+      const error = {
+        method: 'runtime.error',
+        turnId: 'turn-1',
+        provider,
+        kind: 'quota_exhausted',
+        failurePhase: 'failed',
+        retriable: false,
+        details: { scope: 'account', usageLimit: true, resetAt },
+        message: 'Private raw provider message',
+      };
+      const reason = delegatedTaskReason(failedSession(), [
+        turnStartedEvent('turn-1'),
+        error,
+      ]);
+      expect(reason).toMatchObject({
+        code: 'provider-account-usage-limit',
+        detail: expect.stringContaining(resetAt),
+      });
+      expect(projectDelegatedTaskEvent(1, error)).toMatchObject({
+        kind: 'runtime',
+        text: reason?.detail,
+        retriable: false,
+      });
+      expect(JSON.stringify(reason)).not.toContain(error.message);
+      expect(
+        delegatedTaskReason(failedSession(), [
+          turnStartedEvent('turn-1'),
+          turnStartedEvent('turn-2'),
+          error,
+        ]),
+      ).toBeUndefined();
+      expect(
+        delegatedTaskReason(failedSession(), [
+          { ...turnStartedEvent('turn-1'), invocationId: 'new-invocation' },
+          { ...error, invocationId: 'old-invocation' },
+        ]),
+      ).toBeUndefined();
+      for (const unrelated of [
+        { ...error, kind: 'provider_error' },
+        { ...error, provider: 'acp' },
+        { ...error, retriable: true },
+        { ...error, turnId: undefined },
+      ]) {
+        expect(
+          delegatedTaskReason(failedSession(), [unrelated])?.code,
+        ).not.toBe('provider-account-usage-limit');
+        expect(projectDelegatedTaskEvent(1, unrelated).text).not.toContain(
+          'account reached its usage limit',
+        );
+      }
+      expect(
+        delegatedTaskReason(failedSession(), [
+          {
+            ...error,
+            details: { ...error.details, resetAt: '2026-02-31T18:55:29.000Z' },
+          },
+        ])?.detail,
+      ).not.toContain('reset:');
+    });
+  }
+
   test('a classified quota terminal yields an actionable reason with bounded facts', () => {
     const snapshot = snapshotFor({
       target: TARGET,

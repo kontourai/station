@@ -14,6 +14,68 @@ import {
 // reusable), not the terminal `completed`; the guarantees below are unchanged
 // — a finished turn stays finished across re-attach and process death.
 describe('session-lifecycle-service', () => {
+  test('a structured current-turn limit produces safe notice text for the task UI', () => {
+    const base = {
+      provider: 'codex' as const,
+      threadId: 'task:notice',
+      createdAt: '2026-09-21T17:00:00.000Z',
+    };
+    const session = {
+      ...base,
+      status: 'error' as const,
+      updatedAt: base.createdAt,
+    };
+    const start = {
+      ...base,
+      method: 'turn.started' as const,
+      eventId: 'start',
+      turnId: 'current',
+      prompt: 'work',
+    };
+    const failure = {
+      ...base,
+      method: 'runtime.error' as const,
+      eventId: 'failure',
+      turnId: 'current',
+      severity: 'error' as const,
+      kind: 'quota_exhausted' as const,
+      failurePhase: 'failed' as const,
+      retryable: false,
+      retriable: false,
+      message: 'private provider diagnostics',
+      details: {
+        usageLimit: true,
+        scope: 'account',
+        resetAt: '2026-09-21T18:55:29.000Z',
+      },
+    };
+    const result = projectSessionLifecycle({
+      session,
+      events: [start, failure],
+    });
+    expect(result.terminalAttribution).toEqual({
+      kind: 'runtime_error',
+      detail: expect.stringMatching(
+        /account reached its usage limit.*2026-09-21T18:55:29.000Z/,
+      ),
+    });
+    const other = projectSessionLifecycle({
+      session,
+      events: [
+        start,
+        failure,
+        { ...start, eventId: 'other-start', turnId: 'other' },
+        {
+          ...failure,
+          eventId: 'other-failure',
+          turnId: 'other',
+          kind: 'provider_error',
+        },
+      ],
+    });
+    expect(other.terminalAttribution?.detail).not.toContain('usage limit');
+  });
+
   test('#4266: lifecycleChangedAt is when the current state was entered, and a repeated report does not move it', () => {
     const at = (second: number) =>
       `2026-10-28T10:00:${String(second).padStart(2, '0')}.000Z`;

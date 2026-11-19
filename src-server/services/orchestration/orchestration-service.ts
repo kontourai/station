@@ -3561,6 +3561,9 @@ export class OrchestrationService {
       this.conversationHistoryReader = new ConversationHistoryReadService({
         readDurabilityProfile: this.durabilityProfileForProvider,
         eventStore: options.eventStore,
+        ownerUserIdsFor: (authority) =>
+          this.sessionAuthz.transcriptOwnerConstraint(authority).ownerUserIds ??
+          [],
         canReadSession: (threadId, authority) =>
           this.sessionAuthz.canReadSession(threadId, authority),
         hydratePersistedSession: (threadId) => {
@@ -6159,7 +6162,11 @@ export class OrchestrationService {
     threadId: string;
     turnId: string;
     clientInputId: string;
-    payload: { message: string; clientOrigin?: ClientOrigin };
+    payload: {
+      message: string;
+      clientOrigin?: ClientOrigin;
+      authoredBy?: 'person';
+    };
   }): void {
     const store = this.options.eventStore;
     const session =
@@ -6179,6 +6186,9 @@ export class OrchestrationService {
         createdAt: new Date().toISOString(),
         prompt: input.payload.message,
         inputKind: 'steer',
+        ...(input.payload.authoredBy === 'person'
+          ? { authoredBy: input.payload.authoredBy }
+          : {}),
         ...(input.payload.clientOrigin
           ? { clientOrigin: input.payload.clientOrigin }
           : {}),
@@ -6478,6 +6488,7 @@ export class OrchestrationService {
       provider: EngineId;
       connectionId?: string;
       modelOverride?: string;
+      expectedInboxSessionId?: string;
     },
   ): Promise<{
     sessionId: string;
@@ -7498,6 +7509,7 @@ export class OrchestrationService {
   async deleteUnstartedConversationForkContext(
     id: string,
     authority: SessionReadScope,
+    isCurrent?: () => boolean,
   ): Promise<boolean> {
     this.initialize();
     if (this.startsUnderway.has(id))
@@ -7511,7 +7523,7 @@ export class OrchestrationService {
           throw new ConversationForkContextError(
             'The fork has a provider start in progress.',
           );
-        return this.forkContexts.deleteUnstarted(id, authority);
+        return this.forkContexts.deleteUnstarted(id, authority, isCurrent);
       },
     );
   }
@@ -16302,6 +16314,40 @@ export class OrchestrationService {
   /** Owned execution activity for summaries and idle parking. */
   private readonly readOwnedWork = (threadId: string) =>
     this.options.eventStore?.ownedSessionActivities([threadId]).get(threadId);
+
+  /** A start command is preparing this thread before its turn can run. */
+  isSessionStartUnderway(threadId: string): boolean {
+    return this.startsUnderway.has(threadId);
+  }
+
+  /** Follow only the current plain reservation back to its readable predecessor. */
+  async readPreparingContinuationPredecessor(
+    conversationId: string,
+    sessionId: string,
+    authority: SessionReadScope,
+  ): Promise<OrchestrationSessionDetail | null> {
+    const unmaterialized = () =>
+      !this.sessionReadModel.has(sessionId) &&
+      !this.options.eventStore?.readSessionByThread(sessionId);
+    if (!this.startsUnderway.has(sessionId) || !unmaterialized()) return null;
+    const predecessor =
+      this.conversationLineage.plainReservationPredecessor(conversationId);
+    if (
+      !predecessor ||
+      this.currentConversationSessionId(conversationId) !== sessionId
+    )
+      return null;
+    const detail = await this.readSession(predecessor, authority, {
+      eventMethods: ['session.started', 'session.configured'],
+    });
+    return this.startsUnderway.has(sessionId) &&
+      unmaterialized() &&
+      this.currentConversationSessionId(conversationId) === sessionId &&
+      this.conversationLineage.plainReservationPredecessor(conversationId) ===
+        predecessor
+      ? detail
+      : null;
+  }
 
   /** Read-only quiescence seam for derived projections that must not race a turn. */
   hasActiveTurn(threadId: string): boolean {

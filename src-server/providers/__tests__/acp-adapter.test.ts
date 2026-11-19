@@ -8698,7 +8698,7 @@ describe('AcpAdapter provider-plan quota projection (#2265)', () => {
     await adapter.stopAll();
   });
 
-  test('an unknown transport-shaped rejection stays generic and carries no quota code', async () => {
+  test('the local ACP connection close produces transport guidance without quota facts', async () => {
     const { adapter, turn, errorEvent } = await startFailedQuotaTurn({
       threadId: 'thread-transport',
       rejection: new Error('ACP connection closed'),
@@ -8707,12 +8707,16 @@ describe('AcpAdapter provider-plan quota projection (#2265)', () => {
       method: 'runtime.error',
       severity: 'error',
       turnId: turn.turnId,
-      message: 'ACP connection closed',
+      code: 'acp-transport-closed',
+      kind: 'unavailable',
+      failurePhase: 'failed',
+      retryable: true,
+      message: expect.stringContaining('provider outcome is unknown'),
     });
     expect(errorEvent).not.toMatchObject({
       code: 'provider-plan-quota-exhausted',
     });
-    expect('code' in errorEvent && errorEvent.code).toBeFalsy();
+    expect(errorEvent).not.toHaveProperty('details');
     await adapter.stopAll();
   });
 

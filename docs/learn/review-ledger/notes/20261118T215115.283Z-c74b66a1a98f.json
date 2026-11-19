@@ -1,0 +1,7 @@
+{
+  "revision": "7fd0edc0e9914d5b4def067e251b003718513d8e",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed the six Board commands against CLI help and command dispatch, their SDK clients, production Board and Personal Board routes, and the parity classifications. Focused real-router tests cover ownership, task Project coordinates, order, and provenance refusal. Hosted CLI execution is unverified.","inputs":["docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/core.ts","packages/cli/src/help.ts","packages/cli/src/commands/board.ts"]}
+  ]
+}

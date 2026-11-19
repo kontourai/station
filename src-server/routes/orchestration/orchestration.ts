@@ -248,7 +248,7 @@ import {
 } from '../../telemetry/metrics.js';
 import {
   type DelegatedTaskInterruptResult,
-  followUpTargetMatchesBinding,
+  matchFollowUpTargetBinding,
   PeerDelegationAttemptDuplicateError,
 } from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
@@ -2265,6 +2265,7 @@ export function createOrchestrationRoutes(
       | 'deliveryOutcome'
       | 'heldByOther'
       | 'inFlight'
+      | 'keyBindingChanged'
       | 'nudge'
     >;
     /**
@@ -2742,21 +2743,37 @@ export function createOrchestrationRoutes(
    * the start). Once the start answers, a retry under the key is answered
    * from the conversation-wide ledger. The same read gate applies.
    */
-  const inboxKeyInFlightRefusal = async (
+  const inboxKeyDeliveryRefusal = async (
     c: Context,
     conversationId: string | undefined,
     clientTurnId: string | undefined,
+    userId: string,
   ): Promise<Response | undefined> => {
+    const inbox = deps.threadInbox;
+    if (!conversationId || !clientTurnId || !inbox) return undefined;
+    const inFlight = inbox.inFlight(conversationId, clientTurnId);
+    const changed = inbox.keyBindingChanged(
+      conversationId,
+      clientTurnId,
+      userId,
+    );
     if (
-      !conversationId ||
-      !clientTurnId ||
-      !deps.threadInbox?.inFlight(conversationId, clientTurnId) ||
+      (!inFlight && !changed) ||
       !(await orchestrationService.hasReadableSession(
         conversationId,
         readAuthorityFor(c),
       ))
     )
       return undefined;
+    if (changed)
+      return c.json(
+        {
+          success: false,
+          error: 'The conversation changed while this message was waiting.',
+          code: 'conversation_binding_changed',
+        },
+        409,
+      );
     return c.json(
       {
         success: false,
@@ -3227,19 +3244,20 @@ export function createOrchestrationRoutes(
             ),
           })
         : undefined;
-      if (
+      const followUpBinding =
         followUp &&
         (await orchestrationService.hasReadableSession(
           followUp.conversationId,
           readAuthorityFor(c),
-        )) &&
-        (await followUpTargetMatchesBinding(
-          orchestrationService,
-          followUp.conversationId,
-          body.target as ExecutionTarget,
-          readAuthorityFor(c),
         ))
-      ) {
+          ? await matchFollowUpTargetBinding(
+              orchestrationService,
+              followUp.conversationId,
+              body.target as ExecutionTarget,
+              readAuthorityFor(c),
+            )
+          : undefined;
+      if (followUp && followUpBinding) {
         const inbox = deps.threadInbox!;
         if (
           orchestrationService.inspectTurnDelivery(
@@ -3306,6 +3324,7 @@ export function createOrchestrationRoutes(
             clientTurnId: followUp.clientTurnId,
             payload: {
               message: followUp.message,
+              ...followUpBinding,
               ...(attachments ? { attachments } : {}),
               ...(followUp.automaticBackground
                 ? { automaticBackground: true as const }
@@ -3339,12 +3358,13 @@ export function createOrchestrationRoutes(
       }
       // Not held, so this send takes the live path: never under a key the
       // inbox is still sending.
-      const keyInFlight = await inboxKeyInFlightRefusal(
+      const keyRefused = await inboxKeyDeliveryRefusal(
         c,
         body.conversationId,
         body.clientTurnId,
+        userId,
       );
-      if (keyInFlight) return keyInFlight;
+      if (keyRefused) return keyRefused;
       // Admitted: from here until the route answers, the delivery lookup says
       // Station has this send (a cold session start can take a long time
       // before the turn ledger holds anything).
@@ -4282,12 +4302,13 @@ export function createOrchestrationRoutes(
           userId,
         );
         if (keyHeld) return keyHeld;
-        const keyInFlight = await inboxKeyInFlightRefusal(
+        const keyRefused = await inboxKeyDeliveryRefusal(
           c,
           param(c, 'conversationId'),
           body.clientTurnId,
+          userId,
         );
-        if (keyInFlight) return keyInFlight;
+        if (keyRefused) return keyRefused;
         const data = await deps.continueForegroundMessage({
           ...body,
           ...(body.environment

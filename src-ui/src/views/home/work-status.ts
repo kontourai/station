@@ -26,8 +26,8 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *   state. This function does not re-decide it.
  * - THE FACTS (`WorkFacts`, derived beside the item) only choose the words
  *   inside that family: which thing is owed, which tool is running. They
- *   are optional, and the lane is the same with or without them, which is
- *   why the partition can call this with the item alone.
+ *   also identify a resumable delegation whose completed result has been read.
+ *   Its Done status stays intact when it returns to open work.
  *
  * Rungs, in the order a reader should expect them down an inbox:
  *
@@ -37,7 +37,7 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *  elsewhere                                     (Idle)
  *  N sub-agents, owned cleanup, no progress, running, scheduled (Running)
  *  draft                                         (Drafts)
- *  done                                          (finished)
+ *  done                       (finished, or idle after a resumable result is read)
  *  idle                                          (Idle)
  *
  * THE ONLY SOURCE OF STATUS WORDS. Every list, card, sheet, pane, banner and
@@ -279,7 +279,10 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     case 'Completed':
       return {
         rung: 'done',
-        lane: 'finished',
+        lane:
+          facts?.resumableDelegationResult && item.unread === false
+            ? 'idle'
+            : 'finished',
         tone: 'neutral',
         word: SESSION_STATUS_WORDS.done,
       };
@@ -293,9 +296,21 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
   }
 }
 
+export function hasUnseenDelegationResult(
+  item: HomeWorkItem,
+  facts?: WorkFacts,
+): boolean {
+  return (
+    facts?.resumableDelegationResult === true &&
+    item.unread === true &&
+    item.lifecycleLabel === 'Completed' &&
+    rungFor(item, facts).lane === 'finished'
+  );
+}
+
 /**
  * `facts` are the item's `WorkFacts`, derived beside it; without them the
- * line says only what the lifecycle label says, and the lane is the same.
+ * line and lane follow the recorded lifecycle.
  */
 export function workStatus(
   item: HomeWorkItem,

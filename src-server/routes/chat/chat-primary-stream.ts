@@ -124,6 +124,7 @@ interface StreamPrimaryAgentChatArgs {
   /** Private, source-admitted instructions from the authenticated native relay only. */
   skillExperienceContext?: string;
   restOptions: Record<string, unknown>;
+  fileConversationOwnerId?: string;
   injectContext: string | null;
   ragContext: string | null;
   /**
@@ -203,6 +204,7 @@ export function streamPrimaryAgentChat({
   ambientContext,
   skillExperienceContext,
   restOptions,
+  fileConversationOwnerId,
   injectContext,
   ragContext,
   contextInjection,
@@ -490,7 +492,12 @@ export function streamPrimaryAgentChat({
       ctx.logger.debug('Abort signal configured', { conversationId });
 
       memory = agent.getMemory();
-      memoryAdapter = ctx.memoryAdapters.get(slug);
+      const newFileOwnerId = isNewConversation
+        ? fileConversationOwnerId
+        : undefined;
+      const storageSlug =
+        newFileOwnerId && slug === 'station' ? 'default' : slug;
+      memoryAdapter = ctx.memoryAdapters.get(storageSlug);
       // archive#914: one conversation store, not a choice between two. This used to
       // pick the agent's own memory for file-backed agents and Station's
       // adapter for runtime ones — which were different objects, so the title
@@ -505,8 +512,8 @@ export function streamPrimaryAgentChat({
       await ensureChatConversation({
         conversationStorage,
         conversationId: operationContext.conversationId,
-        userId: operationContext.userId,
-        slug,
+        userId: (memoryAdapter && newFileOwnerId) || operationContext.userId,
+        slug: memoryAdapter ? storageSlug : slug,
         input,
         title: operationContext.title,
         projectSlug,

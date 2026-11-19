@@ -33,7 +33,13 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
     catchingUp: false,
     error: undefined,
     ...(windowState.currentSessionId
-      ? { currentSessionId: windowState.currentSessionId }
+      ? {
+          currentSessionId: windowState.currentSessionId,
+          executionRead: {
+            sessionId: windowState.currentSessionId,
+            priorSessionId: 'child-2',
+          },
+        }
       : {}),
   }),
 }));
