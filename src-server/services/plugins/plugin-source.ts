@@ -44,11 +44,11 @@ import {
 } from './plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 import { derivePluginConsentBasis } from './plugin-install-consent.js';
-import { readUntrustedPluginManifestSyncWithFormat } from './plugin-manifest-bounded-read.js';
 import {
-  readPluginManifestFileSync,
-  readPluginManifestFileSyncWithFormat,
-} from './plugin-manifest-loader.js';
+  readContainedPluginManifestSyncWithFormat,
+  readUntrustedPluginManifestSyncWithFormat,
+} from './plugin-manifest-bounded-read.js';
+import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
 import { findRegistryAcquisitionRefusal } from './registry-acquisition.js';
 import { assertPluginIdentityAvailable } from './reserved-plugin-identities.js';
 
@@ -323,60 +323,36 @@ function assertPathInside(
 function readInstalledDependencyManifest(
   pluginsDir: string,
   dependencyId: string,
-): PluginManifest {
-  const dependencyDir = join(pluginsDir, dependencyId);
-  assertPathInside(pluginsDir, dependencyDir, 'Plugin dependency target');
-  if (!existsSync(dependencyDir)) {
+) {
+  let target: ReturnType<typeof resolveInstalledPluginRoot>;
+  try {
+    target = resolveInstalledPluginRoot(pluginsDir, dependencyId);
+  } catch (error) {
+    throw new Error(
+      'Plugin dependency target escapes root or does not identify an owned materialization',
+      { cause: error },
+    );
+  }
+  if (!target)
     throw new Error(
       `Plugin dependency '${dependencyId}' did not materialize after install`,
     );
-  }
-  const dependencyStat = lstatSync(dependencyDir);
-  if (dependencyStat.isSymbolicLink()) {
-    try {
-      if (
-        resolveInstalledPluginRoot(pluginsDir, dependencyId)?.kind !==
-        'incarnation'
-      )
-        throw new Error('Plugin dependency target escapes root');
-    } catch (error) {
-      throw new Error(
-        'Plugin dependency target escapes root or does not identify an owned materialization',
-        { cause: error },
-      );
-    }
-  } else if (!dependencyStat.isDirectory()) {
-    throw new Error(
-      `Plugin dependency '${dependencyId}' target is not a directory`,
-    );
-  }
-  const rootPath = realpathSync(pluginsDir);
-  const dependencyPath = realpathSync(dependencyDir);
-  if (
-    dependencyPath !== rootPath &&
-    !dependencyPath.startsWith(`${rootPath}${sep}`)
-  ) {
-    throw new Error('Plugin dependency target escapes root');
-  }
+  const dependencyDir = target.packageRoot;
   const manifestPath = join(dependencyDir, 'plugin.json');
-  if (!existsSync(manifestPath)) {
+  if (!existsSync(manifestPath))
     throw new Error(
       `Plugin dependency '${dependencyId}' is missing plugin.json`,
     );
-  }
-  const manifestStat = lstatSync(manifestPath);
-  if (!manifestStat.isFile()) {
+  if (!lstatSync(manifestPath).isFile())
     throw new Error(
       `Plugin dependency '${dependencyId}' manifest is not a regular file`,
     );
-  }
-  const manifest = readPluginManifestFileSync(manifestPath) as PluginManifest;
-  if ((manifest.name || dependencyId) !== dependencyId) {
+  const read = readContainedPluginManifestSyncWithFormat(dependencyDir);
+  if ((read.manifest.name || dependencyId) !== dependencyId)
     throw new Error(
       `Plugin dependency '${dependencyId}' manifest name does not match`,
     );
-  }
-  return manifest;
+  return { ...read, target };
 }
 
 /**
@@ -400,11 +376,11 @@ function readInstalledDependencyManifest(
 async function buildDependencyIfNeeded(
   pluginsDir: string,
   dependencyId: string,
+  dependencyDir: string,
   manifest: PluginManifest,
   buildPlugin: (pluginDir: string, name: string) => Promise<void>,
 ): Promise<void> {
   if (!manifest.entrypoint) return;
-  const dependencyDir = join(pluginsDir, dependencyId);
   await withPluginContentLock(pluginsDir, dependencyId, () =>
     buildPlugin(dependencyDir, dependencyId),
   );
@@ -420,12 +396,9 @@ function unsupportedDependencyFeatures(
   dependencyDir: string,
   manifest: PluginManifest,
   lifecycle: boolean,
+  format: string | undefined,
 ): string[] {
-  if (
-    readPluginManifestFileSyncWithFormat(join(dependencyDir, 'plugin.json'))
-      .format === 'agent-plugin-1.0'
-  )
-    return [];
+  if (format === 'agent-plugin-1.0') return [];
   const unsupported: string[] = [];
   if (manifest.agents?.length) unsupported.push('agents');
   if (manifest.layout) unsupported.push('layout');
@@ -457,12 +430,14 @@ function assertDependencyLifecycleSupported(
   dependencyId: string,
   dependencyDir: string,
   manifest: PluginManifest,
+  format: string,
   lifecycle?: PluginDependencyLifecycle,
 ): void {
   const unsupported = unsupportedDependencyFeatures(
     dependencyDir,
     manifest,
     Boolean(lifecycle),
+    format,
   );
   if (unsupported.length) {
     throw new Error(
@@ -782,8 +757,8 @@ export async function resolvePluginDependencies(
 
     let depManifest: PluginManifest | null = null;
     let depFormat: string | undefined;
-    const readDependency = (path: string) => {
-      const read = readPluginManifestFileSyncWithFormat(path);
+    const readDependency = (root: string) => {
+      const read = readContainedPluginManifestSyncWithFormat(root);
       depFormat = read.format;
       return read.manifest;
     };
@@ -807,11 +782,12 @@ export async function resolvePluginDependencies(
     // tree was fetched from (declared, or the registry's).
     let transitiveParent = resolvedDependency.source;
 
-    const dependencyDir = join(pluginsDir, dependency.id);
-    if (existsSync(join(dependencyDir, 'plugin.json'))) {
+    const installedRoot = resolveInstalledPluginRoot(pluginsDir, dependency.id);
+    const dependencyDir = installedRoot?.packageRoot;
+    if (dependencyDir && existsSync(join(dependencyDir, 'plugin.json'))) {
       status = 'installed';
       try {
-        depManifest = readDependency(join(dependencyDir, 'plugin.json'));
+        depManifest = readDependency(dependencyDir);
       } catch (error) {
         logger.debug('Failed to read installed dependency manifest', {
           dep: dependency.id,
@@ -824,6 +800,7 @@ export async function resolvePluginDependencies(
           dependencyDir,
           depManifest,
           true,
+          depFormat,
         );
       }
       const basis = depManifest
@@ -863,6 +840,7 @@ export async function resolvePluginDependencies(
               result.tempDir,
               depManifest,
               true,
+              depFormat,
             );
             const basis = derivePluginConsentBasis(result.tempDir, depManifest);
             if (basis) {
@@ -906,6 +884,7 @@ export async function resolvePluginDependencies(
                   result.tempDir,
                   depManifest,
                   true,
+                  depFormat,
                 );
                 const basis = derivePluginConsentBasis(
                   result.tempDir,
@@ -1033,17 +1012,24 @@ async function validateAndBuildInstalledDependency(
   buildPlugin: (pluginDir: string, name: string) => Promise<void>,
   lifecycle?: PluginDependencyLifecycle,
   stagedSourceAlreadyValidated = false,
+  expectedVersion?: string,
 ): Promise<void> {
   await withPluginContentLock(pluginsDir, dependencyId, async () => {
-    const manifest = readInstalledDependencyManifest(pluginsDir, dependencyId);
-    const format = readPluginManifestFileSyncWithFormat(
-      join(pluginsDir, dependencyId, 'plugin.json'),
-    ).format;
+    const { manifest, format, target } = readInstalledDependencyManifest(
+      pluginsDir,
+      dependencyId,
+    );
+    if (
+      expectedVersion &&
+      expectedVersion !== '*' &&
+      expectedVersion !== manifest.version
+    ) {
+      throw new Error(
+        `Plugin dependency '${dependencyId}' requires exact version '${expectedVersion}', found '${manifest.version}'`,
+      );
+    }
     if (format === 'agent-plugin-1.0') {
-      if (
-        resolveInstalledPluginRoot(pluginsDir, dependencyId)?.kind !==
-        'incarnation'
-      )
+      if (target.kind !== 'incarnation')
         throw new Error(
           `Portable dependency '${dependencyId}' needs migration through its installation owner`,
         );
@@ -1051,8 +1037,9 @@ async function validateAndBuildInstalledDependency(
     }
     assertDependencyLifecycleSupported(
       dependencyId,
-      join(pluginsDir, dependencyId),
+      target.packageRoot,
       manifest,
+      format,
       lifecycle,
     );
     if (
@@ -1068,7 +1055,7 @@ async function validateAndBuildInstalledDependency(
     if (manifest.entrypoint && !stagedSourceAlreadyValidated) {
       lifecycle?.validate({
         dependencyId,
-        dependencyDir: join(pluginsDir, dependencyId),
+        dependencyDir: target.packageRoot,
         manifest,
       });
     }
@@ -1076,6 +1063,7 @@ async function validateAndBuildInstalledDependency(
     await buildDependencyIfNeeded(
       pluginsDir,
       dependencyId,
+      target.packageRoot,
       manifest,
       buildPlugin,
     );
@@ -1203,23 +1191,13 @@ export async function installPluginDependency(
   }
   if (existsSync(targetDir)) {
     try {
-      const installedManifest = readInstalledDependencyManifest(
-        pluginsDir,
-        dependency.id,
-      );
-      if (
-        dependency.version &&
-        dependency.version !== '*' &&
-        dependency.version !== installedManifest.version
-      )
-        throw new Error(
-          `Plugin dependency '${dependency.id}' requires exact version '${dependency.version}', found '${installedManifest.version}'`,
-        );
       await validateAndBuildInstalledDependency(
         pluginsDir,
         dependency.id,
         buildPlugin,
         lifecycle,
+        false,
+        dependency.version,
       );
       return { success: true };
     } catch (error: unknown) {
@@ -1288,6 +1266,7 @@ export async function installPluginDependency(
           dependency.id,
           tempDir,
           depManifest,
+          format,
           lifecycle,
         );
         lifecycle?.validate({
@@ -1475,19 +1454,21 @@ export async function installPluginDependency(
       // `targetDir` now is this call's to validate and, on failure, to undo.
       const createdHere = existsSync(targetDir);
       try {
-        const depManifest = readInstalledDependencyManifest(
-          pluginsDir,
-          dependency.id,
-        );
+        const {
+          manifest: depManifest,
+          format,
+          target: selectedDependency,
+        } = readInstalledDependencyManifest(pluginsDir, dependency.id);
         assertDependencyLifecycleSupported(
           dependency.id,
-          targetDir,
+          selectedDependency.packageRoot,
           depManifest,
+          format,
           lifecycle,
         );
         lifecycle?.validate({
           dependencyId: dependency.id,
-          dependencyDir: targetDir,
+          dependencyDir: selectedDependency.packageRoot,
           manifest: depManifest,
         });
         await lifecycle?.beforeLegacyMutation?.({
@@ -1496,6 +1477,7 @@ export async function installPluginDependency(
         await buildDependencyIfNeeded(
           pluginsDir,
           dependency.id,
+          selectedDependency.packageRoot,
           depManifest,
           buildPlugin,
         );
@@ -1529,7 +1511,7 @@ export async function installPluginDependency(
         }
         await lifecycle?.activate({
           dependencyId: dependency.id,
-          dependencyDir: targetDir,
+          dependencyDir: selectedDependency.packageRoot,
           manifest: depManifest,
         });
         // Bind deletion authority before reporting success. Keeping this in

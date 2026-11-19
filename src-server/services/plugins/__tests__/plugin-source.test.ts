@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
+import { canonicalPath } from '../../../utils/path-containment.js';
 import {
   computePluginContentDigest,
   PluginContentLockCycleError,
@@ -317,7 +318,7 @@ describe('installPluginDependency', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('did not produce dist/bundle.js');
     expect(buildPlugin).toHaveBeenCalledWith(
-      join(pluginsDir, 'needs-build'),
+      join(canonicalPath(pluginsDir), 'needs-build'),
       'needs-build',
     );
     expect(existsSync(join(pluginsDir, 'needs-build'))).toBe(false);
@@ -490,7 +491,7 @@ describe('rebuilding an installed dependency (station#4288)', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(buildPlugin).toHaveBeenCalledWith(dir, 'shared-lib');
+    expect(buildPlugin).toHaveBeenCalledWith(canonicalPath(dir), 'shared-lib');
     // The tree moved, and so did what the memo answers with. Without the
     // lock the memo kept serving `before` until the next restart, so a
     // mutated tree read `bound` in-process and `changed` after a reboot.
