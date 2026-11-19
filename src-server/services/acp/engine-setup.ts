@@ -43,7 +43,12 @@ export function acpConnectionIcon(
   icon: string | undefined,
   entry: ACPConnectionRegistryEntry | undefined,
 ): string | undefined {
-  return icon && icon !== '🔌' ? icon : (entry?.icon ?? icon);
+  const formerBuiltInIcon =
+    (entry?.id === 'grok-build' && icon === 'GK') ||
+    (entry?.id === 'antigravity' && icon === 'AG');
+  return icon && icon !== '🔌' && !formerBuiltInIcon
+    ? icon
+    : (entry?.icon ?? icon);
 }
 
 /** Project only setup facts; executable configuration stays with the human pane. */
