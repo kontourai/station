@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { Client } from '@modelcontextprotocol/client';
 import { InMemoryTransport } from '@modelcontextprotocol/server';
@@ -11,6 +12,7 @@ import { FakeAcpProcess } from '../../providers/__tests__/fake-acp-process.js';
 import { AcpAdapter } from '../../providers/adapters/acp-adapter.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createSelectedStationControlMcpServer } from '../../tools/station-control-mcp-server.js';
+import type { ACPProcess } from '../acp/acp-process.js';
 import { EventBus } from '../orchestration/event-bus.js';
 import { EventStore } from '../orchestration/event-store.js';
 import { OrchestrationService } from '../orchestration/orchestration-service.js';
@@ -135,7 +137,8 @@ test('the ACP render route records the page with its transcript event before any
         enabled: true,
       },
     ],
-    processFactory: (options) => new FakeAcpProcess(options),
+    processFactory: (options) =>
+      new FakeAcpProcess(options) as unknown as ACPProcess,
   });
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
@@ -212,7 +215,8 @@ test('the ACP render route records the page with its transcript event before any
       db.exec('DROP TRIGGER reject_html_event');
       const rendered = await publish();
       expect(rendered.status).toBe(200);
-      const { htmlReply } = await rendered.json();
+      const htmlReply = htmlReplyReference(await rendered.json());
+      if (!htmlReply) throw new Error('No publication reference was returned');
       const retry = await publish();
       expect(retry.status).toBe(200);
       expect(await retry.json()).toEqual({ success: true, htmlReply });

@@ -112,13 +112,16 @@ describe('/api/me/appearance', () => {
     });
     const first = await app.request('/appearance');
     expect(first.status).toBe(200);
-    const { data } = await first.json();
+    expect(await first.json()).toMatchObject({
+      success: true,
+      data: { revision: store.read(owner).revision },
+    });
     const submit = (revision: string) =>
       app.request('/appearance/proposal', {
         method: 'POST',
         body: JSON.stringify({ revision, appearance }),
       });
-    expect((await submit(data.revision)).status).toBe(200);
+    expect((await submit(store.read(owner).revision)).status).toBe(200);
     expect(store.read(owner)).toMatchObject({
       active: null,
       proposal: {

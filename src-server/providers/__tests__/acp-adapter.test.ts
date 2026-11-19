@@ -4417,7 +4417,7 @@ describe('AcpAdapter', () => {
 
       await adapter.sendTurn({
         threadId,
-        prompt: 'Continue',
+        input: 'Continue',
         confinement: 'host',
         modelOptions: { approvalMode: 'ask' },
       });
