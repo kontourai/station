@@ -2108,6 +2108,7 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
   test.each([false, true])(
     'explains denied remote inventory alongside local work when present (%s)',
     (hasLocalWork) => {
+      fixtures.projects = [];
       fixtures.continueDecoy = hasLocalWork;
       if (hasLocalWork) fixtures.sessions = [REMOTE_SESSION];
       fixtures.remoteSessionsError = new StationHttpError(403, undefined, {
@@ -2128,12 +2129,22 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       expect(recent.queryAllByTestId('inbox-row')).toHaveLength(
         hasLocalWork ? 1 : 0,
       );
+      expect(
+        screen.queryAllByRole('heading', {
+          name: 'Start your first conversation',
+        }),
+      ).toHaveLength(hasLocalWork ? 0 : 1);
     },
   );
 
-  test('can retry a temporary remote-inventory failure', () => {
+  test('can retry a temporary remote-inventory failure on a fresh Station', () => {
+    fixtures.projects = [];
     fixtures.remoteSessionsError = new StationHttpError(503);
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(
+      screen.getByRole('heading', { name: 'Start your first conversation' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Retry remote work' }));
     expect(fixtures.remoteSessionsRefetch).toHaveBeenCalledOnce();
   });
@@ -2173,7 +2184,8 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeTruthy();
   });
 
-  test('shows an actionable pairing note when a connected SSH tunnel lacks a usable peer bearer', () => {
+  test('shows a pairing note and first-conversation guidance on a fresh Station', () => {
+    fixtures.projects = [];
     fixtures.remoteSessionsResult = {
       environments: [],
       unavailable: [],
@@ -2194,6 +2206,10 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(
       screen.getByText(/Add or replace its pairing credential/i),
     ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Start your first conversation' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
   });
 
   // the local-first invariant — omitting/defaulting remote data

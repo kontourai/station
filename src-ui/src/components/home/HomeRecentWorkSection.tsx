@@ -217,6 +217,8 @@ function HomeWorkContent({
   workDegraded,
   workError,
   remoteReadError,
+  remoteUnavailable,
+  remoteAuthenticationRequired,
   workFacts,
   agents,
   onOpen,
@@ -241,8 +243,13 @@ function HomeWorkContent({
   if (workError && workItems.length === 0) {
     return <RecentWorkError onRetry={onRetry} />;
   }
-  if (workItems.length === 0)
-    return remoteReadError ? null : <RecentWorkEmpty />;
+  if (workItems.length === 0) {
+    const remoteIncomplete =
+      remoteReadError ||
+      remoteUnavailable.length > 0 ||
+      remoteAuthenticationRequired.length > 0;
+    return remoteIncomplete ? null : <RecentWorkEmpty />;
+  }
   return (
     <HomeWorkLanesContent
       controller={controller}

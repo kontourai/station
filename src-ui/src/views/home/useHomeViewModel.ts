@@ -179,10 +179,7 @@ function useHomeWorkData(): HomeWorkData {
       projects.length === 0 &&
       workItems.length === 0 &&
       !workLoading &&
-      !workError &&
-      !remoteReadError &&
-      (remoteSessionsResult?.unavailable.length ?? 0) === 0 &&
-      (remoteSessionsResult?.authenticationRequired?.length ?? 0) === 0,
+      !workError,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
