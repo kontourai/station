@@ -796,21 +796,18 @@ export const ACP_MODEL_OVERRIDE_PER_TURN = false;
  *   by the chat's approval mode (Ask: a person decides; Auto: file edits are
  *   allowed; full access: every request is allowed). The approval control
  *   offers Station's approval modes.
- * - `engine`: Station has no channel into the engine's permission rules. It
- *   answers only the requests the engine chooses to send, so the approval
- *   control says the engine decides and offers no mode.
+ * - `requests`: Station's approval mode answers the ACP permission requests
+ *   the engine sends. Its own tool rules still decide when it asks.
+ * - `engine`: Station has no confirmed ACP connection to apply a mode to.
  */
-export type AcpApprovalControl = 'station' | 'engine';
+export type AcpApprovalControl = 'station' | 'requests' | 'engine';
 
-/** ACP engines whose launch configuration Station sets (#3290). */
-export type AcpStationApprovalEngine = 'opencode';
+/** ACP engine identities with specific approval settings or descriptions. */
+export type AcpStationApprovalEngine = 'opencode' | 'antigravity';
 
 /**
- * The ACP engine a connection's command launches, when Station sets its
- * approval rules at launch. Matched on the executable's own name (any
- * directory, a Windows launcher extension ignored), the identity the
- * OpenCode model listing also uses. A wrapper such as `npx opencode-ai` is
- * not recognized, so that connection is `engine`-decided.
+ * Identifies an ACP engine with specific approval settings or descriptions.
+ * Unrecognized executables can still send the standard ACP permission requests.
  */
 export function acpStationApprovalEngine(
   command: string | null | undefined,
@@ -823,7 +820,9 @@ export function acpStationApprovalEngine(
     .pop()
     ?.toLowerCase()
     .replace(/\.(exe|cmd|bat)$/, '');
-  return executable === 'opencode' ? 'opencode' : undefined;
+  if (executable === 'opencode') return 'opencode';
+  if (executable === 'agy') return 'antigravity';
+  return undefined;
 }
 
 /**
@@ -854,7 +853,8 @@ export function isOpenCodeAcpConnection(
 export function acpApprovalControl(
   command: string | null | undefined,
 ): AcpApprovalControl {
-  return acpStationApprovalEngine(command) ? 'station' : 'engine';
+  if (acpStationApprovalEngine(command) === 'opencode') return 'station';
+  return command?.trim() ? 'requests' : 'engine';
 }
 
 export const ENGINE_CAPABILITY_MATRICES: Record<

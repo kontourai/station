@@ -1,19 +1,21 @@
 import type { CSSProperties, MouseEvent, PointerEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-interface InboxSwipeOptions {
+interface SwipeActionsOptions {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   actionWidth?: number;
+  triggerSelector: string;
 }
 
-export function useInboxSwipe(
+export function useSwipeActions(
   enabled: boolean,
   {
     open: controlledOpen,
     onOpenChange,
     actionWidth = 144,
-  }: InboxSwipeOptions = {},
+    triggerSelector,
+  }: SwipeActionsOptions,
 ) {
   const [ownOpen, setOwnOpen] = useState(false);
   const [dragOffset, setDragOffset] = useState<number | null>(null);
@@ -29,6 +31,25 @@ export function useInboxSwipe(
   } | null>(null);
   const row = useRef<HTMLElement | null>(null);
   const suppressUntil = useRef(0);
+  const attachRow = useCallback(
+    (element: HTMLElement | null) => {
+      row.current = element;
+      if (!enabled || !element) return;
+
+      // Cancel native touch handling after the row claims a horizontal drag.
+      // A pointermove cancellation alone can leave Chromium suppressing the next tap.
+      const onTouchMove = (event: TouchEvent) => {
+        if (origin.current?.horizontal && event.cancelable)
+          event.preventDefault();
+      };
+      element.addEventListener('touchmove', onTouchMove, { passive: false });
+      return () => {
+        element.removeEventListener('touchmove', onTouchMove);
+        row.current = null;
+      };
+    },
+    [enabled],
+  );
   const setOpen = useCallback(
     (next: boolean) => {
       setOwnOpen(next);
@@ -73,13 +94,14 @@ export function useInboxSwipe(
 
   const offset = enabled ? (dragOffset ?? (open ? -actionWidth : 0)) : 0;
   const style: CSSProperties & {
-    '--inbox-swipe-offset': string;
-    '--inbox-swipe-width': string;
+    '--swipe-action-offset': string;
+    '--swipe-action-width': string;
   } = {
-    '--inbox-swipe-offset': `${offset}px`,
-    '--inbox-swipe-width': `${actionWidth}px`,
+    '--swipe-action-offset': `${offset}px`,
+    '--swipe-action-width': `${actionWidth}px`,
   };
   return {
+    ref: attachRow,
     open,
     close,
     style,
@@ -93,11 +115,10 @@ export function useInboxSwipe(
         event.button !== 0 ||
         event.pointerType === 'mouse' ||
         !(event.target instanceof Element) ||
-        !event.target.closest('.inbox-row__open') ||
+        !event.target.closest(triggerSelector) ||
         !event.currentTarget.contains(event.target)
       )
         return;
-      row.current = event.currentTarget;
       origin.current = {
         x: event.clientX,
         y: event.clientY,

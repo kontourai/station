@@ -33,6 +33,12 @@ import {
 } from '@kontourai/station-shared/json-file-storage';
 import { contrastRatio } from '@kontourai/ui/contrast';
 
+export class CustomAppearanceGrantExpiredError extends Error {
+  constructor() {
+    super('The delegated appearance proposal grant expired.');
+  }
+}
+
 export class CustomAppearanceConflictError extends Error {
   constructor() {
     super('This appearance changed. Read it again before proposing or saving.');
@@ -204,6 +210,7 @@ export class CustomAppearanceStore {
     owner: Owner,
     expected: string | null,
     update: (current: StoredDocument) => StoredDocument,
+    assertCurrent?: () => void,
   ): Promise<CustomAppearanceDocument> {
     const next = await mutateJsonFile<unknown>(
       this.path(owner),
@@ -223,7 +230,7 @@ export class CustomAppearanceStore {
           throw new CustomAppearanceTooLargeError();
         return next;
       },
-      this.limits,
+      { ...this.limits, assertCurrent },
     );
     return view(next as StoredDocument);
   }
@@ -235,22 +242,31 @@ export class CustomAppearanceStore {
     input: unknown,
     sourceSessionId?: string,
     studioEnabled: () => boolean = () => false,
+    grantCurrent?: () => boolean,
   ): Promise<CustomAppearanceDocument> {
     const appearance = admitCustomAppearance(input);
-    return this.change(owner, revision, (current) => {
-      if (appearance.visual && !studioEnabled())
-        throw new CustomAppearanceStudioDisabledError();
-      return {
-        ...current,
-        proposal: {
-          id: digest(['proposal', appearance, randomUUID()]),
-          appearance,
-          proposedAt: this.now(),
-          ...(sourceSessionId ? { sourceSessionId } : {}),
-        },
-        renderReport: null,
-      };
-    });
+    return this.change(
+      owner,
+      revision,
+      (current) => {
+        if (appearance.visual && !studioEnabled())
+          throw new CustomAppearanceStudioDisabledError();
+        return {
+          ...current,
+          proposal: {
+            id: digest(['proposal', appearance, randomUUID()]),
+            appearance,
+            proposedAt: this.now(),
+            ...(sourceSessionId ? { sourceSessionId } : {}),
+          },
+          renderReport: null,
+        };
+      },
+      grantCurrent &&
+        (() => {
+          if (!grantCurrent()) throw new CustomAppearanceGrantExpiredError();
+        }),
+    );
   }
 
   /** The person's own save; `null` turns custom appearance off. */

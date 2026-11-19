@@ -822,7 +822,10 @@ import {
   FileStationSurveyReviewSessionStore,
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
-import { connectedAccountOwnerId } from '../../services/identity/connected-account-owner.js';
+import {
+  connectedAccountOwnerId,
+  connectedAccountOwnerIdForTurnAccount,
+} from '../../services/identity/connected-account-owner.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import {
@@ -2770,6 +2773,8 @@ export function configureRuntimeRoutes(
             context.orchestrationService.resolveSessionActingPrincipal(
               threadId,
             ),
+          delegatedAppearanceOwner: (threadId) =>
+            context.orchestrationService.delegatedAppearanceOwner?.(threadId),
           firstStartedMetadataOfThread: (threadId) =>
             context.orchestrationService.firstStartedMetadataOfThread(threadId),
         },
@@ -10374,6 +10379,13 @@ export function configureRuntimeRoutes(
           enabled: () => true,
           disabled: () => false,
         }),
+      resolveDelegatedAppearanceOwner: (request) =>
+        connectedAccountOwnerIdForTurnAccount(
+          resolveStationControlCallerForRequest(
+            request,
+            resolveStationControlCallerRecord,
+          )?.appearanceOwnerId,
+        ),
       resolveProposalSourceSessionId: (c) =>
         resolveStationControlCallerForRequest(
           c.req.raw,
@@ -12955,6 +12967,8 @@ export function configureRuntimeRoutes(
     '/api/html-replies',
     createHtmlReplyRoutes({
       pages: runtimeContext.orchestrationEventStore.htmlReplyPages(),
+      capturePublisher: (sessionId) =>
+        context.orchestrationService.captureAcpHtmlReplyPublisher(sessionId),
       frameOrigin: clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>

@@ -92,6 +92,57 @@ function fixture(
 }
 
 describe('/api/me/appearance', () => {
+  test('a delegated proposal stays with its granting person and an expired grant cannot write', async () => {
+    const home = makeTempDir('delegated-appearance-');
+    const store = new CustomAppearanceStore(home);
+    const owner = {
+      principalId: humanPrincipal('fixture', 'alice', 'Alice').id,
+    };
+    const another = { principalId: humanPrincipal('fixture', 'bob', 'Bob').id };
+    let active = true;
+    const app = createCustomAppearanceRoutes({
+      store,
+      resolvePrincipal: () => {
+        throw new Error('The child has no acting principal');
+      },
+      resolveDelegatedAppearanceOwner: () =>
+        active ? owner.principalId : undefined,
+      resolveProposalSourceSessionId: () => 'task:appearance',
+      tenantId: () => undefined,
+    });
+    const first = await app.request('/appearance');
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({
+      success: true,
+      data: { revision: store.read(owner).revision },
+    });
+    const submit = (revision: string) =>
+      app.request('/appearance/proposal', {
+        method: 'POST',
+        body: JSON.stringify({ revision, appearance }),
+      });
+    expect((await submit(store.read(owner).revision)).status).toBe(200);
+    expect(store.read(owner)).toMatchObject({
+      active: null,
+      proposal: {
+        sourceSessionId: 'task:appearance',
+        appearance: { name: 'Quiet' },
+      },
+    });
+    expect(store.read(another).proposal).toBeNull();
+    const keep = await app.request('/appearance/proposal/keep', {
+      method: 'POST',
+      body: JSON.stringify({
+        revision: store.read(owner).revision,
+        proposalId: store.read(owner).proposal?.id,
+      }),
+    });
+    expect(keep.status).toBe(403);
+    active = false;
+    expect((await submit(store.read(owner).revision)).status).toBe(403);
+    expect(store.read(owner).active).toBeNull();
+  });
+
   test('an agent proposes; only the person keeps, saves, dismisses, turns off or reports', async () => {
     const f = fixture();
     const empty = await f.read();

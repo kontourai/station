@@ -1452,6 +1452,7 @@ export function NewChatModal({
           approvalProjectDefaultUnavailable:
             selectionModel.projectChatDefaultsUnavailable,
           approvalPick,
+          approvalConnections: acpConnections,
           onApprovalPick: setApprovalPick,
         };
   const projectChip: StartProjectChip = targetStart.active

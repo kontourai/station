@@ -1422,6 +1422,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     record.native.assertIdle();
     record.busy = true;
     try {
+      const configured = (await this.options.getConnections()).some(
+        (connection) => connection.id === record.cursor.connectionId,
+      );
+      if (!configured || this.native.get(input.threadId) !== record)
+        throw new SendTurnRefusedError(
+          'This engine is disconnected. Continue with another agent.',
+          'session_gone',
+        );
       return await this.sendNativeTurn(
         record,
         input,
