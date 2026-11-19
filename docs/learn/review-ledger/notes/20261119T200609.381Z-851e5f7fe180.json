@@ -1,0 +1,7 @@
+{
+  "revision": "fe4f271ff8fa4bbd7693aa8398b470a209bf4c64",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked that the shortened ACP copy states ordinary request approval and the unchanged engine and Station permission limits.","inputs":["src-ui/src/utils/approvalMode.ts"]}
+  ]
+}
