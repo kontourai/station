@@ -161,6 +161,38 @@ describe.skipIf(!posix)('station-weight test daemons', () => {
     expect(child.exitCode).toBe(0);
   });
 
+  test('checking owner birth adds no processes to the measured tree', async () => {
+    const observeFirstCheck = `
+      const childProcess = require('node:child_process');
+      const execFileSync = childProcess.execFileSync;
+      let probes = 0;
+      childProcess.execFileSync = (...args) => {
+        probes++;
+        return execFileSync(...args);
+      };
+      const interval = globalThis.setInterval;
+      globalThis.setInterval = (callback, ms) => {
+        let reported = false;
+        return interval(() => {
+          callback();
+          if (reported) return;
+          reported = true;
+          process.stdout.write(String(probes) + '\\n');
+        }, ms);
+      };
+    `;
+    const { child, firstLine } = start(
+      observeFirstCheck +
+        boundedDaemonSource({ owner: WORKER, lease, birthCheckMs: 0 }),
+    );
+    const probes = await firstLine;
+    const root = identity(child.pid as number);
+    expect(ownedTree(processTable(), [root]).map((row) => row.pid)).toEqual([
+      child.pid,
+    ]);
+    expect(probes, 'child processes created during the birth check').toBe('0');
+  });
+
   test('a daemon exits when its owner pid has another birth', async () => {
     const child = daemon(
       boundedDaemonSource({
@@ -408,7 +440,7 @@ describe.skipIf(!posix)('station-weight leftover detection', () => {
       expect(ended.leftRunning).toEqual([
         expect.objectContaining({
           pid: daemon,
-          command: expect.stringContaining('setInterval'),
+          command: expect.stringContaining(lease),
         }),
       ]);
       await wait(200);
