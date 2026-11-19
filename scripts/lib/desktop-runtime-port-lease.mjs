@@ -43,20 +43,18 @@ function readLease(path) {
   }
 }
 
-function ownerIsDead(lease) {
+function leaseOwnerState(lease) {
   const owner = lease?.owner;
   if (!Number.isInteger(owner?.pid) || typeof owner?.start !== 'string') {
-    return false;
+    return 'unknown';
   }
   const probe = probeExactProcessIdentity(owner.pid);
-  return (
-    probe.state === 'dead' ||
-    (probe.state === 'exact' && probe.identity.start !== owner.start)
-  );
+  if (probe.state === 'dead') return 'dead';
+  if (probe.state !== 'exact') return 'unknown';
+  return probe.identity.start === owner.start ? 'live' : 'dead';
 }
 
 function reclaimDeadOwner(path, lease) {
-  if (!ownerIsDead(lease)) return false;
   const retired = `${path}.retired-${randomUUID()}`;
   try {
     renameSync(path, retired);
@@ -146,10 +144,23 @@ export async function withDesktopRuntimeListenerLease(work, options = {}) {
       )
         throw error;
       const existing = readLease(path);
-      if (existing && reclaimDeadOwner(path, existing)) continue;
+      const ownerState = leaseOwnerState(existing);
+      if (ownerState === 'dead' && reclaimDeadOwner(path, existing)) continue;
       if (Date.now() >= deadline) {
+        let holder = 'unknown';
+        if (ownerState === 'live') {
+          const current = readLease(path)?.owner;
+          const { pid, start, nonce } = existing.owner;
+          if (
+            current?.pid === pid &&
+            current.start === start &&
+            current.nonce === nonce
+          ) {
+            holder = `PID ${pid}`;
+          }
+        }
         throw new Error(
-          'Timed out waiting for the packaged-runtime listener lease',
+          `Timed out waiting for the packaged-runtime listener lease (wait budget: ${waitMs}ms, holder: ${holder})`,
         );
       }
       await delay(pollMs);

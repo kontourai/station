@@ -1,15 +1,8 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const ALIAS = '/tmp/fake-pnpm-alias';
 const PRIVATE_OUTPUT =
@@ -32,15 +25,10 @@ vi.mock('../dependency-lifecycle.mjs', async (importOriginal) => {
 import { withAuditRetries } from '../dependency-advisory-policy.mjs';
 import { runPnpmAudit } from '../lib/pnpm-advisory.mjs';
 
-const temporary: string[] = [];
-afterEach(() => {
-  for (const directory of temporary.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
-function writeCli(mode: string) {
-  const dir = mkdtempSync(join(tmpdir(), 'station-pnpm-audit-'));
-  temporary.push(dir);
+function makeTempAuditRoot(mode: string) {
+  const dir = makeTempDir('station-pnpm-audit-');
   cliPath = join(dir, 'pnpm.cjs');
   writeFileSync(
     cliPath,
@@ -78,14 +66,11 @@ if (m !== 'hang') process.exit(2);
 }
 
 function receipts(root: string, kind: 'started' | 'terminal') {
-  const directory = join(
-    root,
-    '.kontourai/verification-output/dependency-audit',
-  );
-  return readdirSync(directory)
+  const receiptsPath = '.kontourai/verification-output/dependency-audit';
+  return readdirSync(join(root, receiptsPath))
     .filter((name) => name.endsWith(`.${kind}.json`))
     .map((name) => {
-      const text = readFileSync(join(directory, name), 'utf8');
+      const text = readFileSync(join(root, receiptsPath, name), 'utf8');
       expect(Buffer.byteLength(text)).toBeLessThan(16 * 1024);
       expect(text).not.toMatch(/fixture-token|example\.invalid/);
       expect(text).not.toContain(root);
@@ -95,7 +80,7 @@ function receipts(root: string, kind: 'started' | 'terminal') {
 
 describe('runPnpmAudit owned launch', () => {
   it('forwards argv0 alias and accepts audit exit 1 JSON', async () => {
-    const root = writeCli('valid');
+    const root = makeTempAuditRoot('valid');
 
     await expect(runPnpmAudit(root)).resolves.toEqual({
       advisories: {},
@@ -122,12 +107,12 @@ describe('runPnpmAudit owned launch', () => {
   }, 15_000);
 
   it('accepts a clean exit-zero audit response', async () => {
-    const root = writeCli('clean');
+    const root = makeTempAuditRoot('clean');
     await expect(runPnpmAudit(root)).resolves.toEqual({ advisories: {} });
   }, 15_000);
 
   it('preserves a decoded response when the diagnostic directory is unavailable', async () => {
-    const root = writeCli('clean');
+    const root = makeTempAuditRoot('clean');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await expect(
@@ -142,7 +127,7 @@ describe('runPnpmAudit owned launch', () => {
   }, 15_000);
 
   it('refuses operational exit codes', async () => {
-    const root = writeCli('operational');
+    const root = makeTempAuditRoot('operational');
 
     await expect(runPnpmAudit(root)).rejects.toThrow(/operational failure/);
     expect(receipts(root, 'terminal')).toMatchObject([
@@ -155,7 +140,7 @@ describe('runPnpmAudit owned launch', () => {
   }, 15_000);
 
   it('refuses malformed JSON', async () => {
-    const root = writeCli('malformed');
+    const root = makeTempAuditRoot('malformed');
 
     await expect(runPnpmAudit(root)).rejects.toThrow(/valid JSON/);
     expect(receipts(root, 'terminal')).toMatchObject([
@@ -168,7 +153,7 @@ describe('runPnpmAudit owned launch', () => {
   }, 15_000);
 
   it('keeps each retry separate and accepts the decoded exit-one response', async () => {
-    const root = writeCli('retry');
+    const root = makeTempAuditRoot('retry');
     await expect(
       withAuditRetries('pnpm workspace', (attempt: number) =>
         runPnpmAudit(root, { attempt }),
@@ -189,7 +174,7 @@ describe('runPnpmAudit owned launch', () => {
   }, 15_000);
 
   it('records deadline expiry and settles the owned fixture child', async () => {
-    const root = writeCli('hang');
+    const root = makeTempAuditRoot('hang');
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const outcome = runPnpmAudit(root).catch((error: unknown) => error);
     try {
