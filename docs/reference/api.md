@@ -1441,6 +1441,44 @@ treating the notification stream as a durable message log. Presence expires and
 is not resurrected after restart. Slow readers are closed after the bounded
 write deadline. See the [transport decision](../decisions/project-room-realtime.md).
 
+### The coordinator in #general
+
+Behind the `project-room-coordinator` Feature Preview and the
+`projectRoomCoordinator` capability flag (personal Stations only), an Agent
+request in a Project's default channel is answered by the Project's
+coordinator. Its answer ends with a `<station_routing>` block that Station
+parses (`parseCoordinatorReply`) and replaces with a line saying where the
+message went: answered in place, proposed Tasks (a card), or sent to a
+coordinator Task's chat. The leaves exist under `/:slug/room` only. Each
+answers 404 with `code: 'feature_preview_disabled'` while the preview is off.
+
+- `GET /api/projects/:slug/room/coordinator` (the room's view action) returns
+  `ProjectRoomCoordinatorView`: the Project's effective
+  `ProjectRoomCoordinatorSettings`, how many coordinator Tasks are working and
+  waiting, and the newest 20 cards, each with its message id and rows.
+- `POST …/room/coordinator/proposals/:proposalId/start` (execute), body the
+  room guards plus optional `rowIds` (absent is **Start all**), moves the
+  card's proposed rows to waiting as the caller, starts as many as the
+  Project's limit allows, and returns the view. Repeating it changes nothing.
+- `POST …/room/coordinator/sweep` (execute), body the room guards, posts one
+  message in `#general` with a line per open coordinator Task (what it was
+  asked, its latest stored answer, what it waits on) and returns
+  `{ messageId, tasks }`.
+- `PUT /api/projects/:slug/room-coordinator`, body
+  `{ startWithoutAsking, maxConcurrentTasks (1–10), pullRequests:
+  'when-asked' | 'allowed' }`, sets `ProjectConfig.roomCoordinator`. The
+  runtime Project guard admits only the Project's owner.
+
+Station enforces the limits itself: rows claim slots in one SQLite
+transaction against `maxConcurrentTasks`, Tasks are created only on Start
+(or at once when `startWithoutAsking`), and a coordinator Task whose person
+did not ask for a pull request has `gh pr create`, the REST and GraphQL forms,
+`glab mr create` and forge MCP `create_pull_request` refused by the pre-tool
+policy. A row's Task, first turn and result message are keyed by the row, so a
+restart resumes them without repeating any, and a settled Task's result is
+posted only while the starter may still start work in the same Project
+incarnation. No Station Control tool names these routes.
+
 ## Task deliverables and linked work chats
 
 The dedicated `createTaskRelationshipRoutes` factory is mounted by runtime

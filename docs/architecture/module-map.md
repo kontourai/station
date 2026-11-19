@@ -3990,6 +3990,34 @@ captured request without relaunching it. Request/reconcile routes register the o
 restart or lease expiry requires fresh authorized recovery. Room checkpoint changes
 refresh the UI request handle.
 
+**Coordinator in #general (#5063, preview `project-room-coordinator`).** With the
+preview on, a request in a Project's default channel carries a `coordinator` frame
+(routing instructions and a report per coordinator Task) and its answer is routed
+by [ProjectRoomCoordinator](../../src-server/services/projects/project-room-coordinator.ts)
+before publication: an answer in place, a card of proposed Tasks bound to the posted
+message, or a framed inbox turn to a coordinator Task's chat. The coordinator's
+brief and memory arrive through its Session start (`composeProjectSessionContext`,
+#5132), and each request rebuilds its picture from the
+[store](../../src-server/services/projects/project-room-coordinator-store.ts)'s rows
+and the room, so a replacement coordinator Session loses nothing (#3513). Rows move
+proposed → waiting → starting → working → done, failed or refused by compare-and-set,
+and slots are claimed in one SQLite transaction against the Project's
+`roomCoordinator.maxConcurrentTasks`. A starting row creates its Task with
+`createTaskIdempotent` keyed by the row, dispatches it through the canonical
+`TaskDispatcher` as the person who pressed Start, and queues the first turn through
+the conversation inbox under a row key; boot, a turn-terminal subscription and a
+60-second fallback resume rows without repeating an effect. A settled row's result is
+posted once (a stable room intent) by
+[`coordinatorRoomPublisher`](../../src-server/runtime/routes/project-room-coordinator-runtime.ts),
+which rechecks the Project incarnation, the room and the starter's `execute`
+permission inside the room store's write transaction. `matchPullRequestOpen` in
+`pull-request-watch-guard.ts` feeds the coordinator's stage of the
+`pullRequestWatchPolicy` slot, refusing pull requests a person did not ask for.
+Evidence: `project-room-coordinator.test.ts` (restart, cap and exactly-once, with
+fault injection), `project-room-coordinator-module.test.ts` (the real agent module
+and room store), `project-room-coordinator-runtime.test.ts`,
+`project-room-coordinator.routes.test.ts` and `ProjectRoomCoordinator.test.tsx`.
+
 The Room's **Recap Project** action prepares an editable scoped prompt without
 dispatch. The normal Agent picker and explicit request remain the execution
 owner; the prompt asks for citations, observed freshness, coverage and gaps.
