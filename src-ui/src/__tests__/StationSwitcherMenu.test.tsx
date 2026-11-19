@@ -740,6 +740,39 @@ test('a Station this page cannot probe shows its saved failure with its age', ()
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+test.each([
+  ['authentication-rate-limited', 'sign-in checks temporarily limited'],
+  ['access-scope-refused', 'current access does not cover this check'],
+  ['access-check-unavailable', 'access check could not start'],
+  ['relay-authority-unavailable', 'Station access could not be verified'],
+] as const)(
+  'explains %s and keeps Stations management available',
+  (reason, phrase) => {
+    const { manage, select, forget } = openMenu(
+      [station],
+      undefined,
+      undefined,
+      undefined,
+      {
+        active: {
+          activeStatus: 'error',
+          activeStatusLabel: "Can't connect",
+          activeReason: reason,
+        },
+      },
+    );
+
+    const current = row(`Workstation — Can't connect · ${phrase}`);
+    expect(current.getAttribute('aria-checked')).toBe('true');
+    expect(current.querySelector('[aria-label="needs pairing"]')).toBeNull();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Manage Stations' }));
+    expect(manage).toHaveBeenCalledOnce();
+    expect(select).not.toHaveBeenCalled();
+    expect(forget).not.toHaveBeenCalled();
+  },
+);
+
 test('a refused Station says since when it has needed access', async () => {
   const refused = {
     ...laptop,
