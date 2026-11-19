@@ -195,6 +195,11 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
 
     await setUpdating(true);
     await expectBrowser(status).toHaveAttribute('title', 'Updating…');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expectBrowser(status.locator('svg')).toHaveCSS(
+      'animation-name',
+      'none',
+    );
     await expectBrowser(row).toBeVisible();
     await setUpdating(false);
     await expectBrowser(status).toHaveAttribute('title', '');
