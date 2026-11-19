@@ -12,12 +12,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
+import { canonicalPath } from '../../../utils/path-containment.js';
 import {
   computePluginContentDigest,
   PluginContentLockCycleError,
   pluginContentDigest,
   withPluginContentLock,
 } from '../plugin-content-integrity.js';
+import {
+  prepareLocalPluginDataScope,
+  preparePluginIncarnation,
+  publishPluginIncarnation,
+  resolveInstalledPluginRoot,
+} from '../plugin-incarnation.js';
 import {
   getPluginGitInfo,
   installPluginDependency,
@@ -202,6 +209,32 @@ describe('installPluginDependency', () => {
     expect(buildPlugin).not.toHaveBeenCalled();
   });
 
+  test('an unreadable installed manifest produces a bounded dependency failure', async () => {
+    const root = createRoot();
+    const pluginsDir = join(root, 'plugins');
+    const dependencyDir = join(pluginsDir, 'invalid-dep');
+    mkdirSync(dependencyDir, { recursive: true });
+    writeFileSync(
+      join(dependencyDir, 'plugin.json'),
+      'ordinary non-JSON manifest contents',
+    );
+    const { buildPlugin, getAgentRegistryProvider, logger } = deps();
+
+    const result = await installPluginDependency(
+      { id: 'invalid-dep' },
+      pluginsDir,
+      getAgentRegistryProvider,
+      buildPlugin,
+      logger,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe(
+      "Plugin dependency 'invalid-dep' manifest is invalid or unreadable",
+    );
+    expect(buildPlugin).not.toHaveBeenCalled();
+  });
+
   test('rejects registry success that does not materialize a valid dependency manifest', async () => {
     const root = createRoot();
     const pluginsDir = join(root, 'plugins');
@@ -317,7 +350,7 @@ describe('installPluginDependency', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('did not produce dist/bundle.js');
     expect(buildPlugin).toHaveBeenCalledWith(
-      join(pluginsDir, 'needs-build'),
+      join(canonicalPath(pluginsDir), 'needs-build'),
       'needs-build',
     );
     expect(existsSync(join(pluginsDir, 'needs-build'))).toBe(false);
@@ -490,7 +523,7 @@ describe('rebuilding an installed dependency (station#4288)', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(buildPlugin).toHaveBeenCalledWith(dir, 'shared-lib');
+    expect(buildPlugin).toHaveBeenCalledWith(canonicalPath(dir), 'shared-lib');
     // The tree moved, and so did what the memo answers with. Without the
     // lock the memo kept serving `before` until the next restart, so a
     // mutated tree read `bound` in-process and `changed` after a reboot.
@@ -498,6 +531,63 @@ describe('rebuilding an installed dependency (station#4288)', () => {
     expect(truth).not.toBe(before);
     expect(pluginContentDigest(pluginsDir, 'shared-lib')).toBe(truth);
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses a dependency rebuild when selection advances before the build',
+    async () => {
+      const root = createRoot();
+      const pluginsDir = join(root, 'plugins');
+      mkdirSync(pluginsDir);
+      const id = 'shared-lib';
+      const source = seedInstalledDependency(join(root, 'source'), id);
+      const dataScope = prepareLocalPluginDataScope(
+        pluginsDir,
+        id,
+        null,
+        'retain-and-reset',
+      );
+      const first = preparePluginIncarnation(
+        pluginsDir,
+        id,
+        source,
+        dataScope,
+      ).captured;
+      publishPluginIncarnation(pluginsDir, id, first);
+      const next = preparePluginIncarnation(
+        pluginsDir,
+        id,
+        source,
+        dataScope,
+      ).captured;
+      const { getAgentRegistryProvider, logger, buildPlugin } = deps();
+      const result = await installPluginDependency(
+        { id },
+        pluginsDir,
+        getAgentRegistryProvider,
+        buildPlugin,
+        logger,
+        undefined,
+        undefined,
+        undefined,
+        {
+          validate: vi.fn(),
+          activate: vi.fn(),
+          rollback: vi.fn(),
+          beforeLegacyMutation: async () => {
+            publishPluginIncarnation(pluginsDir, id, next);
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        error: expect.stringContaining('selection changed'),
+      });
+      expect(buildPlugin).not.toHaveBeenCalled();
+      expect(resolveInstalledPluginRoot(pluginsDir, id)).toEqual(next);
+      expect(existsSync(first.packageRoot)).toBe(true);
+      expect(existsSync(next.packageRoot)).toBe(true);
+    },
+  );
 
   test('the rebuild waits for whoever already holds that plugin’s content lock', async () => {
     const root = createRoot();

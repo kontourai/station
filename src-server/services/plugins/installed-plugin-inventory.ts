@@ -7,15 +7,17 @@ import type {
 } from '@kontourai/station-contracts/plugin';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import type { Logger } from '../../utils/logger.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { ContextSafetyError } from '../orchestration/context-safety.js';
 import {
   localManagedPluginAliases,
   resolveInstalledPluginRoot,
 } from './plugin-incarnation.js';
 import {
-  PluginManifestValidationError,
-  readPluginManifestFileSync,
-} from './plugin-manifest-loader.js';
+  PluginManifestReadRefusedError,
+  readContainedPluginManifestSyncWithFormat,
+} from './plugin-manifest-bounded-read.js';
+import { PluginManifestValidationError } from './plugin-manifest-loader.js';
 
 const PUBLIC_REASON_MAX = 512;
 
@@ -60,7 +62,10 @@ export function describePluginManifestRejection(
     error && typeof error === 'object' && 'code' in error
       ? String((error as { code?: unknown }).code)
       : '';
-  if (/^E[A-Z0-9]+$/.test(filesystemCode)) {
+  if (
+    error instanceof PluginManifestReadRefusedError ||
+    /^E[A-Z0-9]+$/.test(filesystemCode)
+  ) {
     return rejection(
       'manifest-unreadable',
       'plugin.json exists but could not be read as a regular manifest file.',
@@ -190,9 +195,10 @@ export function scanInstalledPluginInventory(
   logger?: Pick<Logger, 'warn'>,
 ): InstalledPluginInventoryEntry[] {
   if (!existsSync(pluginsDir)) return [];
+  const root = canonicalPath(pluginsDir);
   const inventory: InstalledPluginInventoryEntry[] = [];
   const entries = [
-    ...readdirSync(pluginsDir, { withFileTypes: true }),
+    ...readdirSync(root, { withFileTypes: true }),
     ...localManagedPluginAliases(pluginsDir).map((name) => ({
       name,
       isDirectory: () => false,
@@ -208,13 +214,12 @@ export function scanInstalledPluginInventory(
       entry.name.startsWith('.')
     )
       continue;
-    let manifestPath = join(pluginsDir, entry.name, 'plugin.json');
+    let packageRoot = join(root, entry.name);
     if (entry.isSymbolicLink()) {
       try {
-        manifestPath = join(
-          resolveInstalledPluginRoot(pluginsDir, entry.name)!.packageRoot,
-          'plugin.json',
-        );
+        const installed = resolveInstalledPluginRoot(root, entry.name);
+        if (!installed) throw new Error('Selected installation is unavailable');
+        packageRoot = installed.packageRoot;
       } catch (error) {
         inventory.push({
           state: 'rejected',
@@ -224,7 +229,7 @@ export function scanInstalledPluginInventory(
         continue;
       }
     }
-    if (!existsSync(manifestPath)) {
+    if (!existsSync(join(packageRoot, 'plugin.json'))) {
       const missing = rejection(
         'manifest-missing',
         'The installed plugin folder does not contain plugin.json.',
@@ -250,7 +255,8 @@ export function scanInstalledPluginInventory(
       inventory.push({
         state: 'valid',
         directoryName: entry.name,
-        manifest: readPluginManifestFileSync(manifestPath),
+        manifest:
+          readContainedPluginManifestSyncWithFormat(packageRoot).manifest,
       });
     } catch (error) {
       const rejected = describePluginManifestRejection(error);

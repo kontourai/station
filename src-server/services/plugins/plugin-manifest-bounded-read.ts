@@ -30,6 +30,11 @@ import {
   openSync,
   readSync,
 } from 'node:fs';
+import { join } from 'node:path';
+import {
+  canonicalPath,
+  isCanonicalPathStrictlyWithin,
+} from '../../utils/path-containment.js';
 import { parsePluginManifestDocumentWithFormat } from './plugin-manifest-loader.js';
 
 /** Far above any real manifest; low enough that a hostile file cannot stall a request. */
@@ -147,4 +152,18 @@ export function readUntrustedPluginManifestSyncWithFormat(
   if (!read.ok)
     throw new PluginManifestReadRefusedError(read.code, read.message);
   return parsePluginManifestDocumentWithFormat(read.raw, manifestPath);
+}
+
+/** Reads the manifest of a canonical selected package, including contained references. */
+export function readContainedPluginManifestSyncWithFormat(
+  packageRoot: string,
+): ReturnType<typeof readUntrustedPluginManifestSyncWithFormat> {
+  const path = canonicalPath(join(packageRoot, 'plugin.json'));
+  if (!isCanonicalPathStrictlyWithin(packageRoot, path)) {
+    throw new PluginManifestReadRefusedError(
+      'manifest-not-regular-file',
+      'plugin.json resolves outside the plugin root.',
+    );
+  }
+  return readUntrustedPluginManifestSyncWithFormat(path);
 }

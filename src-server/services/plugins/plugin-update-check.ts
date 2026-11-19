@@ -17,7 +17,8 @@ import {
 } from '../../security/managed-capability-limits.js';
 import { execGit } from '../../utils/git-exec.js';
 import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
-import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
+import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
+import { readContainedPluginManifestSyncWithFormat } from './plugin-manifest-bounded-read.js';
 
 /**
  * #4521: installed plugin directories whose recorded registry provenance
@@ -83,25 +84,26 @@ export async function checkPluginUpdates(options: {
   }
 
   for (const entry of readPluginDirectories(pluginsDir)) {
-    if (!entry.isDirectory()) continue;
-    const dir = join(pluginsDir, entry.name);
-    const manifestPath = join(dir, 'plugin.json');
-    // Only the plugin's own repository: never one enclosing `dir`.
-    const own = ownGitRepositoryArgs(dir);
-    if (!own || !existsSync(manifestPath)) continue;
-    // #4521: its registry is refused, so its git origin (that registry's
-    // package host) is not fetched either.
-    if (refusedProvenance.has(entry.name)) {
-      managedByPolicy.push({
-        name: entry.name,
-        message: managedCapabilityDenial(
-          'updates for plugins from this marketplace',
-        ),
-      });
-      continue;
-    }
-
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     try {
+      const target = resolveInstalledPluginRoot(pluginsDir, entry.name);
+      if (!target) continue;
+      const dir = target.packageRoot;
+      // The same selected checkout owns both Git commands and the manifest.
+      const own = ownGitRepositoryArgs(dir);
+      if (!own || !existsSync(join(dir, 'plugin.json'))) continue;
+      // #4521: its registry is refused, so its git origin (that registry's
+      // package host) is not fetched either.
+      if (refusedProvenance.has(entry.name)) {
+        managedByPolicy.push({
+          name: entry.name,
+          message: managedCapabilityDenial(
+            'updates for plugins from this marketplace',
+          ),
+        });
+        continue;
+      }
+      const { manifest } = readContainedPluginManifestSyncWithFormat(dir);
       await execGit([...own, 'fetch', '--quiet'], {
         cwd: dir,
         timeout: 10000,
@@ -115,7 +117,6 @@ export async function checkPluginUpdates(options: {
         { cwd: dir, encoding: 'utf-8' },
       );
       if (parseInt(behind.trim(), 10) > 0) {
-        const manifest = readPluginManifestFileSync(manifestPath);
         const commitsBehind = behind.trim();
         updates.push({
           name: entry.name,
