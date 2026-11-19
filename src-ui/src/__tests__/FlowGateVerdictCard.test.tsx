@@ -7,6 +7,21 @@ import { describe, expect, test, vi } from 'vitest';
 import { FlowGateVerdictCard } from '../components/flow/FlowGateVerdictCard';
 
 describe('FlowGateVerdictCard', () => {
+  test('historical empty-outcome fallback has no observed pass', () => {
+    render(
+      <FlowGateVerdictCard
+        verdict={{
+          runId: 'legacy',
+          verdict: 'pass',
+          summary: 'all gates passed',
+        }}
+      />,
+    );
+    expect(screen.getByText('No gate evaluation')).toBeTruthy();
+    expect(screen.getByText('No gate outcome was recorded.')).toBeTruthy();
+    expect(screen.queryByText('Flow gate passed')).toBeNull();
+  });
+
   test('renders pass verdict with report paths and copy affordance', () => {
     const onCopy = vi.fn();
     render(
@@ -24,7 +39,7 @@ describe('FlowGateVerdictCard', () => {
       />,
     );
 
-    expect(screen.getByText('Flow gates passed')).toBeTruthy();
+    expect(screen.getByText('Flow gate passed')).toBeTruthy();
     expect(screen.getByText('All gates satisfied.')).toBeTruthy();
     expect(
       screen.getByText('.kontourai/flow/runs/session-thread-1/report.md'),

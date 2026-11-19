@@ -967,6 +967,15 @@ export class FlowRunService {
         ...(reopened ? { reopened } : {}),
       };
     } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith('flow.run_head.stale:')
+      ) {
+        throw new FlowRunInvalidError(
+          'The Flow run changed before re-evaluation.',
+          'flow.run_head.stale',
+        );
+      }
       translateFlowError(error, `Flow run not found: ${runId}`);
     }
   }

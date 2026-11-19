@@ -1,4 +1,5 @@
 import { flowRunDisplayIdentity } from '@kontourai/station-contracts';
+import { isUnevaluatedFlowGateObservation } from '@kontourai/station-contracts/runtime-events';
 import { telemetry } from '@kontourai/station-sdk';
 import type { StationStateScope } from '../../connections/station-state';
 import type {
@@ -39,9 +40,11 @@ function flowEventMessageMetadata(event: OrchestrationEvent) {
 }
 
 function buildFlowGateVerdictSummary(info: FlowGateVerdictInfo) {
+  if (info.verdict === 'pass' && isUnevaluatedFlowGateObservation(info))
+    return 'No gate outcome was recorded.';
   switch (info.verdict) {
     case 'pass':
-      return info.summary || 'Flow gates passed.';
+      return info.summary || 'Flow gate passed.';
     case 'not-evaluated':
       return info.summary || 'No gate outcome was recorded.';
     case 'route-back':

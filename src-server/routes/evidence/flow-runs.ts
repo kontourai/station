@@ -45,9 +45,10 @@ export interface FlowRunRouteDeps {
   surveyReview?: SurveyFlowReviewService;
 }
 
-function errorStatus(error: unknown): 400 | 404 | 500 {
+function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
   if (error instanceof FlowRunNotFoundError) return 404;
-  if (error instanceof FlowRunInvalidError) return 400;
+  if (error instanceof FlowRunInvalidError)
+    return error.code === 'flow.run_head.stale' ? 409 : 400;
   return 500;
 }
 

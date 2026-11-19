@@ -214,7 +214,7 @@ export function workflowPatchForCompletion(
       status: 'done',
       summary:
         flowVerdict?.verdict === 'pass'
-          ? `Session completed; Flow run ${flowVerdict.runId} passed its gates`
+          ? `Session completed; Flow run ${flowVerdict.runId} recorded a passing gate`
           : 'Session completed',
     },
   };

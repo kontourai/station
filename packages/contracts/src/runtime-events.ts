@@ -1291,6 +1291,18 @@ export type FlowGateVerdict =
   | 'wait'
   | 'not-evaluated';
 
+/** The older empty-outcome fallback looked like a pass without naming a gate. */
+export function isUnevaluatedFlowGateObservation(
+  event: Pick<FlowGateVerdictEvent, 'verdict' | 'gateId' | 'summary'>,
+): boolean {
+  return (
+    event.verdict === 'not-evaluated' ||
+    (event.verdict === 'pass' &&
+      event.gateId === undefined &&
+      event.summary === 'all gates passed')
+  );
+}
+
 export interface FlowGateDiagnosticDetails {
   claims: Array<{
     expectationId?: string;

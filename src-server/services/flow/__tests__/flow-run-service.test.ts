@@ -1217,7 +1217,7 @@ describe('FlowRunService', () => {
         expect(visible).toContain(reason);
         expect(visible).toContain('merge-readiness');
         expect(visible).not.toContain('policy:readiness');
-        expect(visible).not.toContain('Flow gates passed');
+        expect(visible).not.toContain('Flow gate passed');
       },
     );
 

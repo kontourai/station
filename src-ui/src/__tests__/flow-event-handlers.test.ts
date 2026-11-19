@@ -104,8 +104,8 @@ describe('flow orchestration event handlers', () => {
         (message) => message.contentParts?.[0]?.type === 'flow-gate-verdict',
       );
     expect(verdicts?.map((message) => message.content)).toEqual([
-      'Flow gates passed.',
-      'Flow gates passed.',
+      'Flow gate passed.',
+      'Flow gate passed.',
     ]);
     expect(verdicts?.map((message) => message.id)).toEqual([
       'verdict-1',

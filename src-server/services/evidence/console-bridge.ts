@@ -25,9 +25,10 @@ import { flowRunDisplayIdentity } from '@kontourai/station-contracts';
  * - platform.mutation      -> `station.platform.mutation` (timeline)
  */
 
-import type {
-  FlowGateVerdict,
-  SessionState,
+import {
+  type FlowGateVerdict,
+  isUnevaluatedFlowGateObservation,
+  type SessionState,
 } from '@kontourai/station-contracts/runtime-events';
 import type { PersistedRuntimeEvent } from '../orchestration/event-store.js';
 
@@ -260,7 +261,11 @@ export function deriveConsoleEventRecords(
         break;
       }
       case 'flow.gate-verdict': {
-        if (event.verdict === 'not-evaluated') break;
+        if (
+          event.verdict === 'not-evaluated' ||
+          isUnevaluatedFlowGateObservation(event)
+        )
+          break;
         const gateId = event.gateId ?? 'completion';
         records.push({
           ...base,
