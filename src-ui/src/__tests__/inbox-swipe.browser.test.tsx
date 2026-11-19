@@ -192,6 +192,10 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
         value,
       );
     const status = inbox.locator('.list-refresh__indicator');
+    const menu = inbox.getByRole('button', { name: 'Inbox actions' });
+    const target = await menu.boundingBox();
+    expect(target?.height).toBeGreaterThanOrEqual(44);
+    expect(target?.width).toBeGreaterThanOrEqual(44);
 
     await setUpdating(true);
     await expectBrowser(status).toHaveAttribute('title', 'Updating…');
@@ -224,7 +228,7 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     await expectBrowser(row).toBeVisible();
 
     await swipe(cdp, page, 0, 110);
-    await inbox.getByRole('button', { name: 'Inbox actions' }).click();
+    await menu.press('Enter');
     await page.getByRole('menuitem', { name: 'Refresh inbox' }).click();
     expect(await refreshes()).toBe(1);
     await page.evaluate(() => Reflect.get(window, 'finishInboxRefresh')(true));

@@ -19,14 +19,6 @@
   gap: var(--k-space-1);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .list-refresh__indicator[data-state="updating"] svg,
-  .list-refresh__indicator[data-state="refreshing"] svg {
-    animation: list-refresh-spin var(--motion-status-spin) var(--ease-linear)
-      infinite;
-  }
-}
-
 [data-list-refresh-pull] {
   box-shadow: inset 0 var(--k-border-thin) var(--k-line);
 }
@@ -35,15 +27,7 @@
   box-shadow: inset 0 var(--k-border-thin) var(--k-focus);
 }
 
-@keyframes list-refresh-spin {
-  to {
-    transform: rotate(1turn);
-  }
-}
-
-@media (pointer: coarse) {
-  .list-refresh__actions .action-overflow__trigger {
-    min-inline-size: 44px;
-    min-block-size: 44px;
-  }
+.list-refresh__actions[data-coarse-pointer] .action-overflow__trigger {
+  min-inline-size: 44px;
+  min-block-size: 44px;
 }

@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { CheckGlyph, RefreshGlyph, WarningGlyph } from '../icons/Glyph';
 import './ListRefresh.css';
@@ -174,8 +175,12 @@ export function ListRefreshActions({
   refresh: ListRefresh;
   updating?: boolean;
 }) {
+  const coarsePointer = useCoarsePointer();
   return (
-    <div className="list-refresh__actions">
+    <div
+      className="list-refresh__actions"
+      data-coarse-pointer={coarsePointer || undefined}
+    >
       <ListRefreshIndicator phase={refresh.phase} updating={updating} />
       <ActionOverflowMenu
         label={label}
