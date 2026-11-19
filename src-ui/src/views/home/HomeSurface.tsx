@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import {
   HomeActionSection,
   HomeContinueCard,
@@ -6,7 +5,6 @@ import {
 import { HomeCoordinatorCard } from '../../components/home/HomeCoordinatorCard';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
 import { HomeStartComposer } from '../../components/home/HomeStartComposer';
-import { usePullToRefresh } from '../../components/refresh/ListRefresh';
 import { SkeletonBlock } from '../../components/state';
 import { OVERVIEW_PRODUCT_NAME } from '../../lib/productNames';
 import type { NavigationView } from '../../types';
@@ -134,11 +132,6 @@ export function HomeSurface({
       offerRefresh={!showRecentWork}
     />
   ) : null;
-  const startRef = useRef<HTMLDivElement>(null);
-  usePullToRefresh(
-    startRef,
-    model.firstSession ? undefined : model.refreshWork?.run,
-  );
   const recentWork = showRecentWork && (
     <HomeRecentWorkSection
       id={RECENT_WORK_SECTION_ID}
@@ -197,7 +190,6 @@ export function HomeSurface({
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div
-        ref={startRef}
         className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}${model.firstSession ? ' home-view__welcome' : ''}`}
       >
         <HomeStartComposer
