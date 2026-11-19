@@ -4,6 +4,7 @@ import {
   type ProjectRoomCoordinatorProposal,
   type ProjectRoomCoordinatorTask,
 } from '@kontourai/station-contracts/project-room-coordinator';
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import {
   useProjectRoomCoordinator,
   useProjectRoomCoordinatorCapability,
@@ -54,7 +55,7 @@ const STATES: Record<
   waiting: { word: 'Waiting for a slot', tone: 'caution' },
   starting: { word: 'Starting', tone: 'active' },
   working: { word: 'Working', tone: 'active' },
-  done: { word: 'Done', tone: 'positive' },
+  done: { word: SESSION_STATUS_WORDS.done, tone: 'positive' },
   failed: { word: 'Stopped', tone: 'negative' },
   refused: { word: 'Not started', tone: 'negative' },
 };
