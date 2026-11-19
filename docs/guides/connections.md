@@ -1795,8 +1795,8 @@ binding and model. It does not edit the saved Agent.
 
 ## Start a Project from a repository
 
-In **New Project**, open **Start from a Git repository**, enter the explicit
-HTTPS or SSH repository URL, and optionally choose a branch or tag and a
+In **New Project**, select **From a repository** and open **Start from a Git
+repository**. Enter the explicit HTTPS or SSH repository URL, and optionally choose a branch or tag and a
 repository-relative subdirectory such as `apps/web`. Choose
 **Acquire repository**, then **Use this checkout** to put the working copy into
 the Project draft. Station uses the repository name for an untouched name field.
