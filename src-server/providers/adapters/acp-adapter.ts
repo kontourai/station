@@ -10,7 +10,11 @@ import {
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
-import { ProviderRefusalError, providerFailure } from '../provider-failure.js';
+import {
+  ProviderRefusalError,
+  providerFailure,
+  providerFailureForCode,
+} from '../provider-failure.js';
 /**
  * AcpAdapter — ProviderAdapterShape implementation for ACP-connected agent
  * apps (e.g. Kiro), driven through the canonical adapter seam (ADR-0008).
@@ -207,6 +211,11 @@ import {
   buildCliRuntimePrerequisites,
   findCliBinaryAsync,
 } from '../auth/cli-auth.js';
+import {
+  ACP_TRANSPORT_CLOSED_CODE,
+  ACP_TRANSPORT_CLOSED_GUIDANCE,
+  ACP_UNKNOWN_FAILURE_GUIDANCE,
+} from '../delegated-runtime-failure.js';
 import {
   effectiveModelMetadata,
   reportedModelMetadata,
@@ -6550,8 +6559,29 @@ export class AcpAdapter implements ProviderAdapterShape {
             code: ENGINE_SIGN_IN_REQUIRED_CODE,
             message: `${record.engineName} needs you to sign in before it can answer. ${errorMessage(error)}`,
           } satisfies ProviderRuntimeErrorEvent);
+        } else if (
+          error instanceof Error &&
+          !(error instanceof RequestError) &&
+          error.message === 'ACP connection closed'
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            ...this.turnOrigin(record, turnId),
+            method: 'runtime.error',
+            ...providerFailureForCode(ACP_TRANSPORT_CLOSED_CODE),
+            severity: 'error',
+            code: ACP_TRANSPORT_CLOSED_CODE,
+            message: ACP_TRANSPORT_CLOSED_GUIDANCE,
+          } satisfies ProviderRuntimeErrorEvent);
         } else {
-          const baseMessage = acpFailureMessage(error);
+          const delegated = record.recoveryStart.metadata?.taskId === threadId;
+          const baseMessage = delegated
+            ? ACP_UNKNOWN_FAILURE_GUIDANCE
+            : acpFailureMessage(error);
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,
@@ -6562,9 +6592,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'runtime.error',
             ...providerFailure('provider_error'),
             severity: 'error',
-            message: coReportedCause
-              ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
-              : baseMessage,
+            message:
+              !delegated && coReportedCause
+                ? `${baseMessage} — engine also reported during this turn: ${coReportedCause}`
+                : baseMessage,
           } satisfies ProviderRuntimeErrorEvent);
         }
         record.session.status = 'error';

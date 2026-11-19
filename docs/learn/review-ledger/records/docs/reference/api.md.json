@@ -672,7 +672,9 @@
 
     "src-server/services/flow/flow-gate-diagnostics.ts",
 
-    "src-server/routes/evidence/flow-runs.ts"
+    "src-server/routes/evidence/flow-runs.ts",
+
+    "src-server/routes/chat/conversation-work-search.ts"
   ],
 
   "checks": [

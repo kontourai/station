@@ -175,12 +175,16 @@ fn native_app_channel(identifier: &str, dev_build: bool) -> &'static str {
     } else if dev_build || identifier.starts_with("io.kontourai.station.dev.") {
         "dev"
     } else {
-        channel_ports_generated::desktop_channel_from_identifier(identifier).unwrap_or("unsupported")
+        channel_ports_generated::desktop_channel_from_identifier(identifier)
+            .unwrap_or("unsupported")
     }
 }
 
 #[cfg(not(mobile))]
-fn admit_native_startup_channel(identifier: &str, dev_build: bool) -> Result<Option<&'static str>, String> {
+fn admit_native_startup_channel(
+    identifier: &str,
+    dev_build: bool,
+) -> Result<Option<&'static str>, String> {
     match native_app_channel(identifier, dev_build) {
         "dev" => Ok(None),
         "stable" => Ok(Some("stable")),
@@ -15058,7 +15062,9 @@ pub fn run() {
     let context = tauri::generate_context!();
 
     #[cfg(not(mobile))]
-    if let Err(error) = admit_native_startup_channel(&context.config().identifier, cfg!(debug_assertions)) {
+    if let Err(error) =
+        admit_native_startup_channel(&context.config().identifier, cfg!(debug_assertions))
+    {
         eprintln!("Station startup refused: {error}");
         std::process::exit(1);
     }
@@ -22454,7 +22460,11 @@ mod tests {
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
         }
-        options.open(&path).unwrap().write_all(existing.as_bytes()).unwrap();
+        options
+            .open(&path)
+            .unwrap()
+            .write_all(existing.as_bytes())
+            .unwrap();
 
         ensure_mobile_profile_store_genesis(&path).unwrap();
         write_empty_station_profile_store(&path).unwrap();
@@ -25467,11 +25477,23 @@ mod tests {
             native_app_channel("io.kontourai.station.nightly", false),
             "nightly"
         );
-        assert_eq!(native_app_channel("io.kontourai.station.beta", true), "unsupported");
-        assert_eq!(native_app_channel("io.kontourai.station.dev.instance", false), "dev");
+        assert_eq!(
+            native_app_channel("io.kontourai.station.beta", true),
+            "unsupported"
+        );
+        assert_eq!(
+            native_app_channel("io.kontourai.station.dev.instance", false),
+            "dev"
+        );
         #[cfg(not(mobile))]
-        assert_eq!(admit_native_startup_channel("io.kontourai.station.dev.instance", false), Ok(None));
-        assert_eq!(channel_ports_generated::desktop_channel_from_identifier("io.kontourai.station.beta"), None);
+        assert_eq!(
+            admit_native_startup_channel("io.kontourai.station.dev.instance", false),
+            Ok(None)
+        );
+        assert_eq!(
+            channel_ports_generated::desktop_channel_from_identifier("io.kontourai.station.beta"),
+            None
+        );
         assert_eq!(
             pairing_deep_link_channels_generated::native_pairing_deep_link_scheme(
                 "io.kontourai.station.dev.dev.release.7",
@@ -26534,11 +26556,22 @@ mod standalone_storage_order_tests {
         ] {
             let calls = std::cell::Cell::new(0);
             let result = prepare_desktop_station_storage(
-                identifier, debug, home.clone(), &home,
-                |_| { calls.set(calls.get() + 1); Ok(()) },
-                |_| { calls.set(calls.get() + 1); Ok(()) },
+                identifier,
+                debug,
+                home.clone(),
+                &home,
+                |_| {
+                    calls.set(calls.get() + 1);
+                    Ok(())
+                },
+                |_| {
+                    calls.set(calls.get() + 1);
+                    Ok(())
+                },
             );
-            assert!(result.unwrap_err().contains("unsupported native application identity"));
+            assert!(result
+                .unwrap_err()
+                .contains("unsupported native application identity"));
             assert_eq!(calls.get(), 0);
             assert!(!home.exists());
         }

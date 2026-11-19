@@ -53,6 +53,7 @@ export class ConversationHistoryReadService {
         typeof buildOrchestrationSessionSummary
       >[0]['readDurabilityProfile'];
       eventStore: EventStore;
+      ownerUserIdsFor?: (authority: SessionReadAuthority) => readonly string[];
       canReadSession: (
         threadId: string,
         authority: SessionReadAuthority,
@@ -100,8 +101,13 @@ export class ConversationHistoryReadService {
     if (input.authority.mode === 'hosted' && !tenantId) {
       return { records: [], hasMore: false };
     }
+    const ownerUserIds =
+      input.authority.mode === 'personal'
+        ? this.options.ownerUserIdsFor?.(input.authority)
+        : undefined;
     const page = this.options.eventStore.listConversationHistoryPage({
       ownerUserId: input.authority.userId,
+      ...(ownerUserIds ? { ownerUserIds } : {}),
       ...(tenantId ? { tenantId } : {}),
       ...(input.agentSlug ? { agentSlug: input.agentSlug } : {}),
       ...(input.authority.mode === 'hosted' ? { requireBound: true } : {}),

@@ -12498,6 +12498,8 @@ export class EventStore {
 
   listConversationHistoryPage(options: {
     ownerUserId: string;
+    /** Candidate owners already admitted by the personal-account read policy. */
+    ownerUserIds?: readonly string[];
     tenantId?: string;
     agentSlug?: string;
     requireBound?: boolean;
@@ -12517,13 +12519,14 @@ export class EventStore {
       created_at: string;
       updated_at: string;
     };
-    const readRows = (ownerPredicate: string): HistoryRow[] => {
-      const memberPredicates = [ownerPredicate];
+    const readRows = (owners: readonly string[]): HistoryRow[] => {
+      const memberPredicates = [
+        owners.length === 1
+          ? 'h.owner_user_id = ?'
+          : `h.owner_user_id IN (${owners.map(() => '?').join(', ')})`,
+      ];
       const conversationPredicates = ['row_rank = 1'];
-      const values: unknown[] = [];
-      if (ownerPredicate === 'h.owner_user_id = ?') {
-        values.push(options.ownerUserId);
-      }
+      const values: unknown[] = [...owners];
       if (options.tenantId !== undefined) {
         memberPredicates.push('h.tenant_id = ?');
         values.push(options.tenantId);
@@ -12628,7 +12631,11 @@ export class EventStore {
         )
         .all(...values) as HistoryRow[];
     };
-    const rows = readRows('h.owner_user_id = ?');
+    const owners =
+      options.tenantId === undefined && !options.requireBound
+        ? [...new Set([options.ownerUserId, ...(options.ownerUserIds ?? [])])]
+        : [options.ownerUserId];
+    const rows = readRows(owners);
     const hasMore = rows.length > options.limit;
     const records = rows.slice(0, options.limit).map((row) => ({
       threadId: row.thread_id,

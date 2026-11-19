@@ -1,0 +1,11 @@
+{
+  "revision": "8c008d4ef5e4654fa5151377978b13be3353385b",
+
+  "notes": [
+    {"path":"docs/design/cli-triage.md","note":"Reviewed the CLI reference session read, CLI package README source and bundled modes, and triage design’s checkout doctor injection against the source launcher. The checkout launcher still renders command errors and exits with status 1, and triage retains its existing dependency injection. Node now drains console writes and asynchronous teardown. The macOS source launcher piped control returned a transcript with exit 0 and three expected 404 errors with exit 1. Focused CLI suites passed 119 tests. Windows ConPTY qualification is tracked separately.","inputs":["scripts/station-cli-implementation.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the CLI reference session read, CLI package README source and bundled modes, and triage design’s checkout doctor injection against the source launcher. The checkout launcher still renders command errors and exits with status 1, and triage retains its existing dependency injection. Node now drains console writes and asynchronous teardown. The macOS source launcher piped control returned a transcript with exit 0 and three expected 404 errors with exit 1. Focused CLI suites passed 119 tests. Windows ConPTY qualification is tracked separately.","inputs":["scripts/station-cli-implementation.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed the CLI reference session read, CLI package README source and bundled modes, and triage design’s checkout doctor injection against the source launcher. The checkout launcher still renders command errors and exits with status 1, and triage retains its existing dependency injection. Node now drains console writes and asynchronous teardown. The macOS source launcher piped control returned a transcript with exit 0 and three expected 404 errors with exit 1. Focused CLI suites passed 119 tests. Windows ConPTY qualification is tracked separately.","inputs":["scripts/station-cli-implementation.ts"]}
+  ]
+}

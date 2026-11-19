@@ -548,28 +548,23 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
   useEffect(() => {
-    // A restored conversation may have continued in another client. The
-    // conversation read is authoritative for which child session receives
-    // subsequent Stop/approval/live-event routing; no route-local workspace
-    // reconstruction is involved.
-    const currentSessionId = window.currentSessionId;
+    const read = serverWindow.executionRead;
     const latest = activeChatsStore.getSnapshot()[session.id];
+    // A settled head read may advance the binding it began with. An /open
+    // response or live Session start applied since then supersedes it.
     if (
-      // A cached paint is not a conversation read: only the read that
-      // revalidates it may name the current child.
-      !window.revalidating &&
-      currentSessionId &&
-      session.currentSessionId !== currentSessionId &&
-      latest?.currentSessionId === session.currentSessionId
+      !serverWindow.revalidating &&
+      read &&
+      latest &&
+      read.priorSessionId === (latest.currentSessionId ?? session.id) &&
+      read.sessionId !== read.priorSessionId
     ) {
       activeChatsStore.updateChat(session.id, {
-        currentSessionId,
+        currentSessionId: read.sessionId,
         ...(session.conversationId
           ? {
               conversationOpenPending: true,
               conversationOpenFailed: false,
-              // Retire the predecessor shell at the boundary. Subsequent
-              // live events and open revalidation now address the new child.
               orchestrationTurnOpen: false,
               openTurnId: undefined,
               streamingMessage: undefined,
@@ -579,10 +574,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     }
   }, [
     session.conversationId,
-    session.currentSessionId,
     session.id,
-    window.currentSessionId,
-    window.revalidating,
+    serverWindow.executionRead,
+    serverWindow.revalidating,
   ]);
   // #2304: seed the open turn's server start when this client attached to a
   // turn already running (fresh load, reconnect), so the "Working for" clock

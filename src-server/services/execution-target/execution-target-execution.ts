@@ -117,6 +117,7 @@ async function provisionProjectWorktree(
 export interface ForegroundMessageContext {
   submissionDigest?: string;
   inboxPlacement?: true;
+  expectedInboxSessionId?: string;
   /** #4512: forwarded to `sendTurn` and stamped on `turn.started`. */
   dispatchOrigin?: TurnDispatchOrigin;
 }
@@ -583,6 +584,7 @@ export interface ExecutionTargetExecutionDependencies
       provider: EngineId;
       connectionId?: string;
       modelOverride?: string;
+      expectedInboxSessionId?: string;
     },
   ) => Promise<{
     sessionId: string;
@@ -780,6 +782,11 @@ export async function executeForegroundMessage(
     resolved.access,
     conversationId,
   );
+  if (
+    context?.expectedInboxSessionId &&
+    (!binding || !deps.resolveConversationSession)
+  )
+    throw new Error('The conversation changed while this message was waiting.');
   resolved = keepConversationProvider(resolved, binding);
   const initialContext = binding
     ? undefined
@@ -1189,6 +1196,7 @@ export async function executeForegroundMessage(
           conversationId,
           {
             provider: resolved.provider,
+            expectedInboxSessionId: context?.expectedInboxSessionId,
             ...(resolved.engine.kind === 'connection'
               ? { connectionId: resolved.engine.connectionId }
               : {}),

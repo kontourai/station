@@ -23,7 +23,10 @@ import {
   PRINCIPAL_UNRESOLVED_CODE,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
-import { afterEach, describe, expect, test } from 'vitest';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import { Hono } from 'hono';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { runCli } from '../../../../packages/cli/src/cli.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { principalLayoutStorageKey } from '../../../domain/layout-owner-storage.js';
@@ -222,6 +225,61 @@ describe('ownedLayoutStore', () => {
       ownedLayoutStore(new FileStorageAdapter('/tmp')),
     ).not.toThrow();
   });
+});
+
+test('Personal Boards CLI reads through the caller-owned layout routes', async () => {
+  const { app: routes } = seeded();
+  expect(
+    (
+      await createBoard(routes, 'alice-laptop', {
+        slug: 'daily',
+        name: 'Daily brief',
+      })
+    ).status,
+  ).toBe(201);
+  const app = new Hono();
+  app.use('/api/me/*', async (c, next) => {
+    const device = c.req.header('authorization')?.match(/^Bearer (.+)$/)?.[1];
+    if (!device || !Object.hasOwn(DEVICE_BINDINGS, device))
+      return c.text('Unauthorized', 401);
+    c.req.raw.headers.set('x-station-test-device', device);
+    await next();
+  });
+  app.route('/api/me', routes);
+
+  const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.stubGlobal('fetch', (url: string | URL | Request, init?: RequestInit) =>
+    app.fetch(new Request(url, init)),
+  );
+  async function run(args: string[], device: string) {
+    output.mockClear();
+    await runCli([
+      'boards',
+      ...args,
+      '--api-base=https://station.test',
+      `--credential=${device}`,
+    ]);
+    return JSON.parse(String(output.mock.lastCall?.[0]));
+  }
+  try {
+    expect(await run(['list'], 'alice-phone')).toMatchObject([
+      { slug: 'daily', name: 'Daily brief' },
+    ]);
+    expect(await run(['get', 'daily'], 'alice-phone')).toMatchObject({
+      layout: { slug: 'daily', name: 'Daily brief' },
+      revision: expect.any(String),
+      definition: null,
+      proposal: null,
+    });
+    expect(await run(['list'], 'bob-laptop')).toEqual([]);
+    await expect(run(['get', 'daily'], 'bob-laptop')).rejects.toMatchObject({
+      status: 404,
+    });
+  } finally {
+    output.mockRestore();
+    vi.unstubAllGlobals();
+    setClientCredentialResolver(undefined);
+  }
 });
 
 describe('personal layout routes', () => {

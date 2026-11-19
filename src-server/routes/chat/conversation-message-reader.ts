@@ -24,6 +24,15 @@ export interface ConversationMessageReaderDeps {
   getAdapter(runtimeSlug: string): FileMemoryAdapter | null;
   authorityFor(request: Request): SessionReadAuthority;
   sessionMessageReader?: ConversationLineageReader & {
+    isRuntimeConversation?(id: string): boolean;
+    resolveConversationOpen?(
+      conversationId: string,
+      authority: SessionReadAuthority,
+    ): Promise<{ conversation: { agentSlug: string } } | null>;
+    readSessionConversation?(
+      sessionId: string,
+      authority: SessionReadAuthority,
+    ): Promise<{ agentSlug: string } | null>;
     readSessionMessages(
       threadId: string,
       authority: SessionReadAuthority,
@@ -110,6 +119,11 @@ export function createConversationMessageReader({
     conversationId: string,
     resolvedAuthority?: SessionReadAuthority,
   ): Promise<ConversationMessageRead>;
+  readAddressedConversationMessages(
+    request: Request,
+    slug: string,
+    conversationId: string,
+  ): Promise<ConversationMessageRead | null>;
 } {
   /**
    * archive#1399 fix round 2, B2 (independent review) — the SERVE-boundary
@@ -145,6 +159,7 @@ export function createConversationMessageReader({
     runtimeSlug: string,
     authority: SessionReadAuthority,
     sessionId: string,
+    requireStoredOwner: boolean,
   ): Promise<SessionSegmentRead> => {
     const fork = sessionMessageReader?.readForkConversationTranscript?.(
       sessionId,
@@ -170,7 +185,7 @@ export function createConversationMessageReader({
       (fork
         ? (await adapter.getConversation(sessionId))?.userId ===
           fork.ownerUserId
-        : !isPrincipalScopedAgentRequest(request) ||
+        : (!requireStoredOwner && !isPrincipalScopedAgentRequest(request)) ||
           (await adapter.getConversation(sessionId))?.userId ===
             authority.userId);
     if (adapter && !hosted && storeReadable) {
@@ -275,6 +290,7 @@ export function createConversationMessageReader({
     slug: string,
     conversationId: string,
     resolvedAuthority?: SessionReadAuthority,
+    requireStoredOwner = false,
   ): Promise<ConversationMessageRead> => {
     const runtimeSlug = runtimeAgentKey(slug);
     const authority = resolvedAuthority ?? authorityFor(request);
@@ -291,6 +307,7 @@ export function createConversationMessageReader({
         runtimeSlug,
         authority,
         sessionId,
+        requireStoredOwner,
       );
       messages.push(...segment.rows);
       sources.add(segment.source);
@@ -307,5 +324,48 @@ export function createConversationMessageReader({
     };
   };
 
-  return { readConversationMessages };
+  async function readAddressedConversationMessages(
+    request: Request,
+    slug: string,
+    conversationId: string,
+  ): Promise<ConversationMessageRead | null> {
+    const authority = authorityFor(request);
+    const runtimeSlug = runtimeAgentKey(slug);
+    const matchesAgent = (agent: string) =>
+      agent === slug || agent === runtimeSlug;
+    // A root opens through its current binding. A Session coordinate can
+    // instead establish its own authorized Agent without relabelling history.
+    const opened = await sessionMessageReader?.resolveConversationOpen?.(
+      conversationId,
+      authority,
+    );
+    const session = opened
+      ? null
+      : await sessionMessageReader?.readSessionConversation?.(
+          conversationId,
+          authority,
+        );
+    const recordedAgent = opened?.conversation.agentSlug ?? session?.agentSlug;
+    const runtimeKnown =
+      sessionMessageReader?.isRuntimeConversation?.(conversationId) === true;
+    if (recordedAgent !== undefined) {
+      if (!matchesAgent(recordedAgent)) return null;
+    } else {
+      if (runtimeKnown) return null;
+      if (!isHostedSessionReadAuthority(authority)) {
+        const stored =
+          await getAdapter(runtimeSlug)?.getConversation(conversationId);
+        if (stored?.resourceId && !matchesAgent(stored.resourceId)) return null;
+      }
+    }
+    return readConversationMessages(
+      request,
+      slug,
+      conversationId,
+      authority,
+      runtimeKnown || recordedAgent !== undefined,
+    );
+  }
+
+  return { readConversationMessages, readAddressedConversationMessages };
 }

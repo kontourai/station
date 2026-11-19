@@ -4303,6 +4303,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/agents/:slug' },
     { method: 'GET', path: '/agents/:slug/conversations' },
     { method: 'DELETE', path: '/agents/:slug/conversations/:conversationId' },
+    {
+      method: 'DELETE',
+      path: '/agents/:slug/conversations/:conversationId/owned',
+    },
     { method: 'PATCH', path: '/agents/:slug/conversations/:conversationId' },
     // Regeneration reads and writes the same local conversation metadata as
     // PATCH, then asks this Station's configured title generator for a title.
@@ -4515,7 +4519,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // Hides or unhides a third-party Session in the caller's own inbox only,
     // after the same Session read check; the family's mutating scope applies.
     { method: 'PUT', path: '/api/conversations/:id/inbox-hidden' },
-    // Agent-only work discovery; same read scope and transcript admission.
+    // Saved conversation discovery reuses person read authority or the verified agent caller scope.
     { method: 'GET', path: '/api/conversations/work/search' },
     { method: 'GET', path: '/api/conversations/:id' },
     // Authoritative conversation admission: it reads the same current-session

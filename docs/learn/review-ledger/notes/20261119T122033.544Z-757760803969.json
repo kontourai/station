@@ -1,0 +1,7 @@
+{
+  "revision": "a4cd3fb1518ae50a08be442e215f4a22bd8fba55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the same two-process SQLite migration and rollback evidence after switching the test to two known ready files. The negative control still reproduces the legacy duplicate column and the Windows floor directory-walker check now passes locally.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/native-invocation-runs.test.ts"]}
+  ]
+}
