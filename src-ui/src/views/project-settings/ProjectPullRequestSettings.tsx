@@ -31,6 +31,8 @@ export function ProjectPullRequestSettings({
       refetchOnMount: 'always',
     },
   );
+  if (!active) return null;
+
   const context =
     repository.isError || repository.isFetching ? undefined : repository.data;
   const controlsAvailable =

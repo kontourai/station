@@ -27,7 +27,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('remount rechecks a previously valid repository at the same path before offering controls', async () => {
+test('inactive settings render no placeholder and remount rechecks the repository before offering controls', async () => {
   const authority = {
     apiBase: 'http://station.test',
     authorityKey: 'owner',
@@ -69,27 +69,29 @@ test('remount rechecks a previously valid repository at the same path before off
     defaultOptions: { queries: { refetchOnMount: false, retry: false } },
   });
   clients.push(client);
-  const mount = () =>
-    render(
-      <QueryClientProvider client={client}>
-        <ProjectPullRequestSettings
-          project={project}
-          slug="widgets"
-          active
-          feedbackAvailable={false}
-          onSaved={() => {}}
-          onSources={() => {}}
-        />
-      </QueryClientProvider>,
-    );
-  const first = mount();
+  const panel = (active: boolean) => (
+    <QueryClientProvider client={client}>
+      <ProjectPullRequestSettings
+        project={project}
+        slug="widgets"
+        active={active}
+        feedbackAvailable={false}
+        onSaved={() => {}}
+        onSources={() => {}}
+      />
+    </QueryClientProvider>
+  );
+  const first = render(panel(false));
+  expect(first.container.firstChild).toBeNull();
+  expect(contextReads).toBe(0);
+  first.rerender(panel(true));
   expect(
     await screen.findByRole('switch', { name: 'Watch Task pull requests' }),
   ).toBeTruthy();
   expect(contextReads).toBe(1);
   first.unmount();
   available = false;
-  mount();
+  render(panel(true));
   await waitFor(() => expect(contextReads).toBe(2));
   expect(
     await screen.findByText('Add a repository to use pull requests'),
