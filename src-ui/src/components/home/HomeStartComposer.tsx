@@ -542,11 +542,14 @@ export function HomeStartComposer({
     !modelsFetching &&
     (agent ? agentRunnability(agent).runnable : noAgentToOffer);
 
-  return (
+  const firstHeading = firstSession
+    ? 'Start your first conversation'
+    : undefined;
+  const startSurface = (
     <div hidden={!projectSlug && isDockOpen}>
       <StartComposer
         compact={compact}
-        heading={firstSession ? 'Start your first conversation' : undefined}
+        heading={firstHeading}
         headingLevel={firstSession ? 1 : 2}
         textareaRef={textareaRef}
         prompt={prompt}
@@ -796,5 +799,11 @@ export function HomeStartComposer({
         </React.Suspense>
       )}
     </div>
+  );
+  return (
+    <>
+      {firstHeading && !projectSlug && isDockOpen && <h1>{firstHeading}</h1>}
+      {startSurface}
+    </>
   );
 }

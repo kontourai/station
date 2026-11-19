@@ -26,7 +26,7 @@
   font-size: var(--k-text-2xl);
   font-weight: 500;
 }
-.start-composer__destination :is(h1, h2) .start-composer__project {
+.start-composer__destination h2 .start-composer__project {
   display: inline-flex;
   vertical-align: baseline;
   padding-inline: 0;
@@ -34,11 +34,8 @@
   text-decoration: underline;
   text-underline-offset: var(--k-space-1);
 }
-.start-composer__destination :is(h1, h2) .start-composer__project > svg,
-.start-composer__destination
-  :is(h1, h2)
-  .start-composer__project
-  > .project-icon {
+.start-composer__destination h2 .start-composer__project > svg,
+.start-composer__destination h2 .start-composer__project > .project-icon {
   display: none;
 }
 .start-composer__without-project {
