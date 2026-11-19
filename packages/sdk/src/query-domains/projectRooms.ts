@@ -666,7 +666,8 @@ export function useProjectRoom(
       const windowAfter = newest
         ? Math.max(
             after,
-            (combined.at(-1)?.seq ?? 0) - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
+            (combined[combined.length - 1]?.seq ?? 0) -
+              PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
           )
         : after;
       const messages = combined.filter((message) => message.seq > windowAfter);
@@ -745,7 +746,7 @@ export function useProjectRoom(
           const rows = [...tail.messages, ...fresh].sort(
             (a, b) => a.seq - b.seq,
           );
-          const lastSeq = rows.at(-1)!.seq;
+          const lastSeq = rows[rows.length - 1]!.seq;
           const windowAfter = Math.max(
             tail.windowAfter,
             lastSeq - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
