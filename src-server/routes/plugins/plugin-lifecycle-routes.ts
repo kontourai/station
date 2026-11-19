@@ -827,10 +827,20 @@ export function registerPluginLifecycleRoutes(
                 throw new PluginUpdateRejectedError(
                   'Plugin installation changed before legacy update; reload before retrying',
                 );
+              let original: ReturnType<
+                typeof readContainedPluginManifestSyncWithFormat
+              >;
+              try {
+                original = readContainedPluginManifestSyncWithFormat(pluginDir);
+              } catch {
+                throw new PluginUpdateRejectedError(
+                  'Installed plugin manifest is invalid or unreadable.',
+                );
+              }
               const {
                 manifest: originalManifest,
                 format: originalManifestFormat,
-              } = readContainedPluginManifestSyncWithFormat(pluginDir);
+              } = original;
               backupRoot = createStationTempDirSync('plugin-update');
               const backupDir = join(backupRoot, 'plugin');
               // The installed tree is plugin-writable (its build runs

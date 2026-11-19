@@ -42,7 +42,11 @@ import {
   isSpecialFileCopyRefusal,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
-import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
+import {
+  type InstalledPluginRoot,
+  pluginIncarnationIsCurrent,
+  resolveInstalledPluginRoot,
+} from './plugin-incarnation.js';
 import { derivePluginConsentBasis } from './plugin-install-consent.js';
 import {
   readContainedPluginManifestSyncWithFormat,
@@ -347,7 +351,15 @@ function readInstalledDependencyManifest(
     throw new Error(
       `Plugin dependency '${dependencyId}' manifest is not a regular file`,
     );
-  const read = readContainedPluginManifestSyncWithFormat(dependencyDir);
+  let read: ReturnType<typeof readContainedPluginManifestSyncWithFormat>;
+  try {
+    read = readContainedPluginManifestSyncWithFormat(dependencyDir);
+  } catch (error) {
+    throw new Error(
+      `Plugin dependency '${dependencyId}' manifest is invalid or unreadable`,
+      { cause: error },
+    );
+  }
   if ((read.manifest.name || dependencyId) !== dependencyId)
     throw new Error(
       `Plugin dependency '${dependencyId}' manifest name does not match`,
@@ -376,20 +388,33 @@ function readInstalledDependencyManifest(
 async function buildDependencyIfNeeded(
   pluginsDir: string,
   dependencyId: string,
-  dependencyDir: string,
+  target: InstalledPluginRoot,
   manifest: PluginManifest,
   buildPlugin: (pluginDir: string, name: string) => Promise<void>,
 ): Promise<void> {
-  if (!manifest.entrypoint) return;
-  await withPluginContentLock(pluginsDir, dependencyId, () =>
-    buildPlugin(dependencyDir, dependencyId),
-  );
-  const bundlePath = join(dependencyDir, 'dist', 'bundle.js');
-  if (!existsSync(bundlePath) || !lstatSync(bundlePath).isFile()) {
+  await withPluginContentLock(pluginsDir, dependencyId, async () => {
+    assertDependencySelectionCurrent(pluginsDir, dependencyId, target);
+    if (!manifest.entrypoint) return;
+    await buildPlugin(target.packageRoot, dependencyId);
+    assertDependencySelectionCurrent(pluginsDir, dependencyId, target);
+    const bundlePath = join(target.packageRoot, 'dist', 'bundle.js');
+    if (!existsSync(bundlePath) || !lstatSync(bundlePath).isFile()) {
+      throw new Error(
+        `Plugin dependency '${dependencyId}' did not produce dist/bundle.js`,
+      );
+    }
+  });
+}
+
+function assertDependencySelectionCurrent(
+  pluginsDir: string,
+  dependencyId: string,
+  target: InstalledPluginRoot,
+): void {
+  if (!pluginIncarnationIsCurrent(pluginsDir, dependencyId, target))
     throw new Error(
-      `Plugin dependency '${dependencyId}' did not produce dist/bundle.js`,
+      `Plugin dependency '${dependencyId}' selection changed before build or publication`,
     );
-  }
 }
 
 function unsupportedDependencyFeatures(
@@ -782,7 +807,15 @@ export async function resolvePluginDependencies(
     // tree was fetched from (declared, or the registry's).
     let transitiveParent = resolvedDependency.source;
 
-    const installedRoot = resolveInstalledPluginRoot(pluginsDir, dependency.id);
+    let installedRoot: ReturnType<typeof resolveInstalledPluginRoot>;
+    try {
+      installedRoot = resolveInstalledPluginRoot(pluginsDir, dependency.id);
+    } catch (error) {
+      throw new Error(
+        `Plugin dependency '${dependency.id}' installed selection is invalid or unreadable`,
+        { cause: error },
+      );
+    }
     const dependencyDir = installedRoot?.packageRoot;
     if (dependencyDir && existsSync(join(dependencyDir, 'plugin.json'))) {
       status = 'installed';
@@ -1063,7 +1096,7 @@ async function validateAndBuildInstalledDependency(
     await buildDependencyIfNeeded(
       pluginsDir,
       dependencyId,
-      target.packageRoot,
+      target,
       manifest,
       buildPlugin,
     );
@@ -1453,12 +1486,14 @@ export async function installPluginDependency(
       // Nothing was there when the provider was called, so anything at
       // `targetDir` now is this call's to validate and, on failure, to undo.
       const createdHere = existsSync(targetDir);
+      let selectedDependency: InstalledPluginRoot | undefined;
       try {
         const {
           manifest: depManifest,
           format,
-          target: selectedDependency,
+          target,
         } = readInstalledDependencyManifest(pluginsDir, dependency.id);
+        selectedDependency = target;
         assertDependencyLifecycleSupported(
           dependency.id,
           selectedDependency.packageRoot,
@@ -1477,7 +1512,7 @@ export async function installPluginDependency(
         await buildDependencyIfNeeded(
           pluginsDir,
           dependency.id,
-          selectedDependency.packageRoot,
+          selectedDependency,
           depManifest,
           buildPlugin,
         );
@@ -1509,11 +1544,21 @@ export async function installPluginDependency(
             );
           }
         }
+        assertDependencySelectionCurrent(
+          pluginsDir,
+          dependency.id,
+          selectedDependency,
+        );
         await lifecycle?.activate({
           dependencyId: dependency.id,
           dependencyDir: selectedDependency.packageRoot,
           manifest: depManifest,
         });
+        assertDependencySelectionCurrent(
+          pluginsDir,
+          dependency.id,
+          selectedDependency,
+        );
         // Bind deletion authority before reporting success. Keeping this in
         // the provider-validation try means an undigestible tree receives the
         // same registry compensation as any other post-install refusal.
@@ -1530,6 +1575,15 @@ export async function installPluginDependency(
           'Failed to validate plugin dependency after registry install',
           { dep: dependency.id, error },
         );
+        if (
+          selectedDependency &&
+          !pluginIncarnationIsCurrent(
+            pluginsDir,
+            dependency.id,
+            selectedDependency,
+          )
+        )
+          return dependencyFailure(error);
         if (createdHere) {
           const rollbackFailures: unknown[] = [];
           try {

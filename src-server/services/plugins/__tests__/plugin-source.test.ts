@@ -20,6 +20,12 @@ import {
   withPluginContentLock,
 } from '../plugin-content-integrity.js';
 import {
+  prepareLocalPluginDataScope,
+  preparePluginIncarnation,
+  publishPluginIncarnation,
+  resolveInstalledPluginRoot,
+} from '../plugin-incarnation.js';
+import {
   getPluginGitInfo,
   installPluginDependency,
   resolvePluginDependencySource,
@@ -499,6 +505,63 @@ describe('rebuilding an installed dependency (station#4288)', () => {
     expect(truth).not.toBe(before);
     expect(pluginContentDigest(pluginsDir, 'shared-lib')).toBe(truth);
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses a dependency rebuild when selection advances before the build',
+    async () => {
+      const root = createRoot();
+      const pluginsDir = join(root, 'plugins');
+      mkdirSync(pluginsDir);
+      const id = 'shared-lib';
+      const source = seedInstalledDependency(join(root, 'source'), id);
+      const dataScope = prepareLocalPluginDataScope(
+        pluginsDir,
+        id,
+        null,
+        'retain-and-reset',
+      );
+      const first = preparePluginIncarnation(
+        pluginsDir,
+        id,
+        source,
+        dataScope,
+      ).captured;
+      publishPluginIncarnation(pluginsDir, id, first);
+      const next = preparePluginIncarnation(
+        pluginsDir,
+        id,
+        source,
+        dataScope,
+      ).captured;
+      const { getAgentRegistryProvider, logger, buildPlugin } = deps();
+      const result = await installPluginDependency(
+        { id },
+        pluginsDir,
+        getAgentRegistryProvider,
+        buildPlugin,
+        logger,
+        undefined,
+        undefined,
+        undefined,
+        {
+          validate: vi.fn(),
+          activate: vi.fn(),
+          rollback: vi.fn(),
+          beforeLegacyMutation: async () => {
+            publishPluginIncarnation(pluginsDir, id, next);
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        error: expect.stringContaining('selection changed'),
+      });
+      expect(buildPlugin).not.toHaveBeenCalled();
+      expect(resolveInstalledPluginRoot(pluginsDir, id)).toEqual(next);
+      expect(existsSync(first.packageRoot)).toBe(true);
+      expect(existsSync(next.packageRoot)).toBe(true);
+    },
+  );
 
   test('the rebuild waits for whoever already holds that plugin’s content lock', async () => {
     const root = createRoot();
