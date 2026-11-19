@@ -113,8 +113,11 @@ Store its base64 bytes and password in Google Secret Manager as
 `station-android-upload-keystore-base64` and
 `station-android-upload-keystore-password`. Grant the keyless publisher service
 account Secret Accessor on only those two secrets. Set the secret-free GitHub
-repository variable `ANDROID_UPLOAD_KEY_ALIAS=station`. Do not put Android
-signing material in GitHub secrets.
+repository variable `ANDROID_UPLOAD_KEY_ALIAS=station`. Set
+`ANDROID_UPLOAD_CERT_SHA256` to the SHA-256 fingerprint of the upload
+certificate shown in Play Console. Tagged Stable and Nightly builds check
+both the APK and the bundle against this fingerprint before staging them.
+Do not put Android signing material in GitHub secrets.
 
 ## 3. Deposit Apple secrets in their matching environments
 

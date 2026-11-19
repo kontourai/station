@@ -1,0 +1,15 @@
+{
+  "revision": "75ec5d2e9c404951f4746d8d67249675449f3af1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed workspace custody from Session command receipts through the review executor and the Project evidence module to the Git worktree owner. Forty-three focused cases and a seven-case isolated worktree probe distinguish confirmed refusal and shutdown from unknown start, failed Stop and late confirmation.","inputs":["docs/architecture/module-map.md","src-server/services/evidence/__tests__/orchestration-review-executor.test.ts","src-server/services/evidence/orchestration-review-executor.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed exact receipt and Session qualification, bounded owner Stop and retained workspace outcomes. The public review envelope, cleanup states and read-only engine admission keep their existing contracts.","inputs":["src-server/services/evidence/orchestration-review-executor.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed exact receipt and Session qualification, bounded owner Stop and retained workspace outcomes. The public review envelope, cleanup states and read-only engine admission keep their existing contracts.","inputs":["src-server/services/evidence/orchestration-review-executor.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the typed start-refusal and lost-receipt regression controls for matching identity, unknown Session, failed Stop and Stop exceeding the deadline. The separate disposable Git probe exercises the Project workspace close owner.","inputs":["src-server/services/evidence/__tests__/orchestration-review-executor.test.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated ReviewEvidenceModule topic against the canonical module map and the real owner paths for refusal, bounded reconciliation and cleanup.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

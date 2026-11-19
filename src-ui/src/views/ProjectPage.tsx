@@ -59,7 +59,10 @@ import { useProjectSearch } from './project-page/project-room-navigation';
 import { SetupRecommendationsCard } from './project-page/SetupRecommendationsCard';
 import type { AvailableLayout } from './project-page/types';
 import { useListScrollMemory } from './project-page/useListScrollMemory';
-import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import {
+  ProjectRepositoriesSection,
+  ProjectSourcesSection,
+} from './project-settings/ProjectSourcesSection';
 import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import './project-page-frame.css';
 import './ProjectPage.css';
@@ -458,6 +461,13 @@ function ProjectOperatorPage({
                   Add files
                 </Button>
               </div>
+              {destination === 'overview' && (
+                <ProjectRepositoriesSection
+                  slug={slug}
+                  projectId={project.id}
+                  onManageSources={() => selectDestination('sources')}
+                />
+              )}
               <ProjectOverviewSection
                 slug={slug}
                 projectId={project.id}
@@ -636,7 +646,11 @@ function ProjectOperatorPage({
               aria-label="Files and connections"
             >
               <ProjectLibrarySection slug={slug} />
-              <ProjectSourcesSection slug={slug} projectId={project.id} />
+              <ProjectSourcesSection
+                slug={slug}
+                projectId={project.id}
+                showRepositories={destination === 'sources'}
+              />
               {namespacesQuery.isError && (
                 <ErrorState
                   title="Could not load document categories"

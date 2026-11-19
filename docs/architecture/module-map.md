@@ -4042,6 +4042,12 @@ feed (`project-room-mention-notifications.ts`). The stream also carries each roo
 newest Agent request records and its newest 50 still working (unsettled with no
 recorded failure), never their Sessions (#4800). The [SDK](../reference/sdk.md#shared-project-room)
 retains exact send intents and retires protected content when authority changes.
+The mounted SDK rolls its newest window within the 500-message span, reading
+that range in 25-message spans even in a long-running room. Older paging starts
+at the rolled boundary. A contiguous live append passes departed rows to the
+Room's retained history without a network reread, and the same live updates
+reach those retained rows. In-flight reads retain ordering and retry if a
+live row they needed fell out of the merge journal.
 
 [ProjectRoomAgentModule](../../src-server/services/projects/project-room-agent-module.ts)
 journals explicit requests before canonical Session launch. It captures a bounded
@@ -5057,9 +5063,12 @@ inventory at 256 and materialize the newest 512 receipts. They may repair the
 reference index under its lock. Unreadable/contended Projects are reported;
 a missing workspace contributes no receipts rather than proving it has none.
 
-Confirmed-start shutdown failure, executor timeout and an unconfirmed Session
-start retain the workspace. A start invocation whose reply throws or lacks a
-confirmed Session does not classify its checkout as safe to remove.
+A definitive start refusal with an exact persisted rejection receipt can release
+the workspace. If the start was accepted but the receipt is unavailable, the
+executor attempts bounded Stop only for the exact Session returned by the
+dispatch owner. Confirmed Stop permits release. Unknown Session identity,
+failed shutdown and a Stop that exceeds the cleanup deadline retain the
+workspace. A repeated review request returns its original recorded cleanup.
 
 **Task association.** [TaskCodeReviewModule](../../src-server/services/evidence/task-code-review-module.ts)
 projects the submission owner's server-derived Task/Project incarnation binding.

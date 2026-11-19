@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-11-19T12:21:25Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261119.44521362145",
+    "sha": "4ff27ef00bcaff986dfa1fb9d0718421815615e8",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/44521362145",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261119.44521362145 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "0cae72e3a91810c6da5fb7c29974bed12b298891",
+      "groups": {
+        "feat": [
+          "[#5288](https://github.com/kontourai/station/pull/5288) feat(projects): share the start composer and simplify New Project"
+        ],
+        "fix": [
+          "[#5297](https://github.com/kontourai/station/pull/5297) fix(orchestration): recover ACP chats and track cross-agent delegation",
+          "[#5306](https://github.com/kontourai/station/pull/5306) fix(plugins): verify portable component paths before reading",
+          "[#5303](https://github.com/kontourai/station/pull/5303) fix(usage): preserve schema-1 receipt export compatibility",
+          "[#5299](https://github.com/kontourai/station/pull/5299) fix(engines): check OpenCode Project configuration before native launch"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-11-19T09:05:24Z",
     "channel": "nightly-npm",
     "version": "0.12.0-nightly.20261119.44491283677",
