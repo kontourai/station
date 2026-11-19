@@ -151,7 +151,9 @@ export class ConversationHistoryReadService {
       await yieldToEventLoop();
       if (!this.options.canReadSession(record.threadId, input.authority))
         continue;
-      const persisted = this.options.hydratePersistedSession(record.threadId);
+      const persisted = this.options.eventStore.readSessionByThread(
+        record.threadId,
+      );
       const loaded = this.options.loadedSessionForThread(record.threadId);
       if (!persisted && !loaded) continue;
       const events = this.options.eventStore.listRecentEventsByThread(
