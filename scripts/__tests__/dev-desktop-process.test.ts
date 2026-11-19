@@ -5,20 +5,26 @@ import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { runDesktopDevProcesses } from '../dev-desktop.mjs';
 
-async function waitForFile(path: string) {
+async function waitForFixturePid(path: string) {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     try {
-      return await readFile(path, 'utf8');
+      const pid = Number(await readFile(path, 'utf8'));
+      if (Number.isSafeInteger(pid) && pid > 1) return pid;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error('Fixture did not start');
+  throw new Error(`Fixture did not publish a positive PID: ${path}`);
 }
 
-test.each(['SIGINT', 'SIGTERM', 'child-exit'])(
+test.each([
+  ['SIGINT', 'SIGINT', false],
+  ['SIGTERM', 'SIGTERM', false],
+  ['child-exit', 'child-exit', false],
+  ['SIGTERM with a partially published PID', 'SIGTERM', true],
+] as const)(
   'desktop %s settles both launchers and their native descendants',
-  async (trigger) => {
+  async (_label, trigger, partialPid) => {
     const root = await mkdtemp(join(tmpdir(), 'station-desktop-tree-'));
     const signals = new EventEmitter();
     const fixture = join(root, 'launcher.mjs');
@@ -29,7 +35,11 @@ test.each(['SIGINT', 'SIGTERM', 'child-exit'])(
     import {writeFileSync, existsSync} from 'node:fs';
     const name = process.argv[2];
     const child = spawn(process.execPath, ['-e', "require('node:fs').writeFileSync(process.argv[1],String(process.pid)); setInterval(()=>{},1000)", name+'.child'], {stdio:'ignore',windowsHide:true});
-    writeFileSync(name+'.parent',String(process.pid));
+    ${
+      partialPid
+        ? "writeFileSync(name+'.parent',''); setTimeout(()=>writeFileSync(name+'.parent',String(process.pid)),400);"
+        : "writeFileSync(name+'.parent',String(process.pid));"
+    }
     setInterval(()=>{if(existsSync(name+'.exit'))process.exit(0);},25);
   `,
     );
@@ -44,7 +54,7 @@ test.each(['SIGINT', 'SIGTERM', 'child-exit'])(
     try {
       const pids = await Promise.all(
         ['vite.parent', 'vite.child', 'tauri.parent', 'tauri.child'].map(
-          async (name) => Number(await waitForFile(join(root, name))),
+          (name) => waitForFixturePid(join(root, name)),
         ),
       );
       if (trigger === 'child-exit')
@@ -53,7 +63,11 @@ test.each(['SIGINT', 'SIGTERM', 'child-exit'])(
       expect(await execution).toBe(
         trigger === 'SIGINT' ? 130 : trigger === 'SIGTERM' ? 143 : 0,
       );
-      for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
+      for (const pid of pids)
+        expect(
+          () => process.kill(pid, 0),
+          `fixture PID ${pid} must be gone`,
+        ).toThrowError(expect.objectContaining({ code: 'ESRCH' }));
       expect(signals.listenerCount('SIGINT')).toBe(0);
       expect(signals.listenerCount('SIGTERM')).toBe(0);
     } finally {
