@@ -5,7 +5,7 @@ This reference is generated from the paired Unix and Windows recipe metadata in 
 
 ## `setup`
 
-Install the lockfile-pinned Node dependency tree.
+Install the lockfile-pinned Node dependency tree. Set `STATION_DEPENDENCY_INSTALL_TIMEOUT_MS` in positive milliseconds to override the inert install deadline. See [dependency install recovery](../guides/development.md#dependency-install-deadline).
 
 Run: `just setup`
 
@@ -179,21 +179,3 @@ npm run release:static
 ```
 
 <!-- station:contributor-commands:end -->
-
-## Managed install timeout and recovery
-
-`dependencies:ci` gives the inert pnpm command 600,000 ms on macOS and Linux
-and 1,200,000 ms on Windows. Set
-`STATION_DEPENDENCY_INSTALL_TIMEOUT_MS` to a positive whole number of
-milliseconds before running `npm run dependencies:ci` or `just setup` on a
-slow host. The timeout error reports the budget that applied. Approved
-dependency hooks keep their separate deadlines.
-
-An interrupted install retains `.station-dependency-install` with its receipt
-and any incomplete `node_modules` tree. A retry refuses while that guard
-exists. Recover the checkout only when you control it and have confirmed that
-the installer and its child processes stopped. Preserve any incomplete tree
-in an owned inspection directory while the guard still holds. Move the
-failed guard to the same directory last, then run `npm run dependencies:ci`
-to install and verify a fresh tree. Use a fresh sibling checkout when the
-original install's state is uncertain.
