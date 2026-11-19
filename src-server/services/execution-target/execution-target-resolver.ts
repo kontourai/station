@@ -207,6 +207,15 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
   // ConnectionConfig.status `station connections list` shows, read now.
   if (connection.status !== 'ready') {
     const blockers = describeConnectionBlockers(connection);
+    if (
+      !blockers &&
+      connection.type === 'acp' &&
+      connection.config.acpProbeStatus === 'probing'
+    ) {
+      throw new Error(
+        `Engine connection '${connection.id}' is still checking access (status: ${connection.status}). Wait for the engine check to finish, then retry.`,
+      );
+    }
     throw new Error(
       `Engine connection '${connection.id}' is not ready for execution (status: ${connection.status})${
         blockers

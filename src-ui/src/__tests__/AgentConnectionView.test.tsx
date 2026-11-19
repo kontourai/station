@@ -98,7 +98,7 @@ function museMissingBinaryConnection() {
       {
         id: 'muse-cli',
         name: 'Muse Code CLI',
-        description: 'Required to launch the Muse Code runtime.',
+        description: 'Required to launch the Muse Code engine.',
         status: 'missing',
         category: 'required',
         installGuide: {
@@ -1315,7 +1315,7 @@ describe('AgentConnectionView', () => {
 
     expect(screen.getAllByText('Setup required')).not.toHaveLength(0);
     expect(
-      screen.getAllByText('Required to launch the Muse Code runtime.'),
+      screen.getAllByText('Required to launch the Muse Code engine.'),
     ).not.toHaveLength(0);
     expect(screen.queryByText('Sign in required')).toBeNull();
     expect(screen.queryByText('Sign in to finish connecting.')).toBeNull();
@@ -1401,7 +1401,7 @@ describe('AgentConnectionView', () => {
         {
           id: 'muse-cli',
           name: 'Muse Code CLI',
-          description: 'Required to launch the Muse Code runtime.',
+          description: 'Required to launch the Muse Code engine.',
           status: 'installed',
           category: 'required',
         },

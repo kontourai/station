@@ -2939,8 +2939,14 @@ and result projection. Cancellation and a deadline come from the optional caller
 the inspector does not start its own timeout. It distinguishes a `TimeoutError` abort
 from other aborts. Built-in adapters declaring awaited abort settlement get a separate
 bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
-launchable-model refresh supplies a signal, while ordinary runtime inventory calls can
-omit one. Command, model-catalog and prerequisite inclusion and discovery policy are
+ordinary engine inventory routes supply a five-second deadline and propagate client
+cancellation through the model and engine reads. A deadline refuses the incomplete
+inventory without publishing fresh rows. An abandoned adapter operation remains owned
+until actual settlement. Later reads report that operation as unavailable. Healthy
+overlapping reads retain separate results. A sibling that fails within budget keeps its own unavailable catalog
+and does not overwrite live observations from other engines.
+ACP rows carry the last measured handshake time and the current probe state. Command,
+model-catalog and prerequisite inclusion and discovery policy are
 explicit inputs. The boot-time built-in agent binding excludes model discovery and
 commands, because either can start an engine's program and readiness comes from
 prerequisites alone.

@@ -754,6 +754,12 @@ memory access. With the preview off, direct memory requests return the standard
 
 ## Project knowledge source identity
 
+The operator's `GET /api/projects` response includes `hasKnowledge` when Station
+can observe a regular document metadata file in the Project's local knowledge
+namespaces or its legacy documents directory. The Project **Sources** list
+reports registered stores. **Project knowledge** reports document and index
+status.
+
 New Project root registrations require `expectedProjectId`, compared with the
 server-owned Project. A missing or mismatched precondition returns409. The
 stored `projectId` is resolved on the server, not accepted from a caller. Managed storage uses that ID in its path.
@@ -3343,6 +3349,15 @@ does not establish that no Model connections exist. Provider-reported
 `GET /api/connections/agents` returns `{success: true, data, failures}`. The old
 `/api/connections/runtimes` spelling is not registered here.
 `GET /api/connections/agents/catalog` returns the Agent App catalog separately.
+
+The ordinary combined and Agent App listings have a five-second deadline and
+propagate caller cancellation. On deadline they return HTTP 504 with
+`connection_inventory_timed_out` and no inventory payload. Within the
+deadline, unavailable observations remain distinct from live catalogs. A later
+read reports unavailable evidence for an abandoned adapter operation still
+settling. It neither starts a duplicate nor reuses its result.
+An ACP row exposes its current `config.acpProbeStatus` when observed and
+`lastCheckedAt` is the measured handshake time or null.
 
 Rows can include `runtimeCatalog` model observations and readiness evidence.
 Claude/Codex engine `config.proxyConnectionId` refers to an enabled saved
@@ -6475,10 +6490,13 @@ and `prerequisitesState`, configured/detected providers, CLI observations,
 external-engine readiness, capability summaries, recommendation, build/server
 identity when available, and device presentation.
 
-Prerequisite discovery is cached for 60 seconds and refreshed asynchronously under
-a 2-second budget. `pending`, `ready`, and `stale` describe that cache. Some
-legacy boolean probes collapse failure/timeout to false, so false alone is not
-always an observed absence. The broad top-level `ready` is an OR of detected or
+Prerequisite discovery refreshes asynchronously under a two-second budget.
+`pending`, `ready`, and `stale` describe that cache. The `cliPresence` rows
+report observed presence or absence, retained evidence, or unknown presence.
+Retained rows keep their original PATH observation time. An incomplete CLI
+refresh does not renew the 60-second freshness period. The legacy `clis`
+boolean is true for a measured presence. False alone does not establish
+absence. The broad top-level `ready` is an OR of detected or
 configured paths; it is not proof that the user's chosen Agent/model can finish
 a chat turn. Use the more specific readiness and model evidence.
 

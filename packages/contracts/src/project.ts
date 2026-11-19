@@ -273,6 +273,7 @@ export interface ProjectMetadata {
   hasWorkingDirectory: boolean;
   workingDirectory?: string;
   layoutCount: number;
+  /** A local document metadata file exists in the current or legacy layout. */
   hasKnowledge: boolean;
   defaultProviderId?: string;
   /** See {@link ProjectConfig.position}; the list route returns projects sorted by it. */

@@ -91,7 +91,7 @@ export interface SystemStatusDeps {
    * The explicit join makes enabled-state comparisons type-safe instead of
    * depending on two unrelated IDs having the same text.
    */
-  listEngineConnectionStates?: () => Promise<
+  listEngineConnectionStates?: (signal?: AbortSignal) => Promise<
     Array<{
       engineId: EngineId;
       engineConnectionId: EngineConnectionId;
