@@ -48,6 +48,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['paired_station_required', 'permission_denied', false],
     ['conversation_import_deleted', 'session_gone', false],
     ['acp-approval-takeover-failed', 'warning', false],
+    ['acp-transport-closed', 'unavailable', true],
     ['acp_approval_governance_refused', 'permission_denied', false],
     ['approval-escalation-requires-restart', 'warning', false],
     ['approval-full-access-not-granted', 'permission_denied', false],
