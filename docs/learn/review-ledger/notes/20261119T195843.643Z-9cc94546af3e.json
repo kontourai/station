@@ -1,0 +1,113 @@
+{
+  "revision": "306c2c906e28910aaa7aefce48069e3aa79bda6f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the synchronous commit boundary after the final capability check for guarded writes. Other writes use the existing async rename.","inputs":["packages/shared/src/json-file-storage.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked that ACP page publication does not count as an extra provider tool call or affect token arithmetic.","inputs":["packages/shared/src/usage-fold.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked that ACP page publication does not count as an extra provider tool call or affect token arithmetic.","inputs":["packages/shared/src/usage-fold.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked that ACP page publication does not count as an extra provider tool call or affect token arithmetic.","inputs":["packages/shared/src/usage-fold.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked that ACP page publication does not count as an extra provider tool call or affect token arithmetic.","inputs":["packages/shared/src/usage-fold.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked request-mode cases on Antigravity and Kiro, an allow-always-only request, and the delegated anonymous edit refusal.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Rechecked that the standard permission callback accepts only one-time options automatically and preserves the delegated approval floor. Main engine-mode observations still use the engine receipt.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked that an ACP host publication does not create a second provider monitoring result.","inputs":["src-server/services/orchestration/orchestration-monitoring-bridge.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the host publication identity and store-before-show boundary. The approval-inspection captures keep their existing bytes and evidence.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked that request-mode availability comes from the host connection and uses the existing approval confirmation controls.","inputs":["src-ui/src/components/badges/ApprovalModeChip.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that the connected host capability gates the shared mode control while the separate engine-mode confirmation from main stays in force.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that the connected host capability gates the shared mode control while the separate engine-mode confirmation from main stays in force.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that one host publication stage exposes the visual reply without an extra activity row.","inputs":["src-ui/src/components/chat/tool-call-runs.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the host capability witness, shared request-mode copy and existing native controls.","inputs":["src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked approval defaults use verified ACP connection support and preserve the existing approval authority.","inputs":["src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx"]}
+  ]
+}
