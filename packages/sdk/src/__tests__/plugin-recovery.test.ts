@@ -1,11 +1,21 @@
+import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-trust';
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   type PluginRecoveryInput,
+  type PluginRecoveryPreview,
   previewPluginRecovery,
   recoverPlugin,
 } from '../client/plugins';
 
 afterEach(() => vi.unstubAllGlobals());
+const dependency = {
+  id: 'dependency',
+  grantRevision: 'fresh-child-grants',
+  registryTrustRevision: `sha256:${'e'.repeat(64)}`,
+  contentDigest: `sha256:${'c'.repeat(64)}`,
+  permissions: [],
+  dependencies: [],
+};
 const input: PluginRecoveryInput = {
   recoveryRevision: `sha256:${'a'.repeat(64)}`,
   consent: {
@@ -14,23 +24,23 @@ const input: PluginRecoveryInput = {
     registryTrustRevision: `sha256:${'d'.repeat(64)}`,
     permissions: ['network.fetch'],
     dependencies: ['dependency'],
-    dependencyApprovals: [
-      {
-        id: 'dependency',
-        grantRevision: 'fresh-child-grants',
-        registryTrustRevision: `sha256:${'e'.repeat(64)}`,
-        contentDigest: `sha256:${'c'.repeat(64)}`,
-        permissions: [],
-        dependencies: [],
-      },
-    ],
+    dependencyApprovals: [dependency],
   },
 };
 
-test('preview uses the exact encoded read route and preserves captured revisions and review facts', async () => {
-  const preview = {
+function recoveryPreview(): PluginRecoveryPreview {
+  const expectedInstallation = {
+    scope: 'local',
+    installation: 'example',
+    generation: 'generation',
+    artifact: { digest: input.consent.contentDigest },
+    materialization: 'local-package',
+    dataScope: 'local',
+  };
+  const { id, ...consent } = dependency;
+  return {
     manifest: { name: 'example', version: '1.0.0' },
-    expectedInstallation: { generation: 'generation' },
+    expectedInstallation,
     recoveryRevision: input.recoveryRevision,
     contentDigest: input.consent.contentDigest,
     grantRevision: input.consent.grantRevision,
@@ -42,13 +52,22 @@ test('preview uses the exact encoded read route and preserves captured revisions
     },
     dependencies: [
       {
-        id: 'dependency',
-        expectedInstallation: { generation: 'child' },
-        consent: input.consent.dependencyApprovals![0],
+        id,
+        expectedInstallation: {
+          ...expectedInstallation,
+          installation: id,
+          generation: 'child',
+          artifact: { digest: consent.contentDigest },
+        },
+        consent,
       },
     ],
     skip: ['tool:optional'],
   };
+}
+
+test('preview uses the exact encoded read route and preserves captured revisions and review facts', async () => {
+  const preview = recoveryPreview();
   const fetcher = vi
     .fn<typeof fetch>()
     .mockResolvedValue(Response.json(preview));
@@ -161,9 +180,9 @@ test('preview propagates unavailable evidence rather than returning an empty rev
   ).rejects.toThrow('Grant state unavailable');
 });
 
-test('#1521: recovery preview carries its registry receipt and refuses a reshaped one', async () => {
+test('#1521: recovery preview carries parent and dependency registry receipts and rejects a reshaped receipt', async () => {
   const digest = (fill: string) => `sha256:${fill.repeat(64)}`;
-  const registryTrust = {
+  const registryTrust: PluginRegistryTrust = {
     state: 'verified',
     revision: digest('f'),
     receipt: {
@@ -178,7 +197,19 @@ test('#1521: recovery preview carries its registry receipt and refuses a reshape
       signer: { keyId: 'primary', spkiFingerprint: digest('e') },
     },
   };
-  const view = { recoveryRevision: digest('9'), registryTrust };
+  const preview = recoveryPreview();
+  const view: PluginRecoveryPreview = {
+    ...preview,
+    registryTrust,
+    registryTrustRevision: registryTrust.revision,
+    dependencies: preview.dependencies.map((child) => ({
+      ...child,
+      registryTrust: {
+        ...registryTrust,
+        revision: dependency.registryTrustRevision,
+      },
+    })),
+  };
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>().mockResolvedValue(Response.json(view)),
@@ -186,15 +217,23 @@ test('#1521: recovery preview carries its registry receipt and refuses a reshape
   await expect(
     previewPluginRecovery('https://station.example', 'signed-tools'),
   ).resolves.toEqual(view);
-  vi.stubGlobal(
-    'fetch',
-    vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({ ...view, registryTrust: { state: 'trusted' } }),
-      ),
-  );
-  await expect(
-    previewPluginRecovery('https://station.example', 'signed-tools'),
-  ).rejects.toThrow('malformed');
+  const invalidTrust = { state: 'trusted' };
+  for (const invalid of [
+    { ...view, registryTrust: invalidTrust },
+    {
+      ...view,
+      dependencies: view.dependencies.map((child) => ({
+        ...child,
+        registryTrust: invalidTrust,
+      })),
+    },
+  ]) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(Response.json(invalid)),
+    );
+    await expect(
+      previewPluginRecovery('https://station.example', 'signed-tools'),
+    ).rejects.toThrow('malformed');
+  }
 });

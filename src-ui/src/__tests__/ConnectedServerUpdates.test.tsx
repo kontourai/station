@@ -335,7 +335,9 @@ async function renderHarness({
     <QueryClientProvider client={queryClient}>
       <ApiBaseProvider>
         <CorrelationProbe />
-        <ConnectedServerUpdates />
+        <ConnectedServerUpdates
+          downloadPolicy={<span>Server policy fixture</span>}
+        />
       </ApiBaseProvider>
     </QueryClientProvider>
   );
@@ -544,6 +546,44 @@ describe('ConnectedServerUpdates', () => {
       return rendered;
     }
 
+    it('withholds the check when the install records no release manifest', async () => {
+      await renderArchive(
+        archiveServiceBody({
+          releaseCheck: 'not-recorded',
+          updateAvailable: false,
+          latestVersion: undefined,
+          selfUpdateUnavailableReason: 'No public release manifest.',
+        }),
+      );
+      expect(
+        await screen.findByText(/this server cannot check for a newer release/),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Check for server updates' }),
+      ).toBeNull();
+    });
+
+    it('keeps the check available when the manifest did not verify', async () => {
+      await renderArchive(
+        archiveServiceBody({
+          releaseCheck: 'unverified',
+          updateAvailable: false,
+          latestVersion: undefined,
+        }),
+      );
+      await screen.findByText(/manifest did not verify/);
+      const recheck = screen.getByRole('button', {
+        name: 'Check for server updates',
+      });
+      const before = transportMethods.filter(isCoreUpdateCall).length;
+      fireEvent.click(recheck);
+      await waitFor(() =>
+        expect(
+          transportMethods.filter(isCoreUpdateCall).length,
+        ).toBeGreaterThan(before),
+      );
+    });
+
     it('on a server older than #3851 (no stagedUpdates), confirms the update and follows the request to its rollback outcome', async () => {
       await renderArchive(archiveServiceBody());
       expect(
@@ -639,6 +679,7 @@ describe('ConnectedServerUpdates', () => {
       const { queryClient } = await renderArchive(
         archiveServiceBody({ stagedUpdates: true }),
       );
+      expect(await screen.findByText('Server policy fixture')).toBeTruthy();
       // Download, never the one-click update.
       const download = await screen.findByRole('button', {
         name: 'Download server update',
@@ -854,6 +895,7 @@ describe('ConnectedServerUpdates', () => {
     expect(
       transportCalls.filter((url) => url.includes('/api/system/core-update')),
     ).toHaveLength(0);
+    expect(screen.queryByText('Server policy fixture')).toBeNull();
     expect(rendererCalls.some((url) => url.includes('core-update'))).toBe(
       false,
     );

@@ -79,8 +79,9 @@ requires host-installed tools or fresh operator download consent.
 
 ## Dictate a message
 
-After enabling **Local speech**, open **Settings → Voice → Speech-to-text** and
-select **Station (local)**. Click the composer microphone to record, then click
+After enabling **Local speech** on the selected Station, the app loads its
+speech provider. Open **Settings → Voice → Speech-to-text** and select
+**Station (local)**. Click the composer microphone to record, then click
 again to stop. Station uploads the clip to the selected Station and transcribes
 it there. The microphone is released before upload; the control shows
 **Cancel transcription** while waiting; clicking it aborts the upload/request

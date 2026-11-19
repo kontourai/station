@@ -162,7 +162,21 @@
 
     "package.json#/devDependencies/jsdom",
 
-    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1"
+    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1",
+
+    "src-ui/src/components/chat-dock/ChatInboxHoverCard.tsx",
+
+    "tests/chat-dock-inbox-open.spec.ts",
+
+    "src-ui/src/components/chat-dock/CommandLauncher.tsx",
+
+    "src-ui/src/components/chat-dock/ActiveWorkContextFrame.tsx",
+
+    "src-ui/src/__tests__/menu-dismiss-backdrop.hit-test.test.tsx",
+
+    "tests/toolbar-reachability.spec.ts",
+
+    "src-ui/src/__tests__/minimum-text-size.browser.test.tsx"
   ],
 
   "checks": [

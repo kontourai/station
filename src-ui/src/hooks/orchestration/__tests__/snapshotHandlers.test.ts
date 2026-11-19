@@ -897,6 +897,36 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
     chats = {};
   });
 
+  test.each(['dead', 'closed', 'error'])(
+    'an ended %s provider binding cannot be resurrected by a legacy open-turn flag',
+    (status) => {
+      const updates = applyOrdinarySnapshot(
+        {
+          sessions: [
+            {
+              provider: 'claude',
+              threadId: 'ended',
+              status,
+              hasActiveTurn: true,
+            },
+          ],
+        },
+        {
+          ended: {
+            provider: 'claude',
+            orchestrationSessionStarted: true,
+            orchestrationTurnOpen: true,
+          },
+        },
+      );
+      expect(updates.ended).toMatchObject({
+        orchestrationStatus: status,
+        orchestrationTurnOpen: false,
+        status: 'idle',
+      });
+    },
+  );
+
   test('snapshot rehydration prefers a runtime-reported model over a legacy requested selector', () => {
     const updates = applyOrdinarySnapshot(
       {

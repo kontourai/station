@@ -117,7 +117,7 @@ import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
-import { useConversationInboxSnapshot } from '../../hooks/useConversationInbox';
+import { useConversationInboxSnapshot } from '../../hooks/useConversationInboxSnapshot';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,
@@ -140,12 +140,14 @@ import {
   readNewChatIntent,
 } from '../../lib/newChatIntent';
 import { openingConversationLabel } from '../../lib/notificationStationOpen';
+import { projectCreationRecoveryIdentity } from '../../lib/project-onboarding-recovery';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
   type ProjectChatComposerDraft,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
+import { stationViewReadQueryOptions } from '../../lib/queryDefaults';
 import {
   requestTaskShaping,
   TASK_SHAPING_INSTRUCTION,
@@ -191,6 +193,7 @@ import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { requestProjectShell } from '../coding-layout/terminalShellRequest';
+import type { ConversationTranscriptSnapshot } from '../conversation/ConversationBody';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
@@ -204,6 +207,7 @@ import {
 import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
 import {
   ChatDockActiveIdentity,
+  DelegationStart,
   delegatedTaskLabel,
 } from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
@@ -223,7 +227,6 @@ import {
   inboxPanelMounts,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
-  routeToOpenChatsCollection,
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
 import { ambientChatPaneFailureContext } from './chatPaneFailureContext';
@@ -690,7 +693,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   } = useNavigation();
   const dismissPhoneLayer = useDismissPhoneLayer();
   const showSurface = useShowSurface();
-  // Placement, viewport and placement-commit are shell CHROME (station#4460)
+  // Placement and viewport are shell chrome (station#4460)
   // — read from `chrome` (the shared ambient instance when docked, this
   // placement's own instance when full-screen) rather than a second local
   // derivation, so Chat, Home and Activity never disagree about them.
@@ -700,7 +703,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isMobile,
     visualViewport,
     effectiveDockSlotPlacement,
-    commitDockPlacement,
   } = chrome;
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
@@ -802,7 +804,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { resolveModelLabel } = useCatalogModelLabel();
   // The one inbox derivation, shared with the sidebar's Open-chats rows.
   const durableTasks = useTasksQuery();
-  const remoteInboxSessions = useRemoteSessionsQuery();
+  const remoteInboxSessions = useRemoteSessionsQuery(
+    stationViewReadQueryOptions,
+  );
   const inboxItems = useInboxWorkItems(
     agents,
     orchestrationSessions,
@@ -1573,9 +1577,28 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const executionProfile = agents.find(
     (entry) => entry.slug === activeSessionForHook?.agentSlug,
   );
-  const executionRoutes = executionProfile
+  const profileExecutionRoutes = executionProfile
     ? executionSelection.executionModelsForAgent(executionProfile)
     : effectiveModels;
+  const currentExecutionAgentId = activeSessionForHook?.executionAgentId;
+  // A direct Station runtime may leave the saved Agent's execution unset.
+  // The open chat's Station binding owns its model routes in that case too.
+  const executionRoutes =
+    activeSessionForHook?.executionMode === EXECUTION_MODE.STATION
+      ? [
+          ...effectiveModels.map((model) => ({
+            ...model,
+            executionAgentId: currentExecutionAgentId,
+            engineId: 'station' as const,
+            engineName: 'Station',
+          })),
+          ...profileExecutionRoutes.filter(
+            (route) =>
+              route.executionAgentId !== undefined &&
+              route.executionAgentId !== currentExecutionAgentId,
+          ),
+        ]
+      : profileExecutionRoutes;
   // Chat input hook - encapsulates autocomplete, history, and input handling
   const chatInput = useChatInput({
     apiBase: conversationConnection?.targetApiBase ?? apiBase,
@@ -2013,9 +2036,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * never shown session-specific facts and navigating out of it is not this
    * row's business. Dropping either one silently changes what the row opens.
    */
-  // #5071: Continue in Project… drafts from this chat; it never sends into it.
-  const [continueInProject, setContinueInProject] =
-    useState<ContinuedConversation | null>(null);
+  // #5071: Save to Project drafts from this chat without sending a turn.
+  const [continueInProject, setContinueInProject] = useState<{
+    conversation: ContinuedConversation;
+    ownerKey: string;
+    sourceProjectSlug?: string;
+  } | null>(null);
+  const transcriptSnapshotRef = useRef<ConversationTranscriptSnapshot | null>(
+    null,
+  );
   const continueInProjectEnabled = useSurfaceVisibilityFlags().has(
     'continue-in-project',
   );
@@ -2081,15 +2110,60 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           {
             key: 'continue-in-project',
             group: 'chat' as const,
-            label: 'Continue in Project…',
+            label: 'Save to Project…',
             onSelect: () => {
-              if (activeSession)
-                setContinueInProject(
-                  continuedConversationFromChat(
-                    activeSession,
-                    sessionDisplayCwd ?? undefined,
-                  ),
+              if (!activeSession) return;
+              const snapshot = transcriptSnapshotRef.current;
+              if (
+                !requestAuthority?.isCurrent() ||
+                snapshot?.chatId !== activeSession.id ||
+                snapshot.conversationId !== activeSession.conversationId ||
+                !snapshot.requestScope.isCurrent() ||
+                snapshot.requestScope.apiBase !== requestAuthority.apiBase ||
+                snapshot.requestScope.authorityKey !==
+                  requestAuthority.authorityKey
+              ) {
+                showToast('Chat history is unavailable right now.');
+                return;
+              }
+              const conversation = continuedConversationFromChat(
+                { ...activeSession, messages: snapshot.messages },
+                sessionDisplayCwd ?? undefined,
+              );
+              let sourceProjectSlug: string | undefined;
+              if (conversation.latestTurnId) {
+                const answerSession = orchestrationSessions.find(
+                  (session) =>
+                    session.threadId === conversation.sessionId &&
+                    (!session.conversationId ||
+                      session.conversationId === conversation.conversationId),
                 );
+                const opening = activeSession.conversationOpenState;
+                const openedProjectSlug =
+                  opening?.status === 'resolved' &&
+                  opening.conversation.id === conversation.conversationId
+                    ? opening.conversation.projectSlug
+                    : undefined;
+                const answerProjectSlug = answerSession?.projectSlug;
+                sourceProjectSlug = answerProjectSlug ?? openedProjectSlug;
+                if (
+                  answerSession?.projectAttribution ||
+                  (answerProjectSlug &&
+                    openedProjectSlug &&
+                    answerProjectSlug !== openedProjectSlug) ||
+                  (!sourceProjectSlug && activeSession.projectSlug)
+                ) {
+                  showToast(
+                    'Couldn’t verify the Project that owns this answer.',
+                  );
+                  return;
+                }
+              }
+              setContinueInProject({
+                conversation,
+                ownerKey: projectCreationRecoveryIdentity(requestAuthority),
+                sourceProjectSlug,
+              });
             },
           },
         ]
@@ -2921,30 +2995,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           `/connections?environment=${encodeURIComponent(sourceInstanceId)}`,
         );
       },
-      openCollection: () => {
-        cancelReaderOpenAndChildren();
-        // The open-chats collection has a DIFFERENT home in each chrome, and
-        // only the dock knows which one is mounted. Routing lives here so a
-        // caller (the sidebar's "Open chats" heading, its "N more") cannot
-        // promise a destination that this chrome has no surface for (#3314
-        // review SF-1: on mobile the drawer used to close and the dock snap
-        // to half, showing the CURRENT chat and no list at all).
-        const route = routeToOpenChatsCollection({
-          isMobile,
-          dockMode: effectiveDockSlotPlacement,
-          isFullscreenPlacement,
-        });
-        if (route.surface === 'mobile-inbox') {
-          setMobileInboxOpen(true);
-          if (!isFullscreenPlacement) applyDockSnap('half');
-          return;
-        }
-        // An edge placement has no panel for `inboxOpen` to reveal, so put the
-        // dock somewhere the destination actually mounts first.
-        if (route.switchToBottomMode) commitDockPlacement('bottom');
-        setDeviceSetting('inboxOpen', true);
-        if (route.snapHalf) applyDockSnap('half');
-      },
     });
     window.addEventListener('station:open-new-chat', openNewChat);
     return () => {
@@ -2954,7 +3004,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   }, [
     hasImmutableProjectScope,
     cancelReaderOpenAndChildren,
-    applyDockSnap,
     collapseDockForNavigation,
     focusSessionInPane,
     navigate,
@@ -2965,15 +3014,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     routeToScopedChatProject,
     scopedProjectSlug,
     setProjectFilter,
-    isFullscreenPlacement,
-    isMobile,
-    effectiveDockSlotPlacement,
-    commitDockPlacement,
-    setDeviceSetting,
     showInboxOpenFailure,
     agentsLoaded,
     showSurface,
-    setMobileInboxOpen,
     requestNewChat,
   ]);
 
@@ -3963,6 +4006,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           }
                         : null
                     }
+                    reportedStart={
+                      hostBound &&
+                      !showNewChatModal &&
+                      !showOpeningIdentity &&
+                      !importedSessionId &&
+                      activeOrchestrationSession?.inputOrigin ? (
+                        <DelegationStart
+                          threadId={activeOrchestrationSession.threadId}
+                          compact
+                        />
+                      ) : undefined
+                    }
                     sessionProjectMismatchLabel={
                       showNewChatModal || showOpeningIdentity
                         ? undefined
@@ -4193,6 +4248,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             activeOrchestrationSession?.modelRoute?.label
                           }
                           inputOrigin={activeOrchestrationSession?.inputOrigin}
+                          reportedStartThreadId={
+                            hostBound
+                              ? activeOrchestrationSession?.threadId
+                              : undefined
+                          }
                           onClose={removeSession}
                         />
                       ) : null
@@ -4293,6 +4353,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       {isMobile && (
                         <LazyBoundary
                           load={loadMobileInboxPanel}
+                          surface={{ id: 'mobile-inbox', label: 'Inbox' }}
                           componentProps={{
                             open: workspaceShown && mobileInboxShown,
                             tasks: taskItems,
@@ -4791,6 +4852,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               >
                                 <ChatDockContentArea
                                   connection={conversationConnection}
+                                  transcriptSnapshotRef={
+                                    continueInProjectEnabled && hostConversation
+                                      ? transcriptSnapshotRef
+                                      : undefined
+                                  }
                                   onNewChat={handleStartNewChatWithMessage}
                                   onEditPeerChatDraft={(intent) =>
                                     requestNewChat({
@@ -5214,7 +5280,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             <ShareIntakeController />
             {continueInProject && (
               <ContinueInProjectDialog
-                conversation={continueInProject}
+                conversation={continueInProject.conversation}
+                sourceOwnerKey={continueInProject.ownerKey}
+                sourceProjectSlug={continueInProject.sourceProjectSlug}
                 onClose={() => setContinueInProject(null)}
               />
             )}

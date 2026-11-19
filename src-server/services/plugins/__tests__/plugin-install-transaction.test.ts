@@ -1549,6 +1549,7 @@ describe('installPluginFromSource', () => {
         permissions: { required: string[] };
         dependencies: Array<{
           id: string;
+          registryTrust?: unknown;
           consent: {
             contentDigest: string;
             registryTrustRevision: string;
@@ -1564,6 +1565,11 @@ describe('installPluginFromSource', () => {
       expect(preview.dependencies[0]?.consent.registryTrustRevision).toMatch(
         /^sha256:/,
       );
+      expect(preview.dependencies[0]?.registryTrust).toMatchObject({
+        state: 'verified',
+        revision: preview.dependencies[0]?.consent.registryTrustRevision,
+        receipt: { registryId: 'graph-child' },
+      });
       const interruptedSession = interruptGraph
         ? createPluginActivationSession()
         : undefined;
@@ -1748,6 +1754,11 @@ describe('installPluginFromSource', () => {
       expect(recovery.dependencies[0]?.consent.registryTrustRevision).toMatch(
         /^sha256:/,
       );
+      expect(recovery.dependencies[0]?.registryTrust).toMatchObject({
+        state: 'verified',
+        revision: recovery.dependencies[0]?.consent.registryTrustRevision,
+        receipt: { registryId: 'graph-child' },
+      });
       await recoverInstalledPlugin('graph-parent', installDeps, {
         recoveryRevision: recovery.recoveryRevision,
         consent: {

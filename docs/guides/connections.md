@@ -107,6 +107,13 @@ confirms authentication. **Cancel** stops a pending login. Returning to the
 account resumes status checks. Login capabilities come from the installed CLI;
 unsupported or unreadable installations remain unavailable.
 
+If Station cannot confirm that a device-code sign-in process stopped, it keeps
+the host slot reserved. Ask the Station host operator to verify that the
+launcher and all its descendants have stopped before restarting Station. If the
+operator cannot verify the whole process tree, restart the host before resuming
+device-code sign-in. Check the selected profile's sign-in status before
+starting another attempt.
+
 Muse Code (#1942) signs in with a device code too: Station runs the bare
 `muse login`, offered only while `muse login --help` still says "approve a code
 in your browser", and relays its link and code. Sign-in state comes from
@@ -631,8 +638,8 @@ is shown.
 The UI owners are [saved relay routes](../../src-ui/src/views/connections-hub/RelayRouteProfiles.tsx),
 [Project detail](../../src-ui/src/views/ProjectPage.tsx), and the
 [member Project view](../../src-ui/src/views/project-page/MemberProjectPage.tsx).
-Its captured-scope list and detail reads live in
-[ProjectsContext](../../src-ui/src/contexts/ProjectsContext.tsx) and use the
+Its [shared-work hooks](../../src-ui/src/views/project-page/useMemberProjectSharedWork.ts)
+read the list and detail with the captured Project scope through the
 [shared-task SDK readers](../../packages/sdk/src/client/project-shared-tasks.ts).
 
 No direct HTTP fallback is used. The CLI continues to refuse these routes as
@@ -906,22 +913,30 @@ recorded per engine in the
 [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts);
 the [ACP guide](acp.md) covers protocol details.
 
+The Agent `maxSteps` field limits model steps on Station’s VoltAgent runtime.
+Strands and external engines use their own limits. The Agent editor presents
+this scope next to the step limit.
+
 OpenCode is still added and saved as an Agent Client Protocol engine. With the
 **OpenCode native engine** Feature Preview on (Settings → Advanced → Feature
 previews), new chats on it run on Station's `opencode` engine instead. That
 engine drives OpenCode 2 through its own local server (`opencode serve`) when
 Station has verified that version's API, and over the Agent Client Protocol
 otherwise. A chat keeps the engine it started with. The connection's engine
-reads `opencode` only while the preview is on. See
+reads `opencode` only while the preview is on. OpenCode 2.x supports host
+Never ask on both transports. Native chats can change models between turns;
+ACP fallback needs a new chat for another model. See
 [the decision](../decisions/opencode-native-transport.md).
 
-An engine Station did not find reads **Not installed**. Its card shows the
+An engine Station did not find reads **Not installed**. Choose **Set up** to see the
 vendor's install command for the operating system Station runs on, with a copy
 button and a link to the install guide, and **Check again** repeats the lookup
 after you install it, re-reading your login shell's `PATH` so a directory the
 installer added there is searched too. A paired device needs permission to
 operate Station for that re-read; without it, the card says so and shows what
-Station last found. Station shows the command and never runs it. On a paired
+Station last found. The standard install hint offers a copyable command. With
+**Guided engine setup** enabled on a personal Station, a supported installer can
+run in a reviewed terminal after the person confirms the exact command. On a paired
 device the card says the install belongs on the computer Station runs on.
 
 Some built-in engines carry launch settings that Station sets when it starts
@@ -932,11 +947,11 @@ catalogue sets them, and only engine-scoped names; they never carry
 credentials. A custom connection running the same program, even by full path,
 gets the same settings.
 
-Add engine opens one catalogue in the Engines detail pane, beside your
-engine list: saved engines that are **Not connected yet**, the native apps
+Add engine opens a focused page with a searchable catalogue: saved engines that are **Not connected yet**, the native apps
 Station supports, the built-in command engines (**Found, not connected** or
-**Not installed**), and a custom command. Everything that follows stays in
-that pane; a link to one entry (`/connections/engines/new/<id>`, or `custom`)
+**Not installed**), and a custom command. Search by name or command (for example, **Antigravity** or `agy`).
+Setup stays on this page; **Done** returns to Engines with the new engine selected.
+A deep link to one entry (`/connections/engines/new/<id>`, or `custom`)
 opens on that entry's first step.
 
 1. Choose an engine. An engine that is **Not installed** offers only its
@@ -981,8 +996,10 @@ Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
 persist their default Agents. Automatic adoption respects an engine's recorded
 removal and refuses an identity already bound to another connection. It does
-not sign the engine in. See
-[startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
+not sign the engine in. During shutdown, adoption stops waiting for a
+contended registry or Agent lock. Committed connections stay registered, and
+the next startup can create any default Agent whose write was interrupted.
+See [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
 and the [Agent registry](../../src-server/domain/agent-registry.ts).
 The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
@@ -1334,7 +1351,9 @@ config (`agentConnections.<engine>.config` in `config/app.json`):
 - `configHome` — an explicit engine config home (`~` allowed), applied as
   `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). It wins over the
   station-managed app-home opt-in (`useAppHome`); a selected credential
-  profile still wins over both.
+  profile still wins over both. In **Advanced → App home**, a configured
+  home disables the Station-managed toggle and snapshot import. You can
+  still clear a leftover Station-managed home.
 
 On a machine whose [managed policy](managed-policy.md#pinned-launch-fields)
 locks the engine's environment, `env`, `configHome` and **Connect through** are
@@ -1535,7 +1554,9 @@ that require a newer client — with an error telling you to update your local
 engine, which is already current — or have newer request fields rejected as
 unknown. If a proxied connection fails with a client-version error, update
 the proxy first; Station cannot rewrite what the proxy sends upstream, and
-unproxied connections are unaffected.
+unproxied connections are unaffected. If Claude reports this client-version
+requirement while using an explicitly configured nondefault Anthropic API
+endpoint, the chat error points you to the proxy’s upstream client version.
 
 ### Give a credential profile its own routing
 
@@ -1783,8 +1804,8 @@ binding and model. It does not edit the saved Agent.
 
 ## Start a Project from a repository
 
-In **New Project**, open **Start from a Git repository**, enter the explicit
-HTTPS or SSH repository URL, and optionally choose a branch or tag and a
+In **New Project**, select **From a repository** and open **Start from a Git
+repository**. Enter the explicit HTTPS or SSH repository URL, and optionally choose a branch or tag and a
 repository-relative subdirectory such as `apps/web`. Choose
 **Acquire repository**, then **Use this checkout** to put the working copy into
 the Project draft. Station uses the repository name for an untouched name field.

@@ -1335,8 +1335,33 @@ async function runAcpCommand(args: string[]) {
   const parsed = parseCoreArgs(args);
   const apiBase = resolveSurfaceApiBase(parsed);
   const action = requirePositional(parsed, 0, 'acp action');
+  if (
+    ['setup', 'status', 'commands', 'command-options'].includes(action) &&
+    parsed.positionals.length > 1
+  ) {
+    throw new Error(
+      `station acp ${action} takes no engine id. Use 'station acp setup' to inspect engines; 'commands' lists the shared ACP command catalog.`,
+    );
+  }
 
   switch (action) {
+    case 'setup':
+      try {
+        await requestAndPrint(apiBase, '/acp/setup');
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          'status' in error &&
+          error.status === 404 &&
+          !('code' in error)
+        ) {
+          throw new Error(
+            'This Station does not support guided engine setup. Update the Station host or open Connections → Engines.',
+          );
+        }
+        throw error;
+      }
+      return;
     case 'status':
       await requestAndPrint(apiBase, '/acp/status');
       return;
@@ -1422,7 +1447,7 @@ async function runAcpCommand(args: string[]) {
     }
     default:
       throw new Error(
-        "Unknown acp action. Use 'status', 'commands', 'command-options', or 'connections'.",
+        "Unknown acp action. Use 'setup', 'status', 'commands', 'command-options', or 'connections'.",
       );
   }
 }

@@ -1509,12 +1509,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/services/connections/device-code-login.ts",
-      "rule": "as-unknown",
-      "fingerprint": "077111863885bcd9dad9826e7e61319f19854c5d0fb6c590383b3a4533077d94",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/services/connections/self-hosted-broker-client.ts",
       "rule": "as-unknown",
       "fingerprint": "88057868906599d703bdc035307c6eb73509335e595fbc1a7da741f8d717a571",

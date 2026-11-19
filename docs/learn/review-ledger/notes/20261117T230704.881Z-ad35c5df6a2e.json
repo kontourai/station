@@ -1,0 +1,7 @@
+{
+  "revision": "2abeb7092e7e00622ba19e970d115b8d96deae71",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated bundle 2abeb7092e7 against the canonical module-map SessionLifecycleModule section. Only its owned descendant activity explanation changes: canonical lifecycle determines work, with pending starts, invocations and stop obligations retained. Manual tools, topic routing, examples and reader authority remain unchanged. docs:mcp:generate emitted 139 topics with the updated lifecycle section; no runtime or release qualification is inferred.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

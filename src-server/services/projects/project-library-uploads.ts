@@ -137,12 +137,12 @@ export class ProjectLibraryUploads {
     const temporary = join(dirname(target), `.upload-${randomUUID()}.tmp`);
     const handle = await open(temporary, 'wx');
     try {
-      await handle.writeFile(bytes);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    try {
+      try {
+        await handle.writeFile(bytes);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
       await rename(temporary, target);
     } catch (error) {
       await unlink(temporary).catch(() => undefined);

@@ -1,0 +1,23 @@
+{
+  "revision": "7d602082ab982ac0d9cb9cc3883b28bd79143333",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the presentational Home surface. Dock-dependent first-run heading rendering belongs to the shared Home start composer. Standalone Home surface fixtures and work-lane focus pass.","inputs":["src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the presentational Home surface. Dock-dependent first-run heading rendering belongs to the shared Home start composer. Standalone Home surface fixtures and work-lane focus pass.","inputs":["src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the first-run heading when the dock opens. The heading remains visible while the existing draft stays mounted and hidden. Historical captures keep their original revision.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked the first-run heading when the dock opens. The heading remains visible while the existing draft stays mounted and hidden. Historical captures keep their original revision.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked the first-run heading when the dock opens. The heading remains visible while the existing draft stays mounted and hidden. Historical captures keep their original revision.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the first-run heading when the dock opens. The heading remains visible while the existing draft stays mounted and hidden. Historical captures keep their original revision.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked neutral heading Project text and inherited font on the inline h2 control. First-run Home renders the Project control beneath its h1. Historical comparison captures keep their original revision.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Checked neutral heading Project text and inherited font on the inline h2 control. First-run Home renders the Project control beneath its h1. Historical comparison captures keep their original revision.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Checked neutral heading Project text and inherited font on the inline h2 control. First-run Home renders the Project control beneath its h1. Historical comparison captures keep their original revision.","inputs":["src-ui/src/components/chat-start/StartComposer.css"]}
+  ]
+}

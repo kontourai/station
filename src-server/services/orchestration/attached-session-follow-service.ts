@@ -4,6 +4,7 @@ import { resolve, sep } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import {
+  ATTACHED_SESSION_CONTINUATION_REFRESH,
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
@@ -73,10 +74,12 @@ interface FollowState {
    *
    * It is also the PREDECESSOR half of the envelope id (archive#3495): the
    * id addresses the transition `storedAttribution -> fingerprint`, so this
-   * field is the only thing the id needs beyond the new value. See
+   * field determines ordinary transition identity. See
    * {@link envelopeEventId}.
    */
   storedAttribution?: string;
+  /** A full window without a claim leaves the prior attribution unknown. */
+  unresolvedAttributionAnchor?: string;
   /**
    * createdAt of the newest event known for this thread. A correction is
    * dated no earlier than this, so `lastEventAt` (which the home list reads
@@ -628,7 +631,16 @@ export class AttachedSessionFollowService {
     )
       return;
     let publicationAttempted = false;
-    if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
+    if (
+      state.storedAttribution !== fingerprint &&
+      !keepsStoredAttribution &&
+      !(
+        attribution.state === 'unattributed' &&
+        state.unresolvedAttributionAnchor
+      )
+    ) {
+      const stillAdmitted = () =>
+        this.admitAttachedSubject(source, descriptor, persisted);
       let envelopeWrites = 0;
       let lastEnvelopeYieldAt = performance.now();
       for (const event of attachedSessionEnvelope(
@@ -636,15 +648,27 @@ export class AttachedSessionFollowService {
         attribution,
         fingerprint,
         state.latestEventAt,
-        state.storedAttribution,
+        state.storedAttribution ?? state.unresolvedAttributionAnchor,
       )) {
         if (!state.seen.has(event.eventId)) {
-          if (!this.admitAttachedSubject(source, descriptor, persisted)) {
+          if (!stillAdmitted()) {
             this.rejectFollow(source, descriptor);
             return;
           }
           publicationAttempted = true;
-          await this.appendIngestibleEvent(state, event);
+          const committed = await this.appendIngestibleEvent(
+            state,
+            event,
+            stillAdmitted,
+          );
+          if (committed === 'stale') {
+            this.rejectFollow(source, descriptor);
+            return;
+          }
+          if (committed && event.method === 'session.configured') {
+            state.storedAttribution = fingerprint;
+            state.unresolvedAttributionAnchor = undefined;
+          }
           envelopeWrites += 1;
           if (
             envelopeWrites % APPEND_YIELD_EVERY === 0 ||
@@ -655,7 +679,6 @@ export class AttachedSessionFollowService {
           }
         }
       }
-      state.storedAttribution = fingerprint;
     }
     if (!state.ownerRecorded) {
       // Every envelope event carries the owner, so a fresh envelope usually
@@ -1180,6 +1203,22 @@ export class AttachedSessionFollowService {
     this.staleWriteLogged.delete(descriptor.threadId);
     if (outcome === true) return true;
     snapshot.set(outcome);
+    if (
+      !sameBoundedPersistedValues(
+        observed?.attachedSource?.completedBoundary,
+        outcome.attachedSource?.completedBoundary,
+      )
+    ) {
+      // The terminal transcript event can reach readers before this commit.
+      // Wake the authorized summary reader once the completed boundary lands.
+      this.options.eventBus.emit(
+        SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+        {
+          threadId: descriptor.threadId,
+          reason: ATTACHED_SESSION_CONTINUATION_REFRESH,
+        },
+      );
+    }
     return true;
   }
 
@@ -2041,8 +2080,8 @@ function attachedSessionEnvelope(
   attribution: AttachedProjectAttribution,
   fingerprint: string,
   latestEventAt: string | undefined,
-  /** The attribution the persisted log already expresses — see {@link envelopeEventId}. */
-  previousFingerprint: string | undefined,
+  /** The last known attribution or the observed configuration anchoring recovery. */
+  previousAttributionKey: string | undefined,
 ): CanonicalRuntimeEvent[] {
   const base = {
     provider: session.provider,
@@ -2075,7 +2114,7 @@ function attachedSessionEnvelope(
       eventId: envelopeEventId(
         session.sessionId,
         'started',
-        previousFingerprint,
+        previousAttributionKey,
         fingerprint,
       ),
       method: 'session.started',
@@ -2093,7 +2132,7 @@ function attachedSessionEnvelope(
       eventId: envelopeEventId(
         session.sessionId,
         'configured',
-        previousFingerprint,
+        previousAttributionKey,
         fingerprint,
       ),
       method: 'session.configured',
@@ -2150,17 +2189,20 @@ function attachedSessionOwnerRecord(
  * archive#3495: it used to also COUNT every attributed configured event on the
  * thread, which is why it needed every one of them. The count is gone (see
  * {@link envelopeEventId}), so this stops at the first match and its input is
- * a bounded window.
+ * a bounded window. A full window with no claim leaves the predecessor
+ * unknown. Its newest durable row anchors a recovery write without claiming
+ * that the session never had an attribution.
  */
 function persistedEnvelopeFacts(
   /**
    * `session.configured` events only, newest-first and BOUNDED — matching
    * {@link EventStore.listRecentConfiguredEventsByThread}.
    */
-  configuredEventsNewestFirst: { payload: unknown }[],
+  configuredEventsNewestFirst: { id: string; payload: unknown }[],
   extras: { latestEventAt?: string } = {},
 ): {
   storedAttribution?: string;
+  unresolvedAttributionAnchor?: string;
   latestEventAt?: string;
 } {
   let storedAttribution: string | undefined;
@@ -2174,10 +2216,14 @@ function persistedEnvelopeFacts(
     storedAttribution = stored;
     break;
   }
-  return {
-    ...(storedAttribution ? { storedAttribution } : {}),
-    ...(extras.latestEventAt ? { latestEventAt: extras.latestEventAt } : {}),
-  };
+  const newestConfiguration = configuredEventsNewestFirst[0];
+  const unresolvedAttributionAnchor =
+    !storedAttribution &&
+    newestConfiguration &&
+    configuredEventsNewestFirst.length === ATTRIBUTION_LOOKBACK_EVENTS
+      ? `unresolved-configured:${JSON.stringify(newestConfiguration.id)}`
+      : undefined;
+  return { storedAttribution, unresolvedAttributionAnchor, ...extras };
 }
 
 /**
@@ -2343,6 +2389,9 @@ function attributionFingerprint(
  * transition, so a cycle over k attributions costs at most k² pairs however
  * long it runs, and a steady attribution still costs nothing (that one is
  * `follow()`'s guard, not this id).
+ * If the bounded configuration window supplies no prior claim, a distinct
+ * recovery key includes its newest observed configuration ID. A repeated
+ * recovery against the same window and destination addresses the same pair.
  *
  * **Deliberately traded away, and the trade is PERMANENT for a flapping
  * thread, not a delay:** a transition this thread has already made — same
@@ -2387,12 +2436,12 @@ function attributionFingerprint(
 function envelopeEventId(
   sessionId: string,
   kind: string,
-  previousFingerprint: string | undefined,
+  previousAttributionKey: string | undefined,
   fingerprint: string,
 ): string {
   return `attached:session:${createHash('sha256')
     .update(
-      `${sessionId}\u0000${kind}\u0000${previousFingerprint ?? ''}\u0000${fingerprint}`,
+      `${sessionId}\u0000${kind}\u0000${previousAttributionKey ?? ''}\u0000${fingerprint}`,
     )
     .digest('hex')}`;
 }

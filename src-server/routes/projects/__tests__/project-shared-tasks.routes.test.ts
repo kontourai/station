@@ -50,7 +50,11 @@ function fixture() {
     revalidate: vi.fn(async () => {}),
     revalidateSummary: vi.fn(async () => {}),
   };
+  const stopWatching = vi.fn();
   const room = {
+    watchSharedMessages: vi.fn(
+      (_taskId: string, _notify: (closed: boolean) => void) => stopWatching,
+    ),
     sharedHistory: vi.fn(async (_input?: { current(): Promise<boolean> }) => ({
       kind: 'available',
       records: [
@@ -99,9 +103,48 @@ function fixture() {
     authority: vi.fn(async () => authority),
   });
   const app = new Hono().route('/api/projects', routes);
-  return { app, authority, service, room };
+  return { app, authority, service, room, stopWatching };
 }
 describe('project shared Task routes', () => {
+  test.each(['history', 'document'])(
+    'withholds %s when an old link names a different publication',
+    async (leaf) => {
+      const h = fixture();
+      const path = `/api/projects/example/shared-work/task-1/${leaf}?share=`;
+      expect((await h.app.request(path + 'old-publication')).status).toBe(404);
+      expect((await h.app.request(path + admission.shareId)).status).toBe(200);
+    },
+  );
+
+  test('shared history notifications carry no content and revoke before the next delivery', async () => {
+    const h = fixture();
+    const abort = new AbortController();
+    try {
+      const response = await h.app.request(
+        `/api/projects/example/shared-work/task-1/history?share=${admission.shareId}`,
+        { headers: { Accept: 'text/event-stream' }, signal: abort.signal },
+      );
+      expect(response.headers.get('content-type')).toContain(
+        'text/event-stream',
+      );
+      const reader = response.body!.getReader();
+      const nextFrame = async () =>
+        new TextDecoder().decode((await reader.read()).value);
+      expect(await nextFrame()).toBe('event: changed\ndata: {}\n\n');
+      const notify = h.room.watchSharedMessages.mock.calls[0]![1];
+      notify(false);
+      expect(await nextFrame()).toBe('event: changed\ndata: {}\n\n');
+      h.service.revalidate.mockRejectedValue(
+        new ProjectSharedTaskRefusal('not-found'),
+      );
+      notify(false);
+      await expect(nextFrame()).rejects.toThrow();
+    } finally {
+      abort.abort();
+    }
+    await vi.waitFor(() => expect(h.stopWatching).toHaveBeenCalledOnce());
+  });
+
   test('publishes only human room history and rechecks admission through delivery', async () => {
     const h = fixture();
     const response = await h.app.request(

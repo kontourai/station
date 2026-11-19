@@ -1,0 +1,9 @@
+{
+  "revision": "c99a5f0a0df7375271fe85f0bc3c18be731b540a",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the provider failure contract and SDK outcome guidance against the two added inventory entries. Oversized inherited ancestry and unavailable inherited tool policy refuse at Station admission before engine execution. Their existing lineage code stays outside the provider failure taxonomy, alongside the existing request lineage refusal. The focused inventory reproduced both omissions and passes all four cases after classification.","inputs":["scripts/__tests__/provider-failure-inventory.test.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the provider failure contract and SDK outcome guidance against the two added inventory entries. Oversized inherited ancestry and unavailable inherited tool policy refuse at Station admission before engine execution. Their existing lineage code stays outside the provider failure taxonomy, alongside the existing request lineage refusal. The focused inventory reproduced both omissions and passes all four cases after classification.","inputs":["scripts/__tests__/provider-failure-inventory.test.ts"]}
+  ]
+}

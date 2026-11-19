@@ -140,6 +140,39 @@ async function settle(service: EngineSignInService, connectionId: string) {
 }
 
 describe.runIf(posix)('engine sign-in through a live handshake', () => {
+  test('a reviewed device login uses CLI argv and requires the engine’s status confirmation after exit', async () => {
+    const grok = engineProgram('grok', 'factory-droid.json');
+    const original = readFileSync(grok.command, 'utf8');
+    const marker = join(grok.command, '..', 'signed-in');
+    writeFileSync(
+      grok.command,
+      `#!/bin/sh\nif [ "$1" = login ] && [ "$2" = --help ]; then printf '%s\\n' --device-auth; exit 0; fi\nif [ "$1" = models ]; then if [ -f "${marker}" ]; then printf 'You are logged in with grok.com.\\n'; else printf 'You are not authenticated.\\n'; fi; exit 0; fi\n${original.slice(original.indexOf('\n') + 1)}`,
+    );
+    const terminal = recordingTerminal();
+    const service = new EngineSignInService({ terminal: terminal.host });
+    const config = {
+      ...connection('grok-build', grok.command),
+      args: ['agent', 'stdio'],
+    };
+    await service.refreshMethods(config);
+    expect(service.methodsView(config).methods?.[0]).toMatchObject({
+      id: 'station:device-login',
+      kind: 'terminal',
+    });
+    await service.startTerminal(config, 'station:device-login');
+    expect(terminal.opened[0].launch.args).toEqual(['login', '--device-auth']);
+    await terminal.exit(terminal.opened[0], 0);
+    await expect.poll(() => service.attempt(config.id)?.state).toBe('failed');
+    await service.startTerminal(config, 'station:device-login');
+    writeFileSync(marker, 'signed in');
+    await service.refreshMethods(config);
+    await terminal.exit(terminal.opened[1], 0);
+    await expect
+      .poll(() => service.attempt(config.id)?.state)
+      .toBe('succeeded');
+    await service.dispose();
+  });
+
   test('the handshake offers terminal sign-in and lists methods minus hidden ones', async () => {
     const droid = engineProgram('droid', 'factory-droid.json');
     const service = new EngineSignInService({ terminal: null });

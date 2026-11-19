@@ -14,6 +14,31 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
 | Device hosts | **Advanced** | On this Station |
 
+In **Notifications**, browser Web Push reflects the selected Station’s
+registration. Turning it off removes the local subscription. Station
+reports failed registration cleanup separately.
+[Web Push notifications](https://github.com/kontourai/station/blob/main/docs/guides/web-push-notifications.md)
+
+Use **Keyboard shortcuts** to inspect focus conditions and change bindings
+on this device. On small screens the list is read-only. See the
+[keyboard shortcut guide](../guides/keyboard-shortcuts.md).
+
+Use Settings search or the command palette to jump to **Accounts and sign-in**,
+**What usage sharing includes**, **Skill shortcuts**, or **Model picker preferences**.
+Accounts and sign-in describes any access restriction on the connected Station.
+The usage disclosure lists what the Station reports for each sharing choice.
+
+**Skill shortcuts** shows the saved bindings for command skills. Open a context
+that makes a skill available to edit its binding. Bindings for unavailable
+skills stay saved on this device.
+
+**Model picker preferences** in Chat shows saved favorites, hidden models,
+manual order and recent models. Clear recent models there, or open model
+connections and select a connection to edit favorites, visibility and order.
+Clearing recents keeps the other preferences. Model picker preferences sync
+when account preferences are available. If previous choices are saved on this
+device, review them through **Import previous preferences**.
+
 ## Project settings
 
 Open a Project's settings to change its defaults, sources and access. Desktop
@@ -148,6 +173,7 @@ only when this Station's build can run it; if none is, the section says
 | `coordinator-session` | Coordinator chat | Lets you make one chat your personal agent ([Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md)), shown on Home and woken when work you can read needs you, fails or finishes. | Each wake is a model call. On an engine with Station tools it acts with your permissions. Turning it off keeps your choice of chat; nothing is woken and queued updates are not sent. |
 | `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Needs Coordinator chat. Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `conversation-resolution` | Open and Settled inbox | Keeps conversations Open until explicitly settled. Task closure follows the existing Task close-on-merge setting. | Personal resolution state syncs across devices. Turning it off preserves saved choices and restores turn-based grouping; no provider cost. |
+| `appearance-studio` | Appearance studio | Adds visual background and styling controls, saved themes, portable theme files and inline chat proposal previews. | Off by default. Themes and images are stored per person on this Station. Disabling hides the new actions and retains the accepted appearance; approvals pause custom styling. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
 | `private-memory` | Private memory | Private memory you can check and search. New chats start with what you confirmed. No erasure yet. | Memory can contain personal information. Off by default. Only chats on the Station engine get the brief. Create it through the API. Disabling hides access but retains the store. Hosted Stations do not offer it. |
 | `remote-task-engines` | Remote task engines | Lets you send coding tasks to cloud agents (Devin, GitHub Copilot cloud agent, Cursor Cloud Agents) that run on the vendor's machines, and catches up on their messages and pull requests. | Prompts and repository code leave this computer, and Station's sandbox and approval settings do not apply there. Each task spends your vendor account's credits. Every connection needs its own acknowledgement and token. A managed policy turns a vendor off unless `limits.engines.remoteTasks` names it. Station polls a task only while you have it open, and stops when it finishes. Turning the preview off stops sending and polling; removing a connection or its token still works. |
@@ -169,6 +195,7 @@ only when this Station's build can run it; if none is, the section says
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
 | `task-review` | Task review | Adds Review, Timeline and committed-code review to eligible Tasks. | Sending comments starts or queues a lead-agent turn; code review may incur provider charges. Screen capture needs a committed workspace. |
+| `guided-engine-setup` | Guided engine setup | Lets chat find setup pages; you review installation, sign in and choose Station tools in the engine pane. | Personal Stations only. Existing device permissions still apply. Turning it off keeps an existing install visible and stoppable, but starts no new one. |
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the configured sign-in address, selected in Settings or supplied by `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
 | `apps-library` | Apps library | Adds a searchable launcher for your personal Boards and plugin layouts, with name, icon and description editing. | Uses existing personal-layout permissions; does not install plugins or grant access. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
@@ -176,7 +203,7 @@ only when this Station's build can run it; if none is, the section says
 | `repository-auth-details` | Repository sign-in details | Shows the current Station’s GitHub CLI account, health and reported scopes in Project Sources. | Runs a bounded `gh auth status --json hosts --no-refresh`; no token refresh, credential transfer or repository-permission proof. |
 | `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
 | `project-library` | Project Library | Adds a **Library** to a Project's **Files & connections** tab: files people add and files its Tasks keep, readable by every chat in the Project through `list_project_library` and `read_project_library_file`. | Uploads are stored on this Station, up to 25 MB each; hidden files and installed-package folders are skipped. Personal Stations only. Turning it off hides the Library and refuses its routes and tools; uploaded files are kept. |
-| `continue-in-project` | Continue in Project | Adds **Continue in Project…** to a chat's More menu and **Setup recommendations** to a new Project. | Drafts only: nothing is created until you choose Create, Create Task or Apply, and the chat is never changed. |
+| `continue-in-project` | Save to Project | Adds **Save to Project…** to a chat’s More menu and **Setup recommendations** to a new Project. | Review the drafted Task or Project before creating it. Saving leaves the original chat available. |
 | `continue-unattended-after-restart` | Continue unattended work after restart | After a restart, continues Task and delegated work the restart cut off, once, with the restart note, oldest Task first. | Starts an agent turn per interrupted turn on its own; never for your chats, Automations or Tasks that are done, canceled or blocked. Waits for engine-start capacity. |
 | `paired-station-chats` | Paired Station chats | Starts text chats on a paired Station from New Chat, with that Station’s Project picker, transcript, replies and approvals. | Personal hosts only. Uses the destination’s providers and credits. Off disables reads and new operations; saved tabs and unconfirmed messages remain. Existing remote Tasks keep their separate flow. |
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
@@ -417,6 +444,13 @@ new device establishes the starting version without showing an upgrade dialog.
 **Diagnostics**, the open source packages bundled into the app with their
 licenses, and links to the privacy policy, license and support. Development
 servers have no license list.
+
+## People and setup access
+
+Open **Settings → People** to see who can connect. If your Device has limited
+access, the section directs you to the Station operator. Under **Settings →
+System**, checking for existing setup also requires permission. Ask the
+Station operator for setup import access.
 
 ## Settings your organization manages
 

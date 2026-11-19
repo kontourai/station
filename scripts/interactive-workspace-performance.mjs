@@ -540,6 +540,11 @@ const PERFORMANCE_RECEIPT_FIXED_REASONS = new Set([
   'REAL_STATION_BROWSER_TARGET_UNAVAILABLE',
   'REFERENCE_BROWSER_AUTH_CONTEXT_UNAVAILABLE',
   'REFERENCE_ENVIRONMENT_UNAVAILABLE',
+  'REFERENCE_FIXTURE_NOT_RUN',
+  'REFERENCE_FIXTURE_EXECUTION_FAILED',
+  'REFERENCE_FIXTURE_OBSERVATION_INVALID',
+  'REFERENCE_FIXTURE_BUILD_MISMATCH',
+  'REFERENCE_SWEEP_NO_BUILD_RECEIPT',
   'REFERENCE_OS_MISMATCH',
   'REVISION_MISMATCH',
   'SOURCE_NOT_EXECUTED_IN_RUN',
@@ -1073,7 +1078,7 @@ function fixtureReport(config, fixture, observation, mode) {
       fixture: fixture.fixture,
       status: 'NOT_VERIFIED',
       decision: 'NOT_VERIFIED',
-      counts: observation.counts ?? { failures: 0, degraded: 0 },
+      counts: observation?.counts ?? { failures: 0, degraded: 0 },
       failures: [],
       reasonCodes: evidenceReasons,
       foregroundWork: foregroundWork.report,
@@ -1405,6 +1410,168 @@ export function evaluateInteractiveWorkspacePerformance(config, run, options) {
     fixtures,
     summary,
   };
+}
+
+function sameReferenceBuild(left, right) {
+  const a = left.provenance?.metadata;
+  const b = right.provenance?.metadata;
+  return (
+    left.adapter === right.adapter &&
+    a?.revision === b?.revision &&
+    a?.platform === b?.platform &&
+    JSON.stringify(a?.build) === JSON.stringify(b?.build)
+  );
+}
+
+export function referenceFixtureSelection(config, env = process.env) {
+  const requested =
+    env.STATION_PERFORMANCE_E2E_FIXTURES?.split(',').filter(Boolean);
+  const samples = Number(env.STATION_PERFORMANCE_E2E_SAMPLES ?? '100');
+  const warmups = Number(
+    env.STATION_PERFORMANCE_E2E_WARMUPS ?? (samples === 100 ? '5' : '0'),
+  );
+  const fixtures = requested?.length
+    ? config.fixtures.filter((fixture) => requested.includes(fixture.id))
+    : config.fixtures;
+  if (requested?.some((id) => !fixtures.some((fixture) => fixture.id === id)))
+    throw new Error('Unknown reference performance fixture was selected');
+  return { ...config, sampling: { warmups, samples }, fixtures };
+}
+
+/** Keep a published row for every selected fixture before launching any target. */
+export async function sweepReferenceFixtures(
+  config,
+  {
+    runFixture,
+    unavailableReason,
+    retainReport,
+    platformName = process.platform,
+    expectedRevision = revision(process.cwd()),
+    now = () => new Date(),
+  },
+) {
+  const unavailable = (fixtureId, ...reasonCodes) => ({
+    fixtureId,
+    status: 'NOT_VERIFIED',
+    reasonCodes,
+    counts: { failures: 0, degraded: 0 },
+  });
+  const prerequisites = config.fixtures.map((fixture) =>
+    unavailableReason(fixture.id),
+  );
+  const observations = config.fixtures.map((fixture, index) =>
+    unavailable(
+      fixture.id,
+      prerequisites[index] ?? 'REFERENCE_FIXTURE_NOT_RUN',
+    ),
+  );
+  const failures = [];
+  let sourceRun;
+  const options = { mode: 'reference', expectedRevision, now };
+  const currentReport = () => {
+    if (!sourceRun)
+      return createNotVerifiedReport(
+        config,
+        'REFERENCE_SWEEP_NO_BUILD_RECEIPT',
+        observations,
+      );
+    const run = {
+      ...sourceRun,
+      generatedAt: now().toISOString(),
+      observations: [...observations],
+    };
+    return {
+      ...evaluateInteractiveWorkspacePerformance(config, run, options),
+      measurement: 'reference',
+      run,
+    };
+  };
+  retainReport(currentReport());
+  for (const [index, fixture] of config.fixtures.entries()) {
+    if (prerequisites[index]) continue;
+    const fixtureId = fixture.id;
+    const name = closedPerformanceReceiptFixtureId(fixtureId);
+    let result;
+    try {
+      result = await runFixture(fixture);
+    } catch {
+      failures.push(
+        `${name}: fixture execution failed before a report was available`,
+      );
+      observations[index] = unavailable(
+        fixtureId,
+        'REFERENCE_FIXTURE_EXECUTION_FAILED',
+      );
+      retainReport(currentReport());
+      continue;
+    }
+    const { report, exitCode } = result;
+    const run = report?.run;
+    const [observation] = Array.isArray(run?.observations)
+      ? run.observations
+      : [];
+    const exitFailure = referenceEvaluatorExitFailure(
+      platformName,
+      exitCode,
+      fixtureId,
+      report,
+    );
+    if (exitFailure) failures.push(exitFailure);
+    if (
+      run?.observations?.length !== 1 ||
+      observation?.fixtureId !== fixtureId
+    ) {
+      failures.push(`${name}: fixture did not return one matching observation`);
+      observations[index] = unavailable(
+        fixtureId,
+        'REFERENCE_FIXTURE_OBSERVATION_INVALID',
+      );
+    } else {
+      const reasons = evidenceReasons(config, run, options);
+      if (
+        sourceRun &&
+        reasons.length === 0 &&
+        !sameReferenceBuild(sourceRun, run)
+      )
+        reasons.push('REFERENCE_FIXTURE_BUILD_MISMATCH');
+      if (reasons.length > 0) {
+        observations[index] = unavailable(
+          fixtureId,
+          ...new Set([
+            ...reasons,
+            ...closedPerformanceReceiptReasonCodes(observation.reasonCodes),
+          ]),
+        );
+      } else {
+        sourceRun ??= run;
+        observations[index] = observation;
+      }
+      if (observation.measurements?.length !== config.sampling.samples)
+        failures.push(
+          `${name}: expected ${config.sampling.samples} measured observations`,
+        );
+    }
+    retainReport(currentReport());
+  }
+
+  const report = currentReport();
+  if (prerequisites.every(Boolean))
+    failures.push('No enabled reference performance fixture was selected');
+  if (platformName === 'win32') {
+    for (const fixture of report.fixtures) {
+      if (
+        prerequisites[
+          config.fixtures.findIndex(({ id }) => id === fixture.fixtureId)
+        ]
+      )
+        continue;
+      if (fixture.status !== 'PASS' || fixture.decision !== 'keep')
+        failures.push(`${fixture.fixtureId}: ${fixture.status}`);
+    }
+    if (report.status === 'FAIL' && report.summary.FAIL === 0)
+      failures.push('Combined fixture budgets failed');
+  }
+  return { report, failures };
 }
 
 function parseArgs(args) {

@@ -2,7 +2,6 @@
   "schemaVersion": 1,
   "screens": {
     "active-chat-phone": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:small:input.attachment-input[type=file]"
@@ -16,14 +15,17 @@
     "agents": [
       "axe:label-content-name-mismatch:button.split-pane__item[Station Assistant]"
     ],
-    "child-chat-dark-1440": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Plan the change across the workspace and review every navigation boundary, No project]"
+    "channel-nav-attention-dark-mobile": [
+      "hit-target:overlap:button.sidebar__home-button[Station home] / button.app-toolbar__icon-btn[Search or jump to…]",
+      "hit-target:overlap:button.sidebar__home-button[Station home] / button.app-toolbar__sidebar-toggle[Toggle menu]",
+      "hit-target:overlap:button.sidebar__mobile-close[Close navigation] / [data-testid=app-toolbar-connection]",
+      "hit-target:overlap:button.sidebar__project-btn[Open Kontour site workspace] / textarea.editor-textarea[What would you like done?]"
     ],
-    "child-chat-light-1440": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Plan the change across the workspace and review every navigation boundary, No project]"
-    ],
-    "command-palette-empty": [
-      "axe:aria-valid-attr-value:input.command-palette__input[type=text][Search commands, projects and chats]"
+    "channel-nav-attention-light-mobile": [
+      "hit-target:overlap:button.sidebar__home-button[Station home] / button.app-toolbar__icon-btn[Search or jump to…]",
+      "hit-target:overlap:button.sidebar__home-button[Station home] / button.app-toolbar__sidebar-toggle[Toggle menu]",
+      "hit-target:overlap:button.sidebar__mobile-close[Close navigation] / [data-testid=app-toolbar-connection]",
+      "hit-target:overlap:button.sidebar__project-btn[Open Kontour site workspace] / textarea.editor-textarea[What would you like done?]"
     ],
     "connections-tools": [
       "axe:label-content-name-mismatch:button.split-pane__item[Station Control]",
@@ -31,7 +33,6 @@
       "axe:label-content-name-mismatch:button.split-pane__item[Station Knowledge]"
     ],
     "desktop-conversation-resync": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
@@ -41,41 +42,31 @@
       "hit-target:overlap:button.sidebar__project-btn[Open Project B workspace] / button.sidebar__reorder-handle[Reorder Project B]"
     ],
     "inventory-drilldown-older-host-dark-desktop": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-older-host-dark-mobile": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-older-host-light-desktop": [
-      "axe:color-contrast:span.sidebar__project-name",
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-older-host-light-mobile": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-read-dark-desktop": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-read-dark-mobile": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-read-light-desktop": [
-      "axe:color-contrast:span.sidebar__project-name",
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-read-light-mobile": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-access-request-error-320": [
@@ -137,7 +128,6 @@
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-conversation-resync": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:small:input.attachment-input[type=file]"
@@ -216,7 +206,6 @@
       "hit-target:small:summary[Details]"
     ],
     "overlay-dock-project-mismatch": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
@@ -230,9 +219,6 @@
     "overlay-mobile-sheet": [
       "hit-target:small:input.attachment-input[type=file]"
     ],
-    "overlay-new-project-modal": [
-      "axe:label-content-name-mismatch:button.new-project-modal__identity-icon[Choose project icon]"
-    ],
     "overlay-region-chooser-from-toggle": [
       "axe:label-content-name-mismatch:button.menu-row[Chat Move here from Bottom]",
       "axe:label-content-name-mismatch:button.menu-row[Diff Choose a project for this dock before opening that pane.]",
@@ -241,94 +227,68 @@
     ],
     "overlay-toast-action": ["axe:nested-interactive:[data-testid=toast-card]"],
     "reply-composer-dark-1440-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "reply-composer-dark-1440-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "reply-composer-dark-320-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-dark-320-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-dark-360-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-dark-360-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-dark-390-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-dark-390-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-dark-412-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-dark-412-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-light-1440-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "reply-composer-light-1440-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "reply-composer-light-320-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-light-320-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-light-360-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-light-360-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-light-390-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-light-390-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-light-412-long": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "reply-composer-light-412-short": [
-      "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Toolbar layout, No project, unsent draft]",
       "hit-target:small:input.attachment-input[type=file]"
-    ],
-    "run-setup-model-stacked-dark-412": [
-      "axe:aria-required-children:div.session-model-picker__models[Models]"
-    ],
-    "run-setup-model-stacked-light-412": [
-      "axe:aria-required-children:div.session-model-picker__models[Models]"
     ],
     "settings": ["axe:select-name:div.settings__var-row select"],
     "skills": [
@@ -345,9 +305,6 @@
     ],
     "station-switcher-dark-mobile": [
       "hit-target:small:input.attachment-input[type=file]"
-    ],
-    "station-switcher-light-desktop": [
-      "axe:color-contrast:span.sidebar__project-name"
     ],
     "station-switcher-light-mobile": [
       "hit-target:small:input.attachment-input[type=file]"

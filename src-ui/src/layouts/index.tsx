@@ -406,30 +406,7 @@ interface LayoutRendererProps extends AgentLayoutProps {
   refreshKey?: number;
   /** Exact direct-pane plugin component already authorized by its occurrence. */
   trustedPluginLayout?: AgentLayoutComponent;
-  /**
-   * The host declaring whether it can run a layout's prompt (#2171). Absent
-   * means it can, which is what every host passed before this existed.
-   *
-   * `false` is the docked host (`LayoutWorkspacePane`): it has no chat
-   * launcher, and the SDK header used to render the layout's prompt buttons
-   * anyway, so a docked Layout carrying prompts showed controls that did
-   * nothing. The flag reaches the header, which renders no control that would
-   * need a launcher, and it withholds `onLaunchPrompt` from the tabs below —
-   * one declaration enforced everywhere the launcher flows, rather than a flag
-   * the header honours while a tab is handed a launcher regardless.
-   *
-   * Why a flag and not a derivation. Every host without a launcher is a host
-   * passing no `onLaunchPrompt`, so `hostLaunchPrompt !== undefined` would
-   * say the same thing with no prop and no precedence rule — and it was
-   * weighed (#2171 review L1). It was not taken because it would change what
-   * two hosts this change must leave alone render: `WorkspacePaneRouteView`
-   * and `ProjectLayoutRenderer`'s synthetic single-tab layouts pass no
-   * launcher and carry pane-DESCRIPTOR `actions`, and whether a descriptor's
-   * `prompt` action should ever be launchable from a route-bound pane is an
-   * open decision, not this change's to make by side effect (#2195). The flag
-   * is opt-in so that the decision is made per host, on purpose; #2195 may
-   * well replace the flag with the derivation.
-   */
+  /** A host can disable prompt actions even when it supplies a launcher. */
   canLaunchPrompts?: boolean;
 }
 
@@ -476,7 +453,7 @@ export function LayoutRenderer({
             }))}
             activeTabId={activeTabId}
             onTabChange={onTabChange}
-            canLaunchPrompts={canLaunchPrompts}
+            canLaunchPrompts={onLaunchPrompt !== undefined}
             actions={layout.actions}
             layoutPrompts={layout.globalSkills}
             onLayoutPromptSelect={onLaunchPrompt}

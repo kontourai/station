@@ -586,13 +586,24 @@ describe('what a device may still do without choosing a command', () => {
   test('reads, deletes and reconnects ACP connections', async () => {
     const f = await fixture();
     const device = f.pair('delegation');
+    f.acpCtx.acpBridge.addConnection.mockResolvedValueOnce(true);
+    const saved = structuredClone(await f.acpCtx.configLoader.loadACPConfig());
     expect((await f.send(device, 'GET', '/acp/connections')).status).toBe(200);
     expect((await f.send(device, 'GET', '/acp/status')).status).toBe(200);
     expect(
       (await f.send(device, 'POST', '/acp/connections/existing/reconnect'))
         .status,
     ).toBe(200);
-    expect(f.acpCtx.acpBridge.reconnect).toHaveBeenCalledTimes(1);
+    expect(f.acpCtx.acpBridge.addConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'existing',
+        command: 'engine',
+        args: ['--a'],
+      }),
+    );
+    expect(f.acpCtx.acpBridge.reconnect).not.toHaveBeenCalled();
+    expect(f.recorders.saveACPConfig).not.toHaveBeenCalled();
+    expect(await f.acpCtx.configLoader.loadACPConfig()).toEqual(saved);
     expect(
       (await f.send(device, 'DELETE', '/acp/connections/existing')).status,
     ).toBe(200);

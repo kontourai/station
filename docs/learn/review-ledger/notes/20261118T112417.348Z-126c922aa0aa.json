@@ -1,0 +1,9 @@
+{
+  "revision": "d8d199b753297a8677f49ffd0b998c9181099c8b",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the Claude SDK test owners. Added a finite result-frame fixture for the version refusal with explicit, missing, default and malformed endpoint controls plus an unrelated provider error. The tool delivery and smoke evidence already documented uses its existing separate fixtures and has no changed behavior.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the Claude SDK test owners. Added a finite result-frame fixture for the version refusal with explicit, missing, default and malformed endpoint controls plus an unrelated provider error. The tool delivery and smoke evidence already documented uses its existing separate fixtures and has no changed behavior.","inputs":["src-server/providers/__tests__/claude-adapter.test.ts"]}
+  ]
+}

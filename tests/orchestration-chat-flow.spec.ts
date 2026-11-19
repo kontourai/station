@@ -524,6 +524,17 @@ test.describe('Orchestration Chat Flow', () => {
         .getByRole('log', { name: 'Conversation transcript' })
         .getByText('Repo looks healthy.'),
     ).toBeVisible();
+    // Reload the completed mock event window before expanding the history
+    // row. The live row can be replaced while catch-up is still in progress.
+    await page.reload();
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await expect(
+      page
+        .getByRole('log', { name: 'Conversation transcript' })
+        .getByText('Repo looks healthy.'),
+    ).toBeVisible();
+
     // archive#2652 redesign: the settled activity is a quiet inline row (no
     // "Show N work activities" gate) labelled by its command. Expanding it
     // reveals the exact tool name and the final progress message as the
@@ -1018,7 +1029,19 @@ test.describe('Orchestration Chat Flow', () => {
       'decisions follow the command preview',
     ).toBeGreaterThanOrEqual(detailsBox!.y + detailsBox!.height);
     await expectClearLayout('desktop uncertain delivery');
-    await card.getByRole('button', { name: 'Check status' }).click();
+    const checkStatus = card.getByRole('button', { name: 'Check status' });
+    const [unavailableStatus] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'GET' &&
+          new URL(response.url()).pathname ===
+            `/api/orchestration/sessions/session-1/requests/${requestId}`,
+      ),
+      checkStatus.click(),
+    ]);
+    expect(await unavailableStatus.json()).toMatchObject({
+      data: { state: 'unavailable' },
+    });
     await expect(card.getByRole('alert')).toContainText(
       'Delivery is not confirmed.',
     );
@@ -1026,8 +1049,9 @@ test.describe('Orchestration Chat Flow', () => {
       'Check this request before trying again.',
     );
     await expect(allowOnce).toBeDisabled();
+    await expect(checkStatus).toBeEnabled();
     answer = 'settled';
-    await card.getByRole('button', { name: 'Check status' }).click();
+    await checkStatus.click();
     await expect(card.getByRole('status')).toHaveText('Already answered.');
     await expectClearLayout('desktop inspected decision');
 

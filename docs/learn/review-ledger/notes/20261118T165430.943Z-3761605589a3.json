@@ -1,0 +1,7 @@
+{
+  "revision": "6183ddae9d5a3c4115bc96fbd4fd57e1d80d60d5",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed bounded REST GET recovery against qualification evidence, health and supersession callers. Three attempts share the existing 30-second signal; only 502/503/504 reads retry, while writes and exhausted or invalid evidence remain fail-closed.","inputs":["docs/guides/releasing.md","scripts/__tests__/qualification-evidence.test.ts","scripts/qualification-evidence.mjs"]}
+  ]
+}

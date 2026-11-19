@@ -1,0 +1,15 @@
+{
+  "revision": "e81e3f22cd59adb49c7d9c21c69ed93c6a6866a9",
+
+  "notes": [
+    {"path":"README.md","note":"session-tmpdir socket budget: the cli.md change only extends the --temp-home row to refuse candidates inside Station's short per-session TMPDIR root. The entry point's CLI and installation claims do not describe temp-home placement and still hold.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"session-tmpdir socket budget: cli.md changed only the --temp-home row (refusal of Station's short per-session TMPDIR root). The review's CLI abstraction findings do not cover temp-home admission and are unaffected.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"session-tmpdir socket budget: cli.md changed only the --temp-home row. Triage commands, their outputs and their target selection are unaffected. This design does not discuss temporary homes.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"session-tmpdir socket budget: cli.md changed only the --temp-home admission wording. The integration guide's CLI references (instances, pairing, contracts) do not depend on where temp homes or engine TMPDIRs live.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"session-tmpdir socket budget: line 257 still accurately routes --temp-home details to the CLI reference, which now also names the refusal of Station's short per-session TMPDIR root. No README claim changes.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

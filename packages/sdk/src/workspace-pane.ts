@@ -123,6 +123,10 @@ export type {
   WorkspacePaneHostActionExecution,
   WorkspacePaneHostActionPrepareRequest,
 } from '@kontourai/station-contracts/workspace-pane-host-contribution';
+export {
+  COMPACT_PROJECT_LAYOUT_PANE_ID_PREFIX,
+  matchesLegacyProjectLayoutPaneId,
+} from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 export type {
   ProjectWorkspacePaneAvailabilityProjection,
   ProjectWorkspacePaneCatalog,

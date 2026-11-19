@@ -1,0 +1,7 @@
+{
+  "revision": "e9884b1346a36599fbe1089f50d8476e44686227",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the fresh-home desktop and phone fixtures against current first-run and Inbox owners. Dormant telemetry keeps setup optional, project creation uses a fixture-owned Git directory, the phone drives the current composer, and Inbox restoration follows the original chat identity. The pending, failure, and retry selectors and their budgets remain intact.","inputs":["tests/first-run-live.spec.ts"]}
+  ]
+}

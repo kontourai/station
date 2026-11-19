@@ -3,8 +3,7 @@
  * The sharded `fast-checks` lane (#2709). ci.yml runs these subcommands:
  *
  *   plan       fast-checks-plan: select once, write the plan artifact
- *   slice      fast-checks-shard: report whether this shard's slice is empty
- *              (before dependencies are installed, so an empty shard is cheap)
+ *   slice      fast-checks-shard: report emptiness and host prerequisites
  *   run        fast-checks-shard: run the slice, write this shard's receipt
  *   aggregate  fast-checks: verify part-job results, the plan and every receipt
  *
@@ -39,6 +38,14 @@ import {
   verifyFastChecks,
 } from './lib/fast-checks-shards.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+
+// These fixtures execute real zsh on the Linux shard runner. The dogfood
+// LaunchAgent and installer-output fixtures that use it only on Darwin
+// do not require it on this runner.
+const LINUX_ZSH_FIXTURE_SUITES = new Set([
+  'ops/nightly/macos-build-only-cleanup.test.mjs',
+  'scripts/__tests__/nightly-android-install.test.ts',
+]);
 
 const USAGE = `usage:
   npm run fast-checks:shard -- plan --out=<file>
@@ -318,7 +325,7 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
       `[fast-checks] related discovery: ${(plan.relatedDiscovery.milliseconds / 1000).toFixed(1)}s` +
         (plan.relatedDiscovery.timeoutMilliseconds === undefined
           ? '\n'
-          : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout\n`),
+          : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout${plan.relatedDiscovery.timedOut ? '; timed out, retained exact suites only' : ''}\n`),
     );
   if (plan.escalatedImporters) {
     const { paths, suites, added } = plan.escalatedImporters;
@@ -359,7 +366,8 @@ function sliceCommand(
   if (env.GITHUB_OUTPUT)
     appendFileSync(
       env.GITHUB_OUTPUT,
-      `empty=${slice.files.length === 0 ? 'true' : 'false'}\n`,
+      `empty=${slice.files.length === 0}\n` +
+        `requires-zsh=${slice.files.some((file) => LINUX_ZSH_FIXTURE_SUITES.has(file))}\n`,
     );
   return 0;
 }

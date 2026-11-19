@@ -11,7 +11,19 @@ An absent Codex tier leaves the session's speed unchanged on continuation;
 `serviceTier: null` explicitly clears it. Legacy `fastMode: false` supplies no
 override. Catalog defaults describe the model, not local CLI configuration.
 
+A `ModelOption` can carry `catalogRoute` when the engine reports separate
+provider and model IDs. Compact labels use the route's display name or model ID
+and can show the provider as secondary detail. Selection uses the exact
+`ModelOption.id`. The catalog route describes an available choice. Turn and
+usage records carry their own serving evidence.
+
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
+
+`@kontourai/station-contracts/delegation-group` defines the
+[CLI Session group view](../../packages/contracts/src/delegation-group.ts)
+for the dormant server owner. It describes reserved member starts, observed
+Session state and Flow lineage. The dispatch allowance bounds reservations.
+The view carries neither dispatch authority nor a portable Flow envelope.
 
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
 scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
@@ -347,7 +359,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/engine-commands` | How an engine slash command runs (`prompt-text`, a declared or identity-matched `engine-request`, or an `adapter-action`), its outcome, and `engineCommandRequestParams`. The server's shared half is [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts): the ACP and OpenCode adapters run every route kind through its `dispatchEngineCommand`, and Muse uses its reader and outcome line |
 | `@kontourai/station-contracts/managed-engine-install` | Pinned managed engine installs: the pin (manifest digest as the trust root), manifest, install state and failure reasons, the `{script}` argv token a descriptor's `managedRuntime` uses, the `station-managed:<installId>` command a managed entry carries (`managedRuntimeCommand`, `managedRuntimeInstallIdOf`), install progress (`receivedBytes`, `totalBytes`), and `validateManagedInstallPin` |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in/managed-runtime descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status, and the known full-access session mode ids (`KNOWN_FULL_ACCESS_ACP_MODE_IDS`, `isKnownFullAccessAcpModeId`) the server and the approval pickers share |
-| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
+| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations. The Station row documents VoltAgent-only step limiting. For ACP the matrix says who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. The model-selection cell's `overridePerTurn` declaration gates model changes in existing conversations without a provider-name branch. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
@@ -376,7 +388,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/managed-policy-controls` | Lightweight approval-ceiling comparisons, clamps, denial text, remote-client predicates and refusal codes for mounted controls. Imports summary types only; it does not load the status decoder or settings registries. The status and full policy modules re-export these helpers for existing consumers. |
 | `@kontourai/station-contracts/managed-policy-status` | The browser-facing half of the managed policy contract: the value-free client summary and the `GET /api/settings/managed-policy` status with its boundary parser, one reader per enforced limit (`MANAGED_POLICY_SUMMARY_LIMIT_READERS`: `limits.maxApprovalMode`, the capability switches, `limits.clients` and `limits.updates` with `mirror`) that the status decode uses, the limit and summary types, the value-free `summary.engines` (#4520) the status decode parses beside `limits`, the client predicates, the denial and "Managed by" text helpers, the approval-mode ceiling helpers (#4518), and the approval-ceiling, capability, remote-clients and update refusal codes. The SDK loads this decoder when a successful status response needs validation; mounted controls use `/managed-policy-controls` to keep it out of the initial chunk. It carries no settings registry; `@kontourai/station-contracts/managed-policy` re-exports all of it |
 | `@kontourai/station-contracts/desktop-update` | The desktop app's native-owned update state (phases, the error beside the phase it returned to, download policy, its automatic-download time and a per-run sequence) and its state event name; the native shell computes it, the window and tray read it |
-| `@kontourai/station-contracts/config` | App config and template variables, the values the loader seeds into `config/app.json` (`APP_CONFIG_SEED`), and `appConfigSemanticError`, the settings file rules beyond its JSON schema that server startup and `station policy check` both apply |
+| `@kontourai/station-contracts/config` | App config and template variables, the shared `parseTemplateDateTimeFormat` parser for JSON Intl options, the values the loader seeds into `config/app.json` (`APP_CONFIG_SEED`), and `appConfigSemanticError`, the settings file rules beyond its JSON schema that server startup and `station policy check` both apply |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
 | `@kontourai/station-contracts/connection-quota` | Provider-reported quota snapshots, explicit unavailable outcomes, and pure rolling-observation merging; absent provider data stays absent |
 | `@kontourai/station-contracts/self-hosted-broker` | Versioned browser Origin scope, native proof-key surface and distinct v2 native offer metadata and closed invitation-authenticated older-scope observations; routing authority is separate from signing trust, account identity and Project permission |
@@ -395,7 +407,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | `layoutOwner` derives ownership and `layoutSubject` derives the optional Project subject. Project ownership implies its Project; principal ownership without a subject remains a Board or reusable template. Personal records never inherit Coding's implicit primary Chat claim. Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
-| `@kontourai/station-contracts/custom-appearance` | A person's custom appearance (palette over `APPEARANCE_ROLE_PROPERTIES`, accent and CSS), its document, proposal and render report; `parseCustomAppearance`, the CSS text check (`customCssTextViolations`, `fetchingValueKind`), contrast rules rated with a caller-supplied ratio (`rateAppearancePalette`), the stable hook selectors (`APPEARANCE_HOOKS`) and the agent guide. See the [decision](../decisions/custom-appearance.md) |
+| `@kontourai/station-contracts/custom-appearance` | A person's custom appearance (palette over `APPEARANCE_ROLE_PROPERTIES`, accent and CSS), its typed visual settings and bounded raster backgrounds, document, proposal and render report, saved library and strict portable theme packs; exact proposal references retained for inline chat; `parseCustomAppearance`, `createCustomAppearanceThemePack`, `parseCustomAppearanceThemePack`, the CSS text check (`customCssTextViolations`, `fetchingValueKind`), contrast rules rated with a caller-supplied ratio (`rateAppearancePalette`), the stable hook selectors (`APPEARANCE_HOOKS`) and the agent guide. See the [decision](../decisions/custom-appearance.md) |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions, one-time recovery results and the Project sharing setting |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. |
@@ -407,7 +419,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project-lifecycle` | Pause, Archive and Delete for a Project: the `ProjectConfig.lifecycle` state, the `POST /api/projects/:slug/lifecycle` request and result (turns interrupted, still running after `PROJECT_LIFECYCLE_STOP_WAIT_MS`), `projectLifecycleHoldsWork`, the held-turn refusal, and the `GET /api/projects/:slug/deletion-preview` counts |
 | `@kontourai/station-contracts/project-session-context` | What a new Session in a Project starts from (#5062, #5065): the brief and memory note shapes and limits, their parsers, `composeProjectSessionContext` (the one composer of the brief and memory index, labelled as background) and the per-turn `ProjectSessionContextComposed` receipt. |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
-| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
+| `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions including Commenter (view and discuss), invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads; `engine-mcp.status` bounds (`ENGINE_MCP_STATUS_MAX_SERVERS` 64, `ENGINE_MCP_SERVER_NAME_MAX_CHARS` 128, `ENGINE_MCP_ERROR_MAX_CHARS` 512) |
@@ -2358,8 +2370,10 @@ runtime files. Since #3851 it also carries:
 - the staging phase (`ServiceStagePhase`) and its byte counts.
 
 The module also owns the server's own view of its update:
-`ServerUpdateState`, `ServerUpdateRunningTurns` and
-`ServerUpdateDownloadPolicy`. `GET /api/system/core-update/state` serves that
+`ServerUpdateState` and `ServerUpdateRunningTurns`. Its shared
+`UpdateDownloadPolicy` defines the choices and default for desktop and server
+updates. The desktop and server policy names remain available as aliases.
+`GET /api/system/core-update/state` serves that
 view, and the `runtime-events` `server-update:changed` event carries it.
 Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.
@@ -2547,14 +2561,16 @@ values before exposing a profile.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
 Current Session summaries and conversation-open execution carry the registered
-adapter's `durability` declaration at read time, except that a Session its
+adapter's `durability` declaration at read time, including a live
+`sessionDurability` override when its transport differs. A Session its
 adapter says cannot steer (`canSteerTurn` false) reports `steerPlacement`
 `none`. The live composer consumes that
 observation rather than resolving a provider-name table; absence stays unknown.
 Claude, Codex and Muse declare their live steering channels as native (Muse's
 is `muse serve`'s; an exec-fallback Session refuses a steer). ACP discloses a
-connection-dependent orchestration-command fallback that may interrupt and
-reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
+connection-dependent native channel or interrupting fallback. Explicit Steer
+on the fallback cancels, waits for the prompt to finish, and re-prompts with
+a continuation instruction; Queue remains its default. Live steering does
 not imply restart continuation: the inbox persists text and its expected head
 before claiming a handoff, but an unacknowledged claim remains unknown and is
 never automatically replayed. Station-owned steering is emulated at an observed
@@ -3000,6 +3016,12 @@ not a second store or an inference from raw Knowledge `status`.
 durable boundary with bounded summary and Task-state seeds. Their successor
 cuts earlier model history without deleting the transcript; exact source and
 summary provenance remain attached. Unknown native state is omitted explicitly.
+
+The conversation-open contract represents a reserved empty-context reset as
+`fresh-context-ready`. The reservation names the predecessor that owns the
+earlier transcript and the successor that can start on the next send. The
+current Session and execution binding become available only with an observed
+Session.
 
 `@kontourai/station-contracts/project-supervision` names opt-in supervision,
 Task incarnation, checkpoint, coordinator and known wait facts. The server

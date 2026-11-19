@@ -48,7 +48,13 @@ test('new project icon choices and Home scope render at desktop and phone widths
     }
   }
   await page.locator('[data-new-project-trigger]').click();
-  await page.getByRole('button', { name: 'Choose project icon' }).click();
+  const icon = page.getByRole('button', { name: /^Choose project icon/ });
+  await expect(icon).toHaveAccessibleName('Choose project icon NP');
+  await page
+    .getByRole('textbox', { name: 'Project name' })
+    .fill('Research Lab');
+  await expect(icon).toHaveAccessibleName('Choose project icon RL');
+  await icon.click();
   const none = page.getByRole('button', { name: 'No icon', exact: true });
   await expect(none).toHaveAttribute('aria-pressed', 'false');
   await none.click();

@@ -1,0 +1,183 @@
+{
+  "revision": "323b8494eb4bbdd2354a6605b0760e7fef92f740",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced persisted opening-event identity through the inbox, native provider claim and post-tool prepare, dispatch and acknowledgement. Verified the same-ID successor and restart controls at the actual ownership seams.","inputs":["docs/architecture/module-map.md","src-server/runtime/conversation/inbox-model-step.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/post-tool-inbox.ts","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the pending row's retained refusal when its accepted turn ends and traced post-tool currentness through the recorded model acknowledgement. The browser still uses the existing head and delivery receipt.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/post-tool-inbox.ts","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked matching-head admission, accepted turn binding, restart, stale target refusal and matching-key replay through the existing inbox route and SDK fixtures.","inputs":["docs/reference/session-api.md","src-server/runtime/conversation/inbox-model-step.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/post-tool-inbox.ts","src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the observable pending-row refusal when the intended turn finishes, and separately checked that an attempted post-tool handoff without acknowledgement stays unconfirmed.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed server-side capture of the Session and opening sequence after steer admission, durable replay, live target checks and the distinct ended and attempted delivery states.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed server-side capture of the Session and opening sequence after steer admission, durable replay, live target checks and the distinct ended and attempted delivery states.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed server-side capture of the Session and opening sequence after steer admission, durable replay, live target checks and the distinct ended and attempted delivery states.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Verified private native steer currentness and ledger claims at the actual adapter invocation. Checked typed pre-effect key conflict, serialized steering, dispatch authority and origin propagation at that boundary.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Verified runtime composition carries the inbox owner's exact turn check into private dispatch options alongside the existing recorded actor and person-authored attribution. Reviewed the affected inbox route and its published scopes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced the post-tool callback protocol from the registered inbox owner to the model wrapper, distinguishing stopped-before-dispatch from attempted dispatch and keeping receipts scoped.","inputs":["src-server/services/orchestration/post-tool-inbox.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced the post-tool callback protocol from the registered inbox owner to the model wrapper, distinguishing stopped-before-dispatch from attempted dispatch and keeping receipts scoped.","inputs":["src-server/services/orchestration/post-tool-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Traced the post-tool callback protocol from the registered inbox owner to the model wrapper, distinguishing stopped-before-dispatch from attempted dispatch and keeping receipts scoped.","inputs":["src-server/services/orchestration/post-tool-inbox.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified the captured steer is checked at the model call and again after its response. Checked the retained input position and replay path for restored model steps.","inputs":["src-server/runtime/conversation/inbox-model-step.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Verified the captured steer is checked at the model call and again after its response. Checked the retained input position and replay path for restored model steps.","inputs":["src-server/runtime/conversation/inbox-model-step.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Verified the captured steer is checked at the model call and again after its response. Checked the retained input position and replay path for restored model steps.","inputs":["src-server/runtime/conversation/inbox-model-step.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the shipped Corpus bundle after checking the canonical Session API and module map descriptions against the inbox and provider handoff behavior.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

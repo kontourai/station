@@ -98,16 +98,6 @@ describe('EventStore high-cardinality batched projection', () => {
     return events.map(({ observedAt: _observedAt, ...rest }) => rest);
   }
 
-  function expectBatchedMatchesIndividual(threadId: string): void {
-    const individual = store.listSessionProjectionEvents(threadId);
-    const batched = store
-      .listSessionProjectionEventsForThreads([threadId])
-      .get(threadId);
-    expect(withoutObservedAt(batched ?? [])).toEqual(
-      withoutObservedAt(individual),
-    );
-  }
-
   // archive#4466 review remediation: id/thread/pair lists are chunked at 500.
   // The complete seed, batched read, and comparisons retain the original 10s
   // product-law bound; isolation moves no setup into a wider hook allowance.
@@ -124,7 +114,12 @@ describe('EventStore high-cardinality batched projection', () => {
     const batched = store.listSessionProjectionEventsForThreads(threadIds);
     expect(batched.size).toBe(totalThreads);
     for (const index of [0, 1, 250, 499, 500, 501, 750, 999, 1199]) {
-      expectBatchedMatchesIndividual(threadIds[index]!);
+      const threadId = threadIds[index]!;
+      const events = batched.get(threadId);
+      expect(events, threadId).toBeDefined();
+      expect(withoutObservedAt(events!), threadId).toEqual(
+        withoutObservedAt(store.listSessionProjectionEvents(threadId)),
+      );
     }
   }, 10_000);
 });

@@ -21,6 +21,7 @@ import type {
 import {
   NATIVE_RESUME_BINDING_METADATA_KEY,
   NATIVE_RESUME_IDENTITY_METADATA_KEY,
+  providerSessionBindingEnded,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -196,14 +197,10 @@ function reservedTailRefusal(
 function sessionTakesNextTurn(
   session: OrchestrationSessionDetail['session'],
 ): boolean {
-  const bindingEnded =
-    session.status === 'closed' ||
-    session.status === 'dead' ||
-    session.status === 'error';
   return (
     !isSessionLifecycleStateTerminal(
       foldedSessionLifecycleState(session.lifecycleState),
-    ) && !bindingEnded
+    ) && !providerSessionBindingEnded(session.status)
   );
 }
 
@@ -832,6 +829,34 @@ export class ConversationLineage {
     if (
       store.conversationHandoffForSession(tail.sessionId) ||
       store.conversationContextBoundaryForSuccessor(tail.sessionId)
+    )
+      return undefined;
+    return tail.predecessorSessionId;
+  }
+
+  /** The exact predecessor of a still-startable, unstarted empty reset. */
+  freshContextReservationPredecessor(
+    conversationId: string,
+    reservedSessionId: string,
+  ): string | undefined {
+    const store = this.deps.eventStore;
+    const tail = store?.conversationSessions(conversationId).at(-1);
+    if (
+      !store ||
+      tail?.sessionId !== reservedSessionId ||
+      !tail.predecessorSessionId ||
+      store.readSessionByThread(reservedSessionId) ||
+      store.conversationHandoffForSession(reservedSessionId)
+    )
+      return undefined;
+    const boundary =
+      store.conversationContextBoundaryForSuccessor(reservedSessionId);
+    if (
+      boundary?.status !== 'reserved' ||
+      boundary.policy !== 'empty-next-cold-start' ||
+      boundary.conversationId !== conversationId ||
+      boundary.successorSessionId !== reservedSessionId ||
+      boundary.predecessorSessionId !== tail.predecessorSessionId
     )
       return undefined;
     return tail.predecessorSessionId;
@@ -2061,10 +2086,11 @@ export class ConversationLineage {
       this.deps.conversationHistoryReader &&
       isSessionReadAuthority(authority)
     ) {
-      return this.deps.conversationHistoryReader.list({
+      const page = await this.deps.conversationHistoryReader.list({
         authority,
         limit: CONVERSATION_HISTORY_MAX_ENTRIES,
-      }).items;
+      });
+      return page.items;
     }
     const sessions = await this.deps.listSessionReadModel(authority, {
       purpose: 'conversation-inventory',

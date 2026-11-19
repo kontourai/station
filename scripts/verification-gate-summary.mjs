@@ -277,6 +277,14 @@ export function causalExcerptsOf(summary) {
     : [];
 }
 
+function diagnosticExcerptsOf(summary) {
+  return Array.isArray(summary?.diagnosticExcerpts)
+    ? summary.diagnosticExcerpts
+        .filter((entry) => typeof entry === 'string')
+        .slice(0, MAX_ANNOTATIONS)
+    : [];
+}
+
 function countsTable(counts) {
   if (!counts || typeof counts !== 'object' || Array.isArray(counts))
     return null;
@@ -329,10 +337,20 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
     facts.push(`- Failing step: \`${plainText(summary.failingStep)}\``);
   if (typeof summary.inFlightStep === 'string')
     facts.push(`- In-flight step: \`${plainText(summary.inFlightStep)}\``);
+  if (typeof summary.phaseAdmission === 'string')
+    facts.push(`- Phase admission: ${plainText(summary.phaseAdmission)}`);
   if (summary.indeterminate === true) facts.push('- Indeterminate: `true`');
   if (document.truncated === true)
     facts.push(
       '- The captured verdict document was truncated by its own byte cap.',
+    );
+  if (Array.isArray(document.omittedDetails))
+    facts.push(
+      `- Omitted from stdout: ${document.omittedDetails.map(plainText).join(', ')}.`,
+    );
+  if (typeof document.canonicalReceipt === 'string')
+    facts.push(
+      `- Canonical receipt: \`${plainText(document.canonicalReceipt)}\``,
     );
   if (facts.length) lines.push(...facts, '');
   const counts = countsTable(summary.counts);
@@ -390,6 +408,17 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
       '',
     );
   }
+  const diagnostics = diagnosticExcerptsOf(summary);
+  if (diagnostics.length) {
+    lines.push(
+      '### Diagnostic context',
+      '',
+      'The capture contains these lower-severity lines. They may come from an earlier step.',
+      '',
+      fencedBlock(diagnostics.map((entry) => plainText(entry)).join('\n')),
+      '',
+    );
+  }
   if (
     Array.isArray(summary.failedCheckTestFiles) &&
     summary.failedCheckTestFiles.length
@@ -444,12 +473,23 @@ export function annotationsFor(document) {
   if (!document) return [];
   const summary = document.summary ?? {};
   if (verdictOf(summary) !== false) return [];
+  if (typeof summary.phaseAdmission === 'string')
+    return [
+      `::error title=full-regression::${annotationMessage(summary.phaseAdmission)}`,
+    ];
   const excerpts = causalExcerptsOf(summary);
+  const notes = diagnosticExcerptsOf(summary).map(
+    (excerpt) =>
+      `::warning title=full-regression diagnostic context::${annotationMessage(excerpt)}`,
+  );
   if (excerpts.length)
-    return excerpts.map(
-      (excerpt) =>
-        `::error title=full-regression::${annotationMessage(excerpt)}`,
-    );
+    return [
+      ...excerpts.map(
+        (excerpt) =>
+          `::error title=full-regression::${annotationMessage(excerpt)}`,
+      ),
+      ...notes,
+    ].slice(0, MAX_ANNOTATIONS);
   // A non-pass with no excerpt still gets exactly one annotation: silence
   // here is what sent readers to the artifact in the first place.
   const status = terminalStatus(summary) ?? 'non-passing';
@@ -459,7 +499,8 @@ export function annotationsFor(document) {
       : '';
   return [
     `::error title=full-regression::${annotationMessage(`the completion gate reported ${status}${step} with no causal excerpt; read the full-regression artifact`)}`,
-  ];
+    ...notes,
+  ].slice(0, MAX_ANNOTATIONS);
 }
 
 export function main(argv, { log = console.log, warn = console.error } = {}) {

@@ -1,0 +1,85 @@
+{
+  "revision": "9a5f93e088b5540a4a61e157ac738942b20c72ab",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Verified the catalog route fields against the OpenCode producers, bounded normalization and shared presentation. The selector and the usage event's serving evidence remain separate contract facts.","inputs":["docs/reference/contracts.md","packages/contracts/src/tool.ts","src-ui/src/utils/execution.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the optional route fields, exact ID handling and bounded reads against existing tool, runtime catalog and model-selection contracts. No selection authority or serving evidence comes from the catalog label.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the optional route fields, exact ID handling and bounded reads against existing tool, runtime catalog and model-selection contracts. No selection authority or serving evidence comes from the catalog label.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the optional route fields, exact ID handling and bounded reads against existing tool, runtime catalog and model-selection contracts. No selection authority or serving evidence comes from the catalog label.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the optional route fields, exact ID handling and bounded reads against existing tool, runtime catalog and model-selection contracts. No selection authority or serving evidence comes from the catalog label.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the optional route fields, exact ID handling and bounded reads against existing tool, runtime catalog and model-selection contracts. No selection authority or serving evidence comes from the catalog label.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the optional route fields, exact ID handling and bounded reads against existing tool, runtime catalog and model-selection contracts. No selection authority or serving evidence comes from the catalog label.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the optional route fields, exact ID handling and bounded reads against existing tool, runtime catalog and model-selection contracts. No selection authority or serving evidence comes from the catalog label.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed catalog projection for direct engine and ACP paths. Labels can use separately reported provider and model fields while catalog readiness, connection ownership and selection identifiers retain their existing meaning.","inputs":["src-server/services/connections/connection-service-helpers.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the launch chip change. The selected model comes before engine context in the compact label. Launch options use the original selector. The captured redesign comparison remains historical.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the launch chip change. The selected model comes before engine context in the compact label. Launch options use the original selector. The captured redesign comparison remains historical.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the launch chip change. The selected model comes before engine context in the compact label. Launch options use the original selector. The captured redesign comparison remains historical.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Reviewed the launch chip change. The selected model comes before engine context in the compact label. Launch options use the original selector. The captured redesign comparison remains historical.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Reviewed the launch chip change. The selected model comes before engine context in the compact label. Launch options use the original selector. The captured redesign comparison remains historical.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the launch chip change. The selected model comes before engine context in the compact label. Launch options use the original selector. The captured redesign comparison remains historical.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the model label wiring and execution override. Shared launch still receives the exact selector. The retained phone captures illustrate the historical redesign.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Reviewed the model label wiring and execution override. Shared launch still receives the exact selector. The retained phone captures illustrate the historical redesign.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Reviewed the model label wiring and execution override. Shared launch still receives the exact selector. The retained phone captures illustrate the historical redesign.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the model label wiring and execution override. Shared launch still receives the exact selector. The retained phone captures illustrate the historical redesign.","inputs":["src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed structured catalog retention and ACP advertised-model fallback. Existing execution binding, option selection and routing use their original identifiers.","inputs":["src-ui/src/utils/execution.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed structured catalog retention and ACP advertised-model fallback. Existing execution binding, option selection and routing use their original identifiers.","inputs":["src-ui/src/utils/execution.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed structured catalog retention and ACP advertised-model fallback. Existing execution binding, option selection and routing use their original identifiers.","inputs":["src-ui/src/utils/execution.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed structured catalog retention and ACP advertised-model fallback. Existing execution binding, option selection and routing use their original identifiers.","inputs":["src-ui/src/utils/execution.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed route-aware model labels alongside existing alias and unknown label rules. The formatter uses reported fields and keeps selector strings opaque.","inputs":["src-ui/src/utils/modelCapabilities.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed ACP catalog forwarding into the shared start selection. Optional route fields add presentation context while the connection and selector drive launch.","inputs":["src-ui/src/hooks/useNewChatSelectionModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed ACP catalog forwarding into the shared start selection. Optional route fields add presentation context while the connection and selector drive launch.","inputs":["src-ui/src/hooks/useNewChatSelectionModel.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed model rows and option labels. The connection setup and saved selectors retain their documented behavior. Connections media remains a historical walkthrough.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed model rows and option labels. The connection setup and saved selectors retain their documented behavior. Connections media remains a historical walkthrough.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed model rows and option labels. The connection setup and saved selectors retain their documented behavior. Connections media remains a historical walkthrough.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed model rows and option labels. The connection setup and saved selectors retain their documented behavior. Connections media remains a historical walkthrough.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed model rows and option labels. The connection setup and saved selectors retain their documented behavior. Connections media remains a historical walkthrough.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed model rows and option labels. The connection setup and saved selectors retain their documented behavior. Connections media remains a historical walkthrough.","inputs":["src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed model option labels and favorite, visibility and ordering actions. Each action still uses the unchanged model identifier. Existing media illustrates the historical configuration journey.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed model option labels and favorite, visibility and ordering actions. Each action still uses the unchanged model identifier. Existing media illustrates the historical configuration journey.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed model option labels and favorite, visibility and ordering actions. Each action still uses the unchanged model identifier. Existing media illustrates the historical configuration journey.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed model option labels and favorite, visibility and ordering actions. Each action still uses the unchanged model identifier. Existing media illustrates the historical configuration journey.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed model option labels and favorite, visibility and ordering actions. Each action still uses the unchanged model identifier. Existing media illustrates the historical configuration journey.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed model option labels and favorite, visibility and ordering actions. Each action still uses the unchanged model identifier. Existing media illustrates the historical configuration journey.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed model option labels and favorite, visibility and ordering actions. Each action still uses the unchanged model identifier. Existing media illustrates the historical configuration journey.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed model option labels and favorite, visibility and ordering actions. Each action still uses the unchanged model identifier. Existing media illustrates the historical configuration journey.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

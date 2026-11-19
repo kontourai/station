@@ -1,0 +1,29 @@
+{
+  "revision": "1f0bd951736fdb31b4a7e731be6351185f50329c",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"The changeset validation step still runs before builds and typechecking. The fast lane’s lint execution moves to required readiness.","inputs":[".changeset/README.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":".veritas/README.md","note":"The style-standard evidence check still executes npm run lint:check and is required for readiness. Verification policy remains default-only in the Repo Map and still executes directly in the fast lane.","inputs":[".veritas/README.md","scripts/__tests__/run-ci-fast.test.ts","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the fast lane and pre-push guidance. The pre-push hook still runs lint directly. Fast CI continues to require lint through readiness.","inputs":["docs/guides/development.md","scripts/__tests__/run-ci-fast.test.ts","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The pre-push table describes the actual hook, which still runs lint. The fast lane requires the same full-repository lint through Veritas style-standard.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","scripts/__tests__/run-ci-fast.test.ts","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Verified the generated fast-lane documentation against the command registry, policy check, required style-standard mapping, pinned readiness entry point and the nested lint command.","inputs":["docs/guides/testing.md","scripts/__tests__/run-ci-fast.test.ts","scripts/run-ci-fast.mjs","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"The Site browser smoke contract, fresh UI build and required aggregator are independent of which fast-lane step runs lint.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/run-ci-fast.test.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"The fast lane still executes the feature-preview metadata check. The lint ownership change affects a separate step.","inputs":["docs/guides/feature-previews.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The testing guide continues to own focused evidence, queue integration and full qualification. Lint stays required in fast feedback.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"The testing guide still owns host admission, focused tests and fixture fidelity. Its updated paragraph identifies required readiness as the fast-lane lint owner.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"The testing guide still owns host admission, focused tests and fixture fidelity. Its updated paragraph identifies required readiness as the fast-lane lint owner.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The testing guide still owns host admission, focused tests and fixture fidelity. Its updated paragraph identifies required readiness as the fast-lane lint owner.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"The testing guide still owns host admission, focused tests and fixture fidelity. Its updated paragraph identifies required readiness as the fast-lane lint owner.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

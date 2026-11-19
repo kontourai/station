@@ -664,7 +664,15 @@
 
     "src-server/routes/evidence/task-code-reviews.ts",
 
-    "src-server/services/evidence/task-code-review-module.ts"
+    "src-server/services/evidence/task-code-review-module.ts",
+
+    "packages/sdk/src/client/custom-appearance-library.ts",
+
+    "packages/sdk/src/client/custom-appearance-mutations.ts",
+
+    "src-server/services/flow/flow-gate-diagnostics.ts",
+
+    "src-server/routes/evidence/flow-runs.ts"
   ],
 
   "checks": [

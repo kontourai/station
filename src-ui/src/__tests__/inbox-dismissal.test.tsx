@@ -99,12 +99,12 @@ describe('inbox dismissal through the rendered panel', () => {
     editor.focus();
     fireEvent.keyDown(editor, { key: 'z', ctrlKey: true, metaKey: true });
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     editor.remove();
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
   it.each([
@@ -118,12 +118,12 @@ describe('inbox dismissal through the rendered panel', () => {
       render(<Harness items={[item]} />);
       dismiss();
       expect(
-        screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+        screen.queryByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeNull();
       expect(screen.getByText('Conversation dismissed')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
       expect(
-        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+        screen.getByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeTruthy();
     },
   );
@@ -134,7 +134,7 @@ describe('inbox dismissal through the rendered panel', () => {
     view.unmount();
     render(<Harness items={[thread]} />);
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     expect(screen.queryByRole('region', { name: /Dismissed/ })).toBeNull();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
@@ -149,7 +149,7 @@ describe('inbox dismissal through the rendered panel', () => {
     expect(
       within(screen.getByRole('region', { name: 'Working' })).getByRole(
         'button',
-        { name: 'Review the inbox, Station' },
+        { name: /^Review the inbox\b/ },
       ),
     ).toBeTruthy();
   });
@@ -183,7 +183,7 @@ describe('inbox dismissal through the rendered panel', () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+        screen.getByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeTruthy(),
     );
   });
@@ -193,7 +193,7 @@ describe('inbox dismissal through the rendered panel', () => {
     dismiss();
     view.rerender(<Harness items={[{ ...thread, updatedAt: NOW + 1000 }]} />);
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     view.rerender(
       <Harness
@@ -205,20 +205,20 @@ describe('inbox dismissal through the rendered panel', () => {
     await waitFor(
       () =>
         expect(
-          screen.getByRole('button', { name: 'Review the inbox, Station' }),
+          screen.getByRole('button', { name: /^Review the inbox\b/ }),
         ).toBeTruthy(),
       { timeout: 3000 },
     );
     view.rerender(<Harness items={[{ ...thread, updatedAt: NOW + 3000 }]} />);
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
   it('stays dismissed through a turn the engine opened on its own, until it fails', async () => {
     const ready: HomeWorkItem = { ...thread, lifecycleLabel: 'Ready' };
     const row = () =>
-      screen.queryByRole('button', { name: 'Review the inbox, Station' });
+      screen.queryByRole('button', { name: /^Review the inbox\b/ });
     const engineOpened = new Map([
       [thread.id, { engineOpenedTurn: true as const }],
     ]);
@@ -276,7 +276,7 @@ describe('inbox dismissal through the rendered panel', () => {
     await waitFor(
       () =>
         expect(
-          screen.getByRole('button', { name: 'Review the inbox, Station' }),
+          screen.getByRole('button', { name: /^Review the inbox\b/ }),
         ).toBeTruthy(),
       { timeout: 3000 },
     );
@@ -296,7 +296,7 @@ describe('inbox dismissal through the rendered panel', () => {
     );
     expect(screen.getByLabelText('Needs you count').textContent).toBe('1');
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
@@ -313,7 +313,7 @@ describe('inbox dismissal through the rendered panel', () => {
     );
     dismiss();
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     expect(screen.getByLabelText('Needs you count').textContent).toBe('0');
     view.rerender(
@@ -323,7 +323,7 @@ describe('inbox dismissal through the rendered panel', () => {
       />,
     );
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
@@ -358,11 +358,11 @@ describe('inbox dismissal through the rendered panel', () => {
       />,
     );
     expect(
-      screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
@@ -374,7 +374,7 @@ describe('inbox dismissal through the rendered panel', () => {
       window.dispatchEvent(new StorageEvent('storage', { key: null }));
     });
     expect(
-      screen.getByRole('button', { name: 'Review the inbox, Station' }),
+      screen.getByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeTruthy();
   });
 
@@ -388,7 +388,7 @@ describe('inbox dismissal through the rendered panel', () => {
     try {
       dismiss();
       expect(
-        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+        screen.getByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeTruthy();
       expect(
         screen.getByText('Could not save dismissal. Try again.'),
@@ -407,7 +407,7 @@ describe('inbox dismissal through the rendered panel', () => {
     try {
       dismiss();
       expect(
-        screen.queryByRole('button', { name: 'Review the inbox, Station' }),
+        screen.queryByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeNull();
       expect(
         screen.queryByText('Could not save dismissal. Try again.'),
@@ -415,7 +415,7 @@ describe('inbox dismissal through the rendered panel', () => {
       // Undo stays reachable without the toast.
       fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
       expect(
-        screen.getByRole('button', { name: 'Review the inbox, Station' }),
+        screen.getByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeTruthy();
     } finally {
       show.mockRestore();

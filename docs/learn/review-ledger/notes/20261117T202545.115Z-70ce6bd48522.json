@@ -1,0 +1,7 @@
+{
+  "revision": "a67043bd1ef89ad284796f1e51d126db99b03cf0",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed a67043bd description-only changes in registerPlatformTools: plugin installs/updates/removals remain person-reviewed proposals, validate_plugin remains local-only diagnostics with no dependency/build/install effects, and the engine tools retain discovery then human navigation. Condensed orchestration text retains per-tool gating, identity/retry controls, person-owned setup, conditional Station tools and distinct evidence facts. The live-context measurement is lower in all four changed categories; 56 focused tests include delivered first-turn semantics and real MCP route capture. General manual claims remain accurate; no new provider or device qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-control-platform-tools.ts"]}
+  ]
+}

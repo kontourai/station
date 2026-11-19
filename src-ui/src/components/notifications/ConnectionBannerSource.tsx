@@ -291,8 +291,8 @@ export function ConnectionBannerSource() {
     }
     const copy = connectionFailureCopy(
       reason,
-      activeConnection?.name || apiBase,
-      activeConnection?.url || apiBase,
+      activeConnection?.name,
+      endpoint,
     );
     const hasStaleContext = activeConnection?.lastSuccessAt !== undefined;
     const connectionId = activeConnection?.id;
@@ -425,9 +425,8 @@ export function ConnectionBannerSource() {
     blocked,
     activeConnection?.id,
     activeConnection?.name,
-    activeConnection?.url,
     activeConnection?.lastSuccessAt,
-    apiBase,
+    endpoint,
     recheck,
     removeConnection,
     removeArmed,

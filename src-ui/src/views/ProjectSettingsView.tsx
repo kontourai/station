@@ -9,7 +9,7 @@ import {
   useProjectIconCandidatesQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   AccountIdentityConflict,
   isAccountIdentityConflict,
@@ -17,6 +17,7 @@ import {
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
 import { EnvironmentPicker } from '../components/EnvironmentPicker';
+import { ArrowLeftGlyph } from '../components/icons/Glyph';
 import {
   displayableProjectIcon,
   ProjectIcon,
@@ -105,21 +106,11 @@ const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
   'usage',
 ]);
 
-/**
- * Sections that do not go through the page's Save, and how each applies.
- * Every other section is saved with Save.
- */
 const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
-  layouts: 'Actions in this section apply when confirmed.',
   overview: 'Changes in this section save automatically.',
   'pull-requests': 'Changes in this section save automatically.',
-  resources: 'Actions in this section apply when confirmed.',
-  access: 'Actions in this section apply when confirmed.',
-  knowledge: 'Actions in this section apply when confirmed.',
-  memory: 'Actions in this section apply when confirmed.',
-  brief: 'Save to apply. Changes reach new Sessions, not ones already running.',
-  models:
-    'Save to apply. Changes reach new Sessions, not ones already running.',
+  brief: 'Saved changes reach new Sessions, not ones already running.',
+  models: 'Saved changes reach new Sessions, not ones already running.',
   usage: 'Usage on this Station only.',
 };
 
@@ -308,6 +299,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const selectedConnectionModels = connectionModelOptions(selectedConnection);
 
   const saveMutation = useUpdateProjectMutation();
+  const backButton = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
+  const restoreFocusAfterSave = useRef(false);
   const { data: chatDefaultsAnswer } = useScopedProjectChatDefaultsQuery(slug);
   const chatDefaults = chatDefaultsAnswer ?? undefined;
 
@@ -323,7 +317,16 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const isDirty =
     !isLoading && !!form && JSON.stringify(form) !== JSON.stringify(savedForm);
   const { DiscardModal } = useUnsavedGuard(isDirty);
-  useCloseShortcut(() => navigate(`/projects/${slug}`));
+  const goBack = () => navigate(`/projects/${slug}`);
+  useCloseShortcut(goBack);
+
+  useLayoutEffect(() => {
+    if (isDirty || saveMutation.isPending || !restoreFocusAfterSave.current)
+      return;
+    restoreFocusAfterSave.current = false;
+    if (document.activeElement === document.body)
+      backButton.current?.focus({ preventScroll: true });
+  }, [isDirty, saveMutation.isPending]);
 
   if (
     isLoadError &&
@@ -400,7 +403,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   }
 
   async function saveProject() {
-    if (!form) return;
+    if (!form || !isDirty || saveMutation.isPending) return;
+    restoreFocusAfterSave.current =
+      saveButton.current?.matches(':focus-visible') ?? false;
     setSaveError(null);
     try {
       const saved = await saveMutation.mutateAsync({
@@ -423,9 +428,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
   return (
     <div
-      className={`page page--full${activeSection === 'resources' ? ' project-settings--sources' : ''}`}
+      className={`page page--full${activeSection === 'resources' || activeSection === 'memory' ? ' project-settings--bounded-list' : ''}`}
     >
-      {/* Header */}
       <DetailHeader
         title={form.name}
         badge={
@@ -433,17 +437,28 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             ? { label: 'unsaved', variant: 'warning' as const }
             : undefined
         }
-      >
-        <Button onClick={() => navigate(`/projects/${slug}`)}>← Back</Button>
-        {(activeSection !== 'pull-requests' || isDirty) && (
+        navigation={
           <Button
+            ref={backButton}
+            variant="ghost"
+            aria-label="Back to project"
+            title="Back to project"
+            onClick={goBack}
+          >
+            <ArrowLeftGlyph />
+          </Button>
+        }
+      >
+        {(isDirty || saveMutation.isPending) && (
+          <Button
+            ref={saveButton}
             variant="primary"
-            disabled={
-              saveMutation.isPending || !form.name.trim() || !!iconProblem
-            }
+            pending={saveMutation.isPending}
+            pendingLabel="Saving…"
+            disabled={!form.name.trim() || !!iconProblem}
             onClick={() => void saveProject()}
           >
-            {saveMutation.isPending ? 'Saving…' : 'Save'}
+            Save
           </Button>
         )}
       </DetailHeader>
@@ -465,11 +480,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
         {/* Body */}
         <div className="section-nav-rail__body project-settings__body">
-          <p className="project-settings__save-hint">
-            {SECTION_SAVE_HINTS[activeSection] ??
-              'Save to apply changes to project defaults.'}
-          </p>
-          {activeSection !== 'basic-info' &&
+          {SECTION_SAVE_HINTS[activeSection] && (
+            <p className="project-settings__save-hint">
+              {SECTION_SAVE_HINTS[activeSection]}
+            </p>
+          )}
+          {isDirty &&
+            activeSection !== 'basic-info' &&
             (!form.name.trim() || iconProblem) && (
               <ErrorState
                 variant="compact"

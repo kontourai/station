@@ -112,13 +112,16 @@ export function HomeSurface({
         id={CONTINUE_SECTION_ID}
       />
     ) : null;
+  const hasRemoteWorkNotice =
+    Boolean(model.remoteReadError) ||
+    model.remoteUnavailable.length > 0 ||
+    model.remoteAuthenticationRequired.length > 0;
   const showRecentWork =
     !continued ||
     model.workLoading ||
     model.workDegraded ||
     model.workError ||
-    model.remoteUnavailable.length > 0 ||
-    model.remoteAuthenticationRequired.length > 0 ||
+    hasRemoteWorkNotice ||
     [
       listedLanes.needsYou,
       listedLanes.running,
@@ -139,6 +142,7 @@ export function HomeSurface({
       workDegraded={model.workDegraded}
       workError={model.workError}
       agents={model.agents}
+      remoteReadError={model.remoteReadError}
       remoteUnavailable={model.remoteUnavailable}
       remoteAuthenticationRequired={model.remoteAuthenticationRequired}
       onOpen={model.continueWork}
@@ -178,19 +182,18 @@ export function HomeSurface({
           Skip to recent work
         </a>
       )}
-      {model.firstSession ? (
-        <header className="home-view__welcome">
-          <h1>Start your first conversation</h1>
-        </header>
-      ) : (
+      {!model.firstSession && (
         <h1 className="sr-only">{OVERVIEW_PRODUCT_NAME}</h1>
       )}
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div
-        className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
+        className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}${model.firstSession ? ' home-view__welcome' : ''}`}
       >
-        <HomeStartComposer compact={hasWork || model.firstSession} />
+        <HomeStartComposer
+          compact={hasWork}
+          firstSession={model.firstSession}
+        />
       </div>
       {hasWork ? (
         <>
@@ -204,7 +207,7 @@ export function HomeSurface({
         <>
           {actions}
           <HomeCoordinatorCard />
-          {!model.firstSession && recentWork}
+          {(!model.firstSession || hasRemoteWorkNotice) && recentWork}
         </>
       )}
     </>

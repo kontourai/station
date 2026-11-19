@@ -29,7 +29,10 @@ type AnyLazy = LazyExoticComponent<ComponentType<any>>;
  */
 const sharedLazy = new WeakMap<AnyLoad, AnyLazy>();
 
-/** Lazy component whose chunk resolution is a transcript tracer phase. */
+/**
+ * React gets the tracing promise, even when a loader reuses its own native
+ * promise. Passing the loader promise through can hang a later lazy mount.
+ */
 function traced(load: AnyLoad): AnyLazy {
   return lazy(() =>
     load().then((module) => {
@@ -68,10 +71,22 @@ function forgetLazy(load: AnyLoad, component: AnyLazy) {
  * `unavailable` slot instead of copying the markup — one place changes when
  * this block's UX does.
  */
-export function LazyBoundaryError({ onRetry }: { onRetry: () => void }) {
+type LazySurface = { id: string; label: string };
+
+export function LazyBoundaryError({
+  onRetry,
+  surface,
+}: {
+  onRetry: () => void;
+  surface?: LazySurface;
+}) {
   return (
-    <div className="lazy-boundary__error" role="alert">
-      <span>Unable to load this part of Station.</span>
+    <div
+      className="lazy-boundary__error"
+      data-lazy-surface={surface?.id}
+      role="alert"
+    >
+      <span>Unable to load {surface?.label ?? 'this part of Station'}.</span>
       <button type="button" onClick={onRetry}>
         Retry
       </button>
@@ -82,25 +97,14 @@ export function LazyBoundaryError({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-interface LazyImportErrorBoundaryProps {
-  children: ReactNode;
-  onError: () => void;
-  onRetry: () => void;
-  unavailable?: (onRetry: () => void) => ReactNode;
-}
-
-interface LazyImportErrorBoundaryState {
-  error: Error | null;
-}
-
 class LazyImportErrorBoundary extends Component<
-  LazyImportErrorBoundaryProps,
-  LazyImportErrorBoundaryState
+  { children: ReactNode; onError: () => void; renderError: () => ReactNode },
+  { failed: boolean }
 > {
-  state: LazyImportErrorBoundaryState = { error: null };
+  state = { failed: false };
 
-  static getDerivedStateFromError(error: Error): LazyImportErrorBoundaryState {
-    return { error };
+  static getDerivedStateFromError() {
+    return { failed: true };
   }
 
   componentDidCatch() {
@@ -108,20 +112,15 @@ class LazyImportErrorBoundary extends Component<
   }
 
   render() {
-    if (this.state.error) {
-      if (this.props.unavailable) {
-        return this.props.unavailable(this.props.onRetry);
-      }
-      return <LazyBoundaryError onRetry={this.props.onRetry} />;
-    }
-
-    return this.props.children;
+    return this.state.failed ? this.props.renderError() : this.props.children;
   }
 }
 
 export interface LazyBoundaryProps<Props extends object> {
   load: () => Promise<{ default: ComponentType<Props> }>;
   componentProps: Props;
+  /** Stable identity and user-facing name of the surface that owns failure. */
+  surface?: LazySurface;
   /**
    * Rendered while the chunk is in flight. Named `pending`, not `fallback`:
    * nothing here substitutes for the real surface, it reports that the real
@@ -140,22 +139,6 @@ export interface LazyBoundaryProps<Props extends object> {
   shareAcrossMounts?: boolean;
 }
 
-function LazyAttempt<Props extends object>({
-  component,
-  componentProps,
-  pending,
-}: {
-  component: ComponentType<Props>;
-  componentProps: Props;
-  pending: ReactNode;
-}) {
-  return (
-    <Suspense fallback={pending}>
-      {createElement(component, componentProps)}
-    </Suspense>
-  );
-}
-
 /**
  * Contains a code-split surface's pending and rejected states. Retrying uses a
  * newly-created lazy component, which invokes the import factory again rather
@@ -166,6 +149,7 @@ export function LazyBoundary<Props extends object>({
   componentProps,
   pending,
   unavailable,
+  surface,
   shareAcrossMounts = false,
 }: LazyBoundaryProps<Props>) {
   const [attempt, setAttempt] = useState(0);
@@ -177,19 +161,22 @@ export function LazyBoundary<Props extends object>({
     [load, attempt, shareAcrossMounts],
   );
 
+  const retry = () => setAttempt((current) => current + 1);
   return (
     <LazyImportErrorBoundary
       key={attempt}
       onError={() => forgetLazy(load, component)}
-      onRetry={() => setAttempt((currentAttempt) => currentAttempt + 1)}
-      unavailable={unavailable}
+      renderError={() =>
+        unavailable ? (
+          unavailable(retry)
+        ) : (
+          <LazyBoundaryError onRetry={retry} surface={surface} />
+        )
+      }
     >
-      <LazyAttempt
-        key={attempt}
-        component={component as ComponentType<Props>}
-        componentProps={componentProps}
-        pending={pending}
-      />
+      <Suspense fallback={pending}>
+        {createElement(component as ComponentType<Props>, componentProps)}
+      </Suspense>
     </LazyImportErrorBoundary>
   );
 }

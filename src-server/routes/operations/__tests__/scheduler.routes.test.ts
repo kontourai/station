@@ -427,7 +427,11 @@ describe('Scheduler Routes', () => {
       body: JSON.stringify({ schedule }),
     });
     expect(response.status).toBe(200);
-    expect(svc.editJob).toHaveBeenCalledWith('daily-report', { schedule });
+    expect(svc.editJob).toHaveBeenCalledWith(
+      'daily-report',
+      { schedule },
+      mockJob,
+    );
   });
 
   test('POST /jobs/:target/run preserves an indeterminate manual receipt instead of reporting success', async () => {
@@ -544,6 +548,7 @@ describe('Scheduler Routes', () => {
     expect(svc.editJob).toHaveBeenCalledWith(
       'daily-report',
       expect.any(Object),
+      mockJob,
     );
   });
 
@@ -554,7 +559,7 @@ describe('Scheduler Routes', () => {
     );
     expect(body.success).toBe(true);
     expect(body.data).toEqual({ output: 'Scheduler job completed.' });
-    expect(svc.runJob).toHaveBeenCalledWith('daily-report');
+    expect(svc.runJob).toHaveBeenCalledWith('daily-report', mockJob);
   });
 
   test('POST /jobs/:target/run adds a receipt without changing the legacy output field', async () => {
@@ -611,7 +616,7 @@ describe('Scheduler Routes', () => {
       await app.request('/jobs/daily-report/enable', { method: 'PUT' }),
     );
     expect(body).toEqual({ success: true });
-    expect(svc.enableJob).toHaveBeenCalledWith('daily-report');
+    expect(svc.enableJob).toHaveBeenCalledWith('daily-report', mockJob);
   });
 
   test('PUT /jobs/:target/disable returns { success: true }', async () => {
@@ -620,7 +625,7 @@ describe('Scheduler Routes', () => {
       await app.request('/jobs/daily-report/disable', { method: 'PUT' }),
     );
     expect(body).toEqual({ success: true });
-    expect(svc.disableJob).toHaveBeenCalledWith('daily-report');
+    expect(svc.disableJob).toHaveBeenCalledWith('daily-report', mockJob);
   });
 
   test('DELETE /jobs/:target returns { success: true }', async () => {
@@ -629,7 +634,7 @@ describe('Scheduler Routes', () => {
       await app.request('/jobs/daily-report', { method: 'DELETE' }),
     );
     expect(body).toEqual({ success: true });
-    expect(svc.removeJob).toHaveBeenCalledWith('daily-report');
+    expect(svc.removeJob).toHaveBeenCalledWith('daily-report', mockJob);
   });
 
   /**

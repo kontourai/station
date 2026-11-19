@@ -87,6 +87,57 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 }
 
 describe('AgentDefaultsSection', () => {
+  test('names both template-variable type controls and changes only the chosen row', () => {
+    const onChange = vi.fn();
+    render(
+      <AgentDefaultsSection
+        {...baseProps}
+        config={{
+          defaultModel: '',
+          templateVariables: [
+            { key: '', type: 'static', value: 'keep' },
+            { key: 'launchDate', type: 'date' },
+          ],
+        }}
+        onChange={onChange}
+        showRegion={false}
+      />,
+    );
+    const first = screen.getByRole('combobox', {
+      name: 'Template variable 1 type',
+    });
+    const second = screen.getByRole('combobox', {
+      name: 'Template variable 2 type',
+    });
+    expect((first as HTMLSelectElement).value).toBe('static');
+    expect((second as HTMLSelectElement).value).toBe('date');
+    fireEvent.change(second, { target: { value: 'time' } });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({
+      defaultModel: '',
+      templateVariables: [
+        { key: '', type: 'static', value: 'keep' },
+        { key: 'launchDate', type: 'time' },
+      ],
+    });
+  });
+
+  test('shows the built-in prompt and external-engine scope beside the controls', () => {
+    render(
+      <AgentDefaultsSection
+        {...baseProps}
+        config={{ defaultModel: '' }}
+        showRegion={false}
+      />,
+    );
+    expect(
+      screen.getByText(/uses them in place of its built-in prompt/),
+    ).toBeTruthy();
+    expect(screen.getByText(/omits them for external engines/)).toBeTruthy();
+    expect(
+      screen.getByText(/external engines receive the authored placeholders/),
+    ).toBeTruthy();
+  });
+
   test('uses generic default-model hint when no runtime-backed options are available', () => {
     runtimeConnectionsMock = [];
 

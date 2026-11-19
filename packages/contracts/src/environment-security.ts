@@ -1135,6 +1135,17 @@ export interface WebPushSubscription {
   };
 }
 
+/** Canonical input to the SHA-256 registration check, never a wire payload. */
+export function webPushRegistrationFingerprintInput(
+  subscription: WebPushSubscription,
+): string {
+  return JSON.stringify([
+    subscription.endpoint,
+    subscription.keys.p256dh,
+    subscription.keys.auth,
+  ]);
+}
+
 export interface DevicePairingExchangeRequest {
   offerId: string;
   proof: string;

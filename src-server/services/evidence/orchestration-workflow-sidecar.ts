@@ -203,7 +203,7 @@ export function workflowPatchForGateVerdict(
   };
 }
 
-/** Completion (all gates passed, or no gates bound): delivered and done. */
+/** An allowed completion delivers the workflow. */
 export function workflowPatchForCompletion(
   flowVerdict?: FlowGateVerdictEvent,
 ): WorkflowTransitionPatch {
@@ -212,9 +212,10 @@ export function workflowPatchForCompletion(
     phase: 'done',
     nextAction: {
       status: 'done',
-      summary: flowVerdict
-        ? `Session completed; Flow run ${flowVerdict.runId} passed its gates`
-        : 'Session completed',
+      summary:
+        flowVerdict?.verdict === 'pass'
+          ? `Session completed; Flow run ${flowVerdict.runId} recorded a passing gate`
+          : 'Session completed',
     },
   };
 }

@@ -171,7 +171,8 @@ cannot mutate shared layouts or promote a personal Board. Personal Project
 layouts retain principal ownership and require current Project `view` plus
 [Project policy](../reference/contracts.md#personal-project-layouts-2996); they
 never grant access to another Project. Friendly role presets select
-these actions; they are not tokens appended to device pairing scopes.
+these actions. Commenter grants only `view` and `discuss`. Device approval
+independently limits which actions a browser can submit.
 Only an authorized owner/admin may grant actions within their grant authority.
 Reject removal of the last active owner unless ownership transfer commits first.
 

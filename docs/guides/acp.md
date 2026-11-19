@@ -6,6 +6,72 @@ This guide is for developers who want to connect their own external engine to St
 
 ---
 
+## Set up an engine from chat
+
+On a personal Station, enable **Guided engine setup** in Settings → Advanced →
+Feature previews. An Agent with Station Control can call `list_engine_setup`,
+then `open_engine_setup` with the chosen entry's id. The same read is available
+as `station acp setup`. On an older host without these tools, use
+Connections → Engines or update the host.
+
+The tool opens the existing engine-specific pane. Complete the steps there:
+
+1. If the CLI is missing, choose **Install … on Station** and review the exact
+   installer command. A terminal shows its progress on the Station computer;
+   **Stop installation** ends that attempt. Successful completion re-checks
+   detection; an exit alone does not claim that the CLI is installed.
+2. Choose **Connect**. If sign-in is required, open the sign-in panel and use
+   its offered method. Grok and Kiro CLI offer a device-code terminal login
+   only after the installed CLI's help advertises the reviewed flag.
+   Antigravity advertises its terminal login through ACP. These complete on
+   the Station host while the person uses their current device. A completed
+   CLI login is verified with the engine's own status command, then setup
+   checks the connection again.
+3. If an existing connection needs the supported launch arguments, choose
+   **Use recommended setup** and review them. The connection id, authored Agent
+   and history stay in place. A connection with multiple possible variants is
+   left for the person to choose, rather than silently selecting another mode.
+4. Choose **Add Station tools** if this Agent should use Station Control,
+   Knowledge and Docs. This is an explicit choice; it preserves the Agent's
+   prompt, existing tools and tool restrictions. Selection is not delivery
+   proof. Then start its chat, or return to the originating chat for a check.
+
+Closing setup leaves the chat intact. Device permissions still control installation,
+terminal access and engine sign-in; enabling the preview grants none of them.
+Permission notices link to **Device access** instead of requiring a host shell.
+Only reviewed built-in installer recipes can run this way. Public/plugin
+listings retain their own inspection/install paths. Installer requests are
+serialized per engine, carry a durable operation id in the terminal record,
+and reuse that record after a lost response. Stop names the exact attempt.
+The terminal host enforces a 15-minute lifetime even while no core is attached;
+an older host that cannot negotiate that bound refuses before the installer
+starts. Turning the preview off retains inspection and Stop for an existing
+installer while refusing new work.
+The catalog is an owner-scoped projection, not a dump of commands,
+configuration paths, accounts or credentials. Hosted Stations refuse this read.
+
+Use Station's built-in entry for supported engines. Antigravity uses
+`agy acp --process-per-session` so it can receive HTTP MCP servers. A custom
+`agy acp` connection answering a prompt does not establish that Station Control
+was delivered. A browser on a phone is not the browser on the Station computer.
+Complete sign-in through the pane's offered method, rather than pasting OAuth
+codes into chat.
+
+After setup, the Agent re-reads the catalog and `list_agents`. Detection,
+recorded initialize handshake, sign-in, a successful chat turn and tool delivery
+are separate observations. `httpTools: advertised` reports the handshake's
+channel capability, not a tool invocation. Run the intended bounded work only
+after the selected Agent is available and report these limits explicitly.
+
+The catalog reports `connectionId` and related saved connections. It reuses an
+unambiguous saved alias rather than creating a duplicate. It does not replace
+custom arguments that already deliver the required HTTP channel.
+
+A saved connection can be checked with `station acp connections reconnect <id>`
+even if its live probe is absent. This preserves its saved setup and authored
+Agent. Disabled connections must be enabled in their engine page. A generic
+`station acp commands` listing does not start or test a named engine.
+
 ## What is ACP?
 
 Station is a UI and session-management layer. It handles conversations, memory, tool approval, and streaming responses. ACP is the protocol that lets an external engine plug into all of that as an Agent app connection.
@@ -248,14 +314,17 @@ Sending a message to an ACP-connected agent is identical, from the UI's perspect
 3. A later turn uses the bound continuation endpoint. The `acp` adapter forwards it to the runtime via `connection.prompt()`.
 4. The runtime's ACP session-update and extension notifications are translated by the adapter into [Canonical runtime events](../glossary.md) and streamed back over `GET /api/orchestration/events` (SSE), exactly like any other provider.
 
-The chat composer defaults to Queue while an ACP turn runs (Steer is the
-default only for native steering). Its Steer mode uses a
-conservative safe-waiting fallback for ACP connections: the current adapters
-provide no confirmed safe execution boundary, so the composer waits for the turn
-to finish. Attachments remain in the draft until then. See the
+The chat composer reads the live session's steering declaration. A confirmed
+native channel defaults to Steer; cancel-and-reprompt defaults to Queue. You
+can select Steer on the fallback too: Station cancels the active prompt, waits
+up to ten seconds for its terminal answer, then sends the additional instruction
+with a short continuation instruction on the same session and Station turn.
+The continuation keeps the current task unless your instruction changes it.
+If cancellation fails or times out, Station stops the session and sends no
+replacement prompt. Attachments are queued for the next turn. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro, Grok and OpenCode 2.x answer methods they do not declare as extension methods, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag; OpenCode 2.x's `_meta.steering.supported`, steered through `_session/steering`, where an answer of `promptRequired` means no turn was running and the steer fails as ended). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, including OpenCode 1.x, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+The adapter `steerTurn` command steers the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro, Grok and OpenCode 2.x answer methods they do not declare as extension methods, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag; OpenCode 2.x's `_meta.steering.supported`, steered through `_session/steering`, where an answer of `promptRequired` means no turn was running and the steer fails as ended). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, including OpenCode 1.x, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, waiting for its terminal answer, and re-prompting with the continuation instruction on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -292,6 +361,13 @@ Do not re-document per-field shapes here — read them from the contract file di
 Cursor's `cursor/update_todos` notification is not rendered as a message: the adapter folds its todo list (`merge: true` updates entries by id, `merge: false` replaces the list) into the same typed Plan surface as `plan.updated`. Station's plan has no cancelled state, so a cancelled todo is left off the plan. A malformed or oversized update (over 200 todos, or 256 KiB of JSON) leaves the plan as it was. The binding's evidence is Cursor's published ACP contract (cursor.com/docs/cli/acp), not a live observation.
 
 Within this ACP/Kiro transcript branch, other notifications are transcript no-ops unless the exact shared binding table assigns a handler. Other engines have separate evidenced bindings, including Claude Code API retry activity and the context-compaction and rewind markers attached-session sources record (drawn by the transcript projection as a quiet line, not an ephemeral message); namespace similarity never grants those semantics. A separate, narrower mechanism (below) does read one more shape of extension notification, but not to render it — only to enrich a later, otherwise-generic turn failure.
+
+### Reply output during Stop
+
+ACP reply chunks carry a session identity without naming a prompt. Station
+publishes message and reasoning chunks only while it can attribute them to an
+active turn. If a cancelled prompt is still settling while a successor turns
+active, Station drops the ambiguous chunks until the earlier prompt settles.
 
 ### Turn-failure enrichment from a co-reported notification
 
@@ -1180,14 +1256,14 @@ OpenCode 1.18.18 (npm `opencode-ai`). OpenCode 2.x behaves differently, and
 Station reads the binary's `--version` to tell the two apart
 ([version probe](../../src-server/providers/adapters/opencode-version-probe.ts)).
 
-- **Approval rules.** Station's check reads 1.x's `opencode debug agent <name>`.
-  2.x has no such subcommand: it exits 1 with "Unknown subcommand", which is the
-  failure reported in #4435. 2.x's `debug agents` (plural) lists each agent's
-  configured rules but not the approvals the person saved. Over ACP, Station
-  therefore does not govern 2.x (ruling R1). A start or takeover that asks for a
-  Station approval mode on 2.x is refused with `acp_approval_governance_refused`,
-  and the reason names the version. Without a Station mode, OpenCode's own
-  approvals apply as before. No launch overlay is built for 2.x.
+- **Approval rules.** Station's confined-mode check reads 1.x's
+  `opencode debug agent <name>`. 2.x has no such subcommand; its `debug agents`
+  lists configured rules but not saved approvals. Ask, Auto, and Never ask
+  confined to Auto therefore remain refused over ACP. **Never ask in a host
+  session is supported on 2.x**, on start, takeover, and resume. Station sends
+  no 1.x launch overlay and answers the permission requests OpenCode makes;
+  OpenCode's own denies still apply, and rules or saved approvals may let an
+  action run without asking. Default keeps OpenCode's own settings.
 - **Steering.** 2.x's `initialize` declares `_meta.steering.supported`, and
   Station steers it through `_session/steering`
   ([steer channels](../../src-server/providers/adapters/acp-steer.ts)). 1.x
@@ -1205,8 +1281,8 @@ Station reads the binary's `--version` to tell the two apart
   on each permission OpenCode asks for, as over ACP. That path does not
   need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
   and every chat while the preview is off still run over ACP. A 2.x chat that
-  falls back to ACP gets the refusal above (ruling R1) for any Station approval
-  mode, Ask and Auto included; without one, OpenCode's own approvals apply. The design,
+  falls back to ACP supports host Never ask; confined modes retain the refusal
+  above. Without a Station mode, OpenCode's own approvals apply. The design,
   fallback rules and limits are in
   [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
   #4435 stays open until this ships.
@@ -1214,6 +1290,17 @@ Station reads the binary's `--version` to tell the two apart
 **Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
+
+The turn outcome follows the engine’s reported stop reason. A refusal or
+request-budget limit ends the turn with a failure explanation. An unrecognized
+or missing stop reason records an unconfirmed result. Station retains the
+bounded provider reason when the engine supplied one, and these outcomes carry
+no automatic retry authority. A person can send a new turn in the same
+attached chat. History with an older ACP `other` completion is interpreted
+using its stored reason at read time. When that reason is absent, the result
+remains unconfirmed. OpenCode shares a provider ID across ACP and native
+Serve, so its older completions require a retained ACP stop reason before
+Station applies this interpretation.
 
 ### File System and Terminal Tools (Station → Runtime)
 
@@ -1398,10 +1485,10 @@ and any a plugin contributes. Besides the launch fields above, an entry
 
 | Field | Description |
 |---|---|
-| `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
+| `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. The response adds `hostInstall`, the recipe for the platform Station runs on. With Guided engine setup enabled, the person can review and run a built-in recipe in a bounded host terminal; plugin/public recipes remain guidance. Detection never runs a recipe. |
 | `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`, `AUGMENT_`, `KIRO_CLI_`). The environment Station already launches with wins a conflict. |
 | `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
-| `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`). See [Sign an engine in](connections.md#sign-an-engine-in). |
+| `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`); and a reviewed `terminalLogin`, offered only after its required flag is observed in the installed CLI's bounded help output. See [Sign an engine in](connections.md#sign-an-engine-in). |
 | `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
 | `minimumVersion` | Built-in entries only. `versionCommand` (argv) prints the installed version, `minimum` is the oldest working `major.minor.patch`, and `updateHint` says how to update. Read only after a check of the engine fails for a reason other than sign-in: the command runs bounded like a status command, and a version below `minimum` makes the failure `engine-update-required` with Station's own sentence naming both versions and the hint. A failed run or output without a version leaves it unnamed. |
 | `managedRuntime` | Built-in entries only. `installId` names a pinned install Station downloads with consent and verifies from its manifest digest (`@kontourai/station-contracts/managed-engine-install`); `argv` are the runtime's arguments, exactly one of them `{script}`, the install's entry script. |

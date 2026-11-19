@@ -104,8 +104,10 @@ ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
 policy check, and the external engine reports that identity. Which calls
-invoke the callback is the engine's own configuration; for OpenCode, Station
-sets that configuration from the chat's approval mode
+invoke the callback is the engine's own configuration. For verified OpenCode
+1.x over ACP, Station sets its launch configuration from the approval mode.
+For OpenCode 2.x over ACP, host Never ask answers the engine's own requests
+without a launch overlay; confined modes remain refused
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
 The `opencode` engine delivers the same staged evaluator on both transports.
 Over ACP it is the `requestPermission` path above. On its native transport it
@@ -123,6 +125,15 @@ approval path before execution; that narrow path does not cover other Codex
 tools. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
+
+Inherited delegation allowlists are conjunctive. Each group is an allowlist
+from an ancestor, and the tool must match every group as well as the child's
+own allowlist. An empty group permits no tool. Station preserves the groups
+in delegated requests and binds them to the runtime attestation. Station
+refuses execution of requests or recorded sessions carrying inherited groups,
+including managed Station execution and forwarding to a peer or SSH target.
+Enabling that execution requires binding the policy to conversation reuse and
+durable intent, then proving enforcement at the actual tool effect.
 
 Child fan-out is the one denial Station also enforces server-side for every
 engine. A delegated child that calls `delegate_task` or `send_message` is

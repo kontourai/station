@@ -28,7 +28,8 @@ export function useSetupImportSourcesQuery(
 ) {
   return useApiQuery(
     ['setup-imports', 'sources'],
-    async () => fetchExistingSetupImportSources(await _getApiBase()),
+    async (signal) =>
+      fetchExistingSetupImportSources(await _getApiBase(), { signal }),
     config,
   );
 }

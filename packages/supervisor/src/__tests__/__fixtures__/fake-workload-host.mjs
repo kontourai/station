@@ -58,6 +58,7 @@ function killTree(workload) {
 
 /** @param {WorkloadRequest} request @returns {Promise<unknown>} */
 async function handle(request) {
+  if (request.op === 'capabilities') return { maxRuntimeMs: true };
   if (request.op === 'list') return [...workloads.values()].map((w) => w.info);
   if (request.op === 'spawn') {
     if (workloads.has(request.workloadId)) throw ['exists', 'workload exists'];

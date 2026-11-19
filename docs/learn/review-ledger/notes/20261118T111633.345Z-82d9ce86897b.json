@@ -1,0 +1,27 @@
+{
+  "revision": "90267275dbbc148732e91bfc991d64896b72120d",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"The maintenance guide keeps its review and scope rules. Renderer fixtures add Markdown frontmatter cases without changing Veritas readiness or evidence authority.","inputs":[".veritas/README.md","docs/guides/documentation.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/README.md","note":"The guided learning route and maintenance references remain valid. Reader title and outline now derive from prose when leading YAML metadata is present.","inputs":["docs/README.md","docs/guides/documentation.md","docs/learn/README.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The atlas still groups responsibilities and links readers to source and review limits. Frontmatter display does not affect module groupings or the follow-through workflow.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md","docs/learn/README.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"The maintenance guide still routes affected claims through review. The index suite retains its original source and freshness coverage and adds a rendering regression.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Verified the documentation workflow links and unchanged test routing. Reader rendering skips valid frontmatter and keeps source diagnostic positions.","inputs":["docs/guides/development.md","docs/guides/documentation.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/guides/documentation.md","note":"Checked the shared renderer used by link validation. YAML metadata creates no rendered anchors and link diagnostics preserve original body line numbers.","inputs":["docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The maintenance workflow link remains current. Renderer handling does not affect integration ownership or published package contracts.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"The documentation truth and focused test routes remain current. The index suite exercises actual renderer output without changing the validation lanes.","inputs":["docs/guides/testing.md","docs/guides/documentation.md","scripts/__tests__/docs-index-reachability.test.ts"]},
+
+    {"path":"docs/learn/README.md","note":"Traced title and outline through rendered headings and confirmed the builder still computes search, digest and source snapshots from original Markdown bytes.","inputs":["docs/learn/README.md","scripts/__tests__/learning-atlas.browser.test.ts","scripts/lib/learning-markdown.mjs"]},
+
+    {"path":"docs/reference/metrics.md","note":"The generated metrics reference has no leading YAML mapping. Its rendered metric anchors and link checking remain under the shared renderer.","inputs":["docs/reference/metrics.md","scripts/lib/learning-markdown.mjs"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Verified the relocated FlowReadinessBridge module and its orchestration gate caller. The current lockfile already uses pnpm. Historical package behavior was not rerun.","inputs":["docs/strategy/kontour-integration-surface.md"]}
+  ]
+}

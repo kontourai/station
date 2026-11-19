@@ -1,0 +1,23 @@
+{
+  "revision": "7544389e8e52d9d7819e86b0e05f3bd077f1d730",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the deployment-guide link against the dedicated dogfood operator workflow. The staged install and isolated handoff evidence do not change the README's checkout and external deployment scope.","inputs":["README.md","docs/guides/deployment.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed both dogfood scripts against the ingress protocol fixture. Local API identity now authenticates after owned process and listener checks. The private dogfood path and the disposable HTTPS qualification do not alter the Caddy ingress recipe.","inputs":["deploy/public-ingress/README.md","scripts/station-dogfood-health.mjs","scripts/station-dogfood-reconcile.mjs"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the deployment-guide delta against the companion profile. The dogfood release installer and loopback boot verification do not change the private telemetry companion's dependencies or deployment claims.","inputs":["deployment/telemetry/README.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Replaced the obsolete npm-ci staging mismatch with the candidate-owned managed command and typed pnpm-only cases. The real disposable run reached managed build completion. The evidence is scoped to the tested release and isolated fixture.","inputs":["docs/architecture/abstraction-review.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed the dogfood deployment-guide delta for unattended runtime implications. The host-owned dogfood reconciler remains distinct from the proposed Automation principal and dispatch contract.","inputs":["docs/design/automations.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Preserved the lifecycle ownership and latest-generation contract. The separate real dogfood fixture verifies a stable supervisor and terminal Session across the generation handoff. Its Agent conversation retained history and produced a successor for the follow-up turn.","inputs":["docs/design/process-supervisor.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Traced candidate-source admission, managed install, build, active preservation, exact local identity and HTTPS proof. The disposable macOS fixture used an isolated home, instance, ports and CA. It promoted the exact CI-qualified release and reconciled a supervised restart with zero recoveries.","inputs":["docs/guides/deployment.md","scripts/station-dogfood-health.mjs","scripts/station-dogfood-reconcile.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the operational staging and health deltas against the integration guide. The authenticate-on-refusal change is confined to the recorded local API. Hosted, cloud and operator tailnet qualification retain separate evidence.","inputs":["docs/guides/integrating-station.md","docs/guides/deployment.md"]},
+
+    {"path":"scripts/__tests__/station-dogfood-reconcile/README.md","note":"Reviewed the intentional addition of one portable missing-lifecycle scenario in the parity manifest. The stricter command fixture exercises the same candidate, staging and installer transaction owners.","inputs":["scripts/__tests__/station-dogfood-reconcile/README.md","scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts"]}
+  ]
+}

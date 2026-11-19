@@ -25,6 +25,7 @@ import {
   isCanonicalPluginId,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-trust';
 import { errorMessage } from '../../routes/schemas/schemas.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
@@ -84,6 +85,7 @@ export interface ResolvedPluginDependency {
   status: 'installed' | 'will-install' | 'missing';
   components?: Array<{ type: string; id: string }>;
   git?: PluginGitInfo;
+  registryTrust?: PluginRegistryTrust;
   consent?: {
     contentDigest: string;
     registryTrustRevision?: string;

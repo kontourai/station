@@ -101,7 +101,7 @@
     },
     "maxSteps": {
       "type": ["integer", "null"],
-      "description": "Maximum conversation steps (optional, falls back to global default)",
+      "description": "VoltAgent model steps per turn (1–100). Null or absent uses the fallback. Strands and external engines do not apply this field.",
       "minimum": 1,
       "maximum": 100
     },
@@ -229,8 +229,16 @@
             "version": { "const": "station.agent-shared-turns/v1" },
             "mode": { "const": "model-only" },
             "allowedModelIds": {
-              "type": "array", "minItems": 1, "maxItems": 160, "uniqueItems": true,
-              "items": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^\\S(?:[\\s\\S]*\\S)?$" }
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 160,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+              }
             }
           }
         },
@@ -265,26 +273,6 @@
       },
       "additionalProperties": false
     },
-    "streaming": {
-      "type": ["object", "null"],
-      "deprecated": true,
-      "description": "Deprecated and ignored: Station reads none of these fields. Accepted so existing agent files still load; removal is tracked in #3879.",
-      "properties": {
-        "useNewPipeline": {
-          "type": "boolean",
-          "deprecated": true
-        },
-        "enableThinking": {
-          "type": "boolean",
-          "deprecated": true
-        },
-        "debugStreaming": {
-          "type": "boolean",
-          "deprecated": true
-        }
-      },
-      "additionalProperties": false
-    },
     "ui": {
       "type": "object",
       "description": "UI customization metadata for desktop application",
@@ -294,34 +282,6 @@
           "description": "Identifier for the React workspace component to mount",
           "minLength": 1,
           "maxLength": 120
-        },
-        "quickPrompts": {
-          "type": "array",
-          "description": "Predefined prompts rendered as quick action buttons",
-          "items": {
-            "type": "object",
-            "required": ["id", "label", "prompt"],
-            "properties": {
-              "id": {
-                "type": "string",
-                "description": "Unique identifier for the quick prompt",
-                "minLength": 1,
-                "maxLength": 80
-              },
-              "label": {
-                "type": "string",
-                "description": "Button label shown in the UI",
-                "minLength": 1,
-                "maxLength": 60
-              },
-              "prompt": {
-                "type": "string",
-                "description": "Plain-text prompt content submitted to the agent",
-                "minLength": 1
-              }
-            },
-            "additionalProperties": false
-          }
         },
         "workflowShortcuts": {
           "type": "array",
@@ -372,7 +332,7 @@
             "description": "Command parameters",
             "items": {
               "type": "object",
-              "required": ["name", "description"],
+              "required": ["name"],
               "properties": {
                 "name": {
                   "type": "string"

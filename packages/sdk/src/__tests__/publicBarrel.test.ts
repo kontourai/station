@@ -47,6 +47,8 @@ const PUBLIC_QUERY_DOMAINS = [
   'personNotifications',
   'personalBoards',
   'customAppearance',
+  'customAppearanceLibrary',
+  'customAppearanceMutation',
   'readMarkers',
   'pluginVisibility',
   'knowledgeStores',
@@ -159,6 +161,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
   workspaceConnections:
     'implementation detail folded into workspace.ts via `export *`.',
   workspaceCredentialRecovery:
+    'implementation detail folded into workspace.ts via `export *`.',
+  workspaceProjectMutations:
     'implementation detail folded into workspace.ts via `export *`.',
   workspaceProjects:
     'implementation detail folded into workspace.ts via `export *`.',

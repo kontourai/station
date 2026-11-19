@@ -433,6 +433,7 @@ import {
   type CredentialRecoveryModule,
   createCredentialRecoveryModule,
 } from './credential-recovery-module.js';
+import { assertInheritedDelegationToolPolicy } from './delegation-tool-policy.js';
 import { DeltaCoalescer, isCoalescableDelta } from './delta-coalescer.js';
 import { splitOversizedDeltas } from './delta-splitting.js';
 import {
@@ -673,6 +674,8 @@ interface OrchestrationDispatchInternalOptions {
    * reaches this parameter.
    */
   personAuthored?: true;
+  /** The inbox's exact turn binding, evaluated at the provider handoff. */
+  steerTargetIsCurrent?: () => boolean;
   /** Original intent proof; null preserves unknown legacy inbox input. */
   submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
@@ -4362,6 +4365,17 @@ export class OrchestrationService {
         new Error('Credential profile recovery session is unavailable.'),
       );
     }
+    try {
+      assertInheritedDelegationToolPolicy(
+        this.firstStartedMetadataOfThread(input.threadId)?.delegation,
+      );
+      assertInheritedDelegationToolPolicy(
+        this.readLatestSessionStartMetadata(input.threadId)?.delegation,
+      );
+    } catch (error) {
+      if (error instanceof Error) throw markSessionUntouched(error);
+      throw error;
+    }
     // #484 phase A follow-up: credential-recovery replays carry no
     // admission context, and the caller follows this restart with a DIRECT
     // `adapter.sendTurn` that bypasses dispatch — so a thread whose
@@ -4490,6 +4504,7 @@ export class OrchestrationService {
         ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
       });
       startInput = await this.resolveSessionAgentForStart(startInput);
+      assertInheritedDelegationToolPolicy(startInput.metadata?.delegation);
       throwIfAborted(startInput.signal);
       // #4435: before the start boundary, so a governance refusal is
       // definitive rather than a start that may have happened.
@@ -5477,9 +5492,10 @@ export class OrchestrationService {
     },
   ): OrchestrationSessionSummary[] {
     const only = options.threadIds ? new Set(options.threadIds) : undefined;
-    this.evictCollidingAttachedAliases();
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
+    const persistedSessions =
+      this.evictCollidingAttachedAliases() ??
+      this.options.eventStore?.readSessions() ??
+      [];
     this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
     const persistedByThread = new Map(
       persistedSessions.map((session) => [session.threadId, session]),
@@ -5646,9 +5662,10 @@ export class OrchestrationService {
   async listAgentRuns(authority: SessionReadScope): Promise<AgentRunSummary[]> {
     this.initialize();
     await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
-    this.evictCollidingAttachedAliases();
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
+    const persistedSessions =
+      this.evictCollidingAttachedAliases() ??
+      this.options.eventStore?.readSessions() ??
+      [];
     this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
     const persistedByThread = new Map(
       persistedSessions.map((session) => [session.threadId, session]),
@@ -6116,7 +6133,11 @@ export class OrchestrationService {
       provider === undefined
         ? undefined
         : this.options.adapterRegistry.get(provider);
-    const profile = readProviderDurabilityProfile(adapter?.metadata);
+    const profile =
+      (threadId === undefined
+        ? undefined
+        : adapter?.sessionDurability?.(threadId)) ??
+      readProviderDurabilityProfile(adapter?.metadata);
     if (
       !profile ||
       threadId === undefined ||
@@ -6177,13 +6198,22 @@ export class OrchestrationService {
 
   async steerFidelityForThread(
     threadId: string,
-  ): Promise<'native' | 'emulated' | 'none' | 'pending'> {
+  ): Promise<'native' | 'interrupting' | 'emulated' | 'none' | 'pending'> {
     const provider =
       this.threadProviders.get(threadId) ??
       this.sessionReadModel.get(threadId)?.provider ??
       this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    const placement = this.durabilityProfileForProvider(
+      provider,
+      threadId,
+    )?.steerPlacement;
+    if (
+      placement?.state === 'emulated' &&
+      placement.boundary === 'engine-defined'
+    )
+      return 'interrupting';
     return (
-      this.durabilityProfileForProvider(provider)?.steerPlacement.state ??
+      placement?.state ??
       ((!provider || !this.options.adapterRegistry.get(provider)) &&
       (this.startingSessionThreads.has(threadId) ||
         this.materializingSessions.has(threadId))
@@ -8285,22 +8315,23 @@ export class OrchestrationService {
       conversationId,
       authority,
     );
-    // #2424: a continuation reserves its child in the lineage BEFORE starting
-    // it, so a start that fails (a model-validation deadline on a loaded
-    // host) leaves a tail with no Session yet. `readCurrentConversationSession`
-    // already follows exactly that tail to its authorized predecessor; the
-    // open read must describe the same Session, or it reports the whole
-    // conversation "not found" and the client paints it read-only. The next
-    // send reuses the reservation. Only a PLAIN reservation: a handoff tail
-    // waits for its target and a context-boundary tail starts a fresh-context
-    // child, so describing either by its predecessor would claim a
-    // continuation the send path does not perform. Those keep reading the
-    // tail itself, as before.
+    // Read an unstarted reservation through its authorized predecessor.
+    // A fresh-context tail reports the reservation separately from execution.
+    const freshContextPredecessor =
+      detail &&
+      !this.sessionReadModel.has(currentSessionId) &&
+      this.conversationLineage.freshContextReservationPredecessor(
+        conversationId,
+        currentSessionId,
+      ) === detail.session.threadId
+        ? detail.session.threadId
+        : undefined;
     const subjectSessionId =
       detail &&
       detail.session.threadId !== currentSessionId &&
-      detail.session.threadId ===
-        this.conversationLineage.plainReservationPredecessor(conversationId)
+      (freshContextPredecessor ||
+        detail.session.threadId ===
+          this.conversationLineage.plainReservationPredecessor(conversationId))
         ? detail.session.threadId
         : currentSessionId;
     // One whole-history read per open: the conversation query and the
@@ -8338,14 +8369,47 @@ export class OrchestrationService {
       messageCount: query.conversation.messageCount,
       mutable: false,
       answerability: detail?.session.answerability ?? { answerable: true },
-      ...(query.conversation.model ? { model: query.conversation.model } : {}),
-      ...(query.conversation.acceptedModel
+      ...(!freshContextPredecessor && query.conversation.model
+        ? { model: query.conversation.model }
+        : {}),
+      ...(!freshContextPredecessor && query.conversation.acceptedModel
         ? { acceptedModel: query.conversation.acceptedModel }
         : {}),
       ...(query.conversation.environmentId
         ? { environmentId: query.conversation.environmentId }
         : {}),
     };
+    if (freshContextPredecessor && described) {
+      const messageCount =
+        this.forkContexts.copiedForSession(subjectSessionId, authority).length +
+        query.messages.length;
+      // The authority-bound history read above may have yielded while the tail
+      // started, was cancelled, or was replaced.
+      if (
+        this.sessionReadModel.has(currentSessionId) ||
+        this.conversationLineage.freshContextReservationPredecessor(
+          conversationId,
+          currentSessionId,
+        ) !== freshContextPredecessor
+      )
+        return null;
+      const starting = this.startsUnderway.has(currentSessionId);
+      return {
+        status: 'fresh-context-ready',
+        conversation,
+        predecessorSessionId: freshContextPredecessor,
+        reservedSessionId: currentSessionId,
+        transcript: { available: true, owner: 'runtime', messageCount },
+        canContinue:
+          !starting &&
+          described.session.controlMode === 'station-owned' &&
+          described.session.hasActiveTurn !== true &&
+          described.session.pendingReview !== true,
+        ...(starting ? { continuationPending: true } : {}),
+        answerability: described.session.answerability,
+        recoveryActions: [],
+      };
+    }
     return this.conversationOpenResolver.resolve({
       conversation,
       authority,
@@ -8650,6 +8714,10 @@ export class OrchestrationService {
             );
         },
         validateReattach: (input, existing) => {
+          assertInheritedDelegationToolPolicy(input.metadata?.delegation);
+          assertInheritedDelegationToolPolicy(
+            this.firstStartedMetadataOfThread(input.threadId)?.delegation,
+          );
           const reattach = normalizeOmittedModelId(input);
           const model = reattach.modelId?.trim();
           if (model) {
@@ -8685,6 +8753,9 @@ export class OrchestrationService {
             this.latestStartedMetadataOfThread(threadId),
         },
         prepareStart: async (postureInput, context, internal, adapter) => {
+          assertInheritedDelegationToolPolicy(
+            postureInput.metadata?.delegation,
+          );
           // #1796: a full-access grant that names no grantor would stamp an
           // unconfined session nothing could revoke. Refused before the
           // start does anything.
@@ -9136,6 +9207,7 @@ export class OrchestrationService {
           return startInput;
         },
         start: async (adapter, input, context, internal) => {
+          assertInheritedDelegationToolPolicy(input.metadata?.delegation);
           const startedAt = performance.now();
           if (this.options.eventStore) {
             let resolve!: () => void;
@@ -9608,6 +9680,9 @@ export class OrchestrationService {
   }
 
   private assertTurnAdmitted(threadId: string): void {
+    assertInheritedDelegationToolPolicy(
+      this.firstStartedMetadataOfThread(threadId)?.delegation,
+    );
     for (const admission of this.turnAdmissions) {
       const result = admission({ threadId });
       if (!result.allowed) throw new Error(result.reason);
@@ -11885,73 +11960,72 @@ export class OrchestrationService {
             this.persistReceipt(receipt);
             return { receipt, result };
           }
-          if (
-            steerInput &&
-            !this.options.eventStore?.claimSteerInput(steerInput)
-          ) {
-            const result: SteerTurnResult =
-              this.options.eventStore?.readSteerInput(steerInput) ?? {
-                outcome: 'indeterminate',
-                threadId: command.threadId,
-                clientInputId: steerInput.clientInputId,
-              };
-            this.persistReceipt(receipt);
-            return { receipt, result };
-          }
           this.inFlightSteers.add(command.threadId);
+          let providerInvoked = false;
           try {
             try {
-              this.assertAdapterCurrent(adapter);
-              // archive#4075 stage 2: the same begin/settle propagation
-              // `sendTurn` uses above (:3700/:3751 in this file) — reserved
-              // BEFORE the adapter call so the steer's own `turn.started
-              // (inputKind:'steer')` (published asynchronously through the
-              // adapter's own event queue, not synchronously here) picks up
-              // the STEERING caller's origin/principal rather than the
-              // dispatching caller's or none at all. `settle` reuses
-              // `activeTurnId`: steer never mints a new turn id, it appends
-              // to the one already open. The `inFlightSteers` gate above
-              // means this thread can never have a second steer racing
-              // here, so `begin()`'s return needs no check — exactly like
-              // `sendTurn`'s own ignored-return call above.
-              this.clientOriginTurns.begin(
-                command.threadId,
-                context?.clientOrigin,
-                context?.principal,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                internal?.personAuthored ? 'person' : undefined,
-              );
-              const steerInvocationId =
-                this.sessionExecutionCoordinator.invocationForTurn(
+              let steerInvocationId: string | undefined;
+              const early = await this.withCurrentSkillExperience<
+                SteerTurnResult | undefined
+              >(command.threadId, async () => {
+                this.assertAdapterCurrent(adapter);
+                if (internal?.steerTargetIsCurrent?.() === false)
+                  return {
+                    outcome: 'no-active-turn',
+                    threadId: command.threadId,
+                  };
+                if (
+                  steerInput &&
+                  !this.options.eventStore?.claimSteerInput(steerInput)
+                )
+                  return (
+                    this.options.eventStore?.readSteerInput(steerInput) ?? {
+                      outcome: 'indeterminate',
+                      threadId: command.threadId,
+                      clientInputId: steerInput.clientInputId,
+                    }
+                  );
+                this.clientOriginTurns.begin(
                   command.threadId,
-                  activeTurnId,
+                  context?.clientOrigin,
+                  context?.principal,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  internal?.personAuthored ? 'person' : undefined,
                 );
-              if (steerInvocationId)
-                this.clientOriginTurns.bindInvocation(
-                  command.threadId,
-                  steerInvocationId,
-                );
-              try {
-                await this.withCurrentSkillExperience(command.threadId, () => {
-                  this.assertAdapterCurrent(adapter);
-                  return adapter.steerTurn!(
+                steerInvocationId =
+                  this.sessionExecutionCoordinator.invocationForTurn(
+                    command.threadId,
+                    activeTurnId,
+                  );
+                if (steerInvocationId)
+                  this.clientOriginTurns.bindInvocation(
+                    command.threadId,
+                    steerInvocationId,
+                  );
+                try {
+                  providerInvoked = true;
+                  await adapter.steerTurn!(
                     command.threadId,
                     command.input,
                     activeTurnId,
                   );
-                });
-              } catch (steerError) {
-                // Release transient attribution on a failed acknowledgement.
-                // The durable steer claim stays held because engine acceptance
-                // cannot be ruled out.
-                for (const held of this.clientOriginTurns.cancel(
-                  command.threadId,
-                ))
-                  this.projectAndPublishEvent(held);
-                throw steerError;
+                } catch (steerError) {
+                  // The durable claim stays held because engine acceptance is unknown.
+                  for (const held of this.clientOriginTurns.cancel(
+                    command.threadId,
+                  ))
+                    this.projectAndPublishEvent(held);
+                  throw steerError;
+                }
+              });
+              if (early) {
+                if (early.outcome === 'no-active-turn')
+                  return refuseSteer(early, engineId);
+                this.persistReceipt(receipt);
+                return { receipt, result: early };
               }
               const earlySteerOriginEvent = this.clientOriginTurns.settle(
                 command.threadId,
@@ -11973,6 +12047,11 @@ export class OrchestrationService {
                 this.projectAndPublishEvent(legacySteerEvent);
               this.assertAdapterCurrentAfterCommand(adapter);
             } catch (error) {
+              if (
+                !providerInvoked &&
+                error instanceof ClientTurnInputConflictError
+              )
+                throw error;
               if (steerInput) {
                 const result: SteerTurnResult = {
                   outcome: 'indeterminate',
@@ -17817,7 +17896,7 @@ export class OrchestrationService {
     return metadata ? stripReservedOrchestrationMetadata(metadata) : undefined;
   }
 
-  private evictCollidingAttachedAliases(): void {
+  private evictCollidingAttachedAliases(): ProviderSession[] | undefined {
     const eventStore = this.options.eventStore;
     if (!eventStore) return;
     const persisted = eventStore.readSessions();
@@ -17854,6 +17933,7 @@ export class OrchestrationService {
         .filter((session) => session.controlMode === 'read-only-attached')
         .map((session) => [session.threadId, session]),
     );
+    let evicted = false;
     for (const alias of aliases.values()) {
       const externalId = alias.attachedSource?.externalSessionId;
       const candidates = externalId
@@ -17873,7 +17953,10 @@ export class OrchestrationService {
       }
       this.forgetThreadState(alias.threadId, { ownerCache: true });
       eventStore.deleteThread(alias.threadId);
+      evicted = true;
     }
+    // A deletion can cascade to other rows or notify commit observers.
+    return evicted ? undefined : persisted;
   }
 }
 

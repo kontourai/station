@@ -1,0 +1,21 @@
+{
+  "revision": "59065d37bcf7bc202702af837f3303aa86817319",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced dormant CLI Session group creation, durable reservation and replay against the isolated owner and its fake-host tests. Flow supplies readiness and claims. Production composition remains tracked under issue 91.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Revisited the historical Datum assessment against the current contracts pin. The dependency table is a dated snapshot. The delegation-group view adds no dependency and changes no fleet path.","inputs":["docs/design/inference-fleet.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the package name and task-room-work export against the documented versioned request shape. The adjacent delegation-group export leaves that path and negotiation intact.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/glossary.md","note":"Checked the documented Session and Flow ownership against the new dormant group view. The view binds no portable Flow envelope and has no effect on existing Session vocabulary.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the contracts reference link and the division between package types and authenticated integration traffic. The added view is consumed only by the dormant server owner.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the source-only delegation-group subpath and CLI Session group view against the dormant server consumer. Dispatch counts durable reservations and the view confers no authority.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked the package name, exports, and contracts reference. The delegation-group entry is a domain subpath whose sole payload is an environment-free view type.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Checked package name, packed source layout, and direct subpath imports. The delegation-group type follows the existing source-only layout.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]}
+  ]
+}
