@@ -1,7 +1,0 @@
-{
-  "revision": "e3fcfdb99d794ba62d3486f59aeb4783ba98e1db",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the first-run usage-sharing contract against the real disclosure route, dialog and daily sender. The test waits for the rendered dialog before advancing the flush clock and still checks both absence of notices before interaction and persistence after dismiss or save. All 51 focused cases pass. The documented product behavior is unchanged.","inputs":["src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx"]}
-  ]
-}
