@@ -63,7 +63,7 @@ interface SessionEventWindowReader {
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
   /** A materialized child named by a fresh head read and the binding it read from. */
-  executionRead?: { sessionId: string; priorSessionId: string };
+  executionRead?: { sessionId: string; priorSessionId: string | undefined };
   /** Per-execution-Session Agent identity for historical transcript rows. */
   sessionLineage?: NonNullable<
     OrchestrationConversationEventWindow['sessionLineage']
@@ -374,9 +374,19 @@ export function useSessionEventWindow(
     { key: string | undefined; generation: number } | undefined
   >(undefined);
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>();
-  const [executionRead, setExecutionRead] =
-    useState<SessionEventWindowReader['executionRead']>();
+  const [childObservation, setChildObservation] = useState<{
+    sessionId: string;
+    priorSessionId: string | undefined;
+    materialized: boolean;
+  }>();
+  // The rows can keep painting when a foreground receipt or /open changes
+  // the child. A head read started under a different child cannot undo it.
+  const currentSessionId =
+    childObservation &&
+    (childObservation.priorSessionId === legacySessionId ||
+      childObservation.sessionId === legacySessionId)
+      ? childObservation.sessionId
+      : undefined;
   const [sessionLineage, setSessionLineage] =
     useState<
       NonNullable<OrchestrationConversationEventWindow['sessionLineage']>
@@ -529,12 +539,13 @@ export function useSessionEventWindow(
           page.session?.conversationActivity,
           station,
         );
-      setCurrentSessionId(page.currentSessionId);
-      setExecutionRead(
-        legacyAtSend &&
-          page.currentSessionId &&
-          page.session?.threadId === page.currentSessionId
-          ? { sessionId: page.currentSessionId, priorSessionId: legacyAtSend }
+      setChildObservation(
+        page.currentSessionId
+          ? {
+              sessionId: page.currentSessionId,
+              priorSessionId: legacyAtSend,
+              materialized: page.session?.threadId === page.currentSessionId,
+            }
           : undefined,
       );
       setSessionLineage(page.sessionLineage);
@@ -737,7 +748,6 @@ export function useSessionEventWindow(
             page.session?.conversationActivity,
             station,
           );
-        setCurrentSessionId(page.currentSessionId);
         setSessionLineage(page.sessionLineage);
         setHandoffs(page.handoffs ?? []);
         setContextBoundaries(page.contextBoundaries ?? []);
@@ -901,8 +911,7 @@ export function useSessionEventWindow(
       recoveryTimerRef.current = undefined;
     }
     setEvents([]);
-    setCurrentSessionId(undefined);
-    setExecutionRead(undefined);
+    setChildObservation(undefined);
     setSessionLineage(undefined);
     setHandoffs([]);
     setContextBoundaries([]);
@@ -1077,7 +1086,9 @@ export function useSessionEventWindow(
     watermark: currentReader ? watermark : 0,
     memoryContinuation: currentReader ? memoryContinuation : undefined,
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),
-    ...(currentReader && executionRead ? { executionRead } : {}),
+    ...(currentReader && currentSessionId && childObservation?.materialized
+      ? { executionRead: childObservation }
+      : {}),
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],
     contextBoundaries: currentReader ? contextBoundaries : [],

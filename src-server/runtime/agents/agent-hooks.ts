@@ -130,17 +130,23 @@ export interface AgentHooksDeps {
  * remains for non-stream callers and focused hook tests.
  */
 export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
-  requestApproval?: (tool: ToolCallContext) => Promise<boolean>;
+  requestApproval?: (
+    tool: ToolCallContext,
+    guardianReason?: string,
+  ) => Promise<boolean>;
   registerApprovalRequester(
     conversationId: string,
-    requester: (tool: ToolCallContext) => Promise<boolean>,
+    requester: (
+      tool: ToolCallContext,
+      guardianReason?: string,
+    ) => Promise<boolean>,
   ): () => void;
 } {
   const autoApprove = deps.spec.tools?.autoApprove || [];
   const unattendedAutoApprove = deps.spec.tools?.unattendedAutoApprove;
   const approvalRequesters = new Map<
     string,
-    (tool: ToolCallContext) => Promise<boolean>
+    (tool: ToolCallContext, guardianReason?: string) => Promise<boolean>
   >();
   // #3483: turns that have read content an integration classifies untrusted.
   const untrustedContent =
@@ -155,10 +161,16 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     );
 
   let hooks: IAgentHooks & {
-    requestApproval?: (tool: ToolCallContext) => Promise<boolean>;
+    requestApproval?: (
+      tool: ToolCallContext,
+      guardianReason?: string,
+    ) => Promise<boolean>;
     registerApprovalRequester(
       conversationId: string,
-      requester: (tool: ToolCallContext) => Promise<boolean>,
+      requester: (
+        tool: ToolCallContext,
+        guardianReason?: string,
+      ) => Promise<boolean>,
     ): () => void;
   };
   const evaluatePreToolPolicy = createStagedPreToolPolicyEvaluator({
@@ -271,7 +283,10 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       if (decision.behavior === 'allow') return true;
       if (decision.behavior === 'deny') return decision.denial;
       if (decision.behavior === 'ask' && requester) {
-        if (await requester(tool)) {
+        const approved = decision.guardianReason
+          ? await requester(tool, decision.guardianReason)
+          : await requester(tool);
+        if (approved) {
           // #3483: the person approved this call; the station-control
           // guard applies the same permission and reads this approval.
           const provenance = provenanceOf(tool);

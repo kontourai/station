@@ -16,7 +16,9 @@
 
     "src-ui/src/components/icons/BrandIcon.tsx",
 
-    "src-ui/src/components/icons/BrandMarks.tsx"
+    "src-ui/src/components/icons/BrandMarks.tsx",
+
+    "src-ui/src/components/icons/AgentIcon.tsx"
   ],
 
   "checks": [

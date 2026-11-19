@@ -234,6 +234,12 @@ and their separate profiles. The owning
 sequence is [testflight-delivery.yml](../../.github/workflows/testflight-delivery.yml);
 a bare `tauri ios init` plus `ios build` does not reproduce it.
 
+Nightly and Release share the signing job on GitHub's `xcode-27` runner,
+with Xcode 27.1 selected explicitly. The job requires iOS SDK 27 or later
+before building and checks the exported app's `DTSDKName` before staging
+the IPA. Apple announced this minimum for App Store Connect uploads
+starting in April 2027.
+
 For a separately authorized local archive, preserve that channel's preparation
 and validate the exported bytes. The profile checker accepts `--station`, not
 `--profile`. From the repository root after unpacking the IPA into an owned

@@ -13,6 +13,7 @@ import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useSendMessage } from '../../hooks/useActiveChatSessionMessaging';
+import { useReportedDelegationStart } from '../../hooks/useReportedDelegationStart';
 import {
   attachedContinuationScope,
   discardAttachedContinuationHandoff,
@@ -69,6 +70,12 @@ export default function ImportedConversationPane({
     retry: false,
     cancelWhenInactive: true,
   });
+  const sourceSession = source.data?.session;
+  const reportedStart = useReportedDelegationStart(
+    sourceSession?.threadId === threadId && sourceSession.inputOrigin
+      ? threadId
+      : undefined,
+  );
   const [continuedThreadId, setContinuedThreadId] = useState<string | null>(
     null,
   );
@@ -191,10 +198,10 @@ export default function ImportedConversationPane({
   }, [continued.data, continuedThreadId, openContinued]);
   return (
     <section className="imported-conversation-pane" aria-label="Conversation">
-      {showOrigin && (
+      {(showOrigin || reportedStart) && (
         <div className="imported-conversation-pane__origin">
           <span className="imported-conversation-pane__origin-label">
-            {source.data && (
+            {showOrigin && source.data && (
               <AgentIcon
                 agent={{
                   name: displayProvider(source.data.session),
@@ -203,13 +210,15 @@ export default function ImportedConversationPane({
                 size={18}
               />
             )}
-            {originLabel}
+            {reportedStart ? `Started from ${reportedStart}` : originLabel}
           </span>
-          <span
-            className="imported-conversation-pane__origin-action"
-            ref={setOriginActionSlot}
-          />
-          {onDetails && (
+          {showOrigin && (
+            <span
+              className="imported-conversation-pane__origin-action"
+              ref={setOriginActionSlot}
+            />
+          )}
+          {showOrigin && onDetails && (
             <Button size="sm" variant="secondary" onClick={onDetails}>
               Details
             </Button>

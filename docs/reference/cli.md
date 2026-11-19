@@ -538,8 +538,7 @@ deadline would abandon healthy work:
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
 
 This is the shared SDK client contract, not a guarantee for every raw network
-call in the CLI. The current `operate` stream path bypasses that client; its
-limitations are described in that section.
+call in the CLI.
 
 Transport failures name the Station that was targeted *and where that address
 came from*, so a wrong-target mistake is visible without re-deriving the
@@ -2057,13 +2056,10 @@ board, a live transcript for one focused session, that session's pending
 approvals (tool name **and** input, answerable by a single keypress), and its
 Flow gate verdicts.
 
-**Current authentication limitation:** its
-[stream caller](../../packages/cli/src/commands/operate/shell.ts) uses raw `fetch`
-for `/api/orchestration/events`, so the credential configured for SDK requests
-does not accompany that stream. A protected Station can return 401 even when
-the same target's SDK reads succeed. The synthetic HTTP check reproduced that
-caller behavior; use `sessions`, `approvals` and `chat` while this path remains
-unrepaired.
+The [stream caller](../../packages/cli/src/commands/operate/shell.ts) uses the
+same selected Station and origin-bound credential as its Session reads.
+The stream stays open until quit or interruption and has no overall deadline.
+An unexpected disconnect ends Operate with an error. Run it again to reconnect.
 
 When a stream is admitted, the screen is
 reduced from one global `GET /api/orchestration/events` connection (the same
@@ -3815,20 +3811,19 @@ that Station's credential (`--credential`, `STATION_API_CREDENTIAL`, or the
 saved Station's), and runs under the shared request deadline. A reply that is
 not JSON is reported with its HTTP status.
 
-**Current restore limitation ([#2734](https://github.com/kontourai/station/issues/2734)).**
-The command confirms the returned preview immediately, without showing the
-paths it will change. To review a restore before confirming it, use the
-workspace checkpoint UI or API described in
-[workspace checkpoints](../user/workspace-checkpoints.md). This describes the
-caller's code; a CLI restore against a protected Station has not been verified
-end to end.
+Run without `--confirm` to display the affected paths, current and checkpoint
+tree hashes, and preview expiry. `--phase` selects `baseline` or `settle`
+(default) for the preview. Confirm in a second invocation with the same
+Station, thread and turn. Pass the preview ID and observed current-tree hash
+from the reviewed preview. The preview already binds the phase.
 
 ```
 station checkpoints [status] [--json]
 station checkpoints prune (--thread=<threadId> | --all) [--gc] [--json]
 station checkpoints history --thread=<threadId> [--json]
 station checkpoints retention --thread=<threadId> [--json]
-station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baseline|settle] --confirm [--station=<name>|--api-base=<url>] [--json]
+station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baseline|settle] [--station=<name>|--api-base=<url>] [--json]
+station checkpoints restore --thread=<threadId> --turn=<turnId> --confirm --preview-id=<id> --expected-current-tree-sha=<sha> [--station=<name>|--api-base=<url>] [--json]
 ```
 
 | Action | Description |
@@ -3837,17 +3832,16 @@ station checkpoints restore --thread=<threadId> --turn=<turnId> [--phase=baselin
 | `prune` | Removes a thread's checkpoint refs and reflogs (and the index/archive records naming it). Requires `--thread=<id>` or `--all`. `--gc` additionally runs `git gc --prune=now --quiet` in each affected repo so the space is actually freed, not just eligible for the next `gc.reflogExpire` window. |
 | `history` | Lists recorded checkpoint-restore events for one thread from `checkpoint-restores.json`. A missing file means nothing was recorded; a file that cannot be read as a restore audit is reported as `audit unavailable` and exits 1, as `retention` does. |
 | `retention` | Lists recorded checkpoint-retention sweep events for one thread from `checkpoint-retention.json`. |
-| `restore` | Requires `--confirm`, requests a preview, then immediately submits its `previewId` and `currentTreeSha`; it does not display the changed paths/tree before confirming (see above). The server owns preview identity, expiry, current-tree, and active-turn checks. |
+| `restore` | Shows a read-only preview of workspace changes; with explicit confirmation, submits the reviewed preview ID and tree hash. Station owns authority, expiry, current-tree, and active-turn checks. |
 
-`--json` on every action prints one JSON document instead of the
-human-readable form.
+`--json` prints one JSON document. Preview prints its details under `data`
+and confirmation prints the restore receipt there.
 
 ```bash
-station checkpoints
-station checkpoints prune --thread=abc123 --gc
-station checkpoints prune --all --gc
-# Restore confirms without showing the changed paths; review it in the UI first.
-station checkpoints restore --thread=abc123 --turn=turn-7 --confirm --station=work
+station checkpoints restore --thread=abc123 --turn=turn-7 --station=work
+# Review the paths, then substitute the preview ID and current-tree hash from that output.
+station checkpoints restore --thread=abc123 --turn=turn-7 --station=work \
+  --confirm --preview-id="$preview_id" --expected-current-tree-sha="$current_tree_sha"
 ```
 
 Restore changes workspace files only. It does not rewind conversation history

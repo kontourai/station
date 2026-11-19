@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
-import type { Plugin } from 'vite';
+import { type Plugin, transformWithEsbuild } from 'vite';
 
 /** Both Vite graphs import the same immutable grammar modules. */
 export function sharedShikiGrammars(): Plugin {
@@ -88,12 +88,29 @@ const PUBLIC_PRECOMPRESSED_DIRECTORIES = ['color-themes'];
 export function uiAssetDelivery({ precompress = true } = {}): Plugin {
   let base = '/';
   let outDir = '';
+  let startupThemePath = '';
   return {
     name: 'station-ui-asset-delivery',
     apply: 'build',
     configResolved(config) {
       base = config.base;
       outDir = path.resolve(config.root, config.build.outDir);
+      startupThemePath =
+        config.publicDir && path.join(config.publicDir, 'startup-theme.js');
+    },
+    async buildStart() {
+      if (!startupThemePath || !existsSync(startupThemePath)) return;
+      this.addWatchFile(startupThemePath);
+      const { code } = await transformWithEsbuild(
+        readFileSync(startupThemePath, 'utf8'),
+        startupThemePath,
+        { minify: true, target: 'es2020' },
+      );
+      this.emitFile({
+        type: 'asset',
+        fileName: 'startup-theme.js',
+        source: code,
+      });
     },
     writeBundle() {
       if (!precompress) return;

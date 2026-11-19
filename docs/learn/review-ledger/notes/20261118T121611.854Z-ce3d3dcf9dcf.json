@@ -1,0 +1,9 @@
+{
+  "revision": "33526e2a4aac9d8c16c9478d49dd262c905dfd99",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed full product and PR smoke ownership. The Engine App home test copies opt-in review captures to a shared path, so the execution-profile test pins the existing shared-instance-exclusive assignment. No worker count, browser smoke selection, retry policy or safety exception changes. The focused manifest suite reproduced the missing entry and passed after adding it.","inputs":["scripts/__tests__/e2e-manifest.test.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed full product and PR smoke ownership. The Engine App home test copies opt-in review captures to a shared path, so the execution-profile test pins the existing shared-instance-exclusive assignment. No worker count, browser smoke selection, retry policy or safety exception changes. The focused manifest suite reproduced the missing entry and passed after adding it.","inputs":["scripts/__tests__/e2e-manifest.test.ts"]}
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "revision": "0017a2f2b87e598f71546675bfd5d9ea4b197abe",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the testing-guide change against verification selection and completion. The named boundary fixture supplies local evidence and does not replace the documented canonical qualification lanes.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced Chat actions, mobile Inbox and History from the existing dock surface through their lazy callers. Failures now name the owning control and keep retry inside the shared boundary. Ready-state composer and header ownership still follow the described routes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockContentArea.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked the mobile Inbox boundary label against the pane relationship. The Inbox belongs inside the Chat surface, and the label describes a failure to load that surface without changing pane navigation.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the mobile Inbox boundary within the dock placement. The visible error identifies that Inbox; region, default focus, project and Chat placement continue using their documented owners.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the testing-guide delta against local proof and Gallery attribution. Boundary IDs identify the product surface and Gallery continues to require live-document chunk request evidence before it classifies a download failure.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the Chat actions and Inbox labels against the responsive dock callers and shared error controls. Inspected actual boundary markup with the cascade in both themes at 390 and 1440 pixels, and verified retry in Chromium. Sheet layout and gesture ownership are unaffected by the label.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"Verified the two first-run observers consume the boundary IDs and exact visible rows. Chromium covered unrelated arrival, hidden decoy, a flat-count replacement, real retry, and native stable-Promise remount. The anonymous and direct-Promise controls failed at the intended assertions. Existing Gallery classification tests passed and its network-cause claims remain limited.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs","src-ui/src/components/LazyBoundary.tsx","src-ui/src/__tests__/LazyBoundary.browser.test.tsx","src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx","tests/first-run-live.spec.ts","tests/helpers/lazy-surface-readiness.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the ChatDock delta against the Inbox and chat API routing. The new identifier is rendered by the UI on a failed code-split Inbox surface and is distinct from the API read and delivery failures described here.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the ChatDock delta against documented Inbox feature flags and configuration. The UI failure identity is attached to the existing mobile loader and requires no config or wire field.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the named lazy Inbox failure against retained conversation and Inbox reads. The existing data-read refresh and Retry contract is distinct from retrying the optional component loader.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced the described New chat and Inbox controls through the real mobile header and first-run locators. The pending and failure paths are feedback along that same navigation journey. Browser fixtures cover the boundary, while authenticated first-run remains unverified.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked the ChatDock change against Personal Boards and the Inbox alongside them. The named error covers the Inbox lazy component and does not alter Board layout or Chat placement claims.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the focused test, fixture and Gallery guidance against the named readiness adapter. The new real Chromium fixture is classified in the existing browser resource list and the mutation controls were restored after checking their assertions.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the linked testing guide against the new UI-specific lazy failure evidence. The fixture uses controlled UI loaders, so its results do not extend the server route, provider, or authority test claims.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked browser evidence guidance against the production lazy boundary and caller changes. Inspected the two widths and themes and ran named recovery controls through the real renderer. The screenshot fixture does not prove the authenticated app journey.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Checked the testing-guide delta against fixture fidelity and Playwright behavior. The first-run helper watches a specific visible error row without taking a recovery action. Focused real-browser tests and the E2E fixture-policy/typecheck passed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

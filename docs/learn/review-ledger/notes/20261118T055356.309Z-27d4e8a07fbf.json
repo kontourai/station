@@ -1,0 +1,13 @@
+{
+  "revision": "7d0a2cee1e41dc082e651103bea04317256dd4a0",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the final size-limited guidance. It keeps the original navigation and conversation contracts, shared components and token example, CSS diagnostics and the 390px and 1440px visual checks in both themes. The repository instruction budget check passed.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Compared the compact wording against the theming and frontend guides and scope import. Shared-owner routing, both display densities, mobile hit areas, and the CSS advisory still match their documented owners.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Compared the compact wording against the theming and frontend guides and scope import. Shared-owner routing, both display densities, mobile hit areas, and the CSS advisory still match their documented owners.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"Compared the compact wording against the theming and frontend guides and scope import. Shared-owner routing, both display densities, mobile hit areas, and the CSS advisory still match their documented owners.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

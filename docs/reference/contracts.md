@@ -2364,8 +2364,10 @@ runtime files. Since #3851 it also carries:
 - the staging phase (`ServiceStagePhase`) and its byte counts.
 
 The module also owns the server's own view of its update:
-`ServerUpdateState`, `ServerUpdateRunningTurns` and
-`ServerUpdateDownloadPolicy`. `GET /api/system/core-update/state` serves that
+`ServerUpdateState` and `ServerUpdateRunningTurns`. Its shared
+`UpdateDownloadPolicy` defines the choices and default for desktop and server
+updates. The desktop and server policy names remain available as aliases.
+`GET /api/system/core-update/state` serves that
 view, and the `runtime-events` `server-update:changed` event carries it.
 Runtime parsing of these shapes lives at the route and SDK
 boundaries, not in this package.

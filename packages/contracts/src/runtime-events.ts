@@ -37,6 +37,10 @@ import type {
  * a silent no-op. (Distinct from the per-session CanonicalRuntimeEvent methods
  * below, which describe agent-runtime events, not EventBus channels.)
  */
+/** A committed attached continuation changed the exact session detail read. */
+export const ATTACHED_SESSION_CONTINUATION_REFRESH =
+  'attached-session-continuation';
+
 export const SERVER_EVENTS = {
   /** Exact answer assessment changed; identity-bearing and intentionally scoped. */
   ANSWER_ASSESSMENT_UPDATED: 'answer.assessment.updated',
@@ -924,6 +928,8 @@ export interface RequestOpenedEvent extends CanonicalRuntimeEventBase {
   blocking?: boolean;
   requestType: 'approval' | 'permission' | 'confirmation' | 'input';
   title: string;
+  /** Bounded quotation stamped by Station's approval guardian policy. */
+  guardianReason?: string;
   description?: SpillableText;
   payload?: Record<string, unknown>;
   purpose?: string;

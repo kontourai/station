@@ -1,0 +1,15 @@
+{
+  "revision": "d8534851357e6858381cdc15901f39c036c22778",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the integrated Project-schedule membership and dispatch admission from main alongside the scheduler request metric. Creator and stored-job access checks run before the management request observation, and the admitted durable job identity reaches the service. Public receipts, authorization response codes and dashboard series retain their declared producers. The merged-source focused run passed 325 tests including route authority and metric population tests.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed the integrated Project-schedule membership and dispatch admission from main alongside the scheduler request metric. Creator and stored-job access checks run before the management request observation, and the admitted durable job identity reaches the service. Public receipts, authorization response codes and dashboard series retain their declared producers. The merged-source focused run passed 325 tests including route authority and metric population tests.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the integrated Project-schedule membership and dispatch admission from main alongside the scheduler request metric. Creator and stored-job access checks run before the management request observation, and the admitted durable job identity reaches the service. Public receipts, authorization response codes and dashboard series retain their declared producers. The merged-source focused run passed 325 tests including route authority and metric population tests.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the integrated Project-schedule membership and dispatch admission from main alongside the scheduler request metric. Creator and stored-job access checks run before the management request observation, and the admitted durable job identity reaches the service. Public receipts, authorization response codes and dashboard series retain their declared producers. The merged-source focused run passed 325 tests including route authority and metric population tests.","inputs":["src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed provider resolution and durable job identity through manual run, enable, disable, edit and removal. The merge preserves upstream Project admission and provider selection and leaves confirmed execution metrics at the built-in terminal receipt. The real route and scheduler telemetry suites exercised both boundaries at the merged source. No fresh deployed datasource or Windows archive evidence.","inputs":["src-server/services/scheduling/scheduler-service.ts"]}
+  ]
+}

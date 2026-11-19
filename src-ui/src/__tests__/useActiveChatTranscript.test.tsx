@@ -1511,6 +1511,10 @@ describe('useActiveChatTranscript', () => {
     // Settled stays settled across a later child change too.
     rerender({ session: { ...session, currentSessionId: 'later-child' } });
     expect(result.current.settled).toBe(true);
+    expect(result.current.currentSessionId).toBeUndefined();
+    expect(result.current.messages.map((message) => message.content)).toContain(
+      'kept question',
+    );
     expect(fetchConversationWindow).toHaveBeenCalledTimes(1);
   });
 
@@ -4691,6 +4695,7 @@ describe('useActiveChatTranscript', () => {
       fetchWindow
         .mockResolvedValueOnce({
           protocolVersion: 1,
+          currentSessionId: 'predecessor',
           watermark: 5,
           hasMore: true,
           nextCursor: 'older-a',
@@ -4698,6 +4703,7 @@ describe('useActiveChatTranscript', () => {
         })
         .mockResolvedValueOnce({
           protocolVersion: 1,
+          currentSessionId: 'predecessor',
           watermark: 5,
           hasMore: true,
           nextCursor: 'older-b',
@@ -4705,6 +4711,7 @@ describe('useActiveChatTranscript', () => {
         })
         .mockResolvedValueOnce({
           protocolVersion: 1,
+          currentSessionId: 'accepted-child',
           watermark: 7,
           hasMore: true,
           nextCursor: 'newest-only',
@@ -4713,6 +4720,7 @@ describe('useActiveChatTranscript', () => {
         })
         .mockResolvedValueOnce({
           protocolVersion: 1,
+          currentSessionId: 'predecessor',
           watermark: 5,
           hasMore: false,
           events: turnEvents(1, 2),
@@ -4736,6 +4744,7 @@ describe('useActiveChatTranscript', () => {
       expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5, 6, 7]);
       expect(fetchWindow).toHaveBeenCalledTimes(4);
       expect(result.current.hasMore).toBe(false);
+      expect(result.current.currentSessionId).toBe('accepted-child');
     });
   });
 
