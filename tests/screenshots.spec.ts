@@ -5244,7 +5244,9 @@ async function createGalleryProjectFromChat(
     const name = form.getByRole('textbox', { name: 'Project name' });
     await expect(name).toHaveValue(title);
     await name.fill('Quarterly research');
-    await form.getByRole('radio', { name: /^Blank Project/ }).check();
+    await expect(
+      form.getByRole('radio', { name: /^Blank workspace/ }),
+    ).toBeChecked();
     await form.getByText('More options', { exact: true }).click();
     await form.getByRole('textbox', { name: /^Description/ }).clear();
 
