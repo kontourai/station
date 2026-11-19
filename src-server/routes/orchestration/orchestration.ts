@@ -3435,7 +3435,8 @@ export function createOrchestrationRoutes(
         });
       }
       return c.json({ success: true, data });
-    } catch (error) {
+    } catch (failure) {
+      let error = failure;
       const ceilingFailure = managedApprovalCeilingFailure(c, error);
       if (ceilingFailure) return ceilingFailure;
       if (error instanceof CreateRequestCapacityError)
