@@ -1,0 +1,37 @@
+{
+  "revision": "d0b2c793ca817177380f908d82a0c6a0e3a1af35",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"The changed glossary entry labels a More-menu action. The map continues to point to the glossary for vocabulary and retains its existing context owners.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"The glossary now names Save to Project. Context boundaries and links to the glossary retain the same meaning.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The eligible chat More menu now opens Save to Project. New Task from this still invokes Task shaping, and the composer and its send path retain the same ownership.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Save to Project changes a dock menu label and dialog. No related-pane mapping, placement or navigation owner changes.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the ChatDock menu delta against the documented dock placement. It changes neither the host layout nor its pane model.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/glossary.md","note":"The menu and preview use Save to Project. Selecting a Project creates a Task from the chat. New Project opens an editable creation form.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"The Settings change names a person-initiated Project preview. Its menu action starts no agent turn and changes no inference configuration.","inputs":["docs/guides/agent-efficiency.md","docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"The registry and settings table share the new display label. The persisted continue-in-project ID and opt-in behavior are the same.","inputs":["docs/guides/feature-previews.md","docs/user/settings.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The dock keeps its existing responsive More menu. The destination dialog uses one Project selector and the existing dialog shell.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"The registry changes the existing preview label and description. The campaign's workflow coverage and preview identity still refer to the same underlying feature.","inputs":["docs/plans/whole-app-ux-campaign.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The ChatDock action still starts a UI draft. The menu label introduces no new HTTP endpoint or agent dispatch.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"The chat menu label changes. Existing composer configuration, attachments and retry ownership remain with their documented callers.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Followed the Save to Project menu, existing Project selection, new Project form and confirmed Task retry. The guide uses the resulting labels and names the chat reference only when a completed answer exists.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"New Task from this still starts Task shaping in the chat. The separate Save to Project action opens the direct Project or Task draft without a model call.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"The ChatDock change renames a chat menu action. Personal board storage, navigation and pane placement are unaffected.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Verified the feature label, saved flag ID and description against the registry, dialog and current settings-table check.","inputs":["docs/user/settings.md","src-server/services/feature-previews/feature-preview-registry.ts"]}
+  ]
+}

@@ -7,6 +7,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { type ReactNode, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { ArrowLeftGlyph } from '../../components/icons/Glyph';
 import { SkeletonBlock } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { DeviceShares } from './DeviceShares';
@@ -402,9 +403,13 @@ export default function DeviceSetupWizard({
       footer={
         <>
           {step === 0 ? (
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose} variant="ghost">
+              Cancel
+            </Button>
           ) : (
-            <Button onClick={() => setStep(step - 1)}>Back</Button>
+            <Button onClick={() => setStep(step - 1)} variant="ghost">
+              <ArrowLeftGlyph /> Back
+            </Button>
           )}
           {step < STEPS.length - 1 ? (
             <Button

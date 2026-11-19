@@ -26,6 +26,9 @@ const loadConnectedAttachUserInputToTaskButton = () =>
   import('./AttachAnswerToTaskButton').then((module) => ({
     default: module.ConnectedAttachUserInputToTaskButton,
   }));
+const ANSWER_TASK_LABEL = 'Add to Task';
+const ANSWER_TASK_UNAVAILABLE = 'Add to Task is unavailable.';
+
 const loadConnectedAttachAnswerToTaskButton = () =>
   import('./AttachAnswerToTaskButton').then((module) => ({
     default: module.ConnectedAttachAnswerToTaskButton,
@@ -193,6 +196,26 @@ export default function TurnActionsMenu({
         {label}
       </button>
     );
+    const taskAction = taskTarget ? (
+      <LazyBoundary
+        key="task"
+        load={loadConnectedAttachAnswerToTaskButton}
+        componentProps={{
+          ...taskTarget,
+          triggerLabel: ANSWER_TASK_LABEL,
+          menuItem: itemRole === 'menuitem',
+          onOpen: () => setView('picker'),
+          onClose: () => setView('closed'),
+          returnFocusTarget: triggerRef.current,
+        }}
+        pending={null}
+        unavailable={() => (
+          <span className="turn-footer__unavailable-note">
+            {ANSWER_TASK_UNAVAILABLE}
+          </span>
+        )}
+      />
+    ) : null;
     return [
       provenance
         ? item('provenance', itemRole ? 'Answer details' : 'Provenance', () =>
@@ -206,25 +229,19 @@ export default function TurnActionsMenu({
             () => setView('reasoning'),
           )
         : null,
-      taskTarget ? (
-        <LazyBoundary
-          key="task"
-          load={loadConnectedAttachAnswerToTaskButton}
-          componentProps={{
-            ...taskTarget,
-            menuItem: itemRole === 'menuitem',
-            onOpen: () => setView('picker'),
-            onClose: () => setView('closed'),
-            returnFocusTarget: triggerRef.current,
-          }}
-          pending={null}
-          unavailable={() => (
-            <span className="turn-footer__unavailable-note">
-              Add to Task is unavailable.
-            </span>
-          )}
-        />
-      ) : null,
+      inline && taskAction ? (
+        <div key="task" className="message-details__task-row">
+          <span aria-hidden="true" className="message-details__task-measure">
+            {ANSWER_TASK_LABEL}
+          </span>
+          <span aria-hidden="true" className="message-details__task-measure">
+            {ANSWER_TASK_UNAVAILABLE}
+          </span>
+          {taskAction}
+        </div>
+      ) : (
+        taskAction
+      ),
       onRegenerate
         ? item('regenerate', 'Regenerate', () => {
             close();

@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-18T22:07:34Z | nightly-desktop | 0.2.0-nightly.20261118.3 | `9d18d0c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44395247316) |
+| 2026-11-18T22:07:34Z | nightly-android | 0.2.0-nightly.20261118.3 | `9d18d0c` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44395247316) |
+| 2026-11-18T21:09:23Z | nightly-npm | 0.12.0-nightly.20261118.44395247316 | `9d18d0c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44395247316) |
 | 2026-11-18T10:03:25Z | nightly-desktop | 0.2.0-nightly.20261118.2 | `3ac758d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44270806577) |
 | 2026-11-18T10:03:25Z | nightly-android | 0.2.0-nightly.20261118.2 | `3ac758d` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44270806577) |
 | 2026-11-18T09:01:50Z | nightly-npm | 0.12.0-nightly.20261118.44270806577 | `3ac758d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44270806577) |
@@ -501,6 +504,147 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-18T22:07:34Z · nightly-desktop · 0.2.0-nightly.20261118.3
+
+- Ship SHA: `9d18d0c2a5a823f087070c87868fbe1796e95439`
+- Artifact built at: `2026-11-18T21:15:01.013Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 44395247316)
+
+### Changelog
+
+Commits since `3ac758d` ([full sha](https://github.com/kontourai/station/commit/3ac758dfc053a5a9709def3d386286ab4bb5cdfc)):
+
+**Fixes**
+
+- [#5232](https://github.com/kontourai/station/pull/5232) fix(home): preserve permissions in schema migration copies
+- [#5237](https://github.com/kontourai/station/pull/5237) fix(ci): report diagnostic context and native scanner scope accurately
+- [#5227](https://github.com/kontourai/station/pull/5227) fix(coding): align Diff and File Preview
+- [#5231](https://github.com/kontourai/station/pull/5231) fix(docs): render skill titles from Markdown body headings
+- [#5221](https://github.com/kontourai/station/pull/5221) fix(agents): apply and describe configuration limits accurately
+- [#5199](https://github.com/kontourai/station/pull/5199) fix(rooms): show shared Project channels on phones and address Task threads
+- [#5224](https://github.com/kontourai/station/pull/5224) fix(history): preserve typed metadata and attachment attribution
+- [#5194](https://github.com/kontourai/station/pull/5194) fix(chat): queue ordinary follow-ups and show Station acceptance immediately
+- [#5222](https://github.com/kontourai/station/pull/5222) fix(chat): report authoritative continuation state
+- [#5220](https://github.com/kontourai/station/pull/5220) fix(inbox): preserve dock placement and draft recovery
+- [#5216](https://github.com/kontourai/station/pull/5216) fix(input): preserve command arguments and dispatch saved shortcuts
+- [#5210](https://github.com/kontourai/station/pull/5210) fix(connections): restore model check guidance and browser coverage
+- [#5215](https://github.com/kontourai/station/pull/5215) fix(examples): align Enterprise Notes and verify pane install
+- [#5211](https://github.com/kontourai/station/pull/5211) fix(ui): put active dock modals above notifications
+- [#5206](https://github.com/kontourai/station/pull/5206) fix(tests): inspect performance host-gate results by named case
+- [#5207](https://github.com/kontourai/station/pull/5207) fix(chat): keep inbox steering on the admitted turn
+- [#5202](https://github.com/kontourai/station/pull/5202) fix(ui): let detail header content determine wrapping
+- [#5213](https://github.com/kontourai/station/pull/5213) fix(cli): honor chat workspace, model options and request state
+- [#5196](https://github.com/kontourai/station/pull/5196) fix(ui): make model actions and project icon names accessible
+- [#5201](https://github.com/kontourai/station/pull/5201) fix(ci): require new Seatbelt legs and select the profile audit
+- [#5191](https://github.com/kontourai/station/pull/5191) fix(projects): enforce schedule membership and preserve Task-room files
+- [#5200](https://github.com/kontourai/station/pull/5200) fix(settings): clarify personal store scope and quiet default provenance
+- [#5197](https://github.com/kontourai/station/pull/5197) fix(verification): retain verdicts and report pending phase admission
+
+**CI / workflow**
+
+- [#5209](https://github.com/kontourai/station/pull/5209) ci: skip the unused Gallery classifier on merge groups
+
+**Other**
+
+- [#5235](https://github.com/kontourai/station/pull/5235) perf(ui): defer local speech and settings route styles
+- [#5218](https://github.com/kontourai/station/pull/5218) perf(docs): reuse catch-up history and cover compacted ledgers
+- [#5212](https://github.com/kontourai/station/pull/5212) test(ci): protect workflow pins and Android qualification
+
+## 2026-11-18T22:07:34Z · nightly-android · 0.2.0-nightly.20261118.3
+
+- Ship SHA: `9d18d0c2a5a823f087070c87868fbe1796e95439`
+- Artifact built at: `2026-11-18T21:13:17.142Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 44395247316)
+
+### Changelog
+
+Commits since `3ac758d` ([full sha](https://github.com/kontourai/station/commit/3ac758dfc053a5a9709def3d386286ab4bb5cdfc)):
+
+**Fixes**
+
+- [#5232](https://github.com/kontourai/station/pull/5232) fix(home): preserve permissions in schema migration copies
+- [#5237](https://github.com/kontourai/station/pull/5237) fix(ci): report diagnostic context and native scanner scope accurately
+- [#5227](https://github.com/kontourai/station/pull/5227) fix(coding): align Diff and File Preview
+- [#5231](https://github.com/kontourai/station/pull/5231) fix(docs): render skill titles from Markdown body headings
+- [#5221](https://github.com/kontourai/station/pull/5221) fix(agents): apply and describe configuration limits accurately
+- [#5199](https://github.com/kontourai/station/pull/5199) fix(rooms): show shared Project channels on phones and address Task threads
+- [#5224](https://github.com/kontourai/station/pull/5224) fix(history): preserve typed metadata and attachment attribution
+- [#5194](https://github.com/kontourai/station/pull/5194) fix(chat): queue ordinary follow-ups and show Station acceptance immediately
+- [#5222](https://github.com/kontourai/station/pull/5222) fix(chat): report authoritative continuation state
+- [#5220](https://github.com/kontourai/station/pull/5220) fix(inbox): preserve dock placement and draft recovery
+- [#5216](https://github.com/kontourai/station/pull/5216) fix(input): preserve command arguments and dispatch saved shortcuts
+- [#5210](https://github.com/kontourai/station/pull/5210) fix(connections): restore model check guidance and browser coverage
+- [#5215](https://github.com/kontourai/station/pull/5215) fix(examples): align Enterprise Notes and verify pane install
+- [#5211](https://github.com/kontourai/station/pull/5211) fix(ui): put active dock modals above notifications
+- [#5206](https://github.com/kontourai/station/pull/5206) fix(tests): inspect performance host-gate results by named case
+- [#5207](https://github.com/kontourai/station/pull/5207) fix(chat): keep inbox steering on the admitted turn
+- [#5202](https://github.com/kontourai/station/pull/5202) fix(ui): let detail header content determine wrapping
+- [#5213](https://github.com/kontourai/station/pull/5213) fix(cli): honor chat workspace, model options and request state
+- [#5196](https://github.com/kontourai/station/pull/5196) fix(ui): make model actions and project icon names accessible
+- [#5201](https://github.com/kontourai/station/pull/5201) fix(ci): require new Seatbelt legs and select the profile audit
+- [#5191](https://github.com/kontourai/station/pull/5191) fix(projects): enforce schedule membership and preserve Task-room files
+- [#5200](https://github.com/kontourai/station/pull/5200) fix(settings): clarify personal store scope and quiet default provenance
+- [#5197](https://github.com/kontourai/station/pull/5197) fix(verification): retain verdicts and report pending phase admission
+
+**CI / workflow**
+
+- [#5209](https://github.com/kontourai/station/pull/5209) ci: skip the unused Gallery classifier on merge groups
+
+**Other**
+
+- [#5235](https://github.com/kontourai/station/pull/5235) perf(ui): defer local speech and settings route styles
+- [#5218](https://github.com/kontourai/station/pull/5218) perf(docs): reuse catch-up history and cover compacted ledgers
+- [#5212](https://github.com/kontourai/station/pull/5212) test(ci): protect workflow pins and Android qualification
+
+## 2026-11-18T21:09:23Z · nightly-npm · 0.12.0-nightly.20261118.44395247316
+
+- Ship SHA: `9d18d0c2a5a823f087070c87868fbe1796e95439`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261118.44395247316 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `3ac758d` ([full sha](https://github.com/kontourai/station/commit/3ac758dfc053a5a9709def3d386286ab4bb5cdfc)):
+
+**Fixes**
+
+- [#5232](https://github.com/kontourai/station/pull/5232) fix(home): preserve permissions in schema migration copies
+- [#5237](https://github.com/kontourai/station/pull/5237) fix(ci): report diagnostic context and native scanner scope accurately
+- [#5227](https://github.com/kontourai/station/pull/5227) fix(coding): align Diff and File Preview
+- [#5231](https://github.com/kontourai/station/pull/5231) fix(docs): render skill titles from Markdown body headings
+- [#5221](https://github.com/kontourai/station/pull/5221) fix(agents): apply and describe configuration limits accurately
+- [#5199](https://github.com/kontourai/station/pull/5199) fix(rooms): show shared Project channels on phones and address Task threads
+- [#5224](https://github.com/kontourai/station/pull/5224) fix(history): preserve typed metadata and attachment attribution
+- [#5194](https://github.com/kontourai/station/pull/5194) fix(chat): queue ordinary follow-ups and show Station acceptance immediately
+- [#5222](https://github.com/kontourai/station/pull/5222) fix(chat): report authoritative continuation state
+- [#5220](https://github.com/kontourai/station/pull/5220) fix(inbox): preserve dock placement and draft recovery
+- [#5216](https://github.com/kontourai/station/pull/5216) fix(input): preserve command arguments and dispatch saved shortcuts
+- [#5210](https://github.com/kontourai/station/pull/5210) fix(connections): restore model check guidance and browser coverage
+- [#5215](https://github.com/kontourai/station/pull/5215) fix(examples): align Enterprise Notes and verify pane install
+- [#5211](https://github.com/kontourai/station/pull/5211) fix(ui): put active dock modals above notifications
+- [#5206](https://github.com/kontourai/station/pull/5206) fix(tests): inspect performance host-gate results by named case
+- [#5207](https://github.com/kontourai/station/pull/5207) fix(chat): keep inbox steering on the admitted turn
+- [#5202](https://github.com/kontourai/station/pull/5202) fix(ui): let detail header content determine wrapping
+- [#5213](https://github.com/kontourai/station/pull/5213) fix(cli): honor chat workspace, model options and request state
+- [#5196](https://github.com/kontourai/station/pull/5196) fix(ui): make model actions and project icon names accessible
+- [#5201](https://github.com/kontourai/station/pull/5201) fix(ci): require new Seatbelt legs and select the profile audit
+- [#5191](https://github.com/kontourai/station/pull/5191) fix(projects): enforce schedule membership and preserve Task-room files
+- [#5200](https://github.com/kontourai/station/pull/5200) fix(settings): clarify personal store scope and quiet default provenance
+- [#5197](https://github.com/kontourai/station/pull/5197) fix(verification): retain verdicts and report pending phase admission
+
+**CI / workflow**
+
+- [#5209](https://github.com/kontourai/station/pull/5209) ci: skip the unused Gallery classifier on merge groups
+
+**Other**
+
+- [#5235](https://github.com/kontourai/station/pull/5235) perf(ui): defer local speech and settings route styles
+- [#5218](https://github.com/kontourai/station/pull/5218) perf(docs): reuse catch-up history and cover compacted ledgers
+- [#5212](https://github.com/kontourai/station/pull/5212) test(ci): protect workflow pins and Android qualification
 
 ## 2026-11-18T10:03:25Z · nightly-desktop · 0.2.0-nightly.20261118.2
 

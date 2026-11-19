@@ -2426,7 +2426,9 @@ Creates a new project. Invalidates `['projects']` on success.
 
 ### `useUpdateProjectMutation()`
 
-Updates a project. Invalidates `['projects']` on success.
+Updates a Project. Pass the host-captured `requestScope` in the mutation
+variables to bind the update and its cache refresh to the selected Station
+and account. Calls without a scope invalidate `['projects']` on success.
 
 ### `useDeleteProjectMutation()`
 
@@ -4922,6 +4924,10 @@ content, while retaining the observed HTTP status (usually 200).
   claims nothing about pull requests. `useMergePullRequestMutation`
   invalidates every Project's facts query, so a merge through Station moves
   its card on the next read.
+- `createTask` and `createTaskReference` accept an optional `requestScope`
+  in their input, including when called through `useCreateTaskMutation` or
+  `useCreateTaskReferenceMutation`. Pass the same captured scope to both
+  steps when creating a Task and adding its first reference.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
@@ -5127,7 +5133,8 @@ option for conversations without a multi-session lineage.
 ## Workspace checkpoint restore
 
 `previewCheckpointRestore(apiBase, threadId, turnId, requestScope)` returns a
-short-lived, owner-bound preview for the turn's settle checkpoint. It includes
+short-lived, owner-bound preview for the turn's settle checkpoint. Pass
+`'baseline'` as the fifth argument to preview the turn-start checkpoint. It includes
 the preview id, repository root, target and currently observed tree hashes,
 up to 200 changed paths with a truncation flag, and a five-minute expiry.
 `confirmCheckpointRestore` submits that
@@ -5319,6 +5326,12 @@ It checks truthiness, not a literal-boolean schema, and does not validate the
 returned `data`; individual fetchers own any stronger success-payload checks.
 A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`.
+
+Skill save and registry removal mutations expose the HTTP status, code, and
+details on `StationHttpError`. When the code is `skill-not-owned`, the details
+carry the Skill package refusal reason and the separately labelled directory.
+Older hosts can send a plain failure envelope without these fields. Its failure
+still rejects the mutation, and its text remains diagnostic.
 
 Every fetcher under `@kontourai/station-sdk/client` that throws a refusal now
 builds it through the same helper (#2708); the plugin command-effect client

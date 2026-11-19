@@ -1,0 +1,15 @@
+{
+  "revision": "74e8604b3afbbbe4cda983c4d25e0e4abcf28675",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Verified search route wire behavior through MCP and the HTTP dispatcher. Indexed hits without file records bypass only the metadata scan. An indexed hit with a file record still spends both read budgets. Ordinary reader errors keep the sanitized HTTP 503.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked exactly 2,000 admitted metadata candidates and the 2,001st candidate, while a native-only indexed hit remains searchable. The owner-scoped file reader and source incompleteness rules retain their existing budgets.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/routes/__tests__/runtime-routes-station-control-project-activity.test.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The changed paragraph only clarifies the existing conversation search budget; terminal and connector route claims retain their prior semantics.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The changed paragraph only clarifies the existing conversation search budget; terminal and connector route claims retain their prior semantics.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"The changed paragraph clarifies native-only search eligibility. Session history and continuation read contracts remain as documented.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

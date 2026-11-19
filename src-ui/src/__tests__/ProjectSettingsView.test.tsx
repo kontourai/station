@@ -976,6 +976,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(
       screen.getByText('Changes in this section save automatically.'),
     ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
   });
 
   test('section picker shows one topic and keeps hidden project drafts mounted', () => {
@@ -996,6 +997,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         .getAttribute('aria-current'),
     ).toBe('location');
     expect(screen.queryByRole('textbox', { name: 'Name *' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      false,
+    );
     expect(
       screen.queryByRole('textbox', { name: 'Working Directory' }),
     ).toBeNull();
@@ -1216,7 +1221,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ).toBe('inherit');
       expect(
         screen.getByRole('option', {
-          name: 'Use the Station approval default (currently: Ask first)',
+          name: 'Station default (Ask first)',
         }),
       ).toBeTruthy();
       expect(sdkMocks.chatDefaultsQuery).toHaveBeenCalledWith(

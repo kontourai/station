@@ -1646,7 +1646,10 @@ async function mutateBody(
         requestOptions?.authentication !== 'omit',
     ),
   );
-  const init: RequestInit = { method };
+  const init: RequestInit = {
+    method,
+    ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
+  };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
   if (headers) {
     init.headers = headers;

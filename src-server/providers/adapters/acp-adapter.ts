@@ -1,4 +1,5 @@
 import {
+  interpretAcpTurnStop,
   PROVIDER_TURN_TRIGGER,
   type ProviderRuntimeErrorEvent,
 } from '@kontourai/station-contracts/runtime-events';
@@ -39,7 +40,6 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
-  type StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -4860,6 +4860,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           outcome: mapAcpDecisionToOutcome('decline', params.options),
         };
       }
+      let guardianReason: string | undefined;
       if (toolName && record.preToolPolicy) {
         const decision = await record.preToolPolicy(
           {
@@ -4910,8 +4911,10 @@ export class AcpAdapter implements ProviderAdapterShape {
             outcome: mapAcpDecisionToOutcome('decline', params.options),
           };
         }
-        if (decision.behavior === 'ask' && decision.required)
+        if (decision.behavior === 'ask' && decision.required) {
           needsPerson = true;
+          guardianReason = decision.guardianReason;
+        }
         // `defer` and `ask` use ACP's existing approval flow below.
       } else if (
         toolName &&
@@ -4992,6 +4995,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         method: 'request.opened',
         requestType: 'approval',
         title: params.toolCall?.title ?? 'Allow tool call',
+        ...(guardianReason ? { guardianReason } : {}),
         payload: {
           toolCallId: params.toolCall?.toolCallId,
           // The programmatic name, when the engine reports one: it is what
@@ -6237,13 +6241,16 @@ export class AcpAdapter implements ProviderAdapterShape {
       this.publish({ ...base, method: 'turn.aborted', reason: 'interrupted' });
       record.session.status = 'ready';
     } else {
-      this.publish({
-        ...base,
-        method: 'turn.completed',
-        ...mapAcpStopReasonToTurnCompletion(
-          (stopReason ?? 'end_turn') as StopReason,
+      this.publish(
+        interpretAcpTurnStop(
+          {
+            ...base,
+            method: 'turn.completed',
+            ...mapAcpStopReasonToTurnCompletion(stopReason),
+          },
+          'acp-transport',
         ),
-      });
+      );
       record.session.status = 'ready';
     }
     record.session.updatedAt = new Date().toISOString();
@@ -6431,16 +6438,21 @@ export class AcpAdapter implements ProviderAdapterShape {
           turnId,
           response.stopReason === 'cancelled' ? 'cancelled' : 'unresolved',
         );
-        this.publish({
-          eventId: crypto.randomUUID(),
-          provider: this.provider,
-          threadId,
-          createdAt: new Date().toISOString(),
-          turnId,
-          ...this.turnOrigin(record, turnId),
-          method: 'turn.completed',
-          ...mapAcpStopReasonToTurnCompletion(response.stopReason),
-        });
+        this.publish(
+          interpretAcpTurnStop(
+            {
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId,
+              createdAt: new Date().toISOString(),
+              turnId,
+              ...this.turnOrigin(record, turnId),
+              method: 'turn.completed',
+              ...mapAcpStopReasonToTurnCompletion(response.stopReason),
+            },
+            'acp-transport',
+          ),
+        );
         record.session.status = 'ready';
         record.session.updatedAt = new Date().toISOString();
         record.activeTurnId = undefined;

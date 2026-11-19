@@ -1,7 +1,12 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 
 vi.mock('../../telemetry/metrics.js', () => ({
   skillOps: { add: vi.fn() },
+  skillDiscoveries: { add: vi.fn() },
+  skillDiscoveryDuration: { record: vi.fn() },
 }));
 
 const { registerCatalogTools } = await import(
@@ -15,11 +20,18 @@ const { SkillUsageUnreadableError } = await import(
   '../../services/agents/skill-usage-service.js'
 );
 
+const { ConfigLoader } = await import('../../domain/config-loader.js');
+const { SkillService } = await import('../../services/agents/skill-service.js');
+
+const makeTempDir = trackTempDirs();
+
 type ToolHandler = (params: Record<string, unknown>) => Promise<{
   content: Array<{ type: 'text'; text: string }>;
+  isError?: true;
 }>;
 
 type ToolShape = Record<string, { safeParse(value: unknown): unknown }>;
+type SkillRouteService = Parameters<typeof createSkillRoutes>[0];
 
 /** The declared input shape of each tool, as the MCP server would see it. */
 function collectShapes(): Map<string, ToolShape> {
@@ -61,7 +73,6 @@ function skillServiceDouble() {
     resolveSkillName: vi.fn((name: string) =>
       name === 'ship-it' || name === 'legacy-uuid' ? 'ship-it' : undefined,
     ),
-    isSkillWritable: vi.fn().mockReturnValue(true),
     updateLocalSkill: vi
       .fn()
       .mockResolvedValue({ success: true, message: 'Updated' }),
@@ -86,11 +97,11 @@ function skillServiceDouble() {
  * URLs from `STATION_API_BASE`; the Hono app is mounted at `/api/skills`.
  */
 function stubFetchAtSkillRoutes(
-  skillService: ReturnType<typeof skillServiceDouble>,
+  skillService: SkillRouteService | ReturnType<typeof skillServiceDouble>,
+  home = '/home/test',
 ) {
-  const app = createSkillRoutes(skillService as never, () => '/home/test');
-  vi.stubGlobal(
-    'fetch',
+  const app = createSkillRoutes(skillService as SkillRouteService, () => home);
+  const fetchAtRoutes = vi.fn(
     async (
       input: Parameters<typeof fetch>[0],
       init?: RequestInit,
@@ -98,9 +109,11 @@ function stubFetchAtSkillRoutes(
       const url = new URL(input instanceof Request ? input.url : String(input));
       expect(url.pathname.startsWith('/api/skills')).toBe(true);
       const path = url.pathname.replace(/^\/api\/skills/, '') || '/';
-      return app.request(`${path}${url.search}`, init);
+      return app.request(path + url.search, init);
     },
   );
+  vi.stubGlobal('fetch', fetchAtRoutes);
+  return fetchAtRoutes;
 }
 
 describe('station-control catalog tools', () => {
@@ -260,23 +273,35 @@ describe('station-control catalog tools', () => {
     );
   });
 
-  // The route answers a command declaration on a read-only skill with a 409.
-  // The narrow tool schema could not express `command` at all, so this
-  // behaviour was unreachable through the MCP boundary (review M2).
   test('a command declaration on a read-only skill surfaces the route 409', async () => {
-    const skillService = skillServiceDouble();
-    skillService.isSkillWritable.mockReturnValue(false);
-    stubFetchAtSkillRoutes(skillService);
+    const home = makeTempDir('station-control-skill-refusal-');
+    const packageDirectory = join(home, 'plugins', 'acme', 'skills', 'served');
+    const packageFile = join(packageDirectory, 'SKILL.md');
+    const original = '---\nname: served\ndescription: From a plugin\n---\nBody';
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(packageFile, original);
+    const skillService = new SkillService(
+      new ConfigLoader({ projectHomeDir: home }),
+      { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+    );
+    await skillService.discoverSkills(home);
+    const fetchAtRoutes = stubFetchAtSkillRoutes(skillService, home);
 
     const result = await collectTools().get('update_skill')!({
-      name: 'ship-it',
+      name: 'served',
       command: { enabled: true },
     });
 
-    const envelope = JSON.parse(result.content[0].text);
-    expect(envelope.success).toBe(false);
-    expect(envelope.error).toContain('read-only');
-    expect(skillService.updateLocalSkill).not.toHaveBeenCalled();
+    expect(fetchAtRoutes).toHaveBeenCalledTimes(1);
+    expect((await fetchAtRoutes.mock.results[0].value).status).toBe(409);
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      success: false,
+      code: 'skill-not-owned',
+      error: 'Station does not write the directory this package resolves to.',
+      details: { reason: 'outside-writable-root', packageDirectory },
+    });
+    expect(readFileSync(packageFile, 'utf8')).toBe(original);
   });
 
   // Counters that exist but cannot be read are a 503 naming the file, never a

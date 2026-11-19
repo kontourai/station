@@ -3426,6 +3426,10 @@ export function configureRuntimeRoutes(
           { type: 'answer-basis', threadId: sessionId, turnId },
           authority,
         ) ?? Promise.resolve({ status: 'unavailable' as const }),
+      readProjectScope: (sessionId) =>
+        context.orchestrationEventStore?.readConversationProjectScope(
+          sessionId,
+        ),
     },
     new FlowAgentsRetainedNarrativeOwner(resolveWorkspacePath),
     ({ sessionId, turnId, revision, active }) =>

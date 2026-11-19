@@ -28,6 +28,35 @@ public Muse mark was found. The Goose icon comes from the official
 `QwenLM/qwen-code` repository at commit
 `a82a11a0a4d8d4f97796ac9f56d276364dd3bd64` (Apache-2.0).
 
+The Coding apps picker uses the app identity recorded on a detected Agent
+when its current binding matches, or the binding of an engine-default row.
+Custom Agent artwork takes precedence.
+
+The additional monochrome SVGs come from the ACP Registry at commit
+`90600ada478cc938a021868f6482127b4221ac41`. The paths below are relative to
+that revision. Station renders them as local masks that take the icon's
+foreground color in either theme. The mask rendering and Hermes image load
+through the same lazy icon chunk as the inline marks.
+
+| Mark | Source path |
+| --- | --- |
+| Augment Auggie | `auggie/icon.svg` |
+| Cline | `cline/icon.svg` |
+| Devin | `devin/icon.svg` |
+| Factory Droid | `factory-droid/icon.svg` |
+| Gemini CLI | `gemini/icon.svg` |
+| GitHub Copilot | `github-copilot-cli/icon.svg` |
+| Google Antigravity | `antigravity-acp/icon.svg` |
+| Grok Build | `grok-build/icon.svg` |
+| Junie | `junie/icon.svg` |
+| Kilo | `kilo/icon.svg` |
+| Kimi Code | `kimi-code/icon.svg` |
+| Mistral Vibe | `mistral-vibe/icon.svg` |
+
+Hermes Agent uses `website/static/img/favicon.svg` from the
+`NousResearch/hermes-agent` repository at commit
+`05348a3094a2356b9a271a2f22cdd6711c9952b8`.
+
 The names and marks remain the property of their respective owners; their use
 identifies compatible engines and does not imply endorsement or identical
 capabilities.
