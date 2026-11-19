@@ -49,7 +49,6 @@ const terminal = (event: CanonicalRuntimeEvent) =>
 // #3834 asks whether concurrent sends must refuse, supersede, or overwrite.
 // Until decided, pin each adapter's actual behavior without calling it a defect.
 const concurrent = {
-  codex: 'overwrite',
   bedrock: 'supersede',
   ollama: 'supersede',
 } as const;
@@ -572,23 +571,27 @@ for (const { name, label, transport } of registrations) {
         expect(terminals()).toHaveLength(0);
         engine.complete();
         await settle(1);
+        expect(terminals()).toEqual([
+          expect.objectContaining({
+            method: 'turn.completed',
+            turnId: first.turnId,
+          }),
+        ]);
       } else {
         expect(second.error).toBeUndefined();
         await expect.poll(() => started().length).toBe(2);
         expect(engine.inputs()).toHaveLength(2);
         const secondId = started()[1].turnId;
         expect(secondId).not.toBe(first.turnId);
-        if (behavior === 'supersede')
-          expect(terminals()).toEqual([
-            expect.objectContaining({
-              method: 'turn.aborted',
-              turnId: first.turnId,
-              reason: 'superseded',
-            }),
-          ]);
-        else expect(terminals()).toHaveLength(0); // Codex overwrites its active pointer.
+        expect(terminals()).toEqual([
+          expect.objectContaining({
+            method: 'turn.aborted',
+            turnId: first.turnId,
+            reason: 'superseded',
+          }),
+        ]);
         engine.complete();
-        await settle(behavior === 'supersede' ? 2 : 1);
+        await settle(2);
         expect(terminals().at(-1)).toMatchObject({
           method: 'turn.completed',
           turnId: secondId,
