@@ -89,6 +89,9 @@ export class AnswerNarrativeBindingModule {
         turnId: string,
         authority: SessionReadAuthority,
       ): Promise<SessionAnswerBasisQueryOutcome | { status: 'unavailable' }>;
+      readProjectScope?(
+        sessionId: string,
+      ): { projectSlug: string | null } | undefined;
     },
     private readonly owner: RetainedNarrativeOwnerAdapter,
     private readonly onUpdated?: (update: AnswerNarrativeUpdate) => void,
@@ -349,6 +352,7 @@ export class AnswerNarrativeBindingModule {
   async withTaskReferencePin<T>(input: {
     sessionId: string;
     turnId: string;
+    taskProjectId: string;
     authority: SessionReadAuthority;
     current(): boolean;
     commit(witness: TaskAnswerNarrativePinWitness): Promise<T>;
@@ -361,17 +365,19 @@ export class AnswerNarrativeBindingModule {
         input.authority,
       );
       const binding = bindingFor(answer);
-      const projectId = requireProject(answer);
-      const principalId = principalFor(input.authority);
+      const projectId = answer.projectSlug;
+      if (projectId !== undefined && projectId !== input.taskProjectId)
+        throw notFound();
       const index = this.readIndex(true);
       const record = historyFor(index, input.sessionId, input.turnId).at(-1);
       let associationRevision: number | undefined;
       let configured: ConfiguredNarrativeOwner | undefined;
       if (record?.active) {
         if (
+          !projectId ||
           !sameBinding(record.binding, binding) ||
           record.projectId !== projectId ||
-          record.principalId !== principalId ||
+          record.principalId !== principalFor(input.authority) ||
           !record.narrativeRef
         )
           throw notFound();
@@ -396,6 +402,12 @@ export class AnswerNarrativeBindingModule {
         isCurrent: () => {
           if (!input.current()) return false;
           try {
+            // A Session can be assigned a Project while this Keep waits for
+            // TaskGraph's lock. Require the same durable scope at publication.
+            const sourceScope = this.answers.readProjectScope?.(
+              input.sessionId,
+            );
+            if (sourceScope?.projectSlug !== (projectId ?? null)) return false;
             const latest = historyFor(
               this.readIndex(true),
               input.sessionId,

@@ -1,0 +1,9 @@
+{
+  "revision": "7fd7d6679a9cbdf35f280e5224dfc346013fe5d6",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the existing resource partition and ordinary exclusions. The scaffold file owns a real synchronous standalone npm install and build with a 30-second fixture guard. It now belongs to the existing process-exclusive lane; dependency admission and test coverage remain intact. The existing EventStore process-exclusive 10-second guard is unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the existing resource partition and ordinary exclusions. The scaffold file owns a real synchronous standalone npm install and build with a 30-second fixture guard. It now belongs to the existing process-exclusive lane; dependency admission and test coverage remain intact. The existing EventStore process-exclusive 10-second guard is unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

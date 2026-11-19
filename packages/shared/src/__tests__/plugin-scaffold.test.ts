@@ -5,6 +5,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
+import * as react from 'react';
+import * as jsxRuntime from 'react/jsx-runtime';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   type AgentPluginManifestReport,
@@ -59,8 +62,8 @@ function loadBundle(bundle: string, pluginName: string) {
   const sandbox: Record<string, unknown> = { console };
   sandbox.window = sandbox;
   sandbox.__station_ai_shared = {
-    react: { useState: (value: unknown) => [value, noop] },
-    'react/jsx-runtime': { jsx: noop, jsxs: noop, Fragment: 'fragment' },
+    react,
+    'react/jsx-runtime': jsxRuntime,
     '@kontourai/station-sdk': {
       useAgents: () => [],
       useNavigation: () => ({ setDockState: noop }),
@@ -128,8 +131,16 @@ describe('buildPluginScaffold', () => {
       const result = await buildPlugin(pluginDir);
 
       expect(result.built).toBe(true);
+      const installed = JSON.parse(
+        readFileSync(
+          join(pluginDir, 'node_modules', 'tsx', 'package.json'),
+          'utf8',
+        ),
+      );
+      expect(installed.name).toBe('tsx');
       // The CSS import is part of the scaffold, so the build must emit it.
       expect(result.cssPath).toBeDefined();
+      expect(readFileSync(result.cssPath!, 'utf8')).toContain('-shell');
       const exports = loadBundle(
         readFileSync(result.bundlePath!, 'utf8'),
         name,
@@ -145,6 +156,15 @@ describe('buildPluginScaffold', () => {
       expect(Object.keys(exports?.components ?? {}).sort()).toEqual(
         [...rendererNames].sort(),
       );
+      for (const rendererName of rendererNames) {
+        const renderer = exports?.components?.[rendererName];
+        if (typeof renderer !== 'function')
+          throw new Error(`Missing scaffold renderer ${rendererName}`);
+        const html = renderToStaticMarkup(
+          react.createElement(() => renderer()),
+        );
+        expect(html, rendererName).toMatch(/<h[12]>[^<]+<\/h[12]>/);
+      }
     },
     BUILD_TIMEOUT_MS,
   );

@@ -31,9 +31,17 @@ import { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
+import {
+  AGENT_AUDIENCE_VERSION,
+  MEMBER_AGENT_VIEW_VERSION,
+} from '@kontourai/station-contracts/agent';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { terminalScopeAllows } from '@kontourai/station-contracts/terminal-transport';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
@@ -42,10 +50,13 @@ import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-r
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { STATION_CONTROL_MCP_PATH } from '../../../routes/mcp/station-control-mcp-route.js';
 import { UI_NAVIGATE_AUDIENCE_FIELD } from '../../../routes/projects/ui-commands.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
+import { AgentService } from '../../../services/agents/agent-service.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -202,6 +213,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       aProjectId: string;
       bProjectId: string;
     }) => Promise<void>,
+    observeAgentRead?: (request: Request) => void,
   ) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-read-scope-');
@@ -418,6 +430,35 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     const eventBus = new EventBus();
     const monitoringEvents = new EventEmitter();
     const app = new Hono();
+    const logger = { debug() {}, info() {}, warn() {}, error() {} };
+    const catalog = observeAgentRead
+      ? new ConfigLoader({ projectHomeDir: home })
+      : undefined;
+    if (catalog) {
+      closers.push(() => catalog.dispose());
+      await catalog.createAgent({
+        name: 'Control Proof',
+        prompt: 'Generated fixture Agent.',
+        project: bProject.slug,
+        audience: {
+          version: AGENT_AUDIENCE_VERSION,
+          kind: 'project-permission',
+          permission: 'view',
+        },
+      });
+      await catalog.createAgent({
+        name: 'Operator Only',
+        prompt: 'Generated private fixture.',
+        project: bProject.slug,
+      });
+      expect(
+        (await catalog.listAgents()).map(({ slug }) => slug).sort(),
+      ).toEqual(['control-proof', 'operator-only']);
+      app.use('/agents', async (c, next) => {
+        if (c.req.method === 'GET') observeAgentRead?.(c.req.raw);
+        await next();
+      });
+    }
     const scopedTerminals: Parameters<
       typeof configureRuntimeRoutes
     >[0]['scopedTerminals'] = {};
@@ -439,9 +480,20 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         loadAppConfig: () =>
           terminalProof ? { terminalShell: '/bin/sh' } : {},
       },
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      logger,
       activeAgents: new Map(),
-      agentService: { listAgents: () => [] },
+      ...(catalog
+        ? {
+            agentService: new AgentService(
+              catalog,
+              storage,
+              new Map(),
+              new Map(),
+              new Map(),
+              logger,
+            ),
+          }
+        : { agentService: { listAgents: () => [] } }),
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -821,6 +873,72 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     });
     return response.json();
   }
+
+  test('the public MCP client reads a cataloged Agent and reports a missing slug under its caller credential', async () => {
+    const { token } = mintStationControlMcpToken(
+      'b-agent',
+      'http-header-token',
+      undefined,
+      undefined,
+      ['get_agent'],
+    );
+    const forwarded: boolean[] = [];
+    const { base } = await setup(false, undefined, (request) => {
+      forwarded.push(
+        request.headers.get(STATION_CONTROL_CALLER_TOKEN_HEADER) === token,
+      );
+    });
+    const client = new Client({
+      name: 'station-control-agent-read-proof',
+      version: '1',
+    });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(STATION_CONTROL_MCP_PATH, base),
+      {
+        requestInit: { headers: { authorization: `Bearer ${token}` } },
+      },
+    );
+    try {
+      await client.connect(transport);
+      const found = await client.callTool({
+        name: 'get_agent',
+        arguments: { slug: 'control-proof' },
+      });
+      expect(forwarded).toEqual([true]);
+      const foundContent = found.content[0];
+      if (foundContent?.type !== 'text')
+        throw new Error('Expected text in the Agent tool result');
+      expect(found.isError, foundContent.text).not.toBe(true);
+      expect(JSON.parse(foundContent.text)).toEqual({
+        success: true,
+        data: {
+          version: MEMBER_AGENT_VIEW_VERSION,
+          kind: 'member-agent',
+          slug: 'control-proof',
+          name: 'Control Proof',
+          project: 'b-project',
+        },
+      });
+
+      for (const slug of ['absent-agent', 'operator-only']) {
+        const unavailable = await client.callTool({
+          name: 'get_agent',
+          arguments: { slug },
+        });
+        expect(unavailable.isError).toBe(true);
+        const content = unavailable.content[0];
+        if (content?.type !== 'text')
+          throw new Error('Expected text in the unavailable Agent result');
+        expect(JSON.parse(content.text)).toEqual({
+          success: false,
+          error: `Agent '${slug}' not found`,
+        });
+      }
+      expect(forwarded).toEqual([true, true, true]);
+    } finally {
+      await client.close();
+    }
+  });
 
   test('companion host prerequisites require the operator in person through the production auth boundary', async () => {
     const { base } = await setup();

@@ -312,6 +312,7 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   captureLoggerLines,
   stopLoggerCaptures,
@@ -4195,40 +4196,87 @@ describe('ConnectionService', () => {
     const directory = mkdtempSync(
       join(tmpdir(), 'credential-legacy-conflict-'),
     );
-    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    const dbPath = join(directory, 'orchestration.sqlite');
+    const store = new EventStore(dbPath);
     try {
-      const protocol = store.createCredentialApplicationFactory();
-      for (let index = 0; index < 64; index += 1) {
-        expect(
-          protocol.start({
-            recoveryFingerprint: `capacity-${index}`,
-            connectionId: `connection-${index}`,
-            candidateProfileRef: 'candidate',
-            now: '2026-08-13T00:00:00.000Z',
-          }),
-        ).toMatchObject({ kind: 'owner' });
+      const now = '2026-08-13T00:00:00.000Z';
+      // The live capacity contract is 64. This is test-owned setup on the
+      // migrated database: one durable statement, not 63 reservation commits.
+      // The real ledger owns the final admission, refusal, and release.
+      const seed = new DatabaseSync(dbPath);
+      try {
+        seed
+          .prepare(`
+          WITH RECURSIVE occupied(slot) AS (
+            VALUES (1)
+            UNION ALL SELECT slot + 1 FROM occupied WHERE slot < 63
+          )
+          INSERT INTO credential_profile_applications
+            (attempt_id, recovery_fingerprint, connection_id,
+             candidate_profile_ref, state, created_at, updated_at)
+          SELECT 'fixture-attempt-' || slot, 'fixture-recovery-' || slot,
+            'fixture-connection-' || slot, 'candidate', 'reserved', ?, ?
+          FROM occupied
+        `)
+          .run(now, now);
+      } finally {
+        seed.close();
       }
+
+      const protocol = store.createCredentialApplicationFactory();
+      const finalSlot = protocol.start({
+        recoveryFingerprint: 'capacity-boundary',
+        connectionId: 'capacity-owner',
+        candidateProfileRef: 'candidate',
+        now,
+      });
+      if (finalSlot.kind !== 'owner')
+        throw new Error('The real ledger refused the final free slot');
+
       const { service, getAppConfig } = createCredentialProfileApplyFixture(
         vi.fn<ConnectionSmokeRunner>(),
         'restart_resume',
         protocol,
       );
-      getAppConfig().agentConnections.codex.credentialRecovery.pendingApplication =
-        {
+      try {
+        const pendingApplication = {
           previousProfileRef: 'profile-a',
           candidateProfileRef: 'canary-profile-ref',
           attemptId: 'legacy-capacity-conflict',
         };
+        getAppConfig().agentConnections.codex.credentialRecovery.pendingApplication =
+          pendingApplication;
 
-      await expect(
-        service.migrateLegacyCredentialApplicationsAtStartup(),
-      ).rejects.toThrow(
-        "Credential recovery migration for 'codex' is incomplete.",
-      );
+        await expect(
+          service.migrateLegacyCredentialApplicationsAtStartup(),
+        ).rejects.toThrow(
+          "Credential recovery migration for 'codex' is incomplete.",
+        );
+        expect(
+          getAppConfig().agentConnections.codex.credentialRecovery
+            .pendingApplication,
+        ).toEqual(pendingApplication);
+        expect(protocol.latest('codex')).toBeUndefined();
 
-      expect(
-        getAppConfig().agentConnections.codex.credentialRecovery,
-      ).toHaveProperty('pendingApplication');
+        expect(finalSlot.claim.settle('rolled-back', now)).toEqual({
+          kind: 'applied',
+        });
+        expect(finalSlot.claim.acknowledge(now)).toEqual({ kind: 'applied' });
+        await expect(
+          service.migrateLegacyCredentialApplicationsAtStartup(),
+        ).resolves.toBeUndefined();
+
+        expect(
+          getAppConfig().agentConnections.codex.credentialRecovery,
+        ).not.toHaveProperty('pendingApplication');
+        expect(protocol.latest('codex')).toMatchObject({
+          state: 'staged',
+          previousProfileRef: 'profile-a',
+          candidateProfileRef: 'canary-profile-ref',
+        });
+      } finally {
+        service.dispose();
+      }
     } finally {
       store.close();
       rmSync(directory, { recursive: true, force: true });

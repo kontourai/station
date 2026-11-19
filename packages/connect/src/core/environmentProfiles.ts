@@ -56,9 +56,9 @@ const FAILURE_COPY: Record<
     address: string,
   ) => { summary: string; action: string; short?: string }
 > = {
-  offline: (host) => ({
+  offline: () => ({
     summary: 'This device is offline.',
-    action: `Reconnect to a network; Station will retry reaching ${host}.`,
+    action: 'Reconnect to a network.',
   }),
   'mixed-content': (host) => ({
     summary: `This page can't reach ${host} over an insecure address.`,
@@ -175,7 +175,7 @@ const FAILURE_COPY: Record<
   // state it describes is "no cause was determined". Anything more specific
   // would be the invented-network-condition defect wearing different words.
   undetermined: (host) => ({
-    summary: `Couldn't confirm the connection to ${host}.`,
+    summary: `Couldn't confirm the connection${host && ` to ${host}`}.`,
     action: 'Trying again shortly.',
   }),
 };
@@ -191,26 +191,28 @@ export const FAILURE_COPY_REASONS = Object.keys(FAILURE_COPY) as ReadonlyArray<
 >;
 
 /**
- * `host` is a short display label for the connection (a saved name, or the
- * address itself when there is no name) — every current caller already has
- * one (`SavedConnection.name || SavedConnection.url`, or `apiBase` before any
- * connection is saved). `address` is the literal network address, used only
- * by the `unreachable` copy to show both what the connection is called and
- * where it actually tried to reach; it defaults to `host` when the caller has
- * only a single value, which collapses the two mentions instead of repeating
- * one string twice.
+ * Provide a saved label or network address when a target is known.
+ * Without either, the copy describes an unconfirmed connection without
+ * attributing a named-host diagnosis. Offline and invalid address guidance
+ * can stand on their own. For an unreachable target, a distinct address adds detail.
  */
 export function connectionFailureCopy(
   reason: Exclude<ConnectionFailureReason, 'awaiting-approval'>,
-  host: string,
-  address: string = host,
+  host?: string | null,
+  address = '',
 ): {
   summary: string;
   action: string;
   /** A shorter one-line form, where this reason has one — see `FAILURE_COPY`'s doc comment. */
   short?: string;
 } {
-  return FAILURE_COPY[reason](host, address);
+  const targetAddress = address.trim();
+  const label = host?.trim() || targetAddress;
+  return FAILURE_COPY[
+    label || reason === 'invalid-endpoint' || reason === 'offline'
+      ? reason
+      : 'undetermined'
+  ](label, targetAddress);
 }
 
 function isPrivateIpv4(hostname: string): boolean {

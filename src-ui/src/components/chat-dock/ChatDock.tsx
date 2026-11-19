@@ -140,6 +140,7 @@ import {
   readNewChatIntent,
 } from '../../lib/newChatIntent';
 import { openingConversationLabel } from '../../lib/notificationStationOpen';
+import { projectCreationRecoveryIdentity } from '../../lib/project-onboarding-recovery';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -191,6 +192,7 @@ import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { requestProjectShell } from '../coding-layout/terminalShellRequest';
+import type { ConversationTranscriptSnapshot } from '../conversation/ConversationBody';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
@@ -2031,9 +2033,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * never shown session-specific facts and navigating out of it is not this
    * row's business. Dropping either one silently changes what the row opens.
    */
-  // #5071: Continue in Project… drafts from this chat; it never sends into it.
-  const [continueInProject, setContinueInProject] =
-    useState<ContinuedConversation | null>(null);
+  // #5071: Save to Project drafts from this chat without sending a turn.
+  const [continueInProject, setContinueInProject] = useState<{
+    conversation: ContinuedConversation;
+    ownerKey: string;
+    sourceProjectSlug?: string;
+  } | null>(null);
+  const transcriptSnapshotRef = useRef<ConversationTranscriptSnapshot | null>(
+    null,
+  );
   const continueInProjectEnabled = useSurfaceVisibilityFlags().has(
     'continue-in-project',
   );
@@ -2099,15 +2107,60 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           {
             key: 'continue-in-project',
             group: 'chat' as const,
-            label: 'Continue in Project…',
+            label: 'Save to Project…',
             onSelect: () => {
-              if (activeSession)
-                setContinueInProject(
-                  continuedConversationFromChat(
-                    activeSession,
-                    sessionDisplayCwd ?? undefined,
-                  ),
+              if (!activeSession) return;
+              const snapshot = transcriptSnapshotRef.current;
+              if (
+                !requestAuthority?.isCurrent() ||
+                snapshot?.chatId !== activeSession.id ||
+                snapshot.conversationId !== activeSession.conversationId ||
+                !snapshot.requestScope.isCurrent() ||
+                snapshot.requestScope.apiBase !== requestAuthority.apiBase ||
+                snapshot.requestScope.authorityKey !==
+                  requestAuthority.authorityKey
+              ) {
+                showToast('Chat history is unavailable right now.');
+                return;
+              }
+              const conversation = continuedConversationFromChat(
+                { ...activeSession, messages: snapshot.messages },
+                sessionDisplayCwd ?? undefined,
+              );
+              let sourceProjectSlug: string | undefined;
+              if (conversation.latestTurnId) {
+                const answerSession = orchestrationSessions.find(
+                  (session) =>
+                    session.threadId === conversation.sessionId &&
+                    (!session.conversationId ||
+                      session.conversationId === conversation.conversationId),
                 );
+                const opening = activeSession.conversationOpenState;
+                const openedProjectSlug =
+                  opening?.status === 'resolved' &&
+                  opening.conversation.id === conversation.conversationId
+                    ? opening.conversation.projectSlug
+                    : undefined;
+                const answerProjectSlug = answerSession?.projectSlug;
+                sourceProjectSlug = answerProjectSlug ?? openedProjectSlug;
+                if (
+                  answerSession?.projectAttribution ||
+                  (answerProjectSlug &&
+                    openedProjectSlug &&
+                    answerProjectSlug !== openedProjectSlug) ||
+                  (!sourceProjectSlug && activeSession.projectSlug)
+                ) {
+                  showToast(
+                    'Couldn’t verify the Project that owns this answer.',
+                  );
+                  return;
+                }
+              }
+              setContinueInProject({
+                conversation,
+                ownerKey: projectCreationRecoveryIdentity(requestAuthority),
+                sourceProjectSlug,
+              });
             },
           },
         ]
@@ -4796,6 +4849,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               >
                                 <ChatDockContentArea
                                   connection={conversationConnection}
+                                  transcriptSnapshotRef={
+                                    continueInProjectEnabled && hostConversation
+                                      ? transcriptSnapshotRef
+                                      : undefined
+                                  }
                                   onNewChat={handleStartNewChatWithMessage}
                                   onEditPeerChatDraft={(intent) =>
                                     requestNewChat({
@@ -5219,7 +5277,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             <ShareIntakeController />
             {continueInProject && (
               <ContinueInProjectDialog
-                conversation={continueInProject}
+                conversation={continueInProject.conversation}
+                sourceOwnerKey={continueInProject.ownerKey}
+                sourceProjectSlug={continueInProject.sourceProjectSlug}
                 onClose={() => setContinueInProject(null)}
               />
             )}
