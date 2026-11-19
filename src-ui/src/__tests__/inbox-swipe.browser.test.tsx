@@ -184,6 +184,9 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     const cdp = await page.context().newCDPSession(page);
     const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
     const row = inbox.getByRole('button', { name: /^Review the inbox\b/ });
+    const list = inbox.locator('.mobile-inbox__list');
+    const pullHint = () =>
+      list.evaluate((element) => getComputedStyle(element, '::before').content);
     const refreshes = () =>
       page.evaluate(() => Reflect.get(window, 'inboxRefreshes'));
     const setUpdating = (value: boolean) =>
@@ -200,15 +203,33 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     await setUpdating(true);
     await expectBrowser(status).toHaveAttribute('title', 'Updating…');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await expectBrowser(status.locator('svg')).toHaveCSS(
-      'animation-name',
-      'none',
-    );
+    expect(
+      await status.evaluate((element) => {
+        const rail = getComputedStyle(element, '::before');
+        return rail.content !== 'none' && Number.parseFloat(rail.height) > 0;
+      }),
+    ).toBe(true);
+    await expectBrowser
+      .poll(() =>
+        status.evaluate((element) =>
+          Number.parseFloat(
+            getComputedStyle(element, '::before').animationDuration,
+          ),
+        ),
+      )
+      .toBeLessThan(0.01);
     await expectBrowser(row).toBeVisible();
     await setUpdating(false);
     await expectBrowser(status).toHaveAttribute('title', '');
 
-    await swipe(cdp, page, 0, 30);
+    const rowTop = (await row.boundingBox())?.y ?? 0;
+    await swipe(cdp, page, 0, 36, {
+      during: async () => {
+        await expectBrowser.poll(pullHint).toBe('"Pull to refresh"');
+        expect((await row.boundingBox())?.y).toBeGreaterThan(rowTop + 10);
+      },
+    });
+    expect(await pullHint()).toBe('none');
     await swipe(cdp, page, 0, 110, { cancel: true });
     await swipe(cdp, page, 0, 110, {
       during: async ({ x, y }) => {
@@ -220,8 +241,21 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     });
     expect(await refreshes()).toBe(0);
     await swipe(cdp, page, 0, 110, {
-      during: async () => expect(await refreshes()).toBe(0),
+      during: async () => {
+        await expectBrowser.poll(pullHint).toBe('"Release to refresh"');
+        expect(
+          await list.evaluate((element) => {
+            const cue = getComputedStyle(element, '::before');
+            return (
+              Number.parseFloat(cue.height) > Number.parseFloat(cue.fontSize)
+            );
+          }),
+        ).toBe(true);
+        expect(await refreshes()).toBe(0);
+      },
     });
+    expect(await pullHint()).toBe('none');
+    expect((await row.boundingBox())?.y).toBe(rowTop);
     await expectBrowser(status.locator('[aria-live=polite]')).toHaveText(
       'Refreshing…',
     );

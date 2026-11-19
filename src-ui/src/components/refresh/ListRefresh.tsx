@@ -146,17 +146,10 @@ export function ListRefreshIndicator({
     failed: 'Couldn’t refresh',
     offline: 'Waiting for connection',
   }[state];
-  const glyph =
-    state === 'done' ? (
-      <CheckGlyph />
-    ) : state === 'failed' ? (
-      <WarningGlyph />
-    ) : (
-      <RefreshGlyph />
-    );
   return (
     <span className="list-refresh__indicator" data-state={state} title={label}>
-      {state !== 'idle' && <span aria-hidden="true">{glyph}</span>}
+      {state === 'done' && <CheckGlyph />}
+      {(state === 'failed' || state === 'offline') && <WarningGlyph />}
       <span className="sr-only" aria-live="polite">
         {state === 'updating' ? '' : label}
       </span>
@@ -226,11 +219,16 @@ export function usePullToRefresh(
     let origin: Touch | undefined;
     let distance = 0;
     let scroller: Element | null = null;
+    const clearPull = () => {
+      distance = 0;
+      delete surface.dataset.listRefreshPull;
+      delete surface.dataset.listRefreshLabel;
+      surface.style.removeProperty('--list-refresh-pull');
+    };
     const reset = () => {
       origin = undefined;
-      distance = 0;
       scroller = null;
-      delete surface.dataset.listRefreshPull;
+      clearPull();
     };
     const start = (event: TouchEvent) => {
       reset();
@@ -262,8 +260,7 @@ export function usePullToRefresh(
       if (Math.max(Math.abs(dy), dx) < GESTURE_SLOP_PX) {
         if (distance > 0) {
           event.preventDefault();
-          distance = 0;
-          delete surface.dataset.listRefreshPull;
+          clearPull();
         }
         return;
       }
@@ -273,8 +270,17 @@ export function usePullToRefresh(
       }
       event.preventDefault();
       distance = dy;
-      surface.dataset.listRefreshPull =
-        dy >= PULL_THRESHOLD_PX ? 'ready' : 'pulling';
+      const ready = dy >= PULL_THRESHOLD_PX;
+      surface.dataset.listRefreshPull = ready ? 'ready' : 'pulling';
+      surface.dataset.listRefreshLabel = ready
+        ? 'Release to refresh'
+        : dy >= 28
+          ? 'Pull to refresh'
+          : '';
+      surface.style.setProperty(
+        '--list-refresh-pull',
+        String(Math.min(dy / PULL_THRESHOLD_PX, 1)),
+      );
     };
     const end = () => {
       const armed = distance >= PULL_THRESHOLD_PX;
