@@ -1122,6 +1122,43 @@ describe('Confirm rechecks what the proposing chat may do now (review P1)', () =
     },
   );
 
+  test('a source with no Agent grant can be confirmed while the Agent lock is held', async () => {
+    const release = await acquireAgentIdentityMutationLockAtHome(agentHome);
+    const operation = (async () => {
+      const sessionId = nextSession();
+      const source = await agent('bound', sessionId, 'POST', SOURCES, {
+        ...SOURCE,
+        grants: [],
+      });
+      expect(source.status).toBe(200);
+      return person(
+        'POST',
+        answer(`conv-${sessionId}`, source.body.data.id, 'confirm'),
+        { enable: true },
+      );
+    })();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const response = await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Confirmation waited for the Agent lock')),
+            3_000,
+          );
+        }),
+      ]);
+      expect(response).toMatchObject({
+        status: 200,
+        body: { data: { enabled: true } },
+      });
+    } finally {
+      clearTimeout(timer);
+      await release();
+      await operation;
+    }
+  }, 10_000);
+
   test('an Agent that changes inside the creation lock creates nothing', async () => {
     const sessionId = nextSession();
     const conversationId = `conv-${sessionId}`;

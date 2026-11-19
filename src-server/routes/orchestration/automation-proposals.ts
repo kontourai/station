@@ -259,20 +259,19 @@ export function createAutomationProposalRoutes(
         // Unknown is labelled: the person sees the warning rather than not.
         untrusted = true;
       }
-      const body = await readJson(c.req.raw);
-      const result = await deps.withAgentIdentity(() =>
-        plan(body, {
-          conversationId: caller.conversationId,
-          authority: {
-            bind: (projectId, agentId) =>
+      const result = await plan(await readJson(c.req.raw), {
+        conversationId: caller.conversationId,
+        authority: {
+          bind: (projectId, agentId) =>
+            deps.withAgentIdentity(() =>
               deps.bind(caller.policy, projectId, agentId, true),
-          },
-          configuration: () => automations.read(),
-          proposal: (id) => store.proposal(id),
-          ...(deps.projectName ? { projectName: deps.projectName } : {}),
-          untrusted,
-        }),
-      );
+            ),
+        },
+        configuration: () => automations.read(),
+        proposal: (id) => store.proposal(id),
+        ...(deps.projectName ? { projectName: deps.projectName } : {}),
+        untrusted,
+      });
       if (!result.ok)
         return refusal(c, result.code, result.error, result.problems);
       const inserted = store.insert({
@@ -510,8 +509,12 @@ export function createAutomationProposalRoutes(
             throw new BindingChangedError(binding);
         }
       };
+      const withBoundAgentIdentity = <T>(operation: () => Promise<T>) =>
+        recorded.bindings.length > 0
+          ? deps.withAgentIdentity(operation)
+          : operation();
       try {
-        await deps.withAgentIdentity(recheck);
+        await withBoundAgentIdentity(recheck);
       } catch (error) {
         if (error instanceof BindingChangedError)
           return bindingChanged(c, error.message);
@@ -547,7 +550,7 @@ export function createAutomationProposalRoutes(
             ? current.sources.some(({ id }) => id === createdId)
             : current.rules.some(({ id }) => id === createdId);
         if (!exists) {
-          await deps.withAgentIdentity(async () => {
+          await withBoundAgentIdentity(async () => {
             if (proposal.kind === 'source')
               await automations.createSource({ ...proposal.source }, recheck, {
                 id: createdId,
@@ -594,7 +597,7 @@ export function createAutomationProposalRoutes(
       let enableRefusal: string | undefined;
       if (enable) {
         try {
-          await deps.withAgentIdentity(() => {
+          await withBoundAgentIdentity(() => {
             const expectedFingerprint = automationConfigurationFingerprint(
               automations.read(),
             );

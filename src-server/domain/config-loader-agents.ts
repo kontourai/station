@@ -64,9 +64,9 @@ export function agentIncarnationUnderLock(
     })
   ) {
     const owner = pluginAgentInstallationBinding(agentDir);
-    if (!owner) return undefined;
-    if (owner.generation)
-      return JSON.stringify(['plugin', owner.plugin, owner.generation]);
+    return owner?.generation
+      ? JSON.stringify(['plugin', owner.plugin, owner.generation])
+      : undefined;
   }
   const marker = join(agentDir, AGENT_INCARNATION_FILE);
   if (lstatSync(marker, { throwIfNoEntry: false })) {

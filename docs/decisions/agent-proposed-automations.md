@@ -65,8 +65,10 @@ This is the `propose_job` pattern Station already uses for scheduled jobs.
   the proposing chat's recorded caller, now. It requires each Agent to be the
   one named: the same slug, Project, definition digest and incarnation.
   Station assigns a persisted incarnation to Station-owned Agent directories
-  at first proposal use and reuses the installation generation for plugin
-  Agents where one exists. Saving the same definition keeps the incarnation.
+  at first proposal use. Plugin Agents use the installation generation. The
+  operator needs to update a plugin without a usable generation before its
+  Agents can be proposed as targets. Saving the same definition keeps the
+  incarnation.
   Deleting and recreating the Agent through Station produces a fresh one.
   An older proposal with no incarnation binding for a target must be
   declined and proposed again. Confirm checks before claiming the proposal
