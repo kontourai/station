@@ -43,8 +43,15 @@ commit a deferred write, or to drop it when Station changes.
 adds **Troubleshoot** to an error-tone toast that has fewer than two actions
 and is not one of troubleshooting's own (`troubleshoot-*` deduplication keys);
 see [troubleshoot with an agent](troubleshoot-in-app.md).
-On touch, a sideways swipe dismisses a transient toast; approval and pairing
-cards keep their explicit dismiss.
+On touch, a sideways swipe dismisses a transient toast. Approval and pairing
+cards keep their explicit dismiss. When the phone Inbox is open, it reserves
+space for the displayed notification stack so the scope and search controls
+stay reachable. Taller stacks and the Inbox list scroll independently.
+
+Server-backed silent notifications remain in History and do not play a
+browser sound or show a transient toast. An otherwise audible turn completion
+keeps its category sound. The existing foreground check suppresses the toast
+for the chat the person is reading.
 
 [NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
 recent messages separately from server attention. Persistence is opt-in through
