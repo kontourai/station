@@ -398,8 +398,8 @@ async function passEngineRoleStep(page: Page) {
 }
 
 /**
- * Home is intent-first (#3082, `<FirstRunHomeChapter intentFirst />`): once
- * nothing is left to disclose, the run never opens over the task on its own.
+ * Home is intent-first (#3082, `<FirstRunHomeChapter intentFirst />`): setup
+ * never opens over the task on its own.
  * It waits behind the Home card's explicit "Open setup". Asserting
  * the absence after the card is up is what keeps a chapter that starts
  * auto-opening again from passing here unnoticed.
@@ -961,27 +961,13 @@ test.describe('First-run engines chapter (station#3027)', () => {
   });
 });
 
-/**
- * WHERE THE USAGE-TELEMETRY DISCLOSURE RENDERS.
- *
- * `OnboardingGate` mounts `<UsageTelemetryDisclosure firstRun />` after its
- * children, so wherever it renders it renders on top. On a fresh home that put
- * it over this chapter — two modals on the first screen a person ever sees,
- * with the chapter unreadable underneath (reproduced live, ../a3-fresh-home.png)
- * — and on `origin/main` it lands over the setup launcher, which is why these
- * specs used to have to answer it before they could click anything.
- *
- * The disclosure belongs to onboarding: on a `pending` home it is the run's
- * first step and the standalone modal does not exist; everywhere else the modal
- * is what shipped, waiting its turn behind the launcher and the chapter.
- */
 test.describe('First-run usage-telemetry disclosure placement', () => {
   const disclosureStep = (page: Page) =>
     page.getByTestId('first-run-disclosure');
   const standaloneModal = (page: Page) =>
     page.getByTestId('usage-telemetry-disclosure-modal');
 
-  test('a pending home opens the run AT the disclosure, with no second modal', async ({
+  test('a pending home offers review without opening a dialog', async ({
     page,
   }, testInfo) => {
     await patchExternalEngines(page, ENGINE_MIX);
@@ -992,9 +978,11 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     });
 
     await page.goto('/');
-    await expect(disclosureStep(page)).toBeVisible({ timeout: 20_000 });
-    // The inventory itself, in the chapter's own dialog — same copy as the
-    // standalone modal, because it is the same component.
+    const review = page.getByRole('button', { name: 'Review choices' });
+    await expect(review).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await review.click();
+    await expect(standaloneModal(page)).toBeVisible();
     await expect(page.getByText('What Station sends')).toBeVisible();
     // #1582 A3: one derived sentence leads, and the generated schema is
     // behind "See exactly what is sent" rather than filling the first screen
@@ -1005,12 +993,9 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
       ),
     ).toBeVisible();
     await expect(page.getByText('station_started')).toBeHidden();
-    await disclosureStep(page).getByText('See exactly what is sent').click();
+    await standaloneModal(page).getByText('See exactly what is sent').click();
     await expect(page.getByText('station_started')).toBeVisible();
-    await expect(page.getByText('Step 1 of 1')).toBeVisible();
-    // THE DEFECT THIS CLOSES: exactly one overlay, and the engines step is
-    // behind the disclosure rather than beside it.
-    await expect(standaloneModal(page)).toHaveCount(0);
+    await expect(disclosureStep(page)).toHaveCount(0);
     await expect(page.locator('.responsive-surface-overlay')).toHaveCount(1);
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
 
@@ -1019,7 +1004,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
       fullPage: false,
     });
 
-    await disclosureStep(page)
+    await standaloneModal(page)
       .getByRole('button', { name: 'Keep usage telemetry on' })
       .click();
 
@@ -1028,7 +1013,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect.poll(() => acknowledgements.length).toBe(1);
     // Intent-first Home (#3082): the decision returns the reader to the task
     // instead of walking on into the engines step.
-    await expect(disclosureStep(page)).toHaveCount(0);
+    await expect(standaloneModal(page)).toHaveCount(0);
     await openRunFromHomeCard(page);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
     await expect(page.getByText('Step 1 of 3')).toBeVisible();
@@ -1070,6 +1055,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     );
 
     await page.goto('/');
+    await openRunFromHomeCard(page);
     await expect(disclosureStep(page)).toBeVisible({ timeout: 20_000 });
     await disclosureStep(page)
       .getByRole('button', { name: 'Turn it off' })
@@ -1079,21 +1065,9 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
       .poll(() => settingWrites)
       .toEqual([{ telemetryEnabled: false }]);
     await expect.poll(() => acknowledgements.length).toBe(1);
-    await expect(disclosureStep(page)).toHaveCount(0);
-    // Deciding the disclosure is not COMPLETING the run. Intent-first Home
-    // (#3082) returns to the task by deferring it — the same resumable
-    // `skipped` snooze the chapter's own "Not now" records — and never
-    // records `completed`.
-    await expect
-      .poll(() => firstRunWrites(configWrites).map((record) => record.status))
-      .toEqual(['skipped']);
-    await openRunFromHomeCard(page);
     await expect(page.getByTestId('first-run-engines')).toBeVisible();
-    await expect(page.getByText('Step 1 of 3')).toBeVisible();
-    // Resuming from the card is not a second decision.
-    expect(firstRunWrites(configWrites).map((record) => record.status)).toEqual(
-      ['skipped'],
-    );
+    await expect(disclosureStep(page)).toHaveCount(0);
+    expect(firstRunWrites(configWrites)).toEqual([]);
   });
 
   test('closing the run over the disclosure decides nothing (#765 B1)', async ({
@@ -1107,6 +1081,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     });
 
     await page.goto('/');
+    await openRunFromHomeCard(page);
     await expect(disclosureStep(page)).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: 'Close setup' }).click();
 
@@ -1149,7 +1124,9 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByTestId('first-run-engines')).toHaveCount(0);
   });
 
-  test('an upgraded home still gets the standalone modal', async ({ page }) => {
+  test('an upgraded home also offers privacy review without taking focus', async ({
+    page,
+  }) => {
     // No `firstRun` record at all: a home that predates the field, which is
     // the population the modal shipped for — and, since #1600, the population
     // that gets the SAME derived summary and on/off decision the first-run step
@@ -1160,6 +1137,10 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await pinTelemetryDisclosure(page, { acknowledged: false });
 
     await page.goto('/');
+    const review = page.getByRole('button', { name: 'Review choices' });
+    await expect(review).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await review.click();
     await expect(standaloneModal(page)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('What Station sends')).toBeVisible();
     await expect(
@@ -1185,7 +1166,7 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     await expect(page.getByTestId('first-run-home-card')).toHaveCount(0);
   });
 
-  test('the modal waits for the setup launcher rather than covering it', async ({
+  test('dismissing the setup launcher leaves privacy review optional', async ({
     page,
   }) => {
     // The behaviour on `origin/main` that made these specs answer it first:
@@ -1203,9 +1184,11 @@ test.describe('First-run usage-telemetry disclosure placement', () => {
     });
     await expect(standaloneModal(page)).toHaveCount(0);
 
-    // And it takes the screen the moment the launcher is answered.
     await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
-    await expect(standaloneModal(page)).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Review choices' }),
+    ).toBeVisible();
+    await expect(standaloneModal(page)).toHaveCount(0);
   });
 
   test('a chapter re-opened from Home’s card suppresses the modal while it is up', async ({

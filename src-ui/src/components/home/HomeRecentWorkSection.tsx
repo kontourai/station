@@ -665,7 +665,7 @@ function HomeSettledTail({
       aria-labelledby="home-settled-tail-heading"
     >
       <h3 id="home-settled-tail-heading" className="home-view__group-label">
-        <WorkGroupLabel label="Earlier" />
+        <WorkGroupLabel label="Earlier in Station" />
       </h3>
       <ul className="home-view__task-list">
         {visible.map((task) =>
