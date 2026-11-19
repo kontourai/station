@@ -72,7 +72,7 @@ describe('ApprovalModeChip', () => {
       'Approval: Ask first. Station approval coverage unknown.',
     );
     expect(trigger().getAttribute('aria-label')).toContain(
-      'Codex reviewer not reported here; sandbox escalations may be approved automatically.',
+      'Codex approval reviewer: Unknown. Sandbox escalations may be reviewed automatically.',
     );
     await openSheet();
     expect(
@@ -91,12 +91,34 @@ describe('ApprovalModeChip', () => {
       />,
     );
     expect(trigger().getAttribute('aria-label')).not.toContain(
-      'Codex reviewer',
+      'Codex approval reviewer',
     );
     await openSheet();
     expect(option(/Ask first.*Claude asks/i)).toBeTruthy();
     expect(screen.queryByText(/configured reviewer may approve/i)).toBeNull();
   });
+
+  test.each([
+    ['user', 'You'],
+    ['automatic', 'Automatic'],
+  ] as const)(
+    'shows the reported %s reviewer with Ask still selected',
+    async (reportedApprovalReviewer, label) => {
+      render(
+        <ApprovalModeChip
+          engineConnectionId="codex"
+          sessionOverride="ask"
+          reportedApprovalReviewer={reportedApprovalReviewer}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(chipValue()).toBe('Ask');
+      await openSheet();
+      expect(
+        screen.getByText(`Codex approval reviewer: ${label}.`),
+      ).toBeTruthy();
+    },
+  );
 
   test('an inherited mode shows what the engine confirmed in the visible chip', () => {
     const { rerender } = render(

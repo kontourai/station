@@ -239,6 +239,7 @@ export function conversationOpenPatch(
               // recorded posture is the CONVERSATION's and stays, as does a
               // queued pick (#2436).
               lastAppliedApprovalMode: undefined,
+              reportedApprovalReviewer: undefined,
               approvalEscalationRejected: undefined,
               approvalTakeoverFailed: undefined,
               currentModeId: null,
@@ -328,6 +329,7 @@ export function conversationOpenPatch(
           orchestrationTurnOpen: false,
           openTurnId: undefined,
           lastAppliedApprovalMode: undefined,
+          reportedApprovalReviewer: undefined,
         }
       : {}),
     conversationOpenPending: pendingChoice,

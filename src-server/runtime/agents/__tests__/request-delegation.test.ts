@@ -55,44 +55,58 @@ function childRecord(
 const TOOLS: DelegationFanOutTool[] = ['delegate_task', 'send_message'];
 
 describe('createRequestDelegationResolver child fan-out', () => {
-  test.each(TOOLS)('refuses %s from a delegated child', async (tool) => {
+  test('derives a tracked grandchild from the caller while preserving the root and restrictions', async () => {
     await expect(
-      resolver(childRecord())(request, { tool }),
+      resolver(childRecord({ blockedTools: ['shell_*'] }))(request, {
+        tool: 'delegate_task',
+        delegation: {
+          ...(childRecord().delegation as AgentDelegationContext),
+          rootConversationId: 'forged',
+        },
+      }),
+    ).resolves.toMatchObject({
+      provenance: 'caller-derived',
+      context: {
+        depth: 2,
+        maxDepth: 2,
+        parentConversationId: 'conversation-caller',
+        parentSessionId: 'session-caller',
+        rootConversationId: 'conversation-root',
+        blockedTools: expect.arrayContaining(['shell_*']),
+        denyApprovals: true,
+      },
+    });
+  });
+
+  test('refuses a child at the inherited depth limit', async () => {
+    await expect(
+      resolver(childRecord({ depth: 1, maxDepth: 1 }))(request, {
+        tool: 'delegate_task',
+      }),
+    ).rejects.toMatchObject({ code: 'delegation_depth_exceeded' });
+  });
+
+  test('refuses child messaging even when the recorded policy does not include the built-in denial', async () => {
+    await expect(
+      resolver(
+        childRecord({
+          allowedTools: ['station-control_send_message'],
+          blockedTools: [],
+        }),
+      )(request, { tool: 'send_message' }),
     ).rejects.toMatchObject({ code: 'delegated_tool_blocked' });
   });
 
-  test.each(TOOLS)(
-    'refuses %s before the depth limit, even one level below it',
-    async (tool) => {
-      // depth 1 of maxDepth 3: the depth check would admit it.
-      await expect(
-        resolver(childRecord({ maxDepth: 3 }))(request, { tool }),
-      ).rejects.toMatchObject({ code: 'delegated_tool_blocked' });
-    },
-  );
-
-  test.each(TOOLS)(
-    'an Agent allowedTools that names %s cannot re-allow the built-in denial',
-    async (tool) => {
-      await expect(
-        resolver(childRecord({ allowedTools: [`station-control_${tool}`] }))(
-          request,
-          { tool },
-        ),
-      ).rejects.toMatchObject({ code: 'delegated_tool_blocked' });
-    },
-  );
-
-  test.each(TOOLS)(
-    'a context recorded without blockedTools still refuses %s',
-    async (tool) => {
-      const record = childRecord();
-      delete (record.delegation as Record<string, unknown>).blockedTools;
-      await expect(resolver(record)(request, { tool })).rejects.toMatchObject({
-        code: 'delegated_tool_blocked',
-      });
-    },
-  );
+  test('an inherited tool restriction can still block nested delegation', async () => {
+    await expect(
+      resolver(childRecord({ toolAllowlistConstraints: [['read_file']] }))(
+        request,
+        {
+          tool: 'delegate_task',
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'delegated_tool_blocked' });
+  });
 
   test.each(TOOLS)(
     'a root caller may %s and gets a depth-1 child',

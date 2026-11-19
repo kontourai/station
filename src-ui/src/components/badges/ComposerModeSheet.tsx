@@ -45,6 +45,7 @@ interface ComposerModeSheetProps {
   sourceNote?: string;
   /** Whether Station's own approvals reach this engine's tool calls. */
   policyNote?: string;
+  reviewerNote?: string;
   pendingNote?: string;
   /** The mode the engine reports it is running, as a label. */
   activeMode?: string;
@@ -91,6 +92,7 @@ function ComposerModeSheetContent({
   onSelect,
   sourceNote,
   policyNote,
+  reviewerNote,
   pendingNote,
   activeMode,
   chatOverride,
@@ -172,6 +174,9 @@ function ComposerModeSheetContent({
         ) : null}
         {policyNote && (
           <p className="composer-mode-sheet__confirm-body">{policyNote}</p>
+        )}
+        {reviewerNote && (
+          <p className="composer-mode-sheet__confirm-body">{reviewerNote}</p>
         )}
         <p className="composer-mode-sheet__confirm-body">
           {pendingNote?.includes('restart')

@@ -135,16 +135,13 @@ including managed Station execution and forwarding to a peer or SSH target.
 Enabling that execution requires binding the policy to conversation reuse and
 durable intent, then proving enforcement at the actual tool effect.
 
-Child fan-out is the one denial Station also enforces server-side for every
-engine. A delegated child that calls `delegate_task` or `send_message` is
-refused at the routes behind them (`POST /api/orchestration/delegations`, and
-`/chat`, `/chat/delegated` and `/chat/background`) with `403` and
-`delegated_tool_blocked`, before the depth limit is read. The decision uses the
-calling session's own recorded delegation context and the built-in denial list,
-so an Agent's `allowedTools` cannot re-allow it. It needs a verified
-station-control caller: a Codex or ACP header token, Codex's bound channel or the
-Claude in-process server. A shell `station` CLI run under an operator credential is not
-that caller, so this is not coverage of every way a child could start work.
+Station Control derives the dispatch caller from its verified session.
+A child can start another child only on this Station in the caller's own
+scope, within the recorded depth limit and inherited tool policy. Station
+refuses a child that calls `send_message` with `delegated_tool_blocked`.
+The calling session's recorded context controls both decisions. This
+covers verified ACP, Codex, and Claude callers. Commands issued with an
+operator credential have their own authority.
 
 ### Codex approval policy and reviewer
 
@@ -170,11 +167,12 @@ approval paths.
 
 With `approvals_reviewer: auto_review`, Codex can review eligible sandbox
 escalations of a `host` session automatically without opening a Station
-approval card. The Ask
-chip confirms the approval-policy mapping only; Station does not currently
-report the effective reviewer. Its picker option and the chip's accessible name
-name that gap; the chip's hover tooltip carries only the policy boundary.
-Ask alone is not evidence that a person must approve every sandbox escalation.
+approval card. The approval sheet shows the reviewer Codex reported for the
+current native thread as You, Automatic, or Unknown. Station records startup,
+resume, fork, and subsequent settings reports independently of the approval
+mode. The last report is restored on reconnect. An explicit workspace start
+is refused if Codex reports an automatic reviewer in conflict with the
+human-reviewer configuration.
 See OpenAI's [Auto-review documentation](https://learn.chatgpt.com/docs/sandboxing/auto-review).
 
 This mapping was checked against Codex CLI 0.162.1's generated app-server

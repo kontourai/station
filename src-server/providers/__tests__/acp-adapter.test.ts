@@ -2898,7 +2898,11 @@ describe('AcpAdapter', () => {
             connectionFingerprint: staleFingerprint,
           },
         }),
-      ).rejects.toThrow(/different engine connection configuration/i);
+      ).rejects.toMatchObject({
+        code: 'acp_resume_configuration_changed',
+        failurePhase: 'refused',
+        message: expect.stringContaining('Continue with chat history'),
+      });
 
       // Rejected before ever spawning a process for the stale cursor.
       expect(processes).toHaveLength(0);
@@ -4454,6 +4458,42 @@ describe('AcpAdapter', () => {
     expect(processes[1].destroyed).toBe(true);
     expect(await adapter.hasSession('thread-kiro')).toBe(false);
     expect(await adapter.hasSession('thread-other')).toBe(false);
+  });
+
+  test('a tool refused after configuration changes settles a silent ACP end as an actionable failure', async () => {
+    const { adapter, processes } = createAdapter({
+      resolvePreToolPolicy: async () => async () => ({
+        behavior: 'deny',
+        staleGeneration: true,
+        denial: { allowed: false, reason: 'Agent configuration changed' },
+      }),
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const threadId = 'thread-stale-policy';
+    await adapter.startSession({
+      provider: 'acp',
+      threadId,
+      metadata: { connectionId: 'kiro' },
+      agent: { slug: 'engine-lab' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId, input: 'Read a file' });
+    const started = await nextEvent(iterator, 'turn.started');
+    const process = processes[0]!;
+    await expect(
+      requestPermission(process.client, 'tool-stale', 'read_file'),
+    ).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'reject-once' },
+    });
+    process.resolvePrompt('end_turn');
+    expect(await nextEvent(iterator, 'runtime.error')).toMatchObject({
+      method: 'runtime.error',
+      turnId: started.turnId,
+      code: 'stale_generation',
+      kind: 'permission_denied',
+      message: expect.stringContaining('Start a new chat'),
+    });
   });
 
   test('#354 refusal and request budget exhaustion settle as non-retryable failures with their provider reason', async () => {

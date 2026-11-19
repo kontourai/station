@@ -1,4 +1,5 @@
 import type { OrchestrationConversationStreamBinding } from '@kontourai/station-contracts/orchestration';
+import { isEngineApprovalReviewer } from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -302,6 +303,15 @@ function dispatchProjectedOrchestrationEvent(
       return;
     case 'session.engine-mode-observed':
       handleSessionEngineModeObservedEvent(event, station);
+      return;
+    case 'session.approval-reviewer-observed':
+      if (
+        event.provider === 'codex' &&
+        isEngineApprovalReviewer(event.reviewer)
+      )
+        chatStore.updateChat(event.threadId, {
+          reportedApprovalReviewer: event.reviewer,
+        });
       return;
     case 'session.state-changed':
       handleSessionStateChangedEvent(event, undefined, station ?? apiBase);

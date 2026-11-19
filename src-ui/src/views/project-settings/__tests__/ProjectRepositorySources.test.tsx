@@ -235,9 +235,9 @@ test('repository links lead the cards, chat placement is plain, and access belon
   const other = screen
     .getByRole('link', { name: /github.com\/other.*forge.example/ })
     .closest('li')!;
-  expect(station.querySelector('svg')).toBeTruthy();
-  expect(docs.querySelector('svg')).toBeTruthy();
-  expect(other.querySelector('svg')).toBeNull();
+  expect(station.querySelector('.project-repositories__mark')).toBeTruthy();
+  expect(docs.querySelector('.project-repositories__mark')).toBeTruthy();
+  expect(other.querySelector('.project-repositories__mark')).toBeNull();
   replies.failAuth = true;
   fireEvent.click(
     within(station).getByRole('button', { name: 'Check sign-in' }),

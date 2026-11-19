@@ -2971,9 +2971,8 @@ export class StationRuntime {
    * 'remove', ...)`, but until this wiring, nothing in production ever
    * subscribed — the whole watcher half was computed and discarded.
    *
-   * This reuses `reloadAgents()` — the SAME unconditional "resync the
-   * runtime's agent set from disk" entrypoint `scheduleRuntimeDailyReload`
-   * already fires on a timer and `POST /api/agents/reload` fires on demand —
+   * This reuses the on-demand `reloadAgents()` entry point
+   * (`POST /api/agents/reload`)
    * rather than `scheduleAgentConfigurationReconciliation()` below: that
    * reconciliation path is gated on the provider/app-config LAUNCHABILITY
    * REVISION counters actually having drifted, which an agent/integration
@@ -4647,7 +4646,6 @@ export class StationRuntime {
             this.configureRoutes(app);
             this.virtualApplication?.bind(app);
           },
-          reloadAgents: async () => this.reloadAgents(),
           captureAgentConfigurationRevisions: () =>
             this.captureAgentConfigurationRevisions(),
           registryTrustPolicyAuthority: this.registryTrustPolicyAuthority,

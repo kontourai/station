@@ -520,6 +520,8 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await expect(
       page.getByRole('heading', { name: 'New Project' }),
     ).toBeVisible();
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     const projectFolder = testInfo.outputPath('project-workspace');
     mkdirSync(projectFolder, { recursive: true, mode: 0o700 });
     execFileSync('git', ['init', '--initial-branch=main', projectFolder], {

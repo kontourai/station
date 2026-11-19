@@ -8,7 +8,10 @@ import {
   managedApprovalCeiling,
 } from '@kontourai/station-contracts/managed-policy-controls';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
-import { isApprovalMode } from '@kontourai/station-contracts/provider';
+import {
+  type EngineApprovalReviewer,
+  isApprovalMode,
+} from '@kontourai/station-contracts/provider';
 import { useContext, useRef, useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
@@ -81,6 +84,7 @@ interface ApprovalModeChipProps {
    * server-side" (archive#727).
    */
   lastAppliedApprovalMode?: unknown;
+  reportedApprovalReviewer?: EngineApprovalReviewer;
   /**
    * How far the engine has shown `sessionOverride` applied (#2436,
    * `SessionApprovalOverride.state`). Absent keeps the pre-#2334 behaviour.
@@ -132,6 +136,7 @@ function ApprovalModeChipContent({
   projectDefaultUnavailable,
   stationDefault,
   lastAppliedApprovalMode,
+  reportedApprovalReviewer,
   sessionOverrideState,
   onChange,
 }: ApprovalModeChipProps) {
@@ -197,11 +202,14 @@ function ApprovalModeChipContent({
         effective.mode,
         managedApprovalCeiling(policySummary),
       ));
-  const reviewerDisclosure =
+  const reviewerNote =
     engineConnectionId === 'codex' &&
-    (displayedMode === 'ask' || displayedMode === 'auto')
-      ? ' Codex reviewer not reported here; sandbox escalations may be approved automatically.'
-      : '';
+    (reportedApprovalReviewer ||
+      displayedMode === 'ask' ||
+      displayedMode === 'auto')
+      ? `Codex approval reviewer: ${reportedApprovalReviewer === 'user' ? 'You.' : reportedApprovalReviewer === 'automatic' ? 'Automatic.' : 'Unknown. Sandbox escalations may be reviewed automatically.'}`
+      : undefined;
+  const reviewerDisclosure = reviewerNote ? ` ${reviewerNote}` : '';
   // #2436: the server applies the recorded posture at every turn start, on
   // every send path, so "takes effect next turn" is true of any requested
   // pick. The exception is a full access Claude refused because the session
@@ -358,6 +366,7 @@ function ApprovalModeChipContent({
             },
             sourceNote,
             policyNote: policyExplanation,
+            reviewerNote,
             pendingNote,
             chatOverride: isOverride,
             activeMode: appliedMode

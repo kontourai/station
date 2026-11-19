@@ -3102,6 +3102,7 @@ function LiveConversationBody({
             approvalModeStationDefault={stationApprovalModeDefault}
             toolPolicyDelivery={toolPolicyDelivery}
             lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+            reportedApprovalReviewer={activeSession.reportedApprovalReviewer}
             approvalModeOverride={sessionApprovalOverride(activeSession)}
             acpSessionModes={advertisedAcpSession.modes}
             acpApproval={acpApproval}

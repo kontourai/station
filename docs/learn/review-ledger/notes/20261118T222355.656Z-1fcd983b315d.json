@@ -1,0 +1,7 @@
+{
+  "revision": "8d91b7297afd9bcb0fa5c781c6382acf69e7f74c",
+
+  "notes": [
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Inspected the Working configuration capture. The new selectors apply only to repository rows, repository add and the repository toolbar. The captured Working configuration fields and actions use their existing styles.","inputs":["docs/learn/media/agent-efficiency-working-configuration.png","src-ui/src/views/project-settings/ProjectSourcesSection.css"]}
+  ]
+}

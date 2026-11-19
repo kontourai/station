@@ -4,7 +4,13 @@
  * (`opencode-serve-replay.ts`).
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
+import {
+  mkdirSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -1551,6 +1557,53 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         { name: 'echo', state: 'ready', scope: 'engine-config' },
       ],
     });
+  });
+
+  test('governed preflight and start inspect the project before acquiring a serve lease', async () => {
+    const cwd = realpathSync(makeTempDir('opencode-governed-launch-'));
+    mkdirSync(join(cwd, '.git'));
+    const configDir = join(cwd, '.opencode');
+    writeFileSync(configDir, 'ordinary text');
+    const h = await setup(
+      { scenario: 'basic' },
+      { findProjectCode: undefined },
+      cwd,
+    );
+    const modelOptions = { approvalMode: 'ask' };
+    const input = {
+      threadId: 'thread-1',
+      provider: 'opencode' as const,
+      cwd,
+      metadata: { connectionId: 'opencode' },
+      modelOptions,
+    };
+    const refusal = {
+      code: 'acp_approval_governance_refused',
+      message: expect.stringContaining(configDir),
+    };
+
+    await expect(h.adapter.preflightStart(input)).rejects.toMatchObject(
+      refusal,
+    );
+    expect(h.leaser.acquired).toHaveLength(0);
+    await expect(h.adapter.startSession(input)).rejects.toMatchObject(refusal);
+    expect(h.leaser.acquired).toHaveLength(0);
+
+    unlinkSync(configDir);
+    writeFileSync(join(cwd, 'opencode.json'), '{"formatter":false}');
+    await h.adapter.preflightStart(input);
+    expect(h.leaser.acquired).toHaveLength(1);
+
+    writeFileSync(configDir, 'ordinary text');
+    await expect(h.adapter.startSession(input)).rejects.toMatchObject(refusal);
+    expect(h.leaser.acquired).toHaveLength(1);
+    expect(h.leaser.released).toBe(1);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+
+    unlinkSync(configDir);
+    const session = await h.adapter.startSession(input);
+    expect(session.resumeCursor).toMatchObject({ transport: 'native' });
+    expect(h.leaser.acquired).toHaveLength(2);
   });
 
   test('a governed start sends Station rules and pins a governed agent', async () => {

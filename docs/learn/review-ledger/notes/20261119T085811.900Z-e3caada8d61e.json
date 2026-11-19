@@ -1,0 +1,17 @@
+{
+  "revision": "4c48402302725cafaf8db13a68e86c57def1651e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked portable package loading and author validation references against native path resolution at the consumer. Contained component links load, dangling command links are refused, and entrypoint validation stats the path it checked. Format, features, lifecycle, permissions, and authoring requirements are unchanged. Fixture evidence is limited to the tested host and apps at inspection time.","inputs":["src-server/services/plugins/agent-plugin-loader.ts"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Checked portable package loading and author validation references against native path resolution at the consumer. Contained component links load, dangling command links are refused, and entrypoint validation stats the path it checked. Format, features, lifecycle, permissions, and authoring requirements are unchanged. Fixture evidence is limited to the tested host and apps at inspection time.","inputs":["src-server/services/plugins/agent-plugin-loader.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Checked portable package loading and author validation references against native path resolution at the consumer. Contained component links load, dangling command links are refused, and entrypoint validation stats the path it checked. Format, features, lifecycle, permissions, and authoring requirements are unchanged. Fixture evidence is limited to the tested host and apps at inspection time.","inputs":["src-server/services/plugins/agent-plugin-loader.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked portable package loading and author validation references against native path resolution at the consumer. Contained component links load, dangling command links are refused, and entrypoint validation stats the path it checked. Format, features, lifecycle, permissions, and authoring requirements are unchanged. Fixture evidence is limited to the tested host and apps at inspection time.","inputs":["src-server/services/plugins/agent-plugin-loader.ts"]},
+
+    {"path":"schemas/agent-plugins/1.0.0/UPSTREAM.md","note":"Checked portable package loading and author validation references against native path resolution at the consumer. Contained component links load, dangling command links are refused, and entrypoint validation stats the path it checked. Format, features, lifecycle, permissions, and authoring requirements are unchanged. Fixture evidence is limited to the tested host and apps at inspection time.","inputs":["src-server/services/plugins/agent-plugin-loader.ts"]},
+
+    {"path":"src-server/services/plugins/__fixtures__/agent-plugins-example/skills/migrate-agent-plugin/SKILL.md","note":"Checked portable package loading and author validation references against native path resolution at the consumer. Contained component links load, dangling command links are refused, and entrypoint validation stats the path it checked. Format, features, lifecycle, permissions, and authoring requirements are unchanged. Fixture evidence is limited to the tested host and apps at inspection time.","inputs":["src-server/services/plugins/agent-plugin-loader.ts"]}
+  ]
+}

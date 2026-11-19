@@ -162,3 +162,64 @@ test('the approval picker replaces Run setup and stays inside the chat column on
   }
   // Four renders of a real bundle; slow on a loaded host.
 }, 120_000);
+
+test('the Codex reviewer disclosure is visible and keyboard-accessible in the approval sheet', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(`
+    import React from 'react';
+    import {createRoot} from 'react-dom/client';
+    import {DialogHistoryHostBoundary} from './src-ui/src/components/DialogHistoryHost';
+    import {ApprovalModeChip} from './src-ui/src/components/badges/ApprovalModeChip';
+    createRoot(document.getElementById('root')).render(
+      <DialogHistoryHostBoundary><ApprovalModeChip engineConnectionId="codex"
+        sessionOverride="ask" lastAppliedApprovalMode="ask"
+        reportedApprovalReviewer="automatic" onChange={()=>{}} />
+      </DialogHistoryHostBoundary>);
+  `);
+  try {
+    await page.addStyleTag({
+      content: resolveCssImports(resolve(import.meta.dirname, '../index.css')),
+    });
+    const output = resolve('.kontourai/shell-chrome');
+    mkdirSync(output, { recursive: true });
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        const trigger = page.getByRole('button', {
+          name: /^Approval mode:.*Automatic/,
+        });
+        await trigger.press('Enter');
+        const sheet = page.getByRole('dialog', { name: 'Approval mode' });
+        const disclosure = sheet.getByText(
+          'Codex approval reviewer: Automatic.',
+        );
+        await disclosure.waitFor({ state: 'visible' });
+        await page.evaluate(() =>
+          Promise.all(
+            document.getAnimations().map((animation) => animation.finished),
+          ),
+        );
+        const box = await disclosure.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+        await page.screenshot({
+          path: `${output}/codex-reviewer-${width}-${theme}.png`,
+        });
+        await page.keyboard.press('Escape');
+        await sheet.waitFor({ state: 'hidden' });
+        await expect
+          .poll(() =>
+            trigger.evaluate((element) => element === document.activeElement),
+          )
+          .toBe(true);
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

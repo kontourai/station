@@ -69,14 +69,7 @@ class DelegationLineageUnavailableError extends Error {
   }
 }
 
-/**
- * A delegated child asked to fan out (`delegate_task`, `send_message`). The
- * in-session policy already denies these to Station's own engine; this is the
- * same denial where an external engine's call reaches the route, so a child
- * cannot spawn children or message Sessions by naming a tool the engine's
- * harness never asked Station about. Checked before the depth limit: the tool
- * is refused at any depth, not only at the last one.
- */
+/** A child tried to call a dispatch tool outside its inherited tool policy. */
 class DelegatedToolBlockedError extends Error {
   readonly code = 'delegated_tool_blocked' as const;
   constructor(tool: string) {
