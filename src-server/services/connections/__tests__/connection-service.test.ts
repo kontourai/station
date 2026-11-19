@@ -5187,6 +5187,56 @@ describe('ordinary engine inventory and dispatch admission', () => {
     },
   );
 
+  test('three overlapping current reads get their own live adapter observations', async () => {
+    const pending: Array<
+      (models: Array<{ id: string; name: string }>) => void
+    > = [];
+    const adapter = {
+      provider: 'codex',
+      metadata: {
+        displayName: 'Codex',
+        capabilities: ['agent-runtime'],
+        runtimeId: 'codex',
+        executionClass: 'connected',
+      },
+      getPrerequisites: async () => [],
+      listModels: () =>
+        new Promise<Array<{ id: string; name: string }>>((resolve) =>
+          pending.push(resolve),
+        ),
+    };
+    const service = createConnectionServiceForTest(
+      providerService,
+      () => [adapter],
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({}),
+      vi.fn(),
+    );
+    const app = createConnectionRoutes(service);
+    const requests = Array.from({ length: 3 }, () => app.request('/agents'));
+    try {
+      await vi.waitFor(() => expect(pending).toHaveLength(3));
+      pending.forEach((settle, i) =>
+        settle([{ id: `model-${i}`, name: `Model ${i}` }]),
+      );
+      const responses = await Promise.all(requests);
+      const modelIds: string[] = [];
+      for (const response of responses) {
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body).toMatchObject({
+          data: [{ status: 'ready', runtimeCatalog: { source: 'live' } }],
+        });
+        modelIds.push(body.data[0].runtimeCatalog.models[0].id);
+      }
+      expect(modelIds.sort()).toEqual(['model-0', 'model-1', 'model-2']);
+    } finally {
+      for (const settle of pending) settle([]);
+      await Promise.all(requests);
+    }
+  });
+
   test('a completed inventory distinguishes a live catalog from an unavailable engine inspection', async () => {
     const service = createConnectionServiceForTest(
       providerService,

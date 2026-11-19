@@ -2933,9 +2933,9 @@ from other aborts. Built-in adapters declaring awaited abort settlement get a se
 bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
 ordinary engine inventory routes supply a five-second deadline and propagate client
 cancellation through the model and engine reads. A deadline refuses the incomplete
-inventory without publishing fresh rows. Ordinary reads bound each adapter operation
-until actual settlement. A later request does not duplicate an abandoned operation or
-reuse its results. A sibling that fails within budget keeps its own unavailable catalog
+inventory without publishing fresh rows. An abandoned adapter operation remains owned
+until actual settlement. Later reads report that operation as unavailable. Healthy
+overlapping reads retain separate results. A sibling that fails within budget keeps its own unavailable catalog
 and does not overwrite live observations from other engines.
 ACP rows carry the last measured handshake time and the current probe state. Command,
 model-catalog and prerequisite inclusion and discovery policy are

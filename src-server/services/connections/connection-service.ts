@@ -1086,7 +1086,7 @@ export class ConnectionService {
 
   private readonly ordinaryObservations = new WeakMap<
     ProviderAdapterShape,
-    Map<string, Set<AbortSignal>>
+    Map<string, Set<{ signal: AbortSignal }>>
   >();
 
   private async observeOrdinaryAdapter<T>(
@@ -1101,21 +1101,19 @@ export class ConnectionService {
       observations = new Map();
       this.ordinaryObservations.set(adapter, observations);
     }
-    const inFlight = observations.get(key) ?? new Set<AbortSignal>();
-    // An abandoned observation owns its slot until the adapter settles.
-    if (
-      inFlight.size >= 2 ||
-      inFlight.has(signal) ||
-      [...inFlight].some((owner) => owner.aborted)
-    ) {
+    const inFlight =
+      observations.get(key) ?? new Set<{ signal: AbortSignal }>();
+    // An abandoned observation remains owned until the adapter settles.
+    if ([...inFlight].some((owner) => owner.signal.aborted)) {
       throw new Error('A previous engine observation is still settling.');
     }
-    inFlight.add(signal);
+    const owner = { signal };
+    inFlight.add(owner);
     observations.set(key, inFlight);
     try {
       return await observe();
     } finally {
-      inFlight.delete(signal);
+      inFlight.delete(owner);
       if (inFlight.size === 0) observations.delete(key);
     }
   }
