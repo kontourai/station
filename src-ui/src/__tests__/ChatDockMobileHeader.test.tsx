@@ -117,6 +117,7 @@ function renderHeader(
     hasConversation?: boolean;
     inboxActive?: boolean;
     childTrail?: string;
+    reportedStart?: string;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -135,6 +136,7 @@ function renderHeader(
         showDrawerToggle={false}
         showConnection={overrides.showConnection ?? true}
         sessionTitle="New chat"
+        reportedStart={overrides.reportedStart}
         sessionProjectMismatchLabel={overrides.sessionProjectMismatchLabel}
         projectScope={
           overrides.projectScope === null
@@ -210,6 +212,21 @@ async function openActions() {
   await screen.findByRole('menu');
   return screen.getByRole('dialog', { name: 'Chat actions' });
 }
+
+test.each([
+  [undefined, true],
+  ['Child conversation', false],
+] as const)(
+  'reports the working chat origin only on its own mobile title (%s)',
+  (childTrail, visible) => {
+    renderHeader({
+      agentIdentity: { name: 'Lifecycle Probe', slug: 'lifecycle-probe' },
+      reportedStart: 'CLI (reported) · ',
+      childTrail,
+    });
+    expect(Boolean(screen.queryByText(/CLI \(reported\)/))).toBe(visible);
+  },
+);
 
 describe('mobile conversation focus', () => {
   test('keeps project choice out of the unresolved header', () => {

@@ -1,0 +1,39 @@
+{
+  "revision": "2c53516d4fd2e9b6e966ad629c1a00760e969426",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the Task workspace and room renderer claims. TaskWorkspaceView still mounts the same Task room provider and exact Project binding. It now passes the address-owned Session thread through to the same authorized history renderer.","inputs":["docs/architecture/module-map.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked the Task Conversation and Review ownership. The Conversation tab renders the same room and now retains its open thread in the URL. The mounted TaskWorkspaceView test exercises route push, remount and Back.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Checked the SplitPaneLayout relationships. Only the Task conversation's companion opts into route-owned dialog history. Independent companion callers retain their prior history mode and related-pane ownership.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Checked SplitPane layout title, frame, and detail ownership. The Task companion still uses the same dialog and layout. Its route now supplies the history entry, with no change to collection chrome.","inputs":["docs/design/shell-skeletons.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked continuation and attachment claims. A Task address opens only a Session thread present in authorized room history. The room still uses the existing reply delivery, route guard and per-thread draft keys. No write admission or request envelope changed.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Checked the Task, Conversation and Task room terms against TaskWorkspaceView and the new URL selection. Task identity and visible labels retain their existing meanings.","inputs":["docs/glossary.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked MemberProjectPage's agents and tools entry and member actions. The phone list reads scoped shared publications and channel state; it does not mount member management controls or expand Agent eligibility.","inputs":["docs/guides/agent-configuration.md","src-ui/src/views/project-page/MemberProjectPage.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked how connection details use the shared split-pane surface. No connection page supplies the Task companion's new route-owned option. Connection selection, rendering and dialog defaults are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the exact Task binding, post-create route, and authored draft guidance. The Task thread address adds route state inside Conversation and preserves the Task, Project, dispatch and authorization bindings.","inputs":["docs/guides/starter-work.md","src-ui/src/views/TaskWorkspaceView.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed Task workspace, drafting and room walkthrough steps against the addressed thread consumer. The browser fixture opened the same Task thread on reload and Back returned to Conversation. The retained document and Connections captures show separate paths.","inputs":["docs/learn/walkthroughs.md","src-ui/src/components/SplitPaneLayout.tsx","src-ui/src/views/TaskWorkspaceView.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the Connections dependency on SplitPaneLayout. The optional companion history mode does not change its connection detail navigation, identity, or readiness and smoke claim.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/components/SplitPaneLayout.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Compared Task navigation and shared room boundaries to the retained collaboration fixture. Browser routing and notes stay separate from its collaboration acceptance. This slice does not change permission checks or physical device qualification.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/views/TaskWorkspaceView.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the channel route and account-bound Task room SDK guidance. MemberProjectPage uses captured member read credentials and public read-marker requests. The changes add no SDK API, member roles, or write permissions.","inputs":["docs/reference/sdk.md","src-ui/src/views/project-page/MemberProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked Task room and Agent reply composer guidance against the existing room controls. A thread can reopen from a Task address and retains its per-thread draft. Attachments and send behavior use the same controls and permissions.","inputs":["docs/user/getting-started.md","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked Task collaboration preview wording and the actual Task view flag use. The flag and explicit sharing requirements are unchanged by the route-owned thread.","inputs":["docs/user/settings.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the retained Task document capture against the affected component. The capture shows the document surface, and the fix changes the separate Conversation tab's thread address and history.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/TaskWorkspaceView.tsx","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the retained model-picker capture against the affected split-pane module. Only the Task companion sets route-owned dialog history. Connection and picker render options are unchanged.","inputs":["docs/learn/media/connections-models.png","src-ui/src/components/SplitPaneLayout.tsx"]}
+  ]
+}

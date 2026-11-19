@@ -1304,6 +1304,39 @@ describe('learning atlas', () => {
     expect(rendered.html).toContain('A--&gt;B');
   });
 
+  it('omits leading YAML metadata while retaining body anchors and source line numbers', () => {
+    const file = 'README.md';
+    const rendered = renderLearningDocument(
+      '\uFEFF---\r\nname: skill\r\ndescription: fixture metadata\r\n---\r\n# Guide\r\n\r\n[Jump](#guide)',
+      file,
+      new Set([file]),
+      'current',
+    );
+    expect(rendered.headings).toEqual([
+      { id: 'guide', level: 1, title: 'Guide' },
+    ]);
+    expect(rendered.html).not.toContain('fixture metadata');
+    expect(rendered.links).toMatchObject([{ line: 7, target: '#guide' }]);
+  });
+
+  it.each([
+    ['no metadata', '# Guide', '<h1 id="guide">Guide</h1>'],
+    ['unclosed block', '---\nname: skill\n\n# Guide', '<p>name: skill</p>'],
+    ['malformed mapping', '---\nname: [skill\n---\n# Guide', 'name: [skill'],
+    ['empty block', '---\n---\n# Guide', '<hr/>'],
+    ['horizontal rule', '---\n\n# Guide', '<hr/>'],
+    ['setext heading', '---\n\nGuide\n---', '<h2 id="guide">Guide</h2>'],
+    ['later mapping', '# Guide\n\n---\nname: skill\n---', 'name: skill'],
+  ])('preserves ordinary Markdown with %s', (_label, source, html) => {
+    const rendered = renderLearningDocument(
+      source,
+      'README.md',
+      new Set(['README.md']),
+      'current',
+    );
+    expect(rendered.html).toContain(html);
+  });
+
   it('renders only safe empty explicit anchors and retains inert code literals', () => {
     const rendered = renderLearningDocument(
       [

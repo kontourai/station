@@ -1649,7 +1649,12 @@ export function SplitPaneCompanion({
    * The companion on a phone. `page` fills the screen instead of rising as a
    * sheet (a room's thread, #4795); Back still closes it.
    */
-  sheet?: { label: string; onDismiss(): void; page?: boolean };
+  sheet?: {
+    label: string;
+    onDismiss(): void;
+    page?: boolean;
+    historyMode?: React.ComponentProps<typeof Dialog>['historyMode'];
+  };
   className?: string;
   /** A local supporting inspection slot; its content marks itself with data-companion-content. */
   inspection?: {
@@ -1686,6 +1691,7 @@ export function SplitPaneCompanion({
               title={sheet.label}
               closeLabel={`Close ${sheet.label.toLowerCase()}`}
               onClose={sheet.onDismiss}
+              historyMode={sheet.historyMode}
               size="lg"
               panelClassName={`split-pane-companion__sheet${sheet.page ? ' split-pane-companion__page' : ''}`}
               overlayClassName={

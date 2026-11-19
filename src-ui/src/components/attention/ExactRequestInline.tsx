@@ -7,6 +7,7 @@ import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { describeReadFailure, ErrorState, SkeletonBlock } from '../state';
+import { GuardianApprovalReason } from './GuardianApprovalReason';
 import { useExactRequestDecision } from './RequestInspectionDialog';
 import './ExactRequestInline.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
@@ -175,6 +176,9 @@ function ExactRequestDecisionRow({
   const loading = query.isLoading;
   return (
     <div className="exact-request" data-testid="exact-request-inline">
+      {result?.state === 'open' && (
+        <GuardianApprovalReason reason={result.guardianReason} />
+      )}
       {expanded && (
         <div id={detailsId} className="exact-request__details">
           {result?.state === 'open' ? (

@@ -13,6 +13,7 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
+import { DIALOG_HISTORY_KEY } from '../src-ui/src/components/dialog-history';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
@@ -68,6 +69,7 @@ import {
   emulateKeyboard,
   installKeyboardEmulation,
 } from './helpers/keyboard-emulation';
+import { memberProjectChannelScreens } from './helpers/member-project-channel-gallery';
 import { openChooserFromToggle } from './helpers/region-placement';
 import {
   GALLERY_DESIGN_ROOM_ID,
@@ -4238,6 +4240,7 @@ function roomConversationScreens(): Screen[] {
           | undefined;
         let cleanupTask: (() => Promise<void>) | undefined;
         let restoreHandshake: (() => Promise<void>) | undefined;
+        let closeChannelDialogs: (() => Promise<void>) | undefined;
         const screen: Screen = {
           name: `room-${room === 'task' ? 'task-' : ''}${scene}-${theme}-${width}`,
           title: `${room === 'task' ? 'Task' : 'Project'} room, ${scene} — ${theme}, ${viewport.width}px`,
@@ -4290,6 +4293,35 @@ function roomConversationScreens(): Screen[] {
             screen.path = `/tasks/${encodeURIComponent(installed.taskId)}?taskView=conversation`;
           },
           async afterGoto(page) {
+            if (scene === 'channels') {
+              await expect(page).toHaveURL(
+                (url) => url.pathname === `/projects/${slug}`,
+              );
+              closeChannelDialogs = async () => {
+                for (const name of [
+                  'Close channels',
+                  'Close channel options',
+                ]) {
+                  const close = page.getByRole('dialog').getByRole('button', {
+                    name,
+                    exact: true,
+                  });
+                  if (await close.isVisible()) {
+                    await close.click({ timeout: 5000 });
+                    await expect(close).toBeHidden();
+                  }
+                }
+                // A drawer can disappear before its cleanup Back commits.
+                await expect
+                  .poll(() =>
+                    page.evaluate(
+                      (key) => window.history.state?.[key] ?? null,
+                      DIALOG_HISTORY_KEY,
+                    ),
+                  )
+                  .toBeNull();
+              };
+            }
             await page.evaluate(
               (selected) =>
                 document.documentElement.setAttribute('data-theme', selected),
@@ -4916,7 +4948,24 @@ function roomConversationScreens(): Screen[] {
             }
             await expectSeparateFaces();
           },
+          async afterAudit() {
+            const close = closeChannelDialogs;
+            closeChannelDialogs = undefined;
+            await close?.();
+          },
           async cleanup() {
+            const close = closeChannelDialogs;
+            closeChannelDialogs = undefined;
+            if (close) {
+              // A failed capture still has its original error. Record a
+              // secondary dialog cleanup failure with the test artifacts.
+              await close().catch((error: unknown) =>
+                test.info().attach('Channel dialog cleanup failure', {
+                  body: String(error),
+                  contentType: 'text/plain',
+                }),
+              );
+            }
             await fixture?.cleanup();
             await restoreHandshake?.();
             await cleanupTask?.();
@@ -6002,6 +6051,7 @@ const SCREENS: Screen[] = [
   ...personMentionScreens(),
   ...channelNavigationScreens(),
   ...projectLibraryScreens(),
+  ...memberProjectChannelScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),

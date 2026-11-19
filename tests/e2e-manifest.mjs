@@ -473,6 +473,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/project-room-live.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
+    // Copies opt-in UI review captures to a shared output directory.
+    'tests/engine-app-home-override.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
     'tests/operator-sessions.spec.ts',
     // Owns real receiver pairing state and temporary credential files.
@@ -1422,6 +1424,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Connections CRUD plus Agent app discovery hit, miss, Add-catalog placement, and Model-only first-run honesty.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/engine-app-home-override.spec.ts',
+    bucket: 'product',
+    surface: 'Connections',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Engine connection details show the effective App home and available actions on phone and desktop in both themes. Fixture-backed configuration and profile status.',
     exceptions: [],
   },
   {

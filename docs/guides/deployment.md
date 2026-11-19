@@ -585,7 +585,9 @@ fresh home. The [schema gate](../../packages/shared/src/station-home-schema.ts)
 runs in both the CLI lifecycle and server entry before application migrations.
 It refuses those directories instead of treating their contents as disposable
 bootstrap scaffolding. Copying a Project is neither a schema migration nor a
-Project membership grant.
+Project membership grant. When a registered migration runs, the gate stages
+a sibling copy and preserves the home’s POSIX directory and file permission
+bits before calling the migration.
 
 After schema admission, the Project/layout portion of
 [runStartupMigrations](../../src-server/domain/migration.ts) returns when

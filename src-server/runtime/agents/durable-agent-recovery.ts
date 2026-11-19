@@ -162,8 +162,11 @@ export function configureDurableAgentRecovery(options: {
         | undefined;
       const release = hooks?.registerApprovalRequester(
         conversationId,
-        async (tool) =>
-          !!(await elicitation({ type: 'tool-approval', ...tool })),
+        async (tool, guardianReason) =>
+          !!(await elicitation(
+            { type: 'tool-approval', ...tool },
+            guardianReason,
+          )),
       );
       finalizers.set(lease, () => {
         release?.();

@@ -1,0 +1,11 @@
+{
+  "revision": "9e0b71666e6245ade18fe592594e0b600747a2cc",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the Room Channels scene handoff against the capture lifecycle and dialog history owner. Both ordered project views still capture their intended open Channels dialog. Closing it after the audit, waiting for the real history layer to settle and checking the requested project URL prevents a later capture from displaying its deleted predecessor. No motion or usage telemetry scene, assertion or capture policy changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the Room Channels scene handoff against the capture lifecycle and dialog history owner. Both ordered project views still capture their intended open Channels dialog. Closing it after the audit, waiting for the real history layer to settle and checking the requested project URL prevents a later capture from displaying its deleted predecessor. No motion or usage telemetry scene, assertion or capture policy changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the Room Channels scene handoff against the capture lifecycle and dialog history owner. Both ordered project views still capture their intended open Channels dialog. Closing it after the audit, waiting for the real history layer to settle and checking the requested project URL prevents a later capture from displaying its deleted predecessor. No motion or usage telemetry scene, assertion or capture policy changed.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

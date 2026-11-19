@@ -88,6 +88,13 @@ A Station instance becomes the supervisor and its core server generations.
 The instance registry records the supervisor's pid. The topology vocabulary
 in [station-topology.md](station-topology.md) is updated when this lands.
 
+For a supervised `station start`, the launcher verifies the supervisor's
+active serving generation and reads the expected HTTP identity on a fresh
+connection while that generation remains active. An API listener belonging
+to a generation ordered to drain can already answer the same boot identity.
+The launcher waits for an admitted replacement within the existing startup
+budget before it prints the server URL.
+
 ### Supervisor responsibilities
 
 The supervisor is deliberately thin. It makes no authorization, routing, or

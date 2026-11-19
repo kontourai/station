@@ -85,6 +85,7 @@ interface ConnectionListPanelProps {
   hasLocalStation?: boolean;
   onViewDevices: () => void;
   onDiscover: () => void;
+  discoverTriggerRef?: Ref<HTMLButtonElement>;
   /**
    * station#1794 (part A): the "Other Stations" entry point is hidden
    * entirely while no discovery provider is registered
@@ -659,6 +660,7 @@ export function ConnectionListPanel({
   hasLocalStation = true,
   onViewDevices,
   onDiscover,
+  discoverTriggerRef,
   discoveryAvailable,
   listFooterContent,
   renderConnectionDetails,
@@ -914,6 +916,7 @@ export function ConnectionListPanel({
           </button>
           {discoveryAvailable && (
             <button
+              ref={discoverTriggerRef}
               type="button"
               onClick={onDiscover}
               className="station-connect-btn station-connect-btn--secondary"

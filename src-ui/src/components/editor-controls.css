@@ -317,13 +317,17 @@
  * tablets wider than the phone breakpoint. Icon buttons need both dimensions.
  */
 @media (max-width: 768px), (pointer: coarse) {
+  :root {
+    --form-touch-target-min: 44px;
+  }
+
   :where(select),
   .editor-input,
   .editor-select,
   .editor-btn,
   .editor-btn--small,
   .editor-btn--icon {
-    min-height: 44px;
+    min-height: var(--form-touch-target-min);
   }
 
   .editor-btn--icon {

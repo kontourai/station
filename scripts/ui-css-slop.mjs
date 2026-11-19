@@ -44,8 +44,11 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { LEGACY_TOKEN } from './component-style-hygiene.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { cssDeclarations } from './lib/css-declarations.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { compareUiCopy } from './ui-copy-length.mjs';
+
+export { cssDeclarations };
 
 const ROOTS = ['src-ui/src'];
 const BASELINE_PATH = 'scripts/ui-css-slop-baseline.json';
@@ -99,34 +102,6 @@ const REMEDIES = Object.freeze({
   'numeric-z-index': 'use a --layer-* role from src-ui/src/tokens.css.',
   'hex-color': 'use a --k-* color token.',
 });
-
-/**
- * Every declaration in a stylesheet as `{ property, value }`. Comments and
- * quoted strings are blanked first so neither a commented-out rule nor a
- * `url("#id")` reads as a value. A selector never counts: it ends at `{`,
- * and only text ending at `;` or `}` is a declaration.
- */
-export function cssDeclarations(source) {
-  const css = source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, '""');
-  const declarations = [];
-  let start = 0;
-  for (let i = 0; i < css.length; i++) {
-    const char = css[i];
-    if (char !== '{' && char !== '}' && char !== ';') continue;
-    const segment = css.slice(start, i).trim();
-    start = i + 1;
-    if (char === '{' || !segment || segment.startsWith('@')) continue;
-    const colon = segment.indexOf(':');
-    if (colon <= 0) continue;
-    declarations.push({
-      property: segment.slice(0, colon).trim().toLowerCase(),
-      value: segment.slice(colon + 1).trim(),
-    });
-  }
-  return declarations;
-}
 
 /** The slop kinds one declaration carries. */
 export function declarationKinds({ property, value }) {

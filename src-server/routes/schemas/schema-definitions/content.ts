@@ -520,7 +520,7 @@ export const agentCreateSchema = z
     description: z.string().max(500).optional(),
     model: z.string().max(200).optional(),
     region: z.string().max(50).optional(),
-    maxSteps: z.number().int().nonnegative().optional(),
+    maxSteps: z.number().int().min(1).max(100).nullable().optional(),
     icon: z.string().max(10).optional(),
   })
   .passthrough();
