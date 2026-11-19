@@ -186,7 +186,15 @@ export function ConversationContextResetDialog({
         cause.status >= 400 &&
         cause.status < 500;
       const notSent = isProvablyNotSent(cause);
-      let canRetire = !stored;
+      const validationRefused =
+        refused &&
+        cause.status === 400 &&
+        typeof cause.details === 'object' &&
+        cause.details !== null &&
+        'fieldErrors' in cause.details;
+      // A transport can replay the POST after losing its first response. A
+      // later conflict only reports the replay, so keep its original key.
+      let canRetire = !stored && (validationRefused || notSent);
       if (stored && statusValue === 'failed' && (refused || notSent)) {
         // A different tab may have started the reserved successor since the
         // failed status was shown. Check again before retiring its local key.

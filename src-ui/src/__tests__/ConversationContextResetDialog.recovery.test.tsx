@@ -39,6 +39,13 @@ test.each([
   ['direct reset', { kind: 'reserve' }, 'Reset agent context', false, false],
   ['two stale tabs', { kind: 'reserve' }, 'Reset agent context', false, true],
   [
+    'transport replay conflicts after the first commit',
+    { kind: 'reserve' },
+    'Reset agent context',
+    false,
+    'replay',
+  ],
+  [
     'earlier unknown attempt',
     { kind: 'reserve' },
     'Reset agent context',
@@ -162,11 +169,16 @@ test.each([
         if (request.method !== 'POST') return response;
         reserveRequests += 1;
         expect(response.status, await response.clone().text()).toBe(200);
-        const { idempotencyKey } = await request.json();
+        const { idempotencyKey } = await request.clone().json();
         committed = {
           key: idempotencyKey,
           result: (await response.json()).data,
         };
+        if (competing === 'replay') {
+          const replay = await app.request(request);
+          expect(replay.status).toBe(409);
+          return replay;
+        }
         throw new TypeError('Reservation response was lost');
       },
     );
