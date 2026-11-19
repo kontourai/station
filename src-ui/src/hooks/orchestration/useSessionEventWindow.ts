@@ -62,6 +62,8 @@ interface SessionEventWindowReader {
   memoryContinuation?: OrchestrationConversationEventWindow['memoryContinuation'];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
+  /** A materialized child named by a fresh head read and the binding it read from. */
+  executionRead?: { sessionId: string; priorSessionId: string };
   /** Per-execution-Session Agent identity for historical transcript rows. */
   sessionLineage?: NonNullable<
     OrchestrationConversationEventWindow['sessionLineage']
@@ -373,6 +375,8 @@ export function useSessionEventWindow(
   >(undefined);
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
+  const [executionRead, setExecutionRead] =
+    useState<SessionEventWindowReader['executionRead']>();
   const [sessionLineage, setSessionLineage] =
     useState<
       NonNullable<OrchestrationConversationEventWindow['sessionLineage']>
@@ -526,6 +530,13 @@ export function useSessionEventWindow(
           station,
         );
       setCurrentSessionId(page.currentSessionId);
+      setExecutionRead(
+        legacyAtSend &&
+          page.currentSessionId &&
+          page.session?.threadId === page.currentSessionId
+          ? { sessionId: page.currentSessionId, priorSessionId: legacyAtSend }
+          : undefined,
+      );
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
@@ -891,6 +902,7 @@ export function useSessionEventWindow(
     }
     setEvents([]);
     setCurrentSessionId(undefined);
+    setExecutionRead(undefined);
     setSessionLineage(undefined);
     setHandoffs([]);
     setContextBoundaries([]);
@@ -1065,6 +1077,7 @@ export function useSessionEventWindow(
     watermark: currentReader ? watermark : 0,
     memoryContinuation: currentReader ? memoryContinuation : undefined,
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),
+    ...(currentReader && executionRead ? { executionRead } : {}),
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],
     contextBoundaries: currentReader ? contextBoundaries : [],
