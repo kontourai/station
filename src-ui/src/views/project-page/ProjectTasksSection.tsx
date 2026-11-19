@@ -33,17 +33,27 @@ import { WorkflowStatusLine } from '../../components/flow/WorkflowStatusLine';
 import { PageSection } from '../../components/PageSection';
 import { ProjectTaskBoard } from '../../components/ProjectTaskBoard';
 import {
+  ListRefreshActions,
+  ListRefreshPull,
+  ListRefreshStatus,
+  refreshListQueries,
+  useListRefresh,
+} from '../../components/refresh/ListRefresh';
+import {
   describeReadFailure,
   Empty,
   ErrorState,
   SkeletonBlock,
+  SkeletonList,
 } from '../../components/state';
 import { TaskPlanProgressForTask } from '../../components/TaskPlanProgress';
 import { useAgents } from '../../contexts/AgentsContext';
+import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { useOpenPullRequestInRegion } from '../../contexts/useOpenInRegion';
 import { useShowSurface } from '../../contexts/useShowSurface';
+import { isStationReadAccessRefusal } from '../../lib/queryDefaults';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
 import { requestTaskShaping } from '../../lib/task-shaping';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
@@ -189,16 +199,23 @@ export function ProjectTasksSection({
   // tasks, so both panes below claimed "No tasks yet." / "Select a task." over
   // a read that never answered.
   const {
-    data: tasks = [],
+    data: tasksData,
     error: tasksError,
     refetch: refetchTasks,
-    isSuccess: tasksLoaded,
+    isLoading: tasksLoading,
+    isFetching: tasksFetching,
   } = useTasksQuery(slug);
+  const tasksAccessRefused = isStationReadAccessRefusal(tasksError);
+  const tasks = tasksAccessRefused ? [] : (tasksData ?? []);
+  const taskReadFailed = Boolean(
+    tasksError &&
+      (!tasksData?.length || presentation === 'board' || tasksAccessRefused),
+  );
   const sortedTasks = sortTasks(tasks);
   const board = useTaskBoardModel({
     projectSlug: slug,
     tasks,
-    tasksSettled: tasksLoaded,
+    tasksSettled: tasksData !== undefined && !taskReadFailed,
     agents: agentSummaries,
     // Only the board reads the forge; the list claims nothing about PRs.
     readPullRequests: presentation === 'board',
@@ -259,11 +276,29 @@ export function ProjectTasksSection({
   // (unchanged); provider-backed items from other backends (e.g. the
   // flow-agents-contract GitHub backend) render as additional, visually
   // distinguished rows below them.
-  const { data: workItemsData } = useWorkItemsQuery(slug, {
-    enabled: hasLocalWorkspace,
+  const {
+    data: workItemsData,
+    error: workItemsError,
+    isLoading: workItemsLoading,
+    isFetching: workItemsFetching,
+    refetch: refetchWorkItems,
+  } = useWorkItemsQuery(slug, { enabled: hasLocalWorkspace });
+  const { namespace } = useAuthorityPersistence();
+  const tasksListRef = useRef<HTMLDivElement>(null);
+  const taskListRefresh = useListRefresh({
+    scope: JSON.stringify([namespace, projectId, slug]),
+    enabled: presentation === 'list',
+    refresh: () =>
+      refreshListQueries(
+        refetchTasks,
+        board.sessions.refetch,
+        ...(hasLocalWorkspace ? [refetchWorkItems] : []),
+      ),
   });
   const providerItems = externalProviderItems(
-    workItemsData?.providers ?? [],
+    isStationReadAccessRefusal(workItemsError)
+      ? []
+      : (workItemsData?.providers ?? []),
     sortedTasks,
   );
   const selectedProviderItem = providerItems.find(
@@ -578,7 +613,11 @@ export function ProjectTasksSection({
 
   return (
     <PageSection
-      className="project-tasks-section"
+      className={
+        presentation === 'list'
+          ? 'project-tasks-section project-tasks-section--list'
+          : 'project-tasks-section'
+      }
       title="Tasks"
       description="Goals you and your agents are working through in this Project."
       actions={
@@ -601,7 +640,15 @@ export function ProjectTasksSection({
               ))}
             </fieldset>
           ) : null}
-          <Button onClick={() => void refetchTasks()}>Refresh Tasks</Button>
+          {presentation === 'list' ? (
+            <ListRefreshActions
+              label="Task list actions"
+              refreshLabel="Refresh tasks"
+              refresh={taskListRefresh}
+            />
+          ) : (
+            <Button onClick={() => void refetchTasks()}>Refresh Tasks</Button>
+          )}
           {/* The starter form replaces New Task, except when its own record is
               unreadable: then New Task is the way forward the message names. */}
           {(starterId !== 'start-task' ||
@@ -717,8 +764,9 @@ export function ProjectTasksSection({
         className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ' project-tasks-section__list-layout'}`}
       >
         <div
+          ref={tasksListRef}
           className={
-            tasksError ||
+            taskReadFailed ||
             (sortedTasks.length === 0 && providerItems.length === 0)
               ? 'project-page__task-list project-page__task-list--state'
               : presentation === 'board'
@@ -726,156 +774,207 @@ export function ProjectTasksSection({
                 : 'project-page__task-list'
           }
         >
-          {tasksError ? (
-            <ErrorState
-              variant="compact"
-              title="Unable to load tasks"
-              description={describeReadFailure(tasksError)}
-              action={
-                <Button size="sm" onClick={() => void refetchTasks()}>
-                  Retry
-                </Button>
-              }
-            />
-          ) : sortedTasks.length === 0 && providerItems.length === 0 ? (
-            /* empty-state action: New Task sits in the section header */
-            <Empty
-              variant="compact"
-              label="Start a Task"
-              description="Describe a goal and work through it here."
-            />
-          ) : (
-            <>
-              {presentation === 'board' ? (
-                board.status === 'loading' ? (
-                  <SkeletonBlock count={3} label="Loading the Task board" />
-                ) : (
-                  <>
-                    {board.sessions.failed ? (
-                      <ErrorState
-                        variant="compact"
-                        title="Couldn’t read agent runs."
-                        description="Lanes may be out of date."
-                        action={
-                          <Button size="sm" onClick={board.sessions.refetch}>
-                            Retry
-                          </Button>
-                        }
-                      />
-                    ) : null}
-                    {board.pullRequests.failed ? (
-                      <ErrorState
-                        variant="compact"
-                        title="Couldn’t refresh pull requests"
-                        description={
-                          board.pullRequests.asOf
-                            ? `Showing pull requests as of ${absoluteTime(Date.parse(board.pullRequests.asOf))}.`
-                            : 'Pull request states are not shown.'
-                        }
-                        action={
-                          <Button
-                            size="sm"
-                            onClick={board.pullRequests.refetch}
-                          >
-                            Retry
-                          </Button>
-                        }
-                      />
-                    ) : null}
-                    <ProjectTaskBoard
-                      partition={board.partition}
-                      derivations={board.derivations}
-                      presentations={board.presentations}
-                      tasks={tasksById}
-                      settled={board.pullRequests.settled}
-                      projectBranch={
-                        gitStatus?.isRepo ? gitStatus.branch : undefined
-                      }
-                      pendingTaskIds={pendingTaskIds}
-                      notice={
-                        board.pullRequests.checking ? (
-                          <SkeletonBlock
-                            count={1}
-                            label="Checking pull requests"
-                            className="project-task-board__checking"
-                          />
-                        ) : undefined
-                      }
-                      onOpenTask={openTask}
-                      onAction={(taskId, action) =>
-                        void runTaskAction(taskId, action)
-                      }
-                    />
-                  </>
-                )
-              ) : (
-                visibleTasks.map((task) => (
-                  <div className="project-tasks-section__outcome" key={task.id}>
-                    <a
-                      className="project-tasks-section__open"
-                      href={`/tasks/${encodeURIComponent(task.id)}`}
-                      onClick={(event) => {
-                        if (!isPlainLeftClick(event)) return;
-                        event.preventDefault();
-                        navigate(`/tasks/${encodeURIComponent(task.id)}`);
-                      }}
-                    >
-                      <span className="project-tasks-section__title">
-                        {task.title}
-                      </span>
-                      <span className="project-page__task-row-meta">
-                        <TaskDerivedBadge
-                          presentation={
-                            board.status === 'ready'
-                              ? board.presentations.get(task.id)
-                              : undefined
+          <ListRefreshPull
+            surfaceRef={tasksListRef}
+            refresh={presentation === 'list' ? taskListRefresh : undefined}
+          >
+            {presentation === 'list' && tasksError && !taskReadFailed && (
+              <ErrorState
+                variant="compact"
+                title="Showing last known results"
+                action={
+                  <Button
+                    size="sm"
+                    onClick={() => void taskListRefresh.run(true)}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            )}
+            {presentation === 'list' && workItemsError && (
+              <ErrorState
+                variant="compact"
+                title="Couldn’t refresh linked work"
+                action={
+                  <Button size="sm" onClick={() => taskListRefresh.run()}>
+                    Retry
+                  </Button>
+                }
+              />
+            )}
+            {taskReadFailed ? (
+              <ErrorState
+                variant="compact"
+                title="Unable to load tasks"
+                description={describeReadFailure(tasksError)}
+                action={
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void (presentation === 'list'
+                        ? taskListRefresh.run(true)
+                        : refetchTasks())
+                    }
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            ) : (tasksLoading || workItemsLoading) &&
+              sortedTasks.length === 0 &&
+              providerItems.length === 0 ? (
+              <SkeletonList count={3} label="Loading tasks" />
+            ) : sortedTasks.length === 0 && providerItems.length === 0 ? (
+              /* empty-state action: New Task sits in the section header */
+              presentation === 'list' && workItemsError ? null : (
+                <Empty
+                  variant="compact"
+                  label="Start a Task"
+                  description="Describe a goal and work through it here."
+                />
+              )
+            ) : (
+              <>
+                {presentation === 'board' ? (
+                  board.status === 'loading' ? (
+                    <SkeletonBlock count={3} label="Loading the Task board" />
+                  ) : (
+                    <>
+                      {board.sessions.failed ? (
+                        <ErrorState
+                          variant="compact"
+                          title="Couldn’t read agent runs."
+                          description="Lanes may be out of date."
+                          action={
+                            <Button
+                              size="sm"
+                              onClick={() => void board.sessions.refetch()}
+                            >
+                              Retry
+                            </Button>
                           }
                         />
-                        {task.agentId?.trim() && (
-                          <span>Agent: {task.agentId}</span>
-                        )}
-                        {task.priority !== 'normal' && (
-                          <span>{task.priority}</span>
-                        )}
-                      </span>
-                      <TaskPlanProgressForTask
-                        sessionId={
-                          board.derivations.get(task.id)?.evidence.sessionId
+                      ) : null}
+                      {board.pullRequests.failed ? (
+                        <ErrorState
+                          variant="compact"
+                          title="Couldn’t refresh pull requests"
+                          description={
+                            board.pullRequests.asOf
+                              ? `Showing pull requests as of ${absoluteTime(Date.parse(board.pullRequests.asOf))}.`
+                              : 'Pull request states are not shown.'
+                          }
+                          action={
+                            <Button
+                              size="sm"
+                              onClick={board.pullRequests.refetch}
+                            >
+                              Retry
+                            </Button>
+                          }
+                        />
+                      ) : null}
+                      <ProjectTaskBoard
+                        partition={board.partition}
+                        derivations={board.derivations}
+                        presentations={board.presentations}
+                        tasks={tasksById}
+                        settled={board.pullRequests.settled}
+                        projectBranch={
+                          gitStatus?.isRepo ? gitStatus.branch : undefined
                         }
-                        running={isRunning(board.derivations.get(task.id))}
+                        pendingTaskIds={pendingTaskIds}
+                        notice={
+                          board.pullRequests.checking ? (
+                            <SkeletonBlock
+                              count={1}
+                              label="Checking pull requests"
+                              className="project-task-board__checking"
+                            />
+                          ) : undefined
+                        }
+                        onOpenTask={openTask}
+                        onAction={(taskId, action) =>
+                          void runTaskAction(taskId, action)
+                        }
                       />
-                      <span className="project-tasks-section__next">
-                        Open Task
-                      </span>
-                    </a>
-                    <Button
-                      size="sm"
-                      aria-label={`Details for ${task.title}`}
-                      aria-expanded={
-                        showRecordDetails && selectedTaskId === task.id
-                      }
-                      onClick={() => {
-                        selectLocalTask(task.id);
-                        setShowRecordDetails(true);
-                      }}
+                    </>
+                  )
+                ) : (
+                  visibleTasks.map((task) => (
+                    <div
+                      className="project-tasks-section__outcome"
+                      key={task.id}
                     >
-                      Details
-                    </Button>
-                  </div>
-                ))
-              )}
-              {presentation === 'list' && visibleTasks.length === 0 && (
-                <p className="project-tasks-section__collection-empty">
-                  {
+                      <a
+                        className="project-tasks-section__open"
+                        href={`/tasks/${encodeURIComponent(task.id)}`}
+                        onClick={(event) => {
+                          if (!isPlainLeftClick(event)) return;
+                          event.preventDefault();
+                          navigate(`/tasks/${encodeURIComponent(task.id)}`);
+                        }}
+                      >
+                        <span className="project-tasks-section__title">
+                          {task.title}
+                        </span>
+                        <span className="project-page__task-row-meta">
+                          <TaskDerivedBadge
+                            presentation={
+                              board.status === 'ready'
+                                ? board.presentations.get(task.id)
+                                : undefined
+                            }
+                          />
+                          {task.agentId?.trim() && (
+                            <span>Agent: {task.agentId}</span>
+                          )}
+                          {task.priority !== 'normal' && (
+                            <span>{task.priority}</span>
+                          )}
+                        </span>
+                        <TaskPlanProgressForTask
+                          sessionId={
+                            board.derivations.get(task.id)?.evidence.sessionId
+                          }
+                          running={isRunning(board.derivations.get(task.id))}
+                        />
+                        <span className="project-tasks-section__next">
+                          Open Task
+                        </span>
+                      </a>
+                      <Button
+                        size="sm"
+                        aria-label={`Details for ${task.title}`}
+                        aria-expanded={
+                          showRecordDetails && selectedTaskId === task.id
+                        }
+                        onClick={() => {
+                          selectLocalTask(task.id);
+                          setShowRecordDetails(true);
+                        }}
+                      >
+                        Details
+                      </Button>
+                    </div>
+                  ))
+                )}
+                {presentation === 'list' && visibleTasks.length === 0 && (
+                  <p className="project-tasks-section__collection-empty">
                     {
-                      now: 'Nothing active right now.',
-                      backlog: 'The backlog is clear.',
-                      history: 'Completed and canceled Tasks appear here.',
-                    }[collection]
-                  }
-                </p>
-              )}
-              {providerItems.map((item) => (
+                      {
+                        now: 'Nothing active right now.',
+                        backlog: 'The backlog is clear.',
+                        history: 'Completed and canceled Tasks appear here.',
+                      }[collection]
+                    }
+                  </p>
+                )}
+              </>
+            )}
+            {(presentation === 'list' || !taskReadFailed) &&
+              providerItems.map((item) => (
                 <button
                   className={`project-page__task-row ${
                     item.id === selectedProviderItemId
@@ -900,7 +999,16 @@ export function ProjectTasksSection({
                   </span>
                 </button>
               ))}
-            </>
+          </ListRefreshPull>
+          {presentation === 'list' && (
+            <ListRefreshStatus
+              activity="Refreshing tasks…"
+              phase={taskListRefresh.phase}
+              updating={
+                !tasksLoading &&
+                (tasksFetching || board.sessions.fetching || workItemsFetching)
+              }
+            />
           )}
         </div>
 

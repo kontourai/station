@@ -817,6 +817,10 @@ a chip in the dock header. Connection health remains in the app header. In fulls
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
+On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
+Project **Tasks** list. Release when the ring fills. The actions menu offers
+the same refresh. A floating status pill shows what’s refreshing.
+
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Authorized work chats appear under their Task, including independent

@@ -11,7 +11,8 @@ import { Button } from '../Button';
 import { MessageGlyph } from '../icons/Glyph';
 import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { NewChatAction } from '../NewChatAction';
-import { Empty, ErrorState, FilteredEmpty } from '../state';
+import { type ListRefresh, ListRefreshStatus } from '../refresh/ListRefresh';
+import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import {
   type CollapsibleInboxSectionId,
@@ -46,16 +47,11 @@ export interface ChatDockInboxPanelProps {
   onAcknowledgeConversation?: (item: HomeWorkItem) => void;
   onOpenHistory: () => void;
   onNewChat?: () => void;
-  /**
-   * The inbox's own freshness: whether its last read failed (the rows are the
-   * last known list, not the current one), whether a read is running, and the
-   * explicit resync, offered as the failed read's Retry. Omitted renders no
-   * refresh control.
-   */
   sync?: {
     failed: boolean;
-    refreshing: boolean;
-    onRefresh: () => void;
+    pending: boolean;
+    updating: boolean;
+    refresh?: ListRefresh;
   };
   /**
    * station#3309: mounted only to play its exit. The panel is still on screen,
@@ -160,7 +156,7 @@ function ChatDockInboxPanelImpl({
     });
   };
 
-  const hasAnyItems = groups.some((group) => group.items.length > 0);
+  const hasAnyItems = controller.hasVisibleItems;
 
   return (
     <aside
@@ -182,28 +178,31 @@ function ChatDockInboxPanelImpl({
         {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
       </div>
       <div className="chat-dock-inbox__scroll">
-        {/* A retry keeps the notice up, disabled, until its re-read settles:
-            starting it can clear one failed source (the stream reconnects)
-            before the list itself is current. Only a person's own resync
-            sets `refreshing`, and Retry is the only way to start one. */}
-        {(sync?.failed || sync?.refreshing) && (
+        {sync && (sync.failed || sync.refresh?.recovering) && (
           <ErrorState
             variant="compact"
             title="Couldn’t refresh the inbox."
-            description="Showing the last known list."
+            description={
+              hasAnyItems ? 'Showing the last known list.' : undefined
+            }
             action={
-              <Button
-                variant="secondary"
-                disabled={sync.refreshing}
-                onClick={sync.onRefresh}
-              >
-                {sync.refreshing ? 'Retrying…' : 'Retry'}
-              </Button>
+              sync.refresh && (
+                <Button
+                  variant="secondary"
+                  disabled={sync.refresh.phase === 'refreshing'}
+                  onClick={() => sync.refresh?.run(true)}
+                >
+                  {sync.refresh.recovering ? 'Retrying…' : 'Retry'}
+                </Button>
+              )
             }
           />
         )}
         <ReadStatusNote items={items} />
-        {!hasAnyItems && query.trim() ? (
+        {!hasAnyItems && sync?.pending && !sync.failed ? (
+          <SkeletonList count={3} label="Loading chats and tasks" />
+        ) : !hasAnyItems && sync?.failed ? null : !hasAnyItems &&
+          query.trim() ? (
           <FilteredEmpty
             query={query}
             noun="work"
@@ -258,6 +257,13 @@ function ChatDockInboxPanelImpl({
           Browse all conversations
         </Button>
       </div>
+      {sync && (
+        <ListRefreshStatus
+          activity="Refreshing inbox…"
+          phase={sync.refresh?.phase}
+          updating={sync.updating && (hasAnyItems || !sync.pending)}
+        />
+      )}
       {controller.notice}
     </aside>
   );

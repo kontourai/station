@@ -426,6 +426,37 @@ describe('ProjectTasksSection', () => {
     expect(refetchTasks).toHaveBeenCalledOnce();
   });
 
+  test('the Task list refreshes its sources while keeping the selected row visible', async () => {
+    const refetchSessions = vi.fn();
+    const refetchProviderItems = vi.fn();
+    useOrchestrationSessionsQuery.mockReturnValue({
+      data: [],
+      refetch: refetchSessions,
+    });
+    useWorkItemsQuery.mockReturnValue({
+      data: workItemsData,
+      refetch: refetchProviderItems,
+    });
+    refetchTasks.mockRejectedValueOnce(new Error('Station busy'));
+    render(
+      <ProjectTasksSection
+        slug="project-alpha"
+        projectWorkingDirectory="/project"
+      />,
+    );
+    const row = screen.getByRole('link', { name: /^Existing task/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Task list actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Refresh tasks' }));
+    await waitFor(() => {
+      expect(refetchTasks).toHaveBeenCalledOnce();
+      expect(refetchSessions).toHaveBeenCalledOnce();
+      expect(refetchProviderItems).toHaveBeenCalledOnce();
+    });
+    expect(await screen.findByText('Couldn’t refresh')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^Existing task/ })).toBe(row);
+    expect(dispatchTask).not.toHaveBeenCalled();
+  });
+
   test('Start on a Not started card dispatches it exactly as Dispatch does', async () => {
     dispatchTask.mockResolvedValue({ task: { ...tasks[0] } });
     render(

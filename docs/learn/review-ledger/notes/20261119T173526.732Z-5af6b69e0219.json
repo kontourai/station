@@ -1,0 +1,9 @@
+{
+  "revision": "abe1f397219b7e27e9e953f59c824d9d7bd9ed0e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the final Home input boundary. Touch refresh is attached to Recent work and its Continue-only fallback. The composer and its controls keep their existing touch handling.","inputs":["docs/design/chat-composer.md","src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the narrowed Home gesture and the final Chromium evidence. The gesture cancels when the pull is withdrawn, leaves the list available during refresh, and honors reduced motion.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/views/home/HomeSurface.tsx"]}
+  ]
+}
