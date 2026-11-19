@@ -637,23 +637,28 @@ describe('DistributionProfileService', () => {
     ]);
   });
 
-  test('refuses a stack drill-in whose authored descriptor exceeds the host limit', () => {
-    const tab = 'x'.repeat(100);
-    const paneId = `pane:plugin%3Asurvey-review-workbench:survey-review:${tab}`;
-    expect(() =>
-      parsePluginLayoutDeclaration(
-        {
-          name: 'Survey review',
-          slug: 'survey-review',
-          presentation: 'stack',
-          drillIns: [paneId],
-          tabs: [{ id: tab, label: 'Workbench', component: 'workbench' }],
-        },
-        'survey-review-workbench',
-        'survey-review',
-      ),
-    ).toThrow(/pane host/);
-  });
+  test.each([
+    ['descriptor', 'survey-review-workbench', 'survey-review', 'x'.repeat(100)],
+    ['source', 'p'.repeat(80), 'layout-' + 'x'.repeat(45), 'workbench'],
+  ])(
+    'refuses a stack drill-in whose authored %s exceeds the host limit',
+    (_kind, pluginName, layoutSlug, tab) => {
+      const paneId = `pane:plugin%3A${pluginName}:${layoutSlug}:${tab}`;
+      expect(() =>
+        parsePluginLayoutDeclaration(
+          {
+            name: 'Survey review',
+            slug: layoutSlug,
+            presentation: 'stack',
+            drillIns: [paneId],
+            tabs: [{ id: tab, label: 'Workbench', component: 'workbench' }],
+          },
+          pluginName,
+          layoutSlug,
+        ),
+      ).toThrow(/pane host/);
+    },
+  );
 
   test('accepts the short fixture names the browser parity spec installs', () => {
     expect(
