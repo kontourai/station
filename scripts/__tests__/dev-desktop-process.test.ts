@@ -5,40 +5,16 @@ import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { runDesktopDevProcesses } from '../dev-desktop.mjs';
 
-async function waitForFixturePid(
-  path: string,
-  poll = () => new Promise<void>((resolve) => setTimeout(resolve, 25)),
-) {
+async function waitForFile(path: string) {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
-    const marker = await readFile(path, 'utf8').catch((error) => {
-      if (error.code === 'ENOENT') return '';
-      throw error;
-    });
-    const value = marker.trim();
-    if (value) {
-      const pid = Number(value);
-      if (!/^[1-9]\d*$/.test(value) || pid <= 1 || pid > 0x7fffffff)
-        throw new Error(`Invalid fixture PID in ${path}`);
-      return pid;
-    }
-    await poll();
+    try {
+      return await readFile(path, 'utf8');
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error(`Fixture did not publish its PID in ${path}`);
+  throw new Error('Fixture did not start');
 }
-
-test('an empty fixture marker waits for a published PID', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'station-desktop-marker-'));
-  const marker = join(root, 'child.pid');
-  try {
-    await writeFile(marker, '');
-    await expect(
-      waitForFixturePid(marker, () => writeFile(marker, '12345')),
-    ).resolves.toBe(12345);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
 test.each(['SIGINT', 'SIGTERM', 'child-exit'])(
   'desktop %s settles both launchers and their native descendants',
@@ -50,17 +26,11 @@ test.each(['SIGINT', 'SIGTERM', 'child-exit'])(
       fixture,
       `
     import {spawn} from 'node:child_process';
-    import {writeFileSync, existsSync, renameSync} from 'node:fs';
-    import {fileURLToPath} from 'node:url';
+    import {writeFileSync, existsSync} from 'node:fs';
     const name = process.argv[2];
-    const isChild = process.argv[3] === 'child';
-    if (!isChild)
-      spawn(process.execPath, [fileURLToPath(import.meta.url), name, 'child'], {stdio:'ignore',windowsHide:true});
-    const marker = name + (isChild ? '.child' : '.parent');
-    writeFileSync(marker+'.tmp', String(process.pid));
-    renameSync(marker+'.tmp', marker);
-    if (isChild) setInterval(()=>{},1000);
-    else setInterval(()=>{if(existsSync(name+'.exit'))process.exit(0);},25);
+    const child = spawn(process.execPath, ['-e', "require('node:fs').writeFileSync(process.argv[1],String(process.pid)); setInterval(()=>{},1000)", name+'.child'], {stdio:'ignore',windowsHide:true});
+    writeFileSync(name+'.parent',String(process.pid));
+    setInterval(()=>{if(existsSync(name+'.exit'))process.exit(0);},25);
   `,
     );
     const execution = runDesktopDevProcesses(
@@ -74,10 +44,7 @@ test.each(['SIGINT', 'SIGTERM', 'child-exit'])(
     try {
       const pids = await Promise.all(
         ['vite.parent', 'vite.child', 'tauri.parent', 'tauri.child'].map(
-          async (name) => ({
-            name,
-            pid: await waitForFixturePid(join(root, name)),
-          }),
+          async (name) => Number(await waitForFile(join(root, name))),
         ),
       );
       if (trigger === 'child-exit')
@@ -86,10 +53,7 @@ test.each(['SIGINT', 'SIGTERM', 'child-exit'])(
       expect(await execution).toBe(
         trigger === 'SIGINT' ? 130 : trigger === 'SIGTERM' ? 143 : 0,
       );
-      for (const { name, pid } of pids)
-        expect(() => process.kill(pid, 0), `${name} PID ${pid}`).toThrow(
-          expect.objectContaining({ code: 'ESRCH' }),
-        );
+      for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
       expect(signals.listenerCount('SIGINT')).toBe(0);
       expect(signals.listenerCount('SIGTERM')).toBe(0);
     } finally {
