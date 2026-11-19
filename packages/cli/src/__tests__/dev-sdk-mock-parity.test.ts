@@ -2,6 +2,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
+import {
+  agentId,
+  STATION_AGENT_ID,
+} from '@kontourai/station-contracts/agent-identity';
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
@@ -127,10 +131,25 @@ function harnessSharedModules(): Record<string, Record<string, unknown>> {
       Proxy,
     },
   );
+  // The SDK browser asset is assigned after this script and before the plugin.
+  window.__station_sdk = { agentId };
   return window.__station_ai_shared as Record<string, Record<string, unknown>>;
 }
 
 describe('station dev SDK mock', () => {
+  test('routes Agent identity checks through the SDK browser asset', () => {
+    const sdk = harnessSharedModules()['@kontourai/station-sdk/agent'];
+    const validate = sdk.agentId;
+    if (typeof validate !== 'function')
+      throw new Error('Agent validator is missing');
+    expect(sdk.STATION_AGENT_ID).toBe(STATION_AGENT_ID);
+    expect(validate(sdk.STATION_AGENT_ID)).toBe(agentId(STATION_AGENT_ID));
+    expect(validate('example-agent')).toBe(agentId('example-agent'));
+    expect(() => validate('abcdefab-1234-1234-9abc-defabcdefabc')).toThrow(
+      'Invalid clean identity',
+    );
+  });
+
   test('exposes every SDK value a previewable example imports', () => {
     const imports = exampleImports();
     // A broken scan would vacuously pass; these are imported today.

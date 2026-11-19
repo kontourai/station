@@ -512,7 +512,7 @@ This source addition requires a published version that exports `/agent`.
 
 | Group | Exports |
 | --- | --- |
-| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
+| Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `STATION_AGENT_ID`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
@@ -1314,9 +1314,11 @@ Convenience hook. Returns a function that creates a session, shows Chat, and sen
 
 Name an Agent your plugin contributes as `'<plugin>:<agent>'`. The hook derives
 the Agent's identity from it and sends only when the named plugin contributed
-that Agent; a reference naming another plugin is refused. A clean Agent id from
-`agentId()` in `@kontourai/station-contracts/agent-identity` also works. When
-no Agent matches, the function warns and sends nothing.
+that Agent; a reference naming another plugin is refused. Use `agentId()`
+from `@kontourai/station-sdk/agent` for a clean Agent ID. This entry also
+exports `STATION_AGENT_ID`, the reserved ID for Station's Agent. A plugin
+using this export should account for older hosts whose shared SDK lacks it.
+When no Agent matches, the function warns and sends nothing.
 
 ```tsx
 const sendToChat = useSendToChat('my-plugin:assistant');
@@ -4326,7 +4328,7 @@ namespace, infer a Layout prefix or choose an execution target.
 
 ```ts
 import { getAgentDisplayName } from '@kontourai/station-sdk';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { agentId } from '@kontourai/station-sdk/agent';
 
 const id = agentId('my-agent');
 getAgentDisplayName(id, [{ slug: id, name: 'My Agent' }]); // 'My Agent'
