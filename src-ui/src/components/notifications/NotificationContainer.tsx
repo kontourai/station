@@ -423,9 +423,12 @@ export function NotificationContainer() {
   const measureStack = useCallback((container: HTMLDivElement | null) => {
     if (!container) return;
     const { style } = container.ownerDocument.documentElement;
-    const property = '--notification-stack-block-size';
+    const property = '--notification-stack-clearance';
     const update = () =>
-      style.setProperty(property, `${container.offsetHeight}px`);
+      style.setProperty(
+        property,
+        `calc(${container.offsetHeight}px + var(--k-space-2))`,
+      );
     update();
     const observer =
       typeof ResizeObserver === 'undefined'

@@ -10,6 +10,7 @@ import {
   applyServerUpdateStateEvent,
   serverUpdateStateQueryKey,
 } from '@kontourai/station-sdk';
+import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
 import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import {
@@ -72,25 +73,26 @@ export function handleNotificationDeliveredToast(
   isCurrent: () => boolean = () => true,
 ): void {
   if (!isCurrent()) return;
-  const category = data.category;
-  const title = data.title as string | undefined;
-  const body = data.body as string | undefined;
   const metadata = data.metadata as Record<string, unknown> | undefined;
-  const showToast =
-    Boolean(title) &&
-    category !== 'approval-request' &&
-    data.source !== TURN_COMPLETION_SOURCE;
-  const playSound = () => {
-    if (typeof category === 'string')
-      playDeliveredNotificationSound(
-        category,
-        deviceSettingsStore.get('featureSettings').notificationSounds,
-      );
-  };
-  const showPlain = () => {
+  if (readNotificationEnvelope({ metadata })?.interrupt === 'silent') return;
+  const category = data.category;
+  if (typeof category === 'string') {
+    playDeliveredNotificationSound(
+      category,
+      deviceSettingsStore.get('featureSettings').notificationSounds,
+    );
+  }
+  if (
+    category === 'approval-request' ||
+    data.source === TURN_COMPLETION_SOURCE
+  ) {
+    return;
+  }
+  const title = data.title as string | undefined;
+  if (!title) return;
+  const body = data.body as string | undefined;
+  const showPlainToast = () => {
     if (!isCurrent()) return;
-    playSound();
-    if (!showToast) return;
     toastStore.show(
       title + (body ? ` — ${body}` : ''),
       undefined,
@@ -99,30 +101,19 @@ export function handleNotificationDeliveredToast(
       metadata,
     );
   };
-  const envelope = metadata?.envelope;
-  if (envelope) {
-    // Preserve explicit silence even if the optional renderer cannot load.
-    if (
-      typeof envelope === 'object' &&
-      'v' in envelope &&
-      envelope.v === 1 &&
-      'interrupt' in envelope &&
-      envelope.interrupt === 'silent'
-    )
-      return;
-    void import('../lib/notification-envelope-toast').then(
-      (module) =>
+  if (metadata?.envelope) {
+    void import('../lib/notification-envelope-toast')
+      .then((module) =>
         module.showEnvelopeNotificationToast(
           data,
           NOTIFICATION_TOAST_DISPLAY_MS,
           isCurrent,
-          { playSound, showToast },
         ),
-      showPlain,
-    );
+      )
+      .catch(showPlainToast);
     return;
   }
-  showPlain();
+  showPlainToast();
 }
 
 /** Apply an authorized personal-mode ui:navigate event through the shared seam. */

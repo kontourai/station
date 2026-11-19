@@ -20,7 +20,6 @@ export function showEnvelopeNotificationToast(
   data: Record<string, unknown>,
   duration: number,
   isCurrent: () => boolean = () => true,
-  presentation?: { playSound(): void; showToast: boolean },
 ): void {
   if (!isCurrent()) return;
   const title = data.title as string;
@@ -30,8 +29,6 @@ export function showEnvelopeNotificationToast(
     typeof data.id === 'string' ? { id: data.id, metadata } : undefined;
   const envelope = readNotificationEnvelope(notification);
   if (envelope?.interrupt === 'silent') return;
-  presentation?.playSound();
-  if (presentation?.showToast === false) return;
   const source = envelope?.source.kind === 'agent' ? envelope.source : null;
   toastStore.show(
     title + (body ? ` — ${body}` : ''),
