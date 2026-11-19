@@ -277,6 +277,7 @@ interface ChatInputAreaProps {
   approvalModeOverride?: SessionApprovalOverride;
   acpSessionModes?: AdvertisedAcpMode[];
   acpCurrentModeId?: string;
+  acpRequestedModeId?: string;
   /**
    * #3290: an ACP session's approval control, from its connection
    * (`acpApprovalControl`). `engineId` is the engine identity the approval
@@ -545,6 +546,7 @@ export function ChatInputArea({
   acpSessionModes = [],
   acpApproval,
   acpCurrentModeId,
+  acpRequestedModeId,
   commandQuery,
   slashCommands,
   onInputChange,
@@ -2050,11 +2052,8 @@ export function ChatInputArea({
                   <AcpSessionModeChip
                     key={sessionId}
                     modes={modeChoices}
-                    currentModeId={
-                      typeof modelRuntimeOptions?.mode === 'string'
-                        ? modelRuntimeOptions.mode
-                        : acpCurrentModeId
-                    }
+                    currentModeId={acpCurrentModeId}
+                    requestedModeId={acpRequestedModeId}
                     onChange={onAcpSessionModeChange}
                   />
                 </React.Suspense>

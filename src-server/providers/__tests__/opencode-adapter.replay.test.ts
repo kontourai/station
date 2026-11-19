@@ -1794,7 +1794,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
       await h.waitFor(
         (event) =>
           event.method === 'session.configured' &&
-          (event.metadata as { mode?: unknown } | undefined)?.mode === 'plan',
+          event.metadata?.acpSessionMode === 'plan',
       ),
     ).toBeDefined();
     expect(

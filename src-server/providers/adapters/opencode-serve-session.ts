@@ -2193,7 +2193,9 @@ export class OpenCodeNativeSession {
       method: 'session.configured',
       sessionId: this.deps.threadId,
       ...(this.lastModel ? { model: this.lastModel } : {}),
-      ...(this.lastAgent ? { metadata: { mode: this.lastAgent } } : {}),
+      ...(this.lastAgent
+        ? { metadata: { mode: this.lastAgent, acpSessionMode: this.lastAgent } }
+        : {}),
     });
   }
 

@@ -9032,10 +9032,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 /* #3290: the read-only approval explanation of an engine-decided engine. */
 .composer-mode-sheet__disclosure {
-  display: flex;
-  flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4);
+  padding-block: var(--space-4);
   max-width: 22rem;
 }
 

@@ -3398,6 +3398,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.turnErrorNotificationsSuppressed =
       (record.quarantinedTurnIds?.size ?? 0) > 0;
 
+    if (requestedMode && record.currentModeId) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: input.threadId,
+        metadata: { acpSessionMode: record.currentModeId },
+      });
+    }
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,

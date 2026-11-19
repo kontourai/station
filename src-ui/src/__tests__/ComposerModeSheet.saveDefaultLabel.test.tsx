@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { type ComponentProps, useRef } from 'react';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { ComposerModeSheet } from '../components/badges/ComposerModeSheet';
 import { DialogHistoryHostBoundary } from '../components/DialogHistoryHost';
 import { AccountPreferencesContext } from '../contexts/AccountPreferencesContext';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 const account: ComponentProps<
   typeof AccountPreferencesContext.Provider
@@ -17,7 +20,7 @@ const account: ComponentProps<
   waitingForConnection: false,
   error: false,
   conflict: false,
-  save() {},
+  save: vi.fn(),
   retry() {},
 };
 
@@ -51,17 +54,25 @@ function renderSheet(engineConnectionId: string | null) {
   );
 }
 
-test.each([
-  ['codex', 'Save as my Codex default'],
-  ['', 'Save as my engine default'],
-  [null, 'Save as my engine default'],
-])('names the engine %j in the save-as-default label (#4390)', (id, label) => {
-  renderSheet(id);
-  expect(
-    screen
-      .getByRole('checkbox')
-      .closest('label')
-      ?.textContent?.replace(/\s+/g, ' ')
-      .trim(),
-  ).toBe(label);
+test('uses the product name and saves a supported approval default', () => {
+  renderSheet('codex');
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: 'Save as my Codex default' }),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Save current mode as my default' }),
+  );
+  expect(account.save).toHaveBeenCalledWith({
+    interactiveApprovalModes: { codex: 'ask' },
+  });
 });
+
+test.each(['opencode', '', null])(
+  'does not offer an approval default for %j',
+  (id) => {
+    renderSheet(id);
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: /^Auto/ }));
+    expect(account.save).not.toHaveBeenCalled();
+  },
+);

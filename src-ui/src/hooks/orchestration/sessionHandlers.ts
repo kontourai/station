@@ -15,6 +15,7 @@ import {
   acknowledgesModelRequest,
   modelControlOptionsMatch,
   replaceModelControlOptions,
+  updateModelRuntimeOption,
 } from '../../utils/modelCapabilities';
 import { finalizeAssistantTurn } from './assistantTurn';
 import { backgroundTasksAfterSessionEnds } from './childWorkHandlers';
@@ -51,6 +52,14 @@ export function handleSessionLifecycleEvent(
       ? (event.metadata.effectiveModelOptions as Record<string, unknown>)
       : undefined;
   const currentChat = chatStore.getChatForExecutionSession(event.threadId);
+  const reportedMode =
+    event.method === 'session.configured' &&
+    typeof event.metadata?.acpSessionMode === 'string'
+      ? event.metadata.acpSessionMode
+      : undefined;
+  const requestedOptions = currentChat?.requestedProviderOptions;
+  const confirmedMode =
+    reportedMode !== undefined && requestedOptions?.mode === reportedMode;
   // #4162: a Session's engine connection is fixed when it starts, and the
   // server stamps it on that Session's own `session.started`. Without this a
   // successor Session on another connection kept its predecessor's id.
@@ -78,9 +87,15 @@ export function handleSessionLifecycleEvent(
     orchestrationSessionStarted: true,
     ...startedConnection,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
-    ...(event.method === 'session.configured' &&
-    typeof event.metadata?.acpSessionMode === 'string'
-      ? { currentModeId: event.metadata.acpSessionMode }
+    ...(reportedMode ? { currentModeId: reportedMode } : {}),
+    ...(confirmedMode && requestedOptions
+      ? {
+          requestedProviderOptions: updateModelRuntimeOption(
+            requestedOptions,
+            'mode',
+            undefined,
+          ),
+        }
       : {}),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }

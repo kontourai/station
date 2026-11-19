@@ -108,17 +108,18 @@ function ComposerModeSheetContent({
     target.station.capabilities.personalDefaults.state === 'allowed';
   const { aboveCeiling } = useManagedApprovalCeiling();
   const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const defaultEngine =
+    engineConnectionId === 'codex' ||
+    engineConnectionId === 'claude' ||
+    engineConnectionId === 'muse'
+      ? engineConnectionId
+      : undefined;
+  const canSaveDefault = personalDefaults && account.status === 'account';
   const apply = (mode: ApprovalMode) => {
-    if (
-      personalDefaults &&
-      saveAsDefault &&
-      (engineConnectionId === 'codex' ||
-        engineConnectionId === 'claude' ||
-        engineConnectionId === 'muse')
-    ) {
+    if (canSaveDefault && saveAsDefault && defaultEngine) {
       account.save({
         interactiveApprovalModes: {
-          [engineConnectionId]: mode === 'connection-default' ? null : mode,
+          [defaultEngine]: mode === 'connection-default' ? null : mode,
         },
       });
     }
@@ -181,14 +182,14 @@ function ComposerModeSheetContent({
                 ? 'Set for this chat · changes apply next turn'
                 : 'Changes apply next turn'}
         </p>
-        {personalDefaults && account.status === 'account' && (
+        {canSaveDefault && defaultEngine && (
           <div className="composer-mode-sheet__save-default">
             <Checkbox checked={saveAsDefault} onChange={setSaveAsDefault}>
               Save as my {engineProduct ?? 'engine'} default
             </Checkbox>
           </div>
         )}
-        {saveAsDefault && (
+        {saveAsDefault && canSaveDefault && defaultEngine && (
           <Button onClick={() => choose(effectiveMode)}>
             Save current mode as my default
           </Button>

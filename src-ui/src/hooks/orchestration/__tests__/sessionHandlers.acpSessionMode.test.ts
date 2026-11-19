@@ -42,7 +42,10 @@ describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
     vi.resetModules();
   });
 
-  test('session.configured stores the advertised current mode id', () => {
+  test('session.configured confirms the requested mode and keeps other pending options', () => {
+    activeChatsStore.updateChat(threadId, {
+      requestedProviderOptions: { mode: 'plan', effort: 'high' },
+    });
     handleSessionLifecycleEvent({
       eventId: 'evt-mode',
       provider: 'acp',
@@ -62,6 +65,11 @@ describe('handleSessionLifecycleEvent — advertised ACP session mode', () => {
     expect(activeChatsStore.getSnapshot()[threadId]?.currentModeId).toBe(
       'plan',
     );
+    expect(
+      activeChatsStore.getSnapshot()[threadId]?.requestedProviderOptions,
+    ).toEqual({
+      effort: 'high',
+    });
   });
 
   test('session.started does not invent a current mode', () => {

@@ -38,7 +38,7 @@ export function EngineApprovalDisclosureSheet({
         closeLabel="Close approval details"
         onClose={onClose}
       />
-      <div className="composer-mode-sheet__disclosure">
+      <div className="composer-mode-sheet__notes composer-mode-sheet__disclosure">
         <p>
           {engineName} decides which of its actions ask before they run. Station
           shows each request it sends and waits for your answer, but cannot make
