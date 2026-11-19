@@ -35,6 +35,8 @@ import {
   type SourceApprovalActor,
   SourceGrantApprovalStore,
 } from '../../analytics/source-grant-store.js';
+import { acquireAgentIdentityMutationLockAtHome } from '../../domain/agent-registry.js';
+import { agentIncarnationUnderLock } from '../../domain/config-loader-agents.js';
 import { ProjectFileTransactions } from '../../domain/project-file-transactions.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import {
@@ -7543,8 +7545,24 @@ export function configureRuntimeRoutes(
               context.projectService
                 .listProjects()
                 .find((project) => project.id === projectId)?.name,
-            agentDefinition: async (agentSlug: string) =>
+            agentDefinition: (agentSlug: string) =>
               context.agentService.getAgent(agentSlug),
+            agentIncarnation: (agentSlug: string, initialize: boolean) =>
+              agentIncarnationUnderLock(
+                context.configLoader.getProjectHomeDir(),
+                agentSlug,
+                initialize,
+              ),
+            withAgentIdentity: async <T>(operation: () => Promise<T>) => {
+              const release = await acquireAgentIdentityMutationLockAtHome(
+                context.configLoader.getProjectHomeDir(),
+              );
+              try {
+                return await operation();
+              } finally {
+                await release();
+              }
+            },
             proposingTurn: (sessionId: string) => {
               const eventStore = context.orchestrationEventStore;
               if (!eventStore) return undefined;

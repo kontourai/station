@@ -6103,16 +6103,16 @@ Confirm also needs the Station operator in person (403
 `automation_proposal_operator_required`).
 
 Confirm decides the proposing chat's scope again, for its recorded caller.
-Each Agent must still be the one it named: the same slug, its own Project,
-and a digest of its definition. Confirm checks this before claiming the
-proposal, then again inside the configuration store's lock for creation and
-for enabling. A moved, deleted, reused-slug or unreadable binding answers
-409 `automation_proposal_binding_changed` and creates nothing. If the check
-fails only inside the enabling lock, the object is created but not enabled
-(`enabled: false`).
+Each Agent must still match the recorded slug, its Project, its definition
+digest and its incarnation. Confirm checks before claiming the proposal and
+rechecks under the Agent identity and configuration locks for creation and
+activation. A changed or unreadable binding, including an older Agent
+binding without an incarnation, answers 409
+`automation_proposal_binding_changed` before creating anything. A binding
+refusal during activation returns the saved object's id and `enabled: false`.
 
-Confirm creates the source disabled, or the rule in `observe`, unless
-`enable` is true. The id is derived from the proposal, so a Confirm retried
+Confirm creates a disabled source or an observing rule, then attempts to turn
+it on when `enable` is true. The id is derived from the proposal, so a Confirm retried
 after an interrupted one adopts what it created instead of creating a
 second. Startup marks an interrupted Confirm `confirmed` if its object
 exists, and `open` otherwise.
@@ -6124,6 +6124,8 @@ Other Confirm refusals:
 - 409 `automation_proposal_settled`: the proposal was already answered.
 
 Confirm answers `{proposal, createdId, enabled, untrustedContentAtConfirm}`.
+When the object was saved and requested activation failed, the response
+includes a bounded explanation in `message`.
 The chat schedule read adds `untrustedContentNow` to each open proposal: the
 conversation's untrusted-content mark as it is now, beside the
 `untrustedContent` recorded when the agent proposed it.
