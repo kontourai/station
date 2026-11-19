@@ -1,0 +1,15 @@
+{
+  "revision": "9663766ed18f1355fab4c2e6619b76105a87bce0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced CanonicalUsageExport from authenticated source selection through fixed-head paging and the version 1 receipt projection. The projection runs after source selection and leaves local receipt ownership and richer usage data intact. Reviewed the positive schema-1 field selection, including nested price fields. The mounted route preserves the source snapshot identity, measured input and captured estimate.","inputs":["docs/architecture/module-map.md","src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the canonical export source, cursor and authority guarantees against the writer change. The mounted route and in-process producer tests both decode the version 1 shape, preserving input measurement and omitting unsupported local fields and explicit undefined keys. Reviewed the positive schema-1 field selection, including nested price fields. The mounted route preserves the source snapshot identity, measured input and captured estimate.","inputs":["docs/guides/monitoring.md","src-server/analytics/usage-export-reader.ts","src-server/routes/operations/__tests__/usage-export.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the receipt shape to the mounted analytics endpoint and unchanged shared decoder. An actual richer event returned HTTP 200 but failed version 1 decoding before the fix. Both serialized and direct source pages decode after the bounded export projection. Reviewed the positive schema-1 field selection, including nested price fields. The mounted route preserves the source snapshot identity, measured input and captured estimate.","inputs":["docs/reference/api.md","src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed canonical usage-export receiver behavior against the unchanged strict parser. The source projects richer observations at the existing version 1 boundary, without changing SDK request options or cursor handling. Reviewed the positive schema-1 field selection, including nested price fields. The mounted route preserves the source snapshot identity, measured input and captured estimate.","inputs":["docs/reference/sdk.md","src-server/analytics/usage-export-reader.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the existing usage-export leaf, person/session authority, source scope checks and release revalidation. Receipt projection happens after authorized row selection and adds no permission, identity or route disclosure. Reviewed the positive schema-1 field selection, including nested price fields. The mounted route preserves the source snapshot identity, measured input and captured estimate.","inputs":["docs/security/remote-access-threat-model.md","src-server/analytics/usage-export-reader.ts"]}
+  ]
+}
