@@ -1,0 +1,11 @@
+{
+  "revision": "7e370533ddb4fbcab69d7e09691a95215e52df64",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Traced browser delivery through the server event listener and existing lazy envelope reader. Explicit v1 silent delivery and parsed silent envelopes stay in the History and unread path without a toast or category sound. Ordinary turn completion keeps its category sound and the original foreground visual suppression. Verified Inbox stack clearance with real mounted browser controls at 320, 390 and 412 pixels in both themes, including stacked and wrapped toasts, last-row scrolling, keyboard Open and Dismiss, and restoration on the last removal. Physical notifications and actual audio hardware were outside this review.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationContainer.tsx","src-ui/src/lib/notification-envelope-toast.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Verified that the listener’s subscription, scoped authority and React Query invalidation still use their existing paths. The silent-envelope handling affects only the browser presentation callback and keeps the full envelope reader behind the existing dynamic import. The notification stack measures its actual height and publishes a CSS custom property for Inbox layout.","inputs":["docs/patterns/frontend.md","src-ui/src/hooks/useServerEventsListener.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the Automation design’s historical distinction between ephemeral webhook sessions without card alerts and durable repair Tasks. The linked browser presentation changes leave repair initiation, visibility, authority and server delivery records with their existing owners.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}
