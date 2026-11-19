@@ -165,8 +165,12 @@ and inspect the current store's persisted envelope when testing migrations.
 
 Local unsharded changed-test diagnostics retain up to 32 explicit test targets even when broader
 verification is deferred. Their failures block fast feedback; their passes remain
-provisional and do not satisfy the deferred obligations. Broad import expansion
-and larger selections stay deferred within the existing feedback budget.
+provisional and leave the broader obligations pending. When the deferral drops
+related discovery for a changed UI component, directly importing UI suites
+join the explicit fallback if the combined selection fits within 32. The
+summary reports when the cap omits those additions, and the selection artifact
+lists their paths. Normal related discovery and hosted planning use their
+existing budgets.
 
 
 Use this route for weak-test cleanup, fixture repairs, and performance work. The owning modules are in the [module map](../architecture/module-map.md#browser-test-evidence). Run `npm run gate:for -- <paths>` before editing; it prints the current fixture policy command when the change touches this surface.
@@ -696,8 +700,12 @@ targets and executes no test, is incomplete. Hosted `fast-checks` still passes
 such a plan when its bounded mapped tests and invariants pass, but it reports
 the pass as provisional with a warning that names the deferred
 lanes, and the required `Source verification policy` status stays success with
-a provisional note in its description. An E2E, desktop or pre-push deferral is owned outside the selection and
-leaves the run complete.
+a provisional note in its description. The `fast-checks` aggregate output
+triggers the `Mark fast-checks provisional` workflow step. The source policy
+publisher reads that step's name and conclusion from the jobs API. The required `Merge-queue regression` job can still admit the candidate based on
+the exact bounded integration plan and its successful receipts. Main
+qualification owns the deferred full corpus. An E2E, desktop or pre-push
+deferral is owned outside the selection and leaves the run complete.
 
 A companion Vitest reporter keeps failed-test error names, primary messages,
 nested causes, stacks and durations separate. Excerpts prefer the observed

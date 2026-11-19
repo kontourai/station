@@ -1,0 +1,17 @@
+{
+  "revision": "f8773be6c43791b0c8100d3938f2eabce286f84a",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Checked explicit terminal error reasons through the exported primary stream fixture. A reported error without a thrown exception now has ERROR status and no fabricated exception event.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The Monitoring guide now distinguishes thrown and reported stream errors when settling the owning span. The typed pipeline and metrics owner relationships remain the same.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked explicit error finish frames at the existing primary stream owner. Status now reflects a reported terminal failure. Stream output, caller authority, tool context and configured environment behavior remain unchanged.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked explicit error finish frames at the existing primary stream owner. Status now reflects a reported terminal failure. Stream output, caller authority, tool context and configured environment behavior remain unchanged.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked explicit error finish frames at the existing primary stream owner. Status now reflects a reported terminal failure. Stream output, caller authority, tool context and configured environment behavior remain unchanged.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked explicit error finish frames at the existing primary stream owner. Status now reflects a reported terminal failure. Stream output, caller authority, tool context and configured environment behavior remain unchanged.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]}
+  ]
+}
