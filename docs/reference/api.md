@@ -754,6 +754,12 @@ memory access. With the preview off, direct memory requests return the standard
 
 ## Project knowledge source identity
 
+The operator's `GET /api/projects` response includes `hasKnowledge` when Station
+can observe a regular document metadata file in the Project's local knowledge
+namespaces or its legacy documents directory. The Project **Sources** list
+reports registered stores. **Project knowledge** reports document and index
+status.
+
 New Project root registrations require `expectedProjectId`, compared with the
 server-owned Project. A missing or mismatched precondition returns409. The
 stored `projectId` is resolved on the server, not accepted from a caller. Managed storage uses that ID in its path.
