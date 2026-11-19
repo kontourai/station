@@ -112,12 +112,12 @@ function orchestrationSection(
 ): Section | undefined {
   if (!has('delegate_task')) return undefined;
   const lines: string[] = [
-    'Use Station tools when asked or when work needs another Agent, engine, model, Project or Station; ordinary coding needs none.',
-    'When you need another Agent, use `delegate_task` by default so Station tracks the child and its result. Use a native subagent only when requested.',
+    'Use Station tools when asked or when work crosses Agents, engines, models, Projects or Stations.',
+    'Use `delegate_task` for tracked child work. Use native subagents only when requested.',
   ];
   if (has('list_delegation_targets')) {
     lines.push(
-      `Before the first \`delegate_task\`, call \`list_delegation_targets\` once for Agents/readiness/engines/models; repeat only after refusal or a user-named target change. If it is refused, ${has('list_agents') ? 'use `list_agents` and ' : ''}delegate only to an Agent the user named.`,
+      `Before the first \`delegate_task\`, call \`list_delegation_targets\` once for ready Agents and models; repeat only on refusal or target change. If it is refused, ${has('list_agents') ? 'use `list_agents` and ' : ''}delegate only to an Agent the user named.`,
     );
   } else if (has('list_agents')) {
     lines.push(
@@ -127,9 +127,9 @@ function orchestrationSection(
     lines.push('Delegate only to an Agent the user named.');
   }
   lines.push(
-    'If the requested Agent or model is unavailable, report what the catalog offers. Use another Agent or model only when the user authorizes it. Do not dispatch through a shell CLI.',
-    'Give the child one outcome, the evidence or files it needs, and the expected result. If it cannot read files without approval, include the relevant evidence in the brief.',
-    'Use a fresh `clientTurnId` per `delegate_task`; reuse only for an identical retry. New review/re-check: new task/brief.',
+    'Report unavailable targets with catalog options. Change Agent or model only with user approval. Never delegate through a shell.',
+    'Brief the child on one outcome and what to return. Supply excerpts if it cannot read files.',
+    'Use a fresh `clientTurnId` except for identical retries. Start a new task for re-review.',
   );
   const follow: string[] = [];
   if (has('continue_task'))
