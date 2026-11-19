@@ -19,6 +19,7 @@ import {
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { ReturnGlyph } from '../icons/Glyph';
 import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
@@ -67,6 +68,7 @@ interface HomeRecentWorkSectionProps {
   workDegraded: boolean;
   workError: boolean;
   agents: readonly SessionIconAgent[];
+  remoteReadError?: { description?: string; retry?: () => void };
   remoteUnavailable: { environmentName: string }[];
   remoteAuthenticationRequired: { environmentName: string }[];
   onOpen: (task: HomeWorkItem) => void;
@@ -150,6 +152,20 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
       <div className="home-view__section-heading">
         <h2 id="recent-work-heading">Recent work</h2>
       </div>
+      {props.remoteReadError && (
+        <ErrorState
+          variant="compact"
+          title="Remote work unavailable"
+          description={props.remoteReadError.description}
+          action={
+            props.remoteReadError.retry && (
+              <Button variant="secondary" onClick={props.remoteReadError.retry}>
+                Retry remote work
+              </Button>
+            )
+          }
+        />
+      )}
       <RemoteUnavailableNote environments={props.remoteUnavailable} />
       <RemoteAuthenticationRequiredNote
         environments={props.remoteAuthenticationRequired}
@@ -200,6 +216,7 @@ function HomeWorkContent({
   workLoading,
   workDegraded,
   workError,
+  remoteReadError,
   workFacts,
   agents,
   onOpen,
@@ -224,7 +241,8 @@ function HomeWorkContent({
   if (workError && workItems.length === 0) {
     return <RecentWorkError onRetry={onRetry} />;
   }
-  if (workItems.length === 0) return <RecentWorkEmpty />;
+  if (workItems.length === 0)
+    return remoteReadError ? null : <RecentWorkEmpty />;
   return (
     <HomeWorkLanesContent
       controller={controller}

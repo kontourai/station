@@ -1964,7 +1964,10 @@ scope contract rather than assuming every SDK query is interchangeable.
 { apiBase?, requestScope?, signal? })` reads one read-only history page of a
 session on a connected SSH environment's Station. A conversation surface
 passes its owning connection's `apiBase` and `requestScope`; without them
-the host's configured Station is used. These are the rows `useRemoteSessionsQuery` lists.
+the host's configured Station is used. `useRemoteSessionsQuery` lists these rows.
+A rejected inventory read carries its HTTP status as a `StationHttpError`.
+A successful inventory can have zero remote sessions and can identify individual
+unavailable environments.
 This Station relays the remote's bounded `window-v1` read over the
 environment's tunnel and peer bearer, and labels the page with its own
 `environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the

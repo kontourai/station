@@ -1450,6 +1450,9 @@ engine, the continuation is still created and you continue it from
 
 See [continuation and recovery details](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#continue-an-attached-session).
 
+If **Recent work** can’t load sessions from another Station, Home shows an
+explanation alongside any work it could load locally.
+
 ## Arrange Work You Already Own
 
 In a Project, use **Add Pane** and choose **Work Board** to arrange exact

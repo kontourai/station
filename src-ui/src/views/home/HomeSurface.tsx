@@ -117,6 +117,7 @@ export function HomeSurface({
     model.workLoading ||
     model.workDegraded ||
     model.workError ||
+    Boolean(model.remoteReadError) ||
     model.remoteUnavailable.length > 0 ||
     model.remoteAuthenticationRequired.length > 0 ||
     [
@@ -139,6 +140,7 @@ export function HomeSurface({
       workDegraded={model.workDegraded}
       workError={model.workError}
       agents={model.agents}
+      remoteReadError={model.remoteReadError}
       remoteUnavailable={model.remoteUnavailable}
       remoteAuthenticationRequired={model.remoteAuthenticationRequired}
       onOpen={model.continueWork}
