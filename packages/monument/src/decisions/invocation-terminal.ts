@@ -131,9 +131,11 @@ function isTerminalDedupRecord(value: unknown): value is TurnDedupRecord {
         'preparedUpdatedAt',
         'settlement',
         'inputDigest',
+        'inputWitness',
       ],
     ) &&
     optionalText(value, 'inputDigest') &&
+    optionalText(value, 'inputWitness') &&
     text(value.key) &&
     (value.value === null || typeof value.value === 'string') &&
     typeof value.createdAt === 'number' &&

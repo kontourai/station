@@ -14,6 +14,56 @@ import {
   sameSettlementOwner,
 } from './prepared-settlement.js';
 
+const INPUT_WITNESS_PREFIX = 'turn-submission-witness/v1:';
+
+/** Carry a required exact-input witness through existing digest-only ports. */
+export function witnessedTurnInputDigest(
+  inputDigest: string,
+  witness: string,
+): string {
+  return INPUT_WITNESS_PREFIX + JSON.stringify([inputDigest, witness]);
+}
+
+function turnInputProof(inputDigest?: string): {
+  digest?: string;
+  witness?: string;
+} {
+  if (!inputDigest?.startsWith(INPUT_WITNESS_PREFIX))
+    return { digest: inputDigest };
+  const decoded: unknown = JSON.parse(
+    inputDigest.slice(INPUT_WITNESS_PREFIX.length),
+  );
+  if (
+    !Array.isArray(decoded) ||
+    decoded.length !== 2 ||
+    typeof decoded[0] !== 'string' ||
+    typeof decoded[1] !== 'string' ||
+    !decoded[0] ||
+    !decoded[1]
+  )
+    throw new Error('Invalid turn submission witness.');
+  return {
+    digest: decoded[0],
+    witness: witnessedTurnInputDigest(decoded[0], decoded[1]),
+  };
+}
+
+export function compareTurnInput(
+  record: TurnDedupRecord,
+  inputDigest?: string,
+): 'compatible' | 'unwitnessed' | 'conflict' {
+  if (inputDigest === undefined) return 'compatible';
+  const input = turnInputProof(inputDigest);
+  const witness =
+    record.inputDigest === undefined ? undefined : record.inputWitness;
+  if (
+    (record.inputDigest !== undefined && record.inputDigest !== input.digest) ||
+    (witness !== undefined && witness !== input.witness)
+  )
+    return 'conflict';
+  return input.witness && witness === undefined ? 'unwitnessed' : 'compatible';
+}
+
 /**
  * A decision names the one write it wants (`put`, `delete`, or none) and the
  * answer. It reads nothing but its arguments, and is the whole rule: the
@@ -71,15 +121,15 @@ export function decideTurnDedupClaim(
   liveness: OwnerLiveness,
   tombstoned = false,
 ): TurnDedupDecision<TurnDedupClaimResult> {
+  const proof = turnInputProof(command.inputDigest);
   const owned: TurnDedupRecord = {
     key: command.key,
     value: null,
     createdAt: command.now,
     owner: ownerFields(command.owner),
     invocation: command.tracking === 'tracked' ? 'pending' : 'untracked',
-    ...(command.inputDigest !== undefined
-      ? { inputDigest: command.inputDigest }
-      : {}),
+    ...(proof.digest !== undefined ? { inputDigest: proof.digest } : {}),
+    ...(proof.witness !== undefined ? { inputWitness: proof.witness } : {}),
   };
   if (!current) {
     // The effect ran and its result is gone: never claim the key afresh.
@@ -115,16 +165,16 @@ export function decideTurnDedupClaim(
       },
     };
   }
-  if (
-    current.inputDigest !== undefined &&
-    command.inputDigest !== undefined &&
-    current.inputDigest !== command.inputDigest
-  )
+  const comparison = compareTurnInput(current, command.inputDigest);
+  if (comparison === 'conflict')
     return { write: NO_WRITE, result: { kind: 'conflict' } };
   if (current.value !== null)
     return {
       write: NO_WRITE,
-      result: { kind: 'resolved', value: current.value },
+      result:
+        comparison === 'unwitnessed'
+          ? { kind: 'conflict' }
+          : { kind: 'resolved', value: current.value },
     };
   // Liveness is consulted only for an unresolved claim with an owner, and
   // only `dead` frees it: `unknown` must not.
@@ -143,6 +193,9 @@ export function decideTurnDedupClaim(
       };
     if (!turnClaimIsReclaimable(current))
       return { write: NO_WRITE, result: { kind: 'indeterminate' } };
+    if (proof.witness !== undefined && current.inputDigest === undefined)
+      return { write: NO_WRITE, result: { kind: 'conflict' } };
+    const witness = current.inputWitness ?? owned.inputWitness;
     return {
       write: {
         kind: 'put',
@@ -155,12 +208,19 @@ export function decideTurnDedupClaim(
           ...(current.inputDigest !== undefined
             ? { inputDigest: current.inputDigest }
             : {}),
+          ...(witness !== undefined ? { inputWitness: witness } : {}),
         },
       },
       result: { kind: 'claimed', reclaimed: true },
     };
   }
-  return { write: NO_WRITE, result: { kind: 'contended' } };
+  return {
+    write: NO_WRITE,
+    result:
+      comparison === 'unwitnessed'
+        ? { kind: 'conflict' }
+        : { kind: 'contended' },
+  };
 }
 
 function ownsUnresolved(

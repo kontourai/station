@@ -1111,6 +1111,7 @@ function decodeDedupOwner(
   readonly preparedUpdatedAt?: string;
   readonly settlement?: PreparedTurnSettlement;
   readonly inputDigest?: string;
+  readonly inputWitness?: string;
 } {
   let parsed: unknown;
   try {
@@ -1154,6 +1155,9 @@ function decodeDedupOwner(
       ...(typeof fields.inputDigest === 'string'
         ? { inputDigest: fields.inputDigest }
         : {}),
+      ...(typeof fields.inputWitness === 'string'
+        ? { inputWitness: fields.inputWitness }
+        : {}),
     };
   } catch (error) {
     if (binding.ownerErrorMessage) throw new Error(binding.ownerErrorMessage);
@@ -1183,6 +1187,7 @@ function decodeDedup(
     preparedUpdatedAt,
     settlement,
     inputDigest,
+    inputWitness,
   } = decodeDedupOwner(row.owner_json, binding);
   // Older writers replace owner_json but leave additive columns behind.
   // Trust the column only with matching proof on this owner, never a stale digest.
@@ -1217,6 +1222,9 @@ function decodeDedup(
     ...(preparedUpdatedAt !== undefined ? { preparedUpdatedAt } : {}),
     ...(settlement !== undefined ? { settlement } : {}),
     ...(digest !== undefined ? { inputDigest: digest } : {}),
+    ...(inputWitness !== undefined && digest !== undefined
+      ? { inputWitness }
+      : {}),
   };
 }
 
@@ -1246,6 +1254,9 @@ function encodeDedupOwner(
       : {}),
     ...(record.inputDigest !== undefined
       ? { inputDigest: record.inputDigest }
+      : {}),
+    ...(record.inputWitness !== undefined
+      ? { inputWitness: record.inputWitness }
       : {}),
   });
 }
