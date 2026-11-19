@@ -1,0 +1,7 @@
+{
+  "revision": "a3004db4ba9438b616ad71ecaeccebfd379b7603",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the Connections guide's built-in branding and engine removal against the machine relationship and connection setup references. Removal applies to the saved ACP connection on its Station, and the existing conversation remains readable.","inputs":["docs/guides/connections.md"]}
+  ]
+}

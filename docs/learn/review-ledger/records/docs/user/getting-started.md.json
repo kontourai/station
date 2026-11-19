@@ -276,8 +276,6 @@
 
     "src-ui/src/utils/inbox-dismissal-store.ts",
 
-    "src-ui/src/hooks/useInboxSwipe.ts",
-
     "src-ui/src/contexts/active-chats-store.ts",
 
     "src-ui/src/__tests__/inbox-dismissal.test.tsx",
@@ -342,7 +340,9 @@
 
     "src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx",
 
-    "tests/child-transcript-chat.spec.ts"
+    "tests/child-transcript-chat.spec.ts",
+
+    "src-ui/src/hooks/useSwipeActions.ts"
   ],
 
   "checks": [
