@@ -4,6 +4,7 @@ import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
+import { ComposerRunSetupClose } from '../components/ComposerChoiceSummary';
 import { ManagedPolicyContext } from '../contexts/ManagedPolicyContext';
 import { mountedDecisionSurfaces } from '../lib/custom-appearance/decision-surfaces';
 
@@ -358,12 +359,15 @@ describe('ApprovalModeChip', () => {
 
   test('#727 review item 3 (HIGH): escalating to never requires a second confirming click before onChange fires', async () => {
     const onChange = vi.fn();
+    const closeRunSetup = vi.fn();
     render(
-      <ApprovalModeChip
-        engineConnectionId="codex"
-        sessionOverride="ask"
-        onChange={onChange}
-      />,
+      <ComposerRunSetupClose.Provider value={closeRunSetup}>
+        <ApprovalModeChip
+          engineConnectionId="codex"
+          sessionOverride="ask"
+          onChange={onChange}
+        />
+      </ComposerRunSetupClose.Provider>,
     );
 
     await openSheet();
@@ -372,6 +376,7 @@ describe('ApprovalModeChip', () => {
     // Picking 'never' does not apply it yet — the option list is replaced by an
     // explicit confirm step.
     expect(onChange).not.toHaveBeenCalled();
+    expect(closeRunSetup).not.toHaveBeenCalled();
     expect(screen.queryByRole('radiogroup')).toBeNull();
     // Custom CSS is held off while the full-access confirm is on screen.
     expect(mountedDecisionSurfaces()).toContain('approval-mode');
@@ -381,6 +386,7 @@ describe('ApprovalModeChip', () => {
 
     fireEvent.click(confirmButton);
     expect(onChange).toHaveBeenCalledWith('never');
+    expect(closeRunSetup).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 

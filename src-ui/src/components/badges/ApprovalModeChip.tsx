@@ -9,7 +9,7 @@ import {
 } from '@kontourai/station-contracts/managed-policy-controls';
 import type { ProjectChatApprovalDefault } from '@kontourai/station-contracts/project-chat-defaults';
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
-import { useRef, useState } from 'react';
+import { useContext, useRef, useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
 import {
@@ -22,6 +22,7 @@ import {
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
+import { ComposerRunSetupClose } from '../ComposerChoiceSummary';
 import {
   ConversationManagedPolicyProvider,
   useOptionalConversationConnection,
@@ -135,6 +136,7 @@ function ApprovalModeChipContent({
   onChange,
 }: ApprovalModeChipProps) {
   const account = useAccountPreferences();
+  const closeRunSetup = useContext(ComposerRunSetupClose);
   const target = useOptionalConversationConnection();
   const policySummary = useManagedPolicySummary();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -350,7 +352,10 @@ function ApprovalModeChipContent({
             effectiveMode: displayedMode,
             engineConnectionId,
             onClose: () => setIsSheetOpen(false),
-            onSelect: onChange,
+            onSelect: (mode) => {
+              if (mode === 'never') closeRunSetup?.();
+              onChange(mode);
+            },
             sourceNote,
             policyNote: policyExplanation,
             pendingNote,
