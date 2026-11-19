@@ -541,6 +541,16 @@ function connectionStatusView(
   };
 }
 
+function builtInConnectionPresentation(
+  cfg: ACPConnectionConfig,
+  entries: readonly ACPConnectionRegistryEntry[],
+) {
+  const entry = builtInAcpEntryFor(cfg, entries);
+  return entry
+    ? { registryId: entry.id, icon: acpConnectionIcon(cfg.icon, entry) }
+    : {};
+}
+
 /**
  * Registers a saved connection that a background probe (the cold first-contact
  * continuation, or the periodic sweep) just handshaked for the first time.
@@ -683,18 +693,13 @@ export function createACPRoutes(
     const allConnections = await installedACPConnections(ctx.configLoader);
     const status = ctx.acpBridge.getStatus();
     const builtIns = builtInAcpEntries();
-    const connections = allConnections.map((cfg) => {
-      const entry = builtInAcpEntryFor(cfg, builtIns);
-      return {
-        ...connectionStatusView(cfg, status),
-        ...(entry
-          ? { registryId: entry.id, icon: acpConnectionIcon(cfg.icon, entry) }
-          : {}),
-        ...(acpApprovalControl(cfg.command) === 'requests'
-          ? { stationApprovalRequests: true as const }
-          : {}),
-      };
-    });
+    const connections = allConnections.map((cfg) => ({
+      ...connectionStatusView(cfg, status),
+      ...builtInConnectionPresentation(cfg, builtIns),
+      ...(acpApprovalControl(cfg.command) === 'requests'
+        ? { stationApprovalRequests: true as const }
+        : {}),
+    }));
     return c.json({ success: true, data: connections });
   });
 
@@ -708,9 +713,13 @@ export function createACPRoutes(
     if (registeredIds === null) return c.json({ success: true, data: [] });
     const config = await ctx.configLoader.loadACPConfig();
     const status = ctx.acpBridge.getStatus();
+    const builtIns = builtInAcpEntries();
     const data = config.connections
       .filter((connection) => !registeredIds.has(connection.id))
-      .map((connection) => connectionStatusView(connection, status));
+      .map((connection) => ({
+        ...connectionStatusView(connection, status),
+        ...builtInConnectionPresentation(connection, builtIns),
+      }));
     return c.json({ success: true, data });
   });
 
@@ -834,11 +843,8 @@ export function createACPRoutes(
             );
           }
 
-          const entry = findRegistryEntry(
-            id,
-            [...config.connections, ...providerConns],
-            publicRegistry,
-          );
+          const saved = mergeACPConnections(config.connections, providerConns);
+          const entry = findRegistryEntry(id, saved, publicRegistry);
           if (!entry) {
             return c.json(
               {
@@ -931,7 +937,7 @@ export function createACPRoutes(
           const existing = config.connections.find((conn) => conn.id === id);
           if (!existing && entry.source === 'core') {
             const builtIns = builtInAcpEntries();
-            const alias = config.connections.find(
+            const alias = saved.find(
               (connection) =>
                 builtInAcpEntryFor(connection, builtIns)?.id === id,
             );
@@ -944,7 +950,11 @@ export function createACPRoutes(
                 409,
               );
           }
-          if (existing && !isDeepStrictEqual(existing, newConn)) {
+          const comparable =
+            existing && entry.source === 'core'
+              ? { ...existing, icon: acpConnectionIcon(existing.icon, entry) }
+              : existing;
+          if (existing && !isDeepStrictEqual(comparable, newConn)) {
             return c.json(
               {
                 success: false,
@@ -953,7 +963,8 @@ export function createACPRoutes(
               409,
             );
           }
-          if (!existing) config.connections.push(newConn);
+          const connection = existing ?? newConn;
+          if (!existing) config.connections.push(connection);
           // Durable ACP config first, then the identity/default CAS. A failed
           // CAS deliberately leaves retryable config that remains invisible.
           await ctx.configLoader.saveACPConfig(config);
@@ -965,21 +976,21 @@ export function createACPRoutes(
           // retryable, and invisible to every installed surface until the
           // identity below registers — and a later install/re-check of the
           // same entry re-probes and materializes once the engine works.
-          const connected = await connectNewACPConnection(ctx, newConn);
+          const connected = await connectNewACPConnection(ctx, connection);
           // A never-connected engine that ran out of the request budget gets
           // its cold retry in the background; the response reads `probing`.
-          if (!connected) ctx.acpBridge.continueFirstContact?.(newConn.id);
+          if (!connected) ctx.acpBridge.continueFirstContact?.(connection.id);
           const agent = connected
             ? await registerPersistedACPConnection(
                 ctx,
-                newConn.id,
-                newConn.name,
+                connection.id,
+                connection.name,
               )
             : undefined;
           acpOps.add(1, { op: 'create' });
           return c.json({
             success: true,
-            data: connectionStatusView(newConn, ctx.acpBridge.getStatus()),
+            data: connectionStatusView(connection, ctx.acpBridge.getStatus()),
             ...(agent
               ? {
                   agent: {

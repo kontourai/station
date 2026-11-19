@@ -975,6 +975,72 @@ describe('ACP Routes', () => {
     ]);
   });
 
+  describe('built-in Antigravity connection', () => {
+    const preset = {
+      id: 'antigravity',
+      name: 'Antigravity',
+      command: 'agy',
+      args: ['acp', '--process-per-session'],
+      icon: 'brand:antigravity',
+    };
+    const saved = { ...preset, icon: 'AG', enabled: true };
+
+    beforeEach(() => {
+      providerEntries = [
+        {
+          source: 'acpConnectionRegistry:core',
+          builtin: true,
+          provider: { listAvailable: () => [preset] },
+        },
+      ];
+    });
+
+    test('keeps built-in presentation when a saved alias needs repair', async () => {
+      const { ctx, configLoader } = await createFilesystemRuntimeContext();
+      await configLoader.saveACPConfig({
+        connections: [{ ...saved, id: 'agy' }],
+      });
+      const app = asOperator(createACPRoutes(ctx));
+
+      expect(
+        (await json(await app.request('/connections/unregistered'))).data,
+      ).toMatchObject([
+        { id: 'agy', registryId: preset.id, icon: preset.icon },
+      ]);
+    });
+
+    test('refuses installation when an alias is supplied by a plugin', async () => {
+      providerEntries.push({
+        source: 'acpConnections:plugin',
+        provider: { getConnections: () => [{ ...saved, id: 'agy' }] },
+      });
+      const ctx = createMockRuntimeContext();
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/registry/antigravity/install', {
+        method: 'POST',
+      });
+      expect(response.status).toBe(409);
+      expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+    });
+
+    test('retries installation of a canonical preset with its former stock icon', async () => {
+      const ctx = createMockRuntimeContext();
+      ctx.configLoader.loadACPConfig.mockResolvedValue({
+        connections: [saved],
+      });
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      const response = await app.request('/registry/antigravity/install', {
+        method: 'POST',
+      });
+      expect(response.status).toBe(200);
+      expect(ctx.configLoader.saveACPConfig).toHaveBeenCalledWith({
+        connections: [saved],
+      });
+    });
+  });
+
   test('POST /registry/:id/install saves an ACP registry entry as a user connection', async () => {
     providerEntries = [
       {

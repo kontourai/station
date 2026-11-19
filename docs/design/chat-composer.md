@@ -270,6 +270,14 @@ turn, queued message or pending check blocks the switch; the handoff's
 **Switch to …** action is disabled for the same reasons ([entry
 point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
 [dialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)).
+An idle chat whose saved engine was removed keeps its transcript readable and
+offers **Continue with another agent** to callers allowed to continue. A first
+handoff to a different Agent starts a fresh Session in the same Conversation
+with a bounded excerpt from the transcript, even if both Agents use the same
+connection. Returning to an earlier Session of the selected Agent can resume
+its engine context when Station verifies the original binding and engine
+support.
+
 New chat, the active composer and the handoff dialog use the shared model picker.
 Their catalogs prefer the executing engine's models; another engine's profile
 aliases are not offered. Handoff runtime settings are retained with the exact
