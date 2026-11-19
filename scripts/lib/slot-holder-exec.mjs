@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+
 /**
  * Run a program as the holder of a host slot (`typecheck-host-slots.mjs`), so
  * the program cannot outlive the slot record that admits it.
@@ -9,7 +11,17 @@
  * waits for the whole Job to settle before the caller's exit hook releases
  * the slot.
  *
- * @param {{ file: string, args: string[], cwd?: string, label: string }} command
+ * Before execve, stdio is put back into blocking mode (#5119). Touching
+ * `process.stdout`/`process.stderr` (a slot-wait message, a warning) makes
+ * libuv set O_NONBLOCK on the inherited pipe or socket, a flag that belongs to
+ * the open file description shared with the caller's capture and survives
+ * execve. A native program that expects blocking stdio, such as Biome, then
+ * dies with EAGAIN ("Resource temporarily unavailable") the moment its reader
+ * lags, even though that reader drains continuously. libuv clears O_NONBLOCK
+ * on fds 0-2 when it spawns a child with inherited stdio, so a no-op child
+ * restores the mode the program expects.
+ *
+ * @param {{ file: string, args: string[], cwd?: string, label: string, env?: NodeJS.ProcessEnv }} command
  * @returns {Promise<void>} Only on Windows; on POSIX it never returns.
  */
 export async function execAsSlotHolder({
@@ -17,9 +29,18 @@ export async function execAsSlotHolder({
   args,
   cwd = process.cwd(),
   label,
+  env = process.env,
 }) {
   if (process.platform !== 'win32') {
-    process.execve(file, [file, ...args], process.env);
+    const reset = spawnSync('/bin/sh', ['-c', ':'], {
+      stdio: 'inherit',
+      windowsHide: true,
+    });
+    if (reset.error || reset.status !== 0)
+      throw new Error(
+        `${label}: cannot restore blocking stdio before exec: ${reset.error?.message ?? `exit ${reset.status}`}`,
+      );
+    process.execve(file, [file, ...args], env);
     return;
   }
   const {
@@ -29,7 +50,7 @@ export async function execAsSlotHolder({
   } = await import('./owned-process.mjs');
   const execution = executeOwnedCommand(file, args, undefined, label, {
     cwd,
-    env: process.env,
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });

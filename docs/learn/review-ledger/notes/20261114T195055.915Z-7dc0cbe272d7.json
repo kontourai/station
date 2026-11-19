@@ -1,0 +1,7 @@
+{
+  "revision": "bae7b04009663a877e9157bab300848b0af06198",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Rechecked: the only source change is dropping the export keyword from Muse module-internal constants and helpers (code-health unused exports); no behavior or claim in this document changes, and none of those names is cited here.","inputs":["docs/guides/monitoring.md","src-server/providers/adapters/muse-serve-session.ts"]}
+  ]
+}

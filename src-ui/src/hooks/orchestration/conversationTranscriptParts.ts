@@ -36,6 +36,9 @@ export function conversationPartToContentParts(
     output: part.output,
     ...(part.htmlReply ? { htmlReply: part.htmlReply } : {}),
     ...(part.claudeArtifact ? { claudeArtifact: part.claudeArtifact } : {}),
+    ...(part.appearanceProposal
+      ? { appearanceProposal: part.appearanceProposal }
+      : {}),
     ...(part.stationControlRefusal
       ? { stationControlRefusal: part.stationControlRefusal }
       : {}),
@@ -62,6 +65,7 @@ export function conversationPartToContentParts(
       : {}),
     approvalSessionGrant: part.approvalSessionGrant,
     approvalServerGrant: part.approvalServerGrant,
+    approvalRuleGrant: part.approvalRuleGrant,
     approvalStatus: part.approvalStatus,
     ...(part.inputRequestRecord
       ? { inputRequestRecord: { ...part.inputRequestRecord } }
@@ -161,6 +165,7 @@ export function conversationMessageToChatMessage(
     stationCheckBack: metadata?.stationCheckBack,
     stationMemoryContinuation: metadata?.stationMemoryContinuation,
     stationRestartContinuation: metadata?.stationRestartContinuation,
+    rewound: metadata?.rewound,
     interruptedTurnBoundaryId: metadata?.interruptedTurnBoundaryId,
     sender: metadata?.sender,
     answerEligible: metadata?.answerEligible,

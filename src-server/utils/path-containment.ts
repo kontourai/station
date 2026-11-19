@@ -1,13 +1,9 @@
 import { lstatSync, realpathSync } from 'node:fs';
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from 'node:path';
+import nodePath, { basename, dirname, join, resolve, sep } from 'node:path';
+
+/** The path operations a containment check uses; `node:path` by default. */
+type PathSemantics = Pick<typeof nodePath, 'relative' | 'isAbsolute' | 'sep'>;
+
 import { expandTilde } from './paths.js';
 
 export function assertPathInside(
@@ -120,10 +116,28 @@ export function canonicalPath(path: string): string {
 export function isCanonicalPathWithin(
   root: string,
   candidate: string,
+  path: PathSemantics = nodePath,
 ): boolean {
-  const rel = relative(root, candidate);
+  const rel = path.relative(root, candidate);
+  // On Windows a candidate on another drive comes back absolute ('D:\\x').
   return (
     rel === '' ||
-    (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+    (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
+  );
+}
+
+/**
+ * {@link isCanonicalPathWithin} without the root itself: whether canonical
+ * `candidate` lies below canonical `root`. A candidate that only spells the
+ * root differently (a trailing separator, a `.` segment) is still the root.
+ */
+export function isCanonicalPathStrictlyWithin(
+  root: string,
+  candidate: string,
+  path: PathSemantics = nodePath,
+): boolean {
+  return (
+    path.relative(root, candidate) !== '' &&
+    isCanonicalPathWithin(root, candidate, path)
   );
 }

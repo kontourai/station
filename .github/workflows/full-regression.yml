@@ -17,6 +17,10 @@ on:
         description: Reuse successful exact-source qualification from the last 24 hours
         default: true
         type: boolean
+      skip_failed_source:
+        description: Do not repeat the corpus when a main qualification run failed tests on this exact source in the last 24 hours (the gate still fails)
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -33,12 +37,16 @@ jobs:
     timeout-minutes: 10
     outputs:
       reuse_run: ${{ steps.evidence.outputs.reuse_run }}
+      failed_run: ${{ steps.evidence.outputs.failed_run }}
       ordinary: ${{ steps.capacity.outputs.ordinary }}
       heavy: ${{ steps.capacity.outputs.heavy }}
     steps:
+      # The failed-source lookup walks up to 30 first-parent commits that
+      # change only the deploy ledger; every other caller needs one commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha }}
+          fetch-depth: ${{ inputs.skip_failed_source && 32 || 1 }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -62,12 +70,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           ALLOW_REUSE: ${{ inputs.allow_reuse }}
+          SKIP_FAILED_SOURCE: ${{ inputs.skip_failed_source }}
         run: node scripts/qualification-evidence.mjs resolve
 
   static:
     name: Static and app builds
     needs: resolve
-    if: needs.resolve.outputs.reuse_run == ''
+    if: needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -108,11 +117,27 @@ jobs:
         timeout-minutes: 60
         env:
           PHASES: --phase=repo-governance --phase=sdk-builds --phase=verify-static --phase=app-builds
+          # The job failure manifest goes outside the workspace; see
+          # scripts/lib/qualification-failure-manifest.mjs.
+          STATION_QUALIFICATION_MANIFEST_DIR: ${{ runner.temp }}/qualification-manifest
+          STATION_QUALIFICATION_JOB_LABEL: Static and app builds
         run: |
           set -o pipefail
           read -r -a phases <<< "$PHASES"
           node scripts/run-full-regression-phases.mjs "${phases[@]}" 2>&1 \
             | tee "$RUNNER_TEMP/full-regression.log"
+
+      # Read only for failed jobs: the failure signal treats a failed job
+      # without a manifest as unexplained. Uploading never changes the verdict.
+      - name: Retain the qualification failure manifest
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qualification-manifest-${{ github.job }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualification-manifest/job-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain failure diagnostics
         if: failure()
@@ -127,7 +152,7 @@ jobs:
   ordinary:
     name: Ordinary corpus ${{ matrix.slice }}
     needs: resolve
-    if: needs.resolve.outputs.reuse_run == ''
+    if: needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     strategy:
@@ -163,6 +188,10 @@ jobs:
       - run: npm run dependencies:ci
         timeout-minutes: 15
 
+      # Transient apt mirror or DNS failures (`Temporary failure resolving
+      # 'archive.ubuntu.com'`) retry the idempotent bootstrap: three attempts
+      # and 30 seconds of backoff inside the five-minute step bound. The last
+      # attempt's own apt error and exit status still fail the step.
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
         env:
@@ -177,7 +206,17 @@ jobs:
               --output "$bootstrap"
             printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
             sha256sum "$bootstrap"
-            sudo bash "$bootstrap" zsh
+            attempt=1
+            until sudo bash "$bootstrap" zsh; do
+              status=$?
+              if [[ "$attempt" -ge 3 ]]; then
+                echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+                exit "$status"
+              fi
+              echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+              sleep $((attempt * 10))
+              attempt=$((attempt + 1))
+            done
           fi
           command -v zsh
           test -x /bin/zsh
@@ -214,6 +253,10 @@ jobs:
         timeout-minutes: 60
         env:
           PHASES: ${{ matrix.phases }}
+          # The job failure manifest goes outside the workspace; see
+          # scripts/lib/qualification-failure-manifest.mjs.
+          STATION_QUALIFICATION_MANIFEST_DIR: ${{ runner.temp }}/qualification-manifest
+          STATION_QUALIFICATION_JOB_LABEL: Ordinary corpus ${{ matrix.slice }}
         run: |
           set -o pipefail
           read -r -a phases <<< "$PHASES"
@@ -225,6 +268,18 @@ jobs:
         run: |
           grep -E '^[[:space:]]*(FAIL|×)[[:space:]]' "$RUNNER_TEMP/full-regression.log" \
             | sort -u > "$RUNNER_TEMP/full-regression-failures.txt" || true
+
+      # Read only for failed jobs: the failure signal treats a failed job
+      # without a manifest as unexplained. Uploading never changes the verdict.
+      - name: Retain the qualification failure manifest
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qualification-manifest-${{ github.job }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualification-manifest/job-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain failure diagnostics
         if: failure()
@@ -242,19 +297,25 @@ jobs:
   process-heavy:
     name: Process-heavy corpus ${{ matrix.slice }}
     needs: resolve
-    if: needs.resolve.outputs.reuse_run == ''
+    if: needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     # Managed workload proofs require scope OOM policy (systemd >= 253).
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    # Three slices, not two: with two, slice 1's phase ended at 1782-1801 s
+    # against its 1800 s deadline in the retained 2026-11 failure logs
+    # (#4943). Each slice now gets about a third of the files instead of a
+    # half. This is structural headroom, not a diagnosis of that growth.
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(needs.resolve.outputs.heavy) }}
       matrix:
         include:
-          - slice: 1 of 2
-            phases: --phase=test-full-process-heavy --process-heavy-shard=1/2
-          - slice: 2 of 2
-            phases: --phase=test-full-process-heavy --process-heavy-shard=2/2
+          - slice: 1 of 3
+            phases: --phase=test-full-process-heavy --process-heavy-shard=1/3
+          - slice: 2 of 3
+            phases: --phase=test-full-process-heavy --process-heavy-shard=2/3
+          - slice: 3 of 3
+            phases: --phase=test-full-process-heavy --process-heavy-shard=3/3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -291,6 +352,10 @@ jobs:
       - run: npm run dependencies:ci
         timeout-minutes: 15
 
+      # Transient apt mirror or DNS failures (`Temporary failure resolving
+      # 'archive.ubuntu.com'`) retry the idempotent bootstrap: three attempts
+      # and 30 seconds of backoff inside the five-minute step bound. The last
+      # attempt's own apt error and exit status still fail the step.
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
         env:
@@ -305,7 +370,17 @@ jobs:
               --output "$bootstrap"
             printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
             sha256sum "$bootstrap"
-            sudo bash "$bootstrap" zsh
+            attempt=1
+            until sudo bash "$bootstrap" zsh; do
+              status=$?
+              if [[ "$attempt" -ge 3 ]]; then
+                echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+                exit "$status"
+              fi
+              echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+              sleep $((attempt * 10))
+              attempt=$((attempt + 1))
+            done
           fi
           command -v zsh
           test -x /bin/zsh
@@ -340,6 +415,10 @@ jobs:
         timeout-minutes: 60
         env:
           PHASES: ${{ matrix.phases }}
+          # The job failure manifest goes outside the workspace; see
+          # scripts/lib/qualification-failure-manifest.mjs.
+          STATION_QUALIFICATION_MANIFEST_DIR: ${{ runner.temp }}/qualification-manifest
+          STATION_QUALIFICATION_JOB_LABEL: Process-heavy corpus ${{ matrix.slice }}
         run: |
           set -o pipefail
           read -r -a phases <<< "$PHASES"
@@ -351,6 +430,18 @@ jobs:
         run: |
           grep -E '^[[:space:]]*(FAIL|×)[[:space:]]' "$RUNNER_TEMP/full-regression.log" \
             | sort -u > "$RUNNER_TEMP/full-regression-failures.txt" || true
+
+      # Read only for failed jobs: the failure signal treats a failed job
+      # without a manifest as unexplained. Uploading never changes the verdict.
+      - name: Retain the qualification failure manifest
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qualification-manifest-${{ github.job }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualification-manifest/job-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain failure diagnostics
         if: failure()
@@ -371,7 +462,7 @@ jobs:
   exclusive:
     name: Exclusive corpora
     needs: [resolve, static]
-    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -393,6 +484,10 @@ jobs:
       - run: npm run dependencies:ci
         timeout-minutes: 15
 
+      # Transient apt mirror or DNS failures (`Temporary failure resolving
+      # 'archive.ubuntu.com'`) retry the idempotent bootstrap: three attempts
+      # and 30 seconds of backoff inside the five-minute step bound. The last
+      # attempt's own apt error and exit status still fail the step.
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
         env:
@@ -407,7 +502,17 @@ jobs:
               --output "$bootstrap"
             printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
             sha256sum "$bootstrap"
-            sudo bash "$bootstrap" zsh
+            attempt=1
+            until sudo bash "$bootstrap" zsh; do
+              status=$?
+              if [[ "$attempt" -ge 3 ]]; then
+                echo "::error::zsh provisioning failed after $attempt attempts (exit $status)" >&2
+                exit "$status"
+              fi
+              echo "::warning::zsh provisioning attempt $attempt failed (exit $status); retrying" >&2
+              sleep $((attempt * 10))
+              attempt=$((attempt + 1))
+            done
           fi
           command -v zsh
           test -x /bin/zsh
@@ -443,6 +548,10 @@ jobs:
         timeout-minutes: 60
         env:
           PHASES: --phase=test-full-process-exclusive --phase=test-full-coordinator-exclusive --phase=test-full-credential-ledger-exclusive --phase=test-full-shared-output --phase=test-full-dogfood-reconcile
+          # The job failure manifest goes outside the workspace; see
+          # scripts/lib/qualification-failure-manifest.mjs.
+          STATION_QUALIFICATION_MANIFEST_DIR: ${{ runner.temp }}/qualification-manifest
+          STATION_QUALIFICATION_JOB_LABEL: Exclusive corpora
         run: |
           set -o pipefail
           read -r -a phases <<< "$PHASES"
@@ -454,6 +563,18 @@ jobs:
         run: |
           grep -E '^[[:space:]]*(FAIL|×)[[:space:]]' "$RUNNER_TEMP/full-regression.log" \
             | sort -u > "$RUNNER_TEMP/full-regression-failures.txt" || true
+
+      # Read only for failed jobs: the failure signal treats a failed job
+      # without a manifest as unexplained. Uploading never changes the verdict.
+      - name: Retain the qualification failure manifest
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qualification-manifest-${{ github.job }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualification-manifest/job-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain failure diagnostics
         if: failure()
@@ -473,7 +594,7 @@ jobs:
   android-viewport:
     name: Mobile Playwright (Android viewport)
     needs: [resolve, exclusive]
-    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == ''
+    if: always() && !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.reuse_run == '' && needs.resolve.outputs.failed_run == ''
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -519,7 +640,23 @@ jobs:
       - name: Run Android viewport tests
         env:
           PW_REPORTER: line,html
+          # The job failure manifest goes outside the workspace; see
+          # scripts/lib/qualification-failure-manifest.mjs.
+          STATION_QUALIFICATION_MANIFEST_DIR: ${{ runner.temp }}/qualification-manifest
+          STATION_QUALIFICATION_JOB_LABEL: Mobile Playwright (Android viewport)
         run: npm run test:android
+
+      # Read only for failed jobs: the failure signal treats a failed job
+      # without a manifest as unexplained. Uploading never changes the verdict.
+      - name: Retain the qualification failure manifest
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qualification-manifest-${{ github.job }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualification-manifest/job-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain failure diagnostics
         if: failure()
@@ -553,6 +690,7 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           REUSE_RUN: ${{ needs.resolve.outputs.reuse_run }}
+          FAILED_RUN: ${{ needs.resolve.outputs.failed_run }}
         run: node scripts/qualification-evidence.mjs attest
       - name: Retain exact-SHA completion receipts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -1,0 +1,19 @@
+{
+  "revision": "c7349ae1b1013d411705928155fce471a483f9a3",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"The #4999 fix round changes only which session facts the card reads: completion episodes for held, release and quiet, and no flush on child-work.updated. Gateway endpoints, sealing, registration, send floor, Live Activity and capability claims cited by the release, store and nightly guides are unchanged.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"The #4999 fix round changes only which session facts the card reads: completion episodes for held, release and quiet, and no flush on child-work.updated. Gateway endpoints, sealing, registration, send floor, Live Activity and capability claims cited by the release, store and nightly guides are unchanged.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"The #4999 fix round changes only which session facts the card reads: completion episodes for held, release and quiet, and no flush on child-work.updated. Gateway endpoints, sealing, registration, send floor, Live Activity and capability claims cited by the release, store and nightly guides are unchanged.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"The #4999 fix round changes only which session facts the card reads: completion episodes for held, release and quiet, and no flush on child-work.updated. Gateway endpoints, sealing, registration, send floor, Live Activity and capability claims cited by the release, store and nightly guides are unchanged.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/release-rings.md","note":"The #4999 fix round changes only which session facts the card reads: completion episodes for held, release and quiet, and no flush on child-work.updated. Gateway endpoints, sealing, registration, send floor, Live Activity and capability claims cited by the release, store and nightly guides are unchanged.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/store-entry.md","note":"The #4999 fix round changes only which session facts the card reads: completion episodes for held, release and quiet, and no flush on child-work.updated. Gateway endpoints, sealing, registration, send floor, Live Activity and capability claims cited by the release, store and nightly guides are unchanged.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]},
+
+    {"path":"docs/guides/store-listing.md","note":"The #4999 fix round changes only which session facts the card reads: completion episodes for held, release and quiet, and no flush on child-work.updated. Gateway endpoints, sealing, registration, send floor, Live Activity and capability claims cited by the release, store and nightly guides are unchanged.","inputs":["src-server/services/notifications/agent-activity-publisher.ts"]}
+  ]
+}

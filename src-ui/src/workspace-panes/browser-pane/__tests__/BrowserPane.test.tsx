@@ -93,7 +93,10 @@ import {
   useShortcutRegistry,
 } from '../../../contexts/KeyboardShortcutsContext';
 import { navigationStore } from '../../../contexts/navigation-store';
-import { browserFloatSourceKey } from '../../../float-over-chat/floatSource';
+import {
+  browserFloatSourceKey,
+  browserShownSourceKey,
+} from '../../../float-over-chat/floatSource';
 import {
   dismissFloat,
   openFloat,
@@ -204,7 +207,7 @@ function renderPane(
       <QueryClientProvider client={client}>{node}</QueryClientProvider>
     </KeyboardShortcutsProvider>
   );
-  render(
+  const view = render(
     wrap(
       <BrowserPane
         projectSlug="alpha"
@@ -214,7 +217,7 @@ function renderPane(
       />,
     ),
   );
-  return { ...station, onAttach };
+  return { ...station, onAttach, unmount: view.unmount };
 }
 
 afterEach(() => {
@@ -351,11 +354,19 @@ describe('BrowserPane honest states', () => {
         request?.onTaken?.();
       });
       await waitFor(() =>
-        expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(false),
+        expect(
+          isSourceShown(
+            browserShownSourceKey(SESSION, 'http://station.test', 'fixture'),
+          ),
+        ).toBe(false),
       );
       act(() => dismissFloat('test-chat', browserFloatSourceKey(SESSION)));
       await waitFor(() =>
-        expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(true),
+        expect(
+          isSourceShown(
+            browserShownSourceKey(SESSION, 'http://station.test', 'fixture'),
+          ),
+        ).toBe(true),
       );
     } finally {
       release();
@@ -712,6 +723,70 @@ describe('BrowserPane honest states', () => {
     });
     await waitFor(() => expect(change).toHaveBeenCalledWith([OTHER], OTHER));
   });
+  test('a session closed elsewhere reads as closed and offers to reopen its last address', async () => {
+    const closed = sessionView({
+      title: 'Google',
+      url: 'https://www.google.com/',
+      state: 'closed',
+    });
+    const station = fakeStation({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      'GET /api/browser/sessions?projectSlug=alpha': ok([closed]),
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(closed),
+      'POST /api/browser/sessions': ok(
+        sessionView({
+          browserSessionId: OTHER,
+          url: 'https://www.google.com/',
+        }),
+        201,
+      ),
+    });
+    const attach = vi.fn();
+    const { container } = render(
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <BrowserPane
+            projectSlug="alpha"
+            target={{ kind: 'session', browserSessionId: SESSION }}
+            browserSessionIds={[SESSION]}
+            onTabsChange={vi.fn()}
+            onAttach={attach}
+            transport={station.transport as never}
+          />
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await screen.findByText('This session was closed');
+    // The pane, its address bar and its tab say closed, not live.
+    expect(
+      container.querySelector('.browser-pane[data-closed]'),
+    ).not.toBeNull();
+    expect(
+      (screen.getByLabelText('Address') as HTMLInputElement).disabled,
+    ).toBe(true);
+    const tab = await screen.findByRole('tab', { name: 'Google' });
+    await waitFor(() =>
+      expect(
+        tab.closest('.browser-tabs__item')?.hasAttribute('data-closed'),
+      ).toBe(true),
+    );
+    // Reopen goes back to the last address; a blank session is still offered.
+    expect(
+      screen.getByRole('button', { name: 'Open a new session' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Reopen www.google.com' }),
+    );
+    await waitFor(() => expect(attach).toHaveBeenCalledWith(OTHER));
+    expect(station.calls.find((call) => call.method === 'POST')?.body).toEqual({
+      projectSlug: 'alpha',
+      url: 'https://www.google.com/',
+    });
+  });
   test('a Station without the browser routes (hosted) says the browser is unavailable here', async () => {
     renderPane({ 'GET /api/browser/projects/alpha/access': refuse(404) });
     expect(
@@ -728,7 +803,7 @@ describe('BrowserPane honest states', () => {
     ).toBeTruthy();
     expect(screen.queryByLabelText('Address')).toBeNull();
     expect(screen.getByText(/grant you Project admin access/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test.each([
@@ -738,7 +813,7 @@ describe('BrowserPane honest states', () => {
     renderPane({ 'GET /api/browser/projects/alpha/access': refuse(403, code) });
     expect(await screen.findByText(title)).toBeTruthy();
     expect(screen.getByText(guidance)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('a live session mounts the live view on its surface', async () => {
@@ -754,7 +829,11 @@ describe('BrowserPane honest states', () => {
   });
 
   test('while its live view is on screen the pane announces the session, so the float-over-chat hides (#90 D9)', async () => {
-    const key = browserFloatSourceKey(SESSION);
+    const key = browserShownSourceKey(
+      SESSION,
+      'http://station.test',
+      'fixture',
+    );
     expect(isSourceShown(key)).toBe(false);
     renderPane({
       'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
@@ -1271,7 +1350,7 @@ describe('BrowserPane Chromium acquisition (D3)', () => {
       ),
     });
     const download = await screen.findByRole('button', {
-      name: 'Download Chromium (152 MB)',
+      name: 'Download Chromium (145.0 MB)',
     });
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
     fireEvent.click(download);
@@ -2240,10 +2319,29 @@ describe('BrowserPane on a phone-width pane (Duo audit)', () => {
     expect(
       await screen.findByText('Local servers could not be read'),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(
       await screen.findByText('Local servers appear here once shared'),
     ).toBeTruthy();
     expect(reads).toBe(2);
   });
+});
+
+test('two panes share one browser viewer and transfer it on unmount', async () => {
+  const routes = {
+    'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+    [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+  };
+  const first = renderPane(routes);
+  await screen.findByTestId('live-canvas');
+  renderPane(routes);
+  await screen.findByText('This Browser is shown in another view');
+  expect(screen.getAllByTestId('live-canvas')).toHaveLength(1);
+  first.unmount();
+  await waitFor(() =>
+    expect(screen.getAllByTestId('live-canvas')).toHaveLength(1),
+  );
+  expect(
+    screen.queryByText('This Browser is shown in another view'),
+  ).toBeNull();
 });

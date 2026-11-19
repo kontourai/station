@@ -42,11 +42,13 @@ export function AccessSection({
   projectId,
   allowEnableSharing = true,
   writeDisabledReason,
+  invitationShareId,
 }: {
   slug: string;
   projectId: string;
   allowEnableSharing?: boolean;
   writeDisabledReason?: string;
+  invitationShareId?: string;
 }) {
   const authority = useHostRequestAuthorityScope();
   return (
@@ -56,6 +58,7 @@ export function AccessSection({
       projectId={projectId}
       authority={authority}
       allowEnableSharing={allowEnableSharing}
+      invitationShareId={invitationShareId}
       writeDisabledReason={writeDisabledReason}
     />
   );
@@ -111,12 +114,14 @@ function AccessPanel({
   authority,
   allowEnableSharing,
   writeDisabledReason,
+  invitationShareId,
 }: {
   slug: string;
   projectId: string;
   authority?: ApiRequestScope;
   allowEnableSharing: boolean;
   writeDisabledReason?: string;
+  invitationShareId?: string;
 }) {
   const { query, mutation, change } = useProjectAccess(slug, authority);
   const busy = mutation.isPending || query.isFetching;
@@ -285,8 +290,8 @@ function AccessPanel({
             label="You can’t manage people for this Project from here"
             description={
               refusal.sharing === 'on'
-                ? 'This Project is shared. Its owner or an admin manages who can access it.'
-                : 'A Project owner or admin manages access. Turning sharing on needs Station owner authority.'
+                ? 'This Project is shared. Its Owner or an Admin manages who can access it.'
+                : 'A Project Owner or Admin manages access. Only the Station operator can turn sharing on.'
             }
           />
           {refusal.sharing === 'undisclosed' &&
@@ -370,6 +375,7 @@ function AccessPanel({
       view={query.data}
       busy={busy}
       apply={apply}
+      invitationShareId={invitationShareId}
       writeDisabledReason={writeDisabledReason}
       stationActions={<StationSharingActions />}
     />

@@ -13,6 +13,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ACPConnectionSetupPanel } from '../components/acp-connections/ACPConnectionSetupPanel';
 import { FIRST_CONTACT_WAIT_MS } from '../components/acp-connections/useACPConnectionSetup';
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
@@ -755,7 +759,7 @@ describe('ACPConnectionSetupPanel', () => {
     expect(screen.queryByText('Checking')).toBeNull();
     expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry refresh' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry refresh' }));
     await waitFor(() => expect(onRefreshConnections).toHaveBeenCalledTimes(1));
@@ -1015,10 +1019,10 @@ describe('ACPConnectionSetupPanel', () => {
       );
       expect(screen.queryByText('Command could not start')).toBeNull();
     });
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry refresh' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('status').textContent).toContain('Checking');
   });

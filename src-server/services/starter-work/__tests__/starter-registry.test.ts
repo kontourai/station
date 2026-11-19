@@ -127,24 +127,6 @@ describe('StarterRegistry', () => {
         prerequisite: 'first-run-completed',
         status: { state: 'unbound' },
       },
-      {
-        id: 'inspect-approval',
-        targetKind: 'approval',
-        prerequisite: 'first-run-completed',
-        status: { state: 'unbound' },
-      },
-      {
-        id: 'inspect-receipt',
-        targetKind: 'receipt',
-        prerequisite: 'first-run-completed',
-        status: { state: 'unbound' },
-      },
-      {
-        id: 'run-scheduled-check',
-        targetKind: 'receipt',
-        prerequisite: 'first-run-completed',
-        status: { state: 'unbound' },
-      },
     ]);
     await expect(
       registry.bind({
@@ -654,6 +636,35 @@ describe('StarterRegistry', () => {
     expect(continueSession).toHaveBeenCalledWith(
       expect.objectContaining({ target: { kind: 'own-folder' } }),
     );
+  });
+
+  it('carries continuing anyway to the owner, and only when asked', async () => {
+    const { registry, continueSession } = await fixture();
+    await registry.launchContinueSession(
+      {
+        starterId: 'continue-session',
+        operationId: 'continue-op-override',
+        sourceSessionId: 'external-session',
+        continueWhileSourceActive: true,
+      },
+      null,
+      { ownerUserId: 'owner-1' },
+    );
+    expect(continueSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ continueWhileSourceActive: true }),
+    );
+    await registry.launchContinueSession(
+      {
+        starterId: 'continue-session',
+        operationId: 'continue-op-plain',
+        sourceSessionId: 'external-session',
+      },
+      null,
+      { ownerUserId: 'owner-1' },
+    );
+    expect(
+      (continueSession.mock.lastCall as unknown[] | undefined)?.[0],
+    ).not.toHaveProperty('continueWhileSourceActive');
   });
 
   it('does not continue a missing or Station-owned source Session', async () => {

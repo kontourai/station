@@ -1,9 +1,52 @@
 import { describe, expect, test } from 'vitest';
+import { scrubBootInternalSecrets } from '../../../utils/child-process-environment.js';
 import {
   buildCliRuntimePrerequisites,
   type CliCommandResult,
+  inheritedSpawnEnv,
   parseCliAuthState,
 } from '../cli-auth.js';
+
+describe('inheritedSpawnEnv (#4774)', () => {
+  // Pinned here, not read from the scrub list: the keys a start's spawn
+  // environment must never carry.
+  const SCRUBBED = {
+    STATION_INTERNAL_API_TOKEN: 'internal-token',
+    STATION_UI_BOOTSTRAP_TOKEN: 'bootstrap-token',
+    STATION_STDOUT_LOGS: '0',
+    NODE_COMPILE_CACHE: '/cache',
+    STATION_SUPERVISOR_PID: '1',
+    STATION_SUPERVISOR_BIRTH: '2',
+    STATION_SUPERVISOR_IPC: '3',
+    STATION_SUPERVISOR_GENERATION: '4',
+    STATION_SERVICE_MANAGED: '1',
+    STATION_SERVICE_LAUNCHER: 'context',
+  };
+  const ORDINARY = {
+    PATH: '/usr/bin',
+    HOME: '/home/someone',
+    TMPDIR: '/tmp/ambient',
+    ANTHROPIC_API_KEY: 'fixture-key',
+    ANTHROPIC_AUTH_TOKEN: 'fixture-auth-token',
+    CLAUDE_CODE_OAUTH_TOKEN: 'fixture-oauth-token',
+    CLAUDE_CONFIG_DIR: '/home/someone/.claude',
+  };
+
+  test('removes the boot-internal secrets and supervisor settings, passes every other key through', () => {
+    const input = { ...SCRUBBED, ...ORDINARY };
+    const env = inheritedSpawnEnv(input);
+    for (const key of Object.keys(SCRUBBED))
+      expect(env, `${key} must be scrubbed`).not.toHaveProperty(key);
+    expect(env).toEqual(ORDINARY);
+    // The caller's object is left as it was.
+    expect(input).toEqual({ ...SCRUBBED, ...ORDINARY });
+  });
+
+  test("scrubs exactly what the start-side spawn environment's scrub does", () => {
+    const input = { ...SCRUBBED, ...ORDINARY };
+    expect(inheritedSpawnEnv(input)).toEqual(scrubBootInternalSecrets(input));
+  });
+});
 
 describe('parseCliAuthState', () => {
   test('treats explicit login-required output as unauthenticated', () => {

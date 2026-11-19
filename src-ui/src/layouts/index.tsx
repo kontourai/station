@@ -10,12 +10,16 @@ import type {
 import { FullScreenError, LayoutHeader } from '@kontourai/station-sdk';
 import type { JSX } from 'react';
 import { useSyncExternalStore } from 'react';
+import { Button } from '../components/Button';
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
 import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
-import { Empty, SkeletonBlock } from '../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
-import { pluginRegistry } from '../core/PluginRegistry';
+import {
+  PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE,
+  pluginRegistry,
+} from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
 import { log } from '../utils/logger';
 import { PersonalBoardDashboard } from '../views/personal-board/PersonalBoardDashboard';
@@ -89,7 +93,7 @@ const DefaultLayout: AgentLayoutComponent = ({ layout, onShowChat }) => (
         </svg>
       }
       label={layout?.name || 'Layout'}
-      description="Start a conversation or schedule an automated job to get things moving."
+      description="Start a chat to work in this layout."
       action={
         <button
           type="button"
@@ -163,6 +167,26 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
           label="Extensions are off on this device"
           description="This view needs extension code from the selected Station."
           action={<StationExtensionsAccess onlyWhenOff />}
+        />
+      </div>
+    );
+  }
+
+  // The registry never learned which plugins are installed, so it cannot say
+  // this component is missing; name the real cause and offer another read.
+  if (
+    typeof component === 'string' &&
+    loadStatus.state === 'degraded' &&
+    loadStatus.failure === 'registry-unavailable'
+  ) {
+    return (
+      <div className="workspace-default">
+        <ErrorState
+          title="Extensions could not load"
+          description={PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE}
+          action={
+            <Button onClick={() => void pluginRegistry.reload()}>Retry</Button>
+          }
         />
       </div>
     );
@@ -293,23 +317,22 @@ const KitStandardViewLayout: AgentLayoutComponent = ({ layout, activeTab }) => {
 
   return (
     <section className="workspace-default" aria-label="Read-only Kit view">
-      <Empty
-        variant="prominent"
-        label={view.projection || 'Read-only Kit view'}
-        description="Station shows this Kit view as read-only information. Nothing here can be changed."
-      />
-      <pre className="workspace-default__description">
-        {JSON.stringify(
-          {
-            contribution: kit?.contributionRef,
-            projection: view.projection,
-            schemaRef: view.schemaRef,
-            readOnly: true,
-          },
-          null,
-          2,
-        )}
-      </pre>
+      <Empty variant="prominent" label="Kit view" description="Read-only" />
+      <details>
+        <summary>Details</summary>
+        <pre className="workspace-default__description">
+          {JSON.stringify(
+            {
+              contribution: kit?.contributionRef,
+              projection: view.projection,
+              schemaRef: view.schemaRef,
+              readOnly: true,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      </details>
     </section>
   );
 };
@@ -383,30 +406,7 @@ interface LayoutRendererProps extends AgentLayoutProps {
   refreshKey?: number;
   /** Exact direct-pane plugin component already authorized by its occurrence. */
   trustedPluginLayout?: AgentLayoutComponent;
-  /**
-   * The host declaring whether it can run a layout's prompt (#2171). Absent
-   * means it can, which is what every host passed before this existed.
-   *
-   * `false` is the docked host (`LayoutWorkspacePane`): it has no chat
-   * launcher, and the SDK header used to render the layout's prompt buttons
-   * anyway, so a docked Layout carrying prompts showed controls that did
-   * nothing. The flag reaches the header, which renders no control that would
-   * need a launcher, and it withholds `onLaunchPrompt` from the tabs below —
-   * one declaration enforced everywhere the launcher flows, rather than a flag
-   * the header honours while a tab is handed a launcher regardless.
-   *
-   * Why a flag and not a derivation. Every host without a launcher is a host
-   * passing no `onLaunchPrompt`, so `hostLaunchPrompt !== undefined` would
-   * say the same thing with no prop and no precedence rule — and it was
-   * weighed (#2171 review L1). It was not taken because it would change what
-   * two hosts this change must leave alone render: `WorkspacePaneRouteView`
-   * and `ProjectLayoutRenderer`'s synthetic single-tab layouts pass no
-   * launcher and carry pane-DESCRIPTOR `actions`, and whether a descriptor's
-   * `prompt` action should ever be launchable from a route-bound pane is an
-   * open decision, not this change's to make by side effect (#2195). The flag
-   * is opt-in so that the decision is made per host, on purpose; #2195 may
-   * well replace the flag with the derivation.
-   */
+  /** A host can disable prompt actions even when it supplies a launcher. */
   canLaunchPrompts?: boolean;
 }
 
@@ -453,7 +453,7 @@ export function LayoutRenderer({
             }))}
             activeTabId={activeTabId}
             onTabChange={onTabChange}
-            canLaunchPrompts={canLaunchPrompts}
+            canLaunchPrompts={onLaunchPrompt !== undefined}
             actions={layout.actions}
             layoutPrompts={layout.globalSkills}
             onLayoutPromptSelect={onLaunchPrompt}

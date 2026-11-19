@@ -22,6 +22,14 @@ one resolved item can project into a Surface trust bundle.
     — body `{ sessionName }`; the server derives the bundle from persisted
     review state rather than accepting a client-authored verdict
 
+The bundle comes from Survey's `buildSurveyTrustBundle`. Since Survey 9.0 it
+carries Survey's `survey.review-outcome.v1` verification policy and records the
+accepting review as attestation evidence. A claim the reviewer accepted
+therefore reads `verified` in the trust panel; before 9.0, Surface derived it
+as `proposed`. A decision saved without a note uses the item's own rationale,
+because Survey would otherwise write an empty `notes` and attestation summary,
+and Surface rejects the whole bundle.
+
 ## Storage contract
 
 - Review sessions (Station-owned, shared per project):

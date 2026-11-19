@@ -3,8 +3,7 @@
  * The sharded `fast-checks` lane (#2709). ci.yml runs these subcommands:
  *
  *   plan       fast-checks-plan: select once, write the plan artifact
- *   slice      fast-checks-shard: report whether this shard's slice is empty
- *              (before dependencies are installed, so an empty shard is cheap)
+ *   slice      fast-checks-shard: report emptiness and host prerequisites
  *   run        fast-checks-shard: run the slice, write this shard's receipt
  *   aggregate  fast-checks: verify part-job results, the plan and every receipt
  *
@@ -39,6 +38,14 @@ import {
   verifyFastChecks,
 } from './lib/fast-checks-shards.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+
+// These fixtures execute real zsh on the Linux shard runner. The dogfood
+// LaunchAgent and installer-output fixtures that use it only on Darwin
+// do not require it on this runner.
+const LINUX_ZSH_FIXTURE_SUITES = new Set([
+  'ops/nightly/macos-build-only-cleanup.test.mjs',
+  'scripts/__tests__/nightly-android-install.test.ts',
+]);
 
 const USAGE = `usage:
   npm run fast-checks:shard -- plan --out=<file>
@@ -86,22 +93,141 @@ function escapeCommandProperty(value) {
   return escapeCommandData(value).replaceAll(':', '%3A').replaceAll(',', '%2C');
 }
 
-/**
- * One `::error` workflow command per failed test, so the check run's
- * annotations name the failing tests: the merge-queue dequeue report reads
- * them from the Checks API instead of parsing logs.
- */
-function failedTestAnnotations(receipt) {
-  const failed = (receipt.executions ?? []).flatMap(
-    (execution) => execution.failedTests ?? [],
+// The plain-text failure block's bound; the receipt holds the rest.
+const FAILURE_LIST_LIMIT = 20;
+
+function firstLines(text, count) {
+  return String(text ?? '')
+    .split('\n')
+    .slice(0, count)
+    .join('\n');
+}
+
+function suiteMessage(suite) {
+  const [error] = suite.errors ?? [];
+  if (!error) return 'the suite failed outside any test';
+  return firstLines(
+    [error.name, error.message].filter(Boolean).join(': ') || error.omitted,
+    6,
   );
-  return failed.slice(0, ANNOTATION_LIMIT).map((test) => {
-    const message = String(test.excerpt ?? '')
-      .split('\n')
-      .slice(0, 6)
-      .join('\n');
-    return `::error file=${escapeCommandProperty(test.file)},title=${escapeCommandProperty(test.name)}::${escapeCommandData(message)}`;
-  });
+}
+
+/**
+ * Everything the receipt names as failed, one entry each: failed tests, failed
+ * suites (an import error or a failing `beforeAll` fails a file without a
+ * failed test), and infrastructure errors (a killed child, an unreadable
+ * report, a preparation fault), so a shard that failed is never left unnamed.
+ */
+function receiptFailures(receipt) {
+  const executions = receipt.executions ?? [];
+  const tests = executions.flatMap((execution) =>
+    (execution.failedTests ?? []).map((test) => ({
+      file: test.file,
+      name: test.name,
+      message: firstLines(test.excerpt, 6),
+    })),
+  );
+  const suites = executions.flatMap((execution) =>
+    (execution.structuredErrorReport?.suites ?? []).map((suite) => ({
+      file: suite.file,
+      name: suite.name,
+      message: suiteMessage(suite),
+    })),
+  );
+  const infrastructure = [
+    ...(receipt.preparation
+      ? [
+          {
+            name: `preparation (${receipt.preparation.phase})`,
+            message: firstLines(receipt.preparation.error, 6),
+          },
+        ]
+      : []),
+    ...executions
+      .filter((execution) => execution.infrastructureError || execution.error)
+      .map((execution) => ({
+        name: `resource group ${execution.resourceGroup}`,
+        message: firstLines(
+          execution.error ?? 'the Vitest child did not complete',
+          6,
+        ),
+      })),
+  ];
+  return { tests, suites, infrastructure };
+}
+
+/**
+ * The failures as plain lines after the summary, `file > name` per test. The
+ * `::error` annotations below carry the same names, but a job log renders an
+ * annotation as its message alone (`##[error]AssertionError: …`), so a reader
+ * of `gh run view --log-failed` could not see which test it was.
+ */
+function failureBlock(receipt) {
+  const { tests, suites, infrastructure } = receiptFailures(receipt);
+  const lines = [];
+  const section = (heading, entries, format, total = entries.length) => {
+    if (total === 0) return;
+    lines.push(`[fast-checks] ${heading} (${total}):`);
+    const shown = entries.slice(0, FAILURE_LIST_LIMIT);
+    // One physical line each, so a name cannot start a workflow command.
+    for (const entry of shown)
+      lines.push(`  ${format(entry).replace(/[\r\n]+/g, ' ')}`);
+    if (total > shown.length)
+      lines.push(
+        `  … and ${total - shown.length} more not listed here; see the shard receipt and its retained Vitest reports`,
+      );
+  };
+  // The receipt keeps at most 20 failed-test identities per resource group;
+  // the count says how many failed in all.
+  section(
+    'failed tests',
+    tests,
+    (test) => `${test.file} > ${test.name}`,
+    Math.max(tests.length, receipt.counts?.failed ?? 0),
+  );
+  section(
+    'failed suites',
+    suites,
+    (suite) =>
+      [suite.file, suite.name].filter(Boolean).join(' > ') +
+      `: ${firstLines(suite.message, 1)}`,
+  );
+  section(
+    'infrastructure errors',
+    infrastructure,
+    (entry) => `${entry.name}: ${firstLines(entry.message, 1)}`,
+  );
+  return lines.map((line) => `${line}\n`).join('');
+}
+
+/**
+ * One `::error` workflow command per failure, so the check run's annotations
+ * name the failing tests, suites and infrastructure errors: the merge-queue
+ * dequeue report reads them from the Checks API instead of parsing logs.
+ * GitHub keeps ten per step, so when there are more the tenth says how many
+ * the log block above names.
+ */
+function failureAnnotations(receipt) {
+  const { tests, suites, infrastructure } = receiptFailures(receipt);
+  const all = [
+    ...tests.map(
+      (test) =>
+        `::error file=${escapeCommandProperty(test.file)},title=${escapeCommandProperty(test.name)}::${escapeCommandData(test.message)}`,
+    ),
+    ...suites.map(
+      (suite) =>
+        `::error file=${escapeCommandProperty(suite.file)},title=${escapeCommandProperty(`suite failed: ${suite.name || suite.file}`)}::${escapeCommandData(suite.message)}`,
+    ),
+    ...infrastructure.map(
+      (entry) =>
+        `::error title=${escapeCommandProperty(`fast-checks ${receipt.shard} infrastructure error: ${entry.name}`)}::${escapeCommandData(entry.message)}`,
+    ),
+  ];
+  if (all.length <= ANNOTATION_LIMIT) return all;
+  return [
+    ...all.slice(0, ANNOTATION_LIMIT - 1),
+    `::error title=${escapeCommandProperty(`fast-checks ${receipt.shard}`)}::${escapeCommandData(`${all.length - (ANNOTATION_LIMIT - 1)} more failure(s); the shard log lists them after its summary line`)}`,
+  ];
 }
 
 function headSha(cwd) {
@@ -199,8 +325,32 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
       `[fast-checks] related discovery: ${(plan.relatedDiscovery.milliseconds / 1000).toFixed(1)}s` +
         (plan.relatedDiscovery.timeoutMilliseconds === undefined
           ? '\n'
-          : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout\n`),
+          : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout${plan.relatedDiscovery.timedOut ? '; timed out, retained exact suites only' : ''}\n`),
     );
+  if (plan.escalatedImporters) {
+    const { paths, suites, added } = plan.escalatedImporters;
+    const named = (disposition) =>
+      paths.filter((entry) => entry.disposition === disposition);
+    const selected = named('selected').length;
+    const unrun = [
+      ['no importing suite within the bound', named('no-suite-within-bound')],
+      ['over the bound', named('deferred')],
+      ['over the total cap', named('over-total-cap')],
+      ["not in Vitest's graph", named('not-in-graph')],
+      ['no importer graph (not importable)', named('not-importable')],
+      ['no importer graph (deleted)', named('absent')],
+    ].filter(([, entries]) => entries.length);
+    report(
+      `[fast-checks] escalated paths: ${suites} importing suite(s) (${added} not otherwise planned) for ${selected} of ${paths.length}` +
+        unrun
+          .map(
+            ([label, entries]) =>
+              `; ${label}: ${entries.map((entry) => entry.path).join(', ')}`,
+          )
+          .join('') +
+        '\n',
+    );
+  }
   return 0;
 }
 
@@ -216,7 +366,8 @@ function sliceCommand(
   if (env.GITHUB_OUTPUT)
     appendFileSync(
       env.GITHUB_OUTPUT,
-      `empty=${slice.files.length === 0 ? 'true' : 'false'}\n`,
+      `empty=${slice.files.length === 0}\n` +
+        `requires-zsh=${slice.files.some((file) => LINUX_ZSH_FIXTURE_SUITES.has(file))}\n`,
     );
   return 0;
 }
@@ -324,10 +475,14 @@ async function runCommand(
     throw new Error(`fast-checks receipt is invalid: ${errors.join('; ')}`);
   writeJson(resolve(cwd, receiptPath), receipt);
   if (env.GITHUB_ACTIONS === 'true')
-    for (const line of failedTestAnnotations(receipt)) report(`${line}\n`);
+    for (const line of failureAnnotations(receipt)) report(`${line}\n`);
   report(
     `[fast-checks] shard ${shardValue}: ${receipt.status}; ${slice.files.length} file(s), ${receipt.counts.executed} test(s) executed, ${receipt.counts.failed} failed\n`,
   );
+  if (!receipt.passed) {
+    const block = failureBlock(receipt);
+    if (block) report(block);
+  }
   if (receipt.status === 'provisional')
     report(
       `[fast-checks] selection deferred to ${base.deferredLanes.join(', ') || 'test-full'}; full-regression remains required for full qualification and release\n`,

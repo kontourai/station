@@ -49,7 +49,7 @@ it('debug build entrypoints carry the scheme expected by the native development 
     expect(line).toContain('--config tauri.android.dev.conf.json');
 });
 
-function generatedFixture(namespace = 'io.kontourai.station.beta') {
+function generatedFixture(namespace = 'io.kontourai.station.nightly') {
   const root = mkdtempSync(join(tmpdir(), 'station-channel-generation-'));
   const android = join(root, 'src-desktop', 'gen', 'android');
   const gradlePath = join(android, 'app', 'build.gradle.kts');
@@ -75,11 +75,7 @@ android {
 }
 
 describe('clean Android channel release generation', () => {
-  it.each([
-    'io.kontourai.station',
-    'io.kontourai.station.beta',
-    'io.kontourai.station.nightly',
-  ])(
+  it.each(['io.kontourai.station', 'io.kontourai.station.nightly'])(
     'applies one complete signing contract without changing %s',
     (namespace) => {
       const { gradlePath, root } = generatedFixture(namespace);
@@ -161,7 +157,7 @@ describe('clean Android channel release generation', () => {
     ['release', '.github/workflows/release.yml'],
     ['nightly', '.github/workflows/nightly-native-stage.yml'],
   ])(
-    'orders %s reset, init, signing, bootstrap, build, and signature proof',
+    'orders %s init, signing, bootstrap, build, and signature proof',
     (_lane, path) => {
       const workflow = readFileSync(path, 'utf8');
       const reset = workflow.indexOf('reset-android-generated-project.mjs');
@@ -184,8 +180,16 @@ describe('clean Android channel release generation', () => {
           : 'verify --verbose --print-certs',
         build,
       );
-      expect(reset).toBeGreaterThanOrEqual(0);
-      expect(init).toBeGreaterThan(reset);
+      // Nightly resets a generated project left for another channel. Tagged
+      // releases build only the Stable package (#4929), which the default
+      // generated project already names, so they have nothing to reset.
+      if (_lane === 'nightly') {
+        expect(reset).toBeGreaterThanOrEqual(0);
+        expect(init).toBeGreaterThan(reset);
+      } else {
+        expect(reset).toBe(-1);
+        expect(init).toBeGreaterThanOrEqual(0);
+      }
       expect(signing).toBeGreaterThan(init);
       expect(bootstrap).toBeGreaterThan(signing);
       expect(build).toBeGreaterThan(bootstrap);

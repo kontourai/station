@@ -138,7 +138,6 @@ describe('active chat state helpers', () => {
       attachments: [],
       queuedMessages: [],
       inputHistory: [],
-      hasUnread: false,
       provider: 'anthropic',
       providerOptions: { temperature: 0.2 },
       orchestrationSessionStarted: false,
@@ -387,7 +386,6 @@ describe('active chat state helpers', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
       },
       { title: 'A generated title' },
     );
@@ -447,7 +445,6 @@ describe('active chat state helpers', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
         historyIndex: 2,
       },
       { input: 'changed' },
@@ -480,7 +477,6 @@ describe('active chat state helpers', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
       },
       { planArtifact },
     );
@@ -500,7 +496,6 @@ describe('active chat state helpers', () => {
         attachments: [],
         queuedMessages: [],
         inputHistory: [],
-        hasUnread: false,
         agentSlug: 'planner',
         conversationId: 'conv-42',
         ephemeralMessages: [],
@@ -650,6 +645,32 @@ describe('active chat state helpers', () => {
         conversationId: 'conv-1',
         title: 'Fix the dock header',
       });
+    });
+
+    test('a system error marker never names the chat', () => {
+      const marker =
+        "[SYSTEM_EVENT] [CHAT_ERROR:model_not_advertised] ACP model option unavailable: connection 'kiro-kas' did not advertise a model configuration option or model list for this session.";
+      expect(
+        assignConversationIdState(
+          fresh({
+            messages: [
+              { role: 'user', content: marker },
+            ] as ChatUIState['messages'],
+          }),
+          'c',
+        ).title,
+      ).toBe('New chat');
+      expect(
+        assignConversationIdState(
+          fresh({
+            messages: [
+              { role: 'user', content: marker },
+              { role: 'user', content: 'Fix the dock header' },
+            ] as ChatUIState['messages'],
+          }),
+          'c',
+        ).title,
+      ).toBe('Fix the dock header');
     });
 
     test('keeps an existing title, an already-assigned conversation, and a low-content-only chat untitled', () => {

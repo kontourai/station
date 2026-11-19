@@ -13,8 +13,10 @@
  * - There is no retry to budget for: React caches a `lazy` rejection for the
  *   life of the module, which is why `LazyBoundary` has to construct a fresh
  *   one to retry at all (`src-ui/src/components/LazyBoundary.tsx`).
- * - Under host contention the cost is chunk transfer plus parse and execute,
- *   and nothing in this repository has ever measured that.
+ * - Resource timing measures transfer. The first-run journey also records
+ *   time to the visible surface, which includes execution, layout, and the
+ *   Playwright poll. An earlier resource entry means the chunk was already
+ *   fetched before the timed interaction.
  *
  * So this is the LARGEST of the budgets the three sites using it already
  * carried before #1642 — 20 s at the Switch task dialog, 15 s at the Chat
@@ -25,9 +27,9 @@
  * chunk that REJECTS is reported immediately by name instead of spending this
  * allowance and then blaming the surface it was going to render.
  *
- * To turn this into a derivation, measure it: #1693 proposes recording
- * `performance.getEntriesByType('resource')` for these chunk URLs during the
- * live run, which makes the next occurrence the measurement rather than
- * another sample.
+ * The first-run journey records stage timing, JavaScript resources, and
+ * one-minute host load (#1693). Keep this ceiling until measurements from
+ * slow hosts establish the cost. A warm local chunk establishes only the
+ * latency observed in that run.
  */
 export const LAZY_CHUNK_ALLOWANCE_MS = 20_000;

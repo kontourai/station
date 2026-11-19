@@ -1,20 +1,9 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { identiconHue } from '../../utils/identicon';
 import { getInitials } from '../../utils/layout';
 import { LazyBoundary } from '../LazyBoundary';
 import './BrandIcon.css';
-
-/** Brands drawn as inline SVG, in `BrandMarks`. */
-export type InlineBrandKey =
-  | 'station'
-  | 'claude'
-  | 'codex'
-  | 'pi'
-  | 'kiro'
-  | 'opencode';
-
-type BrandKey = InlineBrandKey | 'muse' | 'cursor' | 'goose' | 'qwen';
 
 const BRAND_KEYS = [
   'station',
@@ -27,10 +16,25 @@ const BRAND_KEYS = [
   'cursor',
   'goose',
   'qwen',
-] as const satisfies readonly BrandKey[];
+  'hermes',
+  'antigravity',
+  'auggie',
+  'cline',
+  'copilot',
+  'devin',
+  'factory-droid',
+  'gemini',
+  'grok-build',
+  'junie',
+  'kilo',
+  'kimi',
+  'mistral-vibe',
+] as const;
+
+export type BrandKey = (typeof BRAND_KEYS)[number];
 
 /** Exact engine-id-to-mark lookup. Engine display names never participate. */
-function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
+export function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
   if (
     engineId === 'station-agent' ||
     engineId === 'bedrock' ||
@@ -38,6 +42,8 @@ function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
   ) {
     return 'station';
   }
+  if (engineId === 'qwen-code') return 'qwen';
+  if (engineId === 'kiro-kas' || engineId === 'kiro-kas-bundle') return 'kiro';
   return BRAND_KEYS.find((brand) => brand === engineId);
 }
 
@@ -147,7 +153,6 @@ function Mark({ brand }: { brand: BrandKey }) {
     case 'qwen':
       return <img src={`/provider-icons/${brand}.svg`} alt="" />;
     default:
-      // Until the chunk arrives the tile shows its sized, neutral box.
       return (
         <LazyBoundary
           load={loadBrandMarks}
@@ -183,6 +188,7 @@ interface BrandIconProps {
    * change to `BrandIcon` itself.
    */
   identiconSeed?: string;
+  fallback?: ReactNode;
 }
 
 /**
@@ -201,6 +207,7 @@ export function BrandIcon({
   style,
   alt = '',
   identiconSeed,
+  fallback: fallbackContent,
 }: BrandIconProps) {
   const [failedImageSource, setFailedImageSource] = useState<string>();
   const explicitBrandKey = explicitBrand(icon);
@@ -215,18 +222,11 @@ export function BrandIcon({
     ? safeSameOriginImage(icon)
     : undefined;
   const imageSource = localUrl ?? safeImageIcon;
-  const fallback = getInitials(name || id || '?');
-  const content = explicitBrand(icon)
-    ? undefined
-    : isGlyph(icon)
-      ? icon
-      : undefined;
-  const usesInitialsFallback =
-    !content &&
-    !explicitBrandKey &&
-    !(imageSource && failedImageSource !== imageSource) &&
-    !brand;
-  const isIdenticon = Boolean(identiconSeed) && usesInitialsFallback;
+  const hasLocalImage = imageSource && failedImageSource !== imageSource;
+  const content = !explicitBrandKey && isGlyph(icon) ? icon : undefined;
+  const isIdenticon = Boolean(
+    identiconSeed && !content && !hasLocalImage && !brand,
+  );
 
   return (
     <span
@@ -264,7 +264,7 @@ export function BrandIcon({
         </span>
       ) : explicitBrandKey ? (
         <Mark brand={explicitBrandKey} />
-      ) : imageSource && failedImageSource !== imageSource ? (
+      ) : hasLocalImage ? (
         <img
           src={imageSource}
           alt=""
@@ -273,7 +273,11 @@ export function BrandIcon({
       ) : brand ? (
         <Mark brand={brand} />
       ) : (
-        <span className="brand-icon__initials">{fallback}</span>
+        (fallbackContent ?? (
+          <span className="brand-icon__initials">
+            {getInitials(name || id || '?')}
+          </span>
+        ))
       )}
     </span>
   );

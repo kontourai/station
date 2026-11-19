@@ -5,7 +5,10 @@ import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { runFastChecksShardCli } from '../fast-checks-shard.mjs';
-import { planChangedVerificationShards } from '../run-changed-verification.mjs';
+import {
+  planChangedVerificationShards,
+  type runOwnedChangedCommand,
+} from '../run-changed-verification.mjs';
 import {
   mergeQueueRegressionPaths,
   TEST_IMPACT_MANIFEST,
@@ -25,6 +28,7 @@ const makeTempDir = trackTempDirs();
 async function writeRealPlan(
   paths: string[],
   discovered: string[] = [],
+  run?: typeof runOwnedChangedCommand,
 ): Promise<{ file: string; plan: Record<string, unknown> }> {
   const directory = makeTempDir('station-mq-decision-');
   const lines: string[] = [];
@@ -46,7 +50,7 @@ async function writeRealPlan(
           packages: [],
         }),
         changedPathsFn: () => ({ mergeBase: BASE, paths }),
-        discoverRelatedFiles: async () => discovered,
+        ...(run ? { run } : { discoverRelatedFiles: async () => discovered }),
       }),
   });
   expect(status, lines.join('')).toBe(0);
@@ -103,6 +107,44 @@ describe('the decision over real plans (child process)', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.output).toBe(RUNS_FULL);
     expect(result.stdout).toContain('plan defers to ci-fast');
+  });
+
+  test('retains exact suites after a settled discovery timeout without admitting the plan', async () => {
+    const explicit = 'scripts/__tests__/changed-verification.test.ts';
+    const { file, plan } = await writeRealPlan(
+      ['src-ui/src/components/modals/NewChatModal.tsx', explicit],
+      [],
+      async () => ({
+        status: null,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: true,
+        error: new Error('Related Vitest discovery timed out'),
+        launch: { attempted: true, started: true },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      }),
+    );
+    const selected = (plan.groups as Array<{ files: string[] }>).flatMap(
+      ({ files }) => files,
+    );
+    expect(selected).toEqual(
+      expect.arrayContaining([
+        explicit,
+        ...[
+          'ContextPicker',
+          'EngineChips',
+          'SelectDispatch',
+          'SetupReturn',
+          'ConnectionsError',
+        ].map(
+          (suffix) => `src-ui/src/__tests__/NewChatModal${suffix}.test.tsx`,
+        ),
+      ]),
+    );
+    expect(plan.relatedDiscovery).toMatchObject({ timedOut: true });
+    expect(plan.emptyRelatedSelection).toBeUndefined();
+    expect(decide(file).output).toBe(BLOCKED);
   });
 
   test('a deferred hosted plan retains more than32 explicit tests and retains its full qualification obligation', async () => {

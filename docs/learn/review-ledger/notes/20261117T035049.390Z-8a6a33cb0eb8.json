@@ -1,0 +1,7 @@
+{
+  "revision": "2d6dbce2e9217d94f6a9d44df9c6e21c73a51980",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the citing page: abstraction-review.md links to the Web Push guide for current subscription and delivery behaviour (#2759, #2753). The guide edit adds per-Project focus and notification settings behind the project-overview preview, which leaves that claim true.","inputs":["docs/guides/web-push-notifications.md"]}
+  ]
+}

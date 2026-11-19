@@ -561,18 +561,28 @@ async function seedStationAccess(page: Page) {
       await route.fulfill(json({ success: true, data: [] }));
       return;
     }
+    const relatedTaskRead = path.match(
+      /^\/api\/tasks\/(answer-support-ui|pinned-input-ui|pinned-input-revoked)\/(children|work-chats)$/,
+    );
+    if (route.request().method() === 'GET' && relatedTaskRead) {
+      const [, taskId, resource] = relatedTaskRead;
+      const task = { taskId, taskCreatedAt: '2026-08-24T00:00:00.000Z' };
+      const data =
+        resource === 'children' ? { task, children: [] } : { task, chats: [] };
+      return route.fulfill(json({ success: true, data }));
+    }
     if (
       route.request().method() === 'GET' &&
-      /^\/api\/tasks\/pinned-input-(?:ui|revoked)\/room(?:\/(?:document|history|events|agent-requests))?$/.test(
+      /^\/api\/tasks\/pinned-input-(?:ui|revoked)\/room(?:\/(?:document|history|events|agent-requests|memory))?$/.test(
         path,
       )
     ) {
       await route.fulfill({
-        status: 503,
         ...json({
           success: false,
           error: 'Room unavailable in this input-projection fixture',
         }),
+        status: 503,
       });
       return;
     }
@@ -1027,13 +1037,14 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   await expect(
     page.getByRole('tablist', { name: 'Workspace panes' }),
   ).toBeHidden();
-  await openBasis.click();
+  await openBasis.press('Enter');
   await expect(
     page.getByRole('region', { name: 'Task room workspace' }),
   ).toBeVisible();
   const nativeBasis = page.locator('.station-basis-pane:visible');
   await expect(nativeBasis).toBeVisible();
   await expectOpenedPaneRevealed(page, nativeBasis);
+  await captureReviewScreenshot('answer-basis-revealed', page);
   // #3883: with the room's tab strips already in view, Open Basis focuses
   // the pane's tab without moving the page.
   await page.setViewportSize({ width: 1280, height: 2400 });
@@ -1146,6 +1157,7 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
   });
   await expect(wholeTaskBasis).toBeVisible();
   await expectOpenedPaneRevealed(page, wholeTaskBasis);
+  await captureReviewScreenshot('task-basis-revealed', page);
   await expect(wholeTaskBasis).toContainText(
     'Some kept answer context is restricted.',
   );
@@ -1486,9 +1498,7 @@ test('renders pinned input context without leaking a revoked projection', async 
   await page.goto('/tasks/pinned-input-ui');
   await page.getByRole('tab', { name: 'Details', exact: true }).click();
   const inputs = page.getByRole('region', { name: 'Pinned inputs' });
-  await expect(inputs).toContainText(
-    'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.',
-  );
+  await expect(inputs).toContainText('Pinned to this Task by a person.');
   await expect(inputs).toContainText('brief.png · image/png · 1,024 bytes');
   await expect(inputs.getByText('Authored prompt')).toHaveCount(0);
   await expect(

@@ -7,6 +7,11 @@ import {
 } from '@kontourai/station-sdk';
 import { type FormEvent, useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import {
+  bindProjectContinuation,
+  PROJECT_CONTINUATION_PARAM,
+  readProjectContinuationDraft,
+} from '../lib/continue-in-project';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { describeStationFailure } from '../utils/stationFailure';
 import { useProjectCreationRecovery } from './useProjectCreationRecovery';
@@ -51,6 +56,8 @@ interface RejectedSlug {
 }
 
 interface CreatedProject {
+  id: string;
+  continuationId?: string;
   startIntent?: ProjectStartIntent;
   recoveryKey?: string;
   slug: string;
@@ -63,6 +70,7 @@ interface UseNewProjectSubmitOptions {
   startIntent?: ProjectStartIntent;
   apiBase: string;
   isOpen: boolean;
+  continuationId?: string | null;
   /** The slug the draft currently derives; a refusal older than it is stale. */
   derivedSlug: string;
   normalizedDirectory: string;
@@ -88,7 +96,7 @@ interface UseNewProjectSubmitOptions {
     slug: string,
     layoutSlug?: string,
     startIntent?: ProjectStartIntent,
-  ) => void;
+  ) => void | Promise<void>;
 }
 
 /**
@@ -98,6 +106,7 @@ interface UseNewProjectSubmitOptions {
 export function useNewProjectSubmit({
   apiBase,
   isOpen,
+  continuationId,
   derivedSlug,
   normalizedDirectory,
   starterLayoutId,
@@ -129,6 +138,7 @@ export function useNewProjectSubmit({
     false,
     livePartition,
   );
+  const [finishing, setFinishing] = useProjectDraftState(false, livePartition);
   const [checkingSlug, setCheckingSlug] = useProjectDraftState(
     false,
     livePartition,
@@ -143,13 +153,15 @@ export function useNewProjectSubmit({
     useProjectDraftState<RejectedSlug | null>(null, livePartition);
   const recovery = useProjectCreationRecovery(
     isOpen,
-    createProjectMutation.isPending || applyingStarter,
+    createProjectMutation.isPending || applyingStarter || finishing,
   );
   const outcome = recovery.outcome;
   const recoveredProject: CreatedProject | null =
     outcome?.phase === 'created' && outcome.project && recovery.pending
       ? {
+          id: outcome.project.id,
           slug: outcome.project.slug,
+          continuationId: recovery.pending.continuationId,
           layoutId: recovery.pending.starterLayoutId,
           startIntent: recovery.pending.startIntent ?? 'workspace',
           ...(outcome.starter?.phase === 'applied'
@@ -231,6 +243,16 @@ export function useNewProjectSubmit({
       let project = resumable;
       const retained = recovery.pending;
       const selectedDraft = retained?.draft ?? draft;
+      const formContinuationId =
+        authority &&
+        continuationId &&
+        window.location.pathname === '/projects/new' &&
+        new URLSearchParams(window.location.search).get(
+          PROJECT_CONTINUATION_PARAM,
+        ) === continuationId &&
+        readProjectContinuationDraft(authority, continuationId)
+          ? continuationId
+          : undefined;
       if (!project) {
         if (!retained && normalizedDirectory) {
           setCheckingDirectory(true);
@@ -271,6 +293,7 @@ export function useNewProjectSubmit({
           selectedDraft,
           starterLayoutId,
           startIntent,
+          formContinuationId,
         );
         const created = await createProjectMutation.mutateAsync(
           pending
@@ -284,7 +307,9 @@ export function useNewProjectSubmit({
         // Retained with the created identity so a retry applies the SAME
         // starter this attempt chose, even if the picker moves underneath.
         project = {
+          id: created.id,
           slug: created.slug,
+          continuationId: pending ? pending.continuationId : formContinuationId,
           layoutId: pending ? pending.starterLayoutId : starterLayoutId,
           startIntent: pending?.startIntent ?? startIntent,
           recoveryKey,
@@ -301,6 +326,9 @@ export function useNewProjectSubmit({
           'Station access changed. Return to the Station account that created this Project to finish its starter.',
         );
       }
+      if (authority && project.continuationId && project.id)
+        bindProjectContinuation(authority, project.continuationId, project.id);
+
       if (project.layoutId && !project.layoutSlug) {
         const layoutId = project.layoutId;
         setApplyingStarter(true);
@@ -334,10 +362,20 @@ export function useNewProjectSubmit({
         throw new Error(
           'Station access changed after setup. Return to the Station account that created this Project.',
         );
-      if (project.creationRequestId) recovery.clear(project.creationRequestId);
-      if (project.startIntent && project.startIntent !== 'workspace')
-        onComplete(project.slug, project.layoutSlug, project.startIntent);
-      else onComplete(project.slug, project.layoutSlug);
+      setFinishing(true);
+      try {
+        if (project.startIntent && project.startIntent !== 'workspace')
+          await onComplete(
+            project.slug,
+            project.layoutSlug,
+            project.startIntent,
+          );
+        else await onComplete(project.slug, project.layoutSlug);
+        if (project.creationRequestId)
+          recovery.clear(project.creationRequestId);
+      } finally {
+        setFinishing(false);
+      }
     } catch (err: unknown) {
       setError(userFacingErrorMessage(err));
     }
@@ -398,6 +436,7 @@ export function useNewProjectSubmit({
       createProjectMutation.isPending ||
       applyingStarter ||
       checkingDirectory ||
-      checkingSlug,
+      checkingSlug ||
+      finishing,
   };
 }

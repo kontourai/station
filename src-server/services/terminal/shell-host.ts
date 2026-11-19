@@ -38,6 +38,8 @@ export interface ShellHost {
       cols: number;
       rows: number;
       journal: ShellJournalSpec;
+      maxRuntimeMs?: number;
+      authorize?: () => Promise<void>;
       /** Absent: the configured interactive shell. A command requires one. */
       launch?: ShellLaunch;
     } & ShellSpawnKind,
@@ -66,6 +68,7 @@ export interface HostedShellProcess extends IPtyProcess {
     | 'discard'
     | 'seal'
     | 'append'
+    | 'resize'
     | 'backpressured'
     | 'drained'
   >;
@@ -167,6 +170,7 @@ export class InProcessShellHost implements ShellHost {
   async spawn(input: Parameters<ShellHost['spawn']>[0]): Promise<IPtyProcess> {
     if (input.kind === 'command') {
       const launch = commandLaunch(input.launch);
+      await input.authorize?.();
       // Through the child-workload launcher, so a host that scopes child
       // resources scopes an agent's command as it did before #3994.
       return spawnCommandProcess(
@@ -180,15 +184,16 @@ export class InProcessShellHost implements ShellHost {
         spawnChildWorkload,
       );
     }
-    return spawnFirstShell(
-      this.pty,
-      await shellCandidates(input.launch, this.configuredShell),
-      {
-        cwd: input.cwd,
-        cols: input.cols,
-        rows: input.rows,
-        env: terminalShellEnvironment(input.launch?.env),
-      },
+    const candidates = await shellCandidates(
+      input.launch,
+      this.configuredShell,
     );
+    await input.authorize?.();
+    return spawnFirstShell(this.pty, candidates, {
+      cwd: input.cwd,
+      cols: input.cols,
+      rows: input.rows,
+      env: terminalShellEnvironment(input.launch?.env),
+    });
   }
 }

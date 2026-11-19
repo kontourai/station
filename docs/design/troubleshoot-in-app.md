@@ -44,7 +44,7 @@ surfaces whose sibling controls are native buttons or banner actions call
 
 | Surface | Action | Code sent |
 | --- | --- | --- |
-| Route error boundary ([`RouteViewBoundary`](../../src-ui/src/app-shell/RouteViewBoundary.tsx)): beside Try again for a view failure; in the **More actions** menu for an authority failure, whose row already has two actions | Troubleshoot | `HTTP <status>`, else the error name |
+| Route error boundary ([`RouteViewBoundary`](../../src-ui/src/app-shell/RouteViewBoundary.tsx)): beside Retry for a view failure; in the **More actions** menu for an authority failure, whose row already has two actions | Troubleshoot | `HTTP <status>`, else the error name |
 | Error-tone toasts with fewer than two actions, at the one renderer ([`NotificationContainer`](../../src-ui/src/components/notifications/NotificationContainer.tsx)); the flow's own `troubleshoot-*` toasts excluded | Troubleshoot | none; the message only |
 | A placed pane in `temporarily-unavailable` ([`ProjectLayoutRenderer`](../../src-ui/src/app-shell/ProjectLayoutRenderer.tsx)), and the same state's card explanation ([`WorkspacePaneAvailabilityList`](../../src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.tsx)); not while the renderer is still loading or when extension access is the cause | Troubleshoot | `pane-<reason code>` |
 | Unsupported layout tab ([`layouts/index.tsx`](../../src-ui/src/layouts/index.tsx)) | Troubleshoot | `unsupported-layout-tab` |
@@ -75,8 +75,8 @@ flow falls back exactly as it does for the help menu.
 surfaces above: inline `ErrorState` panels in individual views, warning-tone
 toasts, error toasts that already carry two actions, a local-Station banner
 that offers Restart, tool-activity failure toasts, the connection and compatibility
-banners, other workspace-pane failure states (for example "Workspace pane
-cannot mount"), and the new-chat picker's engine states.
+banners, other workspace-pane failure states (for example "<pane name>
+unavailable"), and the new-chat picker's engine states.
 
 ### Seed from an error surface
 
@@ -159,7 +159,12 @@ The request and response types are in
   `$STATION_ROOT` that `station triage` writes to, so a run belongs to the
   Station that prepared it and an isolated instance keeps its runs to itself. The context records the Station name, environment id, version,
   channel, stamped source revision, platform, the doctor summary, server-log
-  availability, the caller's role and surface, and the seed.
+  availability, the caller's role and surface, and the seed. When the seed
+  names a conversation that this Station's event store does not hold (one
+  opened from a paired Station), the ambient seed also says so and tells the
+  assistant to ask which Station ran it, because this Station's doctor, logs
+  and monitoring do not cover it. Without an event store it says nothing
+  either way.
 - **Response.** The run id, `agentId: 'station'`, the ambient seed (at most
   3,600 characters, under the 4,000-character ambient limit), the opening
   message, display facts and the CLI command.

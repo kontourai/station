@@ -1,0 +1,27 @@
+{
+  "path": "docs/learn/media/updates-after-1440-light.png",
+
+  "sources": [
+    "src-ui/src/components/updates/UpdatesPanel.tsx",
+
+    "src-ui/src/components/updates/Updates.css",
+
+    "src-ui/src/views/settings/DesktopUpdateCheck.tsx",
+
+    "src-ui/src/views/settings/coreUpdatePresentation.tsx",
+
+    "src-ui/src/index.css",
+
+    "src-ui/src/components/StatusSummary.tsx",
+
+    "src-ui/src/components/StatusSummary.css",
+
+    "src-ui/src/components/updates/ReleaseNotes.tsx",
+
+    "src-ui/src/styles/layout-recipes.css",
+
+    "src-ui/src/styles/control-recipes.css"
+  ],
+
+  "reviewNotes": []
+}

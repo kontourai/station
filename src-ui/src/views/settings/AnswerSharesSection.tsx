@@ -9,6 +9,7 @@ import {
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { errorText } from '../../utils/errorText';
+import { formatDateTime } from '../../utils/relativeTime';
 import './AnswerSharesSection.css';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -41,12 +42,9 @@ const STATE_LABEL: Record<AnswerShareState, string> = {
 };
 
 function formatDate(value: string): string {
-  const parsed = Date.parse(value);
   // An unparseable timestamp is named as one rather than rendered as an
   // epoch date; a wrong date on a capability record is a claim.
-  return Number.isFinite(parsed)
-    ? new Date(parsed).toLocaleDateString()
-    : 'date not recorded';
+  return formatDateTime(value, 'date not recorded');
 }
 
 function ShareRow({ share }: { share: AnswerShareSummary }) {

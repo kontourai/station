@@ -1,7 +1,0 @@
-{
-  "revision": "3d6325c2787fcbbc582caeaba3ce0c1b18955bfe",
-
-  "notes": [
-    {"path":"docs/design/connections-onboarding.md","note":"#4515 integration: OnboardingGate.test.tsx differs from main only by #4519's two-line managed policy status mock; checked the onboarding claims here and found nothing the combined managed policy changes.","inputs":["docs/design/connections-onboarding.md","src-ui/src/__tests__/OnboardingGate.test.tsx"]}
-  ]
-}

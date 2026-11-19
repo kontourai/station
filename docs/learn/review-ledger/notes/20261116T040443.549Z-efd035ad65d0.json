@@ -1,0 +1,7 @@
+{
+  "revision": "7fc73e60294b7bc5a764ddce0fa75d59f2082d6c",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"The telemetry choice, outbox and feedback scenes in the gallery are unchanged by the fix round.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]}
+  ]
+}

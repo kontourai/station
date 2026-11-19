@@ -30,6 +30,7 @@ import {
   AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION,
   AGENT_WAKE_UP_NOTE_MAX_CHARS,
 } from '@kontourai/station-contracts/agent-schedule';
+import type { SchedulerAutomationTarget } from '@kontourai/station-contracts/scheduler';
 import {
   getRun as sdkGetRun,
   listJobs as sdkListJobs,
@@ -50,6 +51,7 @@ import {
   vi,
 } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createUnattendedGrantRoutes } from '../../routes/agents/unattended-grants-routes.js';
 import { createStationControlMcpRoutes } from '../../routes/mcp/station-control-mcp-route.js';
 import { createNotificationRoutes } from '../../routes/operations/notifications.js';
@@ -83,6 +85,7 @@ import {
   composeAgentSchedule,
 } from '../../runtime/routes/agent-schedule-composition.js';
 import { UnattendedGrantStore } from '../../services/agents/unattended-grant-store.js';
+import { deploymentAccountPrincipal } from '../../services/identity/deployment-authentication-service.js';
 import {
   LOCAL_OPERATOR_PRINCIPAL_ID,
   principalForRecordedSessionOwner,
@@ -108,6 +111,14 @@ import {
   ThreadInboxDelivery,
   type ThreadInboxStore,
 } from '../../services/orchestration/thread-inbox.js';
+import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
+import {
+  type ProjectMembershipAuthority,
+  ProjectMembershipService,
+} from '../../services/projects/project-membership-service.js';
+import { ProjectMembershipStore } from '../../services/projects/project-membership-store.js';
+import { createProjectPrincipalPermission } from '../../services/projects/project-principal-permission.js';
+import { ProjectService } from '../../services/projects/project-service.js';
 import type { ScheduledConversationRunInput } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { conversationAutomationsFrom } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { createSchedulerLedger } from '../../services/scheduling/scheduler-ledger.js';
@@ -236,6 +247,10 @@ async function boot(options: {
   hosted: boolean;
   /** A real scheduler instead of the create-only stub. */
   scheduler?: SchedulerService;
+  projectAccess?: Pick<
+    Parameters<typeof composeAgentSchedule>[0],
+    'projectExists' | 'principalMayInProject'
+  >;
   notifications?: NotificationService;
   logDirectory?: string;
   diagnosticGrantStore?: UnattendedGrantStore;
@@ -245,6 +260,16 @@ async function boot(options: {
    * guard fails closed.
    */
   retargetsGrantedJob?: () => boolean;
+  /** Who a person's request resolves to; default the operator. */
+  requestUserId?: () => string;
+  /**
+   * How the auth boundary classifies a person's credential; default the
+   * operator's own credential. A paired device (another person's, or one
+   * without owner standing) is a `device-credential`.
+   */
+  credentialAuthority?: 'operator-credential' | 'device-credential';
+  /** The pairing store's answer: this device has owner-device standing. */
+  ownerStanding?: boolean;
 }): Promise<World> {
   const store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
   const pictureDb = new DatabaseSync(':memory:');
@@ -301,7 +326,7 @@ async function boot(options: {
       ['credential', 'internal'].includes(
         getRuntimeAuthenticatedRequestPrincipal(request)?.kind ?? '',
       ),
-    requestUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+    requestUserId: options.requestUserId ?? (() => LOCAL_OPERATOR_PRINCIPAL_ID),
     readAuthorityFor: () => ({ mode: 'personal' }) as never,
     tenantFor: () => undefined,
     dispatchActor: (c) =>
@@ -313,6 +338,7 @@ async function boot(options: {
         },
         c as never,
       ),
+    ...options.projectAccess,
     agentProject: async (slug) => {
       if (!facts.agents.has(slug)) throw new Error('no such agent');
       return facts.agents.get(slug) ?? undefined;
@@ -346,7 +372,11 @@ async function boot(options: {
         options.diagnosticGrantStore
           ? 'orchestration:read orchestration:operate access:manage'
           : 'orchestration:read orchestration:operate',
-      resolveCredentialAuthority: () => 'operator-credential',
+      resolveCredentialAuthority: () =>
+        options.credentialAuthority ?? 'operator-credential',
+      ...(options.ownerStanding
+        ? { resolveCredentialOwnerStanding: () => true }
+        : {}),
       now: () => Date.now(),
       maxFailures: 1_000,
       windowMs: 60_000,
@@ -390,6 +420,7 @@ async function boot(options: {
     '/api/orchestration',
     createCoordinatorRoutes({
       store: options.hosted ? undefined : pictureStore,
+      preview: { select: ({ enabled }) => enabled() },
       person: composition.person,
       dispatchActor: () => ({ userId: LOCAL_OPERATOR_PRINCIPAL_ID }),
       picturePreview: { select: ({ enabled }) => enabled() },
@@ -421,6 +452,10 @@ async function boot(options: {
         admitAutomationJob: composition.admitAutomationJob,
         mayReadAutomationJob: composition.mayReadAutomationJob,
         mayReadAutomationRun: composition.mayReadAutomationRun,
+        jobOwner: composition.jobOwner,
+        ...(options.projectAccess
+          ? { maySetProjectJob: composition.maySetProjectJob }
+          : {}),
       },
     ),
   );
@@ -3248,6 +3283,722 @@ describe('legacy scheduler diagnostics privacy', () => {
       await served.close();
       await scheduler.stop();
       resetServerLogSinkForTests();
+    }
+  });
+});
+
+/**
+ * #2377 slice D review (HIGH B): an untargeted job's runs act as its recorded
+ * owner, so editing, running, enabling, disabling or deleting it is admitted
+ * against that owner, for people and for the agent tools (`update_job`,
+ * `run_job`), the same way a targeted automation is. Real boundary, guard,
+ * composition, scheduler routes, BuiltinScheduler and SQLite ledger.
+ */
+describe('acting on an untargeted job is admitted against its owner', () => {
+  const makeTempDir = trackTempDirs();
+  const turns: string[] = [];
+  const runOwners: Array<string | undefined> = [];
+  const projectRuns: string[] = [];
+
+  async function ownedWorld(
+    owner: string,
+    requestUserId?: () => string,
+    credentialAuthority?: 'operator-credential' | 'device-credential',
+    extra: {
+      ownerStanding?: boolean;
+      target?: SchedulerAutomationTarget;
+      /** A Project job (#5070), whose runs go to the Project runner. */
+      projectId?: string;
+    } = {},
+  ) {
+    const scheduler = new SchedulerService({
+      logger: quietLogger(),
+      builtin: {
+        ledger: createSchedulerLedger({
+          directory: makeTempDir('untargeted-owner-'),
+        }),
+        turnAdapter: {
+          invoke: async (input) => {
+            turns.push(input.prompt);
+            // Who the run's Station tools act for (`createdBy`).
+            runOwners.push(input.receipt.job.createdBy?.userId);
+            return { kind: 'completed', output: '' };
+          },
+        },
+        ...(extra.projectId
+          ? {
+              projectRuns: {
+                invoke: async (input: {
+                  prompt: string;
+                  createdBy?: { userId: string };
+                }) => {
+                  projectRuns.push(input.prompt);
+                  // #5126: who the Project run's Task acts as.
+                  runOwners.push(input.createdBy?.userId);
+                  return { kind: 'completed' as const, output: '' };
+                },
+              },
+              projectHold: {
+                heldProjectIds: () => new Set<string>(),
+                heldProjectSlugs: () => new Set<string>(),
+                projectExists: (id: string) => id === extra.projectId,
+              },
+            }
+          : {}),
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      retargetsGrantedJob: () => false,
+      ...(requestUserId ? { requestUserId } : {}),
+      ...(credentialAuthority ? { credentialAuthority } : {}),
+      ...(extra.ownerStanding ? { ownerStanding: true } : {}),
+      ...(extra.projectId
+        ? {
+            projectAccess: {
+              projectExists: (id) => id === extra.projectId,
+              principalMayInProject:
+                createProjectPrincipalPermission(undefined),
+            },
+          }
+        : {}),
+    });
+    await scheduler.addJob({
+      name: 'owned-job',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'Original',
+      createdBy: { userId: owner },
+      ...(extra.target ? { target: extra.target } : {}),
+      ...(extra.projectId ? { projectId: extra.projectId } : {}),
+    });
+    return {
+      scheduler,
+      at: { baseUrl: served.baseUrl, port: served.port },
+      close: async () => {
+        await served.close();
+        await scheduler.stop();
+      },
+    };
+  }
+
+  afterEach(() => {
+    turns.length = 0;
+    runOwners.length = 0;
+    projectRuns.length = 0;
+  });
+
+  test.each([
+    ['DELETE', '/scheduler/jobs/owned-job'],
+    ['PUT', '/scheduler/jobs/owned-job/enable'],
+    ['PUT', '/scheduler/jobs/owned-job/disable'],
+  ])('another person cannot %s %s', async (method, path) => {
+    const world = await ownedWorld(
+      'human:local:person-a',
+      () => 'human:local:person-b',
+      'device-credential',
+    );
+    try {
+      const response = await personRequest(
+        method,
+        path,
+        undefined,
+        world.at.baseUrl,
+      );
+      expect([response.status, response.body.code]).toEqual([
+        404,
+        'automation_not_found',
+      ]);
+      const [job] = await world.scheduler.listJobs();
+      expect(job?.name).toBe('owned-job');
+      expect(job?.enabled).toBe(true);
+    } finally {
+      await world.close();
+    }
+  });
+
+  // Owner decision 2026-11-16: the operator in person may manage any owned
+  // untargeted job; its runs still act as the job's owner.
+  test('the operator in person may edit, disable and delete a job a device owns', async () => {
+    const world = await ownedWorld('device:local:phone');
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised by the operator' },
+        world.at.baseUrl,
+      );
+      expect(edited.status).toBe(200);
+      const disabled = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job/disable',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(disabled.status).toBe(200);
+      expect((await world.scheduler.listJobs())[0]).toMatchObject({
+        prompt: 'Revised by the operator',
+        enabled: false,
+        // Editing never changes who it runs as.
+        createdBy: { userId: 'device:local:phone' },
+      });
+      const deleted = await personRequest(
+        'DELETE',
+        '/scheduler/jobs/owned-job',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(deleted.status).toBe(200);
+      expect(await world.scheduler.listJobs()).toEqual([]);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a run the operator triggers still acts as the device that owns the job', async () => {
+    const world = await ownedWorld('device:local:phone');
+    try {
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(ran.status).toBe(200);
+      await vi.waitFor(() => expect(runOwners).toEqual(['device:local:phone']));
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('the operator in person cannot point a job a device owns at a conversation', async () => {
+    const world = await ownedWorld('device:local:phone');
+    try {
+      for (const target of [
+        { kind: 'dedicated', agent: 'helper' },
+        { kind: 'conversation', conversationId: 'conversation-of-operator' },
+      ]) {
+        const edited = await personRequest(
+          'PUT',
+          '/scheduler/jobs/owned-job',
+          { prompt: 'Retargeted', target },
+          world.at.baseUrl,
+        );
+        expect([edited.status, edited.body.code]).toEqual([
+          403,
+          'automation_target_owner_only',
+        ]);
+      }
+      const [job] = await world.scheduler.listJobs();
+      expect(job).toMatchObject({
+        prompt: 'Original',
+        createdBy: { userId: 'device:local:phone' },
+      });
+      expect(job?.target).toBeUndefined();
+      // The control: an edit that leaves the target alone is still admitted.
+      const untouched = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised', target: null },
+        world.at.baseUrl,
+      );
+      expect(untouched.status).toBe(200);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('the override reaches only untargeted jobs: a not-yet-started dedicated job another person owns stays theirs', async () => {
+    const world = await ownedWorld(
+      'human:local:person-a',
+      undefined,
+      undefined,
+      { target: { kind: 'dedicated', agent: 'helper' } },
+    );
+    try {
+      const [stored] = await world.scheduler.listJobs();
+      // The control: the job has a target but no conversation yet.
+      expect(stored?.target).toEqual({ kind: 'dedicated', agent: 'helper' });
+      for (const [method, path, body] of [
+        ['PUT', '/scheduler/jobs/owned-job', { prompt: 'Injected' }],
+        ['PUT', '/scheduler/jobs/owned-job/disable', undefined],
+        ['POST', '/scheduler/jobs/owned-job/run', undefined],
+        ['DELETE', '/scheduler/jobs/owned-job', undefined],
+      ] as const) {
+        const response = await personRequest(
+          method,
+          path,
+          body,
+          world.at.baseUrl,
+        );
+        expect([method, path, response.status]).toEqual([method, path, 404]);
+      }
+      expect(turns).toEqual([]);
+      expect((await world.scheduler.listJobs())[0]).toMatchObject({
+        prompt: 'Original',
+        enabled: true,
+      });
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('an owner device signed in as someone else gets no override', async () => {
+    // One of the owner's paired devices (owner-device standing), whose
+    // requests resolve to a different user than the job's owner.
+    const world = await ownedWorld(
+      'device:local:phone',
+      () => 'device:local:tablet',
+      'device-credential',
+      { ownerStanding: true },
+    );
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at.baseUrl,
+      );
+      expect([edited.status, edited.body.code]).toEqual([
+        404,
+        'automation_not_found',
+      ]);
+      const deleted = await personRequest(
+        'DELETE',
+        '/scheduler/jobs/owned-job',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(deleted.status).toBe(404);
+      expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
+    } finally {
+      await world.close();
+    }
+  });
+
+  // Owner decision 2026-11-16 (#5126): a Project job is gated on its
+  // creator like any untargeted job, and its run acts as that creator.
+  test('a Project job is gated on its creator, and the operator in person may still manage it', async () => {
+    const other = await ownedWorld(
+      'human:local:person-a',
+      () => 'human:local:person-b',
+      'device-credential',
+      { projectId: 'project-1' },
+    );
+    try {
+      // The control: the job really is a Project job.
+      expect((await other.scheduler.listJobs())[0]?.projectId).toBe(
+        'project-1',
+      );
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        other.at.baseUrl,
+      );
+      expect([edited.status, edited.body.code]).toEqual([
+        404,
+        'automation_not_found',
+      ]);
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        other.at.baseUrl,
+      );
+      expect(ran.status).toBe(404);
+      expect(projectRuns).toEqual([]);
+    } finally {
+      await other.close();
+    }
+    const operator = await ownedWorld(
+      'human:local:person-a',
+      undefined,
+      undefined,
+      {
+        projectId: 'project-1',
+      },
+    );
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised by the operator' },
+        operator.at.baseUrl,
+      );
+      expect(edited.status).toBe(200);
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        operator.at.baseUrl,
+      );
+      expect(ran.status).toBe(200);
+      await vi.waitFor(() =>
+        expect(projectRuns).toEqual(['Revised by the operator']),
+      );
+      // The operator in person ran it, but the run acts as its owner.
+      expect(runOwners).toEqual(['human:local:person-a']);
+    } finally {
+      await operator.close();
+    }
+  });
+
+  test('an agent acting for the operator gets no override on a job a device owns', async () => {
+    const world = await ownedWorld('device:local:phone');
+    try {
+      const edited = await agent(
+        'bound',
+        nextSession(),
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at,
+      );
+      expect(edited.status).toBe(403);
+      expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('another person (a second local account) cannot update or run it', async () => {
+    // Person B signs in on their own device: a device credential.
+    const world = await ownedWorld(
+      'human:local:person-a',
+      () => 'human:local:person-b',
+      'device-credential',
+    );
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at.baseUrl,
+      );
+      expect([edited.status, edited.body.code]).toEqual([
+        404,
+        'automation_not_found',
+      ]);
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(ran.status).toBe(404);
+      expect(turns).toEqual([]);
+      expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a paired device without owner standing cannot edit a job owned by the operator', async () => {
+    // Such a device's requests resolve to the device itself, not the operator.
+    const world = await ownedWorld(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+      () => 'device:local:phone',
+      'device-credential',
+    );
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at.baseUrl,
+      );
+      expect(edited.status).toBe(404);
+      expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('its owner may update and run it', async () => {
+    const world = await ownedWorld(LOCAL_OPERATOR_PRINCIPAL_ID);
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised' },
+        world.at.baseUrl,
+      );
+      expect(edited.status).toBe(200);
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(ran.status).toBe(200);
+      await vi.waitFor(() => expect(turns).toEqual(['Revised']));
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('update_job and run_job: an agent acting for another person cannot touch it', async () => {
+    const world = await ownedWorld('human:local:person-a');
+    try {
+      const edited = await agent(
+        'bound',
+        nextSession(),
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at,
+      );
+      expect(edited.status).toBe(403);
+      const ran = await agent(
+        'bound',
+        nextSession(),
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at,
+      );
+      expect(ran.status).toBe(403);
+      expect(turns).toEqual([]);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('update_job and run_job: an agent acting for the owner may', async () => {
+    const world = await ownedWorld(LOCAL_OPERATOR_PRINCIPAL_ID);
+    try {
+      const edited = await agent(
+        'bound',
+        nextSession(),
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised' },
+        world.at,
+      );
+      expect(edited.status).toBe(200);
+      const ran = await agent(
+        'bound',
+        nextSession(),
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at,
+      );
+      expect(ran.status).toBe(200);
+    } finally {
+      await world.close();
+    }
+  });
+});
+
+describe('Project schedule membership', () => {
+  const makeTempDir = trackTempDirs();
+
+  async function projectWorld() {
+    const home = makeTempDir('project-schedule-membership-');
+    const storage = new FileStorageAdapter(home);
+    const manifests = new ProjectManifestStore(home, storage);
+    const projects = new ProjectService(storage, manifests);
+    const project = await projects.createProject({
+      name: 'Atlas',
+      slug: 'atlas',
+    });
+    const db = new DatabaseSync(':memory:');
+    const membership = new ProjectMembershipService(
+      'station-one',
+      storage,
+      manifests,
+      new ProjectMembershipStore(db, 'station-one'),
+    );
+    const owner = deploymentAccountPrincipal('issuer', 'owner', 'Owner');
+    const member = deploymentAccountPrincipal('issuer', 'member', 'Member');
+    const outsider = deploymentAccountPrincipal(
+      'issuer',
+      'outsider',
+      'Outsider',
+    );
+    let actor = owner;
+    const access: ProjectMembershipAuthority = {
+      current: async () => ({
+        principal: actor,
+        verifiedEmails: actor.id === member.id ? ['member@example.test'] : [],
+      }),
+      operator: async () => undefined,
+    };
+    const view = await membership.enable(project.slug, project.id, access);
+    const invitation = await membership.invite(
+      view.scope,
+      {
+        email: 'member@example.test',
+        role: 'contributor',
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      },
+      access,
+    );
+    actor = member;
+    await membership.accept(invitation.token, access);
+    actor = outsider;
+    const projectExists = (id: string) =>
+      projects.listProjects().some((candidate) => candidate.id === id);
+    const scheduler = new SchedulerService({
+      logger: quietLogger(),
+      builtin: {
+        ledger: createSchedulerLedger({ directory: home }),
+        turnAdapter: { invoke: vi.fn() },
+        projectRuns: {
+          invoke: async () => ({ kind: 'completed', output: '' }),
+        },
+        projectHold: {
+          heldProjectIds: () => new Set(),
+          heldProjectSlugs: () => new Set(),
+          projectExists,
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      credentialAuthority: 'device-credential',
+      requestUserId: () => actor.id,
+      retargetsGrantedJob: () => false,
+      projectAccess: {
+        projectExists,
+        principalMayInProject: createProjectPrincipalPermission(membership),
+      },
+    });
+    const job = {
+      name: 'atlas-digest',
+      schedule: { kind: 'every', everyMs: 3_600_000 } as const,
+      prompt: 'Summarize Atlas activity',
+      projectId: project.id,
+    };
+    return {
+      job,
+      member,
+      scheduler,
+      request: (method: string, path: string, body?: unknown) =>
+        personRequest(method, path, body, served.baseUrl),
+      signInAsMember: () => {
+        actor = member;
+      },
+      demoteMember: async () => {
+        actor = owner;
+        await membership.changeMember(
+          view.scope,
+          member.id,
+          1,
+          { role: 'viewer', status: 'active' },
+          access,
+        );
+        actor = member;
+      },
+      close: async () => {
+        await served.close();
+        await scheduler.stop();
+        db.close();
+      },
+    };
+  }
+
+  test('a non-member cannot read a Project job or its runs, while a member can', async () => {
+    const { job, member, scheduler, request, signInAsMember, close } =
+      await projectWorld();
+    try {
+      await scheduler.addJob({ ...job, createdBy: { userId: member.id } });
+      expect((await scheduler.runJob(job.name)).outcome).toBe('completed');
+      const logs = `/scheduler/jobs/${job.name}/logs`;
+      expect((await request('GET', '/scheduler/jobs')).body.data).toEqual([]);
+      expect((await request('GET', logs)).status).toBe(404);
+      for (const [path, body] of [
+        ['restart', undefined],
+        ['resolve', { triggerId: 'test-trigger', action: 'resolve' }],
+      ] as const) {
+        for (const name of [job.name, 'missing']) {
+          const response = await request(
+            'POST',
+            `/scheduler/jobs/${name}/monitor/${path}`,
+            body,
+          );
+          expect(response).toEqual({
+            status: 404,
+            body: { success: false, error: 'Job not found' },
+          });
+        }
+      }
+      signInAsMember();
+      expect((await request('GET', '/scheduler/jobs')).body.data).toEqual([
+        expect.objectContaining({
+          name: job.name,
+          prompt: job.prompt,
+          projectId: job.projectId,
+          createdBy: { userId: member.id },
+        }),
+      ]);
+      expect((await request('GET', logs)).body.data).toEqual([
+        expect.objectContaining({ job: job.name, success: true }),
+      ]);
+    } finally {
+      await close();
+    }
+  });
+
+  test('only a member with execute may create a job in an existing Project', async () => {
+    const { job, member, scheduler, request, signInAsMember, close } =
+      await projectWorld();
+    try {
+      const jobs = '/scheduler/jobs';
+      expect((await request('POST', jobs, job)).status).toBe(404);
+      expect(await scheduler.listJobs()).toEqual([]);
+      signInAsMember();
+      expect(
+        (await request('POST', jobs, { ...job, projectId: 'missing-project' }))
+          .status,
+      ).toBe(404);
+      expect((await request('POST', jobs, job)).status).toBe(200);
+      expect(await scheduler.listJobs()).toEqual([
+        expect.objectContaining({
+          name: job.name,
+          projectId: job.projectId,
+          createdBy: { userId: member.id },
+        }),
+      ]);
+    } finally {
+      await close();
+    }
+  });
+
+  test('a demoted creator can read and clean up the job but cannot edit, enable, or run it', async () => {
+    const { job, scheduler, request, signInAsMember, demoteMember, close } =
+      await projectWorld();
+    try {
+      const path = `/scheduler/jobs/${job.name}`;
+      signInAsMember();
+      expect((await request('POST', '/scheduler/jobs', job)).status).toBe(200);
+      expect((await request('PUT', path, { prompt: 'Revised' })).status).toBe(
+        200,
+      );
+      await demoteMember();
+      expect((await request('GET', '/scheduler/jobs')).body.data).toEqual([
+        expect.objectContaining({ name: job.name, prompt: 'Revised' }),
+      ]);
+      expect((await request('PUT', path, { prompt: 'Denied' })).status).toBe(
+        404,
+      );
+      expect((await request('POST', `${path}/run`)).status).toBe(404);
+      expect((await request('PUT', `${path}/disable`)).status).toBe(200);
+      expect((await request('PUT', `${path}/enable`)).status).toBe(404);
+      expect(await scheduler.listJobs()).toEqual([
+        expect.objectContaining({
+          name: job.name,
+          prompt: 'Revised',
+          enabled: false,
+        }),
+      ]);
+      expect((await request('DELETE', path)).status).toBe(200);
+      expect(await scheduler.listJobs()).toEqual([]);
+    } finally {
+      await close();
     }
   });
 });

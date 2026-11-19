@@ -1,0 +1,7 @@
+{
+  "revision": "7a21d2eef72c1a0d4c6d519b42aebddf2f441100",
+
+  "notes": [
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Reviewed the rail click locator against the Project button’s appended initials. The capture still opens the same dialog and measures the same documented geometry.","inputs":["tests/sidebar-geometry.spec.ts"]}
+  ]
+}

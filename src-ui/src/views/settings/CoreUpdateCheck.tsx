@@ -15,7 +15,9 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { StatusSummary } from '../../components/StatusSummary';
 import { SkeletonBlock } from '../../components/state';
 import { ReleaseNotes } from '../../components/updates/ReleaseNotes';
 import {
@@ -34,7 +36,6 @@ import {
   formatCheckTime,
   isArchiveInstall,
   SERVICE_UPDATE_IN_FLIGHT,
-  ServerUpdateHeader,
   serverIdentityMatchesView,
   serverUpdateBadge,
   serviceProgressIsHistory,
@@ -79,6 +80,7 @@ export function CoreUpdateCheck({
   headingId,
   alerts,
   details,
+  downloadPolicy,
   showReleaseNotes = false,
 }: {
   active?: boolean;
@@ -106,6 +108,7 @@ export function CoreUpdateCheck({
   alerts?: ReactNode;
   /** Identity and install facts, folded into Details with the card's own. */
   details?: ReactNode;
+  downloadPolicy?: ReactNode;
   showReleaseNotes?: boolean;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
@@ -579,12 +582,13 @@ export function CoreUpdateCheck({
     !!context &&
     context.reachability !== 'connected' &&
     context.reachability !== 'checking';
-  // The download/restart controls, for the server this view correlated.
-  const showStageApply =
+  const hasStagedUpdateCapability =
     stagedFlow &&
     !!serverUpdateState?.supported &&
     identityMatches &&
-    !comparisonSuperseded &&
+    !comparisonSuperseded;
+  const showStageApply =
+    hasStagedUpdateCapability &&
     !trackedServiceUpdate &&
     !awaitingOutcomeRecheck;
   const badge = serverUpdateBadge({
@@ -669,7 +673,11 @@ export function CoreUpdateCheck({
               ? 'Pulls from the git remote, then restarts the server.'
               : 'Checks the connected server. Desktop app updates use the app’s signed update channel.';
 
-  const checkButton = (
+  const manifestUnavailable =
+    !comparisonSuperseded &&
+    view?.kind === 'release' &&
+    status?.releaseCheck === 'not-recorded';
+  const checkButton = manifestUnavailable ? null : (
     <Button
       onClick={() => {
         // A re-check is also the recovery path out of a failed background
@@ -691,13 +699,14 @@ export function CoreUpdateCheck({
   );
 
   return (
-    <div className="server-update">
-      <ServerUpdateHeader
+    <div className="server-update content-stack">
+      <StatusSummary
         title={title}
         headingId={headingId}
         badge={badge}
         current={status?.currentVersion}
         target={targetVersion}
+        checkedAt={!comparisonSuperseded ? dataUpdatedAt : null}
       />
       {alerts}
       {/*
@@ -810,13 +819,6 @@ export function CoreUpdateCheck({
         above replaces every derived state claim. */}
       {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
       {technicalDisclosure}
-      {showReleaseNotes && targetVersion && (
-        <ReleaseNotes
-          key={targetVersion}
-          version={targetVersion}
-          active={active}
-        />
-      )}
       {showStageApply && serverUpdateState ? (
         <ServerUpdateStageApply
           key={connectionScope}
@@ -837,24 +839,27 @@ export function CoreUpdateCheck({
           }}
         />
       ) : (
-        <div className="settings__update-row">
-          {canApply && !stagedFlow && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                setConfirmApplyScope(scopeKey ?? 'unscoped');
-              }}
-              disabled={updateMutation.isPending || restarting}
-            >
-              {restarting || updateMutation.isPending
-                ? 'Updating…'
-                : canApplyServiceUpdate
-                  ? 'Update server'
-                  : 'Update server checkout'}
-            </Button>
-          )}
-          {checkButton}
-        </div>
+        <ActionRow
+          overflowLabel="More server update actions"
+          secondary={checkButton}
+          primary={
+            canApply && !stagedFlow ? (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmApplyScope(scopeKey ?? 'unscoped');
+                }}
+                disabled={updateMutation.isPending || restarting}
+              >
+                {restarting || updateMutation.isPending
+                  ? 'Updating…'
+                  : canApplyServiceUpdate
+                    ? 'Update server'
+                    : 'Update server checkout'}
+              </Button>
+            ) : undefined
+          }
+        />
       )}
       {active &&
         confirmApplyScope === (scopeKey ?? 'unscoped') &&
@@ -873,6 +878,25 @@ export function CoreUpdateCheck({
             }}
           />
         )}
+      {hasStagedUpdateCapability && downloadPolicy}
+      {showReleaseNotes &&
+        status?.currentVersion &&
+        identityMatches &&
+        !comparisonSuperseded && (
+          <ReleaseNotes
+            title={`Installed server ${status.currentVersion}`}
+            key={`installed-${status.currentVersion}`}
+            version={status.currentVersion}
+            active={active}
+          />
+        )}
+      {showReleaseNotes && targetVersion && (
+        <ReleaseNotes
+          key={targetVersion}
+          version={targetVersion}
+          active={active}
+        />
+      )}
       <details className="settings__update-technical server-update__details">
         <summary>Details</summary>
         {details}
@@ -890,7 +914,9 @@ export function CoreUpdateCheck({
         {progressHistory && serviceProgressLine && (
           <p className="settings__field-hint">{serviceProgressLine.text}</p>
         )}
-        <p className="settings__field-hint">{methodHint}</p>
+        {!manifestUnavailable && (
+          <p className="settings__field-hint">{methodHint}</p>
+        )}
       </details>
     </div>
   );

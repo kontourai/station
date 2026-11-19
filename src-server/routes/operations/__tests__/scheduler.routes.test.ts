@@ -345,6 +345,27 @@ describe('Scheduler Routes', () => {
     expect(body.data[0]).toHaveProperty('status');
   });
 
+  test.each([
+    ['is not a number', 'count=abc', 5, 20],
+    ['is negative', 'count=-3', 0, 1],
+    ['is larger than the route serves', 'count=999999', 1000, 1000],
+  ])(
+    'a count that %s reaches the scheduler as a bounded integer',
+    async (_label, query, previewCount, logCount) => {
+      const { app, svc } = setup();
+
+      await app.request(`/jobs/preview-schedule?cron=0+8+*+*+1-5&${query}`);
+      expect(svc.previewSchedule).toHaveBeenCalledWith(
+        '0 8 * * 1-5',
+        previewCount,
+        undefined,
+      );
+
+      await app.request(`/jobs/daily-report/logs?${query}`);
+      expect(svc.getJobLogs).toHaveBeenCalledWith('daily-report', logCount);
+    },
+  );
+
   test('POST /jobs creates a job and returns { success, data }', async () => {
     const { app, svc } = setup();
     const body = await json(
@@ -406,7 +427,11 @@ describe('Scheduler Routes', () => {
       body: JSON.stringify({ schedule }),
     });
     expect(response.status).toBe(200);
-    expect(svc.editJob).toHaveBeenCalledWith('daily-report', { schedule });
+    expect(svc.editJob).toHaveBeenCalledWith(
+      'daily-report',
+      { schedule },
+      mockJob,
+    );
   });
 
   test('POST /jobs/:target/run preserves an indeterminate manual receipt instead of reporting success', async () => {
@@ -523,6 +548,7 @@ describe('Scheduler Routes', () => {
     expect(svc.editJob).toHaveBeenCalledWith(
       'daily-report',
       expect.any(Object),
+      mockJob,
     );
   });
 
@@ -533,7 +559,7 @@ describe('Scheduler Routes', () => {
     );
     expect(body.success).toBe(true);
     expect(body.data).toEqual({ output: 'Scheduler job completed.' });
-    expect(svc.runJob).toHaveBeenCalledWith('daily-report');
+    expect(svc.runJob).toHaveBeenCalledWith('daily-report', mockJob);
   });
 
   test('POST /jobs/:target/run adds a receipt without changing the legacy output field', async () => {
@@ -590,7 +616,7 @@ describe('Scheduler Routes', () => {
       await app.request('/jobs/daily-report/enable', { method: 'PUT' }),
     );
     expect(body).toEqual({ success: true });
-    expect(svc.enableJob).toHaveBeenCalledWith('daily-report');
+    expect(svc.enableJob).toHaveBeenCalledWith('daily-report', mockJob);
   });
 
   test('PUT /jobs/:target/disable returns { success: true }', async () => {
@@ -599,7 +625,7 @@ describe('Scheduler Routes', () => {
       await app.request('/jobs/daily-report/disable', { method: 'PUT' }),
     );
     expect(body).toEqual({ success: true });
-    expect(svc.disableJob).toHaveBeenCalledWith('daily-report');
+    expect(svc.disableJob).toHaveBeenCalledWith('daily-report', mockJob);
   });
 
   test('DELETE /jobs/:target returns { success: true }', async () => {
@@ -608,7 +634,7 @@ describe('Scheduler Routes', () => {
       await app.request('/jobs/daily-report', { method: 'DELETE' }),
     );
     expect(body).toEqual({ success: true });
-    expect(svc.removeJob).toHaveBeenCalledWith('daily-report');
+    expect(svc.removeJob).toHaveBeenCalledWith('daily-report', mockJob);
   });
 
   /**
@@ -645,5 +671,47 @@ describe('Scheduler Routes', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// #2377 slice D (owner decision 2026-11-16): an untargeted job records the
+// owner the creating request resolves to, so its runs act as that person.
+describe('untargeted job owner', () => {
+  test('POST /jobs records the requester as the untargeted job owner', async () => {
+    const svc = createMockService();
+    const jobOwner = vi.fn().mockReturnValue({ userId: 'human:local:someone' });
+    const app = createSchedulerRoutes(svc as any, logger as any, {
+      jobOwner,
+    });
+    const response = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'nightly',
+        cron: '0 9 * * *',
+        prompt: 'tidy',
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(jobOwner).toHaveBeenCalledOnce();
+    expect(svc.addJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'nightly',
+        createdBy: { userId: 'human:local:someone' },
+      }),
+    );
+  });
+
+  test('an unresolved requester records no owner', async () => {
+    const svc = createMockService();
+    const app = createSchedulerRoutes(svc as any, logger as any, {
+      jobOwner: () => undefined,
+    });
+    await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'n', cron: '0 9 * * *', prompt: 'p' }),
+    });
+    expect(svc.addJob.mock.calls[0]?.[0]).not.toHaveProperty('createdBy');
   });
 });

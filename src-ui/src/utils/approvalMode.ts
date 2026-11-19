@@ -111,9 +111,14 @@ export const APPROVAL_MODE_OPTIONS: Array<{
   },
   {
     value: 'never',
-    label: 'Never ask (full access)',
+    // One name everywhere: the chip, this list and Settings say "Full access";
+    // "Never ask (full access)" here beside "Full access" on the chip read as
+    // two modes. The narrower-mode caveat stays (a start with no full-access
+    // grant really is lowered), and the sheet's "In effect" line says which
+    // mode the engine reports, so the reader is not left to guess.
+    label: 'Full access',
     description:
-      'Turns off approval prompts where the engine allows it. Without a full-access grant, Station applies a narrower setting, so some actions may still ask.',
+      'No approval prompts where the engine allows it. A start without full-access permission gets a narrower mode.',
   },
 ];
 
@@ -648,4 +653,28 @@ export function withoutLegacyApprovalMode(
   if (!bag || !('approvalMode' in bag)) return bag;
   const { approvalMode: _dropped, ...rest } = bag;
   return rest;
+}
+
+/** Risk and neutral conversation changes stay distinct on the setup trigger. */
+export function approvalChoiceIndicators({
+  mode,
+  override,
+  refused = false,
+  pending = false,
+}: {
+  mode: ApprovalMode;
+  override: boolean;
+  refused?: boolean;
+  pending?: boolean;
+}) {
+  return {
+    safetyLabel:
+      [
+        mode === 'never' ? 'Full access' : '',
+        refused ? 'Approval refused' : pending ? 'Approval pending' : '',
+      ]
+        .filter(Boolean)
+        .join('; ') || undefined,
+    changedForConversation: override,
+  };
 }

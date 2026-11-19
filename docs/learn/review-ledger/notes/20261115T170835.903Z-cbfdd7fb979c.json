@@ -1,0 +1,7 @@
+{
+  "revision": "75118037bf6de0a99606da1a97921802d58eb9c6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Run setup: model-only label with requested effort after the model (only when the model reports that level), and the panel repeats the safety mark on the choice that raised it. Matches ComposerRunControl, ComposerChoice, StartComposer, ChatInputArea and modelCapabilities.requestedEffortLabel.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/ComposerChoice.css","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/utils/modelCapabilities.ts"]}
+  ]
+}

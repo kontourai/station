@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { formatDateTime } from '../../utils/relativeTime';
 import './TaskWriteBackSection.css';
 
 const stateLabels = {
@@ -15,11 +16,6 @@ const stateLabels = {
 
 function attemptAnchor(ordinal: number) {
   return `task-write-back-attempt-${ordinal}`;
-}
-
-function formatTime(value: string) {
-  const time = new Date(value);
-  return Number.isNaN(time.getTime()) ? value : time.toLocaleString();
 }
 
 function WriteBackEntries({
@@ -43,7 +39,7 @@ function WriteBackEntries({
               <strong>Attempt {entry.ordinal}</strong>
               <Badge value={state.label} tone={state.tone} />
               <time dateTime={entry.attemptedAt}>
-                {formatTime(entry.attemptedAt)}
+                {formatDateTime(entry.attemptedAt, entry.attemptedAt)}
               </time>
             </div>
             <p>

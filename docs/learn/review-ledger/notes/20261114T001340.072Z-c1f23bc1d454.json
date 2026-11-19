@@ -1,0 +1,7 @@
+{
+  "revision": "caba0d9037cd3058dd7c8665384ecbf797ce3642",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Updated for the main-push dedupe: PR: CI main pushes skip the heavy lane only on a proven merge-group verdict for the exact SHA and base (scripts/ci-merge-group-verdict.mjs, fail-open); PR: Docs kit no longer runs on push; PR: Secret scan keeps its push trigger. Inventory rows and prose checked against ci.yml, docs-kit.yml and secret-scan.yml.","inputs":["docs/guides/documentation.md",".github/workflows/docs-kit.yml"]}
+  ]
+}

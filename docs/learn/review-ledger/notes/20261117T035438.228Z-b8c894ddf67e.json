@@ -1,0 +1,7 @@
+{
+  "revision": "addca25a1d54ffbf217f41e0caed3b7ddbff52f1",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Source verification policy remains the required context; proof selection now keeps a verified head against cheap-only and undecided arming runs.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs","scripts/source-verification-policy.mjs"]}
+  ]
+}

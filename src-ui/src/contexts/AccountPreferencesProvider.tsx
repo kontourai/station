@@ -99,7 +99,8 @@ export function AccountPreferencesProvider({
         write.patch,
         {
           requestScope: write.scope,
-          ...(write.revision
+          ...(write.revision &&
+          Object.hasOwn(write.patch, 'modelPickerPreferences')
             ? { headers: { 'If-Match': write.revision } }
             : {}),
         },

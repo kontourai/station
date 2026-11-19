@@ -9,11 +9,13 @@ import type { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionMo
 import type { useStartSelection } from '../../hooks/useStartSelection';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentFixRoute } from '../AgentReadinessCell';
+import { LazyBoundary } from '../LazyBoundary';
 import {
   GLOBAL_CONTEXT,
   resolveNewChatAgentEnable,
   resolveNewChatWorkspaceHint,
 } from '../modals/new-chat-modal-utils';
+import { SkeletonBlock } from '../state';
 import {
   StartAgentMenu,
   StartModelPicker,
@@ -21,8 +23,13 @@ import {
   StartStationMenu,
 } from './StartMenus';
 
+const loadNewProjectModal = () =>
+  import('../modals/NewProjectModal').then(({ NewProjectModal }) => ({
+    default: NewProjectModal,
+  }));
+
 export type StartPickerMenu = {
-  kind: 'agents' | 'project' | 'model' | 'station';
+  kind: 'agents' | 'project' | 'create-project' | 'model' | 'station';
   trigger: HTMLElement | null;
   agentSlug?: string;
 };
@@ -42,6 +49,7 @@ export function StartPickerMenus({
   enablePending,
   interactionDisabled,
   onChooseProject,
+  canCreateProject = true,
   projectOverride,
   icons,
   accents,
@@ -60,6 +68,7 @@ export function StartPickerMenus({
   enablePending: boolean;
   interactionDisabled?: boolean;
   onChooseProject: (context: string) => void;
+  canCreateProject?: boolean;
   projectOverride?: {
     options: ComponentProps<typeof StartProjectMenu>['options'];
     context: string;
@@ -90,6 +99,20 @@ export function StartPickerMenus({
     onSearch('');
     setMenu(null);
   };
+  if (menu.kind === 'create-project') {
+    return (
+      <LazyBoundary
+        load={loadNewProjectModal}
+        pending={<SkeletonBlock label="Loading Project setup" />}
+        componentProps={{
+          isOpen: true,
+          onClose: close,
+          onCreated: onChooseProject,
+          returnFocusTarget: menu.trigger,
+        }}
+      />
+    );
+  }
   if (menu.kind === 'agents')
     return (
       <StartAgentMenu
@@ -153,6 +176,11 @@ export function StartPickerMenus({
             project: undefined,
             acpConnections,
           })
+        }
+        onCreate={
+          !canCreateProject || projectOverride || interactionDisabled
+            ? undefined
+            : () => setMenu({ ...menu, kind: 'create-project' })
         }
         icons={projectOverride?.icons ?? icons}
         accents={projectOverride?.accents ?? accents}
@@ -234,6 +262,7 @@ function StationMenu({
   const { stations, stationsUnavailable, retryStations } = useExecutionStations(
     {
       projectSelected,
+      watchReadiness: true,
     },
   );
   return (

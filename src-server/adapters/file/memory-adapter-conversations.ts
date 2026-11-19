@@ -209,10 +209,15 @@ export function createMemoryConversationStore(options: {
     }
   }
 
-  async function updateConversation(
+  /**
+   * The queued read-compute-write shared by `updateConversation` and
+   * `touchConversation`. Resolves `null` when the conversation does not
+   * exist; each caller decides what that means.
+   */
+  async function updateExistingConversation(
     conversationId: string,
     updater: (current: Conversation) => Partial<Conversation> | null,
-  ): Promise<Conversation> {
+  ): Promise<Conversation | null> {
     // archive#1566 review HIGH: the read (`loadConversationFromDisk`) and the
     // `updater` decision both run INSIDE this queued turn, chained onto the
     // same per-conversation predecessor `persistConversation` uses — so a
@@ -222,12 +227,14 @@ export function createMemoryConversationStore(options: {
     // time `current` is read here. There is no window between "decide" and
     // "write" for a third party to land an update this call never sees.
     const predecessor = conversationPersistence.get(conversationId);
-    const operation: Promise<Conversation> = (predecessor ?? Promise.resolve())
+    const operation: Promise<Conversation | null> = (
+      predecessor ?? Promise.resolve()
+    )
       .catch(() => undefined)
       .then(async () => {
         const current = await loadConversationFromDisk(conversationId);
         if (!current) {
-          throw new Error(`Conversation ${conversationId} not found`);
+          return null;
         }
 
         // The updater gets a defensive copy, never the live cache entry: an
@@ -268,14 +275,26 @@ export function createMemoryConversationStore(options: {
     }
   }
 
-  async function touchConversation(conversationId: string): Promise<void> {
-    const conversation = await loadConversationFromDisk(conversationId);
-    if (!conversation) return;
+  async function updateConversation(
+    conversationId: string,
+    updater: (current: Conversation) => Partial<Conversation> | null,
+  ): Promise<Conversation> {
+    const updated = await updateExistingConversation(conversationId, updater);
+    if (!updated) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+    return updated;
+  }
 
-    await persistConversation({
-      ...conversation,
-      updatedAt: new Date().toISOString(),
-    });
+  async function touchConversation(conversationId: string): Promise<void> {
+    // Runs on every message add and delete, so it overlaps title and metadata
+    // updates routinely. It used to read the cached document OUTSIDE the
+    // queue and then persist that whole snapshot, which reverted an
+    // `updateConversation` still mid-publish (the cache is refreshed only
+    // after the publish). An empty patch through the queued updater bumps
+    // `updatedAt` on whatever the latest committed document is. A missing
+    // conversation stays a no-op.
+    await updateExistingConversation(conversationId, () => ({}));
   }
 
   function extractAgentSlug(userId?: string): string | null {

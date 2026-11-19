@@ -56,7 +56,7 @@ import {
  * width (the 116px `min-width`) and the tests pin every label-bearing state
  * to one trailing-control position. On a phone the healthy chip keeps a short
  * "Station" label while the banner layer announces states that need a
- * decision. It reserves that label's width in every state so connection
+ * decision. The same Station name fits its text in every state so connection
  * changes cannot move neighboring controls.
  */
 
@@ -354,7 +354,12 @@ describe.skipIf(!chromiumAvailable)(
             const compactLabel = document.querySelector<HTMLElement>(
               '.app-toolbar__conn-label',
             );
+            if (!compactLabel) throw new Error('Station name not found');
+            const nameRange = document.createRange();
+            nameRange.selectNodeContents(compactLabel);
             return {
+              nameWidth: compactLabel.getBoundingClientRect().width,
+              nameTextWidth: nameRange.getBoundingClientRect().width,
               content:
                 Math.max(...boxes.map((box) => box.right)) -
                 Math.min(...boxes.map((box) => box.left)),
@@ -362,7 +367,7 @@ describe.skipIf(!chromiumAvailable)(
               // Laid out, not merely present: `display: none` is exactly what
               // this test is about, and a hidden span has no boxes.
               labelBoxes: label?.getClientRects().length ?? 0,
-              compactLabelBoxes: compactLabel?.getClientRects().length ?? 0,
+              compactLabelBoxes: compactLabel.getClientRects().length,
               noticeBoxes:
                 chip
                   .querySelector('.app-toolbar__conn-notice')
@@ -386,6 +391,7 @@ describe.skipIf(!chromiumAvailable)(
             measured.compactLabelBoxes,
             `the ${state} phone chip must show its Station name`,
           ).toBeGreaterThanOrEqual(1);
+          expect(measured.nameWidth).toBeCloseTo(measured.nameTextWidth, 0);
           expect(
             measured.accessibleName,
             `the ${state} chip must keep its words in the accessible name`,
@@ -709,7 +715,7 @@ describe.skipIf(!chromiumAvailable)(
      * label below the width the row can hold (375px keeps it, 374px drops
      * it). On a phone the Station name label shows in every state; error
      * remedy text stays in the accessible name and banner, and the fixed
-     * name slot holds the same mobile toolbar geometry. A
+     * name holds the same mobile toolbar geometry. A
      * screen reader reads the same sentence whatever the viewport, because
      * the name is the button's `aria-label` and never this span's text.
      *
@@ -842,7 +848,7 @@ describe.skipIf(!chromiumAvailable)(
     });
 
     // The old #1401 dot-only chip budget retired with its behavior; the
-    // fixed label width and 44px target are now measured above.
+    // fitted label width and 44px target are now measured above.
   },
 );
 

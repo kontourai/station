@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const resolveOpen = vi.fn();
@@ -14,6 +14,7 @@ vi.mock('../components/chat-dock/conversationOpenController', () => ({
 }));
 
 import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
+import { activeChatsStore } from '../contexts/active-chats-store';
 
 describe('#749 persisted conversation revalidation', () => {
   beforeEach(() => {
@@ -72,5 +73,84 @@ describe('#749 persisted conversation revalidation', () => {
         orchestrationSessionStarted: false,
       }),
     );
+  });
+
+  test('an open that lands while models load binds once and reconciles the saved model without re-reading', async () => {
+    activeChatsStore.initChat('model-tab', {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Saved model',
+    });
+    activeChatsStore.updateChat('model-tab', {
+      conversationId: 'model-conversation',
+      requestedModel: 'saved-model',
+    });
+    resolveOpen.mockResolvedValue({ status: 'resolved' });
+    // The real patch keeps a choice pending exactly when its catalog is unknown.
+    openPatch.mockImplementation(
+      (
+        _resolution: unknown,
+        _previous: unknown,
+        choice: { validModelIds?: string[] },
+      ) => ({
+        conversationOpenPending: choice.validModelIds === undefined,
+        currentSessionId: 'model-child',
+      }),
+    );
+    const updateChat = vi.fn();
+    const props = {
+      sessionId: 'model-tab',
+      conversationId: 'model-conversation',
+      apiBase: 'http://127.0.0.1:43210',
+      updateChat,
+      canModelSelect: true,
+    };
+    const view = render(
+      <ConversationOpenRevalidator
+        {...props}
+        modelsLoading
+        availableModels={[]}
+      />,
+    );
+    // The child binds as soon as `/open` lands; only the choice stays pending.
+    await waitFor(() =>
+      expect(updateChat).toHaveBeenCalledWith('model-tab', {
+        conversationOpenPending: true,
+        currentSessionId: 'model-child',
+      }),
+    );
+    // A catalog that changes identity while still loading is not a new open.
+    view.rerender(
+      <ConversationOpenRevalidator
+        {...props}
+        modelsLoading
+        availableModels={[]}
+      />,
+    );
+    const models = [{ id: 'saved-model', name: 'Saved' }] as never[];
+    await act(async () => {
+      view.rerender(
+        <ConversationOpenRevalidator
+          {...props}
+          modelsLoading={false}
+          availableModels={models}
+        />,
+      );
+    });
+    await waitFor(() =>
+      expect(updateChat).toHaveBeenLastCalledWith('model-tab', {
+        conversationOpenPending: false,
+        currentSessionId: 'model-child',
+      }),
+    );
+    expect(openPatch).toHaveBeenLastCalledWith(
+      { status: 'resolved' },
+      expect.anything(),
+      expect.objectContaining({ validModelIds: ['saved-model'] }),
+    );
+    expect(updateChat).toHaveBeenCalledTimes(2);
+    expect(resolveOpen).toHaveBeenCalledTimes(1);
+    view.unmount();
+    activeChatsStore.removeChat('model-tab');
   });
 });

@@ -1,0 +1,74 @@
+/* Station's own review of the pull request's newest head, under the Agent
+   feedback strip. A quiet block: label and badge, one line, the findings,
+   then its actions. Everything wraps: the panel is narrow at every width. */
+.pr-head-review {
+  flex: none;
+  display: grid;
+  gap: var(--k-space-2);
+  min-width: 0;
+  padding-block: var(--k-space-2) var(--k-space-3);
+  border-block: var(--k-border-thin) solid var(--k-line);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.pr-head-review__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  min-width: 0;
+}
+.pr-head-review__label {
+  color: var(--k-text);
+  font-weight: 500;
+}
+.pr-head-review__line {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.pr-head-review__line time {
+  color: var(--k-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.pr-head-review__findings {
+  display: grid;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pr-head-review__finding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--k-space-2);
+  min-width: 0;
+}
+.pr-head-review__where {
+  /* One line: a path never breaks mid-name; a long one already reads
+     "…/file.ts:88", and anything longer still ellipsizes. */
+  flex: 1 0 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-text);
+}
+.pr-head-review__finding[data-required="true"] .pr-head-review__severity {
+  color: var(--k-text);
+  font-weight: 500;
+}
+.pr-head-review__summary {
+  flex: 1 1 16ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pr-head-review__error {
+  margin: 0;
+  color: var(--k-negative);
+}
+/* An earlier push's review, kept while the newest head waits. */
+.pr-head-review__earlier {
+  display: grid;
+  gap: var(--k-space-1);
+}

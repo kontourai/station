@@ -1,3 +1,4 @@
+import type { ConfinementPreflight } from '@kontourai/station-contracts/execution-confinement';
 import { TROUBLESHOOT_SURFACES } from '@kontourai/station-contracts/troubleshoot';
 import {
   MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
@@ -44,6 +45,11 @@ export function createDiagnosticsRoutes(
     agentGrant?: (sessionId: string) => boolean;
     /** #4470: absent leaves the troubleshoot prepare route unmounted. */
     troubleshoot?: TroubleshootService;
+    /**
+     * #4774: this host's confinement facts before any start. Absent leaves
+     * the confinement preflight route unmounted.
+     */
+    confinementPreflight?: () => Promise<ConfinementPreflight>;
   },
 ) {
   const app = new Hono();
@@ -63,6 +69,24 @@ export function createDiagnosticsRoutes(
       return c.json({ error: errorMessage(error) }, 500);
     }
   });
+
+  // #4774: what `station doctor` reports about confinement. Content-free:
+  // states and the providers' own reasons with paths removed, never an
+  // environment value, a path or a credential. It takes no input.
+  const confinementPreflight = access?.confinementPreflight;
+  if (confinementPreflight) {
+    app.get('/confinement-preflight', async (c) => {
+      try {
+        return c.json(await confinementPreflight());
+      } catch (error) {
+        logger.error('Failed to read the confinement preflight', { error });
+        return c.json(
+          { error: 'The confinement preflight could not be read.' },
+          500,
+        );
+      }
+    });
+  }
 
   // #4470: prepare an in-app troubleshooting conversation. People only: an
   // agent (including Station's internal principal) may not start one, since

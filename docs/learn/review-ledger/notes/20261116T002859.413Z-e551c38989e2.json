@@ -1,0 +1,7 @@
+{
+  "revision": "099b151a3bbd1b66a0b9ef4d70c236dfc06be0cd",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Whitespace-only change: removed the trailing blank line at EOF that failed the diff-whitespace gate. No claim, prose, or cited source changed; the previously recorded review of this page still holds.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}

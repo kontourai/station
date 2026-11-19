@@ -1,0 +1,7 @@
+{
+  "revision": "77ed9afe6f8a3fbfb2959a0b2156731bb096be84",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"nightly-native-cohort.yml delta (#3593): one new promote-macos step after the macos_provider_state claim step, report-only unless vars.STATION_NIGHTLY_DESKTOP_PRUNE == enabled, continue-on-error; it deletes old versioned nightly-desktop downloads and changes no publication, claim or job output. Searched this guide for nightly cohort, desktop release and publication claims: it covers Android/iOS channel delivery, icons, Live Activity; none depends on nightly-desktop assets or the new step. No prose change needed.","inputs":["docs/guides/mobile-release.md",".github/workflows/nightly-native-cohort.yml"]}
+  ]
+}

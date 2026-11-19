@@ -19,8 +19,10 @@ import {
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { ReturnGlyph } from '../icons/Glyph';
+import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import { type HomeRowContext, renderHomeWorkRow } from './HomeWorkRow';
@@ -66,10 +68,10 @@ interface HomeRecentWorkSectionProps {
   workDegraded: boolean;
   workError: boolean;
   agents: readonly SessionIconAgent[];
+  remoteReadError?: { description?: string; retry?: () => void };
   remoteUnavailable: { environmentName: string }[];
   remoteAuthenticationRequired: { environmentName: string }[];
   onOpen: (task: HomeWorkItem) => void;
-  onViewActivity: () => void;
   onRetry: () => void;
 }
 
@@ -149,19 +151,26 @@ export function HomeRecentWorkSection(props: HomeRecentWorkSectionProps) {
     >
       <div className="home-view__section-heading">
         <h2 id="recent-work-heading">Recent work</h2>
-        {/* A quiet link, not a bordered button (B6): it goes somewhere. */}
-        <button
-          type="button"
-          className="home-view__link"
-          onClick={props.onViewActivity}
-        >
-          View Activity
-        </button>
       </div>
+      {props.remoteReadError && (
+        <ErrorState
+          variant="compact"
+          title="Remote work unavailable"
+          description={props.remoteReadError.description}
+          action={
+            props.remoteReadError.retry && (
+              <Button variant="secondary" onClick={props.remoteReadError.retry}>
+                Retry remote work
+              </Button>
+            )
+          }
+        />
+      )}
       <RemoteUnavailableNote environments={props.remoteUnavailable} />
       <RemoteAuthenticationRequiredNote
         environments={props.remoteAuthenticationRequired}
       />
+      <ReadStatusNote items={props.workItems} />
       <HomeWorkContent {...props} controller={controller} />
     </section>
   );
@@ -207,10 +216,12 @@ function HomeWorkContent({
   workLoading,
   workDegraded,
   workError,
+  remoteReadError,
+  remoteUnavailable,
+  remoteAuthenticationRequired,
   workFacts,
   agents,
   onOpen,
-  onViewActivity,
   onRetry,
   controller,
 }: HomeRecentWorkSectionProps & { controller: HomeWorkController }) {
@@ -230,33 +241,37 @@ function HomeWorkContent({
     return <RecentWorkDegraded onRetry={onRetry} />;
   }
   if (workError && workItems.length === 0) {
-    return <RecentWorkError onViewActivity={onViewActivity} />;
+    return <RecentWorkError onRetry={onRetry} />;
   }
-  if (workItems.length === 0) return <RecentWorkEmpty />;
+  if (workItems.length === 0) {
+    const remoteIncomplete =
+      remoteReadError ||
+      remoteUnavailable.length > 0 ||
+      remoteAuthenticationRequired.length > 0;
+    return remoteIncomplete ? null : <RecentWorkEmpty />;
+  }
   return (
-    <>
-      <HomeWorkLanesContent
-        controller={controller}
-        agents={agents}
-        // The lanes' own clock (it already ticks), never a `Date.now()` per
-        // row render.
-        context={{
-          now: controller.lanes.now,
-          workFacts,
-          childrenById: controller.lanes.childrenById,
-          isWoken: controller.lanes.isWoken,
-          expandedFamilies: controller.expandedFamilies,
-          setExpandedFamilies: controller.setExpandedFamilies,
-          detailsFor: controller.detailsFor,
-          setDetailsFor: controller.setDetailsFor,
-          chrome: coarsePointer ? 'touch' : 'hover',
-          gitLocationByThreadId,
-          projectAccentBySlug,
-          projectIconBySlug,
-        }}
-        onOpen={onOpen}
-      />
-    </>
+    <HomeWorkLanesContent
+      controller={controller}
+      agents={agents}
+      // The lanes' own clock (it already ticks), never a `Date.now()` per
+      // row render.
+      context={{
+        now: controller.lanes.now,
+        workFacts,
+        childrenById: controller.lanes.childrenById,
+        isWoken: controller.lanes.isWoken,
+        expandedFamilies: controller.expandedFamilies,
+        setExpandedFamilies: controller.setExpandedFamilies,
+        detailsFor: controller.detailsFor,
+        setDetailsFor: controller.setDetailsFor,
+        chrome: coarsePointer ? 'touch' : 'hover',
+        gitLocationByThreadId,
+        projectAccentBySlug,
+        projectIconBySlug,
+      }}
+      onOpen={onOpen}
+    />
   );
 }
 
@@ -275,15 +290,15 @@ function RecentWorkDegraded({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function RecentWorkError({ onViewActivity }: { onViewActivity: () => void }) {
+function RecentWorkError({ onRetry }: { onRetry: () => void }) {
   return (
     <ErrorState
       variant="compact"
       title="Recent work unavailable"
-      description="Station could not load recent work. Open Activity to retry."
+      description="Station could not load recent work."
       action={
-        <button type="button" onClick={onViewActivity}>
-          Open Activity
+        <button type="button" onClick={onRetry}>
+          Retry
         </button>
       }
     />

@@ -32,6 +32,7 @@ import {
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
 import { chooseChatRegionRow } from './helpers/region-placement';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
@@ -770,6 +771,7 @@ async function sendDraft(
   { dialog, draft }: Awaited<ReturnType<typeof openNewChatDraft>>,
   message: string,
 ) {
+  await closeRunSetup(draft);
   await draft
     .getByRole('textbox', { name: 'What would you like done?', exact: true })
     .fill(message);
@@ -782,11 +784,15 @@ async function sendDraft(
  * the Agent chip's list, then that Agent row's Model control.
  */
 async function openComposerModelPicker(page: Page, composer: Locator) {
-  await composer.getByRole('button', { name: /^Agent: / }).click();
+  await (
+    await runSetupControl(composer, (panel) =>
+      panel.getByRole('button', { name: /^Agent: / }),
+    )
+  ).click();
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
   await expect(agents).toBeVisible();
   await agents
-    .getByRole('button', { name: /^Model: / })
+    .getByRole('button', { name: /^(?:Model:|Engine & model:) / })
     .first()
     .click();
   const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
@@ -965,14 +971,20 @@ async function expectStartedChatRuns(
     chat.getByRole('log', { name: 'Conversation transcript' }),
   ).toContainText(prompt);
   await expect(
-    chat.getByRole('button', {
-      name: new RegExp(`^Agent: ${literal(agent)}(?:\\.|$)`),
-    }),
+    await runSetupControl(chat, (panel) =>
+      panel.getByRole('button', {
+        name: new RegExp(`^Agent: ${literal(agent)}(?:\\.|$)`),
+      }),
+    ),
   ).toBeVisible();
   await expect(
-    chat.getByRole('button', {
-      name: new RegExp(`^Model: (?:.+ — )?${literal(model)}(?: \\(|$)`),
-    }),
+    await runSetupControl(chat, (panel) =>
+      panel.getByRole('button', {
+        name: new RegExp(
+          `^(?:Model:|Engine & model:).*${literal(model)}(?: \\(|$)`,
+        ),
+      }),
+    ),
   ).toBeVisible();
 }
 
@@ -990,10 +1002,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const form = page.getByRole('form', { name: 'Start work' });
     await expect(form).toHaveClass(/start-composer--compact/);
     const start = form.getByRole('button', { name: 'Start', exact: true });
-    const advertised = form.getByRole('button', {
-      name: 'Agent: Codex · gpt-5.3-codex',
-      exact: true,
-    });
+    const advertised = await runSetupControl(form, (panel) =>
+      panel.getByRole('button', {
+        name: 'Agent: Codex · gpt-5.3-codex',
+        exact: true,
+      }),
+    );
     await expect(advertised).toBeVisible();
     // The composer is Home's only start: no second "New chat" beside it.
     await expect(
@@ -1004,6 +1018,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     )
       .replace(/^Agent: /, '')
       .split(' · ');
+    await closeRunSetup(page);
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
@@ -1064,11 +1079,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
       }),
     ).toBeVisible();
     await expect(
-      form.getByRole('button', {
-        name: 'Agent: Codex · GPT 5.4',
-        exact: true,
-      }),
+      await runSetupControl(form, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · GPT 5.4',
+          exact: true,
+        }),
+      ),
     ).toBeVisible();
+    await closeRunSetup(page);
     await page
       .getByRole('textbox', { name: 'What would you like done?' })
       .fill(prompt);
@@ -1188,10 +1206,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // The draft's Agent chip names the Agent and Model; the provider is read
     // in the picker's selection and, after Start, on the dock's qualified
     // chip. The picker is the Agent list's Model control for that Agent.
-    const agentChip = draft.getByRole('button', {
-      name: 'Agent: Station Agent · Shared model',
-      exact: true,
-    });
+    const agentChip = await runSetupControl(draft, (panel) =>
+      panel.getByRole('button', {
+        name: 'Agent: Station Agent · Shared model',
+        exact: true,
+      }),
+    );
     await expect(agentChip).toBeVisible();
     const openPicker = async () => {
       const picker = await openComposerModelPicker(page, draft);
@@ -1212,11 +1232,15 @@ test.describe('Task-first Home (#332, mocked)', () => {
     const expectPickerClosed = async (picker: Locator) => {
       await expect(picker).toHaveCount(0);
       await expect(
-        draft.getByRole('button', { name: /^Agent: / }),
+        await runSetupControl(draft, (panel) =>
+          panel.getByRole('button', { name: /^Agent: / }),
+        ),
       ).toBeFocused();
     };
     const bedrockOption = (picker: Locator) =>
-      picker.getByRole('option', { name: /Bedrock · Prod · shared-model/ });
+      picker.getByRole('button', {
+        name: /^Shared model Station · Bedrock · Prod\b/,
+      });
 
     const picker = await openPicker();
     // The draft offers only providers this Agent can use; the provider the
@@ -1225,7 +1249,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       picker.getByRole('button', { name: 'LiteLLM · Local' }),
     ).toHaveCount(0);
     await expect(bedrockOption(picker)).toHaveAttribute(
-      'aria-selected',
+      'aria-current',
       'false',
     );
     await bedrockOption(picker).click();
@@ -1233,10 +1257,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     expect(commands).toEqual([]);
 
     const chosen = await openPicker();
-    await expect(bedrockOption(chosen)).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(bedrockOption(chosen)).toHaveAttribute('aria-current', 'true');
     // The reset names the default it restores, never the choice it clears
     // ("Use session override"): here, the Agent's default.
     await chosen
@@ -1246,7 +1267,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
     const cleared = await openPicker();
     await expect(bedrockOption(cleared)).toHaveAttribute(
-      'aria-selected',
+      'aria-current',
       'false',
     );
     await bedrockOption(cleared).click();
@@ -1275,9 +1296,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       },
     });
     await expect(
-      page.getByRole('button', {
-        name: /Model: Bedrock · Prod — Shared model/,
-      }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
+        }),
+      ),
     ).toBeVisible();
   });
 
@@ -1290,9 +1313,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await page.goto('/');
     await startProjectTask(page, { settle: true });
 
-    const modelButton = page.getByRole('button', {
-      name: /Model: Codex · Work — Shared model/,
-    });
+    const modelButton = await runSetupControl(page, (panel) =>
+      panel.getByRole('button', {
+        name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
+      }),
+    );
     await modelButton.click();
     const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
     await expect(picker).toBeVisible();
@@ -1301,27 +1326,35 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeDisabled();
     await picker.getByRole('button', { name: 'Bedrock · Prod' }).click();
     await picker
-      .getByRole('option', {
-        name: /Bedrock · Prod · shared-model/,
+      .getByRole('button', {
+        name: /^Shared model Station · Bedrock · Prod\b/,
       })
       .click();
 
     await expect(
-      page.getByRole('button', {
-        name: /Model: Bedrock · Prod — Shared model/,
-      }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
+        }),
+      ),
     ).toBeFocused();
-    await page
-      .getByRole('button', { name: /Model: Bedrock · Prod — Shared model/ })
-      .click();
+    await (
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Bedrock · Prod — Shared model/,
+        }),
+      )
+    ).click();
     await page
       .getByRole('dialog', { name: MODEL_PICKER_NAME })
       .getByRole('button', { name: 'Use agent default' })
       .click();
     await expect(
-      page.getByRole('button', {
-        name: /Model: Codex · Work — Shared model/,
-      }),
+      await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
+        }),
+      ),
     ).toBeVisible();
   });
 
@@ -1356,10 +1389,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // asserted below. Home has no second "New chat" start.
     const homeComposer = page.getByRole('form', { name: 'Start work' });
     await expect(homeComposer).toHaveClass(/start-composer--compact/);
-    const advertised = homeComposer.getByRole('button', {
-      name: 'Agent: Codex · gpt-5.3-codex',
-      exact: true,
-    });
+    const advertised = await runSetupControl(homeComposer, (panel) =>
+      panel.getByRole('button', {
+        name: 'Agent: Codex · gpt-5.3-codex',
+        exact: true,
+      }),
+    );
     await expect(advertised).toBeVisible();
     await expect(page.getByText(/^Using /)).toHaveCount(0);
     await expect(
@@ -1411,10 +1446,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeVisible();
     const { dialog, draft } = await openNewChatDraft(page);
     await expect(
-      draft.getByRole('button', {
-        name: 'Agent: Codex · gpt-5.3-codex',
-        exact: true,
-      }),
+      await runSetupControl(draft, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · gpt-5.3-codex',
+          exact: true,
+        }),
+      ),
     ).toBeVisible();
     await expect(
       draft.getByRole('button', {
@@ -1879,6 +1916,165 @@ test.describe('Task-first Home (#332, mocked)', () => {
       devices['Pixel 7'];
     test.use(pixel7);
 
+    for (const portrait of [
+      { width: 375, height: 667 },
+      { width: 412, height: 915 },
+    ]) {
+      test(`phone chat opens full and restores its snap after rotation at ${portrait.width}px`, async ({
+        page,
+      }, testInfo) => {
+        await page.setViewportSize(portrait);
+        await mockTaskFirstHome(page);
+        const reads: ReadonlyArray<[string, unknown, number?]> = [
+          [
+            '/api/orchestration/agent-schedule/task-first-home',
+            {
+              success: true,
+              data: { wakeUps: [], jobProposals: [], jobs: [] },
+            },
+          ],
+          [
+            '/api/orchestration/conversations/task-first-home/inbox',
+            {
+              success: true,
+              data: { entries: [] },
+            },
+          ],
+          [
+            '/api/orchestration/session-reads/task-first-home/turn-directory',
+            {
+              success: false,
+              code: 'session_not_found',
+              error: 'Session not found',
+            },
+            404,
+          ],
+          [
+            '/api/terminal/runs',
+            {
+              success: true,
+              data: { runs: [] },
+            },
+          ],
+        ];
+        for (const [path, json, status] of reads) {
+          await page.route(
+            (url) => url.pathname === path,
+            (route) => {
+              const request = route.request();
+              if (request.method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              if (
+                path === '/api/terminal/runs' &&
+                new URL(request.url()).searchParams.get('conversationId') !==
+                  'task-first-home'
+              ) {
+                return rejectUnexpectedFixtureRequest(route);
+              }
+              return route.fulfill({ json, status });
+            },
+          );
+        }
+        await page.goto('/');
+        const form = page.getByRole('form', { name: 'Start work' });
+        const prompt = 'Prepare the release summary';
+        await form
+          .getByRole('textbox', { name: 'What would you like done?' })
+          .fill(prompt);
+        await form.getByRole('button', { name: 'Start', exact: true }).click();
+
+        const dock = page.locator('#chat-dock');
+        const transcript = dock.getByRole('log', {
+          name: 'Conversation transcript',
+        });
+        await expect(transcript).toContainText(prompt);
+        await expect(dock).toHaveClass(/is-maximized/);
+        const restore = dock.getByRole('button', { name: 'Restore chat size' });
+        await expect(restore).toBeVisible();
+        const restoreBounds = await restore.boundingBox();
+        expect(restoreBounds?.width ?? 0).toBeGreaterThanOrEqual(
+          MIN_TOUCH_TARGET_PX,
+        );
+        expect(restoreBounds?.height ?? 0).toBeGreaterThanOrEqual(
+          MIN_TOUCH_TARGET_PX,
+        );
+
+        const draft =
+          'Follow up on the checklist.\nKeep these two steps.\nCheck the title.';
+        const composer = dock.getByRole('textbox', {
+          name: 'Message',
+          exact: true,
+        });
+        await composer.fill(draft);
+        await restore.click();
+        await expect(dock).not.toHaveClass(/is-maximized/);
+
+        const geometry = [];
+        for (const viewport of [
+          portrait,
+          { width: 915, height: 412 },
+          { width: 430, height: 932 },
+          { width: 915, height: 412 },
+          { width: 768, height: 1024 },
+          portrait,
+        ]) {
+          await page.setViewportSize(viewport);
+          const expectedHeight =
+            viewport.height <= 540
+              ? viewport.height
+              : Math.round(viewport.height * 0.45);
+          await expect
+            .poll(() =>
+              page.evaluate(() =>
+                localStorage.getItem('station.chatDock.snap'),
+              ),
+            )
+            .toBe('half');
+
+          await expect
+            .poll(async () =>
+              Math.round((await dock.boundingBox())?.height ?? 0),
+            )
+            .toBe(expectedHeight);
+          await expect(composer).toHaveValue(draft);
+          await expect(transcript).toContainText(prompt);
+          const transcriptBox = await transcript.boundingBox();
+          expect(transcriptBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+          const bounds = await dock.boundingBox();
+          expect(bounds?.y ?? -1).toBeGreaterThanOrEqual(0);
+          expect((bounds?.y ?? 0) + (bounds?.height ?? 0)).toBeLessThanOrEqual(
+            viewport.height + 1,
+          );
+          geometry.push({
+            viewport,
+            expectedHeight,
+            transcriptHeight: transcriptBox?.height,
+          });
+        }
+
+        await dock.getByRole('button', { name: 'Full screen chat' }).click();
+        await expect(dock).toHaveClass(/is-maximized/);
+        await expect(composer).toHaveValue(draft);
+        await dock.getByRole('button', { name: 'Toggle menu' }).click();
+        await page
+          .getByRole('navigation', { name: 'Mobile navigation' })
+          .getByRole('button', { name: 'Home', exact: true })
+          .click();
+        await expect(dock).not.toHaveClass(/is-maximized/);
+        const home = page.getByRole('region', { name: 'Home', exact: true });
+        const draftedChat = home.getByRole('button', {
+          name: /Prepare the release summary.*unsent draft/,
+        });
+        await expect(draftedChat).toBeInViewport();
+        await draftedChat.click();
+        await expect(composer).toHaveValue(draft);
+        await testInfo.attach('phone chat geometry', {
+          body: JSON.stringify(geometry),
+          contentType: 'application/json',
+        });
+      });
+    }
+
     test('keeps provider/model selection contained and touch-friendly', async ({
       page,
     }) => {
@@ -1925,9 +2121,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
       // closing it returns focus there.
       await sendDraft(opened, 'Start the project task.');
       await completeStartedTurn(page, 'Start the project task.');
-      const modelButton = page.getByRole('button', {
-        name: /Model: Codex · Work — Shared model/,
-      });
+      const modelButton = await runSetupControl(page, (panel) =>
+        panel.getByRole('button', {
+          name: /(?:Model:|Engine & model:).* Codex · Work — Shared model/,
+        }),
+      );
       await modelButton.click();
       const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
       await expect(picker).toBeVisible();
@@ -2037,7 +2235,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       // by scanning one button fewer.
       await expect(page.getByTestId('first-run-home-card')).toBeVisible();
       await expect(
-        page.getByRole('button', { name: 'Personalize Station' }),
+        page.getByRole('button', { name: 'Open setup' }),
       ).toBeVisible();
       await expect(page.locator('.sidebar')).not.toBeVisible();
       await page.getByRole('button', { name: 'Toggle menu' }).click();
@@ -2147,6 +2345,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       expect(geometry.bottom).toBeLessThanOrEqual(geometry.visualBottom + 1);
       expect(geometry.overflows).toBe(false);
 
+      await closeRunSetup(page);
       await composer.fill('Continue from my phone');
       const continueButton = page
         .getByTestId('session-detail')

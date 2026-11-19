@@ -2,26 +2,37 @@ import {
   CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDisplayStatus,
   childWorkDisplayStatus,
+  childWorkKindOf,
 } from '@kontourai/station-contracts/child-work';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { useId, useState } from 'react';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
 import {
+  CHILD_WORK_GROUP_STATUS_LABEL,
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
+  childWorkGroupLabel,
+  childWorkKindLabel,
+  childWorkResultText,
   childWorkSummaryLabel,
   childWorkUsageClauses,
   formatChildWorkElapsed,
 } from '../../utils/child-work-display';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 import { Button } from '../Button';
+import {
+  childChatTarget,
+  useChildChatNavigation,
+} from '../chat-dock/ChildChatNavigationContext';
+import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import {
   ArrowDownGlyph,
   ArrowRightGlyph,
   CheckGlyph,
   CloseGlyph,
+  TerminalGlyph,
   WarningGlyph,
 } from '../icons/Glyph';
-import { LazyBoundary } from '../LazyBoundary';
 import { ChildWorkActivity } from './ChildWorkActivity';
 import { ChildWorkIdentity } from './ChildWorkIdentity';
 import { ChildWorkInstructionPanel } from './ChildWorkInstructionPanel';
@@ -34,17 +45,6 @@ import {
 import './SubagentTranscriptCard.css';
 
 /** One card at each reported spawn anchor; never borrow facts from the parent. */
-
-const loadChildWorkTranscript = () =>
-  import('../../workspace-panes/agents/ChildWorkTranscript').then((module) => ({
-    default: module.ChildWorkTranscript,
-  }));
-
-function parseTime(iso: string | undefined): number | undefined {
-  if (!iso) return undefined;
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 const LIST_ITEM = /^(?:[-*+]|\d+[.)])\s+/;
 
@@ -96,15 +96,35 @@ function StatusGlyph({ status }: { status: ChildWorkDisplayStatus }) {
   return <span className="subagent-card__hollow" aria-hidden="true" />;
 }
 
-export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
-  const { item, provider } = child;
+/** The shell command a spawning tool call ran, when it carried one. */
+function commandOf(part: ToolCallLike | undefined): string | undefined {
+  const input = part?.input ?? part?.args;
+  const command =
+    input && typeof input === 'object' ? input.command : undefined;
+  return typeof command === 'string' && command.trim()
+    ? command.trim()
+    : undefined;
+}
+
+export function SubagentTranscriptCard({
+  child,
+  call,
+}: {
+  child: TranscriptChild;
+  /** The tool call that spawned it, when the card is drawn in its place. */
+  call?: ToolCallLike;
+}) {
+  const { item, provider, stationName } = child;
+  const workKind = childWorkKindOf(item);
+  const isAgent = workKind === 'agent';
+  const command = isAgent ? undefined : commandOf(call);
   const [expanded, setExpanded] = useState(false);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const openChild = useChildChatNavigation();
+  const connection = useOptionalConversationConnection();
   const detailId = useId();
-  const transcriptId = useId();
   const running = item.status === 'running';
-  const startedAtMs = parseTime(item.startedAt);
-  const endedAtMs = parseTime(item.endedAt);
+  const startedAtMs = parseEpochMs(item.startedAt);
+  const endedAtMs = parseEpochMs(item.endedAt);
   const now = useElapsedClock(running && startedAtMs !== undefined);
 
   // Running: the live clock from the reported start. Settled: the reported
@@ -120,11 +140,19 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
           ? endedAtMs - startedAtMs
           : item.usage?.durationMs;
 
-  const title = item.title ?? item.kindLabel ?? 'Subagent';
-  const engine = provider ? engineDisplayLabel(provider) : null;
-  const summary = item.result?.summary;
+  const kindLabel = childWorkKindLabel(item);
+  const title =
+    item.title ??
+    kindLabel ??
+    (isAgent ? 'Subagent' : workKind === 'monitor' ? 'Monitor' : 'Command');
+  const engine = isAgent && provider ? engineDisplayLabel(provider) : null;
+  // A result that only restates the title says nothing; a command's
+  // engine-written summary reduces to its exit code.
+  const summary = childWorkResultText(item, title);
   const preview = running
-    ? item.progress
+    ? item.progress && item.progress !== title
+      ? item.progress
+      : undefined
     : summary
       ? subagentSummaryPreview(summary) || undefined
       : undefined;
@@ -146,7 +174,13 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
         onClick={() => setExpanded((current) => !current)}
       >
         <span className="subagent-card__glyph">
-          <ChildWorkIdentity provider={provider} />
+          {isAgent ? (
+            <ChildWorkIdentity provider={provider} />
+          ) : (
+            <span className="subagent-card__command-glyph" aria-hidden="true">
+              <TerminalGlyph />
+            </span>
+          )}
         </span>
         <span className="subagent-card__text">
           <span className="subagent-card__headline">
@@ -158,14 +192,16 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               {statusLabel}
             </span>
           </span>
-          {expanded && (
+          {expanded && !isAgent && (
             <span className="subagent-card__meta">
-              {[
-                item.kindLabel && item.kindLabel !== title
-                  ? item.kindLabel
-                  : null,
-                engine,
-              ]
+              {workKind === 'monitor'
+                ? 'Background monitor'
+                : 'Background command'}
+            </span>
+          )}
+          {expanded && isAgent && (
+            <span className="subagent-card__meta">
+              {[kindLabel && kindLabel !== title ? kindLabel : null, engine]
                 .filter(Boolean)
                 .map((part) => `${part} · `)
                 .join('')}
@@ -182,14 +218,22 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               </span>
             </span>
           )}
-          {running ? (
+          {running && isAgent ? (
             <ChildWorkActivity
               tool={item.latestTool}
               progress={item.progress}
             />
           ) : !expanded && preview ? (
-            <span className="subagent-card__preview">{preview}</span>
-          ) : !expanded && !running && item.status === 'completed' ? (
+            <span className="subagent-card__preview">
+              {isAgent &&
+                !running &&
+                item.result?.source &&
+                item.result.source !== 'tool-return' && (
+                  <span>{childWorkSummaryLabel(item.result.source)}: </span>
+                )}
+              {preview}
+            </span>
+          ) : !expanded && isAgent && item.status === 'completed' ? (
             <span className="subagent-card__preview subagent-card__preview--gap">
               No summary reported
             </span>
@@ -208,7 +252,15 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
       </button>
       {expanded && (
         <div className="subagent-card__detail" id={detailId}>
-          {item.producer === 'engine-subagent' && (
+          {stationName && (
+            <p className="subagent-card__note">Via {stationName}</p>
+          )}
+          {command && (
+            <pre className="subagent-card__command">
+              <code>{command}</code>
+            </pre>
+          )}
+          {item.producer === 'engine-subagent' && isAgent && (
             <ChildWorkInstructionPanel
               threadId={item.reporterThreadId}
               childId={item.childId}
@@ -216,70 +268,49 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
               running={running}
               name={title}
               historyAvailable={!!item.transcript}
-              transcriptOpen={transcriptOpen}
             />
           )}
           {summary ? (
             <div className="subagent-card__summary">
               <span className="subagent-card__note">
-                {childWorkSummaryLabel(item.result?.source)}
+                {isAgent
+                  ? childWorkSummaryLabel(item.result?.source)
+                  : 'Result'}
               </span>
               <LazyMarkdown>{summary}</LazyMarkdown>
             </div>
-          ) : (
+          ) : isAgent ? (
             <p className="subagent-card__note">
               {running ? 'Result pending' : 'No summary reported'}
             </p>
-          )}
+          ) : null}
           {summary && item.result?.summaryTruncated && (
             <p className="subagent-card__note">
               Summary cut at {CHILD_WORK_SUMMARY_MAX_CHARS.toLocaleString()}{' '}
               characters.
             </p>
           )}
-          {(usage.length > 0 || item.transcript) && (
+          {(usage.length > 0 ||
+            item.transcript ||
+            item.producer === 'station-delegate') && (
             <div className="subagent-card__actions">
               {usage.length > 0 && (
                 <p className="subagent-card__note">{usage.join(' · ')}</p>
               )}
-              {item.transcript && (
+              {(item.transcript || item.producer === 'station-delegate') && (
                 <Button
                   size="sm"
                   className="tap-target"
                   variant="ghost"
-                  aria-expanded={transcriptOpen}
-                  aria-controls={transcriptOpen ? transcriptId : undefined}
-                  onClick={() => setTranscriptOpen((current) => !current)}
+                  disabled={!openChild || !connection}
+                  onClick={() =>
+                    connection && openChild?.(childChatTarget(item, connection))
+                  }
                 >
-                  {transcriptOpen ? 'Hide transcript' : 'View transcript'}
+                  Open chat
                 </Button>
               )}
             </div>
-          )}
-          {item.transcript && transcriptOpen && (
-            <LazyBoundary
-              load={loadChildWorkTranscript}
-              componentProps={{
-                id: transcriptId,
-                threadId: item.reporterThreadId,
-                childId: item.childId,
-                running,
-                revision: JSON.stringify([
-                  item.status,
-                  item.progress,
-                  item.usage,
-                ]),
-              }}
-              pending={null}
-              unavailable={(retry) => (
-                <p className="subagent-card__note" role="alert">
-                  Could not load the transcript viewer.{' '}
-                  <Button size="sm" className="tap-target" onClick={retry}>
-                    Retry
-                  </Button>
-                </p>
-              )}
-            />
           )}
         </div>
       )}
@@ -315,6 +346,9 @@ function SubagentCallGroup({
   const children = useTranscriptChildrenForCalls(
     calls.flatMap(({ part }) => (part.toolCallId ? [part.toolCallId] : [])),
   );
+  const callFor = (child: TranscriptChild) =>
+    calls.find(({ part }) => part.toolCallId === child.item.parent?.toolCallId)
+      ?.part;
   const [expanded, setExpanded] = useState(false);
   const groupId = useId();
   const grouped = children.length > 1;
@@ -326,7 +360,15 @@ function SubagentCallGroup({
   }
 
   return (
-    <div className="subagent-group" data-grouped={grouped}>
+    <div
+      className="subagent-group"
+      data-grouped={grouped}
+      data-finished={
+        children.every(
+          (child) => childWorkDisplayStatus(child.item) === 'completed',
+        ) || undefined
+      }
+    >
       {grouped && (
         <button
           type="button"
@@ -336,24 +378,35 @@ function SubagentCallGroup({
           onClick={() => setExpanded((current) => !current)}
         >
           <span className="subagent-group__avatars" aria-hidden="true">
-            {children.slice(0, 3).map((child) => (
-              <ChildWorkIdentity
-                key={child.item.childId}
-                provider={child.provider}
-              />
-            ))}
+            {children.slice(0, 3).map((child) =>
+              childWorkKindOf(child.item) === 'agent' ? (
+                <ChildWorkIdentity
+                  key={child.item.childId}
+                  provider={child.provider}
+                />
+              ) : (
+                <span
+                  key={child.item.childId}
+                  className="subagent-card__command-glyph"
+                >
+                  <TerminalGlyph />
+                </span>
+              ),
+            )}
             {children.length > 3 && (
               <span className="subagent-group__more">
                 +{children.length - 3}
               </span>
             )}
           </span>
-          <strong>{children.length} subagents</strong>
+          <strong>
+            {childWorkGroupLabel(children.map((child) => child.item))}
+          </strong>
           <span className="subagent-group__counts" aria-live="polite">
             {[...counts]
               .map(
                 ([status, count]) =>
-                  `${count} ${CHILD_WORK_STATUS_LABEL[status].toLowerCase()}`,
+                  `${count} ${CHILD_WORK_GROUP_STATUS_LABEL[status]}`,
               )
               .join(' · ')}
           </span>
@@ -368,7 +421,11 @@ function SubagentCallGroup({
         onClickCapture={() => setExpanded(true)}
       >
         {children.map((child) => (
-          <SubagentTranscriptCard key={child.item.childId} child={child} />
+          <SubagentTranscriptCard
+            key={child.item.childId}
+            child={child}
+            call={callFor(child)}
+          />
         ))}
       </div>
     </div>

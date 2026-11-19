@@ -312,6 +312,7 @@ vi.mock('../../../providers/connection-factories.js', () => ({
 import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   captureLoggerLines,
   stopLoggerCaptures,
@@ -1709,7 +1710,7 @@ describe('ConnectionService', () => {
       config: {
         readinessState: 'missing_prerequisites',
         readinessReason: expect.stringContaining(
-          'rejected a real runtime request',
+          'Sign in again, then run Check connection on this engine to prove recovery.',
         ),
       },
       capabilityInventory: {
@@ -4195,40 +4196,87 @@ describe('ConnectionService', () => {
     const directory = mkdtempSync(
       join(tmpdir(), 'credential-legacy-conflict-'),
     );
-    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    const dbPath = join(directory, 'orchestration.sqlite');
+    const store = new EventStore(dbPath);
     try {
-      const protocol = store.createCredentialApplicationFactory();
-      for (let index = 0; index < 64; index += 1) {
-        expect(
-          protocol.start({
-            recoveryFingerprint: `capacity-${index}`,
-            connectionId: `connection-${index}`,
-            candidateProfileRef: 'candidate',
-            now: '2026-08-13T00:00:00.000Z',
-          }),
-        ).toMatchObject({ kind: 'owner' });
+      const now = '2026-08-13T00:00:00.000Z';
+      // The live capacity contract is 64. This is test-owned setup on the
+      // migrated database: one durable statement, not 63 reservation commits.
+      // The real ledger owns the final admission, refusal, and release.
+      const seed = new DatabaseSync(dbPath);
+      try {
+        seed
+          .prepare(`
+          WITH RECURSIVE occupied(slot) AS (
+            VALUES (1)
+            UNION ALL SELECT slot + 1 FROM occupied WHERE slot < 63
+          )
+          INSERT INTO credential_profile_applications
+            (attempt_id, recovery_fingerprint, connection_id,
+             candidate_profile_ref, state, created_at, updated_at)
+          SELECT 'fixture-attempt-' || slot, 'fixture-recovery-' || slot,
+            'fixture-connection-' || slot, 'candidate', 'reserved', ?, ?
+          FROM occupied
+        `)
+          .run(now, now);
+      } finally {
+        seed.close();
       }
+
+      const protocol = store.createCredentialApplicationFactory();
+      const finalSlot = protocol.start({
+        recoveryFingerprint: 'capacity-boundary',
+        connectionId: 'capacity-owner',
+        candidateProfileRef: 'candidate',
+        now,
+      });
+      if (finalSlot.kind !== 'owner')
+        throw new Error('The real ledger refused the final free slot');
+
       const { service, getAppConfig } = createCredentialProfileApplyFixture(
         vi.fn<ConnectionSmokeRunner>(),
         'restart_resume',
         protocol,
       );
-      getAppConfig().agentConnections.codex.credentialRecovery.pendingApplication =
-        {
+      try {
+        const pendingApplication = {
           previousProfileRef: 'profile-a',
           candidateProfileRef: 'canary-profile-ref',
           attemptId: 'legacy-capacity-conflict',
         };
+        getAppConfig().agentConnections.codex.credentialRecovery.pendingApplication =
+          pendingApplication;
 
-      await expect(
-        service.migrateLegacyCredentialApplicationsAtStartup(),
-      ).rejects.toThrow(
-        "Credential recovery migration for 'codex' is incomplete.",
-      );
+        await expect(
+          service.migrateLegacyCredentialApplicationsAtStartup(),
+        ).rejects.toThrow(
+          "Credential recovery migration for 'codex' is incomplete.",
+        );
+        expect(
+          getAppConfig().agentConnections.codex.credentialRecovery
+            .pendingApplication,
+        ).toEqual(pendingApplication);
+        expect(protocol.latest('codex')).toBeUndefined();
 
-      expect(
-        getAppConfig().agentConnections.codex.credentialRecovery,
-      ).toHaveProperty('pendingApplication');
+        expect(finalSlot.claim.settle('rolled-back', now)).toEqual({
+          kind: 'applied',
+        });
+        expect(finalSlot.claim.acknowledge(now)).toEqual({ kind: 'applied' });
+        await expect(
+          service.migrateLegacyCredentialApplicationsAtStartup(),
+        ).resolves.toBeUndefined();
+
+        expect(
+          getAppConfig().agentConnections.codex.credentialRecovery,
+        ).not.toHaveProperty('pendingApplication');
+        expect(protocol.latest('codex')).toMatchObject({
+          state: 'staged',
+          previousProfileRef: 'profile-a',
+          candidateProfileRef: 'canary-profile-ref',
+        });
+      } finally {
+        service.dispose();
+      }
     } finally {
       store.close();
       rmSync(directory, { recursive: true, force: true });
@@ -4449,6 +4497,79 @@ describe('ConnectionService', () => {
         )?.candidateProfileRef,
       ).toBe('canary-profile-ref');
       expect(quota).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Continue on <label>: a person-chosen profile for a usage-limit stop', () => {
+    const usageLimit = {
+      kind: 'rate-limit' as const,
+      scope: 'account' as const,
+      timing: {},
+      usageLimit: true as const,
+    };
+
+    test('with automatic recovery off, offers the enrolled accounts and stages exactly the chosen one', async () => {
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+      );
+
+      await expect(
+        service.listUsageLimitContinueOnProfiles('codex'),
+      ).resolves.toEqual([
+        { ref: 'canary-profile-ref', label: 'Canary Account Label' },
+        { ref: 'profile-c', label: 'Superseding account' },
+      ]);
+      // Without consent the automatic path still refuses.
+      await expect(
+        service.stageAutomaticCredentialProfileApplication('codex', usageLimit),
+      ).resolves.toBeUndefined();
+
+      const attempt = await service.stageAutomaticCredentialProfileApplication(
+        'codex',
+        usageLimit,
+        undefined,
+        'profile-c',
+      );
+
+      expect(attempt?.candidateProfileRef).toBe('profile-c');
+      await expect(
+        service.getCredentialRecovery('codex'),
+      ).resolves.toMatchObject({
+        application: {
+          activeProfileRef: 'profile-a',
+          pendingProfileRef: 'profile-c',
+          outcome: 'staged',
+        },
+      });
+    });
+
+    test('consent never stages the active, an unenrolled, or an unknown profile', async () => {
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+      );
+      for (const ref of ['profile-a', 'not-a-profile']) {
+        await expect(
+          service.stageAutomaticCredentialProfileApplication(
+            'codex',
+            usageLimit,
+            undefined,
+            ref,
+          ),
+        ).resolves.toBeUndefined();
+      }
+      await expect(
+        service.getCredentialRecovery('codex'),
+      ).resolves.not.toHaveProperty('application.pendingProfileRef');
+    });
+
+    test('an engine that cannot apply a profile offers none', async () => {
+      const { service } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'unsupported',
+      );
+      await expect(
+        service.listUsageLimitContinueOnProfiles('codex'),
+      ).resolves.toEqual([]);
     });
   });
 

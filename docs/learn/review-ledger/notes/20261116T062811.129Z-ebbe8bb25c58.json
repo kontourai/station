@@ -1,0 +1,7 @@
+{
+  "revision": "4e938fe0bacd15414b7bc10ccca7cf3df635954a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed after merging main (#5023 shared Input search and 44px toolbar targets kept; this branch's inline scope, end-of-list Browse and retained Retry notice on top; headline one row line tall for the hover actions): the inbox header and row-order paragraph remain accurate.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts","src-ui/src/components/chat-dock/ChatDockInboxPanel.css"]}
+  ]
+}

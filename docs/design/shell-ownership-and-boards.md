@@ -1,5 +1,11 @@
 # Shell ownership scopes and Boards
 
+> **Activity retirement amendment:** Activity and its Quick review pane are
+> removed. Home and the inbox list work; Session links and child transcripts
+> open in Chat. The Activity-specific delivery notes below describe the earlier
+> design. See [placement](placement.md) for migration and URL compatibility.
+
+
 > **Reading status: accepted design; all nine delivery slices landed.** Epic
 > #2058's slices shipped in three pull requests: slices 1, 2 and 6 in #2080;
 > 3, 5 and 8 in #2084; 4, 7 and 9 in #2095. Personal Boards have an
@@ -150,7 +156,10 @@ does the same for the Board templates and editor.
 Layouts appear beneath it, as a vertical list. Up/Down/Home/End move within
 that list's single tab stop. The disclosure folds the selected project's
 views; project selection and Layout selection still use canonical guarded
-navigation.
+navigation. Below its Layouts the selected project lists its channels and Task
+rooms (#4794): another vertical list with one tab stop, read only while the
+project is expanded, unread and counts from the server's read markers, and a
+quiet **New channel**. Opening one navigates to the room's address.
 
 Clicking a collapsed project opens a popup with its Layouts followed by
 **Open project**. Layout and Board-availability reads are enabled only for visible
@@ -177,6 +186,14 @@ is available. The collapsed rail has one dashboard button that opens the
 personal Board list and its create action. Escape returns focus to that
 button; selecting a Board dismisses the popup. Palette creation with the
 rail collapsed opens the new Board without focusing an invisible rename.
+
+The default-off **Apps library** preview adds **Browse apps** to this section,
+including the collapsed popup and phone drawer. It presents the same personal
+Layout inventory as searchable launch tiles, grouped by recorded plugin source,
+and edits metadata through the existing SDK mutations. Named creation opens the
+Board editor. Layout hosting, plugin admission and owner authority stay in their
+existing boundaries. See [the user journey](../user/personal-boards.md#browse-apps).
+Persistent reordering and instance-shared Boards remain in #2997.
 
 The expanded footer places Schedule and Customize on the left, with an
 icon-only Updates control immediately before the account control on the right.
@@ -225,15 +242,17 @@ backups retain their stored section values for compatibility.
 - **Projects** keep their model. Their live-work count reads the shared
   session classifier. The selected project's child rows name its actual
   Layout records; these are not a hard-coded list of built-in features.
-  Member presence and a separate project attention count remain subject to
-  their own backing projections; the map does not manufacture either.
+  Member presence remains subject to its own backing projection; the map
+  does not manufacture it. With the `project-overview` preview on, a dot
+  marks a Project with Tasks in the Overview's Waiting on you group (#5064),
+  from the Overview's own rule over the Tasks list and session summaries.
 - **Chat is a Layout.** A configured Chat view opens the existing fullscreen
   chat workspace. Individual conversations and composer drafts remain in
   the chat dock (⌘D), which retains its own inbox.
 - **Footer**: Schedule and Customize on the left, Updates and the account
   control on the right. Settings is available in the account menu and Customize.
-  Notifications remain in the header, and the command palette keeps its keyboard
-  shortcut. Schedule and Customize do not occupy project-list rows.
+  Notifications remain in the header, and the command palette opens from its
+  keyboard shortcut or the header's **Search or jump to…** entry. Schedule and Customize do not occupy project-list rows.
 
 The original slice moved Agents, Connections, Guidance, Registry, Plugins,
 Schedule, and Developer behind the Settings gear and command palette, removing
@@ -259,7 +278,11 @@ meaning is "a human must decide": tool approvals and pairing (already there),
 plus proposed-change decisions and paused gate reviews (from Review). The
 current workspace-map refinement in D3 keeps the bell and its single projected
 count in the header; the original footer placement below remains design history.
-Project-scoped attention still requires its own backing projection.
+The Project row counts pending items that the same server projection
+assigns to that Project. A live orchestration approval takes its Project
+from its authorized Session. The collapsed map opens the same channel and
+Task room list as an expanded Project and keeps one tab stop across its
+conversation rows.
 
 Local connection and recovery facts are owned by the Station control and remain
 readable offline. Short client outcomes use toasts and local recent-message recall;
@@ -368,3 +391,10 @@ the existing registry seams so the panel can move one section at a time.
 - Does an instance-shared Board need its own role, or is operator-only
   sufficient for the first cut?
 - Which Survey workbench states map to inbox items versus layout content?
+
+### New-chat project choice
+
+The start composer owns project choice. Neither phone nor desktop dock headers
+carry a project picker. New chat retains the current dock default: the project
+page context or the remembered choice, falling back to No project when absent.
+Clear project scope remains an Inbox filter action, separate from that default.

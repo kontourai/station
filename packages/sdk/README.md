@@ -89,6 +89,9 @@ Plugin install mutations expose typed current parent/dependency permission statu
 through `PluginInstallResult`. See the canonical [Plugin Query Hooks reference](../../docs/reference/sdk.md#plugin-query-hooks)
 for older-server unknown-status handling and registry result types.
 
+Use [the status-aware plugin update hook](../../docs/reference/sdk.md#update-discovery)
+to distinguish a completed empty scan from unavailable or partial coverage.
+
 ## Plugin publisher counts
 
 `useTelemetry()` captures the calling Pane's kernel capability and returns
@@ -691,6 +694,7 @@ out of the first-paint root barrel.
   captured host authority), `/answer-support` (support bundles, claims and
   cards), `/answer-assessment-events` and `/answer-narrative-events` (owner
   update events and the Basis queries they refresh).
+- Project Library: `/project-library` (Library page, upload and remove, content).
 - Outputs and Session inventory: `/task-outputs`, `/session-outputs`
   (inspection point queries), `/session-output-actions` (keep a Session output
   in a Task), `/session-inventory`, `/task-user-input-references`.

@@ -13,11 +13,14 @@ import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  assertGalleryAssetScopeCapacity,
   createGalleryAssetDiagnostics,
+  GALLERY_ASSET_MAX_SCOPES,
   inventoryGalleryAssets,
   readGalleryLifecycle,
   retainGalleryAssetDiagnostics,
 } from '../../tests/helpers/gallery-asset-diagnostics';
+import { createDocumentTracker } from '../../tests/helpers/gallery-document-tracker';
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
@@ -139,6 +142,91 @@ it('observes all 95 screen scopes while keeping detail explicitly sampled and pr
   expect(JSON.stringify(report)).not.toMatch(
     /DO_NOT_RETAIN|foreign|\/private|token=|#secret/,
   );
+});
+
+it('gives every screen of a gallery larger than 242 its own bucket inside the summary budget', async () => {
+  // 242 screens fell into 128 buckets (screens 127-242 shared the last one).
+  const screens = Array.from({ length: 300 }, (_, index) => `screen-${index}`);
+  let clock = 5_000;
+  const documents = createDocumentTracker();
+  const collector = createGalleryAssetDiagnostics(
+    origin,
+    screens,
+    () => clock,
+    documents,
+  );
+  for (let screen = 0; screen < screens.length; screen++) {
+    collector.screen(screens[screen]);
+    const navigation = request(`/screen-${screen}`);
+    documents.issued(navigation, true);
+    documents.responded(navigation, 200);
+    documents.committed();
+    // 600 distinct assets across the run, so each bitmask is as wide as a
+    // real gallery's dictionary.
+    for (let index = 0; index < 8; index++) {
+      const asset = request(`/assets/chunk-${(screen * 2 + index) % 600}.js`);
+      documents.issued(asset, false);
+      collector.request(asset);
+      response(collector, asset);
+      collector.finished(asset);
+    }
+    if (screen === 250) {
+      const live = request('/assets/CoreUpdateLaunchCheck-DDGWUae_.js');
+      documents.issued(live, false);
+      clock = 9_000;
+      collector.request(live);
+      clock = 9_250;
+      collector.failed(live);
+    }
+    collector.screenFinished(screens[screen]);
+    await drainMetadata();
+  }
+  const report = await collector.finish();
+  expect(report.summary.complete).toBe(true);
+  expect(report.summary.scopes).toHaveLength(301);
+  expect(report.summary.scopes.at(-1)?.name).toBe('screen-299');
+  expect(report.summary.scopes[251]).toMatchObject({
+    name: 'screen-250',
+    requested: 9,
+    failed: 1,
+    statuses: { '200': 8 },
+  });
+  expect(Buffer.byteLength(JSON.stringify(report.summary))).toBeLessThan(
+    512 * 1024,
+  );
+  // Asset id n is bit n & 7 of byte n >> 3 of the trimmed mask.
+  const assetId = report.dictionary.assets.findIndex(
+    (asset) => asset.path === '/assets/chunk-500.js',
+  );
+  const mask = Buffer.from(
+    report.summary.scopes[251].requestedAssets,
+    'base64',
+  );
+  expect(mask.length).toBe(Math.ceil(report.dictionary.assets.length / 8));
+  expect(mask[assetId >> 3] & (1 << (assetId & 7))).not.toBe(0);
+  expect(report.details.rows).toContainEqual(
+    expect.objectContaining({
+      scope: 251,
+      resourceType: 'script',
+      requestedAt: 9_000,
+      failedAt: 9_250,
+      document: 'current',
+    }),
+  );
+});
+
+it('refuses a declared gallery beyond its scope capacity instead of sharing buckets', () => {
+  expect(GALLERY_ASSET_MAX_SCOPES).toBe(1024);
+  const names = (count: number) =>
+    Array.from({ length: count }, (_, index) => `s-${index}`);
+  expect(() =>
+    createGalleryAssetDiagnostics(origin, names(1023)),
+  ).not.toThrow();
+  expect(() => createGalleryAssetDiagnostics(origin, names(1024))).toThrow(
+    /hold 1023 screens; 1024 are declared/,
+  );
+  expect(() => assertGalleryAssetScopeCapacity(1024)).toThrow();
+  expect(() => assertGalleryAssetScopeCapacity(242)).not.toThrow();
 });
 
 it('keeps late metadata with its request scope and fails closed on gaps and throwing metadata', async () => {
@@ -353,7 +441,7 @@ it('accounts fresh owned JSON once and preserves evidence on folder, provenance 
   expect(result.retention).toBe('RETAINED');
   expect(result.totalBytes).toBe(actual);
   expect(actual).toBeLessThanOrEqual(4 * 1024 * 1024);
-  const output = readFileSync(join(root, 'asset-network-v2.json'));
+  const output = readFileSync(join(root, 'asset-network-v3.json'));
   expect(output.length).toBeLessThanOrEqual(2 * 1024 * 1024);
   expect(JSON.parse(output.toString()).emittedAfter.files).toEqual([]);
   expect(
@@ -361,7 +449,7 @@ it('accounts fresh owned JSON once and preserves evidence on folder, provenance 
       complete: true,
     }).retention,
   ).toBe('INCOMPLETE');
-  expect(readFileSync(join(root, 'asset-network-v2.json'))).toEqual(output);
+  expect(readFileSync(join(root, 'asset-network-v3.json'))).toEqual(output);
 
   for (const error of ['DIRTY_CHECKOUT', 'GIT_IDENTITY_READ_FAILED']) {
     const folder = makeTempDir('gallery-provenance-negative-');
@@ -374,7 +462,7 @@ it('accounts fresh owned JSON once and preserves evidence on folder, provenance 
     );
     expect(retained.incomplete).toBe(true);
     expect(
-      JSON.parse(readFileSync(join(folder, 'asset-network-v2.json'), 'utf8'))
+      JSON.parse(readFileSync(join(folder, 'asset-network-v3.json'), 'utf8'))
         .incomplete,
     ).toBe(true);
   }
@@ -392,7 +480,7 @@ it('accounts fresh owned JSON once and preserves evidence on folder, provenance 
   expect(readdirSync(full)).toEqual(['preserved.png']);
   expect(readFileSync(evidence).length).toBe(4 * 1024 * 1024 + 1);
   const obstructed = makeTempDir('gallery-write-failure-');
-  mkdirSync(join(obstructed, 'asset-network-v2.json'));
+  mkdirSync(join(obstructed, 'asset-network-v3.json'));
   expect(
     retainGalleryAssetDiagnostics(obstructed, network, inventory, inventory, {
       complete: true,
@@ -497,7 +585,7 @@ it('rejects removed, replaced, growing or symlinked owned diagnostics through th
     for (const mode of ['missing', 'changed'] as const) {
       const folder = makeTempDir('gallery-owned-output-negative-');
       const sentinel = join(folder, 'preserved.png');
-      const output = join(folder, 'asset-network-v2.json');
+      const output = join(folder, 'asset-network-v3.json');
       writeFileSync(sentinel, 'preserve exactly');
       vi.mocked(writeFileSync).mockImplementationOnce(
         (...args: Parameters<typeof writeFileSync>) => {
@@ -549,7 +637,7 @@ it('rejects removed, replaced, growing or symlinked owned diagnostics through th
       totalBytes: null,
       inspectedBytes: 128,
     });
-    expect(existsSync(join(growing, 'asset-network-v2.json'))).toBe(false);
+    expect(existsSync(join(growing, 'asset-network-v3.json'))).toBe(false);
     expect(actual.statSync(evidence).size).toBe(128 + 16 * 1024 * 1024);
     vi.mocked(readSync).mockReset().mockImplementation(actual.readSync);
 
@@ -576,7 +664,7 @@ it('rejects removed, replaced, growing or symlinked owned diagnostics through th
       }).retention,
     ).toBe('INCOMPLETE');
     expect(vi.mocked(readSync)).not.toHaveBeenCalled();
-    expect(existsSync(join(target, 'asset-network-v2.json'))).toBe(false);
+    expect(existsSync(join(target, 'asset-network-v3.json'))).toBe(false);
     expect(readFileSync(join(target, 'sentinel.txt'), 'utf8')).toBe(
       'target unchanged',
     );
@@ -599,7 +687,7 @@ it('rejects removed, replaced, growing or symlinked owned diagnostics through th
       }).retention,
     ).toBe('INCOMPLETE');
     expect(vi.mocked(readSync)).not.toHaveBeenCalled();
-    expect(existsSync(join(descendant, 'asset-network-v2.json'))).toBe(false);
+    expect(existsSync(join(descendant, 'asset-network-v3.json'))).toBe(false);
   } finally {
     vi.mocked(readSync).mockReset().mockImplementation(actual.readSync);
     vi.mocked(writeFileSync)

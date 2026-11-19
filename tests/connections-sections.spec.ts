@@ -89,18 +89,31 @@ const SECTIONS: ReadonlyArray<{
   path: string;
   title: string;
   addLabel: string;
+  addPath?: string;
 }> = [
   {
     path: '/connections/models',
     title: 'Models',
     addLabel: 'Add model connection',
+    addPath: '/connections/models/new',
   },
-  { path: '/connections/engines', title: 'Engines', addLabel: 'Add engine' },
-  { path: '/connections/tools', title: 'Tools', addLabel: 'Add tool server' },
+  {
+    path: '/connections/engines',
+    title: 'Engines',
+    addLabel: 'Add engine',
+    addPath: '/connections/engines/new',
+  },
+  {
+    path: '/connections/tools',
+    title: 'Tools',
+    addLabel: 'Add tool server',
+    addPath: '/connections/tools/new',
+  },
   {
     path: '/connections/knowledge',
     title: 'Knowledge',
     addLabel: 'Add knowledge source',
+    addPath: '/settings?view=knowledge',
   },
   {
     path: '/connections/computers',
@@ -288,9 +301,10 @@ test.describe('Connections IA', () => {
     page,
   }) => {
     await page.goto('/connections');
-    await expect(page).toHaveURL(/\/connections\/models$/);
+    // The seeded Station's Knowledge status needs attention.
+    await expect(page).toHaveURL(/\/connections\/knowledge$/);
     await expect(
-      page.getByRole('heading', { name: 'Models', level: 1, exact: true }),
+      page.getByRole('heading', { name: 'Knowledge', level: 1, exact: true }),
     ).toBeVisible();
 
     // Legacy path for Models.
@@ -391,7 +405,7 @@ test.describe('Connections IA', () => {
     await expect(page).toHaveURL(/\/connections\/models\/oa-compat-1$/);
 
     const testButton = page.getByRole('button', {
-      name: 'Test Connection',
+      name: 'Test connection',
       exact: true,
     });
     await expect(testButton).toBeVisible();
@@ -552,7 +566,7 @@ test.describe('Connections sections at 390x844', () => {
     await seedRoutes(page);
   });
 
-  test('every section renders its title and exactly one add action with no horizontal document scroll', async ({
+  test('every section opens its single visible add action without horizontal scroll', async ({
     page,
   }) => {
     const measuredActionHeights: Record<string, number> = {};
@@ -566,15 +580,14 @@ test.describe('Connections sections at 390x844', () => {
         }),
       ).toBeVisible();
 
-      const actionButtons = page.locator('.page__actions').getByRole('button');
-      await expect(actionButtons).toHaveCount(1);
-      await expect(
-        page
-          .locator('.page__actions')
-          .getByRole('button', { name: section.addLabel, exact: true }),
-      ).toBeVisible();
+      const add = page.getByRole('button', {
+        name: section.addLabel,
+        exact: true,
+      });
+      await expect(add).toHaveCount(1);
+      await expect(add).toBeVisible();
 
-      const actionBox = await actionButtons.first().boundingBox();
+      const actionBox = await add.boundingBox();
       expect(actionBox).not.toBeNull();
       measuredActionHeights[section.title] = actionBox?.height ?? 0;
 
@@ -582,6 +595,16 @@ test.describe('Connections sections at 390x844', () => {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       );
       expect(noHorizontalScroll).toBe(true);
+
+      await add.tap();
+      if (section.addPath)
+        await expect(page).toHaveURL(
+          (url) => url.pathname + url.search === section.addPath,
+        );
+      else
+        await expect(
+          page.getByRole('dialog', { name: 'What do you want to do?' }),
+        ).toBeVisible();
     }
     console.log('PAGE_ACTION_HEIGHTS', JSON.stringify(measuredActionHeights));
     for (const [sectionTitle, height] of Object.entries(
@@ -624,7 +647,7 @@ test.describe('Connections sections at 390x844', () => {
     await expect(page).toHaveURL(/\/connections\/models\/oa-compat-1$/);
 
     const testButton = page.getByRole('button', {
-      name: 'Test Connection',
+      name: 'Test connection',
       exact: true,
     });
     await expect(testButton).toBeVisible();

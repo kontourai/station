@@ -4,7 +4,9 @@ Executable policy is the source of truth. Keep a gate deterministic, fail-closed
 
 Before delivery, review the new-versus-inherited code-health report from `ci:fast` (or `node scripts/code-health-gate.mjs --base=<upstream-sha>`). Fix introduced unused exports/types or identify their real entrypoint/public contract. Give newly introduced advisory findings an evidence-backed disposition in the PR. Keep confirmed defects and remaining review separate; a scan count is neither a defect count nor a completion percentage. See [code-health prevention](../docs/guides/code-quality.md#code-health-prevention).
 
-Every new `spawn`, `spawnSync`, or `execFile` call must pass `windowsHide: true`. Capture synchronous child output through `scripts/lib/bounded-capture.mjs`: Node's 1 MiB default overflows on listings that grow with the repository (`git ls-files`, `tsc --listFiles`), and the helper refuses an overflow by name instead of truncating.
+A new heavy check (one that saturates several cores or can hold GiBs, such as a fallow analysis) queues for the host-wide heavy-check slot: wrap its package script in `scripts/heavy-check-slot.mjs`, or, when it is also run directly, call `holdHeavyCheckSlotForProcess` at its entry as `code-health-gate.mjs` does. Keep its scratch data on disk, never under `os.tmpdir()`, which is RAM on a tmpfs host. See [host heavy-check slots](../docs/guides/testing.md#host-heavy-check-slots).
+
+Capture synchronous child output through `scripts/lib/bounded-capture.mjs`: Node's 1 MiB default overflows on listings that grow with the repository (`git ls-files`, `tsc --listFiles`), and the helper refuses an overflow by name instead of truncating.
 
 The generated verification schedule and reuse/failure policy live in [docs/guides/testing.md](../docs/guides/testing.md), regenerated from `scripts/verification-lanes.mjs`. Iterate with the focused policy tests, not a broad lane.
 

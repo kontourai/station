@@ -155,25 +155,28 @@ export function IntegrationsView({
 
   useEffect(() => {
     if (detailData) {
-      const summary = integrations.find((item) => item.id === detailData.id);
-      setEditForm({ ...summary, ...detailData, tools: summary?.tools });
+      setEditForm(detailData);
       setPendingDisabledTools(detailData.disabledTools ?? []);
     }
-  }, [detailData, integrations]);
+  }, [detailData]);
 
   const saveMutation = useSaveIntegrationMutation({
     onSuccess: (_, variables) => {
-      setEditForm((current) =>
-        current
-          ? {
-              ...current,
-              secretEnv: undefined,
-              removeSecretEnvKeys: undefined,
-            }
-          : current,
-      );
+      if (variables.isNew) {
+        setEditForm(null);
+        (selection?.saved ?? select)(variables.id);
+      } else {
+        setEditForm((current) =>
+          current
+            ? {
+                ...current,
+                secretEnv: undefined,
+                removeSecretEnvKeys: undefined,
+              }
+            : current,
+        );
+      }
       setMessage({ type: 'success', text: 'Saved' });
-      if (variables.isNew) (selection?.saved ?? select)(variables.id);
       saveMutation.reset();
       removeSettledSecretMutation(variables);
     },
@@ -290,7 +293,11 @@ export function IntegrationsView({
   );
 
   const isNew = selectedId === 'new';
-  const renderedEditForm = formForSelectedIntegration(selectedId, editForm);
+  const draft = formForSelectedIntegration(selectedId, editForm);
+  const summary = integrations.find((item) => item.id === selectedId);
+  const renderedEditForm = draft
+    ? { ...summary, ...draft, tools: summary?.tools }
+    : null;
   const locked = !!(renderedEditForm?.plugin && isLocked && !isNew);
   const hasUnsavedIntegrationDraft =
     isNew ||
@@ -306,8 +313,7 @@ export function IntegrationsView({
     <>
       <SplitPaneLayout
         label="connections / tools"
-        title="Tool Servers"
-        subtitle="MCP server connections"
+        title="Tool servers"
         items={items}
         loading={isLoading}
         error={integrationsError}
@@ -331,7 +337,7 @@ export function IntegrationsView({
         searchValue={search}
         listFilteredEmptyNoun="tool servers"
         collectionEmpty={integrations.length === 0}
-        searchPlaceholder="Search tool servers..."
+        searchPlaceholder="Search tool servers…"
         /* The Connections section frame owns this section's single add action
            (design P3: exactly one add entry per section). This view used to
            add two more beside it — a `+ Add Tool Server` list button and a
@@ -339,10 +345,9 @@ export function IntegrationsView({
            differently-styled ways to add the same thing on one screen. The
            Registry keeps its own sidebar entry. */
         listEmptyTitle="No tool servers yet"
-        listEmptyDescription="Add an MCP server connection or install one from the registry."
+        listEmptyDescription="Add a tool server or install one from the Registry."
         emptyIcon={<SettingsGlyph />}
-        emptyTitle="No tool server selected"
-        emptyDescription="Select a tool server to edit, or add a new one"
+        emptyDescription="Select a tool server to edit, or add a new one."
       >
         {renderedEditForm && (
           <IntegrationEditorPanel

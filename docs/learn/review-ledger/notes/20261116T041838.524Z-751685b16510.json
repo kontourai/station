@@ -1,0 +1,7 @@
+{
+  "revision": "16e88eff3858c698bd785254d4e7a7573581a6fe",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added the conversation_handoff_predecessor_busy refusal code for a handoff while the current Session is busy; checked against conversation-lineage.ts, the route's code passthrough and the orchestration-service test.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/conversation-lineage.ts","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

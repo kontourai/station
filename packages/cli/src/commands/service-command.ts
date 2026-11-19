@@ -139,7 +139,6 @@ export function renderServiceCommand(
       `--port=${lifecycle.serverPort}`,
       `--ui-port=${lifecycle.uiPort}`,
       `--host=${lifecycle.host ?? '127.0.0.1'}`,
-      ...(lifecycle.features ? [`--features=${lifecycle.features}`] : []),
       ...(lifecycle.allowedOrigins ?? []).map(
         (origin) => `--allowed-origin=${origin}`,
       ),

@@ -228,7 +228,7 @@ for (const deviceClass of ['host', 'paired'] as const) {
           const helper = page.locator('.host-action__helper');
           if (deviceClass === 'paired') {
             await expect(helper).toHaveText(
-              `Full logs are available on ${hostName}. This device is shown the redacted read.`,
+              `Full logs are available on ${hostName}. This device shows a redacted copy.`,
             );
           } else {
             await expect(helper).toHaveCount(0);

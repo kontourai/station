@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, test } from 'vitest';
 import type { Tool } from '../types';
@@ -71,10 +71,13 @@ describe('agent editor browser tools switch (D14)', () => {
     );
     const toggle = screen.getByRole('switch', { name: 'Browser access' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'More about Browser access' }),
-    );
-    expect(screen.getByRole('tooltip').textContent).toMatch(/Project browser/);
+    // The visible hint says what the switch does; no InfoTip repeats it.
+    expect(
+      screen.getByText('Lets this agent use the Project’s browser.'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'More about Browser access' }),
+    ).toBeNull();
     fireEvent.click(toggle);
     expect(latest?.tools.browser).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
@@ -111,9 +114,7 @@ test.each(['station', 'codex'])(
     );
     expect(screen.queryByRole('switch', { name: 'Browser access' })).toBeNull();
     expect(
-      screen.getByText(
-        'Station browser access is currently available with Claude Code.',
-      ),
+      screen.getByText('Browser access works only with Claude Code.'),
     ).toBeTruthy();
     expect(latest.tools.browser).toBe(true);
   },
@@ -123,6 +124,7 @@ test('added sources use one compact row and can be removed without changing anot
   let latest = createEmptyAgentForm();
   latest.tools.mcpServers = ['docs', 'reports'];
   latest.tools.available = ['docs_read', 'reports_read'];
+  latest.tools.unattendedAutoApprove = ['*', 'mcp/docs/*', 'reports_read'];
   render(
     <Harness
       initial={latest}
@@ -136,7 +138,16 @@ test('added sources use one compact row and can be removed without changing anot
     />,
   );
   expect(screen.queryByText('Select shown')).toBeNull();
+  const approvals = within(
+    screen.getByRole('region', { name: 'Unattended approvals' }),
+  );
+  expect(
+    approvals.getAllByRole('listitem').map((item) => item.textContent),
+  ).toEqual(['* (all tools)', 'mcp/docs/*', 'reports_read']);
+  expect(approvals.getByText('mcp/docs/*')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Remove Docs' }));
+  expect(approvals.queryByText('mcp/docs/*')).toBeNull();
+  expect(approvals.getByText('reports_read')).toBeTruthy();
   expect(latest.tools.mcpServers).toEqual(['reports']);
   expect(latest.tools.available).toEqual(['reports_read']);
 });

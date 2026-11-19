@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa",
+  "kind": "policy-change",
+  "actor": {
+    "id": "briananderson1222",
+    "displayName": "brian",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-11-08T23:39:48.038Z",
+  "repoStandardsHash": "sha256:8c563254b3fc8eaab01f4796829b4f2433f171b0874ed08b4a1f803a41143402",
+  "repoMapHash": "sha256:ebcf01c0d5267b3e273081ecd1680a425f726bfc3f97683ead5f1ced008c11c6",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84",
+  "validUntilDays": 90,
+  "notes": "Name AGENTS.md as the only Veritas governance-block target. CLAUDE.md imports AGENTS.md, so repeating the block there loaded it twice into every Claude session; the block still reaches Claude through the import, and agent-instructions-gate now requires CLAUDE.md to be the bare import.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-11-01T17-10-01-685Z-41b60bbbbe84",
+    "approvalRef": "station-chat-session:7ba32684-6d03-4055-893b-b4503f9b24df (Brian Anderson approved 'attest as you, cite this chat' on 2026-11-08)",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "29e44f8be4bf44bf03497259d1de030a915ea8a65f9f93f188b896582f64e2f2",
+        "validUntil": "2027-02-06T23:39:48.038Z"
+      },
+      "createdAt": "2026-11-08T23:39:48.038Z",
+      "updatedAt": "2026-11-08T23:39:48.038Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa",
+      "claimId": "veritas.attestation.policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Name AGENTS.md as the only Veritas governance-block target. CLAUDE.md imports AGENTS.md, so repeating the block there loaded it twice into every Claude session; the block still reaches Claude through the import, and agent-instructions-gate now requires CLAUDE.md to be the bare import.",
+      "observedAt": "2026-11-08T23:39:48.038Z",
+      "collectedBy": "briananderson1222",
+      "integrityRef": "29e44f8be4bf44bf03497259d1de030a915ea8a65f9f93f188b896582f64e2f2",
+      "metadata": {
+        "actor": {
+          "id": "briananderson1222",
+          "displayName": "brian"
+        },
+        "attestedAt": "2026-11-08T23:39:48.038Z",
+        "validUntil": "2027-02-06T23:39:48.038Z",
+        "contentHash": "29e44f8be4bf44bf03497259d1de030a915ea8a65f9f93f188b896582f64e2f2"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa",
+      "status": "proposed",
+      "actor": "briananderson1222",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-11-08T23-39-48-038Z-6e59f453a2fa"
+      ],
+      "createdAt": "2026-11-08T23:39:48.038Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "f954e6e13437e2c01b8fe60e2ba1b39f50f2cac6cd0c4a943fa5594165c4ec49"
+  }
+}

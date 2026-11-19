@@ -1,4 +1,5 @@
 import { mutateJson } from '@kontourai/station-sdk';
+import { plural } from '../../utils/plural';
 import { StationUiError } from '../../utils/StationUiError';
 
 export type PluginScaffoldTemplateChoice = 'pane' | 'full' | 'provider';
@@ -27,10 +28,6 @@ interface ScaffoldEnvelope {
   presentCount?: number;
   missingCount?: number;
   data?: PluginScaffoldResult;
-}
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
 /**

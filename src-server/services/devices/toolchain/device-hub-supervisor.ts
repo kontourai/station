@@ -34,6 +34,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Readable } from 'node:stream';
 import type { DeviceHubProcessState } from '@kontourai/station-contracts/device-toolchain';
+import { errorMessage } from '../../../utils/error-message.js';
+import { sleep } from '../../../utils/sleep.js';
 import { spawnOwnedChild } from '../../infra/process-utils.js';
 import {
   createDeviceHubConnection,
@@ -241,7 +243,7 @@ async function defaultProbeReady(
     } catch {
       // Not listening yet.
     }
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await sleep(200);
   }
   return false;
 }
@@ -424,9 +426,7 @@ export class DeviceHubSupervisor {
         ) {
           this.#state = { state: 'blocked', detail: error.message };
         } else if (generation === this.#generation)
-          this.#scheduleRestart(
-            error instanceof Error ? error.message : String(error),
-          );
+          this.#scheduleRestart(errorMessage(error));
       },
     );
     return attempt;

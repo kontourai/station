@@ -61,11 +61,13 @@ import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
+import { boundLabelKeepingTail } from '../../services/orchestration/quoted-text.js';
 import {
   type StationControlDispatchTarget,
   stationControlScopeRefusal,
 } from '../../tools/station-control-policy.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   clipSerialized,
@@ -260,6 +262,15 @@ function compactMessage(
     ...(tools.length > 0 ? { tools } : {}),
     ...(typeof timestamp === 'number' && Number.isFinite(timestamp)
       ? { createdAt: new Date(timestamp).toISOString() }
+      : {}),
+    ...(typeof message.metadata?.importedFrom === 'string'
+      ? {
+          // Keep the end of the chain: its last hop is the verified one.
+          importedFrom: boundLabelKeepingTail(
+            message.metadata.importedFrom,
+            (label) => serializedBytes(label) <= 256,
+          ),
+        }
       : {}),
   };
 }
@@ -832,7 +843,7 @@ export function createConversationReferenceReadRoutes(
           422,
         );
       deps.logger.warn('Failed to read conversation', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return c.json(
         { success: false, error: 'Failed to read conversation' },

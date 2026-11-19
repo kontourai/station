@@ -2,6 +2,7 @@ import type {
   UsageCoverage,
   UsageReceipt,
   UsageRollup,
+  UsageRollupGroupBy,
   UsageRollupRow,
 } from '@kontourai/station-contracts/usage-rollup';
 import {
@@ -20,7 +21,7 @@ export interface UsageRollupFoldInput {
   /** Full bounded-window material, distinct from the paginated drilldown. */
   aggregateReceipts?: readonly UsageReceipt[];
   coverage: readonly UsageCoverage[];
-  groupBy?: 'provider' | 'model' | 'station' | 'conversation' | 'task' | 'day';
+  groupBy?: UsageRollupGroupBy;
   cursor?: string;
   pageSize?: number;
 }
@@ -68,9 +69,20 @@ function keyFor(
           ? receipt.conversationId
           : groupBy === 'task'
             ? receipt.taskId
-            : groupBy === 'day'
-              ? day
-              : receipt.provider;
+            : groupBy === 'project'
+              ? receipt.projectSlug
+              : groupBy === 'day'
+                ? day
+                : groupBy === 'connection'
+                  ? receipt.connectionId
+                  : groupBy === 'modelConnection'
+                    ? receipt.modelConnectionId
+                    : receipt.provider;
+  // A connection id is configuration text and may be any word, including
+  // `unattributed`; its keys quote the id so a real id never shares the
+  // bucket for usage that recorded none.
+  if (groupBy === 'connection' || groupBy === 'modelConnection')
+    return `${groupBy}:${JSON.stringify(part ?? null)}`;
   return `${groupBy ?? 'provider'}:${part ?? 'unattributed'}`;
 }
 
@@ -178,6 +190,17 @@ export class UsageReceiptRowAccumulator {
         ? { conversationId: receipt.conversationId }
         : {}),
       ...(receipt.taskId ? { taskId: receipt.taskId } : {}),
+      ...(this.groupBy === 'project' && receipt.projectSlug
+        ? { projectSlug: receipt.projectSlug }
+        : {}),
+      // Only the grouping that keys on a connection names it: other rows mix
+      // connections, and private summary rows must keep their closed shape.
+      ...(this.groupBy === 'connection' && receipt.connectionId
+        ? { connectionId: receipt.connectionId }
+        : {}),
+      ...(this.groupBy === 'modelConnection' && receipt.modelConnectionId
+        ? { modelConnectionId: receipt.modelConnectionId }
+        : {}),
       ...(receipt.observedAt ? { day: receipt.observedAt.slice(0, 10) } : {}),
       pricingStatus: receipt.pricing?.status ?? 'unpriced',
       receiptCount: 0,

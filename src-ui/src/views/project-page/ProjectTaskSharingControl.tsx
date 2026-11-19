@@ -14,9 +14,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
+import { Dialog } from '../../components/Dialog';
 import { ErrorState } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { AccessSection } from '../project-settings/AccessSection';
 
 export function ProjectTaskSharingControl({
   slug,
@@ -63,7 +66,9 @@ function ProjectTaskSharingControlInner({
   projectId?: string;
   task: { id: string; createdAt: string };
 }) {
+  useDecisionSurface('task-sharing');
   const client = useQueryClient();
+  const [invitingShare, setInvitingShare] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const key = [
     'project-shared-task-publication',
@@ -162,7 +167,7 @@ function ProjectTaskSharingControlInner({
         title={
           query.isPending
             ? 'Checking sharing…'
-            : 'Sharing is off for this Station'
+            : 'Task sharing is unavailable here'
         }
       >
         <Button
@@ -171,7 +176,7 @@ function ProjectTaskSharingControlInner({
           aria-description={
             query.isPending
               ? 'Checking sharing'
-              : 'Sharing is off for this Station'
+              : 'Task sharing is unavailable here'
           }
         >
           Share
@@ -221,12 +226,36 @@ function ProjectTaskSharingControlInner({
       <Button pending={mutation.isPending} onClick={() => void change()}>
         {shared ? 'Revoke sharing' : 'Share Task'}
       </Button>
+      {publication.kind === 'shared' && (
+        <>
+          <Button
+            onClick={() => setInvitingShare(publication.publication.shareId)}
+          >
+            Invite a teammate
+          </Button>
+          {invitingShare === publication.publication.shareId && (
+            <Dialog
+              title={publication.publication.task.title}
+              subtitle="Invite them to this Project. Their link opens this Task."
+              closeLabel="Close invitation"
+              onClose={() => setInvitingShare(undefined)}
+            >
+              <AccessSection
+                slug={slug}
+                projectId={publication.publication.project.localProjectId}
+                allowEnableSharing={false}
+                invitationShareId={invitingShare}
+              />
+            </Dialog>
+          )}
+        </>
+      )}
       {notice ? <p>{notice}</p> : null}
     </div>
   );
   return compact ? (
     <details className="task-room-share">
-      <summary>Share</summary>
+      <summary>{shared ? 'Shared with Project' : 'Share · Private'}</summary>
       {content}
     </details>
   ) : (

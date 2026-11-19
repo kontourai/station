@@ -1,0 +1,7 @@
+{
+  "revision": "2f8c61e274913e89e3f9f71bd06aa791901608ee",
+
+  "notes": [
+    {"path":"tests/AGENTS.md","note":"Cited guides changed only in the landing push-once bullet and the release-bot slot sentence; nothing here describes either, so it stays accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

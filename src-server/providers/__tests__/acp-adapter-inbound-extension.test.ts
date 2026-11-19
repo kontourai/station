@@ -63,7 +63,7 @@ class ClientCapturingProcess {
   };
   constructor(readonly opts: ACPProcessOptions) {}
   async start() {
-    this.client = this.opts.createClient();
+    this.client = this.opts.createClient({ launchReplacedByPolicy: false });
     return this.initResult;
   }
   async newSession() {
@@ -157,10 +157,11 @@ describe('inbound ACP extension requests reach the wire as -32601', () => {
     createACPClientApp(client).connect(clientStream);
     const agent = agentApp().connect(agentStream).client;
 
-    // Also observed inbound live (ADR 0013). Refused for the ordinary
-    // reason, with the same code — a probing agent learns nothing.
+    // Refused for the ordinary reason, with the same code — a probing agent
+    // learns nothing. (`_kiro/terminal/shell_type`, once the example here, is
+    // now answered through the reviewed `client.terminal-facts` entry.)
     await expect(
-      agent.request('_kiro/terminal/shell_type', {}),
+      agent.request('_kiro/governance/unknown', {}),
     ).rejects.toMatchObject({ code: -32601 });
 
     await stop();
@@ -236,14 +237,14 @@ describe('a refused CREDENTIAL request is legible to the user', () => {
 
   test('an ordinary unknown method raises no user-facing warning', async () => {
     // Surfacing every refusal would train users to ignore the one that
-    // matters. `_kiro/terminal/shell_type` is a routine protocol non-event.
+    // matters. An unknown vendor request is a routine protocol non-event.
     const { client, events, stop } = await adapterClientForLiveSession();
     const { clientStream, agentStream } = createStreamPair();
     createACPClientApp(client).connect(clientStream);
     const agent = agentApp().connect(agentStream).client;
 
     await expect(
-      agent.request('_kiro/terminal/shell_type', {}),
+      agent.request('_kiro/governance/unknown', {}),
     ).rejects.toMatchObject({ code: -32601 });
 
     expect(

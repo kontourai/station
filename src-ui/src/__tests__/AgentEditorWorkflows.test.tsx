@@ -205,7 +205,7 @@ describe('AgentEditorWorkflows', () => {
     // The Dialog portals outside the ConfirmModal wrapper, and its confirm
     // shares the row buttons' "Delete" name — scope by the dialog itself.
     const dialog = screen
-      .getAllByRole('dialog')
+      .getAllByRole('alertdialog')
       .find((candidate) => candidate.textContent?.includes('Delete workflow?'));
     if (!dialog) throw new Error('the confirm dialog did not mount');
     fireEvent.click(

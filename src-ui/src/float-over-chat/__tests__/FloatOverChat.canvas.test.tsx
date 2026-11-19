@@ -166,6 +166,21 @@ function transport() {
       };
       return new Response(stream, { status: 200 });
     }
+    if (
+      url.pathname === LEASE &&
+      init?.body &&
+      JSON.parse(String(init.body)).action === 'open-input-source'
+    )
+      return Response.json({
+        success: true,
+        data: { sourceId: '00000000-0000-4000-8000-000000000001' },
+      });
+    if (
+      url.pathname === LEASE &&
+      init?.body &&
+      JSON.parse(String(init.body)).action === 'close-input-source'
+    )
+      return Response.json({ success: true });
     if (url.pathname === LEASE)
       return Response.json({
         success: true,

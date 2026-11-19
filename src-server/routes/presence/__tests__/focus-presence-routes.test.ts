@@ -235,4 +235,64 @@ describe('POST /api/presence/focus', () => {
     expect(late.status).toBe(204);
     expect(presence.snapshot().get('device:phone')?.state).toBe('hidden');
   });
+
+  test('the sessions a document shows reach presence; a malformed list is refused', async () => {
+    const { presence, post } = harness(phone);
+    const accepted = await post({
+      clientSessionId: TAB,
+      state: 'focused',
+      viewingSessionIds: ['session-1', 'conversation-1', 'session-1'],
+    });
+    expect(accepted.status).toBe(204);
+    expect(presence.snapshot().get('device:phone')?.viewingSessionIds).toEqual([
+      'session-1',
+      'conversation-1',
+    ]);
+    for (const viewingSessionIds of [
+      'session-1',
+      [1],
+      ['../etc'],
+      ['a', 'b', 'c', 'd', 'e'],
+      ['x'.repeat(129)],
+    ]) {
+      const refused = await post({
+        clientSessionId: TAB,
+        state: 'focused',
+        viewingSessionIds,
+      });
+      expect(refused.status, JSON.stringify(viewingSessionIds)).toBe(400);
+    }
+    // A report without the field is an older client: unscoped focus.
+    await post({ clientSessionId: TAB, state: 'focused' });
+    expect(
+      presence.snapshot().get('device:phone')?.viewingSessionIds,
+    ).toBeUndefined();
+  });
+
+  test('a report may name the Project on screen (#5072), and only a Project id', async () => {
+    const { presence, post } = harness(phone);
+    const accepted = await post({
+      clientSessionId: TAB,
+      state: 'focused',
+      viewingSessionIds: [],
+      viewingProjectId: 'project-a',
+    });
+    expect(accepted.status).toBe(204);
+    expect(presence.snapshot().get('device:phone')?.viewingProjectIds).toEqual([
+      'project-a',
+    ]);
+    for (const viewingProjectId of [
+      7,
+      ['project-a'],
+      '../etc',
+      'x'.repeat(129),
+    ]) {
+      const refused = await post({
+        clientSessionId: TAB,
+        state: 'focused',
+        viewingProjectId,
+      });
+      expect(refused.status, JSON.stringify(viewingProjectId)).toBe(400);
+    }
+  });
 });

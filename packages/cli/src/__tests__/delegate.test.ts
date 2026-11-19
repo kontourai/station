@@ -1167,7 +1167,7 @@ describe('station delegate over HTTP', () => {
     // #764: the hint is phrased conditionally — dispatch output cannot know
     // the follow-up window stays open.
     expect(printed).toMatch(
-      /Continue this conversation \(while it still accepts follow-up turns[^)]*\): station delegate --session='task:[^']+' "<message>"/,
+      /Continue this conversation \(while it still accepts follow-up turns[^)]*\): station delegate --session=task:\S+ "<message>"/,
     );
   });
 
@@ -1201,9 +1201,7 @@ describe('station delegate over HTTP', () => {
     ]);
 
     const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
-    expect(printed).toMatch(
-      /station delegate --session='task:[^']+' "<message>"/,
-    );
+    expect(printed).toMatch(/station delegate --session=task:\S+ "<message>"/);
     // #764: dispatch cannot know the follow-up window stays open, so the
     // hint must say the window is conditional and name the surface that
     // knows, instead of implying the command always works.
@@ -1246,7 +1244,7 @@ describe('station delegate over HTTP', () => {
 
     expect(printed).not.toContain('no longer accepts follow-up turns');
     expect(printed).toContain(
-      `Continue this conversation: station delegate --session='${created.data.conversationId}' "<message>"`,
+      `Continue this conversation: station delegate --session=${created.data.conversationId} "<message>"`,
     );
   });
 
@@ -1282,7 +1280,7 @@ describe('station delegate over HTTP', () => {
     expect(printed).toContain('no longer accepts follow-up turns');
     expect(printed).toContain('Pending request: req-pending-1');
     expect(printed).toMatch(
-      /Respond: station delegate respond 'task:\d+' 'req-pending-1'/,
+      /Respond: station delegate respond task:\d+ req-pending-1 /,
     );
     expect(printed).toContain(
       `Carry forward: station delegate create --parent-task=${created.data.taskId}`,
@@ -1315,7 +1313,7 @@ describe('station delegate over HTTP', () => {
 
     expect(printed).not.toContain('no longer accepts follow-up turns');
     expect(printed).toContain(
-      `Continue this conversation: station delegate --session='${created.data.conversationId}' "<message>"`,
+      `Continue this conversation: station delegate --session=${created.data.conversationId} "<message>"`,
     );
   });
 
@@ -1482,7 +1480,7 @@ describe('station delegate over HTTP', () => {
       'Provider-reported reset: 2026-09-21 18:55:29 (no timezone given; wait before continuing)',
     );
     expect(printed).toContain(
-      `Continue this conversation: station delegate --session='${created.data.conversationId}' "<message>"`,
+      `Continue this conversation: station delegate --session=${created.data.conversationId} "<message>"`,
     );
     expect(printed).not.toContain('Usage limit');
     consoleLog.mockClear();
@@ -1617,6 +1615,7 @@ describe('station delegate over HTTP', () => {
       '--effort=high',
       '--model-option=effort=low',
       '--model-option=fastMode=true',
+      '--model-option=fastMode=false',
       '--json',
       'Review the diff',
       `--api-base=${apiBase}`,
@@ -1628,11 +1627,41 @@ describe('station delegate over HTTP', () => {
     const target = request?.body.target as
       | { model?: { options?: unknown } }
       | undefined;
+    expect(request?.body.prompt).toBe('Review the diff');
     expect(target?.model?.options).toEqual({
-      fastMode: true,
+      fastMode: false,
       effort: 'high',
     });
   });
+
+  test.each([
+    { args: ['--model-option'] },
+    { args: ['--model-option', 'fastMode=true'] },
+    {
+      args: [
+        '--model-option=fastMode=true',
+        '--model-option',
+        'fastMode=false',
+      ],
+    },
+    { args: ['--model-option=fastMode'] },
+  ])(
+    'delegate rejects invalid model option argv $args before HTTP',
+    async ({ args }) => {
+      const { runCli } = await import('../cli.js');
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      await expect(
+        runCli([
+          'delegate',
+          '--agent=codex',
+          ...args,
+          'Review the diff',
+          `--api-base=${apiBase}`,
+        ]),
+      ).rejects.toThrow('--model-option');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
 
   test('rejects an invalid --approval-mode value as a usage error before any request (#978 AC5)', async () => {
     const { runCli } = await import('../cli.js');
@@ -1971,7 +2000,7 @@ Nothing was sent at another approval mode.`);
       pendingRequest: {
         requestId: 'req-canonical',
         respondCommand:
-          "station approvals respond 'conversation:ordinary:child' 'req-canonical' <accept|acceptForSession|decline|cancel>",
+          'station approvals respond conversation:ordinary:child req-canonical <accept|acceptForSession|decline|cancel>',
       },
     });
     expect(result.data).not.toHaveProperty('taskId');
@@ -2560,7 +2589,7 @@ Nothing was sent at another approval mode.`);
       'Pending request: req-pending-1 — Approve the write?',
     );
     expect(text).toContain(
-      `Respond: station delegate respond '${taskId}' 'req-pending-1' <accept|acceptForSession|decline|cancel>`,
+      `Respond: station delegate respond ${taskId} req-pending-1 <accept|acceptForSession|decline|cancel>`,
     );
   });
 
@@ -2607,7 +2636,7 @@ Nothing was sent at another approval mode.`);
     expect(payload.kind).toBe('delegate.create');
     expect(payload.data.pendingRequest.requestId).toBe('req-pending-1');
     expect(payload.data.pendingRequest.respondCommand).toMatch(
-      /^station delegate respond 'task:\d+' 'req-pending-1' <accept\|acceptForSession\|decline\|cancel>$/,
+      /^station delegate respond task:\d+ req-pending-1 <accept\|acceptForSession\|decline\|cancel>$/,
     );
     expect(statusReads()).toHaveLength(1);
   });

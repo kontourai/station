@@ -34,6 +34,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import { execGit } from '../../utils/git-exec.js';
 import type { IgnoreOracle, SnapshotFile } from './plugin-publish-snapshot.js';
 import { unsafeRelativePathReason } from './plugin-publish-snapshot.js';
@@ -240,29 +241,19 @@ async function hashBlobs(
   workspace: ExportWorkspace,
   files: readonly SnapshotFile[],
 ): Promise<string[]> {
-  const oids = new Array<string>(files.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < files.length) {
-      const index = next;
-      next += 1;
-      // `--stdin` reads the bytes as given: no path, so no attribute, filter
-      // or end-of-line conversion is looked up for it (and `--no-filters`
-      // says so explicitly).
-      const { stdout } = await git(
-        workspace,
-        ['hash-object', '-w', '--no-filters', '--stdin'],
-        { input: files[index].bytes },
-      );
-      const oid = stdout.trim();
-      if (!OID.test(oid)) throw new Error('hash-object returned no id');
-      oids[index] = oid;
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(HASH_CONCURRENCY, files.length) }, worker),
-  );
-  return oids;
+  return mapWithConcurrency(files, HASH_CONCURRENCY, async (file) => {
+    // `--stdin` reads the bytes as given: no path, so no attribute, filter
+    // or end-of-line conversion is looked up for it (and `--no-filters`
+    // says so explicitly).
+    const { stdout } = await git(
+      workspace,
+      ['hash-object', '-w', '--no-filters', '--stdin'],
+      { input: file.bytes },
+    );
+    const oid = stdout.trim();
+    if (!OID.test(oid)) throw new Error('hash-object returned no id');
+    return oid;
+  });
 }
 
 export interface BuiltCommit {

@@ -4,7 +4,9 @@ name: "Repo: Backlog policy"
 # produced ~170 runs a day, most cancelled by the next label click, and failed
 # by construction in the minutes between filing an issue and labelling it.
 # That red belongs to backlog hygiene, not to main, so main-health does not
-# watch this workflow.
+# watch this workflow. Policy findings are report-only (warning annotations,
+# the job summary and one tracking issue); the run fails only when the live labels drift from
+# .github/labels.json or the labels or backlog cannot be read completely.
 on:
   schedule:
     - cron: '23 13 * * *'
@@ -30,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version-file: .nvmrc
       - name: Enforce durable backlog dispositions
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,4 +43,41 @@ jobs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/labels?per_page=100" \
             > "$RUNNER_TEMP/live-labels.json"
           node scripts/label-manifest.mjs --input="$RUNNER_TEMP/live-labels.json"
-          node scripts/backlog-priority-policy.mjs
+          mkdir -p .artifacts
+          node scripts/backlog-priority-policy.mjs --report .artifacts/backlog-policy-report.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backlog-policy-report
+          path: .artifacts/backlog-policy-report.md
+          if-no-files-found: error
+          retention-days: 7
+
+  # Findings reach people through one tracking issue. The only job that can
+  # write issues installs nothing; it posts only a report stamped with its own
+  # checkout's revision (current, not proof of who wrote it), with mentions
+  # broken, to an issue the workflow bot opened. It runs only
+  # after a successful audit, so a failed read never closes the issue.
+  backlog-issue:
+    needs: enforce
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: backlog-policy-report
+          path: .artifacts
+      - name: Upsert tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: node scripts/backlog-priority-policy.mjs --upsert --report .artifacts/backlog-policy-report.md --repo "$REPOSITORY"

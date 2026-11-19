@@ -34,11 +34,10 @@ vi.mock('../platform/useBundledServerStatus', () => ({
   }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  useOrchestrationSessionsQuery: () => ({
-    data: [],
+  useServerUpdateRunningTurnsQuery: () => ({
+    data: { turns: [], hiddenCount: 0 },
     isError: false,
     isFetching: false,
-    refetch: vi.fn(),
   }),
 }));
 
@@ -72,7 +71,7 @@ describe('Desktop app updates settings card', () => {
   test('shows the persisted policy and saves a change natively', async () => {
     const fake = await mount('available');
     const select = screen.getByLabelText(
-      'Automatic download',
+      'Automatic desktop app download',
     ) as HTMLSelectElement;
     expect(select.value).toBe('after-24h');
     expect(
@@ -98,9 +97,8 @@ describe('Desktop app updates settings card', () => {
       }),
     );
     expect(select.value).toBe('never');
-    expect(screen.getByRole('status').textContent).toMatch(
-      /It downloads when you choose\./,
-    );
+    expect(screen.getByText('It downloads when you choose.')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Update available');
   });
 
   test('a policy the native side could not save is reported', async () => {
@@ -108,7 +106,7 @@ describe('Desktop app updates settings card', () => {
       desktop_update_set_policy: () =>
         Promise.reject(new Error('write desktop update settings: denied')),
     });
-    fireEvent.change(screen.getByLabelText('Automatic download'), {
+    fireEvent.change(screen.getByLabelText('Automatic desktop app download'), {
       target: { value: 'immediately' },
     });
     expect((await screen.findByRole('alert')).textContent).toBe(
@@ -169,11 +167,11 @@ describe('Desktop app updates settings card', () => {
 
   test('an unconfigured build offers no check, download or policy', async () => {
     await mount('disabled');
-    expect(screen.getByRole('status').textContent).toMatch(
-      /has no desktop update channel/,
-    );
+    expect(screen.getByRole('status').textContent).toBe('No update channel');
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.queryByLabelText('Automatic download')).toBeNull();
+    expect(
+      screen.queryByLabelText('Automatic desktop app download'),
+    ).toBeNull();
   });
 
   test('download and install failures are disclosed with their text', async () => {
@@ -212,10 +210,8 @@ describe('Desktop app updates settings card', () => {
         screen.queryByText('native update connection unavailable'),
       ).toBeNull();
       native.invoke.mockImplementation(answer);
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-      expect(
-        await screen.findByText(/Station 0.1.12 is downloaded/),
-      ).not.toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(await screen.findByText('Ready to restart')).not.toBeNull();
       expect(fake.listenerCount()).toBe(1);
       act(() => fake.emit(desktopUpdateFixture('available')));
       fireEvent.click(screen.getByRole('button', { name: 'Download update' }));
@@ -247,7 +243,7 @@ describe('Desktop app updates settings card', () => {
     expect(screen.getByRole('dialog').textContent).toContain(
       'The update did not install, and Station did not restart.',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
       expect(fake.commands()).toEqual([
         'desktop_update_install',

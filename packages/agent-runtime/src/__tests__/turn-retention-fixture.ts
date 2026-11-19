@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
+import { loadavg } from 'node:os';
 import { constants } from 'node:sqlite';
 import { setImmediate } from 'node:timers/promises';
 import { expect, vi } from 'vitest';
@@ -10,6 +11,7 @@ import {
 } from '../index.js';
 import { owner } from './fixture.js';
 import { turnFixture } from './turn-fixture.js';
+import { timeAgentTransactions } from './turn-timing-fixture.js';
 
 type TurnFixture = Awaited<ReturnType<typeof turnFixture>>;
 
@@ -105,6 +107,7 @@ export async function seedRetentionBacklog(
 export async function retentionBacklog(turns: number, effects: number) {
   const seedStarted = performance.now();
   const f = await turnFixture();
+  let timing: ReturnType<typeof timeAgentTransactions> | undefined;
   try {
     console.info(
       'retention phase',
@@ -143,21 +146,31 @@ export async function retentionBacklog(turns: number, effects: number) {
       JSON.stringify({ phase: 'drain', event: 'start', turns, effects }),
     );
     const drainStarted = performance.now();
+    const loadStart = loadavg();
+    timing = timeAgentTransactions(f.database);
     const opens: number[] = [];
+    const openWork: number[] = [];
+    const openCommits: number[] = [];
+    const settleWork: number[] = [];
+    const settleCommits: number[] = [];
     const settles: number[] = [];
     let drained = false;
     for (let pass = 0; pass < 1200; pass++) {
-      let started = performance.now();
-      const lease = await f.runtime.start({
-        key: {
-          ...f.key,
-          conversationId: `maintenance-${pass}`,
-          invocationId: `fresh-${pass}`,
-        },
-        input: 'maintenance',
-        implementation: 'station-agent/1',
-      });
-      opens.push(performance.now() - started);
+      const opened = await timing.measure(() =>
+        f.runtime.start({
+          key: {
+            ...f.key,
+            conversationId: `maintenance-${pass}`,
+            invocationId: `fresh-${pass}`,
+          },
+          input: 'maintenance',
+          implementation: 'station-agent/1',
+        }),
+      );
+      const lease = opened.result;
+      opens.push(opened.rawMs);
+      openWork.push(opened.workMs);
+      openCommits.push(opened.commitMs);
       if (pass === 0) {
         await setImmediate();
         expect(
@@ -171,9 +184,10 @@ export async function retentionBacklog(turns: number, effects: number) {
             .get()?.n,
         ).toBe(turns * effects);
       }
-      started = performance.now();
-      await lease.run(async () => {});
-      settles.push(performance.now() - started);
+      const settled = await timing.measure(() => lease.run(async () => {}));
+      settles.push(settled.rawMs);
+      settleWork.push(settled.workMs);
+      settleCommits.push(settled.commitMs);
       for (let idle = 0; idle < 4; idle++) await setImmediate();
       const remaining = Number(
         f.database
@@ -216,14 +230,28 @@ export async function retentionBacklog(turns: number, effects: number) {
         break;
       }
     }
+    const orderedSettles = [...settles].sort((a, b) => a - b);
     const metrics = {
       turns,
+      loadStart,
+      loadEnd: loadavg(),
       effectRows: turns * effects,
       seedMs,
       drainMs: performance.now() - drainStarted,
       passes: opens.length,
       maxOpenMs: Math.max(...opens),
       maxSettleMs: Math.max(...settles),
+      p50SettleMs: orderedSettles[Math.ceil(settles.length * 0.5) - 1],
+      p95SettleMs: orderedSettles[Math.ceil(settles.length * 0.95) - 1],
+      settles,
+      openWork,
+      openCommits,
+      settleWork,
+      settleCommits,
+      maxOpenWorkMs: Math.max(...openWork),
+      maxSettleWorkMs: Math.max(...settleWork),
+      maxOpenCommitMs: Math.max(...openCommits),
+      maxSettleCommitMs: Math.max(...settleCommits),
     };
     if (process.env.STATION_AGENT_RUNTIME_RETENTION_REPORT)
       writeFileSync(
@@ -235,8 +263,8 @@ export async function retentionBacklog(turns: number, effects: number) {
     expect(drained).toBe(true);
     expect([...guardPayloadReads]).toEqual([]);
     expect(opens.length).toBeLessThanOrEqual(400);
-    expect(Math.max(...opens)).toBeLessThan(50);
-    expect(Math.max(...settles)).toBeLessThan(50);
+    expect(metrics.maxOpenWorkMs).toBeLessThan(50);
+    expect(metrics.maxSettleWorkMs).toBeLessThan(50);
     expect(
       f.database
         .prepare(
@@ -256,6 +284,7 @@ export async function retentionBacklog(turns: number, effects: number) {
       }),
     ).toBe('retry');
   } finally {
+    timing?.restore();
     await f.close();
   }
 }

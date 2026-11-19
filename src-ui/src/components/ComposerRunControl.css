@@ -1,0 +1,274 @@
+.composer-choices
+  > .choice-trigger.composer-run-control:has(.composer-choice__icon) {
+  min-width: 44px;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+.composer-run-control .composer-choice__icon {
+  gap: var(--k-space-1);
+}
+.composer-run-panel {
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+.composer-run-panel__choices {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+}
+.composer-run-panel__choices .composer-choice {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+}
+.composer-run-panel__choices .composer-choice {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--k-space-2);
+}
+.composer-run-panel__choices .composer-choice__icon {
+  grid-area: 1 / 1;
+  justify-content: center;
+}
+.composer-run-panel__choices .composer-choice__icon > svg {
+  width: 20px;
+  height: 20px;
+}
+.composer-run-panel__choices .chat-input__chip-stack {
+  grid-area: 1 / 2;
+}
+.composer-run-panel__choices .composer-choice__safety {
+  grid-area: 1 / 1;
+  justify-self: center;
+}
+.composer-run-panel__choices
+  .composer-choice:has(> .composer-choice__safety)
+  > .composer-choice__icon {
+  visibility: hidden;
+}
+.composer-run-panel__choices .choice-caret {
+  grid-area: 1 / 3;
+  margin-inline-start: 0;
+}
+.composer-run-panel__agent {
+  position: relative;
+}
+.composer-run-panel__engine-details {
+  position: absolute;
+  inset: 0 auto auto 0;
+}
+.composer-run-panel__engine-details summary {
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+}
+.composer-run-panel__engine-details summary::-webkit-details-marker {
+  display: none;
+}
+.composer-run-panel__engine-agent,
+.composer-run-panel__engine-mark,
+.composer-run-panel__engine-dot {
+  position: absolute;
+  display: flex;
+}
+.composer-run-panel__engine-agent {
+  inset: 7px auto auto 8px;
+}
+.composer-run-panel__engine-agent > svg {
+  width: 20px;
+  height: 20px;
+}
+.composer-run-panel__engine-mark {
+  inset: 20px auto auto 21px;
+}
+.composer-run-panel__engine-dot {
+  inset: 6px 4px auto auto;
+  width: 6px;
+  height: 6px;
+  background: var(--k-caution);
+  border-radius: 50%;
+}
+.composer-run-panel__routing {
+  position: absolute;
+  top: 100%;
+  z-index: var(--layer-popover);
+  display: grid;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 48px));
+  gap: var(--k-space-1);
+  padding: var(--k-space-2);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+.composer-run-panel__routing .chat-input__chip-caption-engine {
+  white-space: normal;
+}
+.composer-run-panel .chat-input__agent-name,
+.composer-run-panel .chat-input__model-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.composer-run-panel__identity-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-run-panel__engine-status,
+.composer-run-panel__effort {
+  flex: none;
+  white-space: nowrap;
+}
+.composer-run-panel__engine-status {
+  margin-inline-start: var(--k-space-2);
+  padding-inline: var(--k-space-1);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.composer-run-panel__effort {
+  margin-inline-start: var(--k-space-1);
+}
+
+.composer-run-control__marks {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  flex: none;
+  padding-block: var(--k-space-1);
+}
+.composer-run-control__agent-mark {
+  display: flex;
+  position: relative;
+  z-index: 1;
+}
+.composer-run-control__engine-mark {
+  display: flex;
+  margin-left: -6px;
+  transform: translateY(3px);
+}
+.composer-run-control__safety {
+  position: absolute;
+  z-index: 2;
+  right: -3px;
+  top: -3px;
+  font-size: var(--k-text-sm);
+  line-height: 1;
+  color: var(--k-caution);
+  background: var(--k-panel);
+  border-radius: calc(var(--k-radius-md) * 2);
+}
+.composer-run-control .composer-choice__value {
+  width: 100%;
+}
+/* The label keeps one line. The Agent name gives way first but never below a
+   readable width: when that and the model's own minimum do not fit, it wraps
+   onto a second line that the label clips, leaving the model (and effort).
+   `order` fills the line effort, model, Agent; row-reverse paints it back in
+   reading order, so the DOM (and its text) stays Agent · model · effort. */
+.composer-run-control__label {
+  display: flex;
+  flex-flow: row-reverse wrap;
+  justify-content: flex-end;
+  min-width: 0;
+  max-height: 1lh;
+  overflow: hidden;
+}
+/* The separator clips with the Agent name so the model never starts with a
+   dangling dot. */
+.composer-run-control__agent {
+  order: 1;
+  flex: 1 1 8ch;
+  min-width: 8ch;
+  max-width: max-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+/* A long model id still ellipsizes once the Agent name is gone. */
+.composer-run-control__model {
+  flex: 1000 1 8ch;
+  min-width: 0;
+  max-width: max-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+/* A toolbar pill: the painted surface is quiet; the hit area remains 44px. */
+.composer-choices > .choice-trigger.composer-run-control {
+  min-width: 44px;
+  min-height: 44px;
+  border-color: transparent;
+  border-radius: calc(var(--k-radius-md) * 2);
+  background: transparent;
+  box-shadow: none;
+  color: var(--k-text-muted);
+  font-weight: 400;
+}
+.composer-choices > .choice-trigger.composer-run-control:hover,
+.composer-choices > .choice-trigger.composer-run-control[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--k-text) 7%, transparent);
+}
+.composer-run-control .composer-choice__value {
+  font-weight: 400;
+}
+/* Intrinsic sizing uses the existing composer container. Once the available
+   width falls below the surface's label budget, only marks and caret remain. */
+.composer-run-control .chat-input__chip-stack {
+  max-width: clamp(
+    0px,
+    calc((100cqw - var(--composer-label-collapse, 380px)) * 1000),
+    32rem
+  );
+  overflow: hidden;
+}
+.composer-choices > .choice-trigger.composer-run-control {
+  gap: var(--k-space-2);
+  padding-inline: clamp(
+    var(--k-space-1),
+    calc((100cqw - 450px) * 1000),
+    var(--k-space-2)
+  );
+}
+
+/* A fact the closed trigger states (the Agent moved) stays whole; the label
+   beside it gives way, and it outlasts the label's narrow-composer collapse. */
+.composer-run-control__notice {
+  flex: none;
+  white-space: pre;
+}
+/* Collapses exactly when the label does (the chip-stack rule above), so a
+   lone hint beside the marks does not start with a separator. */
+.composer-run-control__notice-separator {
+  display: inline-block;
+  vertical-align: top;
+  overflow: hidden;
+  max-width: clamp(
+    0px,
+    calc((100cqw - var(--composer-label-collapse, 380px)) * 1000),
+    2em
+  );
+}
+
+/* Effort qualifies the Model, so it gives way before the Model does. */
+.composer-run-control__effort {
+  order: -1;
+  flex: 10 1 0;
+  min-width: 0;
+  max-width: max-content;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}

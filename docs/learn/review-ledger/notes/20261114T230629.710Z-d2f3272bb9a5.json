@@ -1,0 +1,17 @@
+{
+  "revision": "6643e2bf9c489d81291bfb992fa2fbf05a016800",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-checked after testing.md's PR Gallery excuse rules changed (call-log first entry kept, equality numbers disclosed, hook-free base checkout): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-checked after testing.md's PR Gallery excuse rules changed (call-log first entry kept, equality numbers disclosed, hook-free base checkout): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-checked after testing.md's PR Gallery excuse rules changed (call-log first entry kept, equality numbers disclosed, hook-free base checkout): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-checked after testing.md's PR Gallery excuse rules changed (call-log first entry kept, equality numbers disclosed, hook-free base checkout): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-checked after testing.md's PR Gallery excuse rules changed (call-log first entry kept, equality numbers disclosed, hook-free base checkout): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-checked after testing.md's PR Gallery excuse rules changed (call-log first entry kept, equality numbers disclosed, hook-free base checkout): this page states nothing about that attribution, so no prose change is needed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

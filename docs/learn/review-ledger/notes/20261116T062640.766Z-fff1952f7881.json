@@ -1,0 +1,7 @@
+{
+  "revision": "9ffc9c2f9f03c50ca170fa8e808e06eb3c87c4bb",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked its screenshot-coverage claim against tests/screenshots.spec.ts: this change moves the capture loop into captureScreens and adds afterAudit to the resync screens; no screen, reduced-motion setting or capture order it cites changed.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "3b1ffbbd2974e5cf6dc5ddbf2d2b54baee186a64",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked sdk.md: its request-deadline and query-hook claims hold. The change makes the Overview reopen 404 probe pass a request deadline on (rethrowDeadline) instead of swallowing it, which is the behaviour the page describes for SDK body reads.","inputs":["packages/sdk/src/query-domains/taskGraph.ts"]}
+  ]
+}

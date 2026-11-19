@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ComposerActionsMenu } from '../components/chat-dock/ComposerActionsMenu';
 
@@ -25,13 +25,8 @@ function renderMenu(overrides: Record<string, unknown> = {}) {
     triggerRef: { current: null },
     commandLauncherDisabled: false,
     commandLauncherShortcut: '⌘⇧L',
-    filesActive: false,
-    taskContextActive: false,
-    filesCount: 3,
     onOpenDelegation: vi.fn(),
     onOpenCommandLauncher: vi.fn(),
-    onToggleFiles: vi.fn(),
-    onToggleTaskContext: vi.fn(),
     ...overrides,
   };
   render(<ComposerActionsMenu {...(props as any)} />);
@@ -101,52 +96,105 @@ describe('ComposerActionsMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  test('opens by pointer and exposes Delegate/Commands/Files/Task context as real menu items', () => {
-    renderMenu();
+  test('opens by pointer and groups its items: message, project work, conversation', () => {
+    renderMenu({
+      onOpenConversationReference: vi.fn(),
+      onOpenTerminal: vi.fn(),
+      onOpenCodingLayout: vi.fn(),
+      onOpenHandoff: vi.fn(),
+      onOpenContextReset: vi.fn(),
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
 
     const menu = screen.getByRole('menu', { name: 'Composer actions' });
-    expect(menu).toBeTruthy();
-
-    // Files/Task context are toggles (role menuitemcheckbox); Delegate/
-    // Commands are plain actions (role menuitem) — both are real buttons
-    // reachable via getByRole.
-    const items = [
-      ...screen.getAllByRole('menuitem'),
-      ...screen.getAllByRole('menuitemcheckbox'),
-    ];
-    expect(screen.getByRole('menuitem', { name: 'Delegate' })).toBeTruthy();
-    expect(
-      screen.getByRole('menuitem', { name: 'Open command launcher' }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('menuitemcheckbox', { name: /^Files/ }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('menuitemcheckbox', { name: 'Task context' }),
-    ).toBeTruthy();
-    for (const item of items) {
+    const groups = within(menu).getAllByRole('group');
+    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+      'Add to message',
+      'Work in this project',
+      'This conversation',
+    ]);
+    const names = (group: HTMLElement) =>
+      within(group)
+        .getAllByRole('menuitem')
+        .map((item) => item.getAttribute('aria-label') ?? item.textContent);
+    expect(names(groups[0]!)).toEqual([
+      'Reference chat…',
+      'Open command launcher',
+    ]);
+    expect(names(groups[1]!)).toEqual([
+      'Open terminalBottom dock',
+      'Open in CodingMoves this chat',
+      'Delegate…Resumable task',
+    ]);
+    // Reset is last and reads as the one row that costs something.
+    const conversation = within(groups[2]!).getAllByRole('menuitem');
+    expect(conversation.at(-1)!.textContent).toBe('Reset agent context…');
+    expect(conversation.at(-1)!.getAttribute('data-tone')).toBe('danger');
+    for (const item of within(menu).getAllByRole('menuitem')) {
       expect(item.tagName).toBe('BUTTON');
       expect(item.getAttribute('type')).toBe('button');
     }
+    // Panel toggles live in the dock's More menu, not here.
+    expect(screen.queryByRole('menuitemcheckbox')).toBeNull();
   });
 
   test('clicking Delegate closes the menu and calls onOpenDelegation', () => {
     const props = renderMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delegate' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delegate…' }));
 
     expect(props.onOpenDelegation).toHaveBeenCalledOnce();
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  test('surfaces the changed-files count on the Files item', () => {
-    renderMenu({ filesCount: 5 });
+  test('Open terminal closes the menu and opens the dock terminal', () => {
+    const onOpenTerminal = vi.fn();
+    renderMenu({ onOpenTerminal });
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
-    const filesItem = screen.getByRole('menuitemcheckbox', {
-      name: /^Files/,
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Open terminal/ }));
+    expect(onOpenTerminal).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('an unavailable terminal says why on the row itself', () => {
+    const onOpenTerminal = vi.fn();
+    renderMenu({
+      onOpenTerminal,
+      terminalDisabledReason: 'Set a working directory first',
     });
-    expect(filesItem.textContent).toContain('5');
+    fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+    const item = screen.getByRole('menuitem', { name: /^Open terminal/ });
+    expect((item as HTMLButtonElement).disabled).toBe(true);
+    expect(item.textContent).toContain('Set a working directory first');
+    fireEvent.click(item);
+    expect(onOpenTerminal).not.toHaveBeenCalled();
+  });
+
+  test('the coding row carries the layout name and moves the chat', () => {
+    const onOpenCodingLayout = vi.fn();
+    renderMenu({ onOpenCodingLayout, codingLayoutLabel: 'Open in Workbench' });
+    fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: /^Open in Workbench/ }),
+    );
+    expect(onOpenCodingLayout).toHaveBeenCalledOnce();
+  });
+
+  test('project rows are absent for a chat with no Project', () => {
+    renderMenu({
+      projectActionsAvailable: false,
+      onOpenTerminal: vi.fn(),
+      onOpenCodingLayout: vi.fn(),
+      onOpenHandoff: vi.fn(),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+    expect(
+      screen.queryByRole('menuitem', { name: /Open terminal/ }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('menuitem', { name: /Open in Coding/ }),
+    ).toBeNull();
+    expect(screen.getAllByRole('group')).toHaveLength(1);
   });
 
   test('disables the Commands item while the agent is working', () => {
@@ -166,7 +214,7 @@ describe('ComposerActionsMenu', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
 
-    expect(screen.queryByRole('menuitem', { name: 'Delegate' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Delegate…' })).toBeNull();
     fireEvent.click(screen.getByRole('menuitem', { name: /Continue with/ }));
 
     expect(onOpenHandoff).toHaveBeenCalledOnce();
@@ -183,8 +231,7 @@ describe('ComposerActionsMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
     const item = screen.getByRole('menuitem', { name: /Continue with/ });
     expect((item as HTMLButtonElement).disabled).toBe(true);
-    expect(item.getAttribute('title')).toBe(
-      'Wait for the current turn to finish.',
-    );
+    // Visible text, not a tooltip: a phone has no hover.
+    expect(item.textContent).toContain('Wait for the current turn to finish.');
   });
 });

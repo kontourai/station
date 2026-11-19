@@ -88,7 +88,9 @@ importers; SDK and Shared each select their own importer. The policy retains
 its severity and residual requirements.
 An exact reviewed local remediation can satisfy a version-reported high finding
 only with current patch, graph, and installed-byte verification; it does not
-reclassify the advisory. See the [RSA backport](../guides/dependency-security.md#rsa-signature-verification-backport-2026-10).
+reclassify the advisory. No such remediation is currently recorded; the
+[RSA backport](../guides/dependency-security.md#rsa-signature-verification-2026-10-backport-2026-11-release)
+that used it was replaced by an official release.
 Release inventories follow the locked production graph, including workspace
 links, aliases, peer contexts, and platform-optional packages; npm PURLs still
 identify the registry ecosystem. A tarball integrity hash is not a hash of

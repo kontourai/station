@@ -129,7 +129,7 @@ function QuoteSourceInspection({
               });
             }}
           >
-            Open source conversation
+            Open original chat
           </Button>
         )
       }
@@ -145,9 +145,9 @@ function QuoteSourceInspection({
         <>
           <p role="status">
             {quoteMatchesSource(quote, source)
-              ? 'Source revision is unchanged. The saved excerpt is user-provided.'
-              : 'The source has changed. The saved quote is unchanged.'}{' '}
-            Quotation does not establish evidence standing.
+              ? 'Source unchanged since you quoted it.'
+              : 'The source has changed since you quoted it.'}{' '}
+            Quotes aren't verified evidence.
           </p>
           <blockquote>{quote.excerpt}</blockquote>
           <details open>
@@ -158,7 +158,7 @@ function QuoteSourceInspection({
       ) : (
         <ErrorState
           title="Source unavailable"
-          description="The exact answer could not be read under current access. No other answer was substituted."
+          description="Couldn't open this answer. It may be gone, or you may not have access."
         />
       )}
     </Dialog>

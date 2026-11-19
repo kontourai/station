@@ -9,7 +9,7 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import {
   bindColorThemeToSettings,
@@ -19,7 +19,20 @@ import {
 } from '../lib/color-theme-apply';
 import { COLOR_THEME_OPTIONS } from '../lib/color-themes';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { prefersReducedMotion } from '../lib/reduced-motion';
 import { AppearancePage, themePreview } from '../pages/AppearancePage';
+
+// The Custom section reads the person's server document through the Station
+// connection; this suite covers the device-scope choices above it.
+vi.mock('../pages/CustomAppearanceSection', () => ({
+  CustomAppearanceSection: () => null,
+}));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+vi.mock('../hooks/useAppearanceStudioEnabled', () => ({
+  useAppearanceStudioEnabled: () => false,
+}));
 
 /**
  * The Appearance page against the REAL settings store and lane A's real
@@ -92,6 +105,8 @@ afterEach(() => {
     COLOR_THEME_FLAVOR_ATTRIBUTE,
     COLOR_THEME_ACCENT_ATTRIBUTE,
     'data-color-theme-failed',
+    'data-density',
+    'data-motion',
   ])
     root.removeAttribute(name);
   for (const link of document.head.querySelectorAll('link[rel="stylesheet"]'))
@@ -185,6 +200,65 @@ describe('Appearance page', () => {
     expect(
       screen.getByText('Buttons, links and focus. Peach is selected.'),
     ).toBeTruthy();
+  });
+
+  test('Density defaults to Comfortable, and Compact applies at the root and survives a reload (#4692)', () => {
+    const view = renderPage();
+    const density = screen.getByRole('radiogroup', { name: 'Density' });
+    const radio = (name: string) =>
+      within(screen.getByRole('radiogroup', { name: 'Density' })).getByRole(
+        'radio',
+        { name },
+      ) as HTMLInputElement;
+    expect(
+      within(density)
+        .getAllByRole('radio')
+        .map((input) => input.closest('label')?.textContent),
+    ).toEqual(['Comfortable', 'Compact']);
+    expect(radio('Comfortable').checked).toBe(true);
+    expect(deviceSettingsStore.getSnapshot().density).toBe('comfortable');
+    expect(root.getAttribute('data-density')).toBe('comfortable');
+
+    fireEvent.click(radio('Compact'));
+    expect(deviceSettingsStore.getSnapshot().density).toBe('compact');
+    expect(root.getAttribute('data-density')).toBe('compact');
+    expect(radio('Compact').checked).toBe(true);
+    // Saved where theme is saved: the device envelope (or the account when a
+    // person is signed in), not page state.
+    expect(
+      JSON.parse(localStorage.getItem('station-device-settings-v1')!).values
+        .density,
+    ).toBe('compact');
+
+    // A reload reads it back from storage.
+    view.unmount();
+    root.removeAttribute('data-density');
+    act(() => deviceSettingsStore.reloadFromStorage());
+    renderPage();
+    expect(root.getAttribute('data-density')).toBe('compact');
+    expect(radio('Compact').checked).toBe(true);
+
+    fireEvent.click(radio('Comfortable'));
+    expect(root.getAttribute('data-density')).toBe('comfortable');
+  });
+
+  test('Motion Reduced marks the root and reduces script-driven motion; System clears it (#4692)', () => {
+    renderPage();
+    const motion = screen.getByRole('radiogroup', { name: 'Motion' });
+    const radio = (name: string) =>
+      within(motion).getByRole('radio', { name }) as HTMLInputElement;
+    expect(radio('System').checked).toBe(true);
+    expect(root.hasAttribute('data-motion')).toBe(false);
+    expect(prefersReducedMotion()).toBe(false);
+
+    fireEvent.click(radio('Reduced'));
+    expect(deviceSettingsStore.getSnapshot().motion).toBe('reduce');
+    expect(root.getAttribute('data-motion')).toBe('reduce');
+    expect(prefersReducedMotion()).toBe(true);
+
+    fireEvent.click(radio('System'));
+    expect(root.hasAttribute('data-motion')).toBe(false);
+    expect(prefersReducedMotion()).toBe(false);
   });
 
   // A custom hex `accentColor` wins over a theme's accent (lane A's
@@ -481,7 +555,7 @@ describe('Appearance page while a theme sheet loads', () => {
       'The colors you had stay until it loads.',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await act(async () => {
       await Promise.resolve();
     });
@@ -512,7 +586,7 @@ describe('Appearance page while a theme sheet loads', () => {
     expect(card(/^Catppuccin/).textContent).toBe('CatppuccinNot loaded');
 
     // A retry that fails again goes back to failed, not to Loading forever.
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await act(async () => {
       await Promise.resolve();
     });

@@ -15,13 +15,16 @@ import {
   validateReleaseInventory,
 } from './lib/release-artifacts.mjs';
 import { projectReleaseAvailability } from './release-availability.mjs';
+import {
+  PROMOTION_RECEIPT_ASSET,
+  verifyPromotionReceipt,
+} from './release-promotion.mjs';
 import { validateReleaseSbomPredicates } from './release-sbom-predicates.mjs';
 
 export const REPOSITORY = 'kontourai/station';
 const SHA = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
-const TAG =
-  /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$/;
+const TAG = /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_RELEASES = 100;
 const MAX_PULLS = 256;
 const MAX_CLOSING_ISSUES = 100;
@@ -32,12 +35,7 @@ const RELEASE_ASSET_HOSTS = new Set([
   'objects.githubusercontent.com',
 ]);
 
-const channelForTag = (tag) =>
-  TAG.test(tag ?? '')
-    ? tag.includes('-preview.')
-      ? 'preview'
-      : 'stable'
-    : null;
+const channelForTag = (tag) => (TAG.test(tag ?? '') ? 'stable' : null);
 const labels = (values = []) =>
   new Set(
     values.map((value) => (typeof value === 'string' ? value : value?.name)),
@@ -124,7 +122,40 @@ async function previousPublicRelease(api, current, channel) {
       channelForTag(release.tag_name) === channel &&
       Date.parse(release.published_at) < Date.parse(current.published_at),
   );
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) {
+    const currentListed = releases.some(
+      (value) =>
+        value?.tag_name === current.tag_name &&
+        value.draft === false &&
+        value.prerelease === false &&
+        value.published_at === current.published_at,
+    );
+    const otherStable = releases.some(
+      (value) =>
+        value?.tag_name !== current.tag_name &&
+        TAG.test(value?.tag_name ?? '') &&
+        value.draft !== true,
+    );
+    const validHistory = releases.every(
+      (value) =>
+        value &&
+        typeof value.tag_name === 'string' &&
+        value.tag_name.length > 0 &&
+        typeof value.draft === 'boolean' &&
+        typeof value.prerelease === 'boolean' &&
+        (value.draft ||
+          (typeof value.published_at === 'string' &&
+            Number.isFinite(Date.parse(value.published_at)))),
+    );
+    if (
+      releases.length < MAX_RELEASES &&
+      validHistory &&
+      currentListed &&
+      !otherStable
+    )
+      return { kind: 'no-prior-release' };
+    return null;
+  }
   candidates.sort(
     (left, right) =>
       Date.parse(right.published_at) - Date.parse(left.published_at),
@@ -241,6 +272,12 @@ async function downloadAssets(api, release, directory) {
  * Discover only an already-public release, validate all provider receipts, then
  * project its bounded same-channel merged-issue facts. Any uncertainty fails
  * before the first label write.
+ * @param {unknown} event
+ * @param {{
+ *   api?: object, exec?: typeof execFileSync, updaterPublicKey?: string,
+ *   readInventoryFile?: typeof readInventory, assertAssets?: typeof assertOnlyExpectedAssets,
+ *   validateInventory?: typeof validateReleaseInventory, validatePredicates?: typeof validateReleaseSbomPredicates
+ * }} options
  */
 export async function runReleaseAvailability(
   event,
@@ -286,6 +323,8 @@ export async function runReleaseAvailability(
     join(tmpdir(), 'station-release-availability-'),
   );
   let inventory, inventorySha;
+  let producerTag = event.tag;
+  let promotion;
   try {
     await downloadAssets(api, release, directory);
     const inventoryPath = join(directory, 'station-release-inventory.json');
@@ -300,7 +339,53 @@ export async function runReleaseAvailability(
       updaterPublicKey,
       containerDescriptor: join(directory, 'station-container-release.json'),
     });
-    assertAssets(directory, event.tag, { allowSignedHostManifest: true });
+    const promotionEntry = release.assets.find(
+      (asset) => asset.name === PROMOTION_RECEIPT_ASSET,
+    );
+    if (promotionEntry) {
+      const receiptPath = join(directory, PROMOTION_RECEIPT_ASSET);
+      const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+      if (
+        !SHA.test(receipt.policySha ?? '') ||
+        !SHA.test(receipt.workflowSha ?? '') ||
+        !/^[A-Za-z0-9._/-]+$/.test(repository.default_branch ?? '') ||
+        !(await api.verifyPolicyCommit(
+          receipt.policySha,
+          repository.default_branch,
+        )) ||
+        !(await api.verifyPolicyCommit(
+          receipt.workflowSha,
+          repository.default_branch,
+        ))
+      )
+        throw new Error(
+          'promotion policy is not a trusted default-branch revision',
+        );
+      await api.verifyAttestation(receiptPath, {
+        sourceRef: `refs/heads/${repository.default_branch}`,
+        sourceSha: receipt.workflowSha,
+        workflow: '.github/workflows/publish-release.yml',
+      });
+      await verifyPromotionReceipt(receipt, {
+        publicationTag: event.tag,
+        sourceSha: event.sourceSha,
+        assetsDir: directory,
+      });
+      producerTag = receipt.producerTag;
+      promotion = {
+        producerTag,
+        publicationTag: receipt.publicationTag,
+        sourceSha: receipt.sourceSha,
+        version: receipt.version,
+        inventorySha,
+      };
+      if ((await api.tagSha(producerTag)) !== event.sourceSha)
+        throw new Error('candidate source tag differs');
+    }
+    assertAssets(directory, producerTag, {
+      allowSignedHostManifest: true,
+      ...(promotionEntry ? { allowPromotionReceipt: true } : {}),
+    });
     validatePredicates(directory);
     // The signed host manifest is attached by publish-release.yml, not
     // release.yml, so it carries no release.yml attestation. validateInventory
@@ -308,9 +393,13 @@ export async function runReleaseAvailability(
     // attested payload it signs.
     const signedHostManifest = signedHostManifestAsset(event.tag);
     for (const asset of release.assets) {
-      if (asset.name === signedHostManifest) continue;
+      if (
+        asset.name === signedHostManifest ||
+        asset.name === PROMOTION_RECEIPT_ASSET
+      )
+        continue;
       await api.verifyAttestation(join(directory, asset.name), {
-        tag: event.tag,
+        tag: producerTag,
         sourceSha: event.sourceSha,
         workflow: '.github/workflows/release.yml',
       });
@@ -322,15 +411,24 @@ export async function runReleaseAvailability(
   rmSync(directory, { recursive: true, force: true });
   if (
     inventory.schemaVersion !== 2 ||
-    inventory.tag !== event.tag ||
+    inventory.tag !== producerTag ||
     inventory.sourceSha !== event.sourceSha ||
     inventory.channel !== event.channel ||
-    inventory.container?.tag !== event.tag ||
+    inventory.container?.tag !== producerTag ||
     inventory.container?.sha !== event.sourceSha
   )
     return { kind: 'unavailable' };
   const previous = await previousPublicRelease(api, release, event.channel);
   if (!previous) return { kind: 'unavailable' };
+  if (previous.kind === 'no-prior-release')
+    return event.allowEmptyBaseline === true
+      ? {
+          kind: 'bootstrap-without-labels',
+          sourceSha: event.sourceSha,
+          inventorySha,
+          projected: 0,
+        }
+      : { kind: 'unavailable' };
   const issues = await releaseIssues(
     api,
     previous.sourceSha,
@@ -346,6 +444,7 @@ export async function runReleaseAvailability(
     version: event.tag.slice(1),
     inventory,
     inventorySha,
+    ...(promotion ? { promotion } : {}),
     attestation: { sourceSha: event.sourceSha, inventorySha },
     release: {
       effect: 'published',
@@ -514,7 +613,16 @@ if (invokedDirectly(import.meta.url)) {
         repository: { full_name: issue.repository?.nameWithOwner },
       }));
     },
-    verifyAttestation: (asset, { tag, sourceSha, workflow }) =>
+    verifyPolicyCommit: async (sha, branch) => {
+      const compared = await request(
+        `/repos/${REPOSITORY}/compare/${sha}...${encodeURIComponent(branch)}`,
+      );
+      return (
+        compared?.base_commit?.sha === sha &&
+        ['ahead', 'identical'].includes(compared.status)
+      );
+    },
+    verifyAttestation: (asset, { tag, sourceRef, sourceSha, workflow }) =>
       execFileSync(
         'gh',
         [
@@ -526,11 +634,11 @@ if (invokedDirectly(import.meta.url)) {
           '--signer-workflow',
           `${REPOSITORY}/${workflow}`,
           '--source-ref',
-          `refs/tags/${tag}`,
+          sourceRef ?? `refs/tags/${tag}`,
           '--source-digest',
           sourceSha,
           '--cert-identity-regex',
-          `^https://github.com/${REPOSITORY}/.github/workflows/release\\.yml@refs/tags/${tag}$`,
+          `^https://github.com/${REPOSITORY}/${workflow.replaceAll('.', '[.]')}@${(sourceRef ?? `refs/tags/${tag}`).replaceAll('.', '[.]')}$`,
           '--cert-oidc-issuer',
           'https://token.actions.githubusercontent.com',
           '--deny-self-hosted-runners',
@@ -547,6 +655,8 @@ if (invokedDirectly(import.meta.url)) {
       sourceSha: process.env.RELEASE_SHA,
       channel: process.env.RELEASE_CHANNEL,
       project: process.argv.includes('--project'),
+      allowEmptyBaseline:
+        process.env.RELEASE_ALLOW_EMPTY_AVAILABILITY_BASELINE === 'true',
     },
     {
       api,
@@ -555,5 +665,9 @@ if (invokedDirectly(import.meta.url)) {
         : undefined,
     },
   );
+  if (result.kind === 'bootstrap-without-labels')
+    console.log(
+      'Release availability: owner bootstrap accepted; zero issue labels changed, historical projection NOT_VERIFIED.',
+    );
   if (result.kind === 'unavailable') process.exitCode = 1;
 }

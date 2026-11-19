@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import {
   copyFileSync,
   existsSync,
@@ -20,6 +19,7 @@ import {
   parseMetricDeclarations,
   renderMetricReference,
 } from '../generate-metric-reference.mjs';
+import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { renderLearningDocument } from '../lib/learning-markdown.mjs';
 import { publishMetricReference } from '../lib/metric-reference-output.mjs';
 
@@ -83,6 +83,77 @@ function cliFixture() {
   return fixtureRoot;
 }
 
+function git(repo: string, ...args: string[]) {
+  return spawnSync(
+    'git',
+    [
+      '-c',
+      'user.name=Metric Fixture',
+      '-c',
+      'user.email=metric-fixture@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'core.autocrlf=false',
+      ...args,
+    ],
+    {
+      cwd: repo,
+      encoding: 'utf8',
+      env: sanitizedGitEnvironment(),
+      windowsHide: true,
+      timeout: 15_000,
+      maxBuffer: 1024 * 1024,
+    },
+  );
+}
+
+function gitOk(repo: string, ...args: string[]) {
+  const result = git(repo, ...args);
+  expect(result.error).toBeUndefined();
+  expect({ status: result.status, stderr: result.stderr }).toMatchObject({
+    status: 0,
+  });
+  return result.stdout;
+}
+
+const counter = (name: string) =>
+  `export const ${name.replace(/\W/g, '_')} = meter.createCounter('${name}', { description: 'Fixture ${name}' });\n`;
+
+/**
+ * Build a real repository whose base and two branches each commit a source
+ * and its regenerated catalog, as two metric PRs off one base would.
+ */
+function metricMergeFixture(top: string, bottom: string) {
+  const repo = makeTempDir('station-metric-merge-');
+  mkdirSync(path.join(repo, path.dirname(sourcePath)), { recursive: true });
+  mkdirSync(path.join(repo, path.dirname(outputPath)), { recursive: true });
+  const base = [
+    'station.alpha',
+    'station.charlie',
+    'station.echo',
+    'station.golf',
+  ]
+    .map(counter)
+    .join('\n');
+  const commit = (source: string, message: string) => {
+    writeFileSync(path.join(repo, sourcePath), source);
+    writeFileSync(path.join(repo, outputPath), renderMetricReference(source));
+    gitOk(repo, 'add', '-A');
+    gitOk(repo, 'commit', '-q', '-m', message);
+  };
+  gitOk(repo, 'init', '-q', '-b', 'main');
+  commit(prelude + base, 'base');
+  // One branch inserts at the top of the source (shifting every later line);
+  // the other appends at the bottom.
+  gitOk(repo, 'checkout', '-q', '-b', 'top');
+  commit(prelude + counter(top) + base, `add ${top}`);
+  gitOk(repo, 'checkout', '-q', 'main');
+  gitOk(repo, 'checkout', '-q', '-b', 'bottom');
+  commit(prelude + base + counter(bottom), `add ${bottom}`);
+  return repo;
+}
+
 describe('metric declaration reference', () => {
   it('enumerates all instrument families, including unbound callback registrations', () => {
     const families = [
@@ -121,7 +192,6 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
         description: `Description ${index}`,
         unit: 'ms',
         container: null,
-        line: index + 3,
       })),
     );
     expect(declarations[7]).toMatchObject({
@@ -130,7 +200,6 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
       container: 'register',
       description: null,
       unit: null,
-      line: 11,
     });
     expect(declarations[8]).toMatchObject({
       name: 'station.local',
@@ -237,7 +306,8 @@ meter.createGauge('station.b');
     expect(output).toContain('&lt;tag&gt;&#124;\\[link\\]\\\\nnext');
     expect(output).toContain('| "" |');
     expect(output).toContain('| not declared | not declared |');
-    expect(output).toContain(`../../${sourcePath}#L4`);
+    expect(output).toContain(`(../../${sourcePath})`);
+    expect(output).not.toMatch(/#L\d|SHA-256|creation calls\*\*/);
     expect(output).toContain(
       'do **not** establish producers, live collection, correct labels, observed units or billing accuracy',
     );
@@ -312,7 +382,7 @@ meter.createGauge('station.b');
       'text/html',
     );
     const cells = document.querySelectorAll('tbody tr:first-child td');
-    expect(cells).toHaveLength(6);
+    expect(cells).toHaveLength(5);
     expect(cells[3].textContent).toBe(JSON.stringify(description));
     expect(JSON.parse(cells[3].textContent!)).toBe(description);
     expect(cells[4].textContent).toBe('""');
@@ -376,7 +446,7 @@ meter.createGauge('station.b');
     );
   }
 
-  it('rejects malformed source UTF-8 without replacing an artifact and preserves BOM bytes in its hash', () => {
+  it('rejects malformed source UTF-8 without replacing an artifact and accepts a BOM-prefixed source', () => {
     const fixtureRoot = cliFixture();
     expect(defaultCli(fixtureRoot).status).toBe(0);
     const artifact = path.join(fixtureRoot, outputPath);
@@ -399,9 +469,7 @@ meter.createGauge('station.b');
     );
     expect(defaultCli(fixtureRoot).status).toBe(0);
     expect(defaultCli(fixtureRoot, '--check').status).toBe(0);
-    expect(readFileSync(artifact, 'utf8')).toContain(
-      createHash('sha256').update(readFileSync(sourceFile)).digest('hex'),
-    );
+    expect(readFileSync(artifact, 'utf8')).toContain('"station.control"');
   });
 
   it('allows an explicit root alias while refusing nonportable output coordinates', () => {
@@ -496,6 +564,17 @@ meter.createGauge('station.b');
     expect(readFileSync(outputFile)).toEqual(baselineBytes);
     expect(cli(fixtureRoot).status).toBe(0);
     expect(cli(fixtureRoot, '--check').status).toBe(0);
+    // Changed metadata on an existing declaration is drift too.
+    const generatedSource = readFileSync(sourceFile, 'utf8');
+    writeFileSync(
+      sourceFile,
+      generatedSource.replace("{unit: 's'}", "{unit: 'ms'}"),
+    );
+    const changedUnit = cli(fixtureRoot, '--check');
+    expect(changedUnit.status).toBe(1);
+    expect(changedUnit.stderr).toContain('is stale');
+    writeFileSync(sourceFile, generatedSource);
+    expect(cli(fixtureRoot, '--check').status).toBe(0);
     const expandedBytes = readFileSync(outputFile);
     expect(expandedBytes.equals(baselineBytes)).toBe(false);
     for (const invalid of [
@@ -510,6 +589,41 @@ meter.createGauge('station.b');
       );
       expect(readFileSync(outputFile)).toEqual(expandedBytes);
     }
+  });
+
+  it.each([
+    ['top', 'bottom'],
+    ['bottom', 'top'],
+  ])(
+    'merges two independently regenerated metric additions cleanly in git (%s into %s)',
+    (ours, theirs) => {
+      // bravo and delta sort into neighbouring gaps (alpha|charlie and
+      // charlie|echo), the tightest placement git can merge (#5056).
+      const repo = metricMergeFixture('station.bravo', 'station.delta');
+      const merge = git(repo, 'merge-tree', '--write-tree', ours, theirs);
+      expect(merge.error).toBeUndefined();
+      expect(merge.stdout).not.toContain('CONFLICT');
+      expect(merge.status).toBe(0);
+      const tree = merge.stdout.trim().split('\n')[0];
+      const mergedSource = gitOk(repo, 'show', `${tree}:${sourcePath}`);
+      const mergedCatalog = gitOk(repo, 'show', `${tree}:${outputPath}`);
+      expect(mergedSource).toContain("'station.bravo'");
+      expect(mergedSource).toContain("'station.delta'");
+      // The merged catalog is exactly what regeneration would produce, so
+      // docs:metrics:check passes on the merge result without a re-push.
+      expect(mergedCatalog).toBe(renderMetricReference(mergedSource));
+    },
+  );
+
+  it('still conflicts when both additions sort between the same two existing names', () => {
+    const repo = metricMergeFixture('station.bravo', 'station.bravo_two');
+    const merge = git(repo, 'merge-tree', '--write-tree', 'top', 'bottom');
+    expect(merge.error).toBeUndefined();
+    expect(merge.status).toBe(1);
+    expect(merge.stdout).toContain(
+      `CONFLICT (content): Merge conflict in ${outputPath}`,
+    );
+    expect(merge.stdout).not.toContain(`Merge conflict in ${sourcePath}`);
   });
 
   it('runs the generation check and this test in the documentation lane', () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "e0df7c1e84c5579f2ae2536d59f5a89e34608a9d",
+
+  "notes": [
+    {"path":"docs/learn/media/project-start-after.png","note":"Historical start-composer capture with no effort chosen and no full access; this change only adds a requested-effort suffix and an in-panel safety mark, neither of which appears in the captured state, so the image stays accurate for what it documents.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

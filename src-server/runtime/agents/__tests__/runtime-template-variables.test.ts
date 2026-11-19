@@ -23,6 +23,7 @@ describe('replaceRuntimeTemplateVariables', () => {
   afterEach(() => {
     stopLoggerCaptures();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     getCachedUser.mockReturnValue({
       alias: 'casey',
       name: 'Casey Example',
@@ -87,6 +88,73 @@ describe('replaceRuntimeTemplateVariables', () => {
     expect(result).toContain('ISO: 2026-04-10');
 
     vi.useRealTimers();
+  });
+
+  test('uses explicit Intl options and preserves the host locale for omitted formats', () => {
+    const now = new Date('2026-04-10T18:45:12.123Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const result = replaceRuntimeTemplateVariables(
+      '{{meeting}} | {{local_time}} | {{local_date}}',
+      {
+        defaultModel: 'fixture',
+        invokeModel: 'fixture',
+        structureModel: 'fixture',
+        templateVariables: [
+          {
+            key: 'meeting',
+            type: 'datetime',
+            format:
+              '{"timeZone":"UTC","hour":"2-digit","minute":"2-digit","hour12":false}',
+          },
+          { key: 'local_time', type: 'time' },
+          { key: 'local_date', type: 'date', format: '' },
+        ],
+      },
+    );
+    expect(result).toBe(
+      ['18:45', now.toLocaleTimeString(), now.toLocaleDateString()].join(' | '),
+    );
+  });
+
+  test('refuses malformed historical date/time options before expanding instructions', () => {
+    expect(() =>
+      replaceRuntimeTemplateVariables('Meeting: {{meeting}}', {
+        defaultModel: 'fixture',
+        invokeModel: 'fixture',
+        structureModel: 'fixture',
+        templateVariables: [
+          { key: 'meeting', type: 'time', format: '{"hour12":"false"}' },
+        ],
+      }),
+    ).toThrow('Format for "meeting" must be a JSON object');
+  });
+
+  test('inserts a value that looks like a replacement pattern verbatim', () => {
+    getCachedUser.mockReturnValue({
+      alias: 'casey',
+      name: "Casey $' Example",
+      email: 'casey@example.com',
+      title: 'Founder',
+    });
+
+    const result = replaceRuntimeTemplateVariables(
+      'Name: {{user_name}} | Budget: {{budget}} | Echo: {{echo}} | tail',
+      {
+        region: 'us-west-2',
+        defaultModel: 'claude-sonnet',
+        invokeModel: 'claude-sonnet',
+        structureModel: 'claude-sonnet',
+        templateVariables: [
+          { key: 'budget', type: 'static', value: '$$100' },
+          { key: 'echo', type: 'static', value: '$& and $`' },
+        ],
+      },
+    );
+
+    expect(result).toBe(
+      "Name: Casey $' Example | Budget: $$100 | Echo: $& and $` | tail",
+    );
   });
 
   test('falls back cleanly when auth identity is unavailable', () => {

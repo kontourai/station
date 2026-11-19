@@ -1,0 +1,7 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Agent context budget section: checked against agent-context-budget.test.ts (bound and delegated-custody station-control listings, codexBoundToolsJsonBytes via codexDynamicTools) and agent-context-budget.yml (a key absent at the merge base is reported as growth, so a new key needs the label).","inputs":["docs/guides/testing.md"]}
+  ]
+}

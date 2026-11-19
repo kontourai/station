@@ -117,7 +117,10 @@ function AgentPickerRow({
         ref={selectedRef}
         data-agent-slug={agent.slug}
         className={`new-chat-modal__agent ${isSelected ? 'new-chat-modal__agent--selected' : ''}`}
-        onMouseEnter={onHover}
+        onMouseMove={(event) => {
+          // Opening the picker can place a row under a stationary cursor.
+          if (!isSelected && (event.movementX || event.movementY)) onHover();
+        }}
         onClick={onSelect}
         disabled={interactionDisabled || (!selectionOnly && !runnable)}
         aria-describedby={
@@ -244,6 +247,10 @@ interface AgentPickerGroup {
   glyph?: 'engine' | 'code' | 'globe' | 'plug' | 'time';
   agents: AgentData[];
 }
+
+/** Shared by every Agent picker that can come up empty. */
+export const NO_AGENT_SETUP_HINT =
+  'Connect an engine (Claude Code, Codex, OpenCode…) or add a model connection.';
 
 /**
  * The grouped rows of a start picker. Both hosts own their own search,

@@ -19,7 +19,7 @@
   padding-block: var(--k-space-5);
   text-align: center;
 }
-.start-composer__destination h2 {
+.start-composer__destination :is(h1, h2) {
   flex-basis: 100%;
   margin: 0;
   color: var(--k-text);
@@ -41,6 +41,8 @@
 .start-composer__without-project {
   flex-basis: 100%;
   color: var(--k-text-muted);
+  text-decoration: underline;
+  text-underline-offset: var(--k-space-1);
 }
 .start-composer__location {
   display: flex;
@@ -120,14 +122,17 @@
 .start-composer__box:focus-within {
   border-color: var(--k-focus);
 }
-.start-composer--compact .start-composer__destination {
-  justify-content: flex-start;
-  padding-block: 0;
-  text-align: left;
+/* The box is the field, so it carries the field's focus ring, drawn as the
+   reply composer's capsule draws it. The input's own outline would draw a
+   second, square ring inside the rounded box. A chip or tool inside the box
+   keeps its own ring and does not ring the box. */
+.start-composer__box:has(.start-composer__input:focus-visible) {
+  outline: 2px solid var(--k-focus);
+  outline-offset: -2px;
 }
-.start-composer--compact .start-composer__destination h2 {
-  flex-basis: auto;
-  font-size: var(--k-text-md);
+.start-composer__box .start-composer__input:focus-visible {
+  /* Match the global focus rule's priority; the box draws the ring. */
+  outline: none !important;
 }
 .start-composer__input {
   width: 100%;
@@ -138,22 +143,14 @@
 .start-composer--compact .start-composer__input {
   min-height: 44px;
 }
-/* Touch: the box's focus border is the field's focus ring. A touch focus
-   matches :focus-visible on a text field, so the inner outline drew a second,
-   square ring inside the rounded one. The resize grip is too small to drag
-   with a finger; a long draft scrolls inside the field instead. */
-.start-composer[data-coarse-pointer]
-  .start-composer__box
-  .start-composer__input:focus-visible {
-  /* Match the global focus rule's priority; the box keeps its focus border. */
-  outline: none !important;
-}
+/* Touch: the resize grip is too small to drag with a finger; a long draft
+   scrolls inside the field instead. */
 .start-composer[data-coarse-pointer] .start-composer__input {
   resize: none;
 }
 .start-composer__bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
@@ -166,16 +163,15 @@
   border: 0;
 }
 .start-composer__chips {
-  /* Grows far more than the actions, so on a shared line the actions keep
-     their own width and sit together at the end. */
-  flex: 1000 1 auto;
+  /* Setup truncates so attachment tools and Start stay on the same row. */
+  flex: 1 1 0;
 }
 .start-composer__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--k-space-2);
-  /* Alone on row two it takes the width: ⋯ at the start, Start at the end. */
-  flex: 1 0 auto;
+  flex: 0 0 auto;
 }
 .start-composer__actions > :first-child {
   margin-right: auto;
@@ -222,6 +218,7 @@
   cursor: pointer;
 }
 .start-composer__chip-remove:focus-visible,
+.start-composer__file-preview:focus-visible,
 .start-composer__context-chip:focus-visible {
   outline: 2px solid var(--k-focus);
   outline-offset: 2px;
@@ -566,4 +563,47 @@
   object-fit: contain;
   border-radius: var(--k-radius-sm);
   margin-right: var(--k-space-2);
+}
+
+/* The thumbnail is the preview control; the image keeps its own size. */
+.start-composer__file-preview {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  min-height: 44px;
+  background: none;
+  border-radius: var(--k-radius-sm);
+  cursor: zoom-in;
+}
+
+.start-composer__actions {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.start-composer__actions > .start-composer__tools {
+  flex: none;
+  margin-inline-end: auto;
+}
+.start-composer__actions > .start-composer__chips {
+  flex: 0 1 auto;
+  max-width: 55%;
+  min-width: 44px;
+  overflow: visible;
+}
+.start-composer__start {
+  flex: none;
+}
+
+.start-composer {
+  container-type: inline-size;
+  --composer-label-collapse: 310px;
+}
+/* A Station that cannot take work now: listed, greyed, with its reason. */
+.start-menu__list .start-menu__station--unavailable {
+  color: var(--k-text-muted);
+}
+.start-menu__list .start-menu__station--unavailable:disabled {
+  background: transparent;
+  cursor: not-allowed;
 }

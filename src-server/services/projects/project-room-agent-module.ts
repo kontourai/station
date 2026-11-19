@@ -22,6 +22,8 @@ import { ProjectRoomStore } from './project-room-store.js';
 
 export interface ProjectRoomAgentAuthority {
   scope: ProjectMembershipScope;
+  /** The channel the request lives in; absent means the Project's default room. */
+  channelId?: string;
   requester: ProjectRoomActor;
   executionRoot: string;
   taskContext?: ProjectRoomTaskContext;
@@ -142,7 +144,10 @@ export class ProjectRoomAgentModule {
         'INSERT INTO project_room_agent_failures VALUES (?, ?) ON CONFLICT(request_id) DO UPDATE SET code=excluded.code',
       )
       .run(id, code);
+    // A failure is lifecycle the room shows (#4800): wake its readers.
+    this.store.announceRequest(id);
   }
+
   private capture(
     authority: ProjectRoomAgentAuthority,
     id: string,
@@ -155,7 +160,11 @@ export class ProjectRoomAgentModule {
       .get(id);
     if (!row) return null;
     const capture = captureSchema.parse(JSON.parse(String(row.record)));
-    const request = this.store.getRequest(authority.scope, id);
+    const request = this.store.getRequest(
+      authority.scope,
+      id,
+      authority.channelId,
+    );
     if (
       JSON.stringify(capture) !== row.record ||
       capture.digest !== captureDigest(capture) ||
@@ -244,7 +253,11 @@ export class ProjectRoomAgentModule {
     id: string,
   ): ProjectRoomAgentHandle {
     this.check(authority);
-    const request = this.store.getRequest(authority.scope, id);
+    const request = this.store.getRequest(
+      authority.scope,
+      id,
+      authority.channelId,
+    );
     // Handles are shared; private Session coordinates never cross this seam.
     const storedFailure = this.db
       .prepare(
@@ -265,6 +278,26 @@ export class ProjectRoomAgentModule {
         ? { failure: failure.data }
         : {}),
     };
+  }
+  /**
+   * Recorded failure codes of these requests (#4800), for a reader the room
+   * already admitted. Codes only: never a Session or its output.
+   */
+  failures(requestIds: readonly string[]) {
+    const result = new Map<string, ProjectRoomAgentFailure>();
+    if (!requestIds.length) return result;
+    // One read for the whole batch: a live frame asks about a room's
+    // unsettled requests at once (at most LIMITS.requestsPerRoom).
+    const rows = this.db
+      .prepare(
+        'SELECT request_id, code FROM project_room_agent_failures WHERE request_id IN (SELECT value FROM json_each(?))',
+      )
+      .all(JSON.stringify(requestIds));
+    for (const row of rows) {
+      const parsed = failureSchema.safeParse(row.code);
+      if (parsed.success) result.set(String(row.request_id), parsed.data);
+    }
+    return result;
   }
   /** Validated private coordinate for the completion observer; never expose in handles. */
   publicationSession(
@@ -288,12 +321,22 @@ export class ProjectRoomAgentModule {
     // Serialize the mandatory request/frame before reserving or preparing an effect.
     // The wire budget is independent of the raw-text admission limit (JSON may expand).
     const value = parseProjectRoomAgentRequestInput(input);
-    const first = this.store.history(authority.scope, 0, 100);
-    const note = this.store.getNote(authority.scope);
+    const first = this.store.history(
+      authority.scope,
+      0,
+      100,
+      authority.channelId,
+    );
+    const note = this.store.getNote(authority.scope, authority.channelId);
     const messages = [...first.messages];
     let after = first.nextAfter;
     while (after !== null && after < first.checkpoint.lastSeq) {
-      const page = this.store.history(authority.scope, after, 100);
+      const page = this.store.history(
+        authority.scope,
+        after,
+        100,
+        authority.channelId,
+      );
       messages.push(
         ...page.messages.filter((m) => m.seq <= first.checkpoint.lastSeq),
       );
@@ -359,6 +402,7 @@ export class ProjectRoomAgentModule {
       authority.requester,
       value,
       () => this.check(authority),
+      authority.channelId,
     );
     if (request.state !== 'reserved')
       return this.inspect(authority, request.requestId);
@@ -448,7 +492,11 @@ export class ProjectRoomAgentModule {
     const recheck = () => {
       this.check(authority, capture);
       this.evidence(authority, capture);
-      const current = this.store.getRequest(authority.scope, request.requestId);
+      const current = this.store.getRequest(
+        authority.scope,
+        request.requestId,
+        authority.channelId,
+      );
       if (current.state !== 'started' && current.state !== 'uncertain')
         throw new Error('Project room agent request unavailable');
     };
@@ -459,14 +507,18 @@ export class ProjectRoomAgentModule {
         )
         .run(request.requestId, JSON.stringify(capture));
       if (!inserted.changes) return false;
-      this.store.markStarted(authority.scope, request.requestId, () =>
-        this.check(authority, capture),
+      this.store.markStarted(
+        authority.scope,
+        request.requestId,
+        () => this.check(authority, capture),
+        authority.channelId,
       );
       this.store.bindSession(
         authority.scope,
         request.requestId,
         capture.sessionId,
         recheck,
+        authority.channelId,
       );
       return true;
     });
@@ -479,9 +531,18 @@ export class ProjectRoomAgentModule {
       );
     } catch {
       this.failure(request.requestId, 'launch_uncertain');
-      const current = this.store.getRequest(authority.scope, request.requestId);
+      const current = this.store.getRequest(
+        authority.scope,
+        request.requestId,
+        authority.channelId,
+      );
       if (current.state === 'started')
-        this.store.markUncertain(authority.scope, request.requestId, () => {});
+        this.store.markUncertain(
+          authority.scope,
+          request.requestId,
+          () => {},
+          authority.channelId,
+        );
     }
     return this.inspect(authority, request.requestId);
   }
@@ -490,7 +551,11 @@ export class ProjectRoomAgentModule {
     id: string,
   ): Promise<ProjectRoomAgentHandle> {
     this.check(authority);
-    const request = this.store.getRequest(authority.scope, id);
+    const request = this.store.getRequest(
+      authority.scope,
+      id,
+      authority.channelId,
+    );
     const capture = this.capture(authority, id);
     this.check(authority, capture ?? undefined);
     const handle = this.inspect(authority, id);
@@ -512,7 +577,7 @@ export class ProjectRoomAgentModule {
       this.evidence(authority, capture);
       if (
         !['started', 'uncertain'].includes(
-          this.store.getRequest(authority.scope, id).state,
+          this.store.getRequest(authority.scope, id, authority.channelId).state,
         )
       )
         throw new Error('Project room agent request unavailable');
@@ -522,7 +587,12 @@ export class ProjectRoomAgentModule {
     if (answer && 'failed' in answer) {
       this.failure(id, 'execution_failed');
       if (request.state === 'started')
-        this.store.markUncertain(authority.scope, id, current);
+        this.store.markUncertain(
+          authority.scope,
+          id,
+          current,
+          authority.channelId,
+        );
       return this.inspect(authority, id);
     }
     if (answer) {
@@ -534,7 +604,12 @@ export class ProjectRoomAgentModule {
       ) {
         this.failure(id, 'publication_failed');
         if (request.state === 'started')
-          this.store.markUncertain(authority.scope, id, current);
+          this.store.markUncertain(
+            authority.scope,
+            id,
+            current,
+            authority.channelId,
+          );
         return this.inspect(authority, id);
       }
       await this.withEvidence(authority, capture, () => {
@@ -551,12 +626,14 @@ export class ProjectRoomAgentModule {
             ...(request.replyTo ? { replyTo: request.replyTo } : {}),
           },
           current,
+          authority.channelId,
         );
         this.store.finishPublished(
           authority.scope,
           id,
           message.messageId,
           current,
+          authority.channelId,
         );
       });
     }
@@ -569,13 +646,20 @@ export class ProjectRoomAgentModule {
     this.check(authority);
     const capture = this.capture(authority, id);
     this.check(authority, capture ?? undefined);
-    const request = this.store.getRequest(authority.scope, id);
+    const request = this.store.getRequest(
+      authority.scope,
+      id,
+      authority.channelId,
+    );
     if (request.actor.id !== authority.requester.id)
       throw new Error('Project room agent authority unavailable');
     if (request.state === 'cancelled' || request.state === 'published')
       return publicHandle(request);
-    const cancelled = this.store.cancelRequest(authority.scope, id, () =>
-      this.check(authority, capture ?? undefined),
+    const cancelled = this.store.cancelRequest(
+      authority.scope,
+      id,
+      () => this.check(authority, capture ?? undefined),
+      authority.channelId,
     );
     if (capture) {
       try {

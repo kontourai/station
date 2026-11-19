@@ -106,7 +106,7 @@ use limits: for approvals, [`limits.maxApprovalMode`](#approval-mode-ceiling) is
 | `defaultLLMProvider` | An Agent's own model connection and the connection a person picks for a chat still apply. |
 | `invokeModel` | An invoke request that names its own model still uses it. |
 | `structureModel` | `approvalGuardian`'s own model, `reviewGuideModel` for review guides, and an invoke request that names a structure model still apply first. |
-| `defaultMaxTurns` | An Agent's own step limit (`maxSteps` or `guardrails.maxSteps`) still applies first. |
+| `defaultMaxTurns` | On VoltAgent, an Agent's own `maxSteps` still applies first. |
 | `defaultMaxOutputTokens` | An Agent's own `guardrails.maxTokens` still applies first. |
 | `defaultWorkspaceIsolation` | Task runs, Station delegations and adopted attached sessions always use the shared checkout, and a continued conversation keeps the isolation it started in. |
 | `defaultChatFontSize` | A person's own Chat font size (an account setting) still applies first. |
@@ -243,6 +243,15 @@ Muse Code's `muse exec` mode has no way to ask for approval, so it always
 runs as Auto inside Muse's sandbox. Under a ceiling of `ask`, a Muse chat
 that would run through `muse exec` (because `muse serve` is turned off or
 fails to start) does not start, and says why. Under `auto` it runs as usual.
+
+Separately from any ceiling, a `muse serve` host that reports it cannot
+enforce its sandbox (`sandboxAvailability: unavailable`) refuses Auto, which
+relies on that sandbox as its only containment: the start is refused
+(`sandbox_unavailable`) without falling back to `muse exec`, and so is a turn
+asking for Auto. Other approval modes still run on `muse serve`, with a
+`muse-sandbox-unavailable` warning, but never fall back to `muse exec`, which
+would run them unprompted without the sandbox: only Full access (`never`)
+does.
 
 A plugin Agent's tool approvals (`autoApprove`, `unattendedAutoApprove`) can
 be removed or narrowed under a ceiling, but not added to.
@@ -496,7 +505,7 @@ Every key is optional; `"updates": {}` changes nothing. Any other key inside
 
 | Surface | `mode: "off"` or nightly not allowed | `feedUrl` |
 | --- | --- | --- |
-| Desktop app updater | Never checks, downloads or installs. The update panel shows updates as unavailable, with the policy's sentence under the check error's technical details; clearer wording is a follow-up. | Checks the mirror's copy of the app's channel feed and refuses an update whose download is outside the mirror. On Windows, desktop updates are off while a policy is installed ([#4599](https://github.com/kontourai/station/issues/4599)). |
+| Desktop app updater | Never checks, downloads or installs. The update panel shows updates as unavailable, with the policy's sentence under the check error's technical details; clearer wording is a follow-up. | Checks the mirror's copy of the app's channel feed and refuses an update whose download is outside the mirror. |
 | Server update (`/api/system/core-update` and the server's own background check and download) | The check contacts nothing and reports the policy; download, apply and update when idle are refused (403). | A prebuilt archive checks the mirror's copy of its ring's signed manifest. A desktop bundle's or source checkout's server update is refused, because it compares against a git remote the mirror does not serve; the desktop app updates a desktop bundle from the mirror. |
 | `station upgrade` | Refused before anything changes, and exits `1`. | A packaged install runs its installer against the mirror. A source checkout is refused. |
 | The Station service's own update (the launcher's download and apply steps) | Every request is refused before anything downloads or restarts, including applying a version that was downloaded before the policy was installed. Under `allowNightly: false`, a nightly-numbered version counts as nightly whatever ring the install records, and an install whose recorded state names no ring, or a ring this build does not ship, is refused. | The installer reads the mirror's manifest and downloads every archive from the mirror. |
@@ -520,17 +529,13 @@ read it: it turns its own updates off and shows "Station's update policy comes
 from your organization's device management; desktop updates are managed
 there". It does this whatever the file says, because a file beside a profile
 or the registry key is already a startup error. So a mirror delivered through
-device management leaves desktop updates off rather than mirrored; on macOS
-and Linux, to route desktop updates to a mirror, install the policy as the
+device management leaves desktop updates off rather than mirrored; to route desktop updates to a mirror, install the policy as the
 file. The server, `station upgrade` and the Station service's update read
-every source. On Windows the desktop app cannot yet hold the policy file to
-the owner and ACL rule the server applies
-([#4599](https://github.com/kontourai/station/issues/4599)), so until it can,
-an installed policy file turns the desktop app's own updates off too, unread,
-with "Station's update policy comes from your organization's policy file;
-desktop updates are managed there". On Windows, then, any installed policy
-leaves desktop updates off; the server, `station upgrade` and the Station
-service's update still follow it as the table above says. If the desktop app
+every source. On Windows the desktop app checks the policy file and every ancestor
+through open handles. Owners must be Administrators, SYSTEM or TrustedInstaller;
+untrusted write grants and reparse points refuse updates, using the same file,
+policy-folder and ancestor-folder roles as the server. Unreadable security
+descriptors refuse updates too. If the desktop app
 cannot use the installed policy file (for example it is not valid JSON, it is
 not owned by root, or `limits.updates` contains a value it does not
 understand), it turns updates off rather than guess. If only another part of
@@ -545,9 +550,9 @@ each time they run. An installed policy Station cannot use refuses
 
 Not yet supported: on Windows, the installer cannot download from a mirror, so
 with a `feedUrl` set `station upgrade` and the service's update step are
-refused there. The desktop app's mirror support works on macOS and Linux; on
-Windows the desktop app's updates are off while a policy is installed
-([#4599](https://github.com/kontourai/station/issues/4599)).
+refused there. The desktop app can use a mirror from an administrator-owned policy file on
+macOS, Linux and Windows. Device-management sources still disable desktop
+updates rather than select a mirror.
 
 ### Mirror layout
 
@@ -621,10 +626,20 @@ Station launches are started.
 | --- | --- |
 | `allowed` | The engines that may run: any of `claude`, `codex`, `muse`, `acp` (every ACP connection) and `station-agent` (Station's own agent). Leave it out to allow every engine. An engine a plugin adds is never on the list, so an allow list turns plugin engines off. |
 | `acpRegistryAgents` | `false` stops ACP connections added from the public ACP registry from running and from being added. A custom ACP connection is still allowed while `acp` is. `true` is refused. |
+| `engineHostAuth` | `"off"` stops Station giving any engine an access token from its own engine sign-in store (Kiro without kiro-cli asks for one). Engines that keep their own sign-in, such as kiro-cli, are unaffected. `"allowed"`, or leaving it out, lets it. Also off whenever `acp` is not allowed. |
+| `remoteTasks` | The remote task engines that may be used: any of `devin`, `github-copilot` and `cursor`. A remote task runs on the vendor's machines, so prompts and repository code leave the computer. Unlike every other key here, leaving it out restricts: on a machine with a policy, a vendor this list does not name is off. Without any policy, the Feature Preview and each connection's acknowledgement decide. See [remote task engines](../decisions/remote-task-engines.md). |
 | `instances.<engine>` | How every connection of `claude`, `codex`, `muse` or `acp` is launched. `station-agent` runs inside Station and has no launch to pin. |
 
 Station refuses an unknown engine id, a repeated one, and an `instances`
 entry for an engine `allowed` leaves out.
+
+OpenCode has no id of its own here. The `acp` entry covers it in every form: an
+OpenCode ACP connection, and the `opencode` engine behind the OpenCode native
+engine Feature Preview, natively or over ACP, with the preview on or off.
+`instances.acp` pins it too. Natively, the pinned binary and environment apply
+to `opencode serve`, but pinned arguments do not, because they belong to the
+`acp` command line. Turning the preview on neither widens nor narrows a
+policy. See [the decision](../decisions/opencode-native-transport.md#managed-policy-r5).
 
 ### An engine that is not allowed
 
@@ -883,6 +898,8 @@ Every value is in `HKLM\SOFTWARE\Policies\Kontour\Station`.
 | Allow the nightly channel | `NightlyChannel` (`REG_DWORD`) | `limits.updates.allowNightly: false` when Disabled |
 | Allowed engines | `AllowedEngines` (`REG_DWORD` state), `EngineClaude`, `EngineCodex`, `EngineMuse`, `EngineAcp`, `EngineStationAgent` (`REG_DWORD` each, 1 checked) | `limits.engines.allowed`, the checked engine ids |
 | Allow ACP registry agents | `AcpRegistryAgents` (`REG_DWORD`) | `limits.engines.acpRegistryAgents: false` when Disabled |
+| Allow Station to sign engines in | `EngineHostAuth` (`REG_DWORD`) | `limits.engines.engineHostAuth: "off"` when Disabled |
+| Allowed remote task engines | `RemoteTaskEngines` (`REG_DWORD` state), `RemoteTaskDevin`, `RemoteTaskGitHubCopilot`, `RemoteTaskCursor` (`REG_DWORD` each, 1 checked) | `limits.engines.remoteTasks`, the checked vendor ids. Not Configured allows none. |
 | Engine launch configuration (JSON) | `EngineInstances` (`REG_DWORD` state), `EngineInstancesJson` (`REG_MULTI_SZ`, lines joined) | `limits.engines.instances` |
 
 The template carries a setting for every limit this release enforces. Later
@@ -999,6 +1016,13 @@ not retry; restarting cannot fix it. `station start` checks the policy the
 way `station policy check` does before it starts anything: it prints the same
 line and exits `1` without starting a server or the UI, so nothing listens
 while the policy is unusable.
+A supervised server generation uses exit code `78` for an unusable managed
+policy or a home that requires reset. The supervisor retains the refusal line
+and stops after that first attempt; ordinary crashes still use its retry budget.
+`station restart` checks the installed policy before asking the supervisor to
+drain the running generation. If that check refuses, the current generation
+continues serving. The policy can change after this read; the new generation
+still performs its own startup validation and fails closed.
 Fix or remove the policy, then start Station again.
 
 ## What clients see

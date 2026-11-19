@@ -92,7 +92,7 @@ fn validate_binding(binding: &RelayGrantBinding) -> Result<(), String> {
     validate_route(&binding.route)?;
     if !matches!(
         binding.owner.channel.as_str(),
-        "dev" | "stable" | "beta" | "nightly"
+        "dev" | "stable" | "nightly"
     ) {
         return Err("invalid relay grant channel".to_string());
     }
@@ -136,7 +136,7 @@ fn with_vault_lock<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T
 }
 
 fn index_account(channel: &str) -> Result<String, String> {
-    if !matches!(channel, "dev" | "stable" | "beta" | "nightly") {
+    if !matches!(channel, "dev" | "stable" | "nightly") {
         return Err("invalid relay grant channel".to_string());
     }
     Ok(format!("{RELAY_GRANT_INDEX_ACCOUNT_PREFIX}{channel}"))

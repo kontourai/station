@@ -33,6 +33,7 @@ import type {
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import {
+  isAcpFamilyEngine,
   readProviderDurabilityProfile,
   SESSION_VISIBILITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -54,6 +55,7 @@ import { canonicalPath } from '../../utils/path-containment.js';
 import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
 import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
 import { markCreateRequestStarting } from '../orchestration/create-request-claims.js';
+import { assertInheritedDelegationToolPolicy } from '../orchestration/delegation-tool-policy.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
@@ -124,6 +126,13 @@ export interface ForegroundMessageInput {
   target: ExecutionTarget;
   message: string;
   mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
+  /**
+   * #4827: set by server code only, at an entry point that proved a person
+   * typed `message` into one of Station's clients (`personTypedRequest`).
+   * Forwarded to `sendTurn` and stamped on `turn.started` as
+   * `authoredBy: 'person'`; absent everywhere else.
+   */
+  personAuthored?: true;
   conversationId?: string;
   attachments?: ChatAttachmentInput[];
   /** Authorized staged bytes; inspection validates an earlier proof holder without binding. */
@@ -379,6 +388,38 @@ export interface ExecutionSessionBinding {
   admittedCwd?: string;
   workspaceIsolation?: WorkspaceIsolationConfig;
   worktree?: WorktreeSessionMetadata;
+  /** The provider the conversation's current session runs on. */
+  provider?: EngineId;
+}
+
+/**
+ * Ruling R2: a conversation keeps the provider it started with. A saved ACP
+ * connection can be run by more than one ACP-family engine (`acp`, and
+ * `opencode` behind its Feature Preview), and which one a new chat gets
+ * follows the preview. A follow-up, and any successor session it starts,
+ * stays on the provider the conversation's current session runs on, so
+ * turning the preview on or off never moves an existing chat (and no stored
+ * record is rewritten). Another connection, or a provider outside the ACP
+ * family, is a real change of engine and resolves as before.
+ */
+function keepConversationProvider<
+  T extends {
+    provider: EngineId;
+    engine: ResolvedExecutionEngine;
+  },
+>(resolved: T, binding: ExecutionSessionBinding | null | undefined): T {
+  const stored = binding?.provider;
+  if (
+    !stored ||
+    stored === resolved.provider ||
+    resolved.engine.kind !== 'connection' ||
+    !binding?.connectionId ||
+    binding.connectionId !== String(resolved.engine.connectionId) ||
+    !isAcpFamilyEngine(stored) ||
+    !isAcpFamilyEngine(resolved.provider)
+  )
+    return resolved;
+  return { ...resolved, provider: stored };
 }
 
 export class ContinuationWorkspaceError extends Error {
@@ -430,6 +471,7 @@ export interface ExecutionTargetExecutionDependencies
       submissionDigest?: string | null;
       mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
       dispatchOrigin?: TurnDispatchOrigin;
+      personAuthored?: true;
     },
   ) => Promise<{ turnId: string }>;
   /**
@@ -710,7 +752,8 @@ export async function executeForegroundMessage(
     throw new Error('Execution message must not be empty');
   }
 
-  const resolved = await resolveExecutionTarget(input.target, deps);
+  assertInheritedDelegationToolPolicy(input.delegation);
+  let resolved = await resolveExecutionTarget(input.target, deps);
   if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
     throw new Error(
       'MCP prompt origin cannot be safely carried to another Station.',
@@ -734,6 +777,7 @@ export async function executeForegroundMessage(
     resolved.access,
     conversationId,
   );
+  resolved = keepConversationProvider(resolved, binding);
   const initialContext = binding
     ? undefined
     : await deps.readInitialConversationContext(resolved.access, {
@@ -1624,6 +1668,7 @@ export async function executeForegroundMessage(
     input.clientOrigin ||
       input.principal ||
       input.mcpPromptOrigin ||
+      input.personAuthored ||
       submissionDigest ||
       context?.inboxPlacement ||
       context?.dispatchOrigin
@@ -1641,6 +1686,7 @@ export async function executeForegroundMessage(
           ...(input.mcpPromptOrigin
             ? { mcpPromptOrigin: input.mcpPromptOrigin }
             : {}),
+          ...(input.personAuthored ? { personAuthored: true as const } : {}),
         }
       : undefined,
   );

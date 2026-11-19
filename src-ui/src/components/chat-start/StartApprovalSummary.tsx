@@ -6,12 +6,14 @@ import { useConfig } from '../../contexts/ConfigContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import {
   type ApprovalMode,
+  approvalChoiceIndicators,
   approvalModeChipLabel,
   approvalModeDescription,
   approvalModeSourceNote,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
 import { ComposerChoice } from '../ComposerChoice';
+import { ShieldGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 
 /** The chat composer's own picker, loaded only when opened (ApprovalModeChip). */
@@ -111,7 +113,12 @@ export function StartApprovalSummary({
     return (
       <ComposerChoice
         className="start-composer__chip"
+        {...approvalChoiceIndicators({
+          mode: startMode,
+          override: resolved.source === 'session override',
+        })}
         caption="Permissions"
+        icon={<ShieldGlyph />}
         value={label}
         aria-label={`${visible}. ${title}`}
         title={title}
@@ -128,7 +135,12 @@ export function StartApprovalSummary({
         aria-label={`${visible}. ${title}`}
         title={title}
         onClick={() => setIsSheetOpen((open) => !open)}
+        {...approvalChoiceIndicators({
+          mode: startMode,
+          override: resolved.source === 'session override',
+        })}
         caption="Permissions"
+        icon={<ShieldGlyph />}
         value={label}
       />
       {isSheetOpen && (

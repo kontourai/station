@@ -1,0 +1,7 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Added pullRequestFeedback (true) and its hosted withdrawal servesPullRequestFeedback, with a consumed-capability-flags row probing the route in both modes. Other flags unchanged.","inputs":["src-server/capabilities/station-capability-flags.ts"]}
+  ]
+}

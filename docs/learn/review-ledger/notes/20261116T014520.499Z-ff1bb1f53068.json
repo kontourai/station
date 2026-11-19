@@ -1,0 +1,17 @@
+{
+  "revision": "56b1adffc886c790dff4d643197e411608d514c1",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"logger.ts change removes the unused flushLogRepeatSummaries export only; limiter behaviour is unchanged. Checked each citing document: config.md's Repeated warnings section (window-end summary line, never limits error/fatal, suppressed_records attributes, 512 identities) still matches; none of the citing docs (responsive-ui, theming, backend/frontend patterns, usage-telemetry) names the removed function or claims a shutdown flush of pending summaries.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"logger.ts change removes the unused flushLogRepeatSummaries export only; limiter behaviour is unchanged. Checked each citing document: config.md's Repeated warnings section (window-end summary line, never limits error/fatal, suppressed_records attributes, 512 identities) still matches; none of the citing docs (responsive-ui, theming, backend/frontend patterns, usage-telemetry) names the removed function or claims a shutdown flush of pending summaries.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"logger.ts change removes the unused flushLogRepeatSummaries export only; limiter behaviour is unchanged. Checked each citing document: config.md's Repeated warnings section (window-end summary line, never limits error/fatal, suppressed_records attributes, 512 identities) still matches; none of the citing docs (responsive-ui, theming, backend/frontend patterns, usage-telemetry) names the removed function or claims a shutdown flush of pending summaries.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"logger.ts change removes the unused flushLogRepeatSummaries export only; limiter behaviour is unchanged. Checked each citing document: config.md's Repeated warnings section (window-end summary line, never limits error/fatal, suppressed_records attributes, 512 identities) still matches; none of the citing docs (responsive-ui, theming, backend/frontend patterns, usage-telemetry) names the removed function or claims a shutdown flush of pending summaries.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/reference/config.md","note":"logger.ts change removes the unused flushLogRepeatSummaries export only; limiter behaviour is unchanged. Checked each citing document: config.md's Repeated warnings section (window-end summary line, never limits error/fatal, suppressed_records attributes, 512 identities) still matches; none of the citing docs (responsive-ui, theming, backend/frontend patterns, usage-telemetry) names the removed function or claims a shutdown flush of pending summaries.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"logger.ts change removes the unused flushLogRepeatSummaries export only; limiter behaviour is unchanged. Checked each citing document: config.md's Repeated warnings section (window-end summary line, never limits error/fatal, suppressed_records attributes, 512 identities) still matches; none of the citing docs (responsive-ui, theming, backend/frontend patterns, usage-telemetry) names the removed function or claims a shutdown flush of pending summaries.","inputs":["src-server/utils/logger.ts"]}
+  ]
+}

@@ -144,8 +144,10 @@ import {
   PACKAGED_RELEASE_MANIFEST_FILENAME,
   type PackagedReleaseChannel,
   type PackagedRuntimeChannel,
+  packagedReleaseVersion,
   validatePackagedReleaseManifest,
 } from './lifecycle-code-root.js';
+import { isLoopbackSelfAuthEndpoint } from './local-self-auth.js';
 import {
   assertManagedInheritedStationHost,
   installedRemoteClientsLimit,
@@ -165,6 +167,9 @@ import {
   promptYN,
   sleepSync,
 } from './platform.js';
+import { getProfileCredentialStore } from './profile-credentials.js';
+import { readProfileStore } from './profile-store.js';
+import { refuseStrandsRuntimeEnvironment } from './retired-features-option.js';
 import type { CommandRunner } from './service.js';
 import {
   renderServiceStatusCommand,
@@ -179,10 +184,13 @@ import {
 import {
   DIRECT_LAUNCH_ENV,
   planServerLaunch,
+  readAdmittedGeneration,
   requestSupervisorSync,
   runSupervisorHandoff,
   SUPERVISOR_BUNDLE_FILENAME,
+  type SupervisorRequestTarget,
 } from './supervisor-launch.js';
+import { terminalSafeText } from './terminal-safe.js';
 import {
   UI_PROXY_BACKEND_PREFIXES,
   UI_PROXY_EXCLUDED_PREFIXES,
@@ -1586,7 +1594,6 @@ export interface StartOptions extends InstanceSelector {
    * either way.
    */
   consentPort?: number;
-  features?: string;
   // Force a restart of an already-running instance (stop + start, reusing the
   // existing build). Distinct from `build`, which forces a rebuild.
   force?: boolean;
@@ -3607,7 +3614,7 @@ function resolveSourceBuildManifest(): BuildManifest {
   }
   return {
     sha: releaseManifest.sha,
-    branch: releaseManifest.ref,
+    branch: `v${packagedReleaseVersion(releaseManifest)}`,
     builtAt: new Date().toISOString(),
   };
 }
@@ -4013,11 +4020,14 @@ const INTERNAL_PROXY_CALLER_HEADER = 'x-station-proxy-caller';
  *   positive evidence something else owns the port (lost port race or a
  *   draining previous boot). Never grounds for extending the deadline.
  * - 'http-error': a listener answered non-2xx.
+ * - 'supervisor-not-serving': the boot triple matched, but the supervisor
+ *   did not confirm the API read came from a stable serving generation.
  */
 export type IdentityWaitFailureKind =
   | 'no-listener'
   | 'request-timeout'
   | 'gateway-unavailable'
+  | 'supervisor-not-serving'
   | 'http-error'
   | 'identity-mismatch';
 
@@ -4062,6 +4072,8 @@ export function classifyIdentityWaitError(
 }
 
 export interface IdentityWaitOptions {
+  /** The parent that must admit the API generation during supervised start. */
+  supervisor?: { target: SupervisorRequestTarget; pid: number; port: number };
   /**
    * Liveness probe for the supervised child whose readiness is being awaited.
    * Providing it opts into bounded deadline extension: when the base deadline
@@ -4101,6 +4113,9 @@ export function childExitedBeforeReadinessMessage(
   if (lastKind === 'identity-mismatch') {
     return `Station process exited; ${url} answered as a different instance (${lastFailure}): ${mismatchDetail}`;
   }
+  if (lastKind === 'supervisor-not-serving') {
+    return `Station supervisor exited before confirming an admitted API generation at ${url}`;
+  }
   if (lastKind === 'http-error' || lastKind === 'gateway-unavailable') {
     return `Station process exited; ${url} answered ${lastFailure}`;
   }
@@ -4111,9 +4126,62 @@ function throwIfReadinessAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new Error('Readiness wait abandoned');
 }
 
+type StartupIdentity = { instanceId: string; sha: string; bootId: string };
+
+function matchesStartupIdentity(
+  expected: StartupIdentity,
+  actual: Partial<StartupIdentity>,
+): boolean {
+  return (
+    actual.instanceId === expected.instanceId &&
+    actual.sha === expected.sha &&
+    actual.bootId === expected.bootId
+  );
+}
+
+async function confirmAdmittedIdentity(
+  supervisor: NonNullable<IdentityWaitOptions['supervisor']>,
+  expected: StartupIdentity,
+  url: string,
+  signal: AbortSignal,
+  headers?: Readonly<Record<string, string>>,
+): Promise<boolean> {
+  const binding = {
+    pid: supervisor.pid,
+    port: supervisor.port,
+  };
+  const first = await readAdmittedGeneration(
+    supervisor.target,
+    binding,
+    signal,
+  );
+  if (!first) return false;
+  // HTTP reports the launch identity, which a replacement inherits. The
+  // supervisor reports a separate boot ID for each generation. Hold that
+  // admission fixed across a fresh HTTP identity read.
+  const response = await requestIdentity(url, signal, headers, true);
+  if (!response.ok) {
+    await response.body?.cancel();
+    return false;
+  }
+  if (
+    !matchesStartupIdentity(
+      expected,
+      (await response.json()) as Partial<StartupIdentity>,
+    )
+  )
+    return false;
+  const last = await readAdmittedGeneration(supervisor.target, binding, signal);
+  return (
+    last?.generation === first.generation &&
+    last.pid === first.pid &&
+    last.bootId === first.bootId
+  );
+}
+
 export async function waitForIdentity(
   url: string,
-  expected: { instanceId: string; sha: string; bootId: string },
+  expected: StartupIdentity,
   timeoutMs = STARTUP_READINESS_TIMEOUT_MS,
   headers?: Readonly<Record<string, string>>,
   options?: IdentityWaitOptions,
@@ -4170,16 +4238,32 @@ export async function waitForIdentity(
           response.json(),
           deadlineExceeded,
         ])) as Partial<typeof expected>;
-        if (
-          actual.instanceId === expected.instanceId &&
-          actual.sha === expected.sha &&
-          actual.bootId === expected.bootId
-        ) {
-          return;
+        if (matchesStartupIdentity(expected, actual)) {
+          const supervisor = options?.supervisor;
+          if (
+            !supervisor ||
+            (await Promise.race([
+              confirmAdmittedIdentity(
+                supervisor,
+                expected,
+                url,
+                options?.signal
+                  ? AbortSignal.any([controller.signal, options.signal])
+                  : controller.signal,
+                headers,
+              ),
+              deadlineExceeded,
+            ]))
+          )
+            return;
+          lastFailure =
+            'supervisor has no matching admitted serving generation';
+          lastKind = 'supervisor-not-serving';
+        } else {
+          lastFailure = 'managed boot identity mismatch';
+          lastKind = 'identity-mismatch';
+          lastMismatchDetail = describeIdentityMismatch(expected, actual);
         }
-        lastFailure = 'managed boot identity mismatch';
-        lastKind = 'identity-mismatch';
-        lastMismatchDetail = describeIdentityMismatch(expected, actual);
       } else {
         lastFailure = `${response.status} ${response.statusText}`.trim();
         lastKind = classifyIdentityWaitStatus(response.status);
@@ -4370,15 +4454,16 @@ function probeTcpListenerOnce(
 /**
  * Node's fetch may append its own Host field to a caller-supplied Host. The
  * hosted ingress deliberately rejects duplicate Host fields, so use the node
- * HTTP client only for these internal exact-host probes. Local mode keeps its
- * existing fetch path byte-for-byte.
+ * HTTP client for these internal exact-host probes. The supervised admission
+ * confirmation also uses it without a connection pool.
  */
 function requestIdentity(
   url: string,
   signal: AbortSignal,
   headers?: Readonly<Record<string, string>>,
+  freshConnection = false,
 ): Promise<Response> {
-  if (!headers?.Host) {
+  if (!headers?.Host && !freshConnection) {
     return fetch(url, {
       headers: { Accept: 'application/json', ...headers },
       signal,
@@ -4390,6 +4475,7 @@ function requestIdentity(
       {
         headers: { Accept: 'application/json', ...headers },
         signal,
+        ...(freshConnection ? { agent: false } : {}),
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -4788,7 +4874,9 @@ export async function waitForTcpOk(
 }
 
 export async function start(opts: StartOptions = {}): Promise<void> {
-  const { build, features, force, watch } = opts;
+  // `service run` starts here without passing the `start` or `dev` handler.
+  refuseStrandsRuntimeEnvironment(process.env);
+  const { build, force, watch } = opts;
   if (watch && build) {
     throw new Error(
       '--watch runs from source and builds nothing; --build does not apply.',
@@ -5178,7 +5266,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   if (opts.lifecycleJournal) {
     serverEnv.STATION_LIFECYCLE_JOURNAL = opts.lifecycleJournal;
   }
-  if (features) serverEnv.STATION_FEATURES = features;
   serverEnv.STATION_LOG_FILE = logFile;
 
   const watchPlan = watch
@@ -5463,7 +5550,19 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           { instanceId, sha: serverEnv.STATION_BUILD_SHA, bootId },
           STARTUP_READINESS_TIMEOUT_MS,
           readinessHeaders,
-          { childAlive: childAliveProbe(serverProc.pid), signal },
+          {
+            childAlive: childAliveProbe(serverProc.pid),
+            signal,
+            ...(launch.supervised
+              ? {
+                  supervisor: {
+                    target: supervisorTarget(generation),
+                    pid: serverProc.pid!,
+                    port: serverPort,
+                  },
+                }
+              : {}),
+          },
         ),
       (signal) =>
         waitForTcpOk(host, serverPort + 2, STARTUP_READINESS_TIMEOUT_MS, {
@@ -5684,6 +5783,139 @@ function findRunningTarget(
   return match;
 }
 
+/** How long `station restart` waits for the instance to list its turns. */
+const RUNNING_TURNS_READ_TIMEOUT_MS = 3_000;
+/** Titles listed before the rest are only counted. */
+const RUNNING_TURN_TITLES_SHOWN = 10;
+
+/**
+ * The agent turns running on an instance, as its
+ * `GET /api/system/core-update/running-turns` lists them for this caller.
+ * `hiddenCount` counts the ones in sessions the caller may not read.
+ */
+export interface RunningTurnsReport {
+  turns: Array<{ title: string | null; engine: string }>;
+  hiddenCount: number;
+}
+
+/**
+ * The Station saved on this device whose endpoint is this instance (an
+ * IP-literal loopback origin on its server port), with the credential it was
+ * paired or self-authorized with. Loopback is not authority to the server,
+ * so without one there is nothing to read the route with; no credential is
+ * minted here, and none saved for any other endpoint is ever sent.
+ */
+function savedInstanceCredential(
+  record: Pick<InstanceStateRecord, 'serverPort'>,
+): { apiBase: string; credential: string } | undefined {
+  for (const profile of readProfileStore().profiles) {
+    if (!profile.credentialRef) continue;
+    if (!isLoopbackSelfAuthEndpoint(profile.endpoint)) continue;
+    const endpoint = new URL(profile.endpoint);
+    if (endpoint.protocol !== 'http:') continue;
+    if (Number(endpoint.port) !== record.serverPort) continue;
+    const credential = getProfileCredentialStore().get(profile.credentialRef);
+    if (credential) return { apiBase: endpoint.origin, credential };
+  }
+  return undefined;
+}
+
+/**
+ * What a restart of this instance is about to interrupt, read from the
+ * instance itself. Best effort, and never a reason to hold the restart:
+ * `undefined` when this device holds no credential for the instance, when it
+ * does not answer in time or refuses, or when its answer is not the route's
+ * shape (an older server).
+ */
+export async function readRunningTurns(
+  record: Pick<InstanceStateRecord, 'serverPort'>,
+  options: { timeoutMs?: number } = {},
+): Promise<RunningTurnsReport | undefined> {
+  try {
+    const saved = savedInstanceCredential(record);
+    if (!saved) return undefined;
+    const response = await fetch(
+      `${saved.apiBase}/api/system/core-update/running-turns`,
+      {
+        redirect: 'error',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${saved.credential}`,
+        },
+        signal: AbortSignal.timeout(
+          options.timeoutMs ?? RUNNING_TURNS_READ_TIMEOUT_MS,
+        ),
+      },
+    );
+    if (!response.ok) return undefined;
+    const body = (await response.json()) as {
+      turns?: unknown;
+      hiddenCount?: unknown;
+    } | null;
+    if (!body || !Array.isArray(body.turns)) return undefined;
+    return {
+      turns: body.turns.flatMap(
+        (turn: { title?: unknown; engine?: unknown }) =>
+          turn && typeof turn.engine === 'string' && turn.engine
+            ? [
+                {
+                  title:
+                    typeof turn.title === 'string' && turn.title
+                      ? turn.title
+                      : null,
+                  engine: turn.engine,
+                },
+              ]
+            : [],
+      ),
+      hiddenCount:
+        typeof body.hiddenCount === 'number' &&
+        Number.isSafeInteger(body.hiddenCount) &&
+        body.hiddenCount > 0
+          ? body.hiddenCount
+          : 0,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The lines that tell the operator what is about to be interrupted: how many
+ * turns, the titles this device may read, and a count of the rest. Empty when
+ * nothing is running or nothing could be read. A title is another session's
+ * text, so it is escaped for the terminal.
+ */
+export function describeRunningTurns(
+  report: RunningTurnsReport | undefined,
+): string[] {
+  if (!report) return [];
+  const total = report.turns.length + report.hiddenCount;
+  if (total === 0) return [];
+  const lines = [
+    `${total} agent ${total === 1 ? 'turn is' : 'turns are'} running and will be interrupted:`,
+  ];
+  for (const turn of report.turns.slice(0, RUNNING_TURN_TITLES_SHOWN)) {
+    lines.push(
+      `  · ${terminalSafeText(turn.title ?? 'Untitled session')} (${terminalSafeText(turn.engine)})`,
+    );
+  }
+  const unlisted = report.turns.length - RUNNING_TURN_TITLES_SHOWN;
+  if (unlisted > 0) lines.push(`  · ${unlisted} more`);
+  if (report.hiddenCount > 0) {
+    const sessions =
+      report.hiddenCount === 1
+        ? 'a session this device may not read'
+        : 'sessions this device may not read';
+    lines.push(
+      report.turns.length > 0
+        ? `  · ${report.hiddenCount} more in ${sessions}`
+        : `  · ${report.hiddenCount} in ${sessions}`,
+    );
+  }
+  return lines;
+}
+
 function describeDirectStart(record: InstanceStateRecord): string {
   return `Station instance ${record.instanceId} runs without the process supervisor (an earlier CLI started it, or ${DIRECT_LAUNCH_ENV}=1 was set)`;
 }
@@ -5692,16 +5924,24 @@ function describeDirectStart(record: InstanceStateRecord): string {
  * `station restart`: hands the instance to a new core server generation
  * through its supervisor. Connections wait in the supervisor's listeners
  * while the generations swap; a generation that fails to come up is rolled
- * back to the entry that was serving. Resolves once the new generation
- * serves; throws when the handoff rolled back or was refused.
+ * back to the entry that was serving. Agent turns do not survive the swap:
+ * the ones running are printed first, when this device can read them.
+ * Resolves once the new generation serves; throws when the handoff rolled
+ * back or was refused.
  */
 export async function restart(opts: StopOptions = {}): Promise<void> {
+  // Refuse before asking the supervisor to drain the healthy generation.
+  loadInstalledManagedPolicyChecked();
   const record = findRunningTarget(opts, 'restart');
   if (!record.supervised) {
     throw new Error(
       `${describeDirectStart(record)}, so it cannot restart in place. Restart it with \`station start --force\`, passing the options it was started with.`,
     );
   }
+  // The handoff stops the serving generation's engines: say what that
+  // interrupts before it happens. Nothing is asked, and nothing waits on it.
+  for (const line of describeRunningTurns(await readRunningTurns(record)))
+    console.log(line);
   console.log(`Handing ${record.instanceId} to a new core generation…`);
   const result = await runSupervisorHandoff(
     supervisorTarget(record),
@@ -5997,9 +6237,18 @@ function assertStationHomeInactive(
   // only handle a reader has for stopping the thing, and findRunning discards
   // it (station#3064 made this population include supervised services, whose
   // remedy is a different command).
-  const registryPathExists =
-    operation !== 'reset' &&
-    existsSync(resolveInstanceRegistryPath(projectHome));
+  const registryPath = resolveInstanceRegistryPath(projectHome);
+  let registryPathExists = true;
+  try {
+    if (!lstatSync(registryPath).isFile()) {
+      throw new Error(
+        `Station instance registry is not a regular file: ${registryPath}`,
+      );
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    registryPathExists = false;
+  }
   const homeInstances = registryPathExists
     ? findRunningHomeInstances(projectHome)
     : [];
@@ -6236,7 +6485,7 @@ function delegatePackagedUpgradeIfPresent(
   const state = readSafePackagedInstallState(
     join(installRoot, '.station-release-state.json'),
   );
-  // The manifest's `channel` is the runtime channel (stable|beta|nightly); the
+  // The manifest's `channel` is the runtime channel (stable|nightly); the
   // persisted ring is a release channel, so compare releaseChannel to
   // releaseChannel.
   if (manifest.releaseChannel !== state.releaseChannel) {
@@ -6516,7 +6765,7 @@ export function renderPrebuiltArchiveUpgradeRefusal(
 ): string {
   const { release } = codeRoot;
   return [
-    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is ${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring), and install.sh did not install it. Nothing was changed.`,
+    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is v${packagedReleaseVersion(release)} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring), and install.sh did not install it. Nothing was changed.`,
     'Install through install.sh to get upgrades (`station upgrade` re-runs the installer that installed the version).',
     'To move this copy to a newer version by hand: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
     `Instance state for the ${release.channel} channel lives in ${stateDir}, outside every version directory, so the new version sees and stops what this one started.`,

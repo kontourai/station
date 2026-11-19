@@ -248,7 +248,7 @@ test('Previous and Next turn step from the turn in view and keep focus', async (
   }
 });
 
-test('phone turn steps stay clear of message text and keep touch-sized controls', async () => {
+test('phone turn steps reserve no column and appear only once the reader scrolls away', async () => {
   const { browser, page, errors } = await turnRailBrowserFixture(PHONE);
   try {
     await page.waitForSelector('.chat-messages');
@@ -258,12 +258,15 @@ test('phone turn steps stay clear of message text and keep touch-sized controls'
         .locator('.transcript-turn-rail')
         .evaluate((rail) => getComputedStyle(rail).display),
     ).toBe('none');
+    // At the latest message nothing floats over the text, and the text is
+    // not held back from a column the steps used to reserve (390 - 16px
+    // gutter - 44px step = 330).
     expect(
-      await page.getByRole('button', { name: 'Previous turn' }).count(),
-    ).toBe(1);
-    expect(await page.getByRole('button', { name: 'Next turn' }).count()).toBe(
-      1,
-    );
+      await page.getByRole('button', { name: 'Previous turn' }).isVisible(),
+    ).toBe(false);
+    expect(
+      await page.getByRole('button', { name: 'Next turn' }).isVisible(),
+    ).toBe(false);
     const textEdge = await page
       .locator('.message')
       .evaluateAll((messages) =>
@@ -271,12 +274,7 @@ test('phone turn steps stay clear of message text and keep touch-sized controls'
           ...messages.map((message) => message.getBoundingClientRect().right),
         ),
       );
-    for (const name of ['Previous turn', 'Next turn']) {
-      const step = await page.getByRole('button', { name }).boundingBox();
-      expect(step!.width).toBeGreaterThanOrEqual(44);
-      expect(step!.height).toBeGreaterThanOrEqual(44);
-      expect(textEdge).toBeLessThanOrEqual(step!.x);
-    }
+    expect(textEdge).toBeGreaterThan(340);
     await page.getByRole('button', { name: 'Browse turns' }).click();
     const browserDialog = page.getByRole('dialog', { name: 'Browse turns' });
     await browserDialog.waitFor();
@@ -284,12 +282,31 @@ test('phone turn steps stay clear of message text and keep touch-sized controls'
     await browserDialog.waitFor({ state: 'hidden' });
     await settledScrollTop(page);
     await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+    // Scrolled away: the steps show, but only one with a turn to go to,
+    // touch-sized, on screen and clear of Scroll to bottom.
     const box = (await page
       .getByRole('button', { name: 'Scroll to bottom' })
       .boundingBox())!;
     expect(box.width).toBeGreaterThanOrEqual(44);
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.x + box.width).toBeLessThanOrEqual(390);
+    let shown = 0;
+    for (const name of ['Previous turn', 'Next turn']) {
+      const step = page.getByRole('button', { name });
+      if (!(await step.isVisible())) continue;
+      shown += 1;
+      expect(await step.getAttribute('aria-disabled')).toBeNull();
+      const rect = (await step.boundingBox())!;
+      expect(rect.width).toBeGreaterThanOrEqual(44);
+      expect(rect.height).toBeGreaterThanOrEqual(44);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(390);
+      expect(
+        box.x + box.width <= rect.x ||
+          rect.y + rect.height <= box.y ||
+          box.y + box.height <= rect.y,
+      ).toBe(true);
+    }
+    expect(shown).toBeGreaterThan(0);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
@@ -438,9 +455,10 @@ test.each([
       expect(await rail.isVisible()).toBe(width >= 560);
       expect(await page.locator('.transcript-turn-rail__tick').count()).toBe(2);
       if (width < 560) {
+        // A phone at the latest message draws no step over the text.
         expect(
-          await page.getByRole('button', { name: 'Previous turn' }).count(),
-        ).toBe(1);
+          await page.getByRole('button', { name: 'Previous turn' }).isVisible(),
+        ).toBe(false);
         await page.getByRole('button', { name: 'Browse turns' }).click();
         const dialog = page.getByRole('dialog', { name: 'Browse turns' });
         await dialog.waitFor();
@@ -448,6 +466,13 @@ test.each([
         await dialog.waitFor({ state: 'hidden' });
         await settledScrollTop(page);
         await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+        // Scrolled away: a step with somewhere to go shows.
+        const visible = await Promise.all(
+          ['Previous turn', 'Next turn'].map((name) =>
+            page.getByRole('button', { name }).isVisible(),
+          ),
+        );
+        expect(visible).toContain(true);
       }
       expect(errors).toEqual([]);
     } finally {

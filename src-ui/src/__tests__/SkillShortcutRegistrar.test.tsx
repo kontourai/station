@@ -25,10 +25,22 @@ function Probe() {
   return null;
 }
 
-function Harness({ hasContext, onRun }: { hasContext: boolean; onRun: any }) {
+function Harness({
+  hasContext,
+  onRun,
+  activeChat,
+}: {
+  hasContext: boolean;
+  onRun: any;
+  activeChat?: Parameters<typeof SkillShortcutRegistrar>[0]['activeChat'];
+}) {
   return (
     <KeyboardShortcutsProvider>
-      <SkillShortcutRegistrar hasContext={hasContext} onRun={onRun} />
+      <SkillShortcutRegistrar
+        hasContext={hasContext}
+        activeChat={activeChat}
+        onRun={onRun}
+      />
       <Probe />
     </KeyboardShortcutsProvider>
   );
@@ -110,5 +122,65 @@ describe('SkillShortcutRegistrar', () => {
       modifiers: ['cmd'],
       disabled: false,
     });
+  });
+
+  // A shortcut types a command into the active chat, so it follows the
+  // composer's send rules: refused while the chat is opening, read-only or
+  // unverified, busy with no turn this tab sees, or when the caller may not
+  // continue; run when writable, or busy with a turn in flight (it queues).
+  test('runs a command only where the composer could send', () => {
+    const onRun = vi.fn();
+    mocks.skills = [
+      { name: 'first-book', command: { enabled: true, global: true } },
+    ];
+    const resolved = (
+      canContinue: boolean,
+      extra: Record<string, unknown> = {},
+    ) => ({ status: 'resolved', canContinue, ...extra }) as never;
+    const chat = (fields: Record<string, unknown>) => fields as never;
+    const view = render(<Harness hasContext onRun={onRun} />);
+    const press = (activeChat: unknown) => {
+      view.rerender(
+        <Harness hasContext onRun={onRun} activeChat={activeChat as never} />,
+      );
+      act(() => registered[0].handler());
+    };
+    const lastToast = () => mocks.toast.mock.calls.at(-1)?.[0];
+
+    press(chat({ conversationOpenPending: true }));
+    expect(lastToast()).toBe(
+      'This chat is still opening. Try again in a moment.',
+    );
+    press(chat({ conversationOpenState: resolved(false) }));
+    expect(lastToast()).toBe("This chat can't take messages right now.");
+    press(chat({ conversationOpenFailed: true }));
+    expect(lastToast()).toBe("This chat can't take messages right now.");
+    // Busy, but this tab sees no turn: the composer is draft-only too.
+    press(
+      chat({
+        conversationOpenState: resolved(false, { continuationPending: true }),
+      }),
+    );
+    expect(lastToast()).toBe("This chat can't take messages right now.");
+    // Writable, but the server said this caller may not post.
+    press(
+      chat({
+        conversationOpenState: resolved(true, {
+          callerAccess: { continue: false, startChat: true },
+        }),
+      }),
+    );
+    expect(lastToast()).toBe("You can't send messages in this chat.");
+    expect(onRun).not.toHaveBeenCalled();
+
+    // Busy with a turn in flight here: the command queues behind it.
+    press(
+      chat({
+        conversationOpenState: resolved(false, { continuationPending: true }),
+        orchestrationTurnOpen: true,
+      }),
+    );
+    press(chat({ conversationOpenState: resolved(true) }));
+    expect(onRun).toHaveBeenCalledTimes(2);
   });
 });

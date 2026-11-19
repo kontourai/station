@@ -1960,7 +1960,11 @@ function prepareCandidate(run, config, sha, options = {}) {
   const before = cleanStatus(run, releaseDir);
   if (before !== '') fail(`candidate ${sha} is dirty before build:\n${before}`);
   try {
-    checked(run, 'npm', ['ci'], { cwd: releaseDir });
+    const manifest = readJson(path.join(releaseDir, 'package.json'), null);
+    const installScript = manifest?.scripts?.['dependencies:ci'];
+    if (typeof installScript !== 'string' || !installScript.trim())
+      fail('candidate is missing the dependencies:ci lifecycle');
+    checked(run, 'npm', ['run', 'dependencies:ci'], { cwd: releaseDir });
   } catch (error) {
     error.stage = 'install';
     throw error;

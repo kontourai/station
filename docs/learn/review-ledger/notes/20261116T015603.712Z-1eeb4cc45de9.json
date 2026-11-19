@@ -1,0 +1,13 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Review fixes: no cross-home dedupe (each home keeps its own threads and affinity), a per-home candidate budget with a 512 total, default home first, and resolveSourceHomeWithRefresh. getting-started and session-api state this; other citing documents make no claim about Codex discovery homes.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Review fixes: no cross-home dedupe (each home keeps its own threads and affinity), a per-home candidate budget with a 512 total, default home first, and resolveSourceHomeWithRefresh. getting-started and session-api state this; other citing documents make no claim about Codex discovery homes.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review fixes: no cross-home dedupe (each home keeps its own threads and affinity), a per-home candidate budget with a 512 total, default home first, and resolveSourceHomeWithRefresh. getting-started and session-api state this; other citing documents make no claim about Codex discovery homes.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Review fixes: no cross-home dedupe (each home keeps its own threads and affinity), a per-home candidate budget with a 512 total, default home first, and resolveSourceHomeWithRefresh. getting-started and session-api state this; other citing documents make no claim about Codex discovery homes.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]}
+  ]
+}

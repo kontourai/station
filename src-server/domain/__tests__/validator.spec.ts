@@ -1,6 +1,12 @@
 // @vitest-environment node
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,15 +43,12 @@ vi.mock('../../utils/logger.js', async () => {
 const createTempDir = () => mkdtempSync(join(tmpdir(), 'station-test-'));
 
 describe('Agent schema validation', () => {
-  it('accepts ui metadata with quick prompts and workflow shortcuts', () => {
+  it('accepts component and workflow shortcut metadata', () => {
     const spec = {
       name: 'Test Agent',
       prompt: 'Do things.',
       ui: {
         component: 'custom-component',
-        quickPrompts: [
-          { id: 'hello', label: 'Say Hello', prompt: 'Hello there!' },
-        ],
         workflowShortcuts: ['daily-report.ts'],
       },
     };
@@ -53,20 +56,19 @@ describe('Agent schema validation', () => {
     expect(() => validator.validateAgentSpec(spec)).not.toThrow();
   });
 
-  it('rejects invalid quick prompt entries', () => {
+  it('rejects the retired quick prompt field in a new document', () => {
     const spec = {
       name: 'Broken Agent',
       prompt: 'Does not matter.',
       ui: {
         quickPrompts: [
-          // Missing label field
-          { id: 'oops', prompt: 'Oops' },
+          { id: 'hello', label: 'Say Hello', prompt: 'Hello there!' },
         ],
       },
-    } as any;
+    };
 
     expect(() => validator.validateAgentSpec(spec)).toThrowError(
-      /Invalid agent configuration:[\s\S]*missing required property 'label'/,
+      /Invalid agent configuration:[\s\S]*\/ui: must NOT have additional properties/,
     );
   });
 
@@ -202,7 +204,7 @@ describe('Agent schema validation', () => {
   });
 });
 
-describe('Deprecated AgentSpec.streaming block (#3879)', () => {
+describe('retired Agent configuration fields', () => {
   let workDir: string;
 
   beforeEach(() => {
@@ -213,39 +215,94 @@ describe('Deprecated AgentSpec.streaming block (#3879)', () => {
     rmSync(workDir, { recursive: true, force: true });
   });
 
-  // Nothing reads `streaming`, but the schema rejects unknown keys, so an
-  // agent file written before the block was deprecated must keep loading.
-  it('still loads an agent file that carries the streaming block', async () => {
-    const agentDir = join(workDir, 'agents', 'legacy-streaming');
+  const legacy = {
+    name: 'Legacy Agent',
+    prompt: 'Prompt',
+    streaming: {
+      useNewPipeline: true,
+      enableThinking: false,
+      debugStreaming: true,
+    },
+    ui: {
+      component: 'custom-component',
+      workflowShortcuts: ['daily-report.ts'],
+      quickPrompts: [
+        { id: 'hello', label: 'Say Hello', prompt: 'Hello there!' },
+      ],
+    },
+  };
+
+  function writeLegacy(spec: unknown) {
+    const agentDir = join(workDir, 'agents', 'legacy');
     mkdirSync(agentDir, { recursive: true });
-    writeFileSync(
-      join(agentDir, 'agent.json'),
-      JSON.stringify({
-        name: 'Legacy Streaming Agent',
-        prompt: 'Prompt',
-        streaming: {
-          useNewPipeline: true,
-          enableThinking: false,
-          debugStreaming: true,
-        },
-      }),
-      'utf-8',
-    );
+    const path = join(agentDir, 'agent.json');
+    const original = `${JSON.stringify(spec, null, 2)}\n`;
+    writeFileSync(path, original);
+    return { path, original };
+  }
 
+  it('loads both retired fields without rewriting and preserves other UI fields through an edit and reload', async () => {
+    const { path, original } = writeLegacy(legacy);
     const loader = new ConfigLoader({ projectHomeDir: workDir });
-    const spec = await loader.loadAgent('legacy-streaming');
+    const ui = {
+      component: 'custom-component',
+      workflowShortcuts: ['daily-report.ts'],
+    };
+    const loaded = await loader.loadAgent('legacy');
+    expect(loaded.name).toBe('Legacy Agent');
+    expect(loaded.ui).toEqual(ui);
+    expect(loaded).not.toHaveProperty('streaming');
+    expect(readFileSync(path, 'utf-8')).toBe(original);
 
-    expect(spec.name).toBe('Legacy Streaming Agent');
+    await loader.updateAgent('legacy', { description: 'Edited description' });
+    const saved = JSON.parse(readFileSync(path, 'utf-8'));
+    expect(saved).toMatchObject({
+      name: 'Legacy Agent',
+      description: 'Edited description',
+    });
+    expect(saved.ui).toEqual(ui);
+    expect(saved).not.toHaveProperty('streaming');
+    expect(await loader.loadAgent('legacy')).toEqual(saved);
   });
 
-  it('still rejects an unknown key inside the streaming block', () => {
+  it('refuses unrelated invalid UI data in an old file and keeps its bytes', async () => {
+    const { path, original } = writeLegacy({
+      ...legacy,
+      ui: { ...legacy.ui, unknownUiField: true },
+    });
+    const loader = new ConfigLoader({ projectHomeDir: workDir });
+    await expect(loader.loadAgent('legacy')).rejects.toThrow(
+      /Invalid agent configuration:[\s\S]*\/ui: must NOT have additional properties/,
+    );
+    expect(readFileSync(path, 'utf-8')).toBe(original);
+  });
+
+  it('accepts old callers through the normal create path and writes the canonical shape', async () => {
+    const loader = new ConfigLoader({ projectHomeDir: workDir });
+    await loader.createAgent(legacy);
+    const saved = JSON.parse(
+      readFileSync(
+        join(workDir, 'agents', 'legacy-agent', 'agent.json'),
+        'utf-8',
+      ),
+    );
+    expect(saved).not.toHaveProperty('streaming');
+    expect(saved.ui).toEqual({
+      component: 'custom-component',
+      workflowShortcuts: ['daily-report.ts'],
+    });
+  });
+
+  it('rejects retired streaming in a new document', () => {
     expect(() =>
       validator.validateAgentSpec({
-        name: 'Typo Agent',
-        prompt: '',
-        streaming: { enableThinkng: true },
+        name: 'New Agent',
+        prompt: 'Prompt.',
+        streaming: { enableThinking: true },
       }),
-    ).toThrow();
+    ).toThrow(
+      /Invalid agent configuration:[\s\S]*\/: must NOT have additional properties/,
+    );
   });
 });
 
@@ -263,6 +320,41 @@ describe('App schema validation', () => {
     };
 
     expect(() => validator.validateAppConfig(config)).not.toThrow();
+  });
+
+  it('#4769: refuses a confinedNetwork whose allowed host the broker cannot read, when it is written', () => {
+    const base = {
+      defaultModel: 'claude-sonnet',
+      invokeModel: 'invoke-model',
+      structureModel: 'structure-model',
+    };
+    for (const confinedNetwork of [
+      { mode: 'full' },
+      { mode: 'restricted', allowedHosts: [] },
+      {
+        mode: 'restricted',
+        allowedHosts: ['registry.npmjs.org', '*.github.com:443', '[::1]:8443'],
+      },
+    ])
+      expect(() =>
+        validator.validateAppConfig({ ...base, confinedNetwork }),
+      ).not.toThrow();
+    expect(() =>
+      validator.validateAppConfig({
+        ...base,
+        confinedNetwork: {
+          mode: 'restricted',
+          allowedHosts: ['https://x.com'],
+        },
+      }),
+    ).toThrow(/confinedNetwork: each allowedHosts entry must be/);
+    // The shape itself is the schema's to refuse.
+    expect(() =>
+      validator.validateAppConfig({
+        ...base,
+        confinedNetwork: { mode: 'restricted' },
+      }),
+    ).toThrow();
   });
 
   // ── archive#1503 delta review, R4 ────────────────────────────────────────

@@ -810,6 +810,160 @@ describe('station-control operations tools (characterization)', () => {
     });
   });
 
+  test('list_delegation_environments lists paired Stations with their readiness, and SSH stays the one entry for a shared id', async () => {
+    const peer = (
+      environmentId: string,
+      label: string,
+      readiness?: Record<string, unknown>,
+      scope = 'orchestration:read orchestration:operate',
+    ) => ({
+      environmentId,
+      apiBase: `https://${environmentId}.example.test`,
+      scope,
+      label,
+      createdAt: 1,
+      updatedAt: 1,
+      ...(readiness ? { readiness } : {}),
+    });
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${API_BASE}/.well-known/station/v1`) {
+        return jsonResponse({ environmentId: 'environment-current' });
+      }
+      if (url === `${API_BASE}/api/environments/ssh`) {
+        return jsonResponse({
+          success: true,
+          data: [
+            {
+              profile: {
+                id: 'ssh-1',
+                name: 'Build box',
+                environmentId: 'env-build',
+                verifiedProjectPath: '/srv/project',
+              },
+              state: { phase: 'idle' },
+            },
+          ],
+        });
+      }
+      if (url === `${API_BASE}/api/environments/peers`) {
+        return jsonResponse({
+          success: true,
+          data: [
+            peer('env-online', 'online-box', {
+              status: 'online',
+              checkedAt: 1,
+            }),
+            peer('env-recovering', 'recovering-box', {
+              status: 'recovering',
+              checkedAt: 1,
+            }),
+            peer('env-gone', 'gone-box', {
+              status: 'unreachable',
+              checkedAt: 1,
+            }),
+            peer('env-moved', 'moved-box', {
+              status: 'unconfirmed',
+              reason: 'identity-mismatch',
+              checkedAt: 1,
+            }),
+            peer(
+              'env-readonly',
+              'readonly-box',
+              { status: 'online', checkedAt: 1 },
+              'orchestration:read',
+            ),
+            peer('env-build', 'ssh-twin', {
+              status: 'unreachable',
+              checkedAt: 1,
+            }),
+          ],
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const tools = await registerTools();
+
+    const result = await tools.list_delegation_environments();
+    const { environments } = JSON.parse(result.content[0].text) as {
+      environments: Array<Record<string, unknown>>;
+    };
+
+    expect(environments.slice(1)).toEqual([
+      {
+        id: 'env-build',
+        name: 'Build box',
+        kind: 'ssh',
+        ready: true,
+        connected: false,
+      },
+      {
+        id: 'env-online',
+        name: 'online-box',
+        kind: 'peer',
+        ready: true,
+        connected: true,
+      },
+      {
+        id: 'env-recovering',
+        name: 'recovering-box',
+        kind: 'peer',
+        ready: false,
+        connected: false,
+        unavailableReason: 'Recovering · server down or restarting',
+      },
+      {
+        id: 'env-gone',
+        name: 'gone-box',
+        kind: 'peer',
+        ready: false,
+        connected: false,
+        unavailableReason: 'Unreachable',
+      },
+      {
+        id: 'env-moved',
+        name: 'moved-box',
+        kind: 'peer',
+        ready: false,
+        connected: false,
+        unavailableReason:
+          'Identity mismatch · a different Station answers at this address',
+      },
+      {
+        id: 'env-readonly',
+        name: 'readonly-box',
+        kind: 'peer',
+        ready: false,
+        connected: true,
+        unavailableReason:
+          'This paired Station did not grant orchestration:operate.',
+      },
+    ]);
+    expect(result.content[0].text).not.toContain('example.test');
+  });
+
+  test('list_delegation_environments still answers when the paired-Station read fails', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${API_BASE}/.well-known/station/v1`) {
+        return jsonResponse({ environmentId: 'environment-current' });
+      }
+      if (url === `${API_BASE}/api/environments/ssh`) {
+        return jsonResponse({ success: true, data: [] });
+      }
+      if (url === `${API_BASE}/api/environments/peers`) {
+        return jsonResponse({ success: false, error: 'Forbidden' }, 403);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const tools = await registerTools();
+    const result = await tools.list_delegation_environments();
+    expect(
+      (JSON.parse(result.content[0].text) as { environments: unknown[] })
+        .environments,
+    ).toHaveLength(1);
+  });
+
   test('list_delegated_tasks exposes the bounded coordinator inventory', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);

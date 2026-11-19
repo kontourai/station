@@ -1,0 +1,7 @@
+{
+  "revision": "086b804b6ab442869ee5ce70a1142c0a5f018030",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed shared bottom-toolbar placement in ChatInputArea and StartComposer, ComposerRunControl label collapse/title and preserved next-turn/status ownership. Gallery geometry covers layout; no provider or physical-device claim.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerRunControl.css","src-ui/src/components/ComposerRunControl.tsx","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

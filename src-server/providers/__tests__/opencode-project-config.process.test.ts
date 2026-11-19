@@ -8,7 +8,8 @@
  * writes a marker when imported. The control runs `opencode debug agent`
  * there directly and sees the marker, which proves the plugin is one
  * OpenCode loads; a governed start must refuse without it appearing. A clean
- * project still starts governed. Hosts without `opencode` skip loudly.
+ * project still starts governed. Hosts without an OpenCode 1.x `opencode`
+ * skip loudly.
  */
 import { execFile } from 'node:child_process';
 import {
@@ -24,14 +25,14 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
-import { findCliBinaryAsync } from '../auth/cli-auth.js';
+import { realOpenCode1, warnSkipped } from './opencode-real-binary.js';
 
-const opencodeBinary = await findCliBinaryAsync('opencode');
-
-if (!opencodeBinary)
-  console.warn(
-    'ENFORCEMENT UNVERIFIED (#3924): no `opencode` binary on this host; the planted project plugin probe did not run.',
-  );
+// OpenCode 1.x only: 2.x has neither the ACP launch overlay nor `debug
+// agent` this probe relies on (its native transport has its own process
+// test), so a 2.x on PATH skips it, loudly, as a missing binary does.
+const real = await realOpenCode1();
+warnSkipped('#3924', real);
+const opencodeBinary = real.binary;
 
 const XDG_KEYS = [
   'XDG_CONFIG_HOME',
@@ -41,7 +42,7 @@ const XDG_KEYS = [
 ] as const;
 
 describe.skipIf(!opencodeBinary)(
-  `a planted OpenCode project plugin under the real engine${opencodeBinary ? '' : ' (SKIPPED: no opencode binary)'}`,
+  `a planted OpenCode project plugin under the real engine${real.skip ? ` (SKIPPED: ${real.skip})` : ''}`,
   () => {
     const makeTempDir = trackTempDirs({ lifetime: 'file' });
     const saved: Record<string, string | undefined> = {};

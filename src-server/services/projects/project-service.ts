@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { statSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { BUILTIN_KNOWLEDGE_NAMESPACES } from '@kontourai/station-contracts/knowledge';
 import {
+  DEFAULT_PROJECT_COORDINATOR_EFFORT,
+  PROJECT_BRIEF_RECORD_FIELDS,
   PROJECT_ICON_PROBLEM_MESSAGES,
   type ProjectConfig,
   type ProjectMetadata,
@@ -12,7 +15,10 @@ import {
   PROJECT_CHAT_DEFAULT_RECORD_FIELDS,
   type ProjectChatDefaultRecordField,
 } from '@kontourai/station-contracts/project-chat-defaults';
-import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
+import {
+  type ProjectPortableIdentity,
+  selectPrimaryResource,
+} from '@kontourai/station-contracts/project-identity';
 import {
   PROJECT_OVERRIDE_RECORD_FIELDS,
   type ProjectOverrideRecordField,
@@ -372,7 +378,8 @@ export class ProjectService {
    */
   constructor(
     private storageAdapter: IStorageAdapter,
-    private manifests?: Pick<ProjectManifestStore, 'ensureProjectManifest'>,
+    private manifests?: Pick<ProjectManifestStore, 'ensureProjectManifest'> &
+      Partial<Pick<ProjectManifestStore, 'readRecord' | 'manifestPath'>>,
     private stationDefaultWorkspaceIsolation?: () => Promise<
       WorkspaceIsolationMode | undefined
     >,
@@ -410,11 +417,77 @@ export class ProjectService {
   }
 
   listProjects(): ProjectMetadata[] {
-    return this.storageAdapter.listProjects();
+    return this.storageAdapter
+      .listProjects()
+      .map((project) => this.withRepositoryDisplay(project));
   }
 
   getProject(slug: string): ProjectConfig {
-    return this.storageAdapter.getProject(slug);
+    return this.withRepositoryDisplay(this.storageAdapter.getProject(slug));
+  }
+
+  private readonly repositoryDisplays = new Map<
+    string,
+    { stamp: string; remote?: string }
+  >();
+
+  private withRepositoryDisplay<
+    T extends { slug: string; repositorySource?: { canonicalRemote: string } },
+  >(project: T): T {
+    let stamp = 'absent';
+    let key = project.slug;
+    try {
+      const path = this.manifests?.manifestPath?.(project.slug);
+      if (path) {
+        key = path;
+        try {
+          const info = statSync(path);
+          stamp = `${info.mtimeMs}:${info.ctimeMs}:${info.size}:${info.ino}`;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+        const cached = this.repositoryDisplays.get(key);
+        if (cached?.stamp === stamp) {
+          const remote =
+            stamp === 'absent'
+              ? project.repositorySource?.canonicalRemote
+              : cached.remote;
+          return remote ? { ...project, repositoryDisplay: remote } : project;
+        }
+      }
+      const manifest = this.manifests?.readRecord?.(project.slug);
+      const primary = manifest
+        ? selectPrimaryResource(parseProjectPortableIdentity(manifest).repos)
+        : undefined;
+      const remote =
+        primary?.ok && primary.resource.kind === 'git'
+          ? primary.resource.canonicalRemote
+          : manifest
+            ? undefined
+            : project.repositorySource?.canonicalRemote;
+      this.rememberRepositoryDisplay(key, stamp, remote);
+      return remote ? { ...project, repositoryDisplay: remote } : project;
+    } catch {
+      if (this.repositoryDisplays.get(key)?.stamp !== stamp) {
+        logger.debug('Project repository display unavailable', {
+          projectSlug: project.slug,
+        });
+        this.rememberRepositoryDisplay(key, stamp);
+      }
+      return project;
+    }
+  }
+
+  private rememberRepositoryDisplay(
+    key: string,
+    stamp: string,
+    remote?: string,
+  ): void {
+    if (this.repositoryDisplays.size >= 256)
+      this.repositoryDisplays.delete(
+        this.repositoryDisplays.keys().next().value!,
+      );
+    this.repositoryDisplays.set(key, { stamp, remote });
   }
 
   async createProject(
@@ -459,8 +532,9 @@ export class ProjectService {
       operation: 'create',
       project: project.slug || project.id,
     });
-    // Readers never see a field a lock hides, the create response included.
-    return withoutLockedProjectOverrides(project);
+    // Readers never see a field a lock hides, the create response included,
+    // and every response names the same repository a later read would.
+    return this.withRepositoryDisplay(withoutLockedProjectOverrides(project));
   }
 
   async createAttachedProject(
@@ -482,6 +556,7 @@ export class ProjectService {
       project: project.slug || project.id,
     });
     // Readers never see a field a lock hides, the create response included.
+    // Its only caller keeps the id and slug, so no repository label here.
     return withoutLockedProjectOverrides(project);
   }
 
@@ -562,8 +637,19 @@ export class ProjectService {
     }
 
     const now = new Date().toISOString();
+    // #5062/#5068: a blank or `null` brief field is no value.
+    for (const field of PROJECT_BRIEF_RECORD_FIELDS) {
+      const value = (input as Record<string, unknown>)[field];
+      if (value === null || (typeof value === 'string' && !value.trim()))
+        delete (input as Record<string, unknown>)[field];
+    }
     const project: ProjectConfig = {
+      // A new Project starts with a modest coordinator effort (#5068), and
+      // has no legacy rules to copy into its brief (#5062).
+      coordinatorEffort: DEFAULT_PROJECT_COORDINATOR_EFFORT,
+      instructionsMigratedAt: now,
       ...input,
+      ...(typeof input.goal === 'string' ? { goal: input.goal.trim() } : {}),
       name,
       slug,
       id: reservedId ?? randomUUID(),
@@ -607,6 +693,9 @@ export class ProjectService {
     const updated: ProjectConfig = withoutClearedIcon({
       ...existing,
       ...updates,
+      ...(updates.icon !== undefined
+        ? { iconDisabled: updates.iconDisabled ?? !updates.icon }
+        : {}),
       updatedAt: new Date().toISOString(),
     }) as ProjectConfig;
     // #2144 slice 2: `null` on a settings-override field DROPS the override
@@ -623,6 +712,13 @@ export class ProjectService {
         delete updated[field];
       }
     }
+    // #5062/#5068: the brief and model fields drop on `null` or blank text.
+    for (const field of PROJECT_BRIEF_RECORD_FIELDS) {
+      const value = (updates as Record<string, unknown>)[field];
+      if (value === null || (typeof value === 'string' && !value.trim()))
+        delete updated[field];
+    }
+    if (typeof updated.goal === 'string') updated.goal = updated.goal.trim();
     if (updates.defaultAgent === null) delete updated.defaultAgent;
     if (updated.defaultEnvironment?.kind === 'current') {
       delete updated.defaultEnvironment;
@@ -645,7 +741,27 @@ export class ProjectService {
     await revision.replace(updated);
     projectOps.add(1, { operation: 'update', project: slug });
     // The response is a read: it hides what `getProject` hides (#4517).
-    return withoutLockedProjectOverrides(updated);
+    return this.withRepositoryDisplay(withoutLockedProjectOverrides(updated));
+  }
+
+  /**
+   * #5069: the one writer of `ProjectConfig.lifecycle` (`undefined` makes the
+   * Project active). The ordinary update refuses the field at its route.
+   */
+  async setProjectLifecycle(
+    slug: string,
+    lifecycle: ProjectConfig['lifecycle'],
+  ): Promise<ProjectConfig> {
+    const revision = this.storageAdapter.projectRevision(slug);
+    const updated: ProjectConfig = {
+      ...revision.value,
+      updatedAt: new Date().toISOString(),
+    };
+    if (lifecycle) updated.lifecycle = lifecycle;
+    else delete updated.lifecycle;
+    await revision.replace(updated);
+    projectOps.add(1, { operation: 'lifecycle', project: slug });
+    return updated;
   }
 
   async deleteProject(slug: string): Promise<void> {

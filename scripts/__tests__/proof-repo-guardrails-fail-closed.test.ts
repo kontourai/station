@@ -168,6 +168,48 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
     expect(output).not.toMatch(/(?:node:fs|at readFileSync|uncaught)/i);
   });
 
+  test.each([
+    [
+      'src-ui/src/hooks/useToolApproval.ts',
+      'return useApprovalAnswering(apiBase);',
+      'return undefined;',
+      'useToolApproval must delegate to the shared approval owner.',
+    ],
+    ...['submitToolApproval', 'respondToRequest'].map((helper) => [
+      'src-ui/src/components/conversation/useApprovalAnswering.ts',
+      helper,
+      `retired${helper}`,
+      `useApprovalAnswering must use shared SDK helper ${helper}.`,
+    ]),
+    ...[
+      ['useToolApproval', 'src-ui/src/hooks/useToolApproval.ts'],
+      [
+        'useApprovalAnswering',
+        'src-ui/src/components/conversation/useApprovalAnswering.ts',
+      ],
+    ].map(([name, path]) => [
+      path,
+      `export function ${name}(apiBase: string) {`,
+      `export function ${name}(apiBase: string) {\n  void fetch('/api/approval');`,
+      `${name} must not issue raw fetch() calls.`,
+    ]),
+  ])(
+    'approval ownership rejects a broken boundary: %s / %s',
+    (path, before, after, finding) => {
+      const { status, output } = runProofCopy(undefined, {
+        path,
+        mutate: (source) => {
+          expect(source).toContain(before);
+          return source.replaceAll(before, after);
+        },
+      });
+      expect(output).toContain(finding);
+      expect(output).not.toContain('Missing required guardrail source');
+      expect(output).toContain('Repo guardrail proof failed');
+      expect(status).toBe(1);
+    },
+  );
+
   test('the scheduler dialog DTO owner must retain its contract import', () => {
     const { status, output } = runProofCopy(undefined, undefined, (source) => {
       const requiredImport =
@@ -196,6 +238,12 @@ describe('proof:repo-guardrails fails closed on a missing source', () => {
       'src-ui/src/components/monitoring/InsightsDashboard.tsx',
       'onClick={() => void refetch()}',
       "onClick={() => void fetch('/api/monitoring/events')}",
+    ],
+    [
+      'ProjectSettingsView',
+      'src-ui/src/views/ProjectSettingsView.tsx',
+      'onClick={() => void modelConnectionsQuery.refetch()}',
+      "onClick={() => void fetch('/api/model-connections')}",
     ],
   ])(
     '%s distinguishes raw fetch from SDK query refetch',

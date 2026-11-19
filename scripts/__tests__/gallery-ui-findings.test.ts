@@ -70,6 +70,66 @@ function judge(args: string[], cwd = process.cwd()) {
 }
 
 describe('gallery-ui-findings check', () => {
+  it.each([false, true])(
+    'preserves judge exits with optional diagnostics=%s',
+    (includeDiagnostics) => {
+      const root = scratch();
+      const finding = {
+        identity: 'hit-target:overlap:First / Second',
+        detail: 'touch targets overlap',
+        ...(includeDiagnostics
+          ? {
+              diagnostics: {
+                version: 1,
+                overlapWidth: 20,
+                overlapHeight: 30,
+                firstCentreHitPresent: true,
+              },
+            }
+          : {}),
+      };
+      const dir = gallery(root, [
+        screen('home', {
+          findings: [finding],
+          measured: { controls: 2, smallTargets: 0, viewport: 390 },
+        }),
+      ]);
+      const list = allowlist(root, {});
+      const failed = judge([
+        'check',
+        `--gallery=${dir}`,
+        `--allowlist=${list}`,
+      ]);
+      expect(failed.status).toBe(1);
+      expect(failed.out).toContain(
+        'FAIL home: hit-target:overlap:First / Second — touch targets overlap',
+      );
+      expect(failed.out).toContain('1 finding(s), 1 not allowlisted');
+      writeFileSync(
+        list,
+        JSON.stringify({
+          schemaVersion: 1,
+          screens: { home: [finding.identity] },
+        }),
+      );
+      const accepted = judge([
+        'check',
+        `--gallery=${dir}`,
+        `--allowlist=${list}`,
+      ]);
+      expect(accepted.status).toBe(0);
+      expect(accepted.out).toContain('1 finding(s), 0 not allowlisted');
+      const unknown = judge([
+        'check',
+        `--gallery=${dir}`,
+        `--allowlist=${list}`,
+        '--screens=missing',
+      ]);
+      expect(unknown.status).toBe(2);
+      expect(unknown.out).toContain('missing');
+    },
+  );
+
   it('fails an unlisted finding, naming the screen and the finding', () => {
     const root = scratch();
     const dir = gallery(root, [
@@ -110,6 +170,27 @@ describe('gallery-ui-findings check', () => {
     expect(run.out).toContain(
       'LIKELY REKEY home: axe:label-content-name-mismatch:button.x[Old name] → axe:label-content-name-mismatch:button.x[New name]',
     );
+  });
+
+  it('prints each transient second capture without changing the verdict', () => {
+    const root = scratch();
+    const dir = gallery(root, [screen('home', audit())]);
+    const path = join(dir, 'capture.json');
+    const capture = JSON.parse(readFileSync(path, 'utf8'));
+    const identity =
+      'app-error-surface: lazy-boundary-row; failed chunk requests: /assets/CoreUpdateLaunchCheck-<hash>.js';
+    capture.secondCaptures = [
+      { screen: 'home', identity, second: 'passed' },
+      { screen: 'home', identity, second: 'app-error-surface' },
+    ];
+    writeFileSync(path, JSON.stringify(capture));
+    const list = allowlist(root, {});
+    const run = judge(['check', `--gallery=${dir}`, `--allowlist=${list}`]);
+    expect(run.status).toBe(0);
+    expect(
+      run.out.split('\n').filter((line) => line.startsWith('TRANSIENT')),
+    ).toEqual([`TRANSIENT home: passed on a second capture after ${identity}`]);
+    expect(run.out).toContain('OK: 1 screen(s)');
   });
 
   it('passes when a listed finding is gone, and says it can be removed', () => {

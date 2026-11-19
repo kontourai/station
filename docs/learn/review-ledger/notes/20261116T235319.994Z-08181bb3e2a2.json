@@ -1,0 +1,7 @@
+{
+  "revision": "1b5c7e2a3f463ca54cd4ec2da5a517188ab9ee0f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"development.md changed only in the landing push-once bullet's figures; nothing here cites them.","inputs":["docs/architecture/module-map.md","docs/guides/development.md"]}
+  ]
+}

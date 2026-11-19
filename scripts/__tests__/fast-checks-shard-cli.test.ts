@@ -405,7 +405,9 @@ describe('fast-checks shard runner (child process)', () => {
       env: { GITHUB_OUTPUT: output },
     });
     expect(slice.status, slice.stderr).toBe(0);
-    expect(readFileSync(output, 'utf8')).toBe('empty=true\n');
+    expect(readFileSync(output, 'utf8')).toBe(
+      'empty=true\nrequires-zsh=false\n',
+    );
 
     const run = cli(
       ['run', '--plan=plan.json', '--shard=4/4', '--receipt=out/receipt.json'],
@@ -430,19 +432,32 @@ describe('fast-checks shard runner (child process)', () => {
     });
   });
 
-  test('reports a non-empty slice to the output so dependencies install', () => {
+  test('provisions zsh only for slices that run a Linux zsh fixture', () => {
     const { directory, head } = repository();
+    const files = [
+      'ops/nightly/macos-build-only-cleanup.test.mjs',
+      'scripts/__tests__/installer-tool-output-parsing.test.ts',
+      'scripts/__tests__/nightly-android-install.test.ts',
+      'scripts/__tests__/station-dogfood-reconcile/installer-process.test.ts',
+    ];
     writeFileSync(
       join(directory, 'plan.json'),
-      JSON.stringify(planFor(head, ['a/a.test.ts', 'a/b.test.ts'])),
+      JSON.stringify(planFor(head, files)),
     );
-    const output = join(directory, 'github-output');
-    const slice = cli(['slice', '--plan=plan.json', '--shard=1/4'], {
-      cwd: directory,
-      env: { GITHUB_OUTPUT: output },
-    });
-    expect(slice.status, slice.stderr).toBe(0);
-    expect(readFileSync(output, 'utf8')).toBe('empty=false\n');
+    for (const [index, requiresZsh] of [true, false, true, false].entries()) {
+      const output = join(directory, `github-output-${index}`);
+      const slice = cli(
+        ['slice', '--plan=plan.json', `--shard=${index + 1}/4`],
+        {
+          cwd: directory,
+          env: { GITHUB_OUTPUT: output },
+        },
+      );
+      expect(slice.status, slice.stderr).toBe(0);
+      expect(readFileSync(output, 'utf8')).toBe(
+        `empty=false\nrequires-zsh=${requiresZsh}\n`,
+      );
+    }
   });
 
   test('refuses a plan computed for another commit with a failing receipt', () => {
@@ -568,6 +583,201 @@ describe('fast-checks shard runner (in process)', () => {
       '::error file=a/a.test.ts,title=row%2C at 390px%3A wraps::AssertionError: 100%25 wrapped%0A    at a.test.ts:4\n',
       '::error file=a/a.test.ts,title=second::Error: two\n',
     ]);
+  });
+
+  test('a failed shard names each failed test, suite and infrastructure error after its summary line', async () => {
+    const cwd = inProcessFixture();
+    const lines: string[] = [];
+    const status = await runFastChecksShardCli(
+      ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+      {
+        cwd,
+        env,
+        runShard: async () => ({
+          status: 'failed',
+          counts: {
+            executed: 3,
+            passed: 1,
+            failed: 2,
+            infrastructureErrors: 1,
+          },
+          executions: [
+            {
+              resourceGroup: 'ordinary',
+              exitCode: 1,
+              failedTests: [
+                {
+                  file: 'a/a.test.ts',
+                  name: 'counts adds one',
+                  excerpt: 'AssertionError: expected 102 to be 103',
+                },
+                {
+                  file: 'a/b.test.ts',
+                  name: 'multi\nline name',
+                  excerpt: 'Error: two',
+                },
+              ],
+              structuredErrorReport: {
+                suites: [
+                  {
+                    file: 'a/c.test.ts',
+                    name: '',
+                    errors: [
+                      { name: 'Error', message: 'Cannot find module ./gone' },
+                    ],
+                  },
+                ],
+              },
+            },
+            {
+              resourceGroup: 'process-heavy',
+              exitCode: 1,
+              infrastructureError: true,
+              error: 'Vitest child terminated by signal SIGKILL',
+            },
+          ],
+        }),
+        report: (line) => lines.push(String(line)),
+        error: () => {},
+      },
+    );
+    expect(status).toBe(1);
+    const text = lines.join('');
+    const summary = text.indexOf('[fast-checks] shard 1/4: failed;');
+    expect(summary).toBeGreaterThanOrEqual(0);
+    expect(text.slice(summary).split('\n').slice(1)).toEqual([
+      '[fast-checks] failed tests (2):',
+      '  a/a.test.ts > counts adds one',
+      '  a/b.test.ts > multi line name',
+      '[fast-checks] failed suites (1):',
+      '  a/c.test.ts: Error: Cannot find module ./gone',
+      '[fast-checks] infrastructure errors (1):',
+      '  resource group process-heavy: Vitest child terminated by signal SIGKILL',
+      '',
+    ]);
+    // The receipt is unchanged by the report.
+    expect(
+      JSON.parse(readFileSync(join(cwd, 'receipt.json'), 'utf8')),
+    ).toMatchObject({ status: 'failed', passed: false });
+  });
+
+  test('a failed shard bounds its lists and annotations and counts what it leaves out', async () => {
+    const cwd = inProcessFixture();
+    const lines: string[] = [];
+    const failedTests = Array.from({ length: 25 }, (_, index) => ({
+      file: `a/t${index}.test.ts`,
+      name: `case ${index}`,
+      excerpt: `Error: ${index}`,
+    }));
+    await runFastChecksShardCli(
+      ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+      {
+        cwd,
+        env: { ...env, GITHUB_ACTIONS: 'true' },
+        runShard: async () => ({
+          status: 'failed',
+          counts: {
+            executed: 40,
+            passed: 10,
+            failed: 30,
+            infrastructureErrors: 0,
+          },
+          executions: [{ resourceGroup: 'ordinary', exitCode: 1, failedTests }],
+        }),
+        report: (line) => lines.push(String(line)),
+        error: () => {},
+      },
+    );
+    const annotations = lines.filter((line) => line.startsWith('::error'));
+    // GitHub keeps ten error annotations per step: nine tests and a count.
+    expect(annotations).toHaveLength(10);
+    expect(annotations[8]).toBe(
+      '::error file=a/t8.test.ts,title=case 8::Error: 8\n',
+    );
+    expect(annotations[9]).toBe(
+      '::error title=fast-checks 1/4::16 more failure(s); the shard log lists them after its summary line\n',
+    );
+    const text = lines.join('');
+    expect(text).toContain('[fast-checks] failed tests (30):');
+    expect(text).toContain('  a/t19.test.ts > case 19\n');
+    expect(text).not.toContain('a/t20.test.ts > case 20');
+    expect(text).toContain(
+      '  … and 10 more not listed here; see the shard receipt and its retained Vitest reports',
+    );
+  });
+
+  test('suite and infrastructure failures are annotated with escaped properties', async () => {
+    const cwd = inProcessFixture();
+    const lines: string[] = [];
+    await runFastChecksShardCli(
+      ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+      {
+        cwd,
+        env: { ...env, GITHUB_ACTIONS: 'true' },
+        runShard: async () => ({
+          status: 'infrastructure_error',
+          counts: {
+            executed: 0,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          preparation: {
+            phase: 'shard-execution',
+            error: 'spawn failed: 100% busy\nsecond line',
+          },
+          executions: [
+            {
+              resourceGroup: 'ordinary',
+              exitCode: 1,
+              structuredErrorReport: {
+                suites: [
+                  {
+                    file: 'a/x,y.test.ts',
+                    name: 'setup: db',
+                    errors: [{ name: 'Error', message: 'beforeAll failed' }],
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        report: (line) => lines.push(String(line)),
+        error: () => {},
+      },
+    );
+    expect(lines.filter((line) => line.startsWith('::error'))).toEqual([
+      '::error file=a/x%2Cy.test.ts,title=suite failed%3A setup%3A db::Error: beforeAll failed\n',
+      '::error title=fast-checks 1/4 infrastructure error%3A preparation (shard-execution)::spawn failed: 100%25 busy%0Asecond line\n',
+    ]);
+    expect(lines.join('')).toContain(
+      '[fast-checks] infrastructure errors (1):\n  preparation (shard-execution): spawn failed: 100% busy\n',
+    );
+  });
+
+  test('a passing shard prints no failure block', async () => {
+    const cwd = inProcessFixture();
+    const lines: string[] = [];
+    await runFastChecksShardCli(
+      ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+      {
+        cwd,
+        env,
+        runShard: async () => ({
+          status: 'completed',
+          counts: {
+            executed: 1,
+            passed: 1,
+            failed: 0,
+            infrastructureErrors: 0,
+          },
+          executions: [{ resourceGroup: 'ordinary', exitCode: 0 }],
+        }),
+        report: (line) => lines.push(String(line)),
+        error: () => {},
+      },
+    );
+    expect(lines.join('')).not.toContain('[fast-checks] failed');
   });
 
   test('annotations are workflow commands only on GitHub Actions', async () => {
@@ -1553,6 +1763,45 @@ describe('the plan records its related-discovery cost (#2803)', () => {
     expect(status).toBe(0);
     expect(lines.join('')).toContain(
       '[fast-checks] related discovery: 34.2s of its 265.0s timeout\n',
+    );
+  });
+
+  test('the plan command prints the union added and names every escalated path it did not cover (#5010)', async () => {
+    const { directory, head } = repository();
+    const lines: string[] = [];
+    const entry = (path: string, disposition: string, suites = 0) => ({
+      path,
+      disposition,
+      depth: disposition === 'selected' ? 2 : null,
+      suites,
+    });
+    const status = await runFastChecksShardCli(['plan', '--out=plan.json'], {
+      cwd: directory,
+      env: { STATION_CI_FAST_BASE: 'HEAD' },
+      report: (message) => lines.push(message),
+      error: () => {},
+      planShards: async () => ({
+        ...planFor(head, ['a/a.test.ts']),
+        escalatedImporters: {
+          limits: { depth1: 100, depth2: 100 },
+          totalCap: 250,
+          // Two seeds of 75 suites sharing 25: the union is 125, not 150.
+          suites: 125,
+          added: 40,
+          paths: [
+            entry('packages/shared/src/a.ts', 'selected', 75),
+            entry('packages/shared/src/b.ts', 'selected', 75),
+            entry('packages/contracts/src/catalog.ts', 'no-suite-within-bound'),
+            entry('packages/contracts/src/agent-identity.ts', 'deferred'),
+            entry('packages/contracts/src/gone.ts', 'absent'),
+            entry('pnpm-lock.yaml', 'not-importable'),
+          ],
+        },
+      }),
+    });
+    expect(status).toBe(0);
+    expect(lines.join('')).toContain(
+      '[fast-checks] escalated paths: 125 importing suite(s) (40 not otherwise planned) for 2 of 6; no importing suite within the bound: packages/contracts/src/catalog.ts; over the bound: packages/contracts/src/agent-identity.ts; no importer graph (not importable): pnpm-lock.yaml; no importer graph (deleted): packages/contracts/src/gone.ts\n',
     );
   });
 });

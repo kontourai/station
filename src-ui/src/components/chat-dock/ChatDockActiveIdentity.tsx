@@ -3,6 +3,7 @@ import type { OrchestrationInputOrigin } from '@kontourai/station-contracts/orch
 import type { AgentData } from '../../contexts/AgentsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
+import { useReportedDelegationStart } from '../../hooks/useReportedDelegationStart';
 import type { ChatSession } from '../../types';
 import {
   agentEngineDescriptor,
@@ -12,6 +13,7 @@ import {
 import { engineChipLabel } from '../badges/EngineChip';
 import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
+import { useChildChatTrail } from './ChildChatNavigationContext';
 
 interface ChatDockActiveIdentityProps {
   session: Pick<ChatSession, 'id' | 'title'> &
@@ -52,6 +54,7 @@ interface ChatDockActiveIdentityProps {
   routeLabel?: string;
   stationName?: string;
   inputOrigin?: OrchestrationInputOrigin;
+  reportedStartThreadId?: string;
   onClose: (id: string) => void;
 }
 
@@ -60,6 +63,18 @@ export function delegatedTaskLabel(origin: OrchestrationInputOrigin): string {
   return origin.title
     ? `Driven from delegated task: ${origin.title}`
     : 'Driven from a delegated task';
+}
+
+export function DelegationStart({
+  threadId,
+  compact = false,
+}: {
+  threadId: string;
+  compact?: boolean;
+}) {
+  const reported = useReportedDelegationStart(threadId);
+  if (compact) return reported ? `${reported} · ` : null;
+  return reported ? `Started from ${reported}` : 'Driven from delegation';
 }
 
 /** One line: the conversation title, then the agent and engine, muted; the engine and then the agent step aside before the title truncates. */
@@ -72,11 +87,13 @@ export function ChatDockActiveIdentity({
   originLabel,
   originProvider,
   inputOrigin,
+  reportedStartThreadId,
   acpConnections,
   executionAgent,
   onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
+  const childTrail = useChildChatTrail();
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
 
   const bindingAgent = executionAgent === undefined ? agent : executionAgent;
@@ -174,8 +191,10 @@ export function ChatDockActiveIdentity({
   const delegationTitle = inputOrigin ? delegatedTaskLabel(inputOrigin) : null;
 
   return (
-    <div className="chat-dock__active-identity">
-      {!originLabel && (
+    <div
+      className={`chat-dock__active-identity${childTrail ? ' chat-dock__active-identity--child' : ''}`}
+    >
+      {!originLabel && !childTrail && (
         <AgentIcon
           agent={iconSubject}
           size={20}
@@ -191,7 +210,7 @@ export function ChatDockActiveIdentity({
             .filter(Boolean)
             .join('\n')}
         >
-          {session.title}
+          {childTrail ?? session.title}
         </span>
         <span
           className="chat-dock__active-identity-context"
@@ -221,7 +240,11 @@ export function ChatDockActiveIdentity({
             className="chat-dock__active-identity-engine"
             title={delegationTitle ?? undefined}
           >
-            Driven from delegation
+            {reportedStartThreadId && !childTrail ? (
+              <DelegationStart threadId={reportedStartThreadId} />
+            ) : (
+              'Driven from delegation'
+            )}
           </span>
         )}
       </div>

@@ -1,0 +1,11 @@
+{
+  "revision": "4b1510b843e4c4f39c390c8b86f16a76efbc2788",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Traced default coverage baseline, historical commit selection, current ledger byte validation, removed citations and impact report composition. One invocation reuses the same historical projection and working ledger for both report calculations. The complete default-range output was byte-identical on the fixed a3b98ce4952 checkout, and Git Trace2 recorded one rather than two reads of the same ordered 100 historical refs. The separate Changeset history pipeline keeps its prior behavior.","inputs":["docs/guides/documentation-review-ledger.md","scripts/documentation-impact.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Checked the impact and catch-up commands against the shared projection change. Explicit paths, baseline/working-tree selection, Corpus relationships, removed citation leads and stale review interpretation retain their documented semantics. Both complete reports agreed on the fixed benchmark.","inputs":["docs/guides/documentation.md","docs/guides/documentation-review-ledger.md","scripts/documentation-impact.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Checked the linked catch-up commands and archive review notes against the real CLI and keeper tests. Historical dependency leads survive citation removal, canonical and reformatted historical records remain supported, and malformed current/archive bytes still fail in their existing readers. The reader continues to surface accumulated coverage work without creating approval.","inputs":["docs/learn/README.md","scripts/documentation-impact.mjs"]}
+  ]
+}

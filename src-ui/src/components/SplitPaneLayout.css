@@ -650,7 +650,8 @@
   padding: 7.5px 12px;
 }
 
-.split-pane__detail-skeleton {
+.split-pane__detail-skeleton,
+.split-pane__detail-empty {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -1008,6 +1009,22 @@
   flex: 1;
   min-height: 0;
   border: 0;
+}
+/* A companion as its own page on a phone (#4795): the whole screen, no
+   scrim or rounded sheet edge; the dialog's header keeps the way back. */
+.split-pane-companion__page-overlay.responsive-surface-overlay {
+  align-items: stretch;
+  padding: 0;
+  background: var(--k-bg);
+}
+.split-pane-companion__page-overlay > .split-pane-companion__page {
+  width: 100%;
+  height: var(--responsive-visual-viewport-height, 100dvh);
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding-top: var(--safe-top, 0px);
 }
 
 /* A 640px main surface and 16rem supporting inspection share wide containers.

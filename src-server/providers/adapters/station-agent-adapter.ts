@@ -54,7 +54,12 @@ import {
   takeToolPurpose,
   toolPurposeForCall,
 } from '../../runtime/frameworks/tool-purpose.js';
+import type { StationControlCallerRecordResolver } from '../../runtime/mcp/station-control-caller.js';
 import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  startNativeStationControlSession,
+  stopNativeStationControlSession,
+} from '../../runtime/mcp/station-control-native-tools.js';
 import {
   beginNativeKnowledgeTurn,
   finishNativeKnowledgeTurn,
@@ -271,6 +276,16 @@ interface StationAgentAdapterOptions {
   approvalRegistry: Pick<ApprovalRegistry, 'has' | 'resolve'> &
     Partial<Pick<ApprovalRegistry, 'isPendingForSession'>>;
   eventBus: Pick<EventBus, 'subscribe'>;
+  /**
+   * #2377 slice D: the server records a station-control caller is derived
+   * from (owner, Project, conversation), read lazily because the
+   * orchestration service is built after this adapter. Each session's
+   * station-control calls run in-process as that session's verified caller
+   * (`station-control-native-tools.ts`).
+   */
+  stationControlCallerRecords?: () =>
+    | StationControlCallerRecordResolver
+    | undefined;
   fetch?: typeof fetch;
   now?: () => Date;
 }
@@ -794,6 +809,9 @@ export function mapStationAgentStreamEvent(options: {
       requestId,
       requestType: 'approval',
       title: stringField(event.tool) ?? toolName ?? 'Allow tool call',
+      ...(stringField(event.guardianReason)
+        ? { guardianReason: stringField(event.guardianReason) }
+        : {}),
       ...(purpose ? { purpose } : {}),
       ...(stringField(event.toolDescription)
         ? { description: stringField(event.toolDescription) }
@@ -1241,6 +1259,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       updatedAt: now,
     };
     startNativeKnowledgeSession(input.threadId);
+    startNativeStationControlSession(input.threadId, {
+      ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
+      resolveRecord: (sessionId) =>
+        this.options.stationControlCallerRecords?.()?.(sessionId),
+    });
     this.sessions.set(input.threadId, {
       workspaceRequired:
         input.workspaceIsolation?.mode === 'worktree' ||
@@ -1727,17 +1750,18 @@ export class StationAgentAdapter implements ProviderAdapterShape {
 
   async stopSession(threadId: string): Promise<void> {
     const knowledgeCleanup = stopNativeKnowledgeSession(threadId);
+    const controlCleanup = stopNativeStationControlSession(threadId);
     revokeStationControlMcpToken(threadId);
     const record = this.sessions.get(threadId);
     if (!record) {
-      await knowledgeCleanup;
+      await Promise.all([knowledgeCleanup, controlCleanup]);
       return;
     }
     await this.options.durable?.cancel(threadId, record.activeTurnId);
     this.cancelPendingApprovals(record);
     record.activeController?.abort('session stopped');
     this.sessions.delete(threadId);
-    await knowledgeCleanup;
+    await Promise.all([knowledgeCleanup, controlCleanup]);
     // station#1569 (item 4): the abort above tears down the SSE stream
     // without publishing anything for the calls it was mid-way through —
     // `consumeChatStream`'s aborted branch returns silently by design. So

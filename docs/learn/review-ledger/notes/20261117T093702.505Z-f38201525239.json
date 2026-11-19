@@ -1,0 +1,9 @@
+{
+  "revision": "eacb9ecec2e47a9d5b664210767feccdb8453002",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md only reorders the five Library rows and adds a paragraph on the projectLibrary flag; no route, flag or claim these pages cite from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md only reorders the five Library rows and adds a paragraph on the projectLibrary flag; no route, flag or claim these pages cite from it changed.","inputs":["docs/reference/api.md"]}
+  ]
+}

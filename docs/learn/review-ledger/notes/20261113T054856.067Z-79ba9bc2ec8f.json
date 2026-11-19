@@ -1,0 +1,7 @@
+{
+  "revision": "00098d3c52aaaa7a237fa3df99806bf0df2e59f1",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed IME UI-thread handoff, grant creation deadline and detach release, own-item menu reconciliation and framework/resource ID paste detection through KeyboardImageIntake, MediaIntakePlugin and generated overrides. DevUrl remains disabled explicitly. Baseline/restored 99 Kotlin tests; eight behavioral fault groups caught. No APK or physical evidence. Other release contracts unchanged.","inputs":["docs/guides/mobile-release.md"]}
+  ]
+}

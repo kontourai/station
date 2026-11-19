@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed and updated for the Antigravity agy acp change set (minimumVersion floor + engine-update-required probe code, prompt-handoff steer, resume/load answers adopted and start model/mode/effort reapplied where the resumed session differs, thought_level as ACP model effort, per-turn prompt usage for engines recorded reporting it): Antigravity section (launch, sign-in methods, HTTP MCP via --process-per-session, elicitation questions, steering and its refusal while a request is open, open-chat limits), unsupported table, descriptor minimumVersion row, resume step, token-usage row, effort row, steer paragraph. Checked against builtin-acp-engines.ts, engine-version-floor.ts, acp-probe.ts, acp-steer.ts, acp-adapter.ts, acp-adapter-events.ts, connection-service-helpers.ts and the recorded frames.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts","src-server/services/acp/acp-probe.ts"]}
+  ]
+}

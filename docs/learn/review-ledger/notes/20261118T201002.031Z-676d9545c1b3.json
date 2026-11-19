@@ -1,0 +1,7 @@
+{
+  "revision": "e8b89e916ee1db7d85988047e6dfd0ce977b4dfd",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the discovery-backed classification assertion. It now names plugin scaffold in the existing exactly-once process-exclusive matrix and still checks exclusion from ordinary, process-heavy and shared-output partitions.","inputs":["scripts/__tests__/vitest-resource-manifest.test.ts"]}
+  ]
+}

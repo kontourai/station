@@ -38,7 +38,7 @@ export function RootPicker({
         description={error instanceof Error ? error.message : String(error)}
         action={
           <button type="button" className="kl-button" onClick={onRetry}>
-            Try again
+            Retry
           </button>
         }
       />

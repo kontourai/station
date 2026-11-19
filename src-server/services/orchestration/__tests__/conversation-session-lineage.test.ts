@@ -816,6 +816,16 @@ describe('conversation/session lineage persistence', () => {
       proposedSessionId: 'legacy-child-conversation:session:1',
       createdAt: '2026-08-24T01:30:02.000Z',
     });
+    store.appendEvent({
+      eventId: 'legacy-child-started',
+      provider: 'codex',
+      threadId: child.lineage.sessionId,
+      sessionId: child.lineage.sessionId,
+      method: 'session.started',
+      initialState: 'created',
+      metadata: { userId: 'owner' },
+      createdAt: child.lineage.createdAt,
+    });
     store.upsertSession({
       provider: 'codex',
       threadId: child.lineage.sessionId,
@@ -831,6 +841,9 @@ describe('conversation/session lineage persistence', () => {
       )
       .run('2026-08-24T01:30:02.500Z', child.lineage.sessionId);
     database.close();
+    expect(providerCreatedAt(path, child.lineage.sessionId)).toBe(
+      '2026-08-24T01:30:02.500Z',
+    );
 
     store = new EventStore(path);
     expect(store.conversationSessions('legacy-child-conversation')).toEqual([

@@ -31,7 +31,20 @@ function compilerDiagnostic(compiled) {
     .join('\n');
 }
 
-/** Build a per-owner guard; never trust a predictable shared executable. */
+/**
+ * Build a per-owner guard; never trust a predictable shared executable.
+ * @param {{
+ *   source?: string,
+ *   spawnProcess?: (command: string, args: string[], options: import('node:child_process').SpawnSyncOptionsWithStringEncoding) => {
+ *     status: number | null,
+ *     error?: Error,
+ *     stdout?: string,
+ *     stderr?: string,
+ *   },
+ *   tempDirectory?: string,
+ *   windir?: string,
+ * }} [options]
+ */
 export function buildWindowsOwnedGuard({
   source = resolve(import.meta.dirname, '../windows-owned-guard.cs'),
   spawnProcess = spawnSync,

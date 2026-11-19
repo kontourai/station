@@ -42,6 +42,7 @@ import {
   compactChangeDefinitions,
   retainedChangeDelete,
 } from './turn-changes.js';
+import { agentCheckpoint } from './turn-checkpoint.js';
 import {
   agentEffectHeader,
   copyAgentEffect,
@@ -701,6 +702,7 @@ export function auditSqliteAgentJournal({
 export function openSqliteAgentJournal(options: {
   readonly database: DatabaseSync;
   readonly participants?: readonly AgentJournalParticipant[];
+  readonly checkpoint?: { run(): Promise<void>; close(): Promise<void> };
 }): AgentJournal {
   const { database } = options;
   installAgentReferences(database);
@@ -1214,6 +1216,7 @@ export function openSqliteAgentJournal(options: {
       canonical(turn),
     );
   };
+  const checkpoint = agentCheckpoint(database, options.checkpoint);
   let maintenance: ReturnType<typeof setImmediate> | undefined;
   let maintenanceNow = 0;
   let maintenanceError: unknown;
@@ -1222,6 +1225,25 @@ export function openSqliteAgentJournal(options: {
     maintenance = setImmediate(() => {
       maintenance = undefined;
       if (closed || !database.isOpen || database.isTransaction) return;
+      let pending: Promise<void> | undefined;
+      try {
+        pending = checkpoint.beforeTransaction();
+      } catch (error) {
+        maintenanceError = error;
+        return;
+      }
+      if (pending) {
+        void pending.then(scheduleMaintenance, (error: unknown) => {
+          if (
+            !(
+              error instanceof Error &&
+              error.message === 'DURABLE_AGENT_CHECKPOINT_BUSY'
+            )
+          )
+            maintenanceError = error;
+        });
+        return;
+      }
       // Admission and every turn command run synchronously between these callbacks.
       if (
         agentStatement(
@@ -1247,7 +1269,7 @@ export function openSqliteAgentJournal(options: {
           ) > 0;
         if (vacuum) database.exec('PRAGMA incremental_vacuum(1)');
         if (changed || vacuum) invalidateAgentValidation(database);
-        database.exec('COMMIT');
+        checkpoint.commit();
         if (changed || vacuum) scheduleMaintenance();
       } catch (error) {
         if (database.isTransaction) database.exec('ROLLBACK');
@@ -1273,6 +1295,17 @@ export function openSqliteAgentJournal(options: {
       if (closed) throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
       if (maintenanceError) throw maintenanceError;
       const command = commandSchema.parse(raw);
+      let pending = checkpoint.beforeTransaction();
+      while (pending) {
+        await pending;
+        if (closed || !database.isOpen)
+          throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
+        // Earlier checkpoint waiters may have committed more WAL before this one resumed.
+        pending = checkpoint.beforeTransaction();
+      }
+      if (closed || !database.isOpen)
+        throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
+      if (maintenanceError) throw maintenanceError;
       const clock = () => {
         const before = agentStatement(
           database,
@@ -1582,7 +1615,7 @@ export function openSqliteAgentJournal(options: {
           (command.type === 'open' || command.type === 'settle') &&
           answer.kind === 'owned';
         if (maintain) maintenanceNow = clock();
-        database.exec('COMMIT');
+        checkpoint.commit();
         if (maintain) scheduleMaintenance();
         return copyAgentAnswer(answer);
       } catch (error) {
@@ -1594,6 +1627,7 @@ export function openSqliteAgentJournal(options: {
     async close() {
       closed = true;
       if (maintenance) clearImmediate(maintenance);
+      await checkpoint.close();
     },
   };
 }

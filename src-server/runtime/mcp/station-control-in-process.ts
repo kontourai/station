@@ -71,6 +71,15 @@ export async function createCodexBoundToolServer(input: {
   resolveRecord?: StationControlCallerRecordResolver;
   includeBrowser: boolean;
   includeDevices: boolean;
+  /**
+   * #2376 slice 2: also serve the whole station-control catalog, listed at
+   * `bound` and narrowed to `allowedTools` (the Agent's selection), in place
+   * of the header-token MCP server. Browser and device tools keep the
+   * request-proof path below; the rest run as Claude's in-process server
+   * does, with a session `sdk-in-process` credential that only travels in
+   * loopback requests Station sends to itself.
+   */
+  stationControl?: { allowedTools?: readonly string[] };
   dispatch: (request: Request) => Promise<Response>;
   isCurrent: () => boolean;
 }) {
@@ -84,13 +93,35 @@ export async function createCodexBoundToolServer(input: {
     undefined,
     input.isCurrent,
   );
-  const server = new McpServer({
-    name: 'station-bound-tools',
-    version: '1.0.0',
-  });
+  // Adopted threads also hold a header credential; never rotate it here.
+  const control = input.stationControl
+    ? mintStationControlMcpToken(
+        input.sessionId,
+        'sdk-in-process',
+        undefined,
+        input.tenantExecutionContext,
+        undefined,
+        'codex-control',
+        undefined,
+        input.isCurrent,
+      )
+    : undefined;
+  const server = input.stationControl
+    ? createSelectedStationControlMcpServer(
+        input.stationControl.allowedTools,
+        undefined,
+        'station-control',
+        'bound',
+      )
+    : new McpServer({
+        name: 'station-bound-tools',
+        version: '1.0.0',
+      });
   const registry = new StationControlToolRegistry(server);
   if (input.includeBrowser) registerBrowserTools(registry);
-  if (input.includeDevices) registerDeviceTools(registry);
+  // The station-control catalog already registers the device tools.
+  if (input.includeDevices && !input.stationControl)
+    registerDeviceTools(registry);
   let nextId = 0;
   let closed = false;
   const pending = new Map<
@@ -123,11 +154,29 @@ export async function createCodexBoundToolServer(input: {
     params: Record<string, unknown>,
     current: () => boolean,
   ) => {
-    if (!verifyStationControlMcpToken(token) && !closed && input.isCurrent())
+    // Browser and device calls keep the request-proof credential; any other
+    // station-control call uses the session's in-process one.
+    const viaControl =
+      !!control &&
+      method === 'tools/call' &&
+      !codexProofToolNames().has(String(params.name));
+    const callToken = viaControl ? control.token : token;
+    if (
+      !verifyStationControlMcpToken(callToken) &&
+      !closed &&
+      input.isCurrent()
+    )
       return Promise.reject(new Error('bound-tool-session-restart-required'));
     if (closed || pending.size >= 16 || !current())
       return Promise.reject(new Error('bound-tool-refused'));
     const id = ++nextId;
+    const deliver = () =>
+      transport.onmessage?.({
+        jsonrpc: '2.0',
+        id,
+        method,
+        params,
+      });
     return new Promise<unknown>((resolve, reject) => {
       pending.set(id, { resolve, reject });
       try {
@@ -137,28 +186,24 @@ export async function createCodexBoundToolServer(input: {
             : undefined,
           () =>
             withStationControlCallerBinding(
-              createHash('sha256').update(token).digest('base64url'),
+              createHash('sha256').update(callToken).digest('base64url'),
               () =>
                 withStationControlCallerContext(
                   {
-                    token,
+                    token: callToken,
                     resolve: () =>
                       resolveStationControlCallerFromToken(
-                        token,
+                        callToken,
                         input.resolveRecord,
                       ),
                   },
                   () =>
-                    withCodexDirectToolRequests(
-                      { token, current, dispatch: input.dispatch },
-                      () =>
-                        transport.onmessage?.({
-                          jsonrpc: '2.0',
-                          id,
-                          method,
-                          params,
-                        }),
-                    ),
+                    viaControl
+                      ? deliver()
+                      : withCodexDirectToolRequests(
+                          { token, current, dispatch: input.dispatch },
+                          deliver,
+                        ),
                 ),
               current,
             ),
@@ -170,7 +215,10 @@ export async function createCodexBoundToolServer(input: {
     });
   };
   const current = () =>
-    !closed && input.isCurrent() && !!verifyStationControlMcpToken(token);
+    !closed &&
+    input.isCurrent() &&
+    !!verifyStationControlMcpToken(token) &&
+    (!control || !!verifyStationControlMcpToken(control.token));
   await request(
     'initialize',
     {
@@ -189,7 +237,8 @@ export async function createCodexBoundToolServer(input: {
   };
   return {
     tools: listing.tools,
-    expired: () => Date.now() >= expiresAt,
+    expired: () =>
+      Date.now() >= Math.min(expiresAt, control?.expiresAt ?? expiresAt),
     call: (name: string, args: unknown, invocationCurrent: () => boolean) =>
       request(
         'tools/call',
@@ -203,12 +252,35 @@ export async function createCodexBoundToolServer(input: {
         input.sessionId,
         'codex-tools',
       );
+      if (control)
+        revokeStationControlMcpTokenIfCurrent(
+          control.token,
+          input.sessionId,
+          'codex-control',
+        );
       for (const item of pending.values())
         item.reject(new Error('bound-tool-refused'));
       pending.clear();
       await server.close();
     },
   };
+}
+
+let proofToolNames: ReadonlySet<string> | undefined;
+
+/** The browser and device tool names, which call only request-proof routes. */
+function codexProofToolNames(): ReadonlySet<string> {
+  if (!proofToolNames) {
+    const names = new Set<string>();
+    const registry = new StationControlToolRegistry(
+      new McpServer({ name: 'station-bound-tool-names', version: '1.0.0' }),
+      (name) => names.add(name),
+    );
+    registerBrowserTools(registry);
+    registerDeviceTools(registry);
+    proofToolNames = names;
+  }
+  return proofToolNames;
 }
 
 export type CodexBoundToolServer = Awaited<
@@ -481,4 +553,44 @@ export function claudeInProcessStationControlOptions(
     revokeStationControlCallerToken: (threadId) =>
       revokeInProcessSession(threadId),
   };
+}
+
+/**
+ * #2377 slice D (decision 4): Station's own engine gets the SAME per-session
+ * in-process station-control server Claude does — its own `sdk-in-process`
+ * token (assurance `bound`), every inbound message run as that session's
+ * verified caller — so its calls carry the session's owner and Project
+ * instead of reaching Station through a caller-less pooled child.
+ * `station-control-native-tools.ts` drives it; revoke with
+ * {@link revokeSessionInProcessStationControl}.
+ */
+export function createSessionInProcessStationControl(input: {
+  sessionId: string;
+  tenantExecutionContext?: TenantExecutionContext;
+  resolveRecord?: StationControlCallerRecordResolver;
+  /** Test seam: production serves the real `bound` registrations. */
+  createServer?: () => McpServer;
+}): InProcessStationControlServer {
+  return createInProcessServer({
+    sessionId: input.sessionId,
+    ...(input.tenantExecutionContext
+      ? { tenantExecutionContext: input.tenantExecutionContext }
+      : {}),
+    ...(input.resolveRecord ? { resolveRecord: input.resolveRecord } : {}),
+    createServer:
+      input.createServer ??
+      (() =>
+        createSelectedStationControlMcpServer(
+          undefined,
+          undefined,
+          'station-control',
+          'bound',
+        )),
+    token: 'fresh',
+  });
+}
+
+/** Revoke a session's in-process credential and forget its shared token. */
+export function revokeSessionInProcessStationControl(sessionId: string): void {
+  revokeInProcessSession(sessionId);
 }

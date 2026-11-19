@@ -1,3 +1,4 @@
+import { modelOptionLabel } from '../../utils/modelCapabilities';
 export function formatRecordedCost(stats: {
   cost: number;
   reportedCostUsd?: number;
@@ -35,7 +36,7 @@ export function getUsageModelDisplayName(
   const modelInfo = models.find(
     (model) => model.id === modelId || model.originalId === modelId,
   );
-  return modelInfo?.name || modelId;
+  return (modelInfo && modelOptionLabel(modelInfo)) || modelId;
 }
 
 export function getAgentModelBreakdown({

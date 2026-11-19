@@ -237,7 +237,7 @@ describe('station#1549: the observation-required picker state', () => {
     expect(screen.getByTestId('engine-picker-none-capable')).toBeTruthy();
     expect(
       screen.getByText(
-        "Kiro can chat and answer questions about Station, but can't run the assistant.",
+        "Kiro can chat and answer questions about Station, but can't run the Station agent.",
       ),
     ).toBeTruthy();
     expect(screen.queryByTestId('engine-picker-pending-kiro-1')).toBeNull();
@@ -254,9 +254,7 @@ describe('station#1549: the observation-required picker state', () => {
     // The honest row is there instead, and the panel says "yet".
     expect(screen.getByTestId('engine-picker-pending-kiro-1')).toBeTruthy();
     expect(
-      screen.getByText(
-        'No connected engine can run the built-in assistant yet',
-      ),
+      screen.getByText('No connected engine can run the Station agent yet'),
     ).toBeTruthy();
   });
 

@@ -30,12 +30,16 @@ import type {
   ProviderConnectionConfig,
   RuntimeCatalogStatus,
 } from '@kontourai/station-contracts/tool';
-import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
+import {
+  isSafeToolServerId,
+  readCatalogModelRoute,
+} from '@kontourai/station-contracts/tool';
 import type {
   ProviderAdapterModelCatalog,
   ProviderAdapterShape,
 } from '../../providers/adapter-shape.js';
 import { getProviderAdapterRegistrationProvenance } from '../../providers/adapter-shape.js';
+import { findAcpEffortConfigOption } from '../../providers/adapters/acp-session-mode.js';
 import {
   normalizeCredentialProfileRegistry,
   projectCredentialProfileRegistry,
@@ -51,7 +55,10 @@ import {
   acpAdvertisedModelCatalog,
 } from '../acp/acp-handshake-facts.js';
 import type { AcpSessionModelState } from '../acp/acp-process.js';
-import { openCodeModelImageInput } from '../acp/opencode-model-capabilities.js';
+import {
+  openCodeCatalogModel,
+  openCodeModelImageInput,
+} from '../acp/opencode-model-capabilities.js';
 import {
   sanitizeConnectionConfigHome,
   sanitizeConnectionEnvMap,
@@ -493,10 +500,12 @@ function normalizeModelOptionsWithBounds(value: unknown): {
       trimmedResolved !== item.id
         ? trimmedResolved
         : undefined;
+    const catalogRoute = readCatalogModelRoute(item.catalogRoute);
     models.push({
       id: item.id,
       name: item.name,
       originalId,
+      ...(catalogRoute ? { catalogRoute } : {}),
       ...(resolvedModel ? { resolvedModel } : {}),
       ...(capabilities ? { capabilities } : {}),
     });
@@ -858,10 +867,29 @@ export function projectControlPlaneObservation(
   };
 }
 
-function imageInputCapability(
-  imageInput: boolean | undefined,
-): { capabilities: { imageInput: boolean } } | Record<string, never> {
-  return imageInput === undefined ? {} : { capabilities: { imageInput } };
+/**
+ * The effort control an ACP connection offers: the values of its advertised
+ * reasoning-effort config option (`findAcpEffortConfigOption`, the option a
+ * session start and each turn apply effort through), labelled with the
+ * engine's own names. Nothing when it advertises no such option or lists no
+ * values, so the composer shows no effort field rather than one Station made
+ * up. The option is session-wide, so every model in the catalog carries it.
+ */
+function acpEffortCapabilities(
+  configOptions: unknown,
+): Pick<
+  ModelOptionCapabilities,
+  'supportsEffort' | 'supportedEffortLevels' | 'effortLabels'
+> {
+  const option = findAcpEffortConfigOption(configOptions);
+  if (!option || option.values.length === 0) return {};
+  return {
+    supportsEffort: true,
+    supportedEffortLevels: [...option.values],
+    ...(Object.keys(option.names).length > 0
+      ? { effortLabels: { ...option.names } }
+      : {}),
+  };
 }
 
 /**
@@ -879,16 +907,32 @@ export function acpRuntimeCatalogStatus(
   /** The connection's current configuration, to reject a stale per-model cache. */
   config?: ACPConnectionConfig,
 ): RuntimeCatalogStatus {
-  const models = acpAdvertisedModels(liveStatus).map((entry) => ({
-    id: entry.id,
-    name: entry.name,
-    originalId: entry.id,
+  const effort = acpEffortCapabilities(liveStatus?.configOptions);
+  const models = acpAdvertisedModels(liveStatus).map((entry) => {
     // OpenCode's per-model image input, read from the cache the
     // post-handshake listing fills. Memory only; never spawns here.
-    ...imageInputCapability(
-      openCodeModelImageInput(liveStatus?.id, entry.id, config),
-    ),
-  }));
+    const imageInput = openCodeModelImageInput(
+      liveStatus?.id,
+      entry.id,
+      config,
+    );
+    const catalogRoute = openCodeCatalogModel(
+      liveStatus?.id,
+      entry.id,
+      config,
+    )?.catalogRoute;
+    const capabilities: ModelOptionCapabilities = {
+      ...effort,
+      ...(imageInput === undefined ? {} : { imageInput }),
+    };
+    return {
+      id: entry.id,
+      name: entry.name,
+      originalId: entry.id,
+      ...(catalogRoute ? { catalogRoute } : {}),
+      ...(Object.keys(capabilities).length > 0 ? { capabilities } : {}),
+    };
+  });
   if (models.length === 0) {
     return {
       source: 'none',

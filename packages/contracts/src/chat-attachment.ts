@@ -89,6 +89,25 @@ export interface PersistedChatAttachment
   blobRef?: string;
 }
 
+/**
+ * A file held with a queued follow-up (the conversation inbox), as its readers
+ * see it: name, type and size only. Station keeps the bytes in its attachment
+ * blob store until the entry is sent; they never appear in an inbox listing.
+ */
+export interface QueuedChatAttachmentDescriptor {
+  kind: ChatAttachmentKind;
+  name: string;
+  mimeType: ChatAttachmentMimeType;
+  /** Raw decoded byte count. */
+  size: number;
+}
+
+/**
+ * A queued follow-up's refusal when one of its files is no longer in the
+ * attachment blob store at send time. The message is not sent without it.
+ */
+export const QUEUED_ATTACHMENT_UNAVAILABLE_CODE = 'attachment_unavailable';
+
 export interface ParsedChatAttachmentDataUrl {
   mimeType: string;
   base64: string;

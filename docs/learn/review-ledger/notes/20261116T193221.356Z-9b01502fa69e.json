@@ -1,0 +1,15 @@
+{
+  "revision": "d6e7b35a63f0b841537cdf7f2b1e59548af366e7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"development.md adds one sentence that Settings › Advanced › Host options lists abandoned workload scopes; citing docs' claims (supervisor proposal, testing, shared README, server AGENTS, module map) are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"development.md adds one sentence that Settings › Advanced › Host options lists abandoned workload scopes; citing docs' claims (supervisor proposal, testing, shared README, server AGENTS, module map) are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"development.md adds one sentence that Settings › Advanced › Host options lists abandoned workload scopes; citing docs' claims (supervisor proposal, testing, shared README, server AGENTS, module map) are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"development.md adds one sentence that Settings › Advanced › Host options lists abandoned workload scopes; citing docs' claims (supervisor proposal, testing, shared README, server AGENTS, module map) are unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"development.md adds one sentence that Settings › Advanced › Host options lists abandoned workload scopes; citing docs' claims (supervisor proposal, testing, shared README, server AGENTS, module map) are unchanged.","inputs":["docs/guides/development.md"]}
+  ]
+}

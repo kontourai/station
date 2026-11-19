@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
 import { ComposerChoice } from '../ComposerChoice';
+import { SettingsGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -34,12 +35,12 @@ export function AcpSessionModeChip({
         className="chat-input__approval-chip chat-input__approval-chip--default"
         aria-haspopup="dialog"
         aria-expanded={isSheetOpen}
-        aria-label={`Session mode: ${selectedLabel}. Engine advertised control.`}
-        title={`Session mode for this engine: ${selectedLabel}${
-          selected.description ? ` — ${selected.description}` : ''
-        }`}
+        /* The visible "Mode {name}" stays inside the accessible name
+           (WCAG 2.5.3 Label in Name); the sheet carries each mode's description. */
+        aria-label={`Session mode: ${selectedLabel}. Mode ${selectedLabel}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Mode"
+        icon={<SettingsGlyph />}
         value={selectedLabel}
         valueClassName="chat-input__approval-chip-label"
       />

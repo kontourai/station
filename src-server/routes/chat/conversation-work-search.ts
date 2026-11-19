@@ -12,6 +12,7 @@ import {
   stationControlRefusal,
   stationControlRefusalBody,
 } from '../../tools/station-control-policy.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   ConversationLineageTooLongError,
   type ConversationMessageRead,
@@ -97,7 +98,9 @@ export function createConversationWorkSearchRoutes(deps: {
     if (!current())
       return c.json({ success: false, error: 'Search unavailable' }, 503);
     try {
-      const sessions = await deps.sessions.listSessionReadModel(readAuthority);
+      const sessions = await deps.sessions.listSessionReadModel(readAuthority, {
+        purpose: 'work-search',
+      });
       const candidates = new Map<string, Candidate>();
       for (const session of sessions) {
         const id =
@@ -268,7 +271,7 @@ export function createConversationWorkSearchRoutes(deps: {
       });
     } catch (error) {
       deps.read.logger.warn('Failed to search conversations', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return c.json({ success: false, error: 'Search unavailable' }, 503);
     }

@@ -63,6 +63,14 @@ const COMPLETE_NATIVE_CAPABILITY_FIXTURE = {
     state: 'disabled',
     reason: 'fixture',
   },
+  'image-share-intake': {
+    state: 'disabled',
+    reason: 'fixture',
+  },
+  'clipboard-image': {
+    state: 'disabled',
+    reason: 'fixture',
+  },
 } satisfies Record<NativeCapabilityId, CapabilityFixtureValue>;
 
 export function completeNativeCapabilityReport(

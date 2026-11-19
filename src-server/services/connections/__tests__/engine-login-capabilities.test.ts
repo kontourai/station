@@ -10,6 +10,7 @@ import {
 import {
   CLAUDE_LOGIN_HELP_STDOUT,
   CODEX_LOGIN_HELP_STDOUT,
+  MUSE_LOGIN_HELP_STDOUT,
 } from './device-code-cli-output.js';
 
 /**
@@ -98,6 +99,39 @@ describe('a login mechanism is observed, never declared', () => {
     );
   });
 
+  test('muse declares device-code from its own sentence, with no flag to pass', async () => {
+    const deps = stubDeps({
+      'muse login --help': MUSE_LOGIN_HELP_STDOUT,
+    });
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('muse');
+
+    expect(loginMechanisms(capabilities)).toEqual(['device-code']);
+    const evidence = mechanismEvidence(capabilities, 'device-code');
+    expect(evidence?.observedMatch).toBe('approve a code in your browser');
+    // `muse login` IS the device flow: Station must run it bare.
+    expect(evidence).not.toHaveProperty('argument');
+    // #1942: asked without letting the `muse` launcher download or prompt.
+    expect(deps.runCommand).toHaveBeenCalledWith('muse', ['login', '--help'], {
+      MUSE_NO_AUTO_UPDATE: '1',
+      MUSE_LOGIN: '0',
+    });
+  });
+
+  test('a muse login help that no longer says so offers no device login', async () => {
+    const deps = stubDeps({
+      'muse login --help': MUSE_LOGIN_HELP_STDOUT.replace(
+        'approve a code in your browser',
+        'sign in',
+      ),
+    });
+    const capabilities =
+      await createEngineLoginCapabilityObserver(deps)('muse');
+
+    expect(loginMechanisms(capabilities)).toEqual([]);
+    expect(capabilities.unavailableReason).toBeUndefined();
+  });
+
   test('a flag Station has never seen is not read as a device-code login', async () => {
     const deps = stubDeps({
       'codex login --help': CODEX_LOGIN_HELP_STDOUT.replace(
@@ -124,6 +158,39 @@ describe('a CLI that cannot be asked is unavailable, not unsupported', () => {
     expect(capabilities.evidence).toEqual([]);
     expect(deps.runCommand).not.toHaveBeenCalled();
   });
+
+  test('observes an installed CLI immediately after a failed lookup', async () => {
+    let installed = false;
+    const observe = createEngineLoginCapabilityObserver(
+      stubDeps(
+        { 'codex login --help': CODEX_LOGIN_HELP_STDOUT },
+        { binary: (command) => (installed ? command : null) },
+      ),
+    );
+    expect((await observe('codex')).unavailableReason).toMatch(/not found/);
+    installed = true;
+
+    expect(loginMechanisms(await observe('codex'))).toContain('device-code');
+  });
+
+  test.each([{ timedOut: true }, { outputTruncated: true }])(
+    'discards incomplete help and retries without a cached answer (%j)',
+    async (partial) => {
+      const deps = stubDeps({ 'codex login --help': CODEX_LOGIN_HELP_STDOUT });
+      deps.runCommand.mockResolvedValueOnce({
+        stdout: CODEX_LOGIN_HELP_STDOUT,
+        stderr: '',
+        code: 0,
+        ...partial,
+      });
+      const observe = createEngineLoginCapabilityObserver(deps);
+
+      const incomplete = await observe('codex');
+      expect(incomplete.unavailableReason).toMatch(/could not be asked/);
+      expect(incomplete.evidence).toEqual([]);
+      expect(loginMechanisms(await observe('codex'))).toContain('device-code');
+    },
+  );
 
   test('a probe that produced no result reports why, rather than reporting absence', async () => {
     const deps = stubDeps({});

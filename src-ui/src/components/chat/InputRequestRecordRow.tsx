@@ -11,6 +11,7 @@ const OUTCOME_LABEL: Record<InputRequestOutcome, string> = {
   cancelled: 'Cancelled',
   allowed: 'Allowed',
   denied: 'Denied',
+  opened: 'Opened',
   expired: 'Expired',
 };
 
@@ -33,7 +34,9 @@ export function InputRequestRecordRow({
       <span className="input-request-record__asker">
         {record.kind === 'form'
           ? `${record.requester} asked`
-          : `${record.requester} needed approval`}
+          : record.kind === 'url'
+            ? `${record.requester} sent a link`
+            : `${record.requester} needed approval`}
       </span>
       {record.message && (
         <span className="input-request-record__message">{record.message}</span>

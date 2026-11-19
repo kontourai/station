@@ -51,6 +51,10 @@ const unregistered = [
   },
 ];
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+
 vi.mock('../hooks/useACPConnections', () => ({
   useACPConnections: () => ({
     data: [],
@@ -114,11 +118,64 @@ describe('a saved engine that never connected', () => {
     render(<Page index={0} custom />);
 
     expect(screen.getByRole('heading', { name: 'Stub Engine' })).toBeTruthy();
-    expect(screen.getByText('Not connected yet', { selector: 'strong' }));
+    // Said once, by the header badge; the status block says what happened.
+    expect(screen.getAllByText('Not connected yet')).toHaveLength(1);
+    expect(
+      screen.getByText(
+        "Station saved this engine but couldn't connect. Its agent appears once it connects.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Check connection' }),
     ).toBeNull();
+  });
+
+  test('an engine install older than Station supports says which version and how to update', () => {
+    const original = unregistered[0];
+    const message =
+      'Google Antigravity 1.4.4 is installed, and Station needs 1.5.0 or later. Run agy update on the computer Station runs on, then check again.';
+    unregistered[0] = {
+      ...unregistered[0],
+      name: 'Google Antigravity',
+      lastError: {
+        phase: 'initialize',
+        code: 'engine-update-required',
+        message,
+      },
+    } as never;
+    try {
+      render(<Page index={0} custom={false} />);
+      expect(screen.getByText(message)).toBeTruthy();
+      expect(screen.queryByText('Try again in a moment.')).toBeNull();
+    } finally {
+      unregistered[0] = original!;
+    }
+  });
+
+  test('a managed engine that is not installed says so, rather than "try again"', () => {
+    const original = unregistered[0];
+    unregistered[0] = {
+      ...unregistered[0],
+      name: 'Kiro (KAS, no CLI)',
+      lastError: {
+        phase: 'spawn',
+        code: 'managed-runtime-not-installed',
+        message:
+          "Kiro (KAS, no CLI) isn't installed yet. Install it from the engine's sign-in panel in Connections.",
+      },
+    } as never;
+    try {
+      render(<Page index={0} custom={false} />);
+      expect(
+        screen.getByText(
+          "Kiro (KAS, no CLI) isn't installed yet. Install it from its sign-in panel.",
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText('Try again in a moment.')).toBeNull();
+    } finally {
+      unregistered[0] = original!;
+    }
   });
 
   // #4470.
@@ -195,7 +252,7 @@ describe('a saved engine that never connected', () => {
       }),
     );
     fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
+      within(screen.getByRole('alertdialog')).getByRole('button', {
         name: 'Remove',
       }),
     );

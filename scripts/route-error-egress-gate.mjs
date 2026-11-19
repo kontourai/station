@@ -13,8 +13,6 @@ import { toPosixPath } from './lib/posix-path.mjs';
 export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/agents/skills.ts :: route POST / :: result.message :: 1',
   'src-server/routes/agents/skills.ts :: route POST /local :: result.message :: 1',
-  'src-server/routes/agents/skills.ts :: route PUT /:name :: result.message :: 1',
-  'src-server/routes/agents/skills.ts :: route DELETE /:name :: result.message :: 1',
   'src-server/routes/agents/tools.ts :: route POST /:serverId/ui/call :: error.message :: 1',
   'src-server/routes/agents/unattended-grants-routes.ts :: route POST / :: error.message :: 1',
   'src-server/routes/agents/unattended-grants-routes.ts :: route POST /revoke :: error.message :: 1',
@@ -46,6 +44,20 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // `EngineCredentialRefusedError`: two fixed sentences, never the key.
   'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 1',
   'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 2',
+  // Remote task engine refusals (docs/decisions/remote-task-engines.md).
+  // `error` is narrowed by `instanceof RemoteTaskError`; a disabled preview
+  // answers the shared preview refusal and anything else a fixed sentence.
+  // Occurrence 1 is every refusal: sentences authored in the
+  // remote-task-engines service, bindings and `vendor-http.ts`, whose only
+  // interpolations are the vendor's label, an HTTP status, and the vendor's
+  // own error text, which `redactSecret` strips of the connection's
+  // credential and bounds to 500 characters before it is wrapped. That vendor
+  // text is passed on on purpose: a plan or permission refusal must reach the
+  // person in the vendor's words.
+  //
+  // What would make this unsafe: constructing a RemoteTaskError from a caught
+  // error's message, or from vendor text that did not pass `redactSecret`.
+  'src-server/routes/remote-task-engines/remote-task-engine-routes.ts :: function refusal :: error.message :: 1',
   // The script runner's refusal (#3994). `error` is narrowed by `instanceof
   // TerminalCommandUnavailable`, constructed only in `terminal-sessions.ts`
   // from a literal ("Its directory has changed") or from a

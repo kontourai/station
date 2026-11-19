@@ -5,12 +5,12 @@ const SUMMARIES: Readonly<Record<string, string>> = {
     'Use a second model to screen approval requests. Adds a model call for each screening.',
   defaultApprovalMode:
     'Permissions for new sessions, including unattended runs. Full access removes the sandbox and approval prompts.',
-  defaultMaxTurns:
-    'Fallback step limit for runs on Station’s own engine. Other engines do not apply it.',
   defaultMaxOutputTokens:
     'Maximum tokens per response. Leave empty to use the model’s limit.',
   defaultWorkspaceIsolation:
     'Start chats in the shared checkout or a separate Git worktree. Worktrees require a Git repository.',
+  knowledgeStores:
+    'Searchable after a Knowledge reindex; applies after a restart. Turning it off later does not remove them.',
   workspaceCheckpoints:
     'Keep Git snapshots of each turn for 90 days. Uses disk space; changes apply after restarting Station.',
   usageLimitAutoResume:

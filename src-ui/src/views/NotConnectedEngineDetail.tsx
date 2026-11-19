@@ -7,10 +7,14 @@ import { useACPConnectionSetupOwner } from '../components/acp-connections/useACP
 import { useStartChatWithEngine } from '../components/acp-connections/useStartChatWithEngine';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
+import { EngineInstallTerminal } from '../components/engine-install/EngineInstallTerminal';
 import { EngineSignInDisclosure } from '../components/engine-sign-in/EngineSignInDisclosure';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
-import { describeStationFailure } from '../utils/stationFailure';
+import {
+  describeEngineProbeFailure,
+  describeStationFailure,
+} from '../utils/stationFailure';
 import type { NotConnectedEngine } from './EngineAddFlow';
 
 /**
@@ -76,14 +80,17 @@ export function NotConnectedEngineDetail({
       />
       <div className="agent-editor__section">
         <div className="acp-add-dialog__result" role="status">
-          <strong>Not connected yet</strong>
+          {/* The header badge already says "Not connected yet". */}
           <span>
-            Station saved this engine but has not connected to it. Its Agent is
-            added once it connects.
+            Station saved this engine but couldn't connect. Its agent appears
+            once it connects.
           </span>
           {connection.lastError ? (
             <span className="acp-add-dialog__result-reason">
-              {describeStationFailure(connection.lastError).body}
+              {describeEngineProbeFailure(
+                connection.lastError,
+                connection.name,
+              )}
             </span>
           ) : null}
           <span>
@@ -96,9 +103,17 @@ export function NotConnectedEngineDetail({
             />
           </span>
         </div>
+        {connection.installerId ? (
+          <EngineInstallTerminal
+            id={connection.installerId}
+            installNeeded={connection.installerDetected !== true}
+            onFinished={() => onRepairingChange('recheck')}
+          />
+        ) : null}
         <EngineSignInDisclosure
           connectionId={connection.id}
           engineName={connection.name}
+          onSignedIn={() => onRepairingChange('recheck')}
         />
         <ActionRow
           className="engine-setup__actions"

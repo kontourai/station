@@ -30,26 +30,28 @@ restore preview rather than assuming it undoes precisely that turn's edits.
 The capture-timing contract is tracked in
 [#2737](https://github.com/kontourai/station/issues/2737).
 
-## Command-line status
+## Review and restore from the CLI
 
-The CLI exposes this command shape:
+Request a preview from a running Station. Select the named Station you want to
+restore on. The same target and credential must be used for confirmation.
 
 ```bash
-station checkpoints restore --thread=<threadId> --turn=<turnId> --confirm
+station checkpoints restore --thread="$thread_id" --turn="$turn_id" --station=work
 ```
 
-Its current implementation does not use Station's shared authenticated client
-or saved-Station selection, so it is not a working equivalent on a normally
-protected Station. It also immediately confirms the returned preview without
-showing its affected paths. Use the chat preview/confirmation flow above until
-[#2734](https://github.com/kontourai/station/issues/2734) fixes those gaps.
+The preview lists affected paths, shows both tree hashes, and states when it
+expires. Use `--phase=baseline` to preview the turn-start checkpoint. The
+default is `settle`. After reviewing the paths, use the preview ID and current
+tree hash shown in the output.
 
-The command defaults to the `settle` checkpoint; `--phase=baseline`
-selects the snapshot associated with turn start. These describe the current parser, not a
-verified CLI restore journey.
+```bash
+station checkpoints restore --thread="$thread_id" --turn="$turn_id" --station=work \
+  --confirm --preview-id="$preview_id" --expected-current-tree-sha="$current_tree_sha"
+```
 
-The [restore owner](../../src-server/services/checkpoints/checkpoint-restore.ts)
-checks the preview and workspace state; the
-[chat control](../../src-ui/src/components/chat/CheckpointRestoreButton.tsx)
-owns the visible confirmation. Source and fixture tests do not prove that a
-restore was exercised in a packaged app on every platform.
+Station checks the reviewed preview and workspace state again. If it refuses
+the restore, resolve the reason and request a fresh preview. If the outcome is
+uncertain, inspect the workspace before attempting another restore.
+
+See the [CLI reference](../reference/cli.md#checkpoints) and
+[restore owner](../../src-server/services/checkpoints/checkpoint-restore.ts).

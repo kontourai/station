@@ -39,7 +39,10 @@ import {
   withoutReservedStationBinding,
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
-import { resolveAgentConfigSlug } from '../../domain/config-loader-agents.js';
+import {
+  isAgentConfigNotFound,
+  resolveAgentConfigSlug,
+} from '../../domain/config-loader-agents.js';
 import { describeLayoutOwner } from '../../domain/layout-owner-storage.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { isExternalEngineBoundAgent } from '../../runtime/agents/agent-engine-classification.js';
@@ -75,7 +78,7 @@ export interface EnrichedAgent {
   model?: string;
   region?: string;
   guardrails?: AgentSpec['guardrails'];
-  maxSteps?: number;
+  maxSteps?: AgentSpec['maxSteps'];
   icon?: string;
   commands?: AgentSpec['commands'];
   toolsConfig?: AgentSpec['tools'];
@@ -404,6 +407,25 @@ export class AgentService {
       await this.configLoader.loadAgent(slug),
       this.agentMetadataMap,
     );
+  }
+
+  /**
+   * {@link getAgent} for a slug {@link listAgents} returned, or `null` when
+   * that Agent has no `agent.json`.
+   *
+   * #4995: `listAgents` deliberately lists registry defaults (`station`,
+   * `claude`, `muse`, …) that are never written to `agents/`, so a caller
+   * that walks the listing and reads each spec meets absence as the ordinary
+   * case, not a fault. Only absence is `null`; an unreadable or invalid spec
+   * still throws (`AgentConfigNotFoundError`'s rationale).
+   */
+  async findAgent(slug: string): Promise<AgentSpec | null> {
+    try {
+      return await this.getAgent(slug);
+    } catch (error) {
+      if (isAgentConfigNotFound(error)) return null;
+      throw error;
+    }
   }
 
   async listAgents(): Promise<AgentMetadata[]> {

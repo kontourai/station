@@ -659,7 +659,7 @@ function parseInvitation(
   );
   if (
     surface.kind !== 'station-native' ||
-    !['dev', 'stable', 'beta', 'nightly'].includes(String(surface.channel))
+    !['dev', 'stable', 'nightly'].includes(String(surface.channel))
   ) {
     throw new Error('Native relay invitation surface is not supported.');
   }
@@ -703,7 +703,7 @@ function parseInvitation(
         'surface.appIdentifier',
         256,
       ),
-      channel: surface.channel as 'dev' | 'stable' | 'beta' | 'nightly',
+      channel: surface.channel as 'dev' | 'stable' | 'nightly',
       clientInstanceId: stringField(
         surface.clientInstanceId,
         'surface.clientInstanceId',

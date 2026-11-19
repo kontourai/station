@@ -1,0 +1,139 @@
+{
+  "revision": "b938e28135b4ec604039cfeab833f573793e43b8",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added the by-pull-request route (owner null, {readable:false} with nothing else, or readable with status, settings, last and sentChecks on the observed head; 400 for a malformed identity), the 409 details.owner disclosure rule, and the facts' headSha and feedback; checked against pull-request-feedback.ts routes, ownership byPullRequest, task-pull-request-facts.ts and their tests.","inputs":["docs/reference/api.md","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The task-lane row now names the optional feedback fact and feedbackNote, which never moves a lane; checked against task-lane.ts and task-lane.test.ts.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added getPullRequestFeedbackByPullRequest (refuses an answer about another pull request) and the {} owner from pullRequestFeedbackOwnerOf; checked against the client and its test.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The pull request agent feedback paragraph adds the by-pull-request read and the runtime's factFor for the Task board facts, with their evidence; checked against runtime-pull-request-feedback.ts, pull-request-feedback-task-fact.ts, the routes and their tests.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"One added line: createTaskRoutes gets pullRequestFeedbackFor, which delegates to the pull request feedback runtime's factFor for the Task board facts. No route, pairing scope, authority, composition order or capture this page relies on changed; checked the diff of runtime-routes.ts.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"GET /api/tasks/pull-request-facts gains an optional per-request pullRequestFeedbackFor: a kept pull request's agent feedback, only while the preview is on and for a reader of the owning chat, and current facts now carry the provider headSha. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"GET /api/tasks/pull-request-facts gains an optional per-request pullRequestFeedbackFor: a kept pull request's agent feedback, only while the preview is on and for a reader of the owning chat, and current facts now carry the provider headSha. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"GET /api/tasks/pull-request-facts gains an optional per-request pullRequestFeedbackFor: a kept pull request's agent feedback, only while the preview is on and for a reader of the owning chat, and current facts now carry the provider headSha. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"GET /api/tasks/pull-request-facts gains an optional per-request pullRequestFeedbackFor: a kept pull request's agent feedback, only while the preview is on and for a reader of the owning chat, and current facts now carry the provider headSha. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"GET /api/tasks/pull-request-facts gains an optional per-request pullRequestFeedbackFor: a kept pull request's agent feedback, only while the preview is on and for a reader of the owning chat, and current facts now carry the provider headSha. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"GET /api/tasks/pull-request-facts gains an optional per-request pullRequestFeedbackFor: a kept pull request's agent feedback, only while the preview is on and for a reader of the owning chat, and current facts now carry the provider headSha. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"GET /api/tasks/pull-request-facts gains an optional per-request pullRequestFeedbackFor: a kept pull request's agent feedback, only while the preview is on and for a reader of the owning chat, and current facts now carry the provider headSha. No other Task route, option or authority changed; checked tasks.ts, task-pull-request-facts.ts and their tests.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"A board card prints an agent feedback note after its status detail (auto-fix on, sent 3m, waiting on checks, auto-fix paused, fixing checks on #42). Lanes, words, glyphs, actions and focus behavior are unchanged; checked the card markup and ProjectTaskBoard.test.tsx.","inputs":["src-ui/src/components/ProjectTaskBoard.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md adds the by-pull-request route, the rule that a 409 or a chat's feedback read names the owning chat only to its reader, and the facts' headSha and feedback fields; no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md adds the by-pull-request route, the rule that a 409 or a chat's feedback read names the owning chat only to its reader, and the facts' headSha and feedback fields; no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"contracts.md's task-lane row adds the optional feedback fact and the card's feedbackNote, which never moves a lane; no claim this page cites from it changed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md's task-lane row adds the optional feedback fact and the card's feedbackNote, which never moves a lane; no claim this page cites from it changed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md's task-lane row adds the optional feedback fact and the card's feedbackNote, which never moves a lane; no claim this page cites from it changed.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"sdk.md adds getPullRequestFeedbackByPullRequest and that pullRequestFeedbackOwnerOf reads an unreadable owner as {}; no claim this page cites from it changed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md adds getPullRequestFeedbackByPullRequest and that pullRequestFeedbackOwnerOf reads an unreadable owner as {}; no claim this page cites from it changed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated with npm run docs:mcp:generate from the edited module map and reference pages; no generator, topic list or bundle shape change.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

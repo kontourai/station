@@ -47,6 +47,10 @@ const PUBLIC_QUERY_DOMAINS = [
   'personalLayouts',
   'personNotifications',
   'personalBoards',
+  'customAppearance',
+  'customAppearanceLibrary',
+  'customAppearanceMutation',
+  'readMarkers',
   'pluginVisibility',
   'knowledgeStores',
   'mcpPromptRun',
@@ -60,6 +64,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'projectTaskRooms',
   'proposedChanges',
   'pullRequests',
+  'pullRequestWatch',
   'reviewEvidence',
   'scheduler',
   'skillExperiences',
@@ -69,6 +74,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'stationUsage',
   'usageRollup',
   'systemRuntime',
+  'taskCodeReview',
   'taskGraph',
   'taskMemory',
   'taskReview',
@@ -156,6 +162,8 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
   workspaceConnections:
     'implementation detail folded into workspace.ts via `export *`.',
   workspaceCredentialRecovery:
+    'implementation detail folded into workspace.ts via `export *`.',
+  workspaceProjectMutations:
     'implementation detail folded into workspace.ts via `export *`.',
   workspaceProjects:
     'implementation detail folded into workspace.ts via `export *`.',

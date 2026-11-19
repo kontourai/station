@@ -10,12 +10,17 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import {
+  inputRequestFromRequestEvent,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
+} from '@kontourai/station-shared/input-request';
 import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestIsPlanReview,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -71,6 +76,11 @@ interface ApprovalInboxDependencies {
     | 'resolveSessionProjectSlug'
     | 'readApprovalContentBinding'
   >;
+  /**
+   * #5072: the local Project (`ProjectConfig.id`) a session recorded at its
+   * start, so the Project's notification level applies to its requests.
+   */
+  resolveSessionProjectId?: (threadId: string) => string | undefined;
 }
 
 const APPROVAL_INBOX_SOURCE = 'approval-inbox';
@@ -123,6 +133,12 @@ export class ApprovalInboxNotificationProvider
   }
 
   remember(notification: Notification): void {
+    this.forget(notification.id);
+    if (
+      notification.status !== 'delivered' &&
+      notification.status !== 'pending'
+    )
+      return;
     const target = parseInboxTarget(notification);
     if (!target) {
       return;
@@ -180,6 +196,14 @@ export class ApprovalInboxNotificationProvider
     return state === 'open' || state === 'unavailable';
   }
 
+  hasOrchestrationRequest(requestKey: string): boolean {
+    const id = this.notificationIdByRequestKey.get(requestKey);
+    return (
+      id !== undefined &&
+      this.targetsByNotificationId.get(id)?.kind === 'orchestration'
+    );
+  }
+
   completeRequest(requestKey: string): string | null {
     const notificationId = this.notificationIdByRequestKey.get(requestKey);
     if (!notificationId) {
@@ -217,7 +241,9 @@ export class ApprovalInboxNotificationProvider
         // The typed choice, never the label.
         ...(actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
           ? { sessionGrantScope: 'server' as const }
-          : {}),
+          : actionId === ACCEPT_RULE_FOR_SESSION_ACTION
+            ? { sessionGrantScope: 'rule' as const }
+            : {}),
       };
       await (clientOrigin
         ? this.deps.orchestrationService.dispatch(command, { clientOrigin })
@@ -411,6 +437,15 @@ export class ApprovalInboxNotificationProvider
     }
   }
 
+  /** #5072: the session's recorded Project id; fail-soft like the slug. */
+  resolveProjectId(threadId: string): string | undefined {
+    try {
+      return this.deps.resolveSessionProjectId?.(threadId) || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /**
    * #2589: whether `threadId` is in the session read model the
    * agent-activity card is built from (`listSessionReadModel`, which leaves
@@ -496,6 +531,7 @@ export function wireApprovalInboxNotifications(
     needsLoad: boolean,
   ) => {
     const projectSlug = provider.resolveProjectSlug(event.threadId);
+    const projectId = provider.resolveProjectId(event.threadId);
     // #1545: the standing grant has to say what it grants. "Allow for
     // Session" reads as a grant for the one call in front of you, and it is
     // a grant for every later call to the same tool in this session. This
@@ -516,6 +552,8 @@ export function wireApprovalInboxNotifications(
     // may do. An answer from this card is sent as a one-call accept, so
     // the card does not offer "Auto-accept file edits for this session".
     const grant = toolRequestSessionGrantFromPayload(event.payload);
+    // The narrower command-prefix choice sits before the whole-tool one.
+    const ruleGrant = toolRequestRuleGrantFromPayload(event.payload);
     const grantLabel =
       grant === 'edit-mode'
         ? undefined
@@ -535,6 +573,8 @@ export function wireApprovalInboxNotifications(
         // #3390: a form is answered with content on its own card, against
         // the exact event the person saw; this card's decisions carry
         // neither and would be refused, so it offers only the way there.
+        // A link is opened from its own card too: an Allow here would say
+        // the person opened a link nobody showed them.
         //
         // docs/design/event-content-spill.md: a request whose content
         // (or a tool call it gates) was stored out of line, or whose
@@ -542,12 +582,21 @@ export function wireApprovalInboxNotifications(
         // allowed, so its card offers only Deny; opening the card is
         // the way to review and allow it. A bound call that arrives
         // later, or a refused allow, rewrites the card (below).
-        actions: inputRequestFromRequestEvent(event)
+        actions: isCardAnsweredRequestEvent(event)
           ? []
           : needsLoad
             ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
             : [
                 { id: 'accept', label: 'Allow Once', variant: 'primary' },
+                ...(ruleGrant
+                  ? [
+                      {
+                        id: ACCEPT_RULE_FOR_SESSION_ACTION,
+                        label: ruleGrant.label,
+                        variant: 'secondary' as const,
+                      },
+                    ]
+                  : []),
                 ...(grantLabel
                   ? [
                       {
@@ -574,6 +623,7 @@ export function wireApprovalInboxNotifications(
           detail: runtimeEventContentDisplayText(event.description),
           provider: event.provider,
           ...(projectSlug ? { projectSlug } : {}),
+          ...(projectId ? { projectId } : {}),
           requestId: event.requestId,
           requestEventId: event.eventId,
           requestKey: buildOrchestrationRequestKey(event),
@@ -617,13 +667,17 @@ export function wireApprovalInboxNotifications(
   const unsubscribe = eventBus.subscribe((message) => {
     notificationService.dispatch('approval-inbox-event', async () => {
       if (message.event === SERVER_EVENTS.APPROVAL_OPENED) {
-        // #2589: a Station-agent relay's approval, which the adapter also
-        // opens as the thread's orchestration request: on the card only when
-        // it is the relayed conversation's own and that thread is listed.
+        // The Station Agent relay and adapter share one approval identity.
+        // Keep the registry route until the exact orchestration record arrives.
         const relayThread = message.data?.orchestrationThreadId;
+        const relay = relayedRegistryRequest(message.data);
+        const relayKey = relay
+          ? buildOrchestrationRequestKey(relay)
+          : undefined;
+        if (relayKey && provider.hasOrchestrationRequest(relayKey)) return;
         const onActivityCard =
+          relayKey &&
           typeof relayThread === 'string' &&
-          relayThread === message.data?.conversationId &&
           provider.isListedSession(relayThread);
         const notification = await notificationService.schedule(
           APPROVAL_INBOX_SOURCE,
@@ -636,7 +690,8 @@ export function wireApprovalInboxNotifications(
               { id: 'accept', label: 'Allow Once', variant: 'primary' },
               { id: 'decline', label: 'Deny', variant: 'danger' },
             ],
-            dedupeTag: `approval:${message.data?.approvalId ?? 'unknown'}`,
+            dedupeTag:
+              relayKey ?? `approval:${message.data?.approvalId ?? 'unknown'}`,
             metadata: {
               agentName: message.data?.agentName,
               agentSlug: message.data?.agentSlug,
@@ -650,6 +705,9 @@ export function wireApprovalInboxNotifications(
               sessionId: message.data?.conversationId,
               sessionKind: REGISTRY_SESSION_KIND,
               detail: message.data?.description,
+              ...(typeof message.data?.guardianReason === 'string'
+                ? { guardianReason: message.data.guardianReason }
+                : {}),
               requestKind: 'registry',
               requestKey: `approval:${message.data?.approvalId ?? 'unknown'}`,
               source: message.data?.source,
@@ -689,7 +747,7 @@ export function wireApprovalInboxNotifications(
         if (provider.isReadOnlyAttachedSession(event.threadId)) return;
         await scheduleOrchestrationApproval(
           event,
-          !inputRequestFromRequestEvent(event) &&
+          !isCardAnsweredRequestEvent(event) &&
             provider.requiresContentLoad(event),
         );
         approvalInboxOps.add(1, { action: 'opened', target: 'orchestration' });
@@ -734,16 +792,16 @@ export function wireApprovalInboxNotifications(
   // Strictly after `subscribe` — that ordering is the whole commutativity
   // argument above, not a stylistic choice.
   notificationService.dispatch('approval-inbox-hydration', async () => {
-    provider.hydrate(
-      await notificationService.list({
-        category: [APPROVAL_NOTIFICATION_CATEGORY],
-        status: ['delivered', 'pending'],
-      }),
-    );
+    const snapshots = await notificationService.listWithRevision({
+      category: [APPROVAL_NOTIFICATION_CATEGORY],
+      status: ['delivered', 'pending'],
+    });
+    provider.hydrate(snapshots.map(({ notification }) => notification));
     await convergeHydratedOrchestrationApprovals(
       provider,
       notificationService,
       logger,
+      snapshots,
     );
   });
 
@@ -762,16 +820,27 @@ async function convergeHydratedOrchestrationApprovals(
   provider: ApprovalInboxNotificationProvider,
   notificationService: NotificationService,
   logger: ApprovalInboxLogger,
+  hydrated: { notification: Notification; revision: number }[],
 ): Promise<void> {
-  const hydrated = await notificationService.list({
-    category: [APPROVAL_NOTIFICATION_CATEGORY],
-    status: ['delivered', 'pending'],
-  });
-
-  for (const notification of hydrated) {
+  const relayTwins = new Map<string, (typeof hydrated)[number]>();
+  for (const snapshot of hydrated) {
+    const { notification } = snapshot;
     const target = parseInboxTarget(notification);
-    // Registry-kind approvals have no orchestration session to replay —
-    // the same scope boundary `AttentionProjectionService` draws.
+    if (
+      target?.kind !== 'registry' ||
+      notification.metadata?.dedupeTag !== `approval:${target.approvalId}`
+    )
+      continue;
+    const relay = relayedRegistryRequest(notification.metadata);
+    if (relay)
+      relayTwins.set(
+        JSON.stringify([relay.threadId, relay.requestId]),
+        snapshot,
+      );
+  }
+
+  for (const { notification } of hydrated) {
+    const target = parseInboxTarget(notification);
     if (target?.kind !== 'orchestration') continue;
 
     let outcome: RequestReplayOutcome;
@@ -786,6 +855,29 @@ async function convergeHydratedOrchestrationApprovals(
         error: errorMessage(error),
       });
       continue;
+    }
+
+    if (
+      outcome.state === 'open' &&
+      outcome.request.provider === 'station-agent' &&
+      outcome.request.requestType === 'approval' &&
+      target.threadId === outcome.request.threadId &&
+      target.requestId === outcome.request.requestId &&
+      target.requestEventId === outcome.request.eventId
+    ) {
+      const twin = relayTwins.get(
+        JSON.stringify([outcome.request.threadId, outcome.request.requestId]),
+      );
+      if (twin) {
+        await notificationService.markStatus(
+          twin.notification.id,
+          'dismissed',
+          {
+            source: twin.notification.source,
+            revision: twin.revision,
+          },
+        );
+      }
     }
 
     // `open` — still genuinely outstanding. `undetermined` — nothing could
@@ -811,6 +903,7 @@ async function convergeHydratedOrchestrationApprovals(
 }
 
 function parseInboxTarget(notification: Notification): InboxTarget | null {
+  if (notification.source !== APPROVAL_INBOX_SOURCE) return null;
   const requestKind = notification.metadata?.requestKind;
   const requestKey = notification.metadata?.requestKey;
   if (typeof requestKind !== 'string' || typeof requestKey !== 'string') {
@@ -851,13 +944,16 @@ function parseInboxTarget(notification: Notification): InboxTarget | null {
 
 /** The inbox action of the server-wide Station browser session grant. */
 const ACCEPT_SERVER_FOR_SESSION_ACTION = 'acceptForSessionServer';
+/** The inbox action of the command-prefix session grant. */
+const ACCEPT_RULE_FOR_SESSION_ACTION = 'acceptForSessionRule';
 
 function mapOrchestrationDecision(
   actionId: string,
 ): 'accept' | 'acceptForSession' | 'decline' {
   if (
     actionId === 'acceptForSession' ||
-    actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
+    actionId === ACCEPT_SERVER_FOR_SESSION_ACTION ||
+    actionId === ACCEPT_RULE_FOR_SESSION_ACTION
   ) {
     return 'acceptForSession';
   }
@@ -880,6 +976,21 @@ function mapRegistryApprovalDecision(actionId: string): boolean {
   throw new Error(`Unsupported registry approval action: ${actionId}`);
 }
 
+function relayedRegistryRequest(
+  metadata: Record<string, unknown> | undefined,
+): { threadId: string; requestId: string } | undefined {
+  const threadId = metadata?.orchestrationThreadId;
+  const requestId = metadata?.approvalId;
+  if (
+    typeof threadId === 'string' &&
+    threadId === metadata?.conversationId &&
+    typeof requestId === 'string'
+  ) {
+    return { threadId, requestId };
+  }
+  return undefined;
+}
+
 function buildOrchestrationRequestKey(
   event: Pick<RequestOpenedEvent, 'threadId' | 'requestId'>,
 ): string {
@@ -897,6 +1008,11 @@ function formatOrchestrationBody(
     return toolRequestIsPlanReview(toolName)
       ? `${form.requester} wants you to review a plan.`
       : `${form.requester} asked a question.`;
+  const link = inputRequestUrlFromRequestEvent(event);
+  if (link)
+    return link.body.purpose === 'mcp-sign-in'
+      ? `${link.requester} wants you to sign in.`
+      : `${link.requester} wants you to open a link.`;
   if (toolName) {
     return `${event.provider} wants approval to use ${toolName}.`;
   }

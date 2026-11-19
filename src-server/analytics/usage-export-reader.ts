@@ -250,7 +250,14 @@ export function readAuthorizedUsageExport(input: {
             }
           : {
               globalSequence: row.globalSequence,
-              receipts: usageReceiptsForEventRow(row.usage, stationId),
+              // The v1 export has a closed receipt grammar.
+              receipts: usageReceiptsForEventRow(row.usage, stationId).map(
+                ({
+                  projectSlug: _project,
+                  servedModelObservation: _model,
+                  ...receipt
+                }) => receipt,
+              ),
             },
       ),
       ...(next

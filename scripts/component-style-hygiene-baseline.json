@@ -42,7 +42,8 @@
       "legacy-token:--text-on-accent": 1,
       "legacy-token:--accent-hover-fill": 1,
       "legacy-token:--bg-secondary": 1,
-      "legacy-token:--border-secondary": 1
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--error-text": 1
     },
     "packages/sdk/src/components/KnowledgeRecall.css": {
       "legacy-token:--text-secondary": 5
@@ -92,7 +93,9 @@
       "legacy-token:--text-sm": 1,
       "legacy-token:--space-6": 1,
       "legacy-token:--font-mono": 1,
-      "legacy-token:--text-xs": 1
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--error-text": 3,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/ActionOverflowMenu.tsx": {
       "bespoke-action:{`${triggerClassName} ${triggerText ? 'button button--secondary button--small action-overflow__trigger--labelled' : ''}${open ? ' is-active' : ''}`}": 1,
@@ -118,7 +121,10 @@
       "legacy-token:--text-primary": 1,
       "legacy-token:--text-base": 1,
       "legacy-token:--accent-primary": 2,
-      "legacy-token:--text-xs": 1
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--warning-bg": 1,
+      "legacy-token:--warning-border": 1,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/AgentReadinessCell.tsx": {
       "bespoke-action:{className ?? 'agent-readiness__action'}": 2
@@ -166,7 +172,12 @@
       "legacy-token:--space-2": 1,
       "legacy-token:--accent-medium": 1,
       "legacy-token:--accent-border": 1,
-      "legacy-token:--accent-light": 1
+      "legacy-token:--accent-light": 1,
+      "legacy-token:--success-bg": 1,
+      "legacy-token:--success-text": 1,
+      "legacy-token:--warning-bg": 1,
+      "legacy-token:--warning-text": 1,
+      "legacy-token:--error-text": 3
     },
     "src-ui/src/components/DisclosureToggle.css": {
       "legacy-token:--space-2": 1,
@@ -190,7 +201,8 @@
       "legacy-token:--space-4": 2,
       "legacy-token:--radius-md": 1,
       "legacy-token:--bg-secondary": 1,
-      "legacy-token:--text-muted": 1
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--shadow-modal": 1
     },
     "src-ui/src/components/EnginePicker.tsx": {
       "bespoke-dialog:div": 1
@@ -206,7 +218,9 @@
       "legacy-token:--accent-primary": 2,
       "legacy-token:--text-on-accent": 1,
       "legacy-token:--accent-hover-fill": 1,
-      "legacy-token:--text-tertiary": 1
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--warning-border": 1,
+      "legacy-token:--warning-bg": 1
     },
     "src-ui/src/components/GuidedConnect.tsx": {
       "bespoke-action:{\n                isLocal\n                  ? 'guided-connect__action'\n                  : 'guided-connect__action guided-connect__action--primary'\n              }": 1
@@ -257,7 +271,8 @@
       "legacy-token:--text-tertiary": 1,
       "legacy-token:--text-4xl": 1,
       "legacy-token:--space-3": 2,
-      "legacy-token:--space-6": 1
+      "legacy-token:--space-6": 1,
+      "legacy-token:--shadow-lg": 2
     },
     "src-ui/src/components/PageCallout.css": {
       "legacy-token:--space-3": 1,
@@ -353,7 +368,9 @@
       "legacy-token:--accent-primary": 3,
       "legacy-token:--radius-card": 2,
       "legacy-token:--bg-secondary": 1,
-      "legacy-token:--text-muted": 1
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--error-text": 2,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/acp-connections/EngineCapabilitySummary.css": {
       "legacy-token:--border-primary": 2,
@@ -410,12 +427,17 @@
       "legacy-token:--bg-primary": 2,
       "legacy-token:--text-secondary": 3,
       "legacy-token:--text-base": 1,
-      "legacy-token:--accent-primary": 1
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--success-bg": 2,
+      "legacy-token:--success-text": 3,
+      "legacy-token:--success-border": 1
     },
     "src-ui/src/components/badges/AttributionChip.css": {
       "legacy-token:--text-xs": 1,
       "legacy-token:--bg-tertiary": 1,
-      "legacy-token:--text-secondary": 1
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--warning-bg": 1,
+      "legacy-token:--warning-primary": 1
     },
     "src-ui/src/components/badges/ComposerModeSheet.tsx": {
       "bespoke-dialog:div": 1,
@@ -449,7 +471,10 @@
       "legacy-token:--bg-secondary": 2,
       "legacy-token:--text-2xs": 4,
       "legacy-token:--border-secondary": 1,
-      "legacy-token:--radius-pill": 1
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--shadow-lg": 1,
+      "legacy-token:--error-text": 4,
+      "legacy-token:--success-text": 2
     },
     "src-ui/src/components/conversation/ConversationBody.tsx": {
       "bespoke-action:\"button button--secondary session-history-error__retry\"": 1,
@@ -464,7 +489,8 @@
       "legacy-token:--radius-md": 4,
       "legacy-token:--radius-pill": 1,
       "legacy-token:--text-2xs": 1,
-      "legacy-token:--accent-primary": 1
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/chat-dock/ChatDockInboxPanel.css": {
       "legacy-token:--border-primary": 2,
@@ -478,19 +504,12 @@
       "legacy-token:--text-primary": 2,
       "legacy-token:--bg-tertiary": 2,
       "legacy-token:--radius-md": 1,
-      "legacy-token:--text-secondary": 1
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx": {
       "bespoke-action:\"chat-dock-inbox__row-action inbox-row__action\"": 4,
       "bespoke-action:\"menu-row action-overflow__row--danger\"": 1
-    },
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css": {
-      "legacy-token:--border-primary": 1,
-      "legacy-token:--radius-md": 2,
-      "legacy-token:--text-secondary": 1,
-      "legacy-token:--text-sm": 1,
-      "legacy-token:--bg-tertiary": 1,
-      "legacy-token:--text-primary": 1
     },
     "src-ui/src/components/chat-dock/ChatInboxHoverCard.css": {
       "legacy-token:--bg-secondary": 1,
@@ -504,7 +523,9 @@
       "legacy-token:--text-secondary": 4,
       "legacy-token:--text-xs": 6,
       "legacy-token:--font-mono": 3,
-      "legacy-token:--space-8": 3
+      "legacy-token:--space-8": 3,
+      "legacy-token:--warning-text": 2,
+      "legacy-token:--success-text": 2
     },
     "src-ui/src/components/chat-dock/CommandLauncher.tsx": {
       "bespoke-dialog:div": 1,
@@ -540,7 +561,10 @@
       "legacy-token:--text-secondary": 1,
       "legacy-token:--font-mono": 2,
       "legacy-token:--radius-lg": 1,
-      "legacy-token:--bg-primary": 1
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--warning-text": 1,
+      "legacy-token:--success-text": 1,
+      "legacy-token:--shadow-lg": 1
     },
     "src-ui/src/components/chat-dock/SessionContextCard.tsx": {
       "bespoke-action:\"session-context-card__action\"": 1
@@ -552,7 +576,9 @@
       "legacy-token:--text-xs": 1,
       "legacy-token:--accent-primary": 3,
       "legacy-token:--text-primary": 1,
-      "legacy-token:--text-muted": 1
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--warning-text": 1,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/chat-dock/SessionInventoryCompact.css": {
       "legacy-token:--text-muted": 1,
@@ -573,7 +599,8 @@
       "legacy-token:--text-primary": 1,
       "legacy-token:--text-md": 1,
       "legacy-token:--border-primary": 1,
-      "legacy-token:--text-secondary": 1
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/chat-dock/backgroundTaskRows.tsx": {
       "bespoke-action:\"background-tasks-sheet__action\"": 1,
@@ -582,7 +609,8 @@
     "src-ui/src/components/chat-start/StartComposer.css": {
       "legacy-token:--border-primary": 2,
       "legacy-token:--bg-secondary": 2,
-      "legacy-token:--text-primary": 2
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/chat/ApprovalSheetProvider.tsx": {
       "alert-with-action:div": 1
@@ -598,7 +626,9 @@
     },
     "src-ui/src/components/chat/ChatLinkChip.css": {
       "legacy-token:--accent-primary": 2,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--success-text": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/chat/ChatMessageList.tsx": {
       "bespoke-action:\"button button--secondary session-history-controls__more\"": 1
@@ -637,7 +667,8 @@
       "legacy-token:--text-xs": 3,
       "legacy-token:--accent-primary": 2,
       "legacy-token:--bg-elevated": 1,
-      "legacy-token:--bg-primary": 1
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--shadow-md": 1
     },
     "src-ui/src/components/chat/ConversationTimeline.tsx": {
       "bespoke-action:\"button button--secondary\"": 3,
@@ -668,7 +699,8 @@
       "legacy-token:--accent-primary": 2,
       "legacy-token:--bg-primary": 1,
       "legacy-token:--text-primary": 1,
-      "legacy-token:--text-lg": 1
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/chat/QueuedMessages.tsx": {
       "bespoke-action:\"queued-message__btn queued-message__btn--danger\"": 2
@@ -682,7 +714,8 @@
       "legacy-token:--border-primary": 2,
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--text-muted": 1,
-      "legacy-token:--bg-primary": 1
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/chat/ReplayTransport.tsx": {
       "bespoke-action:\"button button--secondary\"": 7,
@@ -713,7 +746,8 @@
       "legacy-token:--border-primary": 2,
       "legacy-token:--bg-input": 1,
       "legacy-token:--bg-primary": 2,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/chat/ToolCallBatch.css": {
       "legacy-token:--text-muted": 1,
@@ -723,7 +757,8 @@
       "legacy-token:--text-muted": 1,
       "legacy-token:--font-mono": 1,
       "legacy-token:--text-primary": 1,
-      "legacy-token:--text-secondary": 1
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/chat/ToolCallDisplay.tsx": {
       "bespoke-action:\"tool-call__approve-btn tool-call__approve-btn--secondary\"": 1,
@@ -734,7 +769,9 @@
       "legacy-token:--radius-md": 1,
       "legacy-token:--bg-primary": 1,
       "legacy-token:--text-tertiary": 1,
-      "legacy-token:--text-xs": 1
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--shadow-menu": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/chat/TurnActionsMenu.tsx": {
       "bespoke-action:\"turn-footer__overflow-item--danger\"": 1
@@ -746,7 +783,8 @@
       "legacy-token:--text-primary": 2,
       "legacy-token:--border-primary": 1,
       "legacy-token:--bg-secondary": 1,
-      "legacy-token:--bg-tertiary": 1
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/chat/UnconfirmedDiscardConfirm.tsx": {
       "bespoke-action:\"unconfirmed-discard__button unconfirmed-discard__button--danger\"": 1
@@ -779,7 +817,9 @@
       "legacy-token:--radius-md": 1,
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--border-secondary": 2,
-      "legacy-token:--text-base": 1
+      "legacy-token:--text-base": 1,
+      "legacy-token:--error-bg": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/chat/chat.css": {
       "legacy-token:--bg-hover": 7,
@@ -814,7 +854,14 @@
       "legacy-token:--accent-yellow": 4,
       "legacy-token:--radius-lg": 3,
       "legacy-token:--bg-elevated": 1,
-      "legacy-token:--text-xl": 1
+      "legacy-token:--text-xl": 1,
+      "legacy-token:--error-fill": 5,
+      "legacy-token:--warning-text": 3,
+      "legacy-token:--error-text": 13,
+      "legacy-token:--warning-primary": 1,
+      "legacy-token:--warning-bg": 1,
+      "legacy-token:--shadow-lg": 2,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx": {
       "bespoke-action:\"message-delivery__action\"": 4
@@ -825,7 +872,9 @@
       "legacy-token:--bg-input": 1,
       "legacy-token:--text-primary": 2,
       "legacy-token:--accent-primary": 1,
-      "legacy-token:--bg-hover": 1
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--error-bg": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "legacy-token:--space-4": 6,
@@ -845,7 +894,9 @@
       "legacy-token:--radius-lg": 1,
       "legacy-token:--radius-md": 4,
       "legacy-token:--bg-tertiary": 3,
-      "legacy-token:--text-on-accent": 1
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--shadow-lg": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/coding-layout/BranchToolbar.tsx": {
       "alert-with-action:span": 1,
@@ -868,7 +919,8 @@
       "legacy-token:--text-base": 1,
       "legacy-token:--bg-primary": 1,
       "legacy-token:--border-primary": 1,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/coding-layout/CodingLayout.css": {
       "legacy-token:--border-primary": 15,
@@ -895,7 +947,9 @@
       "legacy-token:--text-base": 3,
       "legacy-token:--text-xl": 1,
       "legacy-token:--text-2xl": 1,
-      "legacy-token:--bg-tertiary": 1
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--warning-text": 3,
+      "legacy-token:--success-text": 3
     },
     "src-ui/src/components/coding-layout/CodingTerminalPanel.tsx": {
       "alert-with-action:div": 1
@@ -939,7 +993,9 @@
       "legacy-token:--font-sans": 1,
       "legacy-token:--text-primary": 2,
       "legacy-token:--border-primary": 2,
-      "legacy-token:--bg-primary": 1
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--error-text": 3,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/coding-layout/DiffPanel.tsx": {
       "alert-with-action:p": 1
@@ -955,7 +1011,8 @@
       "legacy-token:--text-secondary": 1,
       "legacy-token:--bg-selected": 1,
       "legacy-token:--color-brand": 1,
-      "legacy-token:--bg-elevated": 1
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/coding-layout/FileTreePanel.tsx": {
       "bespoke-action:\"file-tree-panel__action\"": 1
@@ -971,7 +1028,8 @@
       "legacy-token:--bg-hover": 1,
       "legacy-token:--text-md": 1,
       "legacy-token:--text-secondary": 1,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/coding-layout/PullRequestReviewPanel.css": {
       "legacy-token:--text-md": 2,
@@ -987,7 +1045,10 @@
       "legacy-token:--accent-primary": 2,
       "legacy-token:--border-secondary": 1,
       "legacy-token:--bg-secondary": 1,
-      "legacy-token:--radius-sm": 1
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--error-text": 3,
+      "legacy-token:--success-text": 2,
+      "legacy-token:--warning-text": 2
     },
     "src-ui/src/components/coding-layout/PullRequestsPanel.css": {
       "legacy-token:--space-3": 2,
@@ -1002,7 +1063,8 @@
       "legacy-token:--text-xs": 1,
       "legacy-token:--text-tertiary": 2,
       "legacy-token:--text-muted": 1,
-      "legacy-token:--border-primary": 1
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/coding-layout/TerminalPanel.tsx": {
       "alert-with-action:div": 1
@@ -1041,7 +1103,9 @@
       "legacy-token:--text-sm": 3,
       "legacy-token:--space-1": 1,
       "legacy-token:--text-xs": 1,
-      "legacy-token:--text-on-accent": 2
+      "legacy-token:--text-on-accent": 2,
+      "legacy-token:--error-text": 5,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/engine-install/EngineInstallHint.css": {
       "legacy-token:--space-2": 3,
@@ -1083,7 +1147,9 @@
       "legacy-token:--color-text-secondary": 3,
       "legacy-token:--color-surface-sunken": 1,
       "legacy-token:--color-surface": 1,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--error-border": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/first-run/AboutYouStep.tsx": {
       "bespoke-action:{\n              destination === 'chat'\n                ? 'editor-btn editor-btn--primary'\n                : 'editor-btn'\n            }": 1
@@ -1106,7 +1172,8 @@
       "legacy-token:--color-accent": 2,
       "legacy-token:--color-primary": 2,
       "legacy-token:--text-on-accent-yellow": 1,
-      "legacy-token:--color-border": 1
+      "legacy-token:--color-border": 1,
+      "legacy-token:--shadow-lg": 1
     },
     "src-ui/src/components/first-run/Coachmark.tsx": {
       "bespoke-dialog:div": 1
@@ -1122,7 +1189,10 @@
       "legacy-token:--color-primary": 2,
       "legacy-token:--color-text-secondary": 5,
       "legacy-token:--text-sm": 4,
-      "legacy-token:--space-3": 1
+      "legacy-token:--space-3": 1,
+      "legacy-token:--success-text": 1,
+      "legacy-token:--warning-text": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/first-run/EnginesStep.tsx": {
       "bespoke-action:\"editor-btn editor-btn--primary\"": 2
@@ -1179,7 +1249,8 @@
       "legacy-token:--border-primary": 1,
       "legacy-token:--bg-tertiary": 1,
       "legacy-token:--bg-primary": 1,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/icons/BrandIcon.css": {
       "legacy-token:--border-primary": 1,
@@ -1208,7 +1279,9 @@
       "legacy-token:--border-primary": 1,
       "legacy-token:--radius-pill": 2,
       "legacy-token:--bg-primary": 1,
-      "legacy-token:--text-xs": 1
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--warning-text": 1,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/inbox-row/WorkGroupLabel.css": {
       "legacy-token:--font-sans": 1,
@@ -1220,7 +1293,8 @@
       "legacy-token:--border-primary": 2,
       "legacy-token:--bg-tertiary": 1,
       "legacy-token:--text-tertiary": 2,
-      "legacy-token:--text-secondary": 2
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/modals/FolderBrowserModal.css": {
       "legacy-token:--bg-primary": 2,
@@ -1229,7 +1303,10 @@
       "legacy-token:--font-mono": 1,
       "legacy-token:--text-muted": 1,
       "legacy-token:--text-on-accent": 1,
-      "legacy-token:--accent-primary": 2
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--error-bg": 1,
+      "legacy-token:--error-border": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/modals/ImportSkillsModal.css": {
       "legacy-token:--text-lg": 1,
@@ -1254,7 +1331,10 @@
       "legacy-token:--font-mono": 1,
       "legacy-token:--text-primary": 3,
       "legacy-token:--text-secondary": 5,
-      "legacy-token:--bg-secondary": 4
+      "legacy-token:--bg-secondary": 4,
+      "legacy-token:--error-border": 1,
+      "legacy-token:--error-bg": 1,
+      "legacy-token:--error-text": 2
     },
     "src-ui/src/components/modals/PromptModal.css": {
       "legacy-token:--text-secondary": 1,
@@ -1263,7 +1343,8 @@
       "legacy-token:--bg-input": 1,
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--border-primary": 1,
-      "legacy-token:--accent-primary": 1
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/monitoring/InsightsDashboard.css": {
       "legacy-token:--text-primary": 3,
@@ -1276,7 +1357,10 @@
       "legacy-token:--space-2": 2,
       "legacy-token:--space-3": 1,
       "legacy-token:--bg-hover": 1,
-      "legacy-token:--text-muted": 1
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--error-text": 2,
+      "legacy-token:--warning-text": 1,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/notifications/NotificationContainer.css": {
       "legacy-token:--accent-primary": 8,
@@ -1288,7 +1372,8 @@
       "legacy-token:--text-tertiary": 1,
       "legacy-token:--font-mono": 1,
       "legacy-token:--text-secondary": 2,
-      "legacy-token:--bg-tertiary": 4
+      "legacy-token:--bg-tertiary": 4,
+      "legacy-token:--error-fill": 1
     },
     "src-ui/src/components/notifications/NotificationContainer.tsx": {
       "bespoke-action:\"toast-card__action toast-card__action--primary\"": 3,
@@ -1344,7 +1429,8 @@
       "legacy-token:--accent-primary": 6,
       "legacy-token:--radius-md": 1,
       "legacy-token:--text-xl": 1,
-      "legacy-token:--space-6": 1
+      "legacy-token:--space-6": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/project-sidebar/ProjectSidebar.css": {
       "legacy-token:--bg-secondary": 1,
@@ -1359,7 +1445,8 @@
       "legacy-token:--text-on-accent": 1,
       "legacy-token:--bg-tertiary": 2,
       "legacy-token:--text-md": 1,
-      "legacy-token:--text-sm": 1
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--shadow-menu": 1
     },
     "src-ui/src/components/project-sidebar/ProjectSidebarBoards.css": {
       "legacy-token:--accent-primary": 1,
@@ -1379,7 +1466,8 @@
       "legacy-token:--space-3": 1,
       "legacy-token:--space-4": 1,
       "legacy-token:--text-md": 2,
-      "legacy-token:--text-muted": 1
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/pull-requests/ConversationPullRequestLinks.tsx": {
       "alert-with-action:p": 1
@@ -1408,7 +1496,10 @@
       "legacy-token:--radius-pill": 1,
       "legacy-token:--bg-tertiary": 1,
       "legacy-token:--text-tertiary": 1,
-      "legacy-token:--text-sm": 1
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--success-text": 1,
+      "legacy-token:--error-text": 1,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/registry/MarketplaceSources.tsx": {
       "alert-with-action:p": 1
@@ -1421,7 +1512,8 @@
       "legacy-token:--text-md": 1,
       "legacy-token:--text-muted": 2,
       "legacy-token:--text-sm": 1,
-      "legacy-token:--text-xs": 1
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--success-text": 2
     },
     "src-ui/src/components/registry/RegistryCatalog.tsx": {
       "alert-with-action:div": 1
@@ -1434,7 +1526,8 @@
       "legacy-token:--font-mono": 4,
       "legacy-token:--bg-secondary": 3,
       "legacy-token:--text-secondary": 2,
-      "legacy-token:--bg-primary": 1
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--error-text": 2
     },
     "src-ui/src/components/scheduler/JobDetail.tsx": {
       "bespoke-action:\"schedule__action-btn\"": 1
@@ -1454,7 +1547,8 @@
       "legacy-token:--border-primary": 2,
       "legacy-token:--radius-md": 1,
       "legacy-token:--bg-secondary": 1,
-      "legacy-token:--text-primary": 2
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--shadow-menu": 1
     },
     "src-ui/src/components/session-detail/SessionDetailMoreMenu.tsx": {
       "bespoke-action:\"button button--secondary session-detail-more__trigger\"": 1
@@ -1487,7 +1581,8 @@
       "legacy-token:--text-muted": 4,
       "legacy-token:--text-md": 4,
       "legacy-token:--space-2": 3,
-      "legacy-token:--radius-sm": 1
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx": {
       "alert-with-action:p": 2
@@ -1511,7 +1606,8 @@
       "legacy-token:--accent-primary": 1,
       "legacy-token:--color-warning": 1,
       "legacy-token:--color-success": 1,
-      "legacy-token:--color-error": 1
+      "legacy-token:--color-error": 1,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/components/status/live-status.css": {
       "legacy-token:--border-primary": 5,
@@ -1521,7 +1617,9 @@
       "legacy-token:--accent-primary": 3,
       "legacy-token:--text-primary": 2,
       "legacy-token:--text-muted": 1,
-      "legacy-token:--text-xs": 1
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--warning-text": 3,
+      "legacy-token:--error-text": 2
     },
     "src-ui/src/components/usage-stats/UsageRollupPanel.css": {
       "legacy-token:--text-muted": 1,
@@ -1529,7 +1627,8 @@
       "legacy-token:--text-primary": 1,
       "legacy-token:--border-primary": 2,
       "legacy-token:--accent-primary": 2,
-      "legacy-token:--bg-secondary": 1
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/components/usage-stats/UsageRollupPanel.tsx": {
       "bespoke-dialog:div": 2,
@@ -1547,7 +1646,8 @@
       "legacy-token:--text-2xl": 1,
       "legacy-token:--text-lg": 3,
       "legacy-token:--text-md": 1,
-      "legacy-token:--text-sm": 2
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/components/voice/VoiceOrb.css": {
       "legacy-token:--bg-tertiary": 1,
@@ -1559,7 +1659,8 @@
       "legacy-token:--border-primary": 2,
       "legacy-token:--text-primary": 2,
       "legacy-token:--text-md": 1,
-      "legacy-token:--text-xs": 1
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--error-fill": 1
     },
     "src-ui/src/float-over-chat/FloatOverChat.css": {
       "legacy-token:--bg-secondary": 3,
@@ -1570,7 +1671,8 @@
       "legacy-token:--bg-primary": 3,
       "legacy-token:--radius-sm": 1,
       "legacy-token:--text-secondary": 2,
-      "legacy-token:--text-primary": 1
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--warning-text": 2
     },
     "src-ui/src/index.css": {
       "legacy-token:--accent-primary": 80,
@@ -1631,7 +1733,23 @@
       "legacy-token:--text-5xl": 1,
       "legacy-token:--text-15": 2,
       "legacy-token:--accent-hover": 1,
-      "legacy-token:--accent-acp": 1
+      "legacy-token:--accent-acp": 1,
+      "legacy-token:--warning-text": 17,
+      "legacy-token:--error-text": 21,
+      "legacy-token:--success-text": 12,
+      "legacy-token:--warning-primary": 2,
+      "legacy-token:--shadow-lg": 1,
+      "legacy-token:--shadow-md": 2,
+      "legacy-token:--shadow-sm": 1,
+      "legacy-token:--shadow-menu": 3,
+      "legacy-token:--success-bg": 1,
+      "legacy-token:--success-border": 1,
+      "legacy-token:--warning-bg": 2,
+      "legacy-token:--warning-border": 1,
+      "legacy-token:--error-bg": 4,
+      "legacy-token:--error-border": 3,
+      "legacy-token:--error-fill": 1,
+      "legacy-token:--error-dark": 1
     },
     "src-ui/src/live-surface/LiveSurfaceCanvas.css": {
       "legacy-token:--space-2": 6,
@@ -1641,7 +1759,8 @@
       "legacy-token:--radius-md": 1,
       "legacy-token:--accent-primary": 1,
       "legacy-token:--radius-sm": 1,
-      "legacy-token:--space-1": 1
+      "legacy-token:--space-1": 1,
+      "legacy-token:--warning-text": 2
     },
     "src-ui/src/pages/AppearancePage.css": {
       "legacy-token:--accent-primary": 6,
@@ -1732,12 +1851,15 @@
       "legacy-token:--text-lg": 1,
       "legacy-token:--text-base": 1,
       "legacy-token:--space-5": 1,
-      "legacy-token:--space-2": 1
+      "legacy-token:--space-2": 1,
+      "legacy-token:--warning-primary": 1
     },
     "src-ui/src/views/IntegrationsView.css": {
       "legacy-token:--text-primary": 3,
       "legacy-token:--bg-secondary": 4,
-      "legacy-token:--border-primary": 2
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--error-text": 1,
+      "legacy-token:--warning-text": 2
     },
     "src-ui/src/views/KnowledgeConnectionView.css": {
       "legacy-token:--text-muted": 5,
@@ -1747,7 +1869,9 @@
       "legacy-token:--bg-tertiary": 2,
       "legacy-token:--text-md": 2,
       "legacy-token:--text-3xl": 1,
-      "legacy-token:--accent-primary": 1
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--success-text": 3,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/views/KnowledgeConnectionView.tsx": {
       "bespoke-action:\"editor-btn editor-btn--primary\"": 1
@@ -1774,7 +1898,10 @@
       "legacy-token:--font-mono": 7,
       "legacy-token:--bg-primary": 2,
       "legacy-token:--text-sm": 1,
-      "legacy-token:--text-base": 1
+      "legacy-token:--text-base": 1,
+      "legacy-token:--success-text": 7,
+      "legacy-token:--error-text": 5,
+      "legacy-token:--warning-text": 3
     },
     "src-ui/src/views/PluginManagementView.css": {
       "legacy-token:--bg-secondary": 2,
@@ -1793,7 +1920,15 @@
       "legacy-token:--text-tertiary": 4,
       "legacy-token:--text-lg": 1,
       "legacy-token:--text-base": 5,
-      "legacy-token:--text-sm": 2
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--success-bg": 2,
+      "legacy-token:--success-border": 2,
+      "legacy-token:--success-text": 3,
+      "legacy-token:--warning-text": 3,
+      "legacy-token:--error-bg": 1,
+      "legacy-token:--error-border": 1,
+      "legacy-token:--error-text": 4,
+      "legacy-token:--error-fill": 1
     },
     "src-ui/src/views/ProjectPage.css": {
       "legacy-token:--text-6xl": 1,
@@ -1820,7 +1955,9 @@
       "legacy-token:--accent-yellow": 2,
       "legacy-token:--space-2": 2,
       "legacy-token:--space-3": 1,
-      "legacy-token:--radius-md": 1
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--error-text": 6,
+      "legacy-token:--success-text": 2
     },
     "src-ui/src/views/ProjectSettingsView.css": {
       "legacy-token:--border-primary": 10,
@@ -1839,7 +1976,9 @@
       "legacy-token:--radius-lg": 1,
       "legacy-token:--space-2": 1,
       "legacy-token:--space-3": 1,
-      "legacy-token:--text-xs": 1
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--success-text": 2,
+      "legacy-token:--warning-text": 2
     },
     "src-ui/src/views/ProjectSettingsView.tsx": {
       "bespoke-action:\"editor-btn editor-btn--primary\"": 1,
@@ -1870,7 +2009,12 @@
       "legacy-token:--bg-elevated": 1,
       "legacy-token:--bg-input": 1,
       "legacy-token:--bg-highlight": 1,
-      "legacy-token:--bg-hover": 1
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--success-text": 8,
+      "legacy-token:--error-text": 22,
+      "legacy-token:--warning-text": 9,
+      "legacy-token:--shadow-menu": 1,
+      "legacy-token:--warning-bg": 1
     },
     "src-ui/src/views/SessionsView.css": {
       "legacy-token:--space-2": 8,
@@ -1886,7 +2030,9 @@
       "legacy-token:--font-mono": 5,
       "legacy-token:--text-muted": 6,
       "legacy-token:--bg-primary": 1,
-      "legacy-token:--bg-elevated": 1
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--warning-text": 1,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/views/SettingsView.css": {
       "legacy-token:--border-primary": 18,
@@ -1899,7 +2045,12 @@
       "legacy-token:--text-muted": 15,
       "legacy-token:--bg-primary": 6,
       "legacy-token:--font-mono": 8,
-      "legacy-token:--radius-md": 1
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--error-bg": 1,
+      "legacy-token:--error-border": 1,
+      "legacy-token:--error-text": 13,
+      "legacy-token:--success-text": 4,
+      "legacy-token:--warning-text": 5
     },
     "src-ui/src/views/SkillsView.tsx": {
       "bespoke-action:\"split-pane__add-btn split-pane__add-btn--secondary\"": 2
@@ -1923,7 +2074,12 @@
       "legacy-token:--accent-primary": 16,
       "legacy-token:--font-mono": 13,
       "legacy-token:--bg-tertiary": 1,
-      "legacy-token:--text-secondary": 3
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--success-text": 1,
+      "legacy-token:--warning-primary": 1,
+      "legacy-token:--error-text": 1,
+      "legacy-token:--success-border": 1,
+      "legacy-token:--error-border": 1
     },
     "src-ui/src/views/TaskWorkspaceView.tsx": {
       "bespoke-action:\"editor-btn editor-btn--primary\"": 2
@@ -1947,7 +2103,8 @@
       "legacy-token:--border-primary": 1,
       "legacy-token:--bg-hover": 1,
       "legacy-token:--text-primary": 1,
-      "legacy-token:--accent-primary": 1
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/views/activity/ActivityRowMenu.tsx": {
       "bespoke-action:{`menu-row${action.tone === 'danger' ? ' activity-row-menu__item--danger' : ''}`}": 1
@@ -1966,7 +2123,8 @@
       "legacy-token:--border-primary": 1,
       "legacy-token:--bg-tertiary": 1,
       "legacy-token:--text-secondary": 1,
-      "legacy-token:--text-muted": 2
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--success-text": 1
     },
     "src-ui/src/views/connections-hub/AddMachineModal.css": {
       "legacy-token:--bg-secondary": 1,
@@ -1988,7 +2146,9 @@
       "legacy-token:--space-2": 1,
       "legacy-token:--bg-tertiary": 1,
       "legacy-token:--bg-primary": 1,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--success-text": 1,
+      "legacy-token:--error-text": 2
     },
     "src-ui/src/views/developer/SystemTab.css": {
       "legacy-token:--space-3": 5,
@@ -2021,7 +2181,15 @@
       "legacy-token:--space-6": 4,
       "legacy-token:--radius-md": 2,
       "legacy-token:--space-8": 1,
-      "legacy-token:--radius-lg": 1
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--shadow-sm": 4,
+      "legacy-token:--shadow-md": 2,
+      "legacy-token:--shadow-lg": 2,
+      "legacy-token:--warning-text": 9,
+      "legacy-token:--error-text": 8,
+      "legacy-token:--success-text": 2,
+      "legacy-token:--error-border": 1,
+      "legacy-token:--error-bg": 1
     },
     "src-ui/src/views/home/blocks/activity-bars.css": {
       "legacy-token:--text-xs": 3,
@@ -2056,10 +2224,10 @@
       "legacy-token:--space-8": 2,
       "legacy-token:--border-primary": 16,
       "legacy-token:--bg-secondary": 6,
-      "legacy-token:--accent-primary": 12,
+      "legacy-token:--accent-primary": 11,
       "legacy-token:--font-mono": 4,
       "legacy-token:--text-primary": 8,
-      "legacy-token:--text-muted": 14,
+      "legacy-token:--text-muted": 13,
       "legacy-token:--text-secondary": 2,
       "legacy-token:--bg-tertiary": 4,
       "legacy-token:--border-secondary": 1,
@@ -2072,8 +2240,8 @@
       "legacy-token:--text-lg": 1,
       "legacy-token:--text-md": 1,
       "legacy-token:--text-on-accent": 2,
-      "legacy-token:--text-xs": 1,
-      "legacy-token:--bg-selected": 1
+      "legacy-token:--bg-selected": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/views/personal-board/PersonalBoardWorkspace.tsx": {
       "alert-with-action:p": 1
@@ -2094,7 +2262,16 @@
       "legacy-token:--border-primary": 2,
       "legacy-token:--text-primary": 2,
       "legacy-token:--text-muted": 3,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--success-bg": 1,
+      "legacy-token:--success-border": 1,
+      "legacy-token:--success-text": 1,
+      "legacy-token:--warning-bg": 2,
+      "legacy-token:--warning-border": 1,
+      "legacy-token:--warning-text": 2,
+      "legacy-token:--error-bg": 1,
+      "legacy-token:--error-border": 1,
+      "legacy-token:--error-text": 1
     },
     "src-ui/src/views/project-page-frame.css": {
       "legacy-token:--bg-primary": 1,
@@ -2103,7 +2280,8 @@
     },
     "src-ui/src/views/project-page/PluginPublishDialog.css": {
       "legacy-token:--font-mono": 1,
-      "legacy-token:--text-muted": 1
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--error-text": 2
     },
     "src-ui/src/views/project-page/PluginPublishDialog.tsx": {
       "alert-with-action:div": 2
@@ -2178,7 +2356,8 @@
       "legacy-token:--text-primary": 2,
       "legacy-token:--bg-secondary": 2,
       "legacy-token:--border-primary": 2,
-      "legacy-token:--accent-primary": 2
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/views/settings/KnowledgeStoreSection.css": {
       "legacy-token:--text-secondary": 2,
@@ -2293,7 +2472,8 @@
       "legacy-token:--border-primary": 3,
       "legacy-token:--radius-md": 3,
       "legacy-token:--bg-secondary": 1,
-      "legacy-token:--text-primary": 1
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--warning-text": 1
     },
     "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx": {
       "alert-with-action:p": 1
@@ -2321,7 +2501,9 @@
       "legacy-token:--bg-primary": 3,
       "legacy-token:--bg-hover": 2,
       "legacy-token:--bg-selected": 2,
-      "legacy-token:--bg-tertiary": 2
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--warning-text": 8,
+      "legacy-token:--success-text": 5
     },
     "src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx": {
       "alert-with-action:p": 2
@@ -2340,7 +2522,8 @@
       "legacy-token:--radius-lg": 2,
       "legacy-token:--radius-sm": 1,
       "legacy-token:--text-sm": 1,
-      "legacy-token:--text-primary": 1
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--shadow-sm": 1
     },
     "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.tsx": {
       "alert-with-action:div": 1
@@ -2409,7 +2592,9 @@
       "legacy-token:--radius-sm": 1,
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--space-1": 1,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--success-text": 2,
+      "legacy-token:--error-text": 3
     },
     "src-ui/src/workspace-panes/agents/ChildWorkTranscript.css": {
       "legacy-token:--space-2": 3,
@@ -2427,7 +2612,8 @@
       "legacy-token:--radius-md": 2,
       "legacy-token:--space-2": 3,
       "legacy-token:--space-3": 1,
-      "legacy-token:--text-primary": 1
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--shadow-md": 1
     },
     "src-ui/src/workspace-panes/browser-pane/BrowserPageDialog.tsx": {
       "bespoke-dialog:form": 1
@@ -2446,17 +2632,15 @@
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--font-mono": 1,
       "legacy-token:--accent-danger": 1,
-      "legacy-token:--radius-sm": 1
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--shadow-md": 1
     },
     "src-ui/src/workspace-panes/device/DeviceSetupWizard.css": {
-      "legacy-token:--space-3": 3,
-      "legacy-token:--space-2": 9,
-      "legacy-token:--border-primary": 4,
-      "legacy-token:--radius-2": 3,
-      "legacy-token:--space-1": 4,
-      "legacy-token:--accent-primary": 1,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--radius-2": 2,
       "legacy-token:--text-secondary": 1,
-      "legacy-token:--text-primary": 1
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--success-border": 1
     },
     "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx": {
       "alert-with-action:div": 1
@@ -2464,15 +2648,21 @@
     "src-ui/src/workspace-panes/device/DeviceToolsDrawer.css": {
       "legacy-token:--bg-primary": 1,
       "legacy-token:--border-primary": 3,
-      "legacy-token:--space-2": 7,
-      "legacy-token:--space-3": 2,
-      "legacy-token:--space-4": 2,
       "legacy-token:--accent-danger": 1,
       "legacy-token:--text-primary": 2,
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--radius-md": 1,
-      "legacy-token:--space-1": 1,
-      "legacy-token:--font-mono": 1
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--shadow-lg": 1
+    },
+    "src-ui/src/components/chat/InputRequestCard.css": {
+      "legacy-token:--error-text": 1
+    },
+    "src-ui/src/components/session/SessionModelPicker.css": {
+      "legacy-token:--shadow-lg": 1
+    },
+    "src-ui/src/views/settings/DeviceHostsPanel.css": {
+      "legacy-token:--error-text": 2
     }
   }
 }

@@ -22,14 +22,14 @@ import {
   WarningGlyph,
 } from '../../../components/icons/Glyph';
 import { ResponsiveSurfaceActions } from '../../../components/ResponsiveDialogSurface';
+import { RoomAvatar } from '../../../components/room/RoomAvatar';
 import { ErrorState } from '../../../components/state';
 import { useCoarsePointer } from '../../../hooks/useCoarsePointer';
 import { useUnsavedGuard } from '../../../hooks/useUnsavedGuard';
-import { relativeTimeAgo } from '../../../utils/relativeTime';
+import { formatDateTime, relativeTimeAgo } from '../../../utils/relativeTime';
 import { describeStationFailure } from '../../../utils/stationFailure';
-import { RoomAvatar } from '../../../workspace-panes/ProjectTaskRoomPresence';
 import { useReviewContext } from './ReviewContext';
-import { copyReviewThreadsForAgent } from './review-copy';
+import { copyReviewThreadLink, copyReviewThreadsForAgent } from './review-copy';
 import {
   isReviewThreadSendable,
   type ReviewIdentity,
@@ -347,7 +347,7 @@ export function ReviewThreadCard({
                   )}
                   <time
                     dateTime={event.createdAt}
-                    title={new Date(event.createdAt).toLocaleString()}
+                    title={formatDateTime(event.createdAt)}
                   >
                     {relativeTimeAgo(Date.parse(event.createdAt), Date.now())}
                   </time>
@@ -495,11 +495,7 @@ export function ReviewThreadCard({
                         void run(async () => {
                           if (actions.onCopyLink)
                             await actions.onCopyLink(thread.threadId);
-                          else {
-                            const url = new URL(window.location.href);
-                            url.hash = `review-thread-${thread.threadId}`;
-                            await navigator.clipboard.writeText(url.href);
-                          }
+                          else await copyReviewThreadLink(thread.threadId);
                         }),
                     },
                     {

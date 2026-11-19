@@ -20,9 +20,17 @@ export const FAST_CHECKS_SHARD_COUNT = 4;
 // The queue's measured first two groups consumed 851s before exclusive work.
 export const FAST_CHECKS_SHARD_BUDGET_MS = 20 * 60_000;
 // #3101, 2026-10-01: sampled shards spent 1.4 min setting up for 0.2 min
-// of tests (86% setup) in a 20-job pool. Without duration estimates, use
-// 40 files per runner as an initial proxy; tune from hosted plan/run data.
-const FAST_CHECKS_FILES_PER_SHARD = 40;
+// of tests (86% setup) in a 20-job pool. The repository keeps no per-file
+// durations, so file count is the proxy. Hosted runs of 2026-11-12/13 put
+// setup at ~95-130s a shard and showed 40 files a shard over-splitting
+// medium plans: a 145-file plan took four runners for 2-3 min of tests each.
+// At 100, 101-200 files take two shards and 201-300 three; ~70-100 files a
+// shard measured 4.4-9 min a job, inside the merge-group statics job's
+// 11.5-17 min, so merge-group wall time does not grow. Plans above 300 keep
+// four shards (FAST_CHECKS_SHARD_COUNT); the largest observed, 1,571 files,
+// peaked at 15.6 min against the 20-minute shard budget, which this does
+// not change.
+const FAST_CHECKS_FILES_PER_SHARD = 100;
 export function fastChecksShardCount(fileCount) {
   if (!Number.isInteger(fileCount) || fileCount < 0)
     throw new Error('fast-checks file count must be a non-negative integer');
@@ -136,6 +144,17 @@ export function validateFastChecksPlan(plan) {
     )
   )
     errors.push('plan deferredLanes must be a list of named lanes');
+  if (
+    plan.relatedDiscovery?.timedOut !== undefined &&
+    (plan.relatedDiscovery.timedOut !== true ||
+      !Number.isSafeInteger(plan.relatedDiscovery.timeoutMilliseconds) ||
+      plan.relatedDiscovery.timeoutMilliseconds <= 0 ||
+      !Array.isArray(plan.deferredLanes) ||
+      !plan.deferredLanes.some((lane) => lane?.id === 'ci-fast'))
+  )
+    errors.push(
+      'a timed-out discovery must record its timeout and ci-fast deferral',
+    );
   // Optional here (older planners omit it); the merge-queue decision
   // requires it and treats its absence as a reason to run full regression.
   if (
@@ -252,6 +271,25 @@ export function validateFastChecksReceipt(receipt) {
     )
   )
     errors.push('receipt counts must be non-negative integers');
+  else if (
+    receipt.passed &&
+    receipt.status !== 'empty' &&
+    (counts.executed === 0 ||
+      counts.passed !== counts.executed ||
+      counts.failed !== 0 ||
+      counts.infrastructureErrors !== 0 ||
+      (Array.isArray(receipt.executions) &&
+        receipt.executions.some((execution) => execution?.empty === true)))
+  )
+    errors.push('a passing nonempty shard requires passing execution evidence');
+  else if (
+    receipt.status === 'empty' &&
+    (counts.executed ||
+      counts.passed ||
+      counts.failed ||
+      counts.infrastructureErrors)
+  )
+    errors.push('an empty shard must record zero measured counts');
   return errors;
 }
 
@@ -316,6 +354,10 @@ export function verifyFastChecks({
     findings.push(...planErrors.map((error) => `invalid plan: ${error}`));
     return { findings, notes };
   }
+  if (plan.relatedDiscovery?.timedOut === true)
+    findings.push(
+      'related discovery timed out; the retained exact suites cannot complete source verification',
+    );
   const omittedEmpty = needs?.['fast-checks-plan']?.outputs?.empty === 'true';
   if (omittedEmpty && plan.fileCount !== 0)
     findings.push('empty-shard admission requires an empty plan');

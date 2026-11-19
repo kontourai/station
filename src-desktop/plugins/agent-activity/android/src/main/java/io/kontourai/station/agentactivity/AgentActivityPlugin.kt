@@ -94,6 +94,7 @@ class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
       value.put("stationId", route.stationId)
       value.put("sessionId", route.sessionId)
       route.projectSlug?.let { value.put("projectSlug", it) }
+      route.notificationId?.let { value.put("notificationId", it) }
       result.put("route", value)
     }
     invoke.resolve(result)

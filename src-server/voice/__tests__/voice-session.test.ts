@@ -2,13 +2,17 @@ import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createAgentHooks } from '../../runtime/agents/agent-hooks.js';
 import { SC_READ_ONLY_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
+import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import type { VoiceTurnRuns } from '../../services/orchestration/voice-turn-runs.js';
 import type {
   IS2SProvider,
   S2SAudioFormat,
   S2SSessionConfig,
 } from '../s2s-types.js';
-import { VoiceSessionService } from '../voice-session.js';
+import {
+  VOICE_NO_STATION_TOOLS_NOTE,
+  VoiceSessionService,
+} from '../voice-session.js';
 
 const { lifecycleAdd, toolDenialsAdd } = vi.hoisted(() => ({
   lifecycleAdd: vi.fn(),
@@ -831,6 +835,7 @@ describe('VoiceSession wiring', () => {
     const guardian = {
       isEnabled: vi.fn(() => true),
       getMode: vi.fn(() => 'review'),
+      readConversation: () => NO_PERSON_INTENT,
       reviewToolCall: vi.fn().mockResolvedValue({
         decision: 'allow',
         reason: 'Safe and scoped.',
@@ -1010,11 +1015,24 @@ describe('VoiceSession wiring', () => {
   test('system prompt includes voice prefix + agent spec prompt', async () => {
     const ws2 = new MockWebSocket();
     const built2 = makeService({ systemPrompt: 'You are a sales assistant.' });
-    built2.service.createSession(ws2 as any);
+    // A signed-in session: its person is the caller of its Station tools.
+    built2.service.createSession(ws2 as any, {
+      principalId: 'human:local:operator',
+    });
     await tick();
     const config = built2.getProvider().connectConfig!;
     expect(config.systemPrompt).toBe(
       'You are in voice mode. Be concise — short sentences. Confirm before creating or modifying anything. When you use tools, summarize the result in one or two sentences — never read raw JSON or full tool output aloud.\n\nYou are a sales assistant.',
+    );
+  });
+
+  test('a credential-free session is told it has no Station tools', async () => {
+    const ws2 = new MockWebSocket();
+    const built2 = makeService({ systemPrompt: 'You are a sales assistant.' });
+    built2.service.createSession(ws2 as any);
+    await tick();
+    expect(built2.getProvider().connectConfig!.systemPrompt).toContain(
+      VOICE_NO_STATION_TOOLS_NOTE,
     );
   });
 

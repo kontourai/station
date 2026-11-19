@@ -1,0 +1,7 @@
+{
+  "revision": "1ca703234a93e6a39bfe1374500ce785b3ec6cb4",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Landing paragraph: replaced the copied ruleset values (the landing guide says to read the ruleset instead of copying them) with the draft-then-ready instruction; checked it against the new first bullet of docs/guides/development.md Landing a pull request and the draft guard pinned in build-ios.yml, windows-pr-verification.yml and gallery-pr-check.yml. Arm, confirm and MERGED wording unchanged; file stays under its byte ceiling (6136 of 6144).","inputs":["AGENTS.md"]}
+  ]
+}

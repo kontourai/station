@@ -1,0 +1,79 @@
+{
+  "revision": "2eb3d420c4735bebdcfb35576c9fe4d2e1ae086f",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"The published authoring schema refuses both retired fields. The legacy read and write paths remove only those fields and still validate the rest. The loader and the real Chromium editor kept the seeded source bytes until Save, then retained the expected UI fields and engine identity through reload. The retired-read negative control failed at strict schema validation.","inputs":["docs/reference/config.md","packages/contracts/src/agent.ts","schemas/agent.schema.json","src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Updated the Agent source example to use the supported UI fields. The actual published SDK package exposes LayoutComponentProps.onLaunchPrompt(AgentQuickPrompt), and the current host still owns that callback. The retirement applies to stored config metadata.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Aligned the AgentSpec and AgentUIConfig excerpts with the new authoring types. Retained the explicit quick-prompt callback payload type used by layouts.","inputs":["docs/reference/shared.md","packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The retired fields section now describes strict new authoring checks, legacy reads, ordinary saves and portable Agent guidance. Other config sections retain their documented owners.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"The retired fields section now describes strict new authoring checks, legacy reads, ordinary saves and portable Agent guidance. Other config sections retain their documented owners.","inputs":["docs/reference/config.md"]},
+
+    {"path":"README.md","note":"The Agent example lists supported UI fields and the existing explicit layout callback. The compatibility rule strips only retired metadata at the Agent config boundaries.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The Agent example lists supported UI fields and the existing explicit layout callback. The compatibility rule strips only retired metadata at the Agent config boundaries.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"The Agent example lists supported UI fields and the existing explicit layout callback. The compatibility rule strips only retired metadata at the Agent config boundaries.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Removed the obsolete configuration keys and kept the AgentQuickPrompt callback type confirmed in the published Contracts and SDK tarballs. The narrow pure projection leaves other config fields to existing validation. Scoped contracts, SDK, server tests and browser-fixture types passed.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Agent guidance import and export both use the same canonical retirement projection. The portable fixture preserved the source object and retained component and workflow shortcuts.","inputs":["packages/shared/src/portability.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The removed streaming and ui.quickPrompts entries are strict additional properties in new specifications. The real file loader accepts legacy observations via the separate projection, and unknown unrelated UI data still fails.","inputs":["schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/commands.md","note":"The removed streaming and ui.quickPrompts entries are strict additional properties in new specifications. The real file loader accepts legacy observations via the separate projection, and unknown unrelated UI data still fails.","inputs":["schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/connections.md","note":"The removed streaming and ui.quickPrompts entries are strict additional properties in new specifications. The real file loader accepts legacy observations via the separate projection, and unknown unrelated UI data still fails.","inputs":["schemas/agent.schema.json"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The removed streaming and ui.quickPrompts entries are strict additional properties in new specifications. The real file loader accepts legacy observations via the separate projection, and unknown unrelated UI data still fails.","inputs":["schemas/agent.schema.json"]},
+
+    {"path":"docs/reference/config.md","note":"The removed streaming and ui.quickPrompts entries are strict additional properties in new specifications. The real file loader accepts legacy observations via the separate projection, and unknown unrelated UI data still fails.","inputs":["schemas/agent.schema.json"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The removed streaming and ui.quickPrompts entries are strict additional properties in new specifications. The real file loader accepts legacy observations via the separate projection, and unknown unrelated UI data still fails.","inputs":["schemas/agent.schema.json"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The reader projects retired metadata in memory while keeping the source bytes. The normal persisted writer projects the same two fields before validation. The real loader and editor roundtrip confirmed the boundary and preserved Agent identity and other UI fields.","inputs":["src-server/domain/config-loader-agents.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The existing Save/reload browser journey now uses actual legacy file bytes in the runner-owned home. It observed the normal PUT, preserved exact source bytes before Save, then verified the on-disk current shape and unchanged engine identity.","inputs":["tests/agents-editor-roundtrip.spec.ts"]}
+  ]
+}

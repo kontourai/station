@@ -137,7 +137,7 @@ async function openConnections(page: Page): Promise<Locator> {
     }
   } else if (await setupLauncher.isVisible()) {
     await setupLauncher
-      .getByRole('button', { name: 'View All Connections' })
+      .getByRole('button', { name: 'All connections' })
       .click();
     await page.waitForURL(/\/connections(?:\?|$)/);
   } else {
@@ -381,7 +381,9 @@ async function expectPhoneDeclined(page: Page): Promise<void> {
  */
 async function expectPhoneCanRequestAgain(page: Page): Promise<void> {
   await expect(
-    page.getByRole('dialog').getByRole('button', { name: 'Try again' }),
+    page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Retry', exact: true }),
   ).toBeVisible();
 }
 
@@ -494,7 +496,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   const pairingRequestResponse = phone.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith('/pairing/access-request'),
   );
-  await phone.getByRole('button', { name: 'Try again' }).click();
+  await phone.getByRole('button', { name: 'Retry', exact: true }).click();
   const pairingRequest = (await (await pairingRequestResponse).json()) as {
     offerId: string;
     proof: string;
@@ -603,7 +605,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   await phoneContext.close();
 });
 
-test('unpaired mobile tour displays every step and returns to connection setup', async ({
+test('unpaired mobile tour and sample shortcuts return to connection setup', async ({
   browser,
   baseURL,
 }) => {
@@ -614,12 +616,14 @@ test('unpaired mobile tour displays every step and returns to connection setup',
   try {
     const page = await context.newPage();
     await page.goto(baseURL!);
-    await page.getByRole('button', { name: 'See how Station works' }).click();
+    await page
+      .getByRole('button', { name: 'Explore a sample workspace' })
+      .click();
     const sample = page.getByTestId('unpaired-sample-workspace');
     await expect(sample).toBeVisible();
-    for (let step = 1; step <= 4; step++) {
+    for (let step = 1; step <= 3; step++) {
       const coachmark = page.getByTestId('first-run-coachmark');
-      await expect(coachmark).toContainText(`Step ${step} of 4`);
+      await expect(coachmark).toContainText(`Step ${step} of 3`);
       await expect(
         sample.locator('[data-first-run-anchor]').first(),
       ).toBeVisible();
@@ -630,12 +634,29 @@ test('unpaired mobile tour displays every step and returns to connection setup',
       ).toBe(true);
       await coachmark
         .getByRole('button', {
-          name: step === 4 ? 'Done' : 'Next',
+          name: step === 3 ? 'Done' : 'Next',
           exact: true,
         })
         .click();
     }
-    await expect(page.getByTestId('first-run-coachmark')).toHaveCount(0);
+    const coachmark = page.getByTestId('first-run-coachmark');
+    await expect(coachmark).toHaveCount(0);
+    await sample.getByRole('button', { name: 'Open sample inbox' }).click();
+    await expect(
+      sample.getByRole('heading', { name: 'Review the draft' }),
+    ).toBeFocused();
+
+    await sample.getByRole('button', { name: 'Customize' }).press('Enter');
+    await coachmark
+      .getByRole('button', { name: 'Skip the tour' })
+      .press('Enter');
+    await sample
+      .getByRole('button', { name: 'Open sample Schedule' })
+      .press('Enter');
+    await expect(
+      sample.getByRole('heading', { name: 'Weekly digest' }),
+    ).toBeFocused();
+
     await page
       .getByRole('button', { name: 'Connect your Station', exact: true })
       .first()

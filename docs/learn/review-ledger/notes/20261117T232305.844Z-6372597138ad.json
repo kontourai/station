@@ -1,0 +1,7 @@
+{
+  "revision": "aa15ddfe6b8021002f6b8a7054dee921dfdab728",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed the confinement-design dependency after short-root placement and overlapping-workspace refusal. Automations links only the default approval-mode decision; no automation intake, dispatch, authority or persistence behavior changes. No prose change required.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md","src-server/routes/webhooks/inbound-webhooks.ts","src-server/services/automation/github-poll.ts","src-server/services/automation/github-workflow-run.ts","src-server/services/automation/repair-controller.ts","src-server/services/webhooks/inbound-webhook-store.ts"]}
+  ]
+}

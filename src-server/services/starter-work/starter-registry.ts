@@ -135,6 +135,8 @@ export type StarterSessionOwner = {
     operationId: string;
     /** #3386: `adoptSession`'s `target`, passed through unchanged. */
     target?: AdoptSessionTarget;
+    /** `adoptSession`'s `continueWhileSourceActive`, passed through unchanged. */
+    continueWhileSourceActive?: true;
     /**
      * #2493: the launching request's full-access grant. The adopted child's
      * confinement stamp records it (`host` only with one), the same as a
@@ -161,6 +163,8 @@ export type StarterSessionOwner = {
         reason: string;
         retrySafe: boolean;
         receiptId?: string;
+        /** The source is still running; see `ContinueSessionStarterLaunchResult`. */
+        code?: 'continuation_source_active';
       }
   >;
 };
@@ -271,18 +275,9 @@ export class StarterRegistry {
     return this.module.status(id);
   }
   async list(): Promise<StarterWorkCatalogEntry[]> {
-    const [
-      taskStatus,
-      sessionStatus,
-      approvalStatus,
-      receiptStatus,
-      scheduledCheckStatus,
-    ] = await Promise.all([
+    const [taskStatus, sessionStatus] = await Promise.all([
       this.module.status('start-task'),
       this.module.status('continue-session'),
-      this.module.status('inspect-approval'),
-      this.module.status('inspect-receipt'),
-      this.module.status('run-scheduled-check'),
     ]);
     return [
       {
@@ -302,33 +297,6 @@ export class StarterRegistry {
         targetKind: 'session',
         prerequisite: 'first-run-completed',
         status: sessionStatus,
-      },
-      {
-        id: 'inspect-approval',
-        title: 'Inspect an approval',
-        description:
-          'Open one exact approval request without deciding it automatically.',
-        targetKind: 'approval',
-        prerequisite: 'first-run-completed',
-        status: approvalStatus,
-      },
-      {
-        id: 'inspect-receipt',
-        title: 'Inspect a review receipt',
-        description:
-          'Open one exact independent-review receipt as evidence input.',
-        targetKind: 'receipt',
-        prerequisite: 'first-run-completed',
-        status: receiptStatus,
-      },
-      {
-        id: 'run-scheduled-check',
-        title: 'Run a scheduled readiness check',
-        description:
-          'Create a disabled recurring check and run it once with an exact scheduler receipt.',
-        targetKind: 'receipt',
-        prerequisite: 'first-run-completed',
-        status: scheduledCheckStatus,
       },
     ];
   }
@@ -706,6 +674,9 @@ export class StarterRegistry {
         sourceSessionId: input.sourceSessionId,
         operationId: input.operationId,
         ...(input.target ? { target: input.target } : {}),
+        ...(input.continueWhileSourceActive
+          ? { continueWhileSourceActive: true as const }
+          : {}),
         fullAccessGrant,
         owner,
         ...(clientOrigin ? { clientOrigin } : {}),

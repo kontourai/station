@@ -1,5 +1,5 @@
 /**
- * Station supervisor protocol, version 1 (minor 3).
+ * Station supervisor protocol, version 1 (minor 4).
  *
  * Two channels share these definitions:
  *
@@ -26,7 +26,10 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
-export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 3 });
+/** A core cannot start until an operator repairs its home or machine policy. */
+export const CORE_STARTUP_REFUSED_EXIT_CODE = 78;
+
+export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 4 });
 
 export interface ProtocolVersion {
   major: number;
@@ -598,6 +601,8 @@ export interface WorkloadSpawnRequest {
   journal: WorkloadJournalSpec;
   /** `command` only: journaled output beyond this ends the workload. */
   outputCapBytes?: number;
+  /** Protocol 1.4: lifetime enforced by the workload host, independent of a core. */
+  maxRuntimeMs?: number;
 }
 
 /** Signals a workload's process; `terminate` ends its whole tree instead. */
@@ -615,6 +620,7 @@ export type WorkloadRequest =
    */
   | { op: 'terminate'; workloadId: string }
   | { op: 'list' }
+  | { op: 'capabilities' }
   /** The workload's state and last journal sequence. */
   | { op: 'attach'; workloadId: string }
   /** Journal records after `fromSeq`, at most `maxBytes` of output. */
@@ -651,7 +657,12 @@ export interface WorkloadReadResult {
   lastSeq: number;
   /** `fromSeq` is older than retained output; replace any replay with `records`. */
   reset: boolean;
-  records: { seq: number; data: string }[];
+  /** A record with `resize` is a size change (#4625); its `data` is empty. */
+  records: {
+    seq: number;
+    data: string;
+    resize?: { cols: number; rows: number };
+  }[];
 }
 
 export type WorkloadErrorCode =

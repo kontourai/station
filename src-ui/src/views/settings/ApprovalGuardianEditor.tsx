@@ -34,9 +34,9 @@ export function ApprovalGuardianEditor({
           <>
             {definition.label}
             <InfoTip label={definition.label}>
-              Review asks you to decide when the guardian objects. Enforce
-              blocks those calls. Either mode adds a separate model request
-              whenever a tool call needs approval.
+              Judges each call against what you typed, never tool output. Review
+              asks you when it objects; Enforce blocks the call and asks you
+              after three blocks in a row.
             </InfoTip>
           </>
         }
@@ -87,7 +87,7 @@ export function ApprovalGuardianEditor({
           />
           <PageRow
             label="Guardian instructions"
-            description="House rules added on top of the guardian's built-in judgment of safety, scope, and intent."
+            description="House rules added to the guardian's built-in rules: what is never allowed, what needs your exact request, and ordinary work."
           >
             {/* The field holds a prompt (archive#1831): sized like one, with a
                 placeholder that ADDS a concrete house rule rather than

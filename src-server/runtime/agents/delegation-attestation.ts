@@ -1,6 +1,12 @@
 /**
  * Station's own engine vouches for the delegation context it derived (#2601).
  *
+ * #2377 slice D: Station's own engine now calls station-control in-process
+ * with a verified per-session caller, and the route derives the context from
+ * that caller (`request-delegation.ts`), so the runtime no longer mints an
+ * attestation. The verifier remains on the route until the forwarding
+ * plumbing is retired; nothing in this Station produces a value it accepts.
+ *
  * `mcp-manager.ts` derives a child's context from the running conversation and
  * hands it to the built-in station-control child as the `_delegation` tool
  * argument. That child is pooled per tenant, so its REST call carries no
@@ -45,6 +51,9 @@ function mac(context: AgentDelegationContext): string {
         context.allowedTools ?? null,
         context.blockedTools ?? null,
         context.denyApprovals ?? null,
+        ...(context.toolAllowlistConstraints === undefined
+          ? []
+          : [context.toolAllowlistConstraints]),
       ]),
     )
     .digest('base64url');

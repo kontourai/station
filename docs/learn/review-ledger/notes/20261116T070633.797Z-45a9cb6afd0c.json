@@ -1,0 +1,7 @@
+{
+  "revision": "a99d98613c4e1cf6760fd15243ccf1bf426c4b94",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-checked the authority section against pre-tool-policy.ts after the guardian change: grants, patterns and full access never answer an authority tool; an operator-enabled guardian may on Station's engine (archive#2016); external engines always ask a person; unattended calls are refused with a no-approval-channel reason.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/tool-request-preview.ts","src-server/runtime/agents/__tests__/pre-tool-policy.test.ts","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

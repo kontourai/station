@@ -235,8 +235,27 @@ export interface SchedulerJob {
   agent?: string;
   /** Where each run lands; absent is a legacy Station-engine file run. */
   target?: SchedulerAutomationTarget;
-  /** Server-recorded creator a targeted run acts as. Read-only. */
+  /**
+   * #5070: the Project (`ProjectConfig.id`) the job belongs to. Each run is
+   * a new Task in that Project, started for `agent` with the job's prompt as
+   * its first message, so the Session gets the Task brief like any Task. No
+   * run is claimed while the Project is paused or archived. Exclusive with
+   * `target` and `monitor`. Set at create; it cannot move to another Project.
+   */
+  projectId?: string;
+  /**
+   * Server-recorded creator every run acts as (#2377 slice D: untargeted
+   * jobs too; #5126: a Project job's Task too). Who may change or run a job
+   * is decided by it for every job. Read-only.
+   */
   createdBy?: Readonly<{ userId: string }>;
+  /**
+   * #2377 slice D: present when the job has no recorded owner (a job created
+   * before owners were recorded, on a shared or hosted Station). Its runs
+   * have no Station tools until a person re-creates it; a Project job's
+   * runs start no Task at all (#5126). Read-only.
+   */
+  ownerNeeded?: string;
   /** Failed runs since the last success, newest first. Read-only. */
   consecutiveFailures?: number;
   /** When the last successful run completed. Read-only. */
@@ -294,6 +313,8 @@ export interface AddJobOpts {
   prompt: string;
   agent?: string;
   target?: SchedulerAutomationTarget;
+  /** See {@link SchedulerJob.projectId}. */
+  projectId?: string;
   /** Server-only: the route records the admitted creator. */
   createdBy?: SchedulerAutomationCreator;
   notifyStart?: boolean;
@@ -305,8 +326,8 @@ export interface AddJobOpts {
 }
 
 /**
- * Who a targeted automation acts as when it runs: the admitted creator, as
- * the create route resolved them. Replayed exactly, never strengthened.
+ * Who an automation acts as when it runs: the admitted creator, as the
+ * create route resolved them. Replayed exactly, never strengthened.
  */
 export type SchedulerAutomationCreator = Readonly<{
   userId: string;

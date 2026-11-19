@@ -1,0 +1,7 @@
+{
+  "revision": "c2d157194d0a5e07c43bf6ee4e19427a1b742d3f",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Review-fix round: handoff picker and attached-session continue descriptions still match (Use for next message, Undo, one Continue in Station action); useChatInput's send preparation was extracted, not changed in behavior.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

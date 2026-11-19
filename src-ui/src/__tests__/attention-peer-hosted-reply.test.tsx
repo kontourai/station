@@ -35,6 +35,13 @@ const snoozeAttention = vi.fn();
 const unsnoozeAttention = vi.fn();
 const snoozeNotification = vi.fn();
 vi.mock('@kontourai/station-sdk', () => ({
+  // The page's For you section (#4799): this reader has no mentions.
+  usePersonNotificationsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
+  useMarkPersonNotificationReadMutation: () => ({ mutateAsync: vi.fn() }),
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: [], error: null, isLoading: false }),
   useAttentionQuery: () => ({ data: attention, isLoading: false }),
@@ -199,7 +206,7 @@ describe('Notifications inbox: a paired-Station item offers no local reply', () 
   test('the peer item has no reply, says where to answer, and opens Activity', () => {
     renderPage();
     const peer = row('attention-item', 'Peer task needs input');
-    expect(within(peer).queryByLabelText('Answer this session')).toBeNull();
+    expect(within(peer).queryByLabelText('Answer this request')).toBeNull();
     expect(within(peer).queryByRole('textbox')).toBeNull();
     expect(
       within(peer).queryByRole('button', { name: 'Send answer' }),

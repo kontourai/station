@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { expect } from '@playwright/test';
 import {
   deleteAgent,
@@ -92,11 +94,34 @@ test.describe('Agent editor', () => {
     authenticatedRequest,
   }) => {
     await seedCliAgent(authenticatedRequest);
+    const home = process.env.STATION_E2E_HOME;
+    if (process.env.STATION_E2E_RUNNER !== '1' || !home || !isAbsolute(home)) {
+      throw new Error(
+        'Legacy Agent fixture requires the managed runner-owned Station home.',
+      );
+    }
+    const agentPath = join(home, 'agents', SLUG, 'agent.json');
+    const old = JSON.parse(readFileSync(agentPath, 'utf8'));
+    const ui = { component: 'writer-pane', workflowShortcuts: ['review'] };
+    const legacy = JSON.stringify(
+      {
+        ...old,
+        streaming: { enableThinking: false },
+        ui: {
+          ...ui,
+          quickPrompts: [{ id: 'hello', label: 'Hello', prompt: 'Hello.' }],
+        },
+      },
+      null,
+      2,
+    );
+    writeFileSync(agentPath, legacy, 'utf8');
     const edited = `Edited by the editor round-trip at ${Date.now()}.`;
 
     await page.goto(`/agents/${SLUG}`);
-    const save = page.getByRole('button', { name: 'Save Changes' });
+    const save = page.getByRole('button', { name: 'Save changes' });
     await expect(save).toBeVisible({ timeout: 20_000 });
+    expect(readFileSync(agentPath, 'utf8')).toBe(legacy);
 
     await page.locator('#ae-description').fill(edited);
     const put = page.waitForResponse(
@@ -118,6 +143,12 @@ test.describe('Agent editor', () => {
     });
     expect((await readAgent(authenticatedRequest, SLUG)).description).toBe(
       edited,
+    );
+    const persisted = JSON.parse(readFileSync(agentPath, 'utf8'));
+    expect(persisted).not.toHaveProperty('streaming');
+    expect(persisted.ui).toEqual(ui);
+    expect(persisted.execution.agentConnectionId).toBe(
+      old.execution.agentConnectionId,
     );
   });
 });
@@ -157,16 +188,16 @@ test.describe('Agent editor at 390x844', () => {
     // archive#4521 item 4: this footer is now the page's ONLY save
     // affordance on a touch/narrow surface (the header row's own copy no
     // longer mounts there), so it carries the header's own wording —
-    // "Save Changes" here, not editing — rather than a generic "Save". The
+    // "Save changes" here, not editing — rather than a generic "Save". The
     // dirty-dot indicator (`agent-inline-editor__dirty-dot`, an
     // `aria-label="Unsaved changes"` span) sits INSIDE the button before the
-    // text, so its accessible name is "Unsaved changes Save Changes" while
+    // text, so its accessible name is "Unsaved changes Save changes" while
     // dirty — an anchored regex keeps matching power against both the dot
     // being dropped later and a duplicate row appearing, which `exact: true`
     // against the bare string cannot (it matches zero elements whenever the
     // dot is present).
     const footerSave = footer.getByRole('button', {
-      name: /Save Changes$/,
+      name: /Save changes$/,
     });
     await expect(footerSave).toBeVisible();
     // The header row's own copy of this control must not ALSO be mounted.

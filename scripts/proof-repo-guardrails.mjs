@@ -1606,11 +1606,29 @@ if (!recentAgentsHook.includes('telemetry.track')) {
 const toolApprovalHook = readRequiredSource(
   '../src-ui/src/hooks/useToolApproval.ts',
 );
-if (toolApprovalHook.includes('fetch(')) {
+if (hasRawFetchCall(toolApprovalHook)) {
   errors.push('useToolApproval must not issue raw fetch() calls.');
 }
-if (!toolApprovalHook.includes('submitToolApproval')) {
-  errors.push('useToolApproval must use the shared tool approval helper.');
+if (
+  !toolApprovalHook.includes(
+    "from '../components/conversation/useApprovalAnswering'",
+  ) ||
+  !/\buseApprovalAnswering\s*\(/.test(toolApprovalHook)
+) {
+  errors.push('useToolApproval must delegate to the shared approval owner.');
+}
+const approvalAnswering = readRequiredSource(
+  '../src-ui/src/components/conversation/useApprovalAnswering.ts',
+);
+if (hasRawFetchCall(approvalAnswering)) {
+  errors.push('useApprovalAnswering must not issue raw fetch() calls.');
+}
+for (const requiredHelper of ['submitToolApproval', 'respondToRequest']) {
+  if (!new RegExp(`\\b${requiredHelper}\\s*\\(`).test(approvalAnswering)) {
+    errors.push(
+      `useApprovalAnswering must use shared SDK helper ${requiredHelper}.`,
+    );
+  }
 }
 
 const sessionPickerModal = readRequiredSource(
@@ -1644,7 +1662,7 @@ if (connectionBannerSource.includes('/api/system/status')) {
 const projectSettingsView = readRequiredSource(
   '../src-ui/src/views/ProjectSettingsView.tsx',
 );
-if (projectSettingsView.includes('fetch(')) {
+if (hasRawFetchCall(projectSettingsView)) {
   errors.push('ProjectSettingsView must not issue raw fetch() calls.');
 }
 if (

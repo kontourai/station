@@ -1,0 +1,227 @@
+{
+  "revision": "ac09e2bbc893cf85397e90a265b295d924cb2b7f",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed conjunctive ancestor allowlists, attestation custody and refusal at delegated route, forwarding, start, reattach, recorded turn, credential recovery and primary chat boundaries. The pre-tool check is covered by a caller fixture. All engines and remote targets remain unqualified for execution with inherited groups. Historical provider experiments were not rerun.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/agents/__tests__/pre-tool-policy.test.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed canonical delegated foreground and task routes. The bounded claim is parsed and attested, then refused before keyed dispatch and claim publication. Other request routes, SSE event projection, workspace and posture selection, and accepted attempt behavior retain their existing contracts.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed start preparation, actual start, reattach, credential recovery and recorded turn admission. These add a refusal only when inherited allowlist metadata requires it. Session summaries, approval shapes and capture behavior, notifications, environment and cwd resolution, and usage projection retain their current contracts.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed caller-owned derivation and the staged evaluator. Ancestor allowlists remain separate groups and every group must match, including deny-all for an empty group. Current child fan-out denial and Agent configuration defaults still apply.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed caller-owned derivation and the staged evaluator. Ancestor allowlists remain separate groups and every group must match, including deny-all for an empty group. Current child fan-out denial and Agent configuration defaults still apply.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed caller-owned derivation and the staged evaluator. Ancestor allowlists remain separate groups and every group must match, including deny-all for an empty group. Current child fan-out denial and Agent configuration defaults still apply.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed caller-owned derivation and the staged evaluator. Ancestor allowlists remain separate groups and every group must match, including deny-all for an empty group. Current child fan-out denial and Agent configuration defaults still apply.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed caller-owned derivation and the staged evaluator. Ancestor allowlists remain separate groups and every group must match, including deny-all for an empty group. Current child fan-out denial and Agent configuration defaults still apply.","inputs":["src-server/runtime/agents/delegation.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the foreground dispatch owner. Requests carrying inherited groups are refused before target resolution and reuse. Existing environment, Agent, workspace, handoff, and provider routing for other requests remains as documented.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the foreground dispatch owner. Requests carrying inherited groups are refused before target resolution and reuse. Existing environment, Agent, workspace, handoff, and provider routing for other requests remains as documented.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the foreground dispatch owner. Requests carrying inherited groups are refused before target resolution and reuse. Existing environment, Agent, workspace, handoff, and provider routing for other requests remains as documented.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed the foreground dispatch owner. Requests carrying inherited groups are refused before target resolution and reuse. Existing environment, Agent, workspace, handoff, and provider routing for other requests remains as documented.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the foreground dispatch owner. Requests carrying inherited groups are refused before target resolution and reuse. Existing environment, Agent, workspace, handoff, and provider routing for other requests remains as documented.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed primary chat and stored conversation metadata. Requested or recorded inherited groups cause refusal before the Agent stream. Regular chat frames, Agent selection, configuration inputs, and permitted continuation retain their current behavior.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed primary chat and stored conversation metadata. Requested or recorded inherited groups cause refusal before the Agent stream. Regular chat frames, Agent selection, configuration inputs, and permitted continuation retain their current behavior.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed primary chat and stored conversation metadata. Requested or recorded inherited groups cause refusal before the Agent stream. Regular chat frames, Agent selection, configuration inputs, and permitted continuation retain their current behavior.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed primary chat and stored conversation metadata. Requested or recorded inherited groups cause refusal before the Agent stream. Regular chat frames, Agent selection, configuration inputs, and permitted continuation retain their current behavior.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed delegate_task and send_message before effects. Both refuse inherited allowlist groups before remote forwarding or local execution. Peer and SSH identity, receiver claims, task room admission, isolation, and ordinary dispatch still follow their existing paths.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the foreground caller control and its policy-free comparison. The restricted requests reach neither binding reads nor provider start and send ports. This fixture gives no live engine or workspace evidence.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed the foreground caller control and its policy-free comparison. The restricted requests reach neither binding reads nor provider start and send ports. This fixture gives no live engine or workspace evidence.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the foreground caller control and its policy-free comparison. The restricted requests reach neither binding reads nor provider start and send ports. This fixture gives no live engine or workspace evidence.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the real staged evaluator test for a conjunctive policy before the grant path. Provider callback coverage and historical live probe scope are unchanged.","inputs":["src-server/runtime/agents/__tests__/pre-tool-policy.test.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/commands.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the optional inherited allowlist field on runtime delegation context. It carries conjunctive groups, including empty deny-all groups. Authored Agent configuration, commands, engine identity, and package boundaries retain their current contracts.","inputs":["packages/contracts/src/agent.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed lineage readback and attestation refusal. Malformed recorded groups fail derivation and an inherited claim without matching attestation is refused. Verified caller precedence and existing child fan-out denial still apply.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed lineage readback and attestation refusal. Malformed recorded groups fail derivation and an inherited claim without matching attestation is refused. Verified caller precedence and existing child fan-out denial still apply.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed lineage readback and attestation refusal. Malformed recorded groups fail derivation and an inherited claim without matching attestation is refused. Verified caller precedence and existing child fan-out denial still apply.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed lineage readback and attestation refusal. Malformed recorded groups fail derivation and an inherited claim without matching attestation is refused. Verified caller precedence and existing child fan-out denial still apply.","inputs":["src-server/runtime/agents/request-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the delegated tool claim schema. It preserves bounded inherited groups for authority resolution. Other station-control tool surfaces, Knowledge operations, and authored Agent configuration retain their current contracts.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the delegated tool claim schema. It preserves bounded inherited groups for authority resolution. Other station-control tool surfaces, Knowledge operations, and authored Agent configuration retain their current contracts.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the delegated tool claim schema. It preserves bounded inherited groups for authority resolution. Other station-control tool surfaces, Knowledge operations, and authored Agent configuration retain their current contracts.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the delegated tool claim schema. It preserves bounded inherited groups for authority resolution. Other station-control tool surfaces, Knowledge operations, and authored Agent configuration retain their current contracts.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the delegated tool claim schema. It preserves bounded inherited groups for authority resolution. Other station-control tool surfaces, Knowledge operations, and authored Agent configuration retain their current contracts.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the delegated tool claim schema. It preserves bounded inherited groups for authority resolution. Other station-control tool surfaces, Knowledge operations, and authored Agent configuration retain their current contracts.","inputs":["src-server/tools/station-control-operations-tools.ts"]}
+  ]
+}

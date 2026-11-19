@@ -9,6 +9,8 @@ import { generateStationDocs } from './scripts/generate-station-docs.mjs';
 import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
+import { assertAsciiServerBundles } from './scripts/lib/server-bundle-ascii.mjs';
+import { assertNoBootDeniedStaticImports } from './scripts/lib/server-static-imports.mjs';
 
 // jsonc-parser exposes its CommonJS UMD entry as `main` and its fully
 // statically-importable implementation as `module`. esbuild's Node defaults
@@ -73,6 +75,8 @@ cpSync(
   `${serverDir}/third-party/media-tools/NOTICE`,
 );
 
+// Bundles this build writes are checked; older files in serverDir are not.
+const buildStartedMs = Date.now();
 await Promise.all([
   esbuild.build({
     ...shared,
@@ -169,6 +173,13 @@ await Promise.all([
     ],
     outfile: `${serverDir}/project-task-room-history-worker.js`,
   }),
+  esbuild.build({
+    ...shared,
+    entryPoints: [
+      './src-server/runtime/agents/durable-agent-checkpoint-worker.ts',
+    ],
+    outfile: `${serverDir}/durable-agent-checkpoint-worker.js`,
+  }),
   // The fixed first-party Task reader uses the same relative packaged path.
   esbuild.build({
     ...shared,
@@ -208,3 +219,6 @@ await Promise.all([
     outfile: `${serverDir}/project-task-room-working-state-worker.js`,
   }),
 ]);
+
+assertAsciiServerBundles(serverDir, { sinceMs: buildStartedMs });
+await assertNoBootDeniedStaticImports(`${serverDir}/command-station.js`);

@@ -32,8 +32,8 @@
 // `sdk-error-message-ratchet.mjs`.
 
 import { readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 export const SCAN_PATHSPECS = [
   'src-ui/src',
@@ -91,16 +91,7 @@ export const SCOPE_SENTINELS = [
 export const BARE_RANDOM_UUID = /(?:globalThis\.)?crypto\.randomUUID\s*\(/g;
 
 export function listScannedFiles() {
-  const output = execFileSyncBounded(
-    'git',
-    ['ls-files', '--', ...SCAN_PATHSPECS],
-    {
-      encoding: 'utf8',
-      windowsHide: true,
-    },
-  );
-  return output
-    .split('\n')
+  return gitLsFiles(['--', ...SCAN_PATHSPECS])
     .filter((line) => /\.(ts|tsx|mjs|js)$/.test(line))
     .filter((line) => !line.includes('__tests__'))
     .filter((line) => !EXEMPT_FILES.includes(line));

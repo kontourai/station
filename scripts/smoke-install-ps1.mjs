@@ -35,9 +35,9 @@
 //      verification. None stages anything.
 //   6. the full install (#2675 slice W2), in a Station root of its own:
 //      Windows PowerShell 5.1 installs archive 1 (no Node.js anywhere) on
-//      chosen ports, with `current` a junction, the owned station-beta.cmd
+//      chosen ports, with `current` a junction, the owned station.cmd
 //      launcher, schema 4 state and an install root restricted to the user,
-//      and Station answers as archive 1; `station-beta.cmd upgrade`, with no
+//      and Station answers as archive 1; `station.cmd upgrade`, with no
 //      manifest URL in its environment, runs the version's install.ps1 with
 //      the installed Node.js and Station answers as archive 2 on the same
 //      ports; archive 1 again is refused as a downgrade; the installed
@@ -91,9 +91,8 @@ const installScript = join(repoRoot, 'install.ps1');
 const KEY_IDS = {
   nightly: 'station-portable-nightly-2026-09',
   stable: 'station-portable-release-2026-09',
-  preview: 'station-portable-release-2026-09',
 };
-const RUNTIME = { stable: 'stable', preview: 'beta', nightly: 'nightly' };
+const RUNTIME = { stable: 'stable', nightly: 'nightly' };
 // Past MAX_PATH (260), with room to spare.
 const LONG_PATH_TARGET = 300;
 const RUN_TIMEOUT_MS = 30 * 60_000;
@@ -120,8 +119,14 @@ function describeArchive(path) {
     path,
     ring,
     runtime: RUNTIME[ring],
-    version: descriptor.release.ref.replace(/^v/, ''),
-    tag: descriptor.release.ref,
+    version:
+      descriptor.release.schemaVersion === 3
+        ? descriptor.release.version
+        : descriptor.release.ref.replace(/^v/, ''),
+    tag:
+      descriptor.release.schemaVersion === 3
+        ? `v${descriptor.release.version}`
+        : descriptor.release.ref,
     sha: descriptor.release.sha,
     sha256: descriptor.sha256,
     size: descriptor.size,
@@ -134,6 +139,8 @@ const first = describeArchive(resolve(values.archive1));
 const second = describeArchive(resolve(values.archive2));
 check(first.ring === second.ring, 'both archives must be of one ring');
 check(first.version !== second.version, 'the archives must be two versions');
+const launcherName =
+  first.runtime === 'stable' ? 'station.cmd' : `station-${first.runtime}.cmd`;
 
 const work = resolve(values.work);
 rmSync(work, { recursive: true, force: true });
@@ -508,7 +515,7 @@ async function serviceUpdates() {
   const runtime = join(installRoot, 'runtime');
   const home = join(stationRoot, 'instances', first.runtime);
   const binDir = join(stationRoot, 'bin');
-  const launcher = join(binDir, `station-${first.runtime}.cmd`);
+  const launcher = join(binDir, launcherName);
   const instance = 'w3smoke';
   const taskName = `\\KontourStation-${instance}`;
   const wrapper = join(home, 'service', `station-${instance}.cmd`);
@@ -853,12 +860,7 @@ async function nonAsciiProfile() {
     }),
   );
   check(installed.status === 0, 'install under a non-ASCII profile failed');
-  const launcher = join(
-    unicodeProfile,
-    '.local',
-    'bin',
-    `station-${first.runtime}.cmd`,
-  );
+  const launcher = join(unicodeProfile, '.local', 'bin', launcherName);
   const text = readFileSync(launcher, 'utf8');
   check(
     /^[\x20-\x7e\r\n]*$/.test(text) && text.includes('%USERPROFILE%'),
@@ -945,12 +947,7 @@ async function fullInstall() {
   const stationRoot = join(profile, 'w2');
   const installRoot = join(stationRoot, 'installs', first.runtime);
   const home = join(stationRoot, 'instances', first.runtime);
-  const launcher = join(
-    profile,
-    '.local',
-    'bin',
-    `station-${first.runtime}.cmd`,
-  );
+  const launcher = join(profile, '.local', 'bin', launcherName);
   // Station derives its terminal, voice and consent ports from the server
   // port (+1..+3), so the two are chosen far apart, off every channel's
   // defaults, and checked free.

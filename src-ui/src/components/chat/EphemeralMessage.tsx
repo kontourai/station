@@ -5,6 +5,7 @@ import { Skeleton } from '../state';
 import { BackgroundTaskNoticeCard } from './BackgroundTaskNoticeCard';
 import { FullAccessRefusalCard } from './FullAccessRefusalCard';
 import { LazyMarkdown } from './LazyMarkdown';
+import { SubagentTranscriptCard } from './SubagentTranscriptCard';
 import {
   UnconfirmedDiscardConfirm,
   useUnconfirmedDiscardDisclosure,
@@ -98,6 +99,16 @@ export function EphemeralMessage({
   onDismiss,
   onAction,
 }: EphemeralMessageProps) {
+  if (msg.backgroundTaskNotice?.child)
+    return (
+      <SubagentTranscriptCard
+        child={{
+          item: msg.backgroundTaskNotice.child,
+          stationName: msg.backgroundTaskNotice.stationName,
+          toolAnchor: false,
+        }}
+      />
+    );
   const messageId = msg.id || `ephemeral-${idx}`;
   const textContent =
     msg.contentParts

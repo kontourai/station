@@ -113,25 +113,13 @@ export function shouldRouteScopedChatProject(input: {
   );
 }
 
-export type DockChrome = {
+type DockChrome = {
   isMobile: boolean;
   dockMode: string;
   isFullscreenPlacement: boolean;
 };
 
-/**
- * Whether the dock's inbox panel can mount in this chrome AT ALL — independent
- * of whether the user has it open (`inboxOpen`).
- *
- * kontourai/station#3314 review SF-1: the sidebar's "N more" promised the
- * inbox panel from every chrome, but the panel mounts only on desktop, and
- * there only in bottom mode or a fullscreen placement. On mobile the drawer
- * closed and the dock snapped to half, showing the CURRENT chat and no list;
- * in an edge placement nothing appeared at all. This predicate is shared by
- * the panel's own mount condition and by the `openCollection` routing that
- * has to reach it, so a caller cannot route to a surface this chrome does not
- * render.
- */
+/** Side docks keep the transcript's width. Mobile uses its own Inbox. */
 export function inboxPanelMounts({
   isMobile,
   dockMode,
@@ -206,20 +194,6 @@ interface ProjectNameLookup {
   name: string;
 }
 
-/**
- * Plain slug -> display-name lookup, falling back to the slug itself when
- * the project isn't in the list (e.g. a stale reference mid-fetch). `null`
- * in, `null` out — every caller below already has its own "nothing bound"
- * branch and this must never invent a name for it.
- */
-export function projectDisplayName(
-  slug: string | null | undefined,
-  projects: ProjectNameLookup[],
-): string | null {
-  if (!slug) return null;
-  return projects.find((project) => project.slug === slug)?.name ?? slug;
-}
-
 interface DockProjectNameInput {
   /** The project CHAT-SCOPE filter (or a full-screen placement's own immutable project) — wins unconditionally. */
   scopedProjectSlug: string | null | undefined;
@@ -228,36 +202,6 @@ interface DockProjectNameInput {
   sessionProjectSlug: string | null | undefined;
   sessionProjectName: string | null | undefined;
   projects: ProjectNameLookup[];
-}
-
-/**
- * The dock badge's displayed project name (station#4525) — the single
- * derivation both the desktop badge (`ChatDockProjectContext`'s
- * `projectName`) and the mobile header's named trigger use, so the two can
- * never disagree (kontourai/station#793 already required them to agree; a
- * hand-duplicated ternary at each call site is exactly how they'd drift).
- *
- * A project chat-scope filter always wins with a plain lookup. Otherwise,
- * when the active session actually belongs to the dock's bound project,
- * this prefers the session's own richer name resolution
- * (`sessionProjectName` — see `useChatDockViewModel`, which folds in
- * project-record/session/slug fallbacks a plain projects-list lookup does
- * not run); when the session belongs to a DIFFERENT project (or there is no
- * active session at all), it falls back to a plain lookup by the BOUND
- * slug — never the session's own name, which would be the exact
- * badge-shows-a-fact-about-the-wrong-project defect this issue is about.
- */
-export function resolveDockBadgeProjectName(
-  input: DockProjectNameInput,
-): string | null {
-  if (input.scopedProjectSlug) {
-    return projectDisplayName(input.scopedProjectSlug, input.projects);
-  }
-  if (!input.dockProjectSlug) return null;
-  if (input.sessionProjectSlug === input.dockProjectSlug) {
-    return input.sessionProjectName || input.dockProjectSlug;
-  }
-  return projectDisplayName(input.dockProjectSlug, input.projects);
 }
 
 /**
@@ -310,31 +254,4 @@ export function resolveNewChatModalDefaultProjectSlug(input: {
   if (input.forkProjectSlug) return input.forkProjectSlug;
   if (input.hasImmutableProjectScope) return input.immutableProjectSlug;
   return input.dockChromeProjectSlug ?? undefined;
-}
-
-type OpenChatsCollectionRoute =
-  | { surface: 'mobile-inbox' }
-  | {
-      surface: 'inbox-panel';
-      /** The panel does not mount here yet; move the dock first. */
-      switchToBottomMode: boolean;
-      snapHalf: boolean;
-    };
-
-/**
- * Where "show me every open chat" has to go in this chrome, and what has to
- * change first for that destination to exist (#3314 review SF-1).
- *
- * Pure so the guarantee is testable: for EVERY chrome, applying this route
- * lands on a surface that actually mounts. The dock owns the effects.
- */
-export function routeToOpenChatsCollection(
-  chrome: DockChrome,
-): OpenChatsCollectionRoute {
-  if (chrome.isMobile) return { surface: 'mobile-inbox' };
-  return {
-    surface: 'inbox-panel',
-    switchToBottomMode: !inboxPanelMounts(chrome),
-    snapHalf: !chrome.isFullscreenPlacement,
-  };
 }

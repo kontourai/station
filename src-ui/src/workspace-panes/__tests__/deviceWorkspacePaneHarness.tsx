@@ -15,6 +15,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { vi } from 'vitest';
+import { inputSourceFixture } from '../../live-surface/__tests__/fixtures/inputSourceFixture';
 
 /**
  * The Device pane's test harness (#1969, #1970).
@@ -189,6 +190,7 @@ export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
     streams: [],
     inputs: [],
   };
+  const inputSources = new Map<string, ReturnType<typeof inputSourceFixture>>();
   const sessions: MobileDeviceSession[] = plan.sessions ?? [];
   const remove = (keep: (session: MobileDeviceSession) => boolean) =>
     sessions.splice(0, sessions.length, ...sessions.filter(keep));
@@ -369,9 +371,21 @@ export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
         });
         return new Response(stream, { status: 200 });
       }
-      if (path.includes('/api/live-surfaces/') && path.endsWith('/input')) {
-        log.inputs.push(body);
+      if (path.includes('/api/live-surfaces/') && path.endsWith('/lease')) {
         const surfaceId = decodeURIComponent(path.split('/').at(-2)!);
+        let sources = inputSources.get(surfaceId);
+        if (!sources) {
+          sources = inputSourceFixture();
+          inputSources.set(surfaceId, sources);
+        }
+        const response = sources.leaseReply(body);
+        if (response) return response;
+      }
+      if (path.includes('/api/live-surfaces/') && path.endsWith('/input')) {
+        const surfaceId = decodeURIComponent(path.split('/').at(-2)!);
+        if (!inputSources.get(surfaceId)?.accepts(body.sourceId))
+          return json({ success: false }, 409);
+        log.inputs.push(body);
         return json({
           success: true,
           data: {

@@ -1,0 +1,33 @@
+{
+  "revision": "dbb0cfe74a16ea5f6bde4965867a0bda1480b701",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/delegation-attempt-claims.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/dependency-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/home-transfer-controller.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/private-runner-partition.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/product-law-authoring.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/release-rings.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/repository-layout.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/work-board-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Delta against main in scripts/actionlint-gate.mjs is only the landing-automation reviewed-topology digest pin (job-level arm concurrency); no rule this page describes changed. No prose change.","inputs":["docs/guides/workspace-packages.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Checked the landing paragraph against landing-automation.yml (job-level arm concurrency keyed by head branch) and the replay test; the only gate delta is that workflow's digest pin. Prose matches, including the hedge on GitHub's undocumented skipped-job behaviour.","inputs":["docs/guides/releasing.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Added the hygiene-issue hardening: upsertHygieneIssue now writes only to a github-actions[bot]-authored tracker (tracking-issue.mjs author filter), requires the report's revision to match the checkout (freshness, not provenance), posts through postableReport (plain and entity-encoded mentions broken, posted text refused over 65,536). package-manager-cache: false in the workflow is a future-switch guard only. Checked against hygiene-report.mjs, tracking-issue.mjs and hygiene-report.test.ts.","inputs":["docs/guides/code-hygiene.md",".github/workflows/docs-freshness-sweep.yml","scripts/hygiene-report.mjs","scripts/lib/tracking-issue.mjs"]},
+
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Checked the freshness sweep paragraph: still one tracking issue on main, never a required check; its writer now also ignores same-titled issues not opened by the workflow bot and neutralizes entity-encoded mentions. No prose change.","inputs":["docs/guides/documentation-review-ledger.md",".github/workflows/docs-freshness-sweep.yml","scripts/docs-freshness-sweep.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the CI health and supersession paragraphs against ci-health.mjs (5xx read retries; stuck work, with re-runs judged from run_started_at) and pr-ci-supersession.mjs (409 warnings, now counted in the merge-candidate summary); test-impact-manifest delta is the removed advisory-review entry; gate delta is the landing digest. Prose stays accurate.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-health.test.ts","scripts/__tests__/pr-ci-supersession.test.ts","scripts/ci-health.mjs","scripts/pr-ci-supersession.mjs","scripts/test-impact-manifest.mjs","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/reference/backlog-disposition-policy.md","note":"Updated the tracking-issue sentence: the job writes only to an issue the workflow bot opened, the revision stamp shows the report is current rather than who wrote it, posted text is refused over GitHub's limit, and entity-encoded mentions are broken too. Checked against backlog-priority-policy.mjs, tracking-issue.mjs and the backlog tests.","inputs":["docs/reference/backlog-disposition-policy.md",".github/workflows/backlog-priority-policy.yml","scripts/__tests__/backlog-priority-policy.test.ts","scripts/backlog-priority-policy.mjs"]}
+  ]
+}

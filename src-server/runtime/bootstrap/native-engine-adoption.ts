@@ -175,14 +175,18 @@ export async function adoptDetectedNativeEngines(
   // This is also where an older home is healed: the same call drops a
   // previously seeded `agentConnectionId: 'station'` on load.
   try {
-    await loadOrCreateAgentRegistry(deps.configLoader);
+    await loadOrCreateAgentRegistry(deps.configLoader, {}, deps.signal);
   } catch (error) {
     for (const candidate of NATIVE_ENGINE_CANDIDATES) {
-      outcomes[candidate.id] = 'error';
-      deps.logger.warn('Native engine adoption failed', {
-        engine: candidate.id,
-        error: errorMessage(error),
-      });
+      if (deps.signal?.aborted && error === deps.signal.reason) {
+        outcomes[candidate.id] = 'interrupted';
+      } else {
+        outcomes[candidate.id] = 'error';
+        deps.logger.warn('Native engine adoption failed', {
+          engine: candidate.id,
+          error: errorMessage(error),
+        });
+      }
     }
     return { outcomes };
   }
@@ -194,17 +198,21 @@ export async function adoptDetectedNativeEngines(
   // (`withoutReservedStationBinding`), so dispatch works this boot either
   // way; what the operator needs is to know the file did not change.
   try {
-    const station = await materializeStationAgent(deps.configLoader);
+    const station = await materializeStationAgent(
+      deps.configLoader,
+      deps.signal,
+    );
     if (station.healed) {
       deps.logger.info(
         "Removed the unresolvable 'station' engine binding from the Station Agent",
       );
     }
   } catch (error) {
-    deps.logger.warn(
-      "The Station Agent's stale 'station' engine binding could not be rewritten; it is ignored at read time, but the on-disk record stays stale until this home is writable",
-      { error: errorMessage(error) },
-    );
+    if (!(deps.signal?.aborted && error === deps.signal.reason))
+      deps.logger.warn(
+        "The Station Agent's stale 'station' engine binding could not be rewritten; it is ignored at read time, but the on-disk record stays stale until this home is writable",
+        { error: errorMessage(error) },
+      );
   }
   // #875: a screenshot runtime must not persist whatever native CLIs happen
   // to exist on its capture host. Keep the ordinary Station Agent setup above
@@ -297,6 +305,7 @@ export async function adoptDetectedNativeEngines(
         const outcome = await adoptNativeEngineConnection(
           deps.configLoader,
           candidate.id,
+          deps.signal,
         );
         outcomes[candidate.id] = outcome;
         unresolved.delete(candidate.id);
@@ -310,6 +319,7 @@ export async function adoptDetectedNativeEngines(
             deps.configLoader,
             candidate.id,
             engineDisplayLabel(candidate.id) ?? candidate.id,
+            deps.signal,
           );
         }
         if (outcome === 'connection-collision') {
@@ -325,6 +335,11 @@ export async function adoptDetectedNativeEngines(
           );
         }
       } catch (error) {
+        if (deps.signal?.aborted && error === deps.signal.reason) {
+          outcomes[candidate.id] ??= 'interrupted';
+          unresolved.delete(candidate.id);
+          break;
+        }
         // Registry contention or an unreadable home: settle as 'error' for
         // this run rather than looping — the next server start retries.
         outcomes[candidate.id] = 'error';

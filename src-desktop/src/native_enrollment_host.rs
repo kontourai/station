@@ -643,7 +643,6 @@ fn channel(value: &str) -> Result<NativeProofKeyChannel> {
     match value {
         "dev" => Ok(NativeProofKeyChannel::Dev),
         "stable" => Ok(NativeProofKeyChannel::Stable),
-        "beta" => Ok(NativeProofKeyChannel::Beta),
         "nightly" => Ok(NativeProofKeyChannel::Nightly),
         _ => Err(REFUSED.into()),
     }

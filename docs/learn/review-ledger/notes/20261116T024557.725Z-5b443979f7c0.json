@@ -1,0 +1,7 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Read now also reports the newest time_updated of the session row, the messages read and a still-unsettled message's parts; settlement, mapping and bounds described by citing pages are unchanged.","inputs":["src-server/providers/sessions/opencode-session-source.ts"]}
+  ]
+}

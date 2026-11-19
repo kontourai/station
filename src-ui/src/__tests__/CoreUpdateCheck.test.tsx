@@ -116,14 +116,15 @@ const { CoreUpdateCheck } = await import('../views/settings/CoreUpdateCheck');
 
 /** The header's status badge, empty when the card claims no status. */
 function badgeText(): string {
-  return document.querySelector('.server-update__badge')?.textContent ?? '';
+  return document.querySelector('header [role="status"]')?.textContent ?? '';
 }
 
 /** The header's version line, as text ("current → to target"). */
 function versionLine(): string | null {
   return (
     document
-      .querySelector('.server-update__version')
+      .querySelector('header code')
+      ?.closest('p')
       ?.textContent?.replace(/\s+/g, ' ')
       .trim() ?? null
   );
@@ -390,7 +391,7 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     // P2 refusal copy, not the server message, is the main explanation.
     expect(
       screen.getByText(
-        'This server install has no usable update provenance. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        'This server has no install record, so Station can’t check for updates. Update it with the method that installed it.',
       ),
     ).toBeTruthy();
     // No provenance fields → no meta row at all, not empty labels.
@@ -426,12 +427,12 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     });
     expect(
       screen.getByText(
-        'This server’s update provenance is invalid. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        'This server’s install record is invalid, so Station can’t check for updates. Update it with the method that installed it.',
       ),
     ).toBeTruthy();
     expect(
       screen.queryByText(
-        'This server install has no usable update provenance.',
+        'This server has no install record, so Station can’t check for updates.',
       ),
     ).toBeNull();
     expect(
@@ -636,7 +637,7 @@ describe('comparison-priority matrix (update-ux PR4)', () => {
     ).toBeTruthy();
     expect(
       screen.queryByText(
-        'This server install has no usable update provenance. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+        'This server has no install record, so Station can’t check for updates. Update it with the method that installed it.',
       ),
     ).toBeNull();
     expect(
@@ -1186,7 +1187,7 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     );
     expect(badgeText()).toBe('Up to date');
     expect(
-      document.querySelector('.server-update__badge .tone-positive'),
+      document.querySelector('header [role="status"] .tone-positive'),
     ).not.toBeNull();
     // Latest equals current: the version is stated once, with no arrow.
     expect(versionLine()).toBe('0.8.0-preview.1');
@@ -1628,8 +1629,8 @@ describe('download, then a confirmed restart (#3851)', () => {
       name: 'Downloading the update',
     });
     expect(bar.getAttribute('aria-valuenow')).toBe('25');
-    expect(bar.getAttribute('aria-valuetext')).toBe('25.0 / 100.0 MB (25%)');
-    expect(screen.getByText('25.0 / 100.0 MB')).toBeTruthy();
+    expect(bar.getAttribute('aria-valuetext')).toBe('25.0 MB / 100.0 MB (25%)');
+    expect(screen.getByText('25.0 MB / 100.0 MB')).toBeTruthy();
     expect(screen.queryByText(/Downloading the release/)).toBeNull();
     expect(badgeText()).toBe('Downloading');
     expect(screen.queryByRole('button', { name: /Download/ })).toBeNull();

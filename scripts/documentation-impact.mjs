@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { contentImpact, readContentManifest } from '@kontourai/corpus/content';
 import {
   compileStationDocs,
   STATION_DOCS_INPUT_PATHS,
+  STATION_DOCS_TOPIC_INPUT_PATHS,
 } from './generate-station-docs.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
@@ -214,19 +216,34 @@ export function readDocumentationImpact({
   changedPaths,
   mergeBase,
 } = {}) {
-  const read = (path) => readFileSync(resolve(root, path), 'utf8');
-  const ledgers = mergeBase
+  const historical = mergeBase
     ? historicalLedgers(root, ledgerRevisionsSince(root, mergeBase))
     : [];
-  ledgers.push(readReviewState(root).ledger);
-  const [manual, catalog, modules, atlas] = STATION_DOCS_INPUT_PATHS.map(read);
+  return readImpactFromLedgers(root, changedPaths, [
+    ...historical,
+    readReviewState(root).ledger,
+  ]);
+}
+
+function readImpactFromLedgers(root, changedPaths, ledgers) {
+  const read = (path) => readFileSync(resolve(root, path), 'utf8');
+  // Only the topic sources: impact maps changed files to topic ids and never
+  // needs the bundle, so it does not read corpus.json.
+  const [manual, catalog, modules, atlas] =
+    STATION_DOCS_TOPIC_INPUT_PATHS.map(read);
   const topics = compileStationDocs(
     manual,
     JSON.parse(catalog),
     modules,
     JSON.parse(atlas),
   );
-  return documentationImpact({ changedPaths, ledgers, topics });
+  const report = documentationImpact({ changedPaths, ledgers, topics });
+  return {
+    ...report,
+    externalSurfaces: existsSync(resolve(root, 'corpus-content.json'))
+      ? contentImpact(readContentManifest(root), changedPaths)
+      : [],
+  };
 }
 
 export function formatDocumentationImpact(report) {
@@ -260,6 +277,10 @@ export function formatDocumentationImpact(report) {
     ...report.documents.map(
       (doc) =>
         `  ${doc.path}\n    Affected by: ${doc.changedBy.join(', ')}\n    Recorded scope (${doc.reviewState}): ${doc.scope}`,
+    ),
+    ...(report.externalSurfaces ?? []).map(
+      (surface) =>
+        `  External content (${surface.id}): ${surface.targets.join(', ')}\n    Affected by: ${surface.changedBy.join(', ')}\n    Review the public claims and run the website's npm run station:sync:check; do not refresh hashes without reviewing the change.`,
     ),
     ...(report.documents.length
       ? []
@@ -303,11 +324,12 @@ export async function documentationCatchUp({
     root,
     ledger.historyUnavailable && base === undefined ? 'HEAD' : coverageBase,
   );
-  const priorRecords = new Map();
-  for (const previous of historicalLedgers(
+  const historical = historicalLedgers(
     root,
     ledgerRevisionsSince(root, selection.mergeBase),
-  )) {
+  );
+  const priorRecords = new Map();
+  for (const previous of historical) {
     for (const record of previous.records) {
       const sources = priorRecords.get(record.path) ?? new Set();
       for (const source of record.sources) sources.add(source.path);
@@ -424,11 +446,11 @@ export async function documentationCatchUp({
     });
     stalePaths.push(...changed);
   }
-  const report = readDocumentationImpact({
+  const report = readImpactFromLedgers(
     root,
-    changedPaths: sorted([...selection.paths, ...stalePaths]),
-    mergeBase: selection.mergeBase,
-  });
+    sorted([...selection.paths, ...stalePaths]),
+    [...historical, ledger],
+  );
   const staleDocs = new Set([
     ...reviews.map((review) => review.path),
     ...removedDependencies.map((entry) => entry.path),

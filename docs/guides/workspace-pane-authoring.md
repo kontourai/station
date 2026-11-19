@@ -91,7 +91,8 @@ when its plugin renderer fails, the [required-slot default](plugins.md#required-
 renders instead of the standard-data alternative.
 
 The current [standard-data view](../../src-ui/src/workspace-panes/WorkspacePaneStandardDataView.tsx)
-displays the projection label and descriptor metadata as read-only information.
+shows a read-only placeholder with the projection and descriptor metadata behind
+a Details disclosure.
 It does not fetch `schemaRef` or resolve business rows from the projection name.
 The conformance command exercises data parsing and renderer selection; it does
 not mount a plugin or prove MCP resource execution, approval or sandbox behavior.
@@ -100,7 +101,10 @@ not mount a plugin or prove MCP resource execution, approval or sandbox behavior
 
 Use opaque `instanceId` and `stateKey` values. Bind the exact contribution
 snapshot at placement time so later rendering cannot be retargeted by a name or
-descriptor-string match.
+descriptor-string match. For a Project layout tab, use the occurrence ID and
+state key returned by the Project pane catalog. The catalog can issue compact
+values when the composed identities exceed the host limit. Manifest
+`drillIns` continue to name the pane descriptor.
 
 ```ts
 import {

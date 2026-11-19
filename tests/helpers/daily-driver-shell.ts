@@ -1,6 +1,16 @@
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  AccountPreferencesPatch,
+  AccountPreferencesView,
+} from '@kontourai/station-contracts/account-preferences';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
-import type { ConversationOpenExecution } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationOpenExecution,
+  ConversationOpenResolution,
+} from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { expect, type Page, type Route } from '@playwright/test';
@@ -13,6 +23,7 @@ import {
   installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
+  mockConversationEvents,
 } from './orchestration';
 import { fulfillStationShellRead } from './station-shell-fixtures';
 
@@ -137,10 +148,18 @@ export async function seedDailyDriverShell(
   const sessionIdsByConversation = new Map<string, string[]>();
   const executionBySession = new Map<string, ConversationOpenExecution>();
   const terminalSessions = new Set<string>();
+  const forkConversations = new Set<string>();
   const storedMessages = new Map<string, unknown[]>(
     Object.entries(options.messagesByConversation ?? {}),
   );
   const { agents, conversations } = options;
+  const acknowledgements = new Map<string, string>();
+  let preferences: AccountPreferencesView = {
+    schemaVersion: 1,
+    values: {},
+    revision: 'dd-0',
+  };
+  let preferenceRevision = 0;
 
   const agentRecords = agents.map((path) => ({
     slug: path.agentSlug,
@@ -222,6 +241,110 @@ export async function seedDailyDriverShell(
       : `/api${url.pathname}`;
     if (options.extraRoutes && (await options.extraRoutes(path, route, url)))
       return;
+    const method = route.request().method();
+    if (path === '/api/me/preferences') {
+      if (method === 'PATCH') {
+        const patch = route.request().postDataJSON() as AccountPreferencesPatch;
+        if (Object.keys(patch).length !== 1 || !patch.modelPickerPreferences)
+          return rejectUnexpectedFixtureRequest(route);
+        preferences = {
+          ...preferences,
+          values: {
+            ...preferences.values,
+            modelPickerPreferences: patch.modelPickerPreferences,
+          },
+          revision: `dd-${++preferenceRevision}`,
+        };
+      } else if (method !== 'GET') return rejectUnexpectedFixtureRequest(route);
+      return route.fulfill(json({ success: true, data: preferences }));
+    }
+    const openConversation = (id: string) =>
+      conversations.some((entry) => entry.id === id);
+    if (method === 'GET') {
+      const schedule = /^\/api\/orchestration\/agent-schedule\/([^/]+)$/.exec(
+        path,
+      );
+      if (schedule && openConversation(decodeURIComponent(schedule[1]!)))
+        return route.fulfill(
+          json({
+            success: true,
+            data: { wakeUps: [], jobProposals: [], jobs: [] },
+          }),
+        );
+      const inbox =
+        /^\/api\/orchestration\/conversations\/([^/]+)\/inbox$/.exec(path);
+      if (inbox && openConversation(decodeURIComponent(inbox[1]!)))
+        return route.fulfill(json({ success: true, data: { entries: [] } }));
+      const terminalConversation = url.searchParams.get('conversationId');
+      if (
+        path === '/api/terminal/runs' &&
+        terminalConversation &&
+        openConversation(terminalConversation)
+      )
+        return route.fulfill(json({ success: true, data: { runs: [] } }));
+      const directory =
+        /^\/api\/orchestration\/session-reads\/([^/]+)\/turn-directory$/.exec(
+          path,
+        );
+      if (directory) {
+        const conversationId = decodeURIComponent(directory[1]!);
+        const sessions = sessionIdsByConversation.get(conversationId) ?? [
+          conversationId,
+        ];
+        const events = mockConversationEvents(page, conversationId, sessions);
+        if (!openConversation(conversationId) || events.length === 0)
+          return route.fulfill(
+            json({ success: false, error: 'Session not found' }, 404),
+          );
+        const turns = events.flatMap((event) => {
+          if (
+            event.method !== 'turn.started' ||
+            typeof event.turnId !== 'string'
+          )
+            return [];
+          const terminal = events.find(
+            (item) =>
+              item.turnId === event.turnId && item.method === 'turn.completed',
+          );
+          return [
+            {
+              turnId: event.turnId,
+              startedAt: event.createdAt,
+              request: event.prompt,
+              outcome: terminal ? 'completed' : 'open',
+            },
+          ];
+        });
+        if (turns.length > 100 || url.searchParams.has('cursor'))
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill(
+          json({
+            success: true,
+            data: {
+              session: { conversationId, turnCount: turns.length },
+              turns: turns.reverse(),
+              nextCursor: null,
+            },
+          }),
+        );
+      }
+    }
+    const acknowledgement =
+      /^\/api\/conversations\/([^/]+)\/acknowledgement$/.exec(path);
+    if (method === 'POST' && acknowledgement) {
+      const conversationId = decodeURIComponent(acknowledgement[1]!);
+      const { updatedAt } = route.request().postDataJSON();
+      if (
+        !openConversation(conversationId) ||
+        typeof updatedAt !== 'string' ||
+        !Number.isFinite(Date.parse(updatedAt))
+      )
+        return rejectUnexpectedFixtureRequest(route);
+      const latest = acknowledgements.get(conversationId);
+      if (!latest || Date.parse(updatedAt) > Date.parse(latest))
+        acknowledgements.set(conversationId, updatedAt);
+      return route.fulfill(json({ success: true }));
+    }
     if (path === '/api/system/status')
       return route.fulfill(
         json({
@@ -311,9 +434,9 @@ export async function seedDailyDriverShell(
           success: true,
           data: conversations.flatMap((conversation) => {
             const conversationId = conversation.id;
-            const sessionIds = sessionIdsByConversation.get(conversationId) ?? [
-              conversationId,
-            ];
+            const sessionIds =
+              sessionIdsByConversation.get(conversationId) ??
+              (forkConversations.has(conversationId) ? [] : [conversationId]);
             const agentSlug = conversation.agentSlug;
             const provider =
               agents.find((candidate) => candidate.agentSlug === agentSlug)
@@ -322,8 +445,11 @@ export async function seedDailyDriverShell(
               const terminal = terminalSessions.has(threadId);
               return {
                 threadId,
-                provider,
-                assignedAgentSlug: agentSlug,
+                conversationId,
+                provider:
+                  executionBySession.get(threadId)?.provider ?? provider,
+                assignedAgentSlug:
+                  executionBySession.get(threadId)?.agentId ?? agentSlug,
                 lifecycleState: terminal
                   ? 'completed'
                   : sessionIdsByConversation.has(conversationId)
@@ -423,6 +549,13 @@ export async function seedDailyDriverShell(
             conversationId,
             sessionId,
             agent,
+            resolution: {
+              provider: engineIdFor(path.provider),
+              engine: {
+                kind: 'connection',
+                connectionId: engineConnectionId(path.connectionId),
+              },
+            },
           }),
         ),
       );
@@ -452,8 +585,32 @@ export async function seedDailyDriverShell(
       // turn: a conversation the dispatch table never saw yet (for example a
       // fixture seeded straight through its own `event-window` route, as the
       // 10k-transcript scenarios do) is still its own first session.
-      const currentSessionId =
-        sessionIdsByConversation.get(conversationId)?.at(-1) ?? conversationId;
+      const acceptedSessionId = sessionIdsByConversation
+        .get(conversationId)
+        ?.at(-1);
+      if (forkConversations.has(conversationId) && !acceptedSessionId) {
+        const messageCount = storedMessages.get(conversationId)?.length ?? 0;
+        const data: ConversationOpenResolution = {
+          status: 'fork-ready',
+          conversation: {
+            id: conversationId,
+            source: 'store',
+            title: conversation.title,
+            agentSlug: agentId(conversation.agentSlug),
+            mutable: true,
+            createdAt: '2026-07-19T10:00:00Z',
+            updatedAt: '2026-07-19T10:00:00Z',
+            messageCount,
+            answerability: { answerable: true },
+          },
+          transcript: { available: true, owner: 'fork-context', messageCount },
+          canContinue: true,
+          answerability: { answerable: true },
+          recoveryActions: [],
+        };
+        return route.fulfill(json({ success: true, data }));
+      }
+      const currentSessionId = acceptedSessionId ?? conversationId;
       const agentPath = agents.find(
         (candidate) => candidate.agentSlug === conversation.agentSlug,
       );
@@ -486,6 +643,7 @@ export async function seedDailyDriverShell(
             // A closed execution Session cannot be reused, but its Conversation
             // can still create the next child through the continuation route.
             canContinue: true,
+            nextTurnStartsSession: terminalSessions.has(currentSessionId),
             answerability: { answerable: true },
             recoveryActions: [],
           },
@@ -506,7 +664,15 @@ export async function seedDailyDriverShell(
         json({
           success: true,
           data: {
-            items: options.inventory?.() ?? defaultInventory(conversations),
+            items: (
+              options.inventory?.() ?? defaultInventory(conversations)
+            ).map((item) => {
+              const acknowledgedAt =
+                typeof item.id === 'string'
+                  ? acknowledgements.get(item.id)
+                  : undefined;
+              return acknowledgedAt ? { ...item, acknowledgedAt } : item;
+            }),
             hasMore: false,
           },
         }),
@@ -626,12 +792,24 @@ export async function seedDailyDriverShell(
       page,
       (conversationId) => [
         ...(sessionIdsByConversation.get(conversationId) ??
-          (conversations.some(
+          (!forkConversations.has(conversationId) &&
+          conversations.some(
             (conversation) => conversation.id === conversationId,
           )
             ? [conversationId]
             : [])),
       ],
+      (sessionIds) =>
+        sessionIds.map((sessionId) => {
+          const execution = executionBySession.get(sessionId);
+          return execution
+            ? {
+                sessionId,
+                provider: execution.provider,
+                agentSlug: execution.agentId,
+              }
+            : { sessionId };
+        }),
     );
   return {
     recordHandoff(conversationId, targetAgentSlug, sessionId) {
@@ -697,6 +875,7 @@ export async function seedDailyDriverShell(
         })),
       );
       conversations.push(target);
+      forkConversations.add(target.id);
       historyByConversation.set(
         target.id,
         events.flatMap((event) =>

@@ -1,0 +1,7 @@
+{
+  "revision": "2e444bd3e2999656e486dc03acfad0913f786d73",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Updated and reviewed the deferred-registry failure paragraph: one connected import rejection is retried before a persistent notice, matching createCapabilityAttempt and11 mounted boundary tests. Notification/reload for persistent failure, consent/registry permissions and unrelated work behavior remain intact. Hosted Gallery verifies the updated capture separately.","inputs":["docs/guides/plugins.md","packages/cli/src/dev/server.ts","packages/sdk/src/hooks/operations.ts","packages/shared/src/agent-plugin-manifest.ts","packages/shared/src/mcp-connection.ts","schemas/app.schema.json","src-server/services/agents/skill-service.ts","src-ui/src/__tests__/ChatDockColdChatHydration.test.tsx","src-ui/src/workspace-panes/__tests__/RequiredSlotHost.test.tsx"]}
+  ]
+}

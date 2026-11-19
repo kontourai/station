@@ -1,0 +1,27 @@
+{
+  "revision": "88f507c3859d7119d2f3d472e72943fa52940183",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"GitHub documents xcode-27 as a hosted preview runner. Reviewed the added label against the hosted runner classifier and actionlint configuration. Existing routing, custody, and gate rules continue to apply. Workflow gate and focused policy tests passed.","inputs":["scripts/actionlint-gate.mjs"]}
+  ]
+}

@@ -1,6 +1,8 @@
 import { ACCOUNT_PREFERENCE_KEYS } from '@kontourai/station-contracts/account-preferences';
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
+import { DEFAULT_UPDATE_DOWNLOAD_POLICY } from '@kontourai/station-contracts/system-status';
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
+import { Select } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { SettingsGlyph } from '../../components/icons/Glyph';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
@@ -19,6 +21,7 @@ import {
 } from './BuildProvenance';
 import { ConnectedServerUpdates } from './ConnectedServerUpdates';
 import { DesktopUpdateCheck } from './DesktopUpdateCheck';
+import { DownloadPolicyOptions } from './DownloadPolicyOptions';
 import { ManagedFieldset, ManagedSettingBadge } from './SettingRowStatus';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -82,10 +85,7 @@ export function SystemSection({
           {...settingsRow('desktop-app-updates')}
           tabIndex={-1}
         >
-          <span className="settings__field-label">
-            {settingsRow('desktop-app-updates').title}
-          </span>
-          <DesktopUpdateCheck />
+          <DesktopUpdateCheck title="Desktop app updates" />
         </div>
       )}
 
@@ -101,46 +101,52 @@ export function SystemSection({
         aria-labelledby="core-app-updates-heading"
         tabIndex={-1}
       >
-        <ConnectedServerUpdates headingId="core-app-updates-heading" />
-      </section>
-
-      <div
-        className="settings__field"
-        {...settingsRow('server-update-download-policy')}
-        tabIndex={-1}
-      >
-        <label
-          className="settings__field-label"
-          htmlFor="serverUpdateDownloadPolicy"
-        >
-          {settingsRow('server-update-download-policy').title}
-        </label>
-        <ManagedSettingBadge
-          provenance={provenance?.serverUpdateDownloadPolicy}
+        <ConnectedServerUpdates
+          headingId="core-app-updates-heading"
+          downloadPolicy={
+            <div
+              className="settings__field"
+              {...settingsRow('server-update-download-policy')}
+              tabIndex={-1}
+            >
+              <label
+                className="settings__field-label"
+                htmlFor="serverUpdateDownloadPolicy"
+              >
+                {settingsRow('server-update-download-policy').title}
+              </label>
+              <ManagedSettingBadge
+                provenance={provenance?.serverUpdateDownloadPolicy}
+              />
+              <ManagedFieldset
+                provenance={provenance?.serverUpdateDownloadPolicy}
+              >
+                <Select
+                  id="serverUpdateDownloadPolicy"
+                  value={
+                    config.serverUpdateDownloadPolicy ??
+                    DEFAULT_UPDATE_DOWNLOAD_POLICY
+                  }
+                  onChange={(event) =>
+                    onChange({
+                      ...config,
+                      serverUpdateDownloadPolicy: event.target
+                        .value as AppConfig['serverUpdateDownloadPolicy'],
+                    })
+                  }
+                >
+                  <DownloadPolicyOptions />
+                </Select>
+              </ManagedFieldset>
+              <span className="settings__field-hint">
+                For a Station service installed from a release archive: when it
+                downloads an available update by itself. It never restarts
+                without you.
+              </span>
+            </div>
+          }
         />
-        <ManagedFieldset provenance={provenance?.serverUpdateDownloadPolicy}>
-          <select
-            id="serverUpdateDownloadPolicy"
-            value={config.serverUpdateDownloadPolicy ?? 'after-24h'}
-            onChange={(event) =>
-              onChange({
-                ...config,
-                serverUpdateDownloadPolicy: event.target
-                  .value as AppConfig['serverUpdateDownloadPolicy'],
-              })
-            }
-          >
-            <option value="never">Never</option>
-            <option value="after-24h">After 24 hours</option>
-            <option value="immediately">Immediately</option>
-          </select>
-        </ManagedFieldset>
-        <span className="settings__field-hint">
-          For a Station service installed from a release archive: when it
-          downloads an available update by itself. It never restarts without
-          you.
-        </span>
-      </div>
+      </section>
 
       <details
         {...settingsRow('deployed-build')}
@@ -287,14 +293,12 @@ export function SystemSection({
           Reset Station settings
         </button>
         <span className="settings__field-hint">
-          Clear the stored Station settings on this page that a reset may touch,
-          so Station uses its defaults again. The confirmation lists exactly
-          which. Settings on this device are not affected. Cannot be undone.
+          Restores most Station settings to their defaults. Device settings are
+          kept.
         </span>
         {hasUnsavedChanges && (
           <span className="settings__field-hint">
-            Save or discard your unsaved changes first. Discard is always
-            available.
+            Save or discard your changes first.
           </span>
         )}
       </div>

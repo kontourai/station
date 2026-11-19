@@ -1,0 +1,7 @@
+{
+  "revision": "98fdc8d5773501eee7ede3273b9741fd02932169",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Updated the attachment paragraph (thumbnail preview, Attach adds more, send waits for uploads, Retry on failure) against ComposerAttachmentStrip, FileAttachmentInput and ChatInputArea; other claims in the guide are untouched by this change. getting-started.md says thumbnails preview, Attach adds more, and a send waits for uploads; ChatInputArea holds a send made during an upload and sends it when uploads complete; index.css only drops the dead .attachment-menu popover rules (base and mobile); ChatDock adds startSendWaitsForUploads (Start's held first send) threaded to the composer and reuses hasUploadsInFlight; the pendingGoalSend flow is otherwise unchanged; chat.css adds the attachment thumbnail-button and upload-wait line styles; StartComposer's image thumbnail becomes a Preview button for the shared previewer.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

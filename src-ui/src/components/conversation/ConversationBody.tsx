@@ -23,8 +23,10 @@ import {
   turnInterruptedContinueClientTurnId,
 } from '@kontourai/station-shared/runtime-event-projection';
 import React, {
+  type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -42,7 +44,9 @@ import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContext';
 import { useWorkObservation } from '../../contexts/work-observation';
+import { BoundBrowserActivityProvider } from '../../float-over-chat/BoundBrowserActivityProvider';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
+import { useStreamCatchingUp } from '../../hooks/orchestration/heldDuringCatchUp';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
   drainQueuedMessageOnTurnCompleted,
@@ -52,6 +56,7 @@ import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry
 import { useACPConnections } from '../../hooks/useACPConnections';
 import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
+import { useFollowUpAttachmentsSupport } from '../../hooks/useFollowUpAttachmentsSupport';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
 import { useSTT } from '../../hooks/useSTT';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -117,7 +122,9 @@ import type {
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { outboxNeedsReview } from '../chat/pendingMessages';
 import type { OutboxRows } from '../chat/QueuedMessages';
+import { SessionRewindProvider } from '../chat/SessionRewind';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
+import { StationSessionTitlesProvider } from '../chat/station-session-titles';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
 import { hasActiveToolCall } from '../chat/tool-call-labels';
 import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
@@ -151,11 +158,22 @@ import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
 import { ConversationComposer } from './ConversationComposer';
 import { useConversationConnection } from './ConversationConnectionContext';
+import {
+  ConversationLoadingStage,
+  type ConversationLoadingStep,
+  conversationLoadingLongText,
+  conversationLoadingStepText,
+} from './ConversationLoadingStage';
 import { ConversationStopControl } from './ConversationStopControl';
 import {
   RecordConversationBody,
   type RecordConversationBodyProps,
 } from './RecordConversationBody';
+import {
+  SETTLED_COMPOSER_NOTICE,
+  SettledConversationFooter,
+  useSettledConversation,
+} from './SettledConversationNotes';
 import { useConversationController } from './useConversationController';
 
 /** The station-control tools that change what a chat has scheduled. */
@@ -202,8 +220,12 @@ const loadChatMessageList = () =>
  * tests/transcript-load-stability.spec.ts).
  */
 const CHAT_MESSAGE_LIST_PENDING = (
-  <div className="chat-messages chat-messages--empty">
-    <SkeletonList count={4} label="Loading chat" />
+  <div
+    className="chat-messages chat-messages--empty"
+    role="status"
+    aria-label="Loading chat"
+  >
+    <ConversationLoadingStage step="rendering" />
   </div>
 );
 
@@ -283,10 +305,18 @@ const CALLER_CANNOT_SEND_REASON =
  */
 const WORKSPACE_REFUSED_WITHOUT_NEW_CHAT_REASON =
   "This chat can only continue in its original workspace, and you can't start a new chat here.";
-const LOADING_LONG_MESSAGE =
-  'This conversation is taking longer to load. Waiting for Station.';
+
+export interface ConversationTranscriptSnapshot {
+  chatId: string;
+  conversationId?: string;
+  messages: readonly ChatMessage[];
+  requestScope: NonNullable<
+    ReturnType<typeof useConversationConnection>['requestScope']
+  >;
+}
 
 export interface ConversationBodyProps {
+  transcriptSnapshotRef?: RefObject<ConversationTranscriptSnapshot | null>;
   owner?: OwnerAttribution | null;
   activeSession: ChatSession;
   workingDirectory?: string | null;
@@ -339,16 +369,19 @@ export interface ConversationBodyProps {
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
   /**
-   * #3239: how long a load runs before the "Start new
-   * chat" escape joins the skeleton. One state at a time: a load that is
-   * going to land shows a skeleton and nothing else; the escape is for a
-   * load that has stopped looking like one. Tests set it to 0.
+   * #3239: how long a load runs before the loading stage adds its quieter
+   * "Taking longer than usual" line. A load that lands in the ordinary second
+   * or two shows only its step. (The name predates the stage: it once
+   * timed a "Start new chat" escape, which a slow load no longer offers.)
+   * Tests set it to 0.
    */
   loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   /** #4406: Regenerate and Edit and resend, gated with the fork. */
   onResendFromMessage?: (request: MessageResendRequest) => void;
   onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
+  /** The host sends this draft once its uploads finish (Start's first message). */
+  sendQueuedForUploads?: boolean;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
 }
@@ -531,15 +564,19 @@ function noticeLine(content: string) {
 export function ConversationBody(
   props: ConversationBodyProps | RecordConversationBodyProps,
 ) {
+  // #3418: only the live body reads Session titles for Station tool rows.
   return 'density' in props && props.density === 'record' ? (
     <RecordConversationBody {...props} />
   ) : (
-    <LiveConversationBody {...(props as ConversationBodyProps)} />
+    <StationSessionTitlesProvider>
+      <LiveConversationBody {...(props as ConversationBodyProps)} />
+    </StationSessionTitlesProvider>
   );
 }
 
 function LiveConversationBody({
   activeSession,
+  transcriptSnapshotRef,
   workingDirectory,
   activeOrchestrationSession,
   activeOrchestrationSessionRead = 'present',
@@ -564,6 +601,7 @@ function LiveConversationBody({
   modelsLoading = false,
   chatInput,
   onComposerEnabledChange,
+  sendQueuedForUploads = false,
   owner,
   secondaryActions: dockSecondaryActions,
   onOpenAgentHandoff,
@@ -583,11 +621,67 @@ function LiveConversationBody({
     apiBase,
     requestScope: mentionRequestScope,
     station,
+    record: connectionRecord,
   } = useConversationConnection();
+  const visibilityFlags = useSurfaceVisibilityFlags();
   const { transport, transcript, streamStatus, turnInFlight } =
     useConversationController(activeSession);
+  const currentTranscriptMessages = transcript.enabled
+    ? transcript.settled &&
+      !transcript.revalidating &&
+      !transcript.catchingUp &&
+      !transcript.error &&
+      !transcript.upgradeRequired
+      ? transcript.messages
+      : undefined
+    : activeSession.orchestrationSessionStarted
+      ? undefined
+      : activeSession.messages;
+  useLayoutEffect(() => {
+    if (
+      !transcriptSnapshotRef ||
+      !mentionRequestScope ||
+      !currentTranscriptMessages
+    )
+      return;
+    const snapshot = {
+      chatId: activeSession.id,
+      conversationId: activeSession.conversationId,
+      messages: currentTranscriptMessages,
+      requestScope: mentionRequestScope,
+    };
+    transcriptSnapshotRef.current = snapshot;
+    return () => {
+      if (transcriptSnapshotRef.current === snapshot)
+        transcriptSnapshotRef.current = null;
+    };
+  }, [
+    activeSession.id,
+    activeSession.conversationId,
+    currentTranscriptMessages,
+    mentionRequestScope,
+    transcriptSnapshotRef,
+  ]);
+  // Open and Settled inbox: this host's own record for this person. A replay
+  // or another Station's conversation has none here.
+  const settledConversationId =
+    activeSession.conversationId &&
+    !activeSession.replay &&
+    (!station || station.routeKind === 'host')
+      ? activeSession.conversationId
+      : undefined;
+  const settled = useSettledConversation(settledConversationId, turnInFlight);
   const secondaryActions =
     station && station.routeKind !== 'host' ? undefined : dockSecondaryActions;
+  // Read only when it decides something: a turn is running and the draft
+  // holds files. Every other render sends nothing.
+  const queueTakesFiles = useFollowUpAttachmentsSupport(
+    apiBase,
+    !station || station.routeKind === 'host',
+    turnInFlight &&
+      (chatInput.attachments.length > 0 ||
+        (chatInput.attachmentStages?.length ?? 0) > 0),
+  );
   const targetAgents = useAgentsQuery({
     enabled: Boolean(station),
     readTarget: station,
@@ -693,6 +787,7 @@ function LiveConversationBody({
           ? [
               {
                 requestId: request.approvalId,
+                requestKind: request.requestKind,
                 threadId: request.approvalThreadId,
               },
             ]
@@ -769,6 +864,7 @@ function LiveConversationBody({
     target?.focus();
     return Boolean(target && document.activeElement === target);
   }, [chatInput.textareaRef]);
+  const streamCatchingUp = useStreamCatchingUp(apiBase);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
@@ -780,6 +876,8 @@ function LiveConversationBody({
     resyncPending,
     onResync: resyncConversation,
     onRecoveryFocus: focusRecoveredComposer,
+    catchingUp: streamCatchingUp,
+    apiBase,
   });
   /*
    * One transitional state for the whole conversation, from the two things
@@ -817,6 +915,13 @@ function LiveConversationBody({
   }
   if (transcript.messages.length > 0) {
     stickyTranscriptRef.current.messages = transcript.messages;
+  } else if (transcript.settled && transcript.error && !transcript.catchingUp) {
+    // A read that settled failed with no rows and is not catching up (a
+    // cached paint whose re-read failed drops its rows so the failure shows)
+    // leaves nothing to keep: a later Retry must not bring the dropped rows
+    // back while it reads. A rejected revision reload is still catching up,
+    // so its retained rows stay (station#2530).
+    stickyTranscriptRef.current.messages = [];
   }
   const displayedTranscriptMessages =
     transcript.messages.length > 0
@@ -845,6 +950,9 @@ function LiveConversationBody({
     if (!hasConversation) return;
     preloadMarkdownRenderer();
     void preloadToolCallBatch().catch(() => undefined);
+    // The list chunk too: rows that land before it would otherwise swap the
+    // filler's stage for the pending one, replaying its entrance.
+    void loadChatMessageList().catch(() => undefined);
   }, [hasConversation]);
   // Loading-phase boundaries for the opt-in transcript layout tracer.
   useEffect(() => {
@@ -862,8 +970,8 @@ function LiveConversationBody({
     conversationLoading,
     transcriptDisplayed,
   ]);
-  // D3: the escape joins the skeleton only once a load has run long; a load
-  // that lands in the ordinary second or two shows one state, the skeleton.
+  // D3: the long-wait line joins the stage only once a load has run long; a load
+  // that lands in the ordinary second or two shows only its step.
   const [loadingLong, setLoadingLong] = useState(false);
   useEffect(() => {
     if (!conversationLoading) {
@@ -881,16 +989,11 @@ function LiveConversationBody({
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
    * never lands settles into the read-only verdict in at most ~30s rather than
-   * hanging. That is long enough that the composer being disabled with no way
-   * out would be its own defect, so the control row below keeps "Start new
-   * chat" reachable for the whole window (#1607). Retry deliberately does
-   * not appear: retrying a read that is still in flight is what the resolver is
-   * already doing.
-   *
-   * The ROW is what scopes that control to the wait, so the button carries no
-   * second copy of the condition. It had one, and an injection that made it
-   * unconditional stayed green — a guard nothing can reach reads as a
-   * guarantee and is not one.
+   * hanging. Through that window the draft stays editable (Send waits) and
+   * the inbox and new-chat controls stay reachable; a slow load offers no
+   * "Start new chat" of its own (owner decision, 2026-11; it replaced #1607's
+   * row). Retry deliberately does not appear: retrying a read that is still
+   * in flight is what the resolver is already doing.
    */
   const forkableTranscript =
     !activeSession.replay || activeSession.replay.mode === 'timeline';
@@ -1057,6 +1160,13 @@ function LiveConversationBody({
   // The empty filler's loading wait (the filler names the wait itself).
   const showLoadingSkeleton = conversationLoading && !historyFailureNotice;
   const loadingLabel = transcript.catchingUp ? 'Catching up' : 'Loading chat';
+  // The step the stage names: only the read that is actually in flight.
+  const loadingStep: ConversationLoadingStep = resolvingOpen
+    ? 'opening'
+    : transcript.catchingUp
+      ? 'catching-up'
+      : 'reading';
+  const loadingLongMessage = conversationLoadingLongText(station?.stationName);
   /*
    * What assistive tech hears about the wait. Screen readers announce a CHANGE
    * to a live region that already exists; a region inserted together with its
@@ -1067,16 +1177,19 @@ function LiveConversationBody({
    * "loaded" is not a convention this app announces anywhere else. React
    * writes the text only when it changes, so re-renders announce nothing.
    *
-   * The long-wait sentence uses the visible long-wait row's own condition, so
-   * the two cannot disagree (a history failure hides the skeleton, not the
-   * row).
+   * The long-wait sentence uses the stage's own long-wait condition, so the
+   * two cannot disagree. A history failure replaces the stage and is spoken
+   * by its own alert, so it is never announced as a long wait.
    */
   const showLoadingLongRow =
-    conversationLoading && loadingLong && !recoveryOpen;
+    conversationLoading &&
+    loadingLong &&
+    !recoveryOpen &&
+    !historyFailureNotice;
   const loadingAnnouncement = showLoadingLongRow
-    ? LOADING_LONG_MESSAGE
+    ? loadingLongMessage
     : showLoadingSkeleton
-      ? loadingLabel
+      ? conversationLoadingStepText(loadingStep)
       : '';
   const [announcedLoading, setAnnouncedLoading] = useState('');
   useEffect(() => {
@@ -1104,28 +1217,26 @@ function LiveConversationBody({
     ),
   });
 
-  const handleSendWithContext = useCallback((): Promise<void> => {
-    // Ambient context travels OUT-OF-BAND (#685): the server composes it into
-    // the model-facing input only, so the transcript keeps the typed text.
-    // `ambientContextForSend` keeps the `[`-prefix and slash-command
-    // short-circuits (slash commands must reach `useSendMessage` unmodified
-    // so `content.startsWith('/')` still routes them to the slash handler).
-    const ambientContext = ambientContextForSend(
-      getComposedContext(),
-      chatInput.input,
-    );
-    return chatInput.handleSend(undefined, undefined, { ambientContext });
-  }, [getComposedContext, chatInput]);
-  const handleQueueFollowUp = useCallback((): Promise<void> => {
-    const ambientContext = ambientContextForSend(
-      getComposedContext(),
-      chatInput.input,
-    );
-    return chatInput.handleSend(undefined, undefined, {
-      ambientContext,
-      queueOnBusy: true,
-    });
-  }, [getComposedContext, chatInput]);
+  const handleSendWithContext = useCallback(
+    (intent?: 'steer'): Promise<void> => {
+      // Ambient context travels OUT-OF-BAND (#685): the server composes it into
+      // the model-facing input only, so the transcript keeps the typed text.
+      // `ambientContextForSend` keeps the `[`-prefix and slash-command
+      // short-circuits (slash commands must reach `useSendMessage` unmodified
+      // so `content.startsWith('/')` still routes them to the slash handler).
+      const ambientContext = ambientContextForSend(
+        getComposedContext(),
+        chatInput.input,
+      );
+      return chatInput.handleSend(undefined, undefined, {
+        ambientContext,
+        ...(intent === 'steer'
+          ? {}
+          : { queueOnBusy: true, queueFilesOnBusy: queueTakesFiles }),
+      });
+    },
+    [getComposedContext, chatInput, queueTakesFiles],
+  );
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
@@ -1291,7 +1402,7 @@ function LiveConversationBody({
   // device) names the same turn and the server admits it once. It leaves the
   // composer alone. The local set only covers the tap before the send's own
   // row renders.
-  const continueInterruptedEnabled = useSurfaceVisibilityFlags().has(
+  const continueInterruptedEnabled = visibilityFlags.has(
     CONTINUE_INTERRUPTED_TURN_PREVIEW_ID,
   );
   const sendComposedRef = useRef(chatInput.sendComposedMessage);
@@ -1851,7 +1962,14 @@ function LiveConversationBody({
       }
     : undefined;
   return (
-    <>
+    <SessionRewindProvider
+      executionThreadId={
+        activeSession.replay || connectionRecord?.readOnly
+          ? undefined
+          : (activeSession.currentSessionId ?? activeSession.id)
+      }
+      openTurnId={activeSession.conversationActivity?.openTurn?.turnId}
+    >
       {!activeSession.replay && (
         <CoordinatorToolsNotice
           conversationId={activeSession.conversationId ?? activeSession.id}
@@ -1865,6 +1983,15 @@ function LiveConversationBody({
           isVisible={showStatsPanel}
           onToggle={() => setShowStatsPanel(!showStatsPanel)}
           messageCount={activeSession.messages.length}
+          engineMcpServers={activeSession.engineMcpServers}
+          engineMcpReconnect={activeSession.engineMcpReconnect === true}
+          engineMcpComplete={activeSession.engineMcpComplete === true}
+          engineName={activeAcpConnection?.name}
+          executionThreadId={
+            activeSession.replay || connectionRecord?.readOnly
+              ? undefined
+              : (activeSession.currentSessionId ?? activeSession.id)
+          }
           key={`${activeSession.conversationId || activeSession.agentSlug}-${activeSession.orchestrationStatus || activeSession.status}`}
         />
       )}
@@ -1946,7 +2073,11 @@ function LiveConversationBody({
                * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
                * fill this slot exists for while saying only what is known.
                */
-              <SkeletonList count={4} label={loadingLabel} announce={false} />
+              <ConversationLoadingStage
+                step={loadingStep}
+                long={showLoadingLongRow}
+                stationName={station?.stationName}
+              />
             ) : (
               <ChatEmptyState
                 agentSlug={renderedSession.agentSlug}
@@ -1957,55 +2088,73 @@ function LiveConversationBody({
         </div>
       )}
       {displayedTranscriptMessages.length > 0 && (
-        <LazyBoundary
-          load={loadChatMessageList}
-          pending={CHAT_MESSAGE_LIST_PENDING}
-          componentProps={{
-            activeSession: renderedSession,
-            recordAgents: agents,
-            suppressStreamingRow: transcript.openTurnProjected,
-            fontSize: chatFontSize,
-            layoutHeight: dockHeight,
-            scrollControlsTarget,
-            showReasoning,
-            showToolDetails,
-            renderOverride,
-            renderAfterMessage,
-            emptyState: historyFailureNotice,
-            historyNotice: historyElisionNotice,
-            hasOlderMessages: transcript.enabled && transcript.hasMore,
-            // #2316: the pending-approvals strip derives from the window's
-            // events inside the lazily loaded list.
-            approvalEvents: transcript.enabled ? transcript.events : undefined,
-            approvalEventsSettled: transcript.settled,
-            historyLoading: transcript.loading,
-            // The status pill owns turn activity for a live chat.
-            suppressActivity: statusInPill || Boolean(streamStatus),
-            statusShownElsewhere: statusInPill,
-            // #2309: the stall notice below presents the silence (with its
-            // Stop action); the streaming row does not repeat it.
-            progressSilenceShownElsewhere: Boolean(
-              turnProgressSilence && turnInFlight,
-            ),
-            onLoadOlder: transcript.loadOlder,
-            onLoadTurn: transcript.loadTurn,
-            onOpenBackgroundTasks,
-            liveStatusUnavailable: activeSession.replay
-              ? observationUnavailable
-              : (workObservation?.unavailable(
-                  activeSession.conversationId ?? activeSession.id,
-                ) ?? observationUnavailable),
-            accountableHuman,
-            owner,
-            onQuote: quoteMessage,
-            onForkFromTurn: forkFromTurn,
-            onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
-            onResendFromMessage: resendFromMessage,
-            // The dock's header gear opens ChatSettingsPanel, which carries the
-            // Summarize entry point (#3310).
-            hasSettingsEntryPoint: true,
-          }}
-        />
+        <BoundBrowserActivityProvider
+          enabled={visibilityFlags.has('inline-browser-activity')}
+          apiBase={apiBase}
+          requestScope={mentionRequestScope}
+          routeKind={station?.routeKind}
+          readOnly={Boolean(activeSession.replay || connectionRecord?.readOnly)}
+          session={activeSession}
+        >
+          <LazyBoundary
+            load={loadChatMessageList}
+            pending={CHAT_MESSAGE_LIST_PENDING}
+            componentProps={{
+              activeSession: renderedSession,
+              recordAgents: agents,
+              suppressStreamingRow: transcript.openTurnProjected,
+              fontSize: chatFontSize,
+              layoutHeight: dockHeight,
+              scrollControlsTarget,
+              showReasoning,
+              showToolDetails,
+              renderOverride,
+              renderAfterMessage,
+              emptyState: historyFailureNotice,
+              historyNotice: historyElisionNotice,
+              transcriptFooter: settled ? (
+                <SettledConversationFooter
+                  conversationId={settledConversationId}
+                />
+              ) : undefined,
+              hasOlderMessages: transcript.enabled && transcript.hasMore,
+              // #2316: the pending-approvals strip derives from the window's
+              // events inside the lazily loaded list.
+              approvalEvents: transcript.enabled
+                ? transcript.events
+                : undefined,
+              approvalEventsSettled: transcript.settled,
+              // A cached paint offers no answer until its re-read lands.
+              approvalsHeld: transcript.revalidating === true,
+              historyLoading: transcript.loading,
+              // The status pill owns turn activity for a live chat.
+              suppressActivity: statusInPill || Boolean(streamStatus),
+              statusShownElsewhere: statusInPill,
+              // #2309: the stall notice below presents the silence (with its
+              // Stop action); the streaming row does not repeat it.
+              progressSilenceShownElsewhere: Boolean(
+                turnProgressSilence && turnInFlight,
+              ),
+              onLoadOlder: transcript.loadOlder,
+              onLoadTurn: transcript.loadTurn,
+              onOpenBackgroundTasks,
+              liveStatusUnavailable: activeSession.replay
+                ? observationUnavailable
+                : (workObservation?.unavailable(
+                    activeSession.conversationId ?? activeSession.id,
+                  ) ?? observationUnavailable),
+              accountableHuman,
+              owner,
+              onQuote: quoteMessage,
+              onForkFromTurn: forkFromTurn,
+              onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
+              onResendFromMessage: resendFromMessage,
+              // The dock's header gear opens ChatSettingsPanel, which carries the
+              // Summarize entry point (#3310).
+              hasSettingsEntryPoint: true,
+            }}
+          />
+        </BoundBrowserActivityProvider>
       )}
       {streamStatus && !statusInPill && streamStatus.kind !== 'restored' && (
         <div
@@ -2482,18 +2631,6 @@ function LiveConversationBody({
         session={activeSession}
         summary={activeOrchestrationSession}
       />
-      {/* What an agent scheduled here: check-backs and job proposals. */}
-      {activeSession.conversationId &&
-      !activeSession.replay &&
-      (!station || station.routeKind === 'host') ? (
-        <AgentScheduleNotes
-          conversationId={activeSession.conversationId}
-          refreshKey={agentScheduleRefreshKey(
-            activeSession.conversationActivity?.openTurn?.turnId,
-            activeSession.streamingMessage?.contentParts,
-          )}
-        />
-      ) : null}
       {/* Commands an agent asked to run here, each waiting for its own Run. */}
       {activeSession.conversationId &&
       !activeSession.replay &&
@@ -2630,8 +2767,9 @@ function LiveConversationBody({
         seeds the pending phase on every reload of a chat with a conversation
         id, so this is the ordinary path (#1582 E3/B6).
 
-        With messages on screen the wait is shown by the disabled composer,
-        whose placeholder reads "Loading chat…" (`loadingConversation`); with
+        With messages on screen the wait is shown by the draft-only composer,
+        whose placeholder (or, with a draft, its send-blocked reason) names it
+        (`loadingConversation`); with
         an empty transcript the filler above shows it. Either way it is
         announced by this one persistent, visually hidden region (see
         `loadingAnnouncement`). An in-flow block under the newest message used
@@ -2649,33 +2787,12 @@ function LiveConversationBody({
         {announcedLoading}
       </div>
       {/*
-        The one way out of the wait. `.session-history-controls` is this pane's
-        existing control row (archive#3386 already widened it past "buttons
-        only"), reused rather than given a class of its own — the entry
-        stylesheet is at its budget ceiling to the byte.
-
-        `!recoveryOpen` because the recovery notice below carries its
-        own "Start new chat": a reload whose point-read lands `unavailable`
-        BEFORE the transcript's first read satisfies both conditions at once,
-        and rendered the control twice (#1607).
+        A slow load offers no "Start new chat": the user opened THIS chat, the
+        inbox and new-chat controls stay reachable throughout, and the draft
+        stays editable (`allowDraftWhileDisabled`). The exits belong to a load
+        that actually failed: the recovery notice below (Retry + Start new
+        chat) and the history-failure notice (Retry).
       */}
-      {showLoadingLongRow ? (
-        <div className="session-history-controls">
-          {/* Announced by the persistent region above, not by this span. */}
-          <span>{LOADING_LONG_MESSAGE}</span>
-          {onNewChat ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={() =>
-                void Promise.resolve(onNewChat()).catch(surfaceRecoveryFailure)
-              }
-            >
-              Start new chat
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       {recoveryOpen ? (
         <LazyBoundary
           load={loadConversationOpenRecoveryNotice}
@@ -2693,11 +2810,18 @@ function LiveConversationBody({
             onRetry: onRetryConversationOpen
               ? () => void onRetryConversationOpen()
               : undefined,
+            // The draft typed while the chat was opening goes with it, so a
+            // read-only verdict does not strand that text in a dead composer.
             onStartNew: onNewChat
               ? () =>
-                  void Promise.resolve(onNewChat()).catch(
-                    surfaceRecoveryFailure,
-                  )
+                  void Promise.resolve(
+                    onNewChat(
+                      chatInput.input.trim() ? chatInput.input : undefined,
+                      chatInput.attachments.length > 0
+                        ? chatInput.attachments
+                        : undefined,
+                    ),
+                  ).catch(surfaceRecoveryFailure)
               : undefined,
           }}
           pending={
@@ -2713,8 +2837,8 @@ function LiveConversationBody({
         terminal turn event (turnHandlers), a child change (snapshotHandlers),
         or a reload (hydrate seeds pending). Miss the terminal — a backgrounded
         phone across a long turn — and the composer sits draft-only with Send
-        dead: `recoveryOpen` owns Retry + Start new, `resolvingOpen` owns
-        Start new, `busy` owned nothing. When this tab itself sees no turn in
+        dead: `recoveryOpen` owns Retry + Start new, `resolvingOpen` keeps
+        the draft open until the read answers, `busy` owned nothing. When this tab itself sees no turn in
         flight, the wait may be that stale one, so offer the same re-resolve
         the recovery notice owns. A genuine wait (turn in flight) keeps the
         current draft-only behavior below.
@@ -2833,7 +2957,22 @@ function LiveConversationBody({
             />
           )}
           <ConversationComposer
-            activity={statusPill}
+            activity={
+              <>
+                {activeSession.conversationId &&
+                !activeSession.replay &&
+                (!station || station.routeKind === 'host') ? (
+                  <AgentScheduleNotes
+                    conversationId={activeSession.conversationId}
+                    refreshKey={agentScheduleRefreshKey(
+                      activeSession.conversationActivity?.openTurn?.turnId,
+                      activeSession.streamingMessage?.contentParts,
+                    )}
+                  />
+                ) : null}
+                {statusPill}
+              </>
+            }
             contextMeter={
               showContextMeter && activeSession.conversationId ? (
                 <ContextPercentage
@@ -2852,6 +2991,7 @@ function LiveConversationBody({
             quoteContext={chatInput.quotes}
             sessionId={activeSession.id}
             sendFailureNotice={sendFailureNotice}
+            composerNotice={settled ? SETTLED_COMPOSER_NOTICE : undefined}
             queuedRetryNotice={queuedRetryNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
@@ -2870,22 +3010,31 @@ function LiveConversationBody({
               !callerMayContinue ||
               workspaceRefusedWithoutNewChat
             }
-            // A busy wait keeps the draft open for a later send; a caller
-            // the server refused a send has no later send to draft for.
+            // A busy wait, or an open read still in flight, keeps the draft
+            // open for a later send; a caller the server refused a send has
+            // no later send to draft for. Send itself stays disabled.
             allowDraftWhileDisabled={
-              busyWaitBlocksSend && !!agent && callerMayContinue
+              (busyWaitBlocksSend || resolvingOpen) &&
+              !!agent &&
+              callerMayContinue
             }
             sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
             turnInFlight={turnInFlight}
             busyFollowUp={busyFollowUp}
+            busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
-            onQueueFollowUp={handleQueueFollowUp}
+            onQueueFollowUp={handleSendWithContext}
             stopPending={!!activeSession.stopPending}
             modelSupportsAttachments={modelSupportsAttachments}
             fileAttachmentsSupported={fileAttachmentsSupported}
             modelProviderLabel={modelProviderLabel}
             executionEngineLabel={executionEngineLabel}
+            executionEngineId={
+              engineIdentity.configurationNamesEngine
+                ? executionBinding?.engineId
+                : activeSession.orchestrationProvider
+            }
             agentEngineMove={agentEngineMove}
             modelProviders={modelProviders}
             currentProviderId={activeSession.providerId}
@@ -2928,7 +3077,7 @@ function LiveConversationBody({
             }
             agentRoute={
               activeOrchestrationSession?.modelRoute
-                ? `via ${activeOrchestrationSession.modelRoute.label}`
+                ? activeOrchestrationSession.modelRoute.label
                 : undefined
             }
             onOpenAgentHandoff={
@@ -2983,15 +3132,22 @@ function LiveConversationBody({
                     CALLER_CANNOT_SEND_REASON
                   : workspaceRefusedWithoutNewChat
                     ? WORKSPACE_REFUSED_WITHOUT_NEW_CHAT_REASON
-                    : recoveryOpen || resolvingOpen || busyWaitBlocksSend
-                      ? // The banner above already says this; repeating the SENTENCE
-                        // under the composer is what made one ordinary reload read as
-                        // three separate problems. `undefined` leaves the composer
-                        // quietly disabled. An `unverified` check (#2424) is the same:
-                        // its notice says what failed and carries the Retry.
-                        undefined
-                      : chatInput.sendBlockedReason
+                    : resolvingOpen &&
+                        (chatInput.input.trim() ||
+                          chatInput.attachments.length > 0)
+                      ? // A draft hides the placeholder that named the wait,
+                        // so Send says why it is not live yet.
+                        'You can send once this chat opens.'
+                      : recoveryOpen || resolvingOpen || busyWaitBlocksSend
+                        ? // The banner above already says this; repeating the SENTENCE
+                          // under the composer is what made one ordinary reload read as
+                          // three separate problems. `undefined` leaves the composer
+                          // quietly disabled. An `unverified` check (#2424) is the same:
+                          // its notice says what failed and carries the Retry.
+                          undefined
+                        : chatInput.sendBlockedReason
             }
+            sendQueuedForUploads={sendQueuedForUploads}
             onRetryAttachmentStage={chatInput.retryAttachmentStage}
             onCancelAttachmentStage={chatInput.cancelAttachmentStage}
             onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
@@ -3055,6 +3211,6 @@ function LiveConversationBody({
           />
         </>
       )}
-    </>
+    </SessionRewindProvider>
   );
 }

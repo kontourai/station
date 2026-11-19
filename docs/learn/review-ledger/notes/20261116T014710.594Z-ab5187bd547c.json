@@ -1,0 +1,11 @@
+{
+  "revision": "207ba5362307323a97988f89bf4041787587ede8",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Round 3: the hook's code-health step and its heavy-check slot are gone; the push-range step adds a Git-only check for new exports no other module names; gate:for prints CI's full code-health command instead of a scoped hook row. Re-read this page's claims about the hook and gate:for: none names the removed step or is contradicted.","inputs":["scripts/__tests__/prepush-typecheck.test.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Round 3: the hook's code-health step and its heavy-check slot are gone; the push-range step adds a Git-only check for new exports no other module names; gate:for prints CI's full code-health command instead of a scoped hook row. Re-read this page's claims about the hook and gate:for: none names the removed step or is contradicted.","inputs":["scripts/__tests__/prepush-typecheck.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Round 3: the hook's code-health step and its heavy-check slot are gone; the push-range step adds a Git-only check for new exports no other module names; gate:for prints CI's full code-health command instead of a scoped hook row. Re-read this page's claims about the hook and gate:for: none names the removed step or is contradicted.","inputs":["scripts/__tests__/prepush-typecheck.test.ts"]}
+  ]
+}

@@ -141,10 +141,6 @@ html[data-color-theme]:where([data-color-theme="tokyo-night"][data-color-theme-f
   --k-brand: #804600;
   --k-brand-contrast: #ffffff;
 }
-:root[data-app-channel="beta"][data-color-theme="tokyo-night"][data-color-theme-flavor][data-theme="light"] {
-  --k-brand: #3e45bd;
-  --k-brand-contrast: #ffffff;
-}
 :root[data-app-channel="nightly"][data-color-theme="tokyo-night"][data-color-theme-flavor][data-theme="light"] {
   --k-brand: #6b1dd7;
   --k-brand-contrast: #ffffff;
@@ -288,10 +284,6 @@ html[data-color-theme]:where([data-color-theme="tokyo-night"][data-color-theme-f
   --k-brand: #e08b2f;
   --k-brand-contrast: #1b1205;
 }
-:root[data-app-channel="beta"][data-color-theme="tokyo-night"][data-color-theme-flavor="night"]:not([data-theme="light"]) {
-  --k-brand: #818cfe;
-  --k-brand-contrast: #06080b;
-}
 :root[data-app-channel="nightly"][data-color-theme="tokyo-night"][data-color-theme-flavor="night"]:not([data-theme="light"]) {
   --k-brand: #a280fd;
   --k-brand-contrast: #06080b;
@@ -434,10 +426,6 @@ html[data-color-theme]:where([data-color-theme="tokyo-night"][data-color-theme-f
 :root.is-dev-build[data-color-theme="tokyo-night"][data-color-theme-flavor="storm"]:not([data-theme="light"]) {
   --k-brand: #e08b2f;
   --k-brand-contrast: #1b1205;
-}
-:root[data-app-channel="beta"][data-color-theme="tokyo-night"][data-color-theme-flavor="storm"]:not([data-theme="light"]) {
-  --k-brand: #818cfe;
-  --k-brand-contrast: #06080b;
 }
 :root[data-app-channel="nightly"][data-color-theme="tokyo-night"][data-color-theme-flavor="storm"]:not([data-theme="light"]) {
   --k-brand: #a280fd;

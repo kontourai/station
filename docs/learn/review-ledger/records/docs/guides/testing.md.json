@@ -220,8 +220,6 @@
 
     "scripts/__tests__/source-verification-policy.test.ts",
 
-    ".github/workflows/ci-throughput-health.yml",
-
     "src-server/services/infra/workload-resources.ts",
 
     "src-server/services/infra/__tests__/workload-resources.process.test.ts",
@@ -288,7 +286,27 @@
 
     "scripts/lib/windows-worker-diagnostics.mjs",
 
-    "scripts/__tests__/windows-portable-floor.test.ts"
+    "scripts/__tests__/windows-portable-floor.test.ts",
+
+    "scripts/__tests__/server-scenario-probe.test.ts",
+
+    "tests/helpers/gallery-app-error-state.ts",
+
+    "tests/helpers/gallery-document-tracker.ts",
+
+    "tests/helpers/gallery-screen-attempt.ts",
+
+    "src-ui/src/components/LazyBoundary.tsx",
+
+    "src-ui/src/__tests__/LazyBoundary.browser.test.tsx",
+
+    "src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx",
+
+    "tests/first-run-live.spec.ts",
+
+    "tests/helpers/lazy-surface-readiness.ts",
+
+    "scripts/required-test-profiles.json"
   ],
 
   "checks": [

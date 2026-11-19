@@ -19,12 +19,15 @@ import { transcriptMcpToolRef } from './mcp-app-tool-ref';
  */
 
 import { hasStationControlCallRow } from './agent-message/station-control-calls';
+import { isAppearanceProposalCall } from './appearance-proposal-result';
 import { claudeArtifactLinkOf } from './claude-artifact-link';
 
 /** A call shown as its own row rather than one line of a collapsed run. */
 function hasOwnCallRow(part: ToolCallLike): boolean {
   return (
-    hasStationControlCallRow(part) || claudeArtifactLinkOf(part) !== undefined
+    hasStationControlCallRow(part) ||
+    isAppearanceProposalCall(part) ||
+    claudeArtifactLinkOf(part) !== undefined
   );
 }
 
@@ -32,7 +35,8 @@ function hasOwnCallRow(part: ToolCallLike): boolean {
 function isArtifactRun(block: { calls: { part: ToolCallLike }[] }): boolean {
   return (
     block.calls.length === 1 &&
-    claudeArtifactLinkOf(block.calls[0]!.part) !== undefined
+    (claudeArtifactLinkOf(block.calls[0]!.part) !== undefined ||
+      isAppearanceProposalCall(block.calls[0]!.part))
   );
 }
 
@@ -102,6 +106,22 @@ function buildRun<P extends ToolCallLike>(
     ? `tool-call-run:${firstCallId}`
     : `tool-call-run:${calls[0].index}-${calls[calls.length - 1].index}`;
   return { type: 'tool-call-run', key, calls };
+}
+
+/**
+ * `run` without the calls in `drawnElsewhere` (a call that spawned child work
+ * is drawn as that child's card). Same object when nothing is dropped, so a
+ * memoised batch keeps its identity.
+ */
+export function runWithoutCalls<P extends ToolCallLike>(
+  run: ToolCallRun<P>,
+  drawnElsewhere: ReadonlySet<string>,
+): ToolCallRun<P> {
+  if (drawnElsewhere.size === 0) return run;
+  const calls = run.calls.filter(
+    ({ part }) => !part.toolCallId || !drawnElsewhere.has(part.toolCallId),
+  );
+  return calls.length === run.calls.length ? run : { ...run, calls };
 }
 
 /** Adjacent tools and visible reasoning share an activity run. Prose, artifacts

@@ -1,0 +1,7 @@
+{
+  "revision": "90a3554215b96ab8480f9aae602aec10df076f21",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"Reviewed source freshness and the exact generated release exception. Git reads immutable manifests and notes in batches, and the original rename-aware provenance lookups run at most three at once. The actual capture workload and 30-second timeout remain intact. The release-versioning and learning-media suites passed 24 cases; modified generated text still requires review.","inputs":["docs/guides/documentation-review-ledger.md","scripts/lib/release-versioning-review.mjs","scripts/lib/changeset-note-commits.mjs"]}
+  ]
+}

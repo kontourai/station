@@ -116,6 +116,45 @@ describe('desktop build manifest', () => {
     });
   });
 
+  test('v3 product identity supplies a canonical version label without an origin tag', () => {
+    const root = makeRoot();
+    const path = join(root, '.station-release.json');
+    const provenance = {
+      schemaVersion: 3,
+      sha: RELEASE_SHA,
+      version: '1.2.3',
+      createdAt: '2026-07-10T18:00:00.000Z',
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    };
+    writeFileSync(path, JSON.stringify(provenance));
+    expect(
+      deriveBuildManifest(root, {
+        builtAt: '2026-07-11T00:00:00.000Z',
+        env: {},
+      }),
+    ).toEqual({
+      sha: RELEASE_SHA,
+      branch: 'v1.2.3',
+      builtAt: '2026-07-11T00:00:00.000Z',
+    });
+    for (const overrides of [
+      { version: '1.2.3-rc.1' },
+      { version: 123 },
+      { version: ['1.2.3'] },
+      { ref: 'v1.2.3' },
+      { channel: 'nightly' },
+      { createdAt: 'yesterday' },
+    ]) {
+      writeFileSync(path, JSON.stringify({ ...provenance, ...overrides }));
+      expect(
+        readPackagedReleaseManifest(root),
+        JSON.stringify(overrides),
+      ).toBeNull();
+    }
+  });
+
   test('an unusable release manifest is absent rather than trusted', () => {
     const root = makeRoot();
     const path = join(root, '.station-release.json');

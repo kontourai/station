@@ -39,10 +39,20 @@
  * are not counted: it steers authors to the helper, it is not a proof.
  *
  *   node scripts/test-temp-dir-ratchet.mjs [--update]
+ *   node scripts/test-temp-dir-ratchet.mjs --rev=<commit>
+ *
+ * `--rev` judges one commit instead of the working tree: the files, their
+ * counts and the baseline are all read from that commit's tree, so
+ * uncommitted and untracked edits cannot change the verdict. The pre-push hook
+ * uses it to check the commit being pushed (scripts/check-prepush-push-range.mjs).
  */
 
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
+import {
+  CAPTURE_MAX_BYTES,
+  execFileSyncBounded,
+} from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const BASELINE_PATH = 'scripts/test-temp-dir-baseline.json';
@@ -78,7 +88,7 @@ export function listScannedFiles(cwd = process.cwd()) {
   // Tracked AND untracked-but-not-ignored: a brand-new test file is exactly
   // the case this gate exists for, and it is invisible to `git ls-files`
   // alone until it is committed.
-  const output = execFileSync(
+  const output = execFileSyncBounded(
     'git',
     [
       'ls-files',
@@ -88,11 +98,72 @@ export function listScannedFiles(cwd = process.cwd()) {
       '--',
       ...SCAN_ROOTS,
     ],
-    { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true },
+    { cwd, encoding: 'utf8', windowsHide: true },
   );
   return [...new Set(output.split('\n'))]
     .filter((file) => CODE_PATH.test(file) && TEST_PATH.test(file))
     .sort();
+}
+
+/** The test files `listScannedFiles` would see, read from one commit's tree. */
+function listScannedFilesAt(rev, cwd = process.cwd()) {
+  const output = execFileSyncBounded(
+    'git',
+    ['ls-tree', '-r', '--name-only', '-z', rev, '--', ...SCAN_ROOTS],
+    { cwd, encoding: 'utf8', windowsHide: true },
+  );
+  return [...new Set(output.split('\0'))]
+    .filter((file) => CODE_PATH.test(file) && TEST_PATH.test(file))
+    .sort();
+}
+
+/**
+ * Counts for one commit. `git grep -l` narrows the read to blobs that name the
+ * call at all; each is then counted by the same `countRawCalls` the
+ * working-tree mode uses, so the two modes cannot disagree about a source.
+ */
+function countFilesAt(rev, files, cwd = process.cwd()) {
+  const scanned = new Set(files);
+  const grep = spawnSync(
+    'git',
+    ['grep', '-l', '-F', '-I', 'mkdtemp', rev, '--', ...SCAN_ROOTS],
+    { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: CAPTURE_MAX_BYTES },
+  );
+  // git grep exits 1 when nothing matches; anything else is a fault.
+  if (grep.error || ![0, 1].includes(grep.status ?? -1))
+    throw new Error(
+      `git grep ${rev} failed (${grep.status ?? grep.error?.message}): ${grep.stderr}`,
+    );
+  const prefix = `${rev}:`;
+  const named = grep.stdout
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => (line.startsWith(prefix) ? line.slice(prefix.length) : line))
+    .filter((file) => scanned.has(file));
+  const blobs = readBlobsAt(rev, named, cwd);
+  return countFiles(named, (file) => blobs.get(file) ?? '');
+}
+
+/** Every named file's contents at `rev`, through one `git cat-file --batch`. */
+function readBlobsAt(rev, files, cwd) {
+  const blobs = new Map();
+  if (files.length === 0) return blobs;
+  const output = execFileSyncBounded('git', ['cat-file', '--batch'], {
+    cwd,
+    input: files.map((file) => `${rev}:${file}\n`).join(''),
+    windowsHide: true,
+  });
+  let offset = 0;
+  for (const file of files) {
+    const end = output.indexOf(10, offset);
+    const header = output.subarray(offset, end).toString('utf8');
+    const match = /^[0-9a-f]+ blob (\d+)$/.exec(header);
+    if (!match) throw new Error(`git cat-file could not read ${rev}:${file}`);
+    const size = Number(match[1]);
+    blobs.set(file, output.subarray(end + 1, end + 1 + size).toString('utf8'));
+    offset = end + 1 + size + 1;
+  }
+  return blobs;
 }
 
 /**
@@ -170,12 +241,44 @@ export function lowerBaseline(counts, baseline) {
   return { ok: true, baseline: { ...baseline, files } };
 }
 
-function main(argv) {
-  const files = listScannedFiles();
-  const counts = countFiles(files);
-  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
+function parseArgs(argv) {
+  const revArgs = argv.filter((arg) => arg.startsWith('--rev='));
+  const update = argv.includes('--update');
+  const unknown = argv.filter(
+    (arg) => arg !== '--update' && !arg.startsWith('--rev='),
+  );
+  const rev = revArgs[0]?.slice('--rev='.length);
+  if (
+    unknown.length > 0 ||
+    revArgs.length > 1 ||
+    (revArgs.length === 1 && (!rev || rev.startsWith('-'))) ||
+    (update && revArgs.length > 0)
+  )
+    return null;
+  return { update, rev };
+}
 
-  if (argv.includes('--update')) {
+function main(argv) {
+  const args = parseArgs(argv);
+  if (!args) {
+    console.error(
+      'Usage: node scripts/test-temp-dir-ratchet.mjs [--update | --rev=<commit>]',
+    );
+    return 2;
+  }
+  const { rev } = args;
+  const files = rev ? listScannedFilesAt(rev) : listScannedFiles();
+  const counts = rev ? countFilesAt(rev, files) : countFiles(files);
+  const baseline = JSON.parse(
+    rev
+      ? execFileSyncBounded('git', ['show', `${rev}:${BASELINE_PATH}`], {
+          encoding: 'utf8',
+          windowsHide: true,
+        })
+      : readFileSync(BASELINE_PATH, 'utf8'),
+  );
+
+  if (args.update) {
     const lowered = lowerBaseline(counts, baseline);
     if (!lowered.ok) {
       console.error(
@@ -232,11 +335,22 @@ function main(argv) {
     }
   }
   console.log(
-    `OK: ${result.total} raw mkdtemp calls across ${files.length} test files, at the baseline; new temp dirs use trackTempDirs().`,
+    `OK: ${result.total} raw mkdtemp calls across ${files.length} test files${rev ? ` at ${rev}` : ''}, at the baseline; new temp dirs use trackTempDirs().`,
   );
   return 0;
 }
 
 if (invokedDirectly(import.meta.url)) {
-  process.exit(main(process.argv.slice(2)));
+  let status;
+  try {
+    status = main(process.argv.slice(2));
+  } catch (error) {
+    // Exit 1 is a finding; 2 says the ratchet could not count at all, which
+    // the pre-push hook reports as a warning rather than a refusal.
+    console.error(
+      `test-temp-dir-ratchet: could not run: ${error instanceof Error ? error.message : error}`,
+    );
+    status = 2;
+  }
+  process.exit(status);
 }

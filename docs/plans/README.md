@@ -9,6 +9,7 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [2675-slice-w-install-ps1.md](2675-slice-w-install-ps1.md) — #2675 slice W: `install.ps1` for the prebuilt Windows archive (design)
 - [agent-identity-supported-surface-inventory.md](agent-identity-supported-surface-inventory.md) — Agent identity supported-surface inventory
 - [basis-session-epic-completion.md](basis-session-epic-completion.md) — Basis and session surfaces: remaining epic work
+- [browser-activity-inline.md](browser-activity-inline.md) — Inline browser activity
 - [continuity-epic-followthrough.md](continuity-epic-followthrough.md) — Continuity and existing-client follow-through
 - [documentation-code-audit.md](documentation-code-audit.md) — Documentation and architecture audit
 - [integration-completion-program.md](integration-completion-program.md) — Integration completion program
@@ -20,5 +21,6 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [shared-work-delivery.md](shared-work-delivery.md) — Shared work delivery ledger
 - [task-experience-follow-through.md](task-experience-follow-through.md) — Task experience follow-through
 - [task-tracker-sync-upstream-gaps.md](task-tracker-sync-upstream-gaps.md) — Task tracker sync: published-contract gaps
+- [ui-style-consistency.md](ui-style-consistency.md) — Station UI style audit
 - [whole-app-ux-campaign.md](whole-app-ux-campaign.md) — Whole-app UX campaign
 <!-- docs-index:end -->

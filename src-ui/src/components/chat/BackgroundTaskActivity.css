@@ -1,0 +1,65 @@
+/* A background task's activity line: the sheet, the Agents pane and the
+   chat's background banner all render it (BackgroundTaskActivity.tsx). */
+.background-tasks-sheet__meta {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-tasks-sheet__meta > .child-work-activity {
+  flex: 1;
+}
+
+.background-tasks-banner__tasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  border-top: 1px solid color-mix(in srgb, var(--k-brand) 12%, transparent);
+  list-style: none;
+}
+
+/* Kind glyph, title, then the activity and elapsed time at the row's end. */
+.background-tasks-banner__task {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.background-tasks-banner__task-glyph {
+  display: inline-flex;
+  color: var(--k-text-muted);
+}
+
+.background-tasks-banner__task-glyph svg {
+  width: 14px;
+  height: 14px;
+}
+
+.background-tasks-banner__task-title {
+  overflow: hidden;
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-tasks-banner__task .background-tasks-sheet__meta {
+  justify-content: flex-end;
+  max-width: 40ch;
+}
+
+/* In the chat, the time follows the activity rather than the row's edge. */
+.background-tasks-banner__task
+  .background-tasks-sheet__meta
+  > .child-work-activity {
+  flex: 0 1 auto;
+  min-width: 0;
+}

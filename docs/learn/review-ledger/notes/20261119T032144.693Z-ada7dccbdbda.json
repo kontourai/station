@@ -1,0 +1,13 @@
+{
+  "revision": "6b43c14da08bd8b9b2c915a00cbc33cabebe2bee",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Reviewed first-conversation guidance against the Home catalogue and work read. A settled empty local Project and work inventory is enough for guidance. Known local or remote work still suppresses the heading. Refused or incomplete remote reads retain their own notice and do not supply an all-clear. The mounted denied-read, failed-read retry and peer credential cases failed before the repair and passed after it.","inputs":["src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed first-conversation guidance against the Home catalogue and work read. A settled empty local Project and work inventory is enough for guidance. Known local or remote work still suppresses the heading. Refused or incomplete remote reads retain their own notice and do not supply an all-clear. The mounted denied-read, failed-read retry and peer credential cases failed before the repair and passed after it.","inputs":["src-ui/src/views/home/useHomeViewModel.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the first-run composer and Recent work composition. The welcome heading and remote read feedback can coexist, while the ordinary fresh Home has no separate empty list. The local Work, continuation and start actions retain their existing presentation. The earlier Gallery captures remain historical receipts.","inputs":["src-ui/src/views/home/HomeSurface.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the first-run composer and Recent work composition. The welcome heading and remote read feedback can coexist, while the ordinary fresh Home has no separate empty list. The local Work, continuation and start actions retain their existing presentation. The earlier Gallery captures remain historical receipts.","inputs":["src-ui/src/views/home/HomeSurface.tsx"]}
+  ]
+}

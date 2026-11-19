@@ -50,7 +50,13 @@ export function useConversationBoundaryDialogs({
     id: string;
     agentSlug: string;
     executionPreset?: { executionAgentId?: string; modelId?: string };
+    /**
+     * Each open is a new dialog: the dialog is keyed by this, so one chat's
+     * request state can never carry into another's picker.
+     */
+    nonce: number;
   } | null>(null);
+  const nextNonce = useRef(0);
   const [forkSource, setForkSource] = useState<{
     id: string;
     agentSlug: string;
@@ -163,16 +169,26 @@ export function useConversationBoundaryDialogs({
   ).length;
   const contextBoundaryStatus =
     contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
+  const open = activeSession?.conversationOpenState;
   const contextBoundaryLabel =
-    contextBoundaryStatus === 'reserved'
-      ? `Next engine start: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'Empty' : 'Re-anchor'}`
-      : contextBoundaryStatus === 'claimed'
-        ? 'Engine start reconciling'
-        : contextBoundaryStatus === 'indeterminate'
-          ? 'Engine start needs inspection'
-          : contextBoundaryStatus === 'failed'
-            ? 'Start failed; retry available'
-            : undefined;
+    contextBoundaryStatus === undefined &&
+    !activeSession?.orchestrationSessionStarted &&
+    !activeSession?.conversationOpenPending &&
+    !activeSession?.conversationOpenFailed &&
+    open?.status === 'fresh-context-ready' &&
+    open.conversation.id === activeSession?.conversationId &&
+    open.canContinue &&
+    open.callerAccess?.continue !== false
+      ? 'Next message starts fresh'
+      : contextBoundaryStatus === 'reserved'
+        ? `Next message: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'starts fresh' : 'continues'}`
+        : contextBoundaryStatus === 'claimed'
+          ? 'Reset in progress'
+          : contextBoundaryStatus === 'indeterminate'
+            ? 'Reset unconfirmed, check the chat'
+            : contextBoundaryStatus === 'failed'
+              ? 'Reset failed, retry available'
+              : undefined;
   const hasLocalDeferredMessages = Boolean(
     activeSession?.queuedMessages?.length ||
       activeSession?.queuedMessageFailure ||
@@ -188,13 +204,13 @@ export function useConversationBoundaryDialogs({
     : isSessionExecutionActive(activeSession)
       ? 'Wait for the current turn to finish.'
       : hasLocalDeferredMessages
-        ? 'Resolve queued or offline messages first.'
+        ? 'Send or discard queued messages first.'
         : durableHandoffQueue.status === 'pending'
           ? 'Checking queued messages…'
           : durableHandoffQueue.status === 'error'
             ? 'Queued message state is unavailable. Try again.'
             : durableHandoffQueueCount > 0
-              ? 'Resolve queued or offline messages first.'
+              ? 'Send or discard queued messages first.'
               : undefined;
 
   const openConversationHandoff = useCallback(
@@ -204,6 +220,7 @@ export function useConversationBoundaryDialogs({
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
       });
     },
     [activeSession],
@@ -212,9 +229,13 @@ export function useConversationBoundaryDialogs({
   const openExecutionHandoff = useCallback(
     (model?: SelectableModel) => {
       if (!activeSession?.conversationId) return;
+      // The engine picker owns no button to return to; the dialog returns
+      // focus to the composer instead.
+      handoffReturnFocusRef.current = null;
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
         executionPreset: {
           executionAgentId: model?.executionAgentId,
           modelId: model?.id,
@@ -231,6 +252,12 @@ export function useConversationBoundaryDialogs({
           session.id === handoffSource.id,
       )
     : undefined;
+  // The source chat was deleted or closed: its dialog has nothing to render
+  // into, so the held source is dropped.
+  const sourceGone = Boolean(handoffSource && !handoffSession);
+  useEffect(() => {
+    if (sourceGone) setHandoffSource(null);
+  }, [sourceGone]);
 
   return {
     handoffReturnFocusRef,

@@ -279,7 +279,7 @@ export function MutableSessionDetail({
     .find((receipt) => receipt.clientOrigin !== undefined);
   const latestOrigin = latestOriginReceipt?.clientOrigin;
   const lastUserAction = receipts.isLoading
-    ? 'Loading receipt provenance…'
+    ? 'Loading…'
     : receipts.isError
       ? 'unavailable'
       : clientOriginSummary(latestOrigin);
@@ -545,8 +545,7 @@ export function MutableSessionDetail({
                       <dt>Project workflows</dt>
                       <dd>
                         <p className="sessions-detail__workflow-hint">
-                          Not linked to this session — active flow-agents tasks
-                          in this project workspace.
+                          Active in this Project (not linked to this session).
                         </p>
                         <WorkflowStatusLineList
                           entries={workflowEntries}

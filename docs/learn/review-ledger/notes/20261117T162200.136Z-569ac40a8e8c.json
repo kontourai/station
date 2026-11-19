@@ -1,0 +1,7 @@
+{
+  "revision": "c48139d6fe464486fb9187d0ced7c7fdbc40d464",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Re-checked the entrance/exit row. The ephemeral notice enters on --motion-slow and its exit transition is now --motion-base, on --ease-out. The status pill still enters on --motion-slow with --ease-spring and leaves on --motion-fast with --ease-out; that leave was already fast and stays. Easing and hover sections are unchanged: --ease-out is var(--k-ease), there is no --ease-in token, CommandPalette.css has no animation, and the scroll-to-bottom hover scale stays inside (hover: hover) and (pointer: fine). No fresh screenshot or computed timing.","inputs":["docs/design/motion.md","src-ui/src/index.css"]}
+  ]
+}

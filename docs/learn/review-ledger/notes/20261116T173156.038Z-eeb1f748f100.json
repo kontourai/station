@@ -1,0 +1,7 @@
+{
+  "revision": "f359d0fd3b3a621bc9e144c1b9b1f38707b3e526",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-checked after typing the All chats group builder in childWorkSelectors.ts: a type annotation only, no behavior change; the 2026-11-16 Agents pane amendment still matches.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/agents/childWorkSelectors.ts"]}
+  ]
+}

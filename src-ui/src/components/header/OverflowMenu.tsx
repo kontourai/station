@@ -1,7 +1,7 @@
 import { ConnectionStatusDot } from '@kontourai/station-connect';
 import { ACTIVITY_SURFACE_ID } from '@kontourai/station-contracts/surface-deep-link';
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { toastStore } from '../../contexts/ToastContext';
@@ -123,6 +123,16 @@ export function OverflowMenu({
   const menuRef = useMenuFocus<HTMLDivElement>(isOpen, onClose);
   const { isDesktop } = usePlatformProfile();
   const hasRegionModel = useRegionModelOptional() !== null;
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [isOpen, onClose]);
   if (!isOpen) return null;
   const openDesktopTrayMenu =
     onOpenDesktopTrayMenu ??

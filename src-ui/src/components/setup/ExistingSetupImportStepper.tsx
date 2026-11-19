@@ -16,6 +16,10 @@ import {
 } from '@kontourai/station-sdk/setup-imports-query';
 import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  isStationReadAccessRefusal,
+  stationViewReadQueryOptions,
+} from '../../lib/queryDefaults';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { formatBytes } from '../../utils/formatBytes';
 import { Button } from '../Button';
@@ -25,6 +29,34 @@ import { ErrorState, SkeletonBlock } from '../state';
 import './ExistingSetupImportStepper.css';
 
 const INVALID_SKILL_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** The one setup source Station offers today is Codex's prompt folder. */
+function setupSourceLabel(sourceId: string): string {
+  return sourceId === 'codex-prompts' ? 'Codex' : sourceId;
+}
+
+/**
+ * Only the outcomes that happened. An indeterminate item may or may not have
+ * landed, so it points the person at Skills to check.
+ */
+function receiptSummaryText(summary: {
+  imported: number;
+  skipped: number;
+  failed: number;
+  'rolled-back': number;
+  indeterminate: number;
+}): string {
+  const parts = [
+    summary.imported > 0 ? `${summary.imported} imported` : null,
+    summary.skipped > 0 ? `${summary.skipped} skipped` : null,
+    summary.failed > 0 ? `${summary.failed} failed` : null,
+    summary['rolled-back'] > 0 ? `${summary['rolled-back']} rolled back` : null,
+    summary.indeterminate > 0
+      ? `${summary.indeterminate} unknown, check Skills`
+      : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? `${parts.join('; ')}.` : 'Nothing imported.';
+}
 
 /** Mirrors Station's public skill-name rule before the server validates it. */
 function isStationSkillName(name: string): boolean {
@@ -49,7 +81,7 @@ export function ExistingSetupImportStepper({
   sourceId = 'codex-prompts',
   compact = false,
 }: ExistingSetupImportStepperProps) {
-  const sources = useSetupImportSourcesQuery();
+  const sources = useSetupImportSourcesQuery(stationViewReadQueryOptions);
   const previewMutation = useCreateSetupImportPreviewMutation();
   const applyMutation = useApplySetupImportMutation();
   const reviewMutation = useReviewSetupImportTargetsMutation();
@@ -135,15 +167,26 @@ export function ExistingSetupImportStepper({
     );
   }
   if (sources.isError) {
+    const refusal = isStationReadAccessRefusal(sources.error)
+      ? sources.error
+      : undefined;
     return (
       <ErrorState
         variant="compact"
         title="Existing setup unavailable"
-        description={userFacingErrorMessage(sources.error)}
+        description={
+          refusal?.status === 403
+            ? 'Ask the Station operator for permission to import existing setup.'
+            : refusal
+              ? 'Sign in to this Station to check its existing setup.'
+              : userFacingErrorMessage(sources.error)
+        }
         action={
-          <Button variant="secondary" onClick={() => sources.refetch()}>
-            Retry setup check
-          </Button>
+          refusal ? undefined : (
+            <Button variant="secondary" onClick={() => sources.refetch()}>
+              Retry setup check
+            </Button>
+          )
         }
       />
     );
@@ -162,8 +205,7 @@ export function ExistingSetupImportStepper({
             Bring in existing setup
           </h3>
           <p>
-            Review immediate prompt files as Skills. Station never displays
-            their contents or a filesystem location here.
+            Import prompt files from {setupSourceLabel(sourceId)} as Skills.
           </p>
         </div>
         {!preview && !receipt && (
@@ -184,7 +226,7 @@ export function ExistingSetupImportStepper({
           : applyMutation.isPending
             ? 'Importing reviewed items…'
             : rollbackMutation.isPending
-              ? 'Rolling back receipt…'
+              ? 'Rolling back import…'
               : ''}
       </p>
 
@@ -388,9 +430,7 @@ export function ExistingSetupImportStepper({
           tabIndex={-1}
           aria-live="polite"
         >
-          <h4>
-            {receipt.rolledBackAt ? 'Rollback receipt' : 'Import receipt'}
-          </h4>
+          <h4>{receipt.rolledBackAt ? 'Rollback result' : 'Import result'}</h4>
           <div className="import-modal__preview-list existing-setup-import__outcomes">
             {receipt.items.map((item) => (
               <div key={item.sourceId} className="import-modal__preview-item">
@@ -408,8 +448,7 @@ export function ExistingSetupImportStepper({
             ))}
           </div>
           <p className="existing-setup-import__summary">
-            {summary &&
-              `Imported ${summary.imported}; skipped ${summary.skipped}; failed ${summary.failed}; rolled back ${summary['rolled-back']}; indeterminate ${summary.indeterminate}.`}
+            {summary && receiptSummaryText(summary)}
           </p>
           {receipt.retryable && (
             <ResponsiveSurfaceActions className="existing-setup-import__actions">
@@ -432,8 +471,8 @@ export function ExistingSetupImportStepper({
           </ResponsiveSurfaceActions>
           {rollbackMutation.isError && (
             <p className="existing-setup-import__error" role="alert">
-              {userFacingErrorMessage(rollbackMutation.error)} Check this
-              receipt before retrying a rollback.
+              {userFacingErrorMessage(rollbackMutation.error)} Check the results
+              above before retrying the rollback.
             </p>
           )}
         </div>

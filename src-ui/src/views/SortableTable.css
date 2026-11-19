@@ -27,12 +27,8 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: linear-gradient(
-    135deg,
-    var(--bg-tertiary) 0%,
-    var(--bg-secondary) 100%
-  );
-  border-bottom: 2px solid var(--border-primary);
+  background: var(--k-panel-raised);
+  border-bottom: 2px solid var(--k-line);
 }
 
 .sortable-table__th--sortable {
@@ -43,12 +39,8 @@
 }
 
 .sortable-table__th--sortable:hover {
-  color: var(--text-primary);
-  background: linear-gradient(
-    135deg,
-    var(--bg-secondary) 0%,
-    var(--bg-tertiary) 100%
-  );
+  color: var(--k-text);
+  background: color-mix(in srgb, var(--k-text) 5%, var(--k-panel-raised));
 }
 
 .sortable-table__sort-button {

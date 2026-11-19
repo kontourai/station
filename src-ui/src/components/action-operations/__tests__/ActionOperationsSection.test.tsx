@@ -385,3 +385,22 @@ describe('ActionOperationsSection', () => {
     );
   });
 });
+
+vi.mock('../../../views/MonitoringView', () => ({
+  MonitoringViewWithBoundary: () => <p>Monitoring events</p>,
+}));
+vi.mock('../../../views/developer/TelemetryCompanion', () => ({
+  TelemetryCompanion: () => null,
+}));
+
+import TelemetryTab from '../../../views/developer/TelemetryTab';
+
+test('Developer Monitoring retains the platform actions UI after Activity retirement', () => {
+  useActionOperationsQuery.mockReturnValue({
+    data: { items: [{ ...base, id: 'visible-op', status: 'running' }] },
+    isLoading: false,
+    isFetching: false,
+  });
+  render(<TelemetryTab />);
+  expect(screen.getByText(/^Platform actions/)).toBeTruthy();
+});

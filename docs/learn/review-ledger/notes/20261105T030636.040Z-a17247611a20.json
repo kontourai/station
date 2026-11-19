@@ -1,7 +1,0 @@
-{
-  "revision": "19e4165f5635a11ea089304906111845f6b29b0c",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Regenerated MCP topics carry only the round-3 module-map clause (provisioned channels in the public domain); checked the generated diff in station-docs-content.ts. The manual's own topics make no telemetry receiver claim.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

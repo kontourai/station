@@ -9,7 +9,10 @@ import {
   useRemoteSessionsQuery,
   useTasksQuery,
 } from '@kontourai/station-sdk';
-import { listProjectLayouts } from '@kontourai/station-sdk/client';
+import {
+  listProjectLayouts,
+  StationHttpError,
+} from '@kontourai/station-sdk/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useReducer } from 'react';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
@@ -27,6 +30,10 @@ import {
   dockFoldsToOneRegion,
   useDockSlotDevice,
 } from '../../hooks/useIsMobile';
+import {
+  isStationReadAccessRefusal,
+  stationViewReadQueryOptions,
+} from '../../lib/queryDefaults';
 import type { NavigationView } from '../../types';
 import { withConversationInventory } from './conversation-inventory-facts';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
@@ -34,6 +41,7 @@ import { useWorkFacts } from './useWorkFacts';
 import type { WorkFactsById } from './work-facts';
 import {
   focusChatEventDetailForAction,
+  openRemoteSessionReader,
   resolveWorkItemOpenAction,
 } from './work-item-open-policy';
 
@@ -64,6 +72,7 @@ interface HomeWorkData {
   workDegraded: boolean;
   workError: boolean;
   retryWork: () => void;
+  remoteReadError?: { description?: string; retry?: () => void };
   remoteUnavailable: NonNullable<
     ReturnType<typeof useRemoteSessionsQuery>['data']
   >['unavailable'];
@@ -78,7 +87,26 @@ function useHomeWorkData(): HomeWorkData {
   const sessions = useOrchestrationSessionsQuery();
   const inventory = useConversationInventoryQuery();
   const tasks = useTasksQuery();
-  const { data: remoteSessionsResult } = useRemoteSessionsQuery();
+  const remoteSessions = useRemoteSessionsQuery(stationViewReadQueryOptions);
+  const remoteError = remoteSessions.error;
+  const remoteAccessRefused = isStationReadAccessRefusal(remoteError);
+  const remoteSessionsResult = remoteAccessRefused
+    ? undefined
+    : remoteSessions.data;
+  const remoteReadError =
+    remoteSessions.isError &&
+    !(remoteError instanceof StationHttpError && remoteError.status === 404)
+      ? {
+          description: remoteAccessRefused
+            ? remoteError.status === 401
+              ? 'Sign in to this Station to see remote work.'
+              : 'Ask the Station operator for access to remote work.'
+            : undefined,
+          retry: remoteAccessRefused
+            ? undefined
+            : () => void remoteSessions.refetch(),
+        }
+      : undefined;
   const agents = useAgents();
   const agentsLoaded = useAgentsLoaded();
   // archive#3391: Home's rows name a model the way the New Chat surfaces
@@ -151,9 +179,7 @@ function useHomeWorkData(): HomeWorkData {
       projects.length === 0 &&
       workItems.length === 0 &&
       !workLoading &&
-      !workError &&
-      (remoteSessionsResult?.unavailable.length ?? 0) === 0 &&
-      (remoteSessionsResult?.authenticationRequired?.length ?? 0) === 0,
+      !workError,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
@@ -167,6 +193,7 @@ function useHomeWorkData(): HomeWorkData {
       void tasks.refetch();
       void inventory.refetch();
     },
+    remoteReadError,
     remoteUnavailable: remoteSessionsResult?.unavailable ?? [],
     remoteAuthenticationRequired:
       remoteSessionsResult?.authenticationRequired ?? [],
@@ -194,19 +221,27 @@ function createContinueWork(
   // does both halves — it commands the region model, and falls back to the
   // canonical deep link when no region host is mounted.
   showActivitySession: (sessionId: string) => void,
-  acknowledge: (conversationId: string, updatedAt: string) => void,
+  acknowledge: (
+    conversationId: string,
+    updatedAt: string,
+    readVersion: number | undefined,
+  ) => void,
   codingLayoutFor: CodingLayoutFor,
 ) {
   return (task: HomeWorkItem) => {
     if (task.conversationUpdatedAt) {
-      acknowledge(task.id, task.conversationUpdatedAt);
+      acknowledge(task.id, task.conversationUpdatedAt, task.readVersion);
     }
     if (task.kind === 'task') {
       onNavigate({ type: 'task', taskId: task.id });
       return;
     }
-    if (task.kind === 'remote-session') return;
     const action = resolveWorkItemOpenAction(task);
+    if (action.kind === 'remote') {
+      openRemoteSessionReader(action);
+      return;
+    }
+    if (task.kind === 'remote-session') return;
     if (action.kind === 'navigate') {
       showActivitySession(action.threadId);
       return;
@@ -269,9 +304,13 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     ),
     continueWork: createContinueWork(
       onNavigate,
-      (sessionId) => showSurface('activity', { session: sessionId }),
-      (conversationId, updatedAt) =>
-        acknowledge.mutate({ conversationId, updatedAt }),
+      (sessionId) => showSurface('chat', { session: sessionId }),
+      (conversationId, updatedAt, readVersion) =>
+        acknowledge.mutate({
+          conversationId,
+          updatedAt,
+          ...(readVersion === undefined ? {} : { readVersion }),
+        }),
       codingLayoutFor,
     ),
   };

@@ -12,7 +12,6 @@
   justify-content: center;
   padding: 1rem;
   background: var(--overlay-modal);
-  backdrop-filter: blur(6px);
 }
 
 /* `ResponsiveDialogSurface` supplies behavior and geometry only, so the panel
@@ -20,10 +19,10 @@
    and the muted text was unreadable in the light theme. */
 .conversation-handoff-dialog {
   box-sizing: border-box;
-  width: min(680px, calc(100vw - 32px));
-  max-height: min(760px, calc(100dvh - 32px));
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(640px, calc(100dvh - 32px));
   overflow: auto;
-  padding: var(--space-5, 20px);
+  padding: var(--k-space-4);
   border: var(--k-border-thin, 1px) solid var(--k-line);
   border-radius: var(--k-radius-md);
   background: var(--k-panel);
@@ -31,92 +30,117 @@
 }
 .conversation-handoff-dialog__header,
 .conversation-handoff-dialog__actions,
-.conversation-handoff-dialog__agent {
+.conversation-handoff-dialog__agent,
+.conversation-handoff-dialog__model,
+.conversation-handoff-dialog__note {
   display: flex;
   align-items: center;
 }
 .conversation-handoff-dialog__header {
   justify-content: space-between;
-  gap: var(--space-4, 16px);
+  gap: var(--k-space-3);
 }
-.conversation-handoff-dialog__header h3,
-.conversation-handoff-dialog__header p {
+.conversation-handoff-dialog__header h3 {
   margin: 0;
-}
-.conversation-handoff-dialog__header p {
-  margin-top: 4px;
-  color: var(--text-muted);
+  font-size: var(--k-text-md);
 }
 .conversation-handoff-dialog__agents {
   display: grid;
-  gap: 8px;
-  margin: 20px 0;
+  gap: var(--k-space-1);
+  margin: var(--k-space-3) 0;
 }
 .conversation-handoff-dialog__agent {
+  box-sizing: border-box;
   width: 100%;
-  gap: 10px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md, 8px);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  padding: 10px 12px;
+  min-height: 40px;
+  gap: var(--k-space-2);
+  border: var(--k-border-thin, 1px) solid transparent;
+  border-radius: var(--k-radius-sm);
+  color: var(--k-text);
+  padding: var(--k-space-1) var(--k-space-2);
   text-align: left;
+  cursor: pointer;
+}
+.conversation-handoff-dialog__agent:hover {
+  background: var(--k-panel-raised);
+}
+/* The radio stays the control (keyboard arrows, focus ring); the row's
+   border marks the choice. */
+.conversation-handoff-dialog__agent input {
+  margin: 0;
 }
 .conversation-handoff-dialog__agent:has(input:checked) {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 1px var(--accent-primary);
+  border-color: var(--k-action);
+  background: var(--k-panel-raised);
+}
+.conversation-handoff-dialog__agent:has(input:focus-visible) {
+  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
+  outline-offset: 1px;
 }
 .conversation-handoff-dialog__agent small {
   margin-left: auto;
-  color: var(--text-muted);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
-/* The fields are the shared form primitives (`.editor-field`, `.editor-label`,
-   `.editor-select`, `.editor-textarea` in components/editor-controls.css);
-   this grid owns only the rhythm between groups, so a field's own bottom
-   margin would double it. */
 .conversation-handoff-dialog__confirmation {
   display: grid;
-  gap: var(--k-space-4);
+  gap: var(--k-space-3);
 }
-.conversation-handoff-dialog__confirmation .editor-field {
-  margin-bottom: 0;
+.conversation-handoff-dialog__model {
+  gap: var(--k-space-2);
 }
-/* The engine-change line states what the submit will do; it is a paragraph of
-   its own, separated from the first field below it. */
+.conversation-handoff-dialog__model .editor-label {
+  margin: 0;
+}
+/* The engine-change line states what the submit will do. */
 .conversation-handoff-dialog__summary {
-  margin: var(--k-space-4) 0;
+  margin: var(--k-space-3) 0;
   color: var(--k-text);
   line-height: var(--k-leading-normal);
+}
+.conversation-handoff-dialog__note {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--k-space-1) var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 .conversation-handoff-dialog__precondition {
   margin: 0;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
-.conversation-handoff-dialog__disclosure,
+.conversation-handoff-dialog__disclosure {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.conversation-handoff-dialog__disclosure dt {
+  color: var(--k-text);
+}
+.conversation-handoff-dialog__disclosure dd {
+  margin: 0;
+}
 .conversation-handoff-boundary__disclosure {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 16px;
 }
-.conversation-handoff-dialog__disclosure {
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md, 8px);
-  padding: 12px;
-  color: var(--text-muted);
-}
-.conversation-handoff-dialog__disclosure ul,
 .conversation-handoff-boundary__disclosure ul {
   margin: 6px 0 0;
   padding-left: 20px;
 }
 .conversation-handoff-dialog__feedback {
   color: var(--status-error, var(--text-primary));
+  font-size: var(--k-text-sm);
 }
 .conversation-handoff-dialog__actions {
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--k-space-2);
 }
 .conversation-handoff-boundary {
   display: grid;

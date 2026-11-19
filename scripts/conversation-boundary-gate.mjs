@@ -287,6 +287,11 @@ export function scanConversationSources(
     for (const file of SENTINELS)
       if (!files.has(file)) errors.push(`scope lost sentinel: ${file}`);
   }
+  if (errors.length) {
+    for (const [file, ast] of asts)
+      if (ast.parseDiagnostics.length) errors.push(`parse error: ${file}`);
+    return { errors, sites: [] };
+  }
   const sites = [];
   const scope = new Set([
     ...manifest.modules,

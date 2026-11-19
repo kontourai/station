@@ -20,6 +20,7 @@
  */
 import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import { assertEngineAllowedByManagedPolicy } from '../../security/managed-engine-limits.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   OPENCODE_ASK_PERMISSIONS,
   OPENCODE_EXPLORE_TOOLS,
@@ -306,7 +307,7 @@ export async function verifyOpenCodeApprovalFloor(
   } catch (error) {
     return {
       ok: false,
-      reason: `Station could not read OpenCode's resolved approval rules (${error instanceof Error ? error.message : String(error)})`,
+      reason: `Station could not read OpenCode's resolved approval rules (${errorMessage(error)})`,
     };
   }
   for (const [index, agent] of agents.entries()) {

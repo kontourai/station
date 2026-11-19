@@ -1,0 +1,17 @@
+{
+  "revision": "5c0de17f4226807f2e643f330e6d63b9bb4da6b2",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked this page's citations of testing.md after the PR Gallery paragraph changed to composed capture plus main attribution: it makes no claim about the PR Gallery head, composition or merge-queue skip (code-quality.md's composition-freshness section lists only required merge-queue contexts, which Gallery is not), so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked this page's citations of testing.md after the PR Gallery paragraph changed to composed capture plus main attribution: it makes no claim about the PR Gallery head, composition or merge-queue skip (code-quality.md's composition-freshness section lists only required merge-queue contexts, which Gallery is not), so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked this page's citations of testing.md after the PR Gallery paragraph changed to composed capture plus main attribution: it makes no claim about the PR Gallery head, composition or merge-queue skip (code-quality.md's composition-freshness section lists only required merge-queue contexts, which Gallery is not), so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked this page's citations of testing.md after the PR Gallery paragraph changed to composed capture plus main attribution: it makes no claim about the PR Gallery head, composition or merge-queue skip (code-quality.md's composition-freshness section lists only required merge-queue contexts, which Gallery is not), so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked this page's citations of testing.md after the PR Gallery paragraph changed to composed capture plus main attribution: it makes no claim about the PR Gallery head, composition or merge-queue skip (code-quality.md's composition-freshness section lists only required merge-queue contexts, which Gallery is not), so no prose change is needed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Checked this page's citations of testing.md after the PR Gallery paragraph changed to composed capture plus main attribution: it makes no claim about the PR Gallery head, composition or merge-queue skip (code-quality.md's composition-freshness section lists only required merge-queue contexts, which Gallery is not), so no prose change is needed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

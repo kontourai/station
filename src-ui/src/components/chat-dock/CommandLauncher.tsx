@@ -10,8 +10,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import { ResponsiveDialogCloseButton } from '../ResponsiveDialogSurface';
 import {
   buildCommandLauncherPreview,
@@ -25,9 +27,6 @@ interface CommandLauncherProps {
   onClose: () => void;
   onConfirm: (intent: string) => void;
 }
-
-const FOCUSABLE =
-  'button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
 
 export function CommandLauncher({
   context,
@@ -80,19 +79,14 @@ export function CommandLauncher({
         return;
       }
       if (event.key !== 'Tab') return;
-      const controls = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [],
-      ).filter((element) => !element.hasAttribute('disabled'));
-      if (controls.length === 0) return;
-      const first = controls[0];
-      const last = controls.at(-1)!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+      wrapTabFocus(
+        event,
+        Array.from(
+          dialogRef.current?.querySelectorAll<HTMLElement>(
+            FOCUSABLE_SELECTOR,
+          ) ?? [],
+        ).filter((element) => !element.hasAttribute('disabled')),
+      );
     };
     document.addEventListener('keydown', containFocus);
     return () => document.removeEventListener('keydown', containFocus);
@@ -105,9 +99,11 @@ export function CommandLauncher({
     closeAndRestoreFocus();
   }, [closeAndRestoreFocus, isSubmitting, onConfirm, preview.intent]);
 
-  return (
+  return createPortal(
     <div
       className="command-launcher__overlay responsive-surface-overlay"
+      data-responsive-layer="dialog"
+      data-no-dock-drag=""
       style={visualViewport.style}
     >
       <button
@@ -228,6 +224,7 @@ export function CommandLauncher({
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

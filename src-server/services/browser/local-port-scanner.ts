@@ -17,7 +17,7 @@
 import { execFile } from 'node:child_process';
 import { readFile, readlink, realpath } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
-import { isAbsolute, relative } from 'node:path';
+import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import type { StationListeners } from './station-listeners.js';
 
 export interface ListeningPort {
@@ -447,8 +447,7 @@ async function inside(child: string, root: string): Promise<boolean> {
     realpath(child).catch(() => child),
     realpath(root).catch(() => root),
   ]);
-  const rel = relative(b, a);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  return isCanonicalPathWithin(b, a);
 }
 
 /**

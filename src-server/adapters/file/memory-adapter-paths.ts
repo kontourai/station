@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import type { WorkingMemoryScope } from '@voltagent/core';
 
 /**
@@ -10,6 +10,14 @@ import type { WorkingMemoryScope } from '@voltagent/core';
  * could always write it, and existing files must keep their names.
  */
 const WINDOWS_RESERVED_FILE_NAME_CHARS = /[%<>:"|?*]/g;
+
+/** A conversation id whose file would resolve outside its directory. */
+export class ConversationPathEscapeError extends Error {
+  constructor() {
+    super('Conversation id resolves outside its conversations directory');
+    this.name = 'ConversationPathEscapeError';
+  }
+}
 
 export class MemoryAdapterPaths {
   constructor(
@@ -38,11 +46,19 @@ export class MemoryAdapterPaths {
     return join(this.getAgentMemoryDir(resourceId), 'conversations');
   }
 
+  /**
+   * Refuses (`ConversationPathEscapeError`) an id whose file would resolve
+   * outside the conversations directory (#3075 review: `../escaped` read
+   * `memory/escaped.json`). Callers that take an id from a request parse it
+   * first; this is the containment every caller gets.
+   */
   getConversationPath(resourceId: string, conversationId: string): string {
-    return join(
-      this.getConversationsDir(resourceId),
-      `${this.fileName(conversationId)}.json`,
-    );
+    const directory = this.getConversationsDir(resourceId);
+    const path = join(directory, `${this.fileName(conversationId)}.json`);
+    const inside = relative(directory, path);
+    if (inside.startsWith(`..${sep}`) || isAbsolute(inside))
+      throw new ConversationPathEscapeError();
+    return path;
   }
 
   getSessionsDir(resourceId: string): string {

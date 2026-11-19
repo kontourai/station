@@ -34,6 +34,7 @@ import {
   type NativeOutputCallFacts,
   type NativeOutputGrantAuthority,
 } from '../../runtime/native-output-turn-grant.js';
+import { createKeyedSerialQueue } from '../../utils/keyed-serial-queue.js';
 
 export type StationControlPullRequestDeclarationOutcome =
   | 'declared'
@@ -180,7 +181,7 @@ export function createStationControlPullRequestDeclarations(
   const revokedTurns = new Set<string>();
   // One declaration per session at a time, so two concurrent calls for one
   // pull request cannot both pass the repeat check.
-  const queues = new Map<string, Promise<unknown>>();
+  const queues = createKeyedSerialQueue();
 
   /**
    * Release the grants of turns that are no longer live. A turn that ends
@@ -318,18 +319,7 @@ export function createStationControlPullRequestDeclarations(
 
   return {
     declare(input) {
-      const previous = queues.get(input.sessionId) ?? Promise.resolve();
-      const next = previous.then(
-        () => run(input),
-        () => run(input),
-      );
-      const tail = next.catch(() => undefined);
-      queues.set(input.sessionId, tail);
-      void tail.then(() => {
-        if (queues.get(input.sessionId) === tail)
-          queues.delete(input.sessionId);
-      });
-      return next;
+      return queues.run(input.sessionId, () => run(input));
     },
     takeTerminalAdmissions: (sessionId, turnId, eventId) =>
       operation.takeTerminalAdmissions(sessionId, turnId, eventId),

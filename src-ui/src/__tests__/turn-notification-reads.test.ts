@@ -203,7 +203,7 @@ test('a Web Push tap: the page loads on the link, the parameter leaves the URL o
 test('an alert opened before the reader loads is still read once it does', async () => {
   const view = renderHook(() => useTurnNotificationReads());
   navigationStore.navigate('/', {
-    surface: 'activity',
+    surface: 'chat',
     session: 'thread-watched',
     openedNotification: 'n-early',
   });
@@ -219,7 +219,7 @@ test('a desktop alert click: the app navigates to the link and reads the record 
   const view = renderHook(() => useTurnNotificationReads());
   await vi.dynamicImportSettled();
   const unsubscribe = subscribeToNotificationOpen(
-    (pathname, params) => navigationStore.navigate(pathname, params),
+    ({ pathname, params }) => navigationStore.navigate(pathname, params),
     Promise.resolve({
       listen: async () => () => {},
       take: async () =>

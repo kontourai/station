@@ -1,0 +1,7 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added ProjectPullRequestFeedbackDefaults, PullRequestByHead/PullRequestsByHeadResult and the optional IPullRequestProvider.findOpenPullRequestsByHead, matching packages/contracts/src/pull-request-feedback.ts and pull-request-provider.ts; conversation link source values unchanged.","inputs":["docs/reference/contracts.md","packages/contracts/src/pull-request-provider.ts","src-server/routes/pull-requests/conversation-pull-request-links.ts"]}
+  ]
+}

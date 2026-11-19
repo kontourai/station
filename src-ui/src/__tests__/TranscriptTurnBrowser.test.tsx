@@ -16,7 +16,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   }),
 }));
 vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
-  useSurfaceVisibilityFlags: () => new Set(['session-cli-reads']),
+  useSurfaceVisibilityFlags: () => new Set(),
 }));
 
 test('loads turn metadata before requesting transcript pages, then loads only the selected turn', async () => {

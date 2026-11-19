@@ -148,11 +148,15 @@ describe('pinned launch fields reach the engine child', () => {
         },
       },
     });
+    const launches: unknown[] = [];
     const acp = new ACPProcess({
       command: 'user-chosen-agent',
       args: ['--yolo'],
       cwd: makeTempDir('station-managed-acp-cwd-'),
-      createClient: () => ({}) as never,
+      createClient: (launch) => {
+        launches.push(launch);
+        return {} as never;
+      },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       launchEnv: { ACME_ROUTE: 'user-route' },
     });
@@ -162,6 +166,29 @@ describe('pinned launch fields reach the engine child', () => {
     const recorded = engine.read();
     expect(recorded.argv).toEqual(['--acp', '--acme']);
     expect(recorded.env.ACME_ROUTE).toBe('gateway');
+    // The client is told the launch is not the connection's own, so host
+    // auth installs no responders for it.
+    expect(launches).toEqual([{ launchReplacedByPolicy: true }]);
+  });
+
+  test('ACP: an unlocked pin that changes nothing reports the launch as the connection resolved it', async () => {
+    const engine = recordingEngine();
+    install({ instances: { acp: { locked: false, launchArgs: ['--x'] } } });
+    const launches: unknown[] = [];
+    const acp = new ACPProcess({
+      command: engine.binary,
+      args: ['--own'],
+      cwd: makeTempDir('station-managed-acp-cwd-'),
+      createClient: (launch) => {
+        launches.push(launch);
+        return {} as never;
+      },
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    });
+    await expect(acp.start()).rejects.toThrow();
+    await acp.destroy();
+    expect(engine.read().argv).toEqual(['--own']);
+    expect(launches).toEqual([{ launchReplacedByPolicy: false }]);
   });
 
   test('Claude: pinned arguments and environment are merged into the SDK launch', async () => {
@@ -215,6 +242,51 @@ describe('pinned launch fields reach the engine child', () => {
         signal: new AbortController().signal,
       }),
     ).toThrow(/Acme's policy manages how claude is launched/);
+  });
+});
+
+// #1942: muse honours META_API_KEY whatever config home it runs under, so a
+// child under a credential profile must not inherit the user's ambient key;
+// the global (no profile) child keeps it. Drives the real builders.
+describe('a Muse child under a credential profile does not inherit META_API_KEY', () => {
+  const inherited = process.env.META_API_KEY;
+  afterEach(() => {
+    if (inherited === undefined) delete process.env.META_API_KEY;
+    else process.env.META_API_KEY = inherited;
+  });
+
+  test('muse exec and muse serve', async () => {
+    const engine = recordingEngine();
+    install({
+      instances: { muse: { locked: false, binaryPath: engine.binary } },
+    });
+    process.env.META_API_KEY = 'sk-ambient';
+    const tmpDir = makeTempDir('station-muse-key-tmp-');
+    const profile = { XDG_CONFIG_HOME: makeTempDir('station-muse-profile-') };
+    const run = async (spawned: { process: unknown; release?: () => void }) => {
+      await exited(spawned.process as never);
+      spawned.release?.();
+      return engine.read().env;
+    };
+    const execEnv = await run(
+      createMuseProcess(['exec'], undefined, tmpDir, profile),
+    );
+    expect(execEnv.XDG_CONFIG_HOME).toBe(profile.XDG_CONFIG_HOME);
+    expect(execEnv).not.toHaveProperty('META_API_KEY');
+    const serveEnv = await run(
+      createMuseServeHost(
+        { disableSandbox: false },
+        undefined,
+        undefined,
+        tmpDir,
+        profile,
+      ),
+    );
+    expect(serveEnv.XDG_CONFIG_HOME).toBe(profile.XDG_CONFIG_HOME);
+    expect(serveEnv).not.toHaveProperty('META_API_KEY');
+    // No profile: the user's own Muse, key included.
+    const globalEnv = await run(createMuseProcess(['exec'], undefined, tmpDir));
+    expect(globalEnv.META_API_KEY).toBe('sk-ambient');
   });
 });
 

@@ -1,0 +1,78 @@
+{
+  "beforeRun": 42209735580,
+  "beforeReportedHead": "2f651f44488ff883d575fc36c4bcfd803cc7bf89",
+  "beforeArtifact": 13498644919,
+  "functionalAfterHead": "49457eb38295a459df642aa09f327b056b62a9a0",
+  "scopedProductAudit": {
+    "screens": 8,
+    "findings": 0,
+    "notAllowlisted": 0
+  },
+  "pixelComparison": "NOT_VERIFIED:8new/0comparisons",
+  "files": [
+    {
+      "file": "before-apps-library-dark-desktop.png",
+      "sha256": "1c62eb12d1049f721e49b7e0a9c41d998292fa3c5f2a55525dca29bc43238fd3"
+    },
+    {
+      "file": "after-apps-library-dark-desktop.png",
+      "sha256": "2f6bf7a3ef377eee0dcc25ec0ab81f7e513bcd8865d3b3d92a97119d07ab053c"
+    },
+    {
+      "file": "before-apps-library-dark-mobile.png",
+      "sha256": "df646b4e0cd21924ee98434db727db814f8a2a910cbe7b9c000392982866196d"
+    },
+    {
+      "file": "after-apps-library-dark-mobile.png",
+      "sha256": "9d8730d1fed61e322acef361a5f340fd13491dcc1c5111497d31093d99aa2eaf"
+    },
+    {
+      "file": "before-apps-library-light-desktop.png",
+      "sha256": "e40f2a1f00662ba25f8be34dcecfda0cd1f9c0443a2ac73a51ee2c7bcb02f34d"
+    },
+    {
+      "file": "after-apps-library-light-desktop.png",
+      "sha256": "14dec9925898cf96a7a0049e39cda38d48c34acad332f633c5a2278f169fd797"
+    },
+    {
+      "file": "before-apps-library-light-mobile.png",
+      "sha256": "1736d215d1bdcdbccba54f8e7ae5d80fbf501105f483378dda46d905e02c865c"
+    },
+    {
+      "file": "after-apps-library-light-mobile.png",
+      "sha256": "4091b4683a86124fdf28f231682ff77399c9f5a37957bb6ba47e62ec19f35506"
+    },
+    {
+      "file": "before-apps-details-dark-desktop.png",
+      "sha256": "61f0c0dcd050237db2f3d941572607626cfe6aab9fb4f5ff2419a880027d4885"
+    },
+    {
+      "file": "after-apps-details-dark-desktop.png",
+      "sha256": "fca3a3cfcef41fd1ce48936aca442d06d9d1217a03d2bc26b7ddf99ba3d6e1eb"
+    },
+    {
+      "file": "before-apps-details-dark-mobile.png",
+      "sha256": "58073a208d5b1a13151421b216b5cfef217e4630576aecd6967cfafeae19e07a"
+    },
+    {
+      "file": "after-apps-details-dark-mobile.png",
+      "sha256": "9d45b103df6802bd7d9788afff5ebe1affdab48516f503f460202e9a29b2c547"
+    },
+    {
+      "file": "before-apps-details-light-desktop.png",
+      "sha256": "57a613cebf9dd14b3d77fdbffdc5a0e01308fed2e4c583f99d6b30ff1bad08ae"
+    },
+    {
+      "file": "after-apps-details-light-desktop.png",
+      "sha256": "83a3a01873b43b832c3fab36acbbf842762fb8c5023d061d01a18bd5c27211db"
+    },
+    {
+      "file": "before-apps-details-light-mobile.png",
+      "sha256": "863e986e318bb5e982efa5557d682e5a840889ace542ba323a35552d798cd4b7"
+    },
+    {
+      "file": "after-apps-details-light-mobile.png",
+      "sha256": "1dd54468452b766451bd5c7746f1759b93aaaff2cb6eac1c79e6b63f6457c1c7"
+    }
+  ]
+}

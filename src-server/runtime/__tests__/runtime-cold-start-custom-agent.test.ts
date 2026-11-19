@@ -32,6 +32,7 @@
  * regression and nothing below asserts on it, so the watcher is faked and
  * `ConfigLoader` itself stays real.
  */
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -41,7 +42,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import {
+  type CanonicalRuntimeEvent,
+  SERVER_EVENTS,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -50,8 +54,13 @@ import {
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
+import {
+  acquireStationHomeMaintenanceLease,
+  StationHomeActiveError,
+} from '@kontourai/station-shared/station-home-lifecycle';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { adoptNativeEngineConnection } from '../../domain/agent-registry.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
@@ -64,6 +73,7 @@ import {
   withTimeout,
 } from '../../providers/__tests__/codex-adapter-wire-harness.js';
 import { listProviders } from '../../providers/registries/registry.js';
+import * as chatTitleGeneration from '../../routes/chat/chat-title-generation.js';
 import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import {
   principalKey,
@@ -85,6 +95,7 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
+import { WorktreeProvisioningService } from '../../services/projects/worktree-provisioning-service.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
 import type { RuntimeSearch } from '../../services/search/runtime-search.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -92,6 +103,8 @@ import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-te
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import * as fakeGh from '../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
 import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import { builtinStationControlServerPath } from '../bootstrap/station-control-runtime-env.js';
+import { stationControlDisclosureForToken } from '../mcp/station-control-mcp-token.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
 
 const TEST_PORT = 31_141;
@@ -492,6 +505,14 @@ async function awaitRouteConfiguration(
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 // archive#1019: these cases cold-boot a real StationRuntime (route services, servers,
 // terminal/voice seams) — under parallel vitest workers or a sibling agent
 // session on the same host, real spawns starve the 5s default budget and this
@@ -687,6 +708,131 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await adapter.stopSession('hosted');
   });
 
+  it('codex-tool-families preview: off by default; on, a qualified Codex header credential starts at the family index and keeps it after a switch-off', async () => {
+    home = await createSchemaHome('station-codex-tool-families-');
+    const agentDir = join(home, 'agents', 'families-test');
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, 'agent.json'),
+      JSON.stringify({
+        name: 'Families Test',
+        prompt: 'Test agent.',
+        model: 'anthropic.test-model',
+        tools: { mcpServers: ['station-control'] },
+      }),
+    );
+    routeMocks.armRoutesConfigured();
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    await routeMocks.routesConfigured;
+    const subject = runtime as any;
+    const adapter = subject.codexAdapter;
+    // The version gate has its own tests; here the binary qualifies.
+    const probe = vi
+      .spyOn(adapter.toolFamilyQualification, 'admitted')
+      .mockResolvedValue(true);
+    let child = new FakeCodexProcess();
+    adapter.processFactory = () => child;
+    const start = async (threadId: string) => {
+      child = new FakeCodexProcess();
+      const promise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: home,
+        agent: {
+          toolServers: [
+            {
+              id: 'station-control',
+              displayName: 'Station Control',
+              transport: 'stdio',
+              command: process.execPath,
+              args: [builtinStationControlServerPath()],
+            },
+          ],
+        },
+      });
+      const wire = (method: string) =>
+        waitFor(
+          () =>
+            child.stdin.lines
+              .map((line: string) => JSON.parse(line))
+              .find((line: any) => line.method === method),
+          method,
+        );
+      const initialize = await wire('initialize');
+      await emit(child, { id: initialize.id, result: { userAgent: 'test' } });
+      const thread = await wire('thread/start');
+      await emit(child, {
+        id: thread.id,
+        result: { thread: { id: `native-${threadId}` } },
+      });
+      await withTimeout(promise, 'families start');
+      const token = thread.params.config[
+        'mcp_servers.station-control.http_headers'
+      ].Authorization.replace('Bearer ', '');
+      return { config: thread.params.config, token };
+    };
+    // The fixture owns these adapter Sessions, so stop them before returning.
+    const stopAll = async () => {
+      for (const id of ['families-preview-off', 'families-preview-on'])
+        await adapter.stopSession(id).catch(() => undefined);
+      await new Promise((resolve) => setImmediate(resolve));
+    };
+    try {
+      const off = await start('families-preview-off');
+      expect(off.config).not.toHaveProperty('features.mcp_tool_list_changed');
+      expect(stationControlDisclosureForToken(off.token)).toBe(undefined);
+      expect(probe).not.toHaveBeenCalled();
+      await adapter.stopSession('families-preview-off');
+      await subject.featurePreviews.setEnabled('codex-tool-families', true);
+      const on = await start('families-preview-on');
+      expect(on.config).toMatchObject({
+        'features.mcp_tool_list_changed': true,
+      });
+      // The runtime's own mint made this credential start at the index.
+      expect(stationControlDisclosureForToken(on.token)?.has('Agents')).toBe(
+        false,
+      );
+      // The composed session resolver asks the same admission question for
+      // the instructions' families line.
+      await subject.featurePreviews.setEnabled(
+        'station-orchestration-instructions',
+        true,
+      );
+      const instructions = async () => {
+        const resolved =
+          await subject.orchestrationService.options.resolveSessionAgent({
+            provider: 'codex',
+            threadId: 'families-resolve',
+            cwd: home,
+            metadata: { agentSlug: 'families-test' },
+          });
+        return (
+          resolved.metadata?.capabilityDelivery?.stationInstructions
+            ?.firstTurnText ?? ''
+        );
+      };
+      const withFamilies = await instructions();
+      expect(withFamilies).toContain('delegate_task');
+      expect(withFamilies).toContain('list_tool_families');
+      // Turning it off changes new Sessions only: the running one keeps its
+      // family credential, which Codex cannot be told to re-list away from.
+      await subject.featurePreviews.setEnabled('codex-tool-families', false);
+      const withoutFamilies = await instructions();
+      expect(withoutFamilies).toContain('delegate_task');
+      expect(withoutFamilies).not.toContain('list_tool_families');
+      const kept = stationControlDisclosureForToken(on.token);
+      expect(kept?.load('Agents')).toBe(true);
+      expect(kept?.has('Agents')).toBe(true);
+    } finally {
+      await stopAll();
+    }
+  });
+
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
     home = mkdtempSync(join(tmpdir(), 'station-coldstart-incompatible-'));
     mkdirSync(join(home, 'config'), { recursive: true });
@@ -728,6 +874,333 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
     } finally {
       retry.mockRestore();
+    }
+  });
+
+  it('joins deferred Task worktree retries before stopping orchestration and claim updates before closing the home', async () => {
+    home = await createSchemaHome('station-task-writer-shutdown-');
+    const finalization = deferred<void>();
+    const retries = vi
+      .spyOn(
+        TaskGraphService.prototype,
+        'retryDeferredTaskWorktreeFinalizations',
+      )
+      .mockReturnValue(finalization.promise);
+    const release = deferred<void>();
+    const reconcile = deferred<{ releasedSubjects: string[] }>();
+    const releaseClaim = vi
+      .spyOn(TaskGraphService.prototype, 'releaseClaimForSession')
+      .mockReturnValue(release.promise);
+    const reconcileClaims = vi
+      .spyOn(TaskGraphService.prototype, 'reconcileStaleAssignmentClaims')
+      .mockReturnValue(reconcile.promise);
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    const { eventBus } = runtime;
+    const emitExit = (sessionId: string) =>
+      eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: { method: 'session.exited', sessionId, reason: 'ended' },
+      });
+    const stop = vi.fn(async () => emitExit('during-shutdown'));
+    const subject = runtime as unknown as {
+      orchestrationService: {
+        shutdown: typeof stop;
+      };
+      orchestrationEventStore: EventStore;
+    };
+    subject.orchestrationService = { shutdown: stop };
+    const outbox = subject.orchestrationEventStore.operationalEventReader();
+
+    try {
+      emitExit('before-shutdown');
+      await vi.waitFor(() => expect(retries).toHaveBeenCalled());
+      const shutdown = runtime.shutdown();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(stop).not.toHaveBeenCalled();
+
+      finalization.resolve();
+      await vi.waitFor(() =>
+        expect(releaseClaim).toHaveBeenCalledWith('during-shutdown', 'ended'),
+      );
+      expect(reconcileClaims).toHaveBeenCalledTimes(1);
+      expect(outbox.readAfter().kind).toBe('available');
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+
+      release.resolve();
+      // The startup sweep is a separate writer and still has custody.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(outbox.readAfter().kind).toBe('available');
+      reconcile.resolve({ releasedSubjects: [] });
+      await shutdown;
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      emitExit('after-shutdown');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(releaseClaim).toHaveBeenCalledTimes(2);
+    } finally {
+      finalization.resolve();
+      release.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      retries.mockRestore();
+      releaseClaim.mockRestore();
+      reconcileClaims.mockRestore();
+    }
+  });
+
+  it('settles the real worktree of a terminal Session published during orchestration shutdown', async () => {
+    home = await createSchemaHome('station-late-session-exit-');
+    const repo = makeTempDir('station-late-session-exit-repo-');
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: repo, windowsHide: true });
+    git('init', '-q');
+    git(
+      '-c',
+      'user.name=Station Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '--allow-empty',
+      '-qm',
+      'initial',
+    );
+    const sessionId = 'claude:late-terminal';
+    const metadata = await new WorktreeProvisioningService().provision({
+      repoPath: repo,
+      threadId: sessionId,
+      providerKind: 'claude',
+      isolation: { mode: 'worktree', policy: { preserveOnFailure: false } },
+    });
+    if (!metadata) throw new Error('Expected a provisioned Session worktree');
+    expect(existsSync(metadata.path)).toBe(true);
+
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    await runtime.initialize();
+    const subject = runtime as unknown as {
+      orchestrationService: {
+        shutdown(): Promise<void>;
+        projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+        stopEventConsumption(): void;
+      };
+      orchestrationEventStore: EventStore;
+    };
+    const orchestra = subject.orchestrationService;
+    const store = subject.orchestrationEventStore;
+    const base = {
+      provider: 'claude' as const,
+      threadId: sessionId,
+      sessionId,
+      createdAt: new Date().toISOString(),
+    };
+    orchestra.projectAndPublishEvent({
+      ...base,
+      eventId: 'late-worktree-start',
+      method: 'session.started',
+      metadata: { userId: 'human:local:operator', worktree: metadata },
+    });
+    expect(store.listEventPayloads(sessionId, ['session.started'])).toEqual([
+      expect.objectContaining({
+        metadata: expect.objectContaining({ worktree: metadata }),
+      }),
+    ]);
+    expect(git('rev-parse', '--show-toplevel').toString().trim()).toBe(
+      metadata.repoPath,
+    );
+    const stopConsumption = orchestra.stopEventConsumption.bind(orchestra);
+    const stopped = vi
+      .spyOn(orchestra, 'stopEventConsumption')
+      .mockImplementationOnce(() => {
+        stopConsumption();
+        orchestra.projectAndPublishEvent({
+          ...base,
+          eventId: 'late-worktree-exit',
+          method: 'session.exited',
+          exitCode: 0,
+          reason: 'process_exit',
+        });
+      });
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    const finalizeOriginal = WorktreeProvisioningService.prototype.finalize;
+    const finalize = vi
+      .spyOn(WorktreeProvisioningService.prototype, 'finalize')
+      .mockImplementation(async function (
+        this: WorktreeProvisioningService,
+        input,
+      ) {
+        entered.resolve();
+        await finish.promise;
+        return finalizeOriginal.call(this, input);
+      });
+
+    try {
+      const shutdown = runtime.shutdown();
+      const state = await Promise.race([
+        entered.promise.then(() => 'finalizing'),
+        shutdown.then(() => 'closed'),
+      ]);
+      expect(state).toBe('finalizing');
+      expect(stopped).toHaveBeenCalledTimes(1);
+      expect(store.listEventPayloads(sessionId, ['session.exited'])).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ eventId: 'late-worktree-exit' }),
+        ]),
+      );
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+      expect(existsSync(metadata.path)).toBe(true);
+
+      finish.resolve();
+      await shutdown;
+      expect(existsSync(metadata.path)).toBe(false);
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      const reopened = new EventStore(getOrchestrationDatabasePath(home));
+      try {
+        expect(
+          reopened.worktreeOutputSettlementStore().read(sessionId)?.record,
+        ).toMatchObject({
+          outcome: 'cleaned-up-without-decision',
+          state: 'settled',
+        });
+      } finally {
+        reopened.close();
+        maintenance.release();
+      }
+    } finally {
+      finish.resolve();
+      await runtime.shutdown();
+      finalize.mockRestore();
+      stopped.mockRestore();
+    }
+  });
+
+  it('retains the live EventStore and home lease when startup claim reconciliation exceeds the drain deadline', async () => {
+    home = await createSchemaHome('station-task-writer-timeout-');
+    const reconcile = deferred<{ releasedSubjects: string[] }>();
+    const sweep = deferred<void>();
+    const reconcileClaims = vi
+      .spyOn(TaskGraphService.prototype, 'reconcileStaleAssignmentClaims')
+      .mockReturnValue(reconcile.promise);
+    const retryWorktrees = vi
+      .spyOn(
+        TaskGraphService.prototype,
+        'retryDeferredTaskWorktreeFinalizations',
+      )
+      .mockResolvedValue(undefined);
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      orphanEngineSweep: sweep.promise,
+    });
+    const subject = runtime as unknown as {
+      agentConfigurationShutdownDrainGraceMs: number;
+      orchestrationEventStore: EventStore;
+    };
+    subject.agentConfigurationShutdownDrainGraceMs = 20;
+    const outbox = subject.orchestrationEventStore.operationalEventReader();
+
+    try {
+      await vi.waitFor(() => expect(reconcileClaims).toHaveBeenCalledTimes(1));
+      await expect(runtime.shutdown()).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.stringContaining(
+              'waiting for assignment claim updates',
+            ),
+          }),
+        ]),
+      });
+      expect(outbox.readAfter().kind).toBe('available');
+      expect(() => acquireStationHomeMaintenanceLease(home)).toThrow(
+        StationHomeActiveError,
+      );
+
+      sweep.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      expect(retryWorktrees).not.toHaveBeenCalled();
+    } finally {
+      sweep.resolve();
+      reconcile.resolve({ releasedSubjects: [] });
+      await runtime.shutdown();
+      reconcileClaims.mockRestore();
+      retryWorktrees.mockRestore();
+    }
+  });
+
+  it('fences a late generated conversation title before closing the EventStore', async () => {
+    home = await createSchemaHome('station-title-writer-shutdown-');
+    const result = deferred<string>();
+    const generate = vi
+      .spyOn(chatTitleGeneration, 'generateConversationTitle')
+      .mockReturnValue(result.promise);
+    runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
+    const subject = runtime as unknown as {
+      appConfig: { titleModel?: string };
+      orchestrationEventStore: EventStore;
+    };
+    subject.appConfig = {
+      ...subject.appConfig,
+      titleModel: 'test-title-model',
+    };
+    const store = subject.orchestrationEventStore;
+    const candidate = vi.spyOn(store, 'conversationTitleGenerationCandidate');
+    const write = vi.spyOn(store, 'recordGeneratedConversationTitle');
+    const threadId = 'claude:title-shutdown';
+    const createdAt = '2026-11-18T00:00:00Z';
+    const base = { provider: 'claude' as const, threadId, createdAt };
+    store.upsertSession({ ...base, status: 'ready', updatedAt: createdAt });
+    store.appendEvent({
+      ...base,
+      eventId: 'title-session-start',
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'human:local:operator', agentSlug: 'claude' },
+    });
+    store.appendEvent({
+      ...base,
+      eventId: 'title-turn-start',
+      method: 'turn.started',
+      turnId: 'title-turn',
+      prompt: 'Fix the dark theme contrast',
+    });
+    const completed = {
+      ...base,
+      eventId: 'title-turn-complete',
+      method: 'turn.completed',
+      turnId: 'title-turn',
+      outputText: 'Adjusted the theme contrast.',
+    } as const;
+    store.appendEvent(completed);
+
+    try {
+      runtime.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: completed,
+      });
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(candidate).toHaveBeenCalledTimes(1);
+
+      await runtime.shutdown();
+      const maintenance = acquireStationHomeMaintenanceLease(home);
+      maintenance.release();
+      result.resolve('Improved Dark Theme Contrast');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(write).not.toHaveBeenCalled();
+
+      runtime.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+        event: { ...completed, threadId: 'claude:post-shutdown' },
+      });
+      expect(candidate).toHaveBeenCalledTimes(1);
+    } finally {
+      result.resolve('Improved Dark Theme Contrast');
+      await runtime.shutdown();
+      generate.mockRestore();
+      candidate.mockRestore();
+      write.mockRestore();
     }
   });
 
@@ -815,7 +1288,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(virtualReady).not.toHaveBeenCalled();
   });
 
-  it('shutdown during boot settles the in-flight initialize (#1019)', async () => {
+  it('concurrent shutdown during boot shares one teardown after initialize settles (#1019)', async () => {
     // The cross-test contamination mode: a cancelled/abandoned boot kept
     // initializing after teardown deleted its home, and its rejection
     // surfaced in whichever test ran next ('custom-writer not found at
@@ -849,11 +1322,95 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         bootSettled = true;
       });
 
-    await runtime.shutdown();
-    // shutdown resolving implies the boot promise already settled — nothing
-    // is left racing the (about-to-be-deleted) home directory.
-    expect(bootSettled).toBe(true);
-    await boot;
+    const store = (
+      runtime as unknown as { orchestrationEventStore: EventStore }
+    ).orchestrationEventStore;
+    const close = vi.spyOn(store, 'close');
+    try {
+      const outcomes = await Promise.allSettled([
+        runtime.shutdown(),
+        runtime.shutdown(),
+      ]);
+      expect(outcomes).toEqual([
+        { status: 'fulfilled', value: undefined },
+        { status: 'fulfilled', value: undefined },
+      ]);
+      expect(bootSettled).toBe(true);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(store.isClosed).toBe(true);
+    } finally {
+      close.mockRestore();
+      await boot;
+    }
+  });
+
+  it('resolves the built-in engine binding at boot without model discovery or commands', async () => {
+    // Either can start the engine's program: Claude's catalog probe spawns
+    // Claude Code and loads the Agent SDK. The binding reads readiness, which
+    // prerequisites decide, so a boot must not pay for either.
+    home = await createSchemaHome('station-coldstart-binding-');
+    mkdirSync(join(home, 'config'), { recursive: true });
+    writeFileSync(
+      join(home, 'config', 'app.json'),
+      JSON.stringify({
+        defaultModel: '',
+        invokeModel: '',
+        structureModel: '',
+        systemPrompt: 'You are {{AGENT_NAME}}.',
+        templateVariables: [],
+        region: 'eu-west-1',
+      }),
+    );
+    // Registered, so the inspector inspects Claude rather than skipping an
+    // engine the registry does not list.
+    await expect(
+      adoptNativeEngineConnection(
+        new ConfigLoader({ projectHomeDir: home }),
+        'claude',
+      ),
+    ).resolves.toBe('adopted');
+    // Restored below: this file does not restore spies between cases, and a
+    // ready Claude would change every later case's binding.
+    const getPrerequisites = vi
+      .spyOn(ClaudeAdapter.prototype, 'getPrerequisites')
+      .mockResolvedValue([]);
+    const listModelCatalog = vi
+      .spyOn(ClaudeAdapter.prototype, 'listModelCatalog')
+      .mockResolvedValue({ models: [] });
+    const getCommands = vi
+      .spyOn(ClaudeAdapter.prototype, 'getCommands')
+      .mockResolvedValue([]);
+    vi.spyOn(OllamaLLMProvider.prototype, 'healthCheck').mockResolvedValue(
+      false,
+    );
+    vi.spyOn(MCPManager, 'loadAgentTools').mockResolvedValue([]);
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    const resolveBinding = vi.spyOn(
+      runtime as unknown as {
+        resolveBuiltinEngineBinding: (...args: unknown[]) => Promise<unknown>;
+      },
+      'resolveBuiltinEngineBinding',
+    );
+
+    try {
+      await expect(runtime.initialize()).resolves.toBeUndefined();
+
+      // The seam was reached with Claude ready: it is the binding boot chose.
+      expect(resolveBinding).toHaveBeenCalled();
+      await expect(resolveBinding.mock.results[0]?.value).resolves.toEqual(
+        expect.objectContaining({ connectionId: 'claude' }),
+      );
+      expect(listModelCatalog).not.toHaveBeenCalled();
+      expect(getCommands).not.toHaveBeenCalled();
+    } finally {
+      getPrerequisites.mockRestore();
+      listModelCatalog.mockRestore();
+      getCommands.mockRestore();
+    }
   });
 
   it('primes engine prerequisites once at boot, on a signal shutdown aborts (station#1586)', async () => {

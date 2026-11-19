@@ -41,11 +41,16 @@ describe('Flow run location contract (#290)', () => {
   });
 
   test('the workspace-relative reference used in event payloads agrees with Flow', () => {
-    // Derived, not spelled: the relative constant must be exactly what Flow's
-    // absolute path yields under a workspace. Both sides normalize through
-    // `path.join`, so this holds on win32 too — a POSIX string literal here
-    // would fail there, which would be a poor look for a portability pin.
-    expect(join(cwd, flowRunArtifactReference('run-1', 'report.json'))).toBe(
+    const jsonReference = flowRunArtifactReference('run-1', 'report.json');
+    // Event references use portable slashes; native joins hide mixed separators.
+    expect({
+      json: jsonReference,
+      markdown: flowRunArtifactReference('run-1', 'report.md'),
+    }).toEqual({
+      json: '.kontourai/flow/runs/run-1/report.json',
+      markdown: '.kontourai/flow/runs/run-1/report.md',
+    });
+    expect(join(cwd, jsonReference)).toBe(
       join(runDir('run-1', cwd), 'report.json'),
     );
     expect(STATION_ARTIFACT_ROOTS.flowRuns).toBe(

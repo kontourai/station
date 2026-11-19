@@ -2,9 +2,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 
 const authState = z.enum(['authenticated', 'unauthenticated', 'unknown']);
+const engineAccountEngine = z.enum(['claude', 'codex', 'muse']);
 const engineAccountsSchema = z
   .object({
-    engine: z.enum(['claude', 'codex']),
+    engine: engineAccountEngine,
     activeProfileRef: z.string().nullable(),
     accounts: z.array(
       z
@@ -216,7 +217,7 @@ const engineAccountUsageSchema = z.union([
 ]);
 const engineAccountLoginSchema = z
   .object({
-    engine: z.enum(['claude', 'codex']),
+    engine: engineAccountEngine,
     mechanism: z.enum(['browser-code', 'device-code']),
     phase: z.enum([
       'starting',
@@ -407,7 +408,7 @@ export function useCreateEngineAccountMutation(
   });
 }
 export function useEngineActivityQuery(
-  engine: 'claude' | 'codex',
+  engine: string,
   days: 7 | 30,
   scope: ApiRequestScope,
   enabled: boolean,

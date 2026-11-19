@@ -1,0 +1,7 @@
+{
+  "revision": "5fb300f127d139a7a0105d84896f302ff9965443",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the legacy scheduler HTTP fixtures against the existing stored-job admission code. DELETE and manual run assert the public 404 when no job snapshot is present. Existing write authority, ledger binding and execution behavior remain unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/__tests__/scheduler.test.ts"]}
+  ]
+}

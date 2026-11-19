@@ -98,17 +98,27 @@ export function useTranscriptTurnViewport({
     const activeTurn = turnIndexForRow(landmarks, centre);
     const activeStartVisible = landmarks[activeTurn]!.rowIndex >= first;
     const rail = railRef.current;
-    const drawn = `${first}:${last}:${rowCount}`;
+    const drawn = `${first}:${last}:${rowCount}:${rail?.dataset.indexed}:${rail?.dataset.turnCount}`;
     if (
       rail &&
       (drawnRef.current?.rail !== rail || drawnRef.current.key !== drawn)
     ) {
       drawnRef.current = { rail, key: drawn };
-      const firstTurn = turnIndexForRow(landmarks, first);
-      const lastTurn = turnIndexForRow(landmarks, last);
-      for (const tick of rail.querySelectorAll<HTMLElement>(
-        '[data-turn-index]',
-      )) {
+      let firstTurn = turnIndexForRow(landmarks, first);
+      let lastTurn = turnIndexForRow(landmarks, last);
+      const ticks = [
+        ...rail.querySelectorAll<HTMLElement>('[data-turn-index]'),
+      ];
+      const indexed = rail.dataset.indexed !== undefined;
+      if (indexed) {
+        firstTurn = ticks.findIndex(
+          (tick) => tick.dataset.turnId === landmarks[firstTurn]?.turnId,
+        );
+        lastTurn = ticks.findIndex(
+          (tick) => tick.dataset.turnId === landmarks[lastTurn]?.turnId,
+        );
+      }
+      for (const tick of ticks) {
         const turn = Number(tick.dataset.turnIndex);
         tick.toggleAttribute(
           'data-in-view',
@@ -119,8 +129,8 @@ export function useTranscriptTurnViewport({
         '.transcript-turn-rail__band',
       );
       if (band) {
-        band.style.top = `${(first / rowCount) * 100}%`;
-        band.style.height = `${((last + 1 - first) / rowCount) * 100}%`;
+        band.style.top = `${(indexed ? firstTurn / ticks.length : first / rowCount) * 100}%`;
+        band.style.height = `${(indexed ? (lastTurn + 1 - firstTurn) / ticks.length : (last + 1 - first) / rowCount) * 100}%`;
       }
     }
     setViewport((current) =>
@@ -189,10 +199,18 @@ interface TranscriptTurnRailProps {
   readonly onJump: (turnIndex: number) => void;
   /** Older history exists beyond the loaded rows (see `turnPosition`). */
   readonly olderHistory: boolean;
+  readonly onBrowse?: () => void;
+  readonly indexed?: boolean;
   readonly previousTurn: number | undefined;
   readonly nextTurn: number | undefined;
   readonly onStep: (turnIndex: number) => void;
   readonly touchControls: boolean;
+  /**
+   * Touch only: whether the steps are drawn. They float over the text, so
+   * they show only while the reader has scrolled away from the latest
+   * message, the same moment Scroll to bottom appears.
+   */
+  readonly touchStepsShown?: boolean;
 }
 
 /**
@@ -236,10 +254,12 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   activeTurn,
   onJump,
   olderHistory,
+  indexed,
   previousTurn,
   nextTurn,
   onStep,
   touchControls,
+  touchStepsShown = true,
 }: TranscriptTurnRailProps) {
   const hostRef = useRef<HTMLFieldSetElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -396,6 +416,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
       className="transcript-turn-rail-host"
       ref={hostRef}
       data-touch-controls={touchControls || undefined}
+      data-touch-steps-hidden={(touchControls && !touchStepsShown) || undefined}
       aria-label="Turn navigation"
     >
       <button
@@ -411,6 +432,8 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
       <nav
         className="transcript-turn-rail"
         aria-label="Conversation turns"
+        data-indexed={indexed || undefined}
+        data-turn-count={landmarks.length}
         ref={railRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -442,7 +465,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
         <ol className="transcript-turn-rail__ticks">
           {landmarks.map((landmark, index) => (
             <li
-              key={landmark.rowId}
+              key={landmark.turnId ?? landmark.rowId}
               className="transcript-turn-rail__item"
               style={{ top: `${(landmark.rowIndex / rowCount) * 100}%` }}
             >
@@ -450,6 +473,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
                 type="button"
                 className="transcript-turn-rail__tick"
                 data-turn-index={index}
+                data-turn-id={landmark.turnId}
                 data-marker={landmark.marker}
                 tabIndex={index === tabStop ? 0 : -1}
                 aria-current={index === activeTurn ? 'location' : undefined}

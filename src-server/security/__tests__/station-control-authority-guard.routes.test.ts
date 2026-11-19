@@ -11,11 +11,17 @@
  *  - bound: Claude in-process (`type: 'sdk'`), the only `bound` channel;
  *  - delegated-custody: an ACP engine's header token over HTTP MCP;
  *  - bearer-exposed: Codex's URL token over HTTP MCP;
- *  - pooled child: a stdio station-control child with no caller credential;
+ *  - pooled child: a stdio station-control child with no caller credential
+ *    (slice D: no engine delivers one any more; it stands for any caller-less
+ *    tool process);
  *  - raw token: anything holding the per-boot internal token, with no caller.
+ *
+ * Slice D (decision 4): every caller-less request is refused, reads included.
  */
+
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
   getOrchestrationSession,
@@ -132,6 +138,8 @@ let server: ReturnType<typeof serve>;
 let baseUrl: string;
 let port: number;
 const refusals: string[] = [];
+/** #4769: the sessions whose start ran with a restricted network. */
+const restrictedSessions = new Set<string>();
 const PEER_ENVIRONMENT_ID = 'env-authority-peer';
 let peerServer: ReturnType<typeof serve>;
 const peerReceived: Array<{ path: string; body: any }> = [];
@@ -246,6 +254,11 @@ beforeAll(async () => {
         });
         return verdict.allowed ? undefined : verdict.reason;
       },
+      // #4828: the production carry over the shared ledger.
+      delegatedResultRead: (conversationIds) =>
+        sharedUntrustedContentLedger.carryDescendantRead(...conversationIds),
+      networkRestrictedSession: (sessionId) =>
+        restrictedSessions.has(sessionId),
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
@@ -612,7 +625,7 @@ const ROWS: readonly Row[] = [
       'bound op-': 'allowed',
       'delegated-custody op-': 'allowed',
       'bearer-exposed op-': 'allowed',
-      'pooled none': 'allowed',
+      'pooled none': 'station_control_caller_required',
     },
   },
   {
@@ -710,7 +723,7 @@ const ROWS: readonly Row[] = [
     },
   },
   // Slice B (decision 2): a principal-scoped read needs a session with a
-  // recorded owner; a caller-less request reads only what belongs to no one.
+  // recorded owner; slice D: a caller-less request reads nothing at all.
   {
     tool: 'list_conversations',
     args: { agent: 'station' },
@@ -730,7 +743,7 @@ const ROWS: readonly Row[] = [
     expect: {
       'bound op-': 'allowed',
       'bearer-exposed person-': 'allowed',
-      'pooled none': 'allowed',
+      'pooled none': 'station_control_caller_required',
     },
   },
   {
@@ -744,7 +757,7 @@ const ROWS: readonly Row[] = [
       'bound person-': 'allowed',
       'delegated-custody op-': 'allowed',
       'bearer-exposed op-': 'allowed',
-      'pooled none': 'allowed',
+      'pooled none': 'station_control_caller_required',
     },
   },
   {
@@ -906,7 +919,6 @@ describe('slice B: who a tool call acts for, per delivery channel', () => {
     ['delegated-custody', 'person-', 'human:local:someone-else', false],
     ['bearer-exposed', 'person-', 'human:local:someone-else', false],
     ['bound', 'ownerless-', null, false],
-    ['pooled', 'none', null, false],
   ];
   for (const [channel, prefix, owner, localOperator] of CASES)
     test(`read_logs via ${channel} (${prefix}) acts for ${owner ?? 'no one'}; local operator: ${localOperator}`, async () => {
@@ -923,17 +935,18 @@ describe('slice B: who a tool call acts for, per delivery channel', () => {
       });
     });
 
-  test('the raw internal token alone acts for no one and is not the operator in person', async () => {
+  test('the raw internal token alone acts for no one: it is refused, never read as the operator in person', async () => {
+    observed.delete('GET /api/diagnostics/logs');
     const response = await rest(
       'GET',
       '/api/diagnostics/logs',
       internalHeaders(),
     );
-    expect(response.status).toBe(200);
-    expect(observed.get('GET /api/diagnostics/logs')).toEqual({
-      owner: null,
-      localOperator: false,
+    expect(response).toEqual({
+      status: 403,
+      code: 'station_control_caller_required',
     });
+    expect(observed.has('GET /api/diagnostics/logs')).toBe(false);
   });
 });
 
@@ -977,9 +990,10 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
         }
       });
 
-  test('the raw internal token (no caller) reaches only reads', async () => {
+  test('the raw internal token (no caller) reaches nothing, reads included', async () => {
     expect(await rest('GET', '/agents', internalHeaders())).toEqual({
-      status: 200,
+      status: 403,
+      code: 'station_control_caller_required',
     });
     expect(
       await rest('PUT', '/config/app', internalHeaders(), { theme: 'x' }),
@@ -987,7 +1001,7 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
     expect(await rest('POST', '/api/providers', internalHeaders(), {})).toEqual(
       { status: 403, code: 'station_control_person_only' },
     );
-    expect(hits).toEqual(['GET /agents']);
+    expect(hits).toEqual([]);
   });
 
   test('a pooled child’s own REST call carries no caller and no server attestation', async () => {
@@ -998,8 +1012,11 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
       success: false,
       code: 'station_control_caller_required',
     });
-    expect(await api('/agents')).toEqual([]);
-    expect(hits).toEqual(['GET /agents']);
+    expect(await api('/agents')).toMatchObject({
+      success: false,
+      code: 'station_control_caller_required',
+    });
+    expect(hits).toEqual([]);
   });
 
   test('a forged or revoked caller credential is no caller at all', async () => {
@@ -1014,18 +1031,68 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
     expect(hits).toEqual([]);
   });
 
-  test('a route handler that authorizes the caller itself (notify_user) is left to it', async () => {
+  test('#4769: a restricted session acting for the operator is refused the routes of withheld tools, and keeps the rest', async () => {
+    const sessionId = nextSession('op-');
+    const headers = () =>
+      internalHeaders({
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+          'bound',
+          sessionId,
+        )!,
+      });
+    // Unrestricted, the operator's bound session may change a setting.
+    hits.length = 0;
+    expect(await rest('PUT', '/config/app', headers(), { theme: 'x' })).toEqual(
+      { status: 200 },
+    );
+    restrictedSessions.add(sessionId);
+    try {
+      hits.length = 0;
+      for (const [method, path, body] of [
+        ['PUT', '/config/app', { theme: 'x' }],
+        ['POST', '/api/device-agent/open', {}],
+        ['POST', '/api/orchestration/delegations', {}],
+      ] as const)
+        expect(await rest(method, path, headers(), body), path).toEqual({
+          status: 403,
+          code: 'station_control_network_restricted',
+        });
+      expect(hits).toEqual([]);
+      // A read the allow-list keeps still reaches its route.
+      expect(await rest('GET', '/agents', headers())).toEqual({ status: 200 });
+      expect(hits).toEqual(['GET /agents']);
+    } finally {
+      restrictedSessions.delete(sessionId);
+    }
+  });
+
+  test('a route handler that authorizes the caller itself (notify_user) is left to it once a caller is verified', async () => {
+    // Slice D: the guard refuses a caller-less request before any route.
     expect(
       await rest('POST', '/api/notifications/agent', internalHeaders(), {}),
+    ).toEqual({ status: 403, code: 'station_control_caller_required' });
+    expect(hits).toEqual([]);
+    const caller = forwardedCaller('bearer-exposed', nextSession('person-'))!;
+    expect(
+      await rest(
+        'POST',
+        '/api/notifications/agent',
+        internalHeaders({ [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller }),
+        {},
+      ),
     ).toEqual({ status: 200 });
     expect(hits).toEqual(['POST /api/notifications/agent']);
   });
 
-  test('the stdio caller projection stays reachable for a child to learn its caller', async () => {
+  test('the caller projection answers a verified caller and refuses a caller-less one', async () => {
+    expect(
+      await rest('GET', STATION_CONTROL_CALLER_PATH, internalHeaders()),
+    ).toEqual({ status: 403, code: 'station_control_caller_required' });
+    const caller = forwardedCaller('bearer-exposed', nextSession('person-'))!;
     const response = await rest(
       'GET',
       STATION_CONTROL_CALLER_PATH,
-      internalHeaders(),
+      internalHeaders({ [STATION_CONTROL_CALLER_TOKEN_HEADER]: caller }),
     );
     expect(response.status).toBe(200);
   });
@@ -1631,23 +1698,18 @@ function refusesUnknownWakeUp(
 }
 
 describe('every tool route, table-driven through the real boundary', () => {
-  test('the raw internal token: reads of nobody’s data and route-enforced leaves pass, every other leaf refuses', async () => {
+  test('the raw internal token: every leaf refuses, reads of nobody’s data and route-enforced leaves included', async () => {
     const outcomes: Record<string, string> = {};
     const expected: Record<string, string> = {};
     for (const { method, path, owners } of everyToolRoute()) {
       const key = `${method} ${path}`;
-      // Independent of the evaluator: the rule as decision 4 states it, read
-      // with decision 2 (slice B): a caller-less request acts for no one, so
-      // it reads only what no person's view scopes.
-      expected[key] = owners.some(
-        (owner) =>
-          (owner.toolClass === 'read-only' && owner.role === 'none') ||
-          owner.enforcedBy === 'route',
-      )
-        ? 'passed'
-        : owners.every((owner) => owner.personOnly === 'always')
-          ? 'station_control_person_only'
-          : 'station_control_caller_required';
+      // Independent of the evaluator: the rule as decision 4 states it once
+      // Station's own engine has a session caller (slice D): a caller-less
+      // request acts for no one and may do nothing. A person's step still
+      // says so first.
+      expected[key] = owners.every((owner) => owner.personOnly === 'always')
+        ? 'station_control_person_only'
+        : 'station_control_caller_required';
       const response = await rest(
         method,
         path,
@@ -1831,6 +1893,76 @@ describe('after untrusted content, station-control applies the permission (#3483
     expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
       status: 200,
     });
+  });
+});
+
+describe("a delegated child's untrusted read reaches its parent (#4828)", () => {
+  const callerHeaders = (sessionId: string) =>
+    internalHeaders({
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+        'bound',
+        sessionId,
+      )!,
+    });
+  const childRead = (parentSessionId: string) =>
+    sharedUntrustedContentLedger.markConversation(
+      `child-of-${parentSessionId}`,
+      Promise.resolve(true),
+      {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 3,
+        parentAgentSlug: agentId('writer'),
+        parentConversationId: parentSessionId,
+        parentSessionId,
+        rootAgentSlug: agentId('writer'),
+        rootConversationId: parentSessionId,
+      },
+    );
+
+  test('a delegation tool call by the parent marks it when its child read untrusted content', async () => {
+    const sessionId = nextSession('op-');
+    childRead(sessionId);
+    await sharedUntrustedContentLedger.conversationHasRead(
+      `child-of-${sessionId}`,
+    );
+    expect(
+      await sharedUntrustedContentLedger.conversationHasRead(sessionId),
+    ).toBe(false);
+    // `GET /agents` is `list_agents`: no delegated result, nothing carried.
+    expect(await rest('GET', '/agents', callerHeaders(sessionId))).toEqual({
+      status: 200,
+    });
+    expect(
+      await sharedUntrustedContentLedger.conversationHasRead(sessionId),
+    ).toBe(false);
+    // The delegation route the delegation tools reach carries the read.
+    expect(
+      await rest(
+        'POST',
+        '/api/orchestration/delegations',
+        callerHeaders(sessionId),
+        {},
+      ),
+    ).toEqual({ status: 200 });
+    expect(
+      await sharedUntrustedContentLedger.conversationHasRead(sessionId),
+    ).toBe(true);
+  });
+
+  test('a parent whose children read nothing untrusted is not marked', async () => {
+    const sessionId = nextSession('op-');
+    expect(
+      await rest(
+        'POST',
+        '/api/orchestration/delegations',
+        callerHeaders(sessionId),
+        {},
+      ),
+    ).toEqual({ status: 200 });
+    expect(
+      await sharedUntrustedContentLedger.conversationHasRead(sessionId),
+    ).toBe(false);
   });
 });
 

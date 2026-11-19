@@ -1,8 +1,11 @@
+import { ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import * as processUtils from '../../infra/process-utils.js';
 import type { CdpTransport } from '../browser-host.js';
 import { ChromiumScreencastProducer } from '../chromium-screencast-producer.js';
 import {
@@ -15,10 +18,197 @@ import {
   ChromiumServerHost,
   chromiumEnvironment,
   decidePausedRequest,
+  launchChromiumProcess,
   MANDATORY_DENIED_PERMISSIONS,
   PAGE_SESSION_CDP_ALLOWLIST,
+  type PreviewDiagnostic,
+  SERVED_DOCUMENT_URL,
 } from '../hosts/chromium-server-host.js';
 import { deriveStationListeners } from '../station-listeners.js';
+
+function launcherFixture(sink?: (event: PreviewDiagnostic) => void) {
+  const proc = new ChildProcess();
+  proc.stderr = new PassThrough();
+  const pipes: ChildProcess['stdio'] = [
+    null,
+    null,
+    proc.stderr,
+    new PassThrough(),
+    new PassThrough(),
+  ];
+  Object.defineProperty(proc, 'stdio', { value: pipes });
+  const spawn = vi
+    .spyOn(processUtils, 'spawnOwnedChild')
+    .mockReturnValue({ proc, release: vi.fn() });
+  const observed: PreviewDiagnostic[] = [];
+  const launch = launchChromiumProcess({
+    executablePath: 'fixture',
+    args: [],
+    onDiagnostic: (event) => {
+      observed.push(event);
+      sink?.(event);
+    },
+  });
+  let finished = false;
+  return {
+    proc,
+    observed,
+    launch,
+    async finish(
+      code: number | null = 0,
+      signal: NodeJS.Signals | null = null,
+    ) {
+      if (finished) return;
+      finished = true;
+      proc.stderr?.emit('end');
+      proc.emit('exit', code, signal);
+      await launch.exited;
+      spawn.mockRestore();
+    },
+  };
+}
+
+test('production launcher observes zero exit before stderr drain without exposing its tail', async () => {
+  const { proc, observed, launch, finish } = launcherFixture();
+  try {
+    proc.stderr?.emit('data', Buffer.from('secret-canary SIGABRT\n'));
+    proc.emit('exit', 0, null);
+    expect(observed).toContainEqual({
+      type: 'child-exit',
+      code: 0,
+      signal: 'none',
+    });
+    proc.stderr?.emit('end');
+    await expect(launch.exited).resolves.toContain('code 0');
+    expect(JSON.stringify(observed)).not.toContain('secret-canary');
+  } finally {
+    await finish();
+  }
+});
+
+test.each([
+  [null, 'SIGABRT'],
+  [23, null],
+] as const)(
+  'production launcher retains abnormal exit code %s and signal %s',
+  async (code, signal) => {
+    const f = launcherFixture();
+    try {
+      f.proc.emit('exit', code, signal);
+      expect(f.observed).toContainEqual({
+        type: 'child-exit',
+        code,
+        signal: signal ?? 'none',
+      });
+    } finally {
+      await f.finish();
+    }
+  },
+);
+
+test('production stderr classification survives every marker split, CRLF and partial final lines', async () => {
+  const literals = [
+    ['sandbox', 'No usable sandbox!'],
+    ['assertion', 'Check failed'],
+    ['assertion', 'DCHECK'],
+    ['fatal', 'FATAL'],
+    ['abort', 'Received signal 6'],
+    ['signal', 'SIGSEGV'],
+    ['oom', 'Allocation failed'],
+    ['stack', 'Stack trace:'],
+  ] as const;
+  for (const [category, literal] of literals) {
+    for (let split = 0; split <= literal.length; split++) {
+      const f = launcherFixture();
+      try {
+        const prefix = Buffer.from('secret-canary https://private.invalid/ € ');
+        f.proc.stderr?.emit('data', prefix.subarray(0, prefix.length - 2));
+        f.proc.stderr?.emit('data', prefix.subarray(prefix.length - 2));
+        const data = Buffer.from(`${literal}\r\n${literal}`);
+        const at = split;
+        f.proc.stderr?.emit('data', data.subarray(0, at));
+        f.proc.stderr?.emit('data', data.subarray(at));
+        await f.finish();
+        const summary = f.observed.find((event) => event.type === 'stderr');
+        expect(summary?.type === 'stderr' && summary.counts[category]).toBe(2);
+        expect(JSON.stringify(f.observed)).not.toMatch(
+          /secret-canary|private\.invalid|€/,
+        );
+      } finally {
+        await f.finish();
+      }
+    }
+  }
+});
+
+test.each([0, 1])(
+  'production stderr scan admits only complete markers inside its exact byte cap (+%s)',
+  async (extra) => {
+    const f = launcherFixture();
+    try {
+      f.proc.stderr?.emit(
+        'data',
+        Buffer.from(`${'\n'.repeat(32768 + extra - 7)}SIGABRT`),
+      );
+      await f.finish();
+      expect(f.observed.find((event) => event.type === 'stderr')).toMatchObject(
+        {
+          scanned: 32768,
+          scanExhausted: extra === 1,
+          counts: { abort: extra === 0 ? 1 : 0 },
+        },
+      );
+    } finally {
+      await f.finish();
+    }
+  },
+);
+
+test('production stderr keeps prefix and scan bounds while consuming floods after saturation', async () => {
+  const f = launcherFixture();
+  try {
+    f.proc.stderr?.emit(
+      'data',
+      Buffer.from(`${'x'.repeat(251)}FATAL\n${'x'.repeat(256)}SIGABRT\n`),
+    );
+    f.proc.stderr?.emit('data', Buffer.alloc(100_000, 120));
+    f.proc.stderr?.emit('data', Buffer.from('\nSIGSEGV\n'));
+    await f.finish();
+    const summary = f.observed.find((event) => event.type === 'stderr');
+    expect(summary).toMatchObject({
+      counts: { fatal: 1, abort: 0, signal: 0 },
+      scanned: 32768,
+      observed: 65535,
+      scanExhausted: true,
+      overlongLine: true,
+      saturated: true,
+    });
+    expect(f.observed.filter((event) => event.type === 'stderr')).toHaveLength(
+      2,
+    );
+  } finally {
+    await f.finish();
+  }
+});
+
+test('throwing production launch diagnostic sinks cannot replace exit or pipe settlement', async () => {
+  const f = launcherFixture(() => {
+    throw new Error('sink failure');
+  });
+  try {
+    const launch = f.launch;
+    const pending = launch.transport.send('Browser.getVersion');
+    const result = Promise.allSettled([pending]);
+    f.proc.stdio[4]?.emit('end');
+    f.proc.stderr?.emit('end');
+    f.proc.emit('exit', 0, null);
+    await expect(launch.exited).resolves.toContain('code 0');
+    expect((await result)[0].status).toBe('rejected');
+    await expect(launch.transport.closed).resolves.toBeUndefined();
+  } finally {
+    await f.finish();
+  }
+});
 
 const LISTENERS = deriveStationListeners({
   serverPort: 4100,
@@ -344,6 +534,81 @@ describe('ChromiumServerHost with a fake browser', () => {
     expect(events.filter((e) => e.kind === 'request-blocked')).toHaveLength(2);
   });
 
+  test('a served document loads once, only into the target that asked for it', async () => {
+    // Chrome 158 aborts when an about:blank page adds a sandboxed srcdoc
+    // frame (#4917), so the preview's page must have a real site.
+    let emitEvent: (
+      event: string,
+      params: unknown,
+      sessionId?: string,
+    ) => void = () => {};
+    const { host, profileDir, emit, calls } = harness((call) => {
+      if (
+        call.method === 'Page.navigate' &&
+        (call.params as { url?: string }).url === SERVED_DOCUMENT_URL
+      ) {
+        // While T1's document is still waiting, another frame asks for the
+        // same address first: it must not receive T1's document.
+        emitEvent('Fetch.requestPaused', {
+          requestId: 'other-while-pending',
+          request: { url: SERVED_DOCUMENT_URL },
+          resourceType: 'Document',
+          frameId: 'T9',
+        });
+        emitEvent('Fetch.requestPaused', {
+          requestId: 'served',
+          request: { url: SERVED_DOCUMENT_URL },
+          resourceType: 'Document',
+          frameId: 'T1',
+        });
+        emitEvent('Page.loadEventFired', {}, call.sessionId);
+      }
+      return {};
+    });
+    emitEvent = emit;
+    const html = '<!doctype html><body>bootstrap ✓</body>';
+    await host.openTarget({ profileDir, viewport: VIEWPORT, document: html });
+    expect(calls).toContainEqual({
+      method: 'Page.navigate',
+      params: { url: SERVED_DOCUMENT_URL },
+      sessionId: 'S-T1',
+    });
+    expect(calls).toContainEqual({
+      method: 'Fetch.fulfillRequest',
+      params: {
+        requestId: 'served',
+        responseCode: 200,
+        responseHeaders: [
+          { name: 'Content-Type', value: 'text/html; charset=utf-8' },
+          { name: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+        body: Buffer.from(html, 'utf8').toString('base64'),
+      },
+      sessionId: undefined,
+    });
+    // One-shot and per target: a later request for the same URL, from this
+    // target or another, is never answered with the document.
+    emit('Fetch.requestPaused', {
+      requestId: 'again',
+      request: { url: SERVED_DOCUMENT_URL },
+      resourceType: 'Document',
+      frameId: 'T1',
+    });
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    emit('Fetch.requestPaused', {
+      requestId: 'other',
+      request: { url: SERVED_DOCUMENT_URL },
+      resourceType: 'Document',
+      frameId: 'T2',
+    });
+    await flush();
+    expect(
+      calls
+        .filter((c) => c.method === 'Fetch.fulfillRequest')
+        .map((c) => (c.params as { requestId: string }).requestId),
+    ).toEqual(['served']);
+  });
+
   test('a popup from our target is closed and its URL loads in the opener', async () => {
     const { host, profileDir, emit, calls } = harness();
     await host.openTarget({ profileDir, viewport: VIEWPORT });
@@ -542,6 +807,26 @@ describe('ChromiumServerHost with a fake browser', () => {
       targetId: 'X',
       url: 'view-source:https://a.example/',
     });
+  });
+
+  test('a target already destroyed is not closed again when its info arrives late', async () => {
+    const { host, profileDir, emit, calls, events } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    // Ours, then closed: Chromium may still report its info afterwards.
+    emit('Target.targetDestroyed', { targetId: 'T1' });
+    emit('Target.targetInfoChanged', {
+      targetInfo: { targetId: 'T1', type: 'page', url: 'about:blank' },
+    });
+    // Unknown, destroyed during its grace.
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'X', type: 'page', url: 'about:blank' },
+    });
+    emit('Target.targetDestroyed', { targetId: 'X' });
+    await new Promise((r) => setTimeout(r, 1_100));
+    expect(calls.filter((c) => c.method === 'Target.closeTarget')).toEqual([]);
+    expect(events.filter((e) => e.kind === 'untracked-target-closed')).toEqual(
+      [],
+    );
   });
 
   test('our own target is never mistaken for an untracked one, however slow the attach', async () => {
@@ -1607,6 +1892,47 @@ describe('effective preview WebRTC policy at browser startup', () => {
         );
         expect(close).toBeGreaterThan(creates[0]);
         expect(close).toBeLessThan(creates[1]);
+        if (_label === 'restrictive') {
+          const diagnostic = () =>
+            h.events.flatMap((event) =>
+              event.kind === 'preview-diagnostic' ? [event.diagnostic] : [],
+            );
+          const probeCloses = diagnostic().filter(
+            (event) =>
+              event.type === 'close' &&
+              event.origin === 'policy-cleanup' &&
+              event.state === 'sent',
+          );
+          expect(probeCloses).toHaveLength(2);
+          expect(
+            new Set(
+              probeCloses.map(
+                (event) => event.type === 'close' && event.target,
+              ),
+            ).size,
+          ).toBe(2);
+          for (let i = 0; i < 100; i++)
+            h.emit('Target.targetDestroyed', {
+              targetId: `private-target-${i}`,
+            });
+          h.emit('Target.targetDestroyed', { targetId: 'x'.repeat(129) });
+          expect(diagnostic().at(-1)).toMatchObject({
+            type: 'close',
+            target: null,
+            exhausted: true,
+          });
+          expect(JSON.stringify(diagnostic())).not.toMatch(
+            /private-target|"overflow"/,
+          );
+          const push = vi.spyOn(h.events, 'push').mockImplementation(() => {
+            throw new Error('sink failure');
+          });
+          try {
+            await expect(h.host.closeTarget('T3')).resolves.toBeUndefined();
+          } finally {
+            push.mockRestore();
+          }
+        }
       } else {
         await expect(opening).rejects.toMatchObject({
           code: 'webrtc-policy-unverified',

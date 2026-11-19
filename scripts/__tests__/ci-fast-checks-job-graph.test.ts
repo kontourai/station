@@ -1,8 +1,19 @@
-import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { delimiter, join, resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
+import { decideHeavyChecks } from '../pr-heavy-checks-decision.mjs';
 
 /**
  * #2709 re-land: the sharded fast-checks graph evaluated with GitHub's job
@@ -13,8 +24,9 @@ import { describe, expect, test } from 'vitest';
  * including one that was skipped. `classify` is skipped for every
  * pull_request_target, so on every same-repository pull request the plan
  * ran (it uses `always()`), the shards were skipped, and the required
- * aggregator failed (run 36308041839). Dispatch and merge_group run
- * `classify`, so nothing before merge showed it.
+ * aggregator failed (run 36308041839). Dispatch ran `classify` (merge
+ * groups did too until it was skipped there), so nothing before merge
+ * showed it.
  *
  * This model is deliberately the strict reading observed on that run:
  * - an `if` with no status function (success/always/failure/cancelled) is
@@ -48,6 +60,8 @@ type Job = {
 type Context = {
   event: string;
   action?: string;
+  /** Repository variables; unset ones read as ''. */
+  vars?: Record<string, string>;
   retarget?: boolean;
   repository: string;
   headRepository: string;
@@ -244,6 +258,8 @@ function simulate(
             : undefined;
         throw new Error(`unmodelled github context ${key}`);
       }
+      if (head === 'vars' && rest.length === 1)
+        return context.vars?.[rest[0]] ?? '';
       if (head === 'needs') {
         const [need, field, name] = rest;
         if (!needsOf(jobs[ready]).includes(need))
@@ -317,10 +333,11 @@ const EVENTS: Array<[string, Context, Record<string, Record<string, string>>]> =
       sameRepositoryPr,
       {},
     ],
+    // classify is skipped on merge groups: no classifier output is supplied.
     [
-      'merge_group',
+      'merge_group (classify skipped)',
       { ...sameRepositoryPr, event: 'merge_group' },
-      { classify: { heavy: 'false' } },
+      {},
     ],
     [
       'workflow_dispatch',
@@ -402,6 +419,49 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
+  // Merge groups no longer wait on the classifier's runner hop: classify is
+  // skipped there, and every part, the aggregator and the queue's required
+  // jobs still run from their merge_group clauses alone.
+  test('a merge group skips classify and still runs and aggregates every part', () => {
+    const state = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      {
+        outputs: {
+          'fast-checks-plan': { legacy: 'false', 'integration-ready': 'true' },
+        },
+        resolve: (id, current) =>
+          id === 'fast-checks'
+            ? aggregatorPartResults(jobs, current) === 0
+              ? 'success'
+              : 'failure'
+            : undefined,
+      },
+    );
+    expect(state.results.get('classify')).toBe('skipped');
+    for (const id of [
+      'actionlint-artifact',
+      ...PARTS,
+      'fast-checks',
+      'diff',
+      'merge-queue-regression',
+      'source-policy',
+      'pr-title',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+    expect(state.shards.get('fast-checks-shard')).toEqual([1, 2, 3, 4]);
+    for (const id of ['full-regression', 'manual-completion-diagnostics'])
+      expect(state.results.get(id), id).toBe('skipped');
+  });
+
+  test('pushes and dispatches still run classify', () => {
+    for (const event of ['push', 'workflow_dispatch'])
+      expect(
+        simulate(jobs, { ...sameRepositoryPr, event }).results.get('classify'),
+        event,
+      ).toBe('success');
+  });
+
   test('a deferred conflict spends no plan, shard or statics runner and fails the aggregator', () => {
     const state = simulate(jobs, sameRepositoryPr, {
       outcomes: { 'pr-admission': 'failure' },
@@ -432,7 +492,9 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   ])('%s never evaluates conflict admission', (_name, context) => {
     const state = simulate(jobs, context, {
       outputs: {
-        classify: { heavy: 'false' },
+        ...(context.event === 'merge_group'
+          ? {}
+          : { classify: { heavy: 'false' } }),
         'fast-checks-plan': { legacy: 'false' },
       },
     });
@@ -561,6 +623,85 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     expect(needsOf(readJobs()['pr-title'])).toEqual([]);
   });
 
+  // The required `Source verification policy` status for a queue head is
+  // published from inside the merge-group run once fast-checks settles,
+  // instead of only by the post-run workflow_run reconcile, which waited for
+  // a runner after the whole run (up to 8.4 minutes on the last context).
+  test.each(['success', 'failure', 'cancelled'] as const)(
+    'a merge group publishes its source status in-run after a fast-checks %s, on the queue head',
+    (outcome) => {
+      const state = simulate(
+        jobs,
+        { ...sameRepositoryPr, event: 'merge_group' },
+        {
+          outcomes: { 'fast-checks': outcome },
+          outputs: { 'fast-checks-plan': { legacy: 'false' } },
+        },
+      );
+      expect(state.results.get('fast-checks')).toBe(outcome);
+      expect(state.results.get('source-policy')).toBe('success');
+      const call = jobs['source-policy'] as Job & {
+        with?: Record<string, string>;
+      };
+      expect(call.uses).toBe(
+        './.github/workflows/source-verification-policy.yml',
+      );
+      const queueHead = 'd'.repeat(40);
+      const github: Record<string, unknown> = {
+        sha: queueHead,
+        event: {
+          merge_group: { head_sha: queueHead, base_sha: 'e'.repeat(40) },
+        },
+      };
+      expect(
+        evaluate(
+          String(call.with?.source_sha)
+            .replace(/^\$\{\{\s*/, '')
+            .replace(/\s*\}\}$/, ''),
+          ([head, ...rest]) => {
+            if (head !== 'github') throw new Error(`unmodelled ${head}`);
+            let value: unknown = github;
+            for (const key of rest)
+              value = (value as Record<string, unknown>)?.[key];
+            return value;
+          },
+          {},
+        ),
+      ).toBe(queueHead);
+    },
+  );
+
+  test('a cancelled merge-group run spends no publisher runner, while a cancelled PR run still publishes', () => {
+    const cancel = {
+      before: ['classify', 'pr-admission', 'actionlint-artifact', ...PARTS],
+      running: ['fast-checks'],
+    };
+    const queue = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      { cancel, outputs: { 'fast-checks-plan': { legacy: 'false' } } },
+    );
+    expect(queue.results.get('fast-checks')).toBe('cancelled');
+    expect(queue.results.get('source-policy')).toBe('skipped');
+    const pr = simulate(jobs, sameRepositoryPr, {
+      cancel,
+      outputs: { 'fast-checks-plan': { legacy: 'false' } },
+    });
+    expect(pr.results.get('source-policy')).toBe('success');
+  });
+
+  test('pushes and dispatches still publish no source status', () => {
+    for (const event of ['push', 'workflow_dispatch'])
+      expect(
+        simulate(
+          jobs,
+          { ...sameRepositoryPr, event },
+          { outputs: { classify: { heavy: 'true' } } },
+        ).results.get('source-policy'),
+        event,
+      ).toBe('skipped');
+  });
+
   test('base retarget keeps the complete source graph', () => {
     const state = simulate(
       readJobs(),
@@ -587,6 +728,32 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     expect(state.results.get('fork-smoke')).toBe('success');
     for (const id of [...PARTS, 'fast-checks'])
       expect(state.results.get(id), id).toBe('skipped');
+  });
+
+  // The repo-scans comments (ci.yml, REPO_SCAN_SUITES) say a red there is
+  // feedback that does not block landing: nothing that gates landing waits
+  // on it, and neither the merge queue nor a fork pull request runs it.
+  test('repo-scans is pull-request feedback: a red one gates nothing, and merge groups and forks skip it', () => {
+    const red = simulate(jobs, sameRepositoryPr, {
+      outcomes: { 'repo-scans': 'failure' },
+      outputs: { 'fast-checks-plan': { legacy: 'false', shards: '[1]' } },
+    });
+    expect(red.results.get('repo-scans')).toBe('failure');
+    for (const id of ['fast-checks', 'source-policy'])
+      expect(red.results.get(id), id).toBe('success');
+    for (const id of ['fast-checks', 'source-policy', 'merge-queue-regression'])
+      expect(ancestors(jobs, id).has('repo-scans'), id).toBe(false);
+    const queue = simulate(
+      jobs,
+      { ...sameRepositoryPr, event: 'merge_group' },
+      { outputs: { 'fast-checks-plan': { legacy: 'false' } } },
+    );
+    expect(queue.results.get('repo-scans')).toBe('skipped');
+    const fork = simulate(jobs, {
+      ...sameRepositoryPr,
+      headRepository: 'someone/station',
+    });
+    expect(fork.results.get('repo-scans')).toBe('skipped');
   });
 
   test('a push that is not heavy skips the fast-checks graph', () => {
@@ -618,7 +785,16 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   // real order: which jobs had finished at the cancel, which were running,
   // and each job's recorded conclusion. The aggregator's result is not
   // assumed: it comes from its real bash/jq step over the simulated needs.
-  const EARLY = ['classify', 'fork-smoke', 'repo-scans', 'ui-bundle-delta'];
+  // The actionlint artifact (#4748) finishes before any part that consumes it
+  // (shards, statics, fork-smoke). The plan does not need it, so the plan and
+  // the producer may run in parallel.
+  const EARLY = [
+    'classify',
+    'actionlint-artifact',
+    'fork-smoke',
+    'repo-scans',
+    'ui-bundle-delta',
+  ];
   const REPLAYS: Array<{
     run: string;
     outcomes?: Record<string, Result>;
@@ -720,6 +896,176 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     }
   });
 
+  describe('the pinned actionlint artifact handoff (#4748)', () => {
+    const PRODUCER = 'actionlint-artifact';
+    const ran = (state: State, id: string) =>
+      !['skipped', 'cancelled'].includes(state.results.get(id) as Result);
+
+    test.each(EVENTS)(
+      '%s: the producer runs before the consumers that need it',
+      (_name, context, outputs) => {
+        const state = simulate(jobs, context, {
+          outputs: {
+            ...outputs,
+            'fast-checks-plan': { legacy: 'false' },
+            [PRODUCER]: { 'artifact-id': '4748' },
+          },
+        });
+        expect(state.results.get(PRODUCER)).toBe('success');
+        for (const id of ['fast-checks-shard', 'fast-checks-statics'])
+          expect(state.results.get(id), id).toBe('success');
+        expect(state.results.get('fork-smoke')).toBe('skipped');
+        expect(aggregatorPartResults(jobs, state)).toBe(0);
+      },
+    );
+
+    test.each(
+      EVENTS.flatMap(([name, context, outputs]) =>
+        (['failure', 'cancelled', 'skipped'] as const).map(
+          (outcome) => [name, outcome, context, outputs] as const,
+        ),
+      ),
+    )(
+      '%s: a producer that ends %s admits no consumer and the aggregator fails',
+      (_name, outcome, context, outputs) => {
+        const state = simulate(jobs, context, {
+          outputs: { ...outputs, 'fast-checks-plan': { legacy: 'false' } },
+          outcomes: { [PRODUCER]: outcome },
+        });
+        expect(state.results.get(PRODUCER)).toBe(outcome);
+        // The plan does not depend on the producer, so it still succeeds;
+        // only the consumers are held back, and no consumer fetches the
+        // archive itself.
+        expect(state.results.get('fast-checks-plan')).toBe('success');
+        for (const id of ['fast-checks-shard', 'fast-checks-statics'])
+          expect(state.results.get(id), id).toBe('skipped');
+        expect(state.results.get('fast-checks')).not.toBe('skipped');
+        expect(aggregatorPartResults(jobs, state)).toBe(1);
+      },
+    );
+
+    test('a fork pull request runs fork-smoke only after the producer, and a failed producer skips it', () => {
+      const fork = { ...sameRepositoryPr, headRepository: 'someone/station' };
+      const ok = simulate(jobs, fork);
+      expect(ok.results.get(PRODUCER)).toBe('success');
+      expect(ok.results.get('fork-smoke')).toBe('success');
+      for (const outcome of ['failure', 'cancelled', 'skipped'] as const) {
+        const state = simulate(jobs, fork, {
+          outcomes: { [PRODUCER]: outcome },
+        });
+        expect(state.results.get('fork-smoke'), outcome).toBe('skipped');
+      }
+    });
+
+    test.each([
+      ['a same-repository pull request', sameRepositoryPr, {}, true],
+      [
+        'a fork pull request',
+        { ...sameRepositoryPr, headRepository: 'someone/station' },
+        {},
+        true,
+      ],
+      [
+        'a base retarget edit',
+        { ...sameRepositoryPr, action: 'edited', retarget: true },
+        {},
+        true,
+      ],
+      [
+        'a metadata-only edit',
+        { ...sameRepositoryPr, action: 'edited' },
+        {},
+        false,
+      ],
+      [
+        'a metadata-only edit of a fork pull request',
+        {
+          ...sameRepositoryPr,
+          action: 'edited',
+          headRepository: 'someone/station',
+        },
+        {},
+        false,
+      ],
+      [
+        'a merge group',
+        { ...sameRepositoryPr, event: 'merge_group' },
+        {},
+        true,
+      ],
+      [
+        'a manual dispatch',
+        { ...sameRepositoryPr, event: 'workflow_dispatch' },
+        { classify: { heavy: 'false' } },
+        true,
+      ],
+      [
+        'a heavy push',
+        { ...sameRepositoryPr, event: 'push' },
+        { classify: { heavy: 'true' } },
+        true,
+      ],
+      [
+        'a light push',
+        { ...sameRepositoryPr, event: 'push' },
+        { classify: { heavy: 'false' } },
+        false,
+      ],
+    ] as Array<
+      [string, Context, Record<string, Record<string, string>>, boolean]
+    >)(
+      'the producer runs exactly when a consumer can run: %s',
+      (_name, context, outputs, expected) => {
+        const state = simulate(jobs, context, {
+          outputs: { ...outputs, 'fast-checks-plan': { legacy: 'false' } },
+        });
+        expect(ran(state, PRODUCER)).toBe(expected);
+        expect(
+          ran(state, 'fast-checks-statics') || ran(state, 'fork-smoke'),
+        ).toBe(expected);
+      },
+    );
+
+    test('a deferred merge conflict spends no producer runner either', () => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'pr-admission': 'failure' },
+        outputs: { 'pr-admission': { admitted: 'false' } },
+      });
+      expect(state.results.get(PRODUCER)).toBe('skipped');
+    });
+
+    test('every consumer depends on the producer and downloads only the id it outputs', () => {
+      type Step = { uses?: string; with?: Record<string, unknown> };
+      const parsed = (
+        load(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'), {
+          schema: JSON_SCHEMA,
+        }) as { jobs: Record<string, Job & { steps: Step[] }> }
+      ).jobs;
+      expect(
+        (parsed[PRODUCER] as unknown as { outputs: Record<string, string> })
+          .outputs,
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      ).toEqual({ 'artifact-id': '${{ steps.artifact.outputs.artifact-id }}' });
+      for (const id of [
+        'fast-checks-shard',
+        'fast-checks-statics',
+        'fork-smoke',
+      ]) {
+        expect(needsOf(parsed[id]), id).toContain(PRODUCER);
+        const downloads = parsed[id].steps.filter(
+          (step) =>
+            step.uses?.startsWith('actions/download-artifact@') &&
+            step.with?.['artifact-ids'] !== undefined,
+        );
+        expect(downloads, id).toHaveLength(1);
+        expect(downloads[0].with?.['artifact-ids']).toBe(
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          '${{ needs.actionlint-artifact.outputs.artifact-id }}',
+        );
+      }
+    });
+  });
+
   test('every job that needs another carries a status function, so no skipped ancestor silently skips it', () => {
     // The structural form of the trap, for jobs this file does not simulate
     // by name: a job with `needs` and no status function inherits
@@ -733,6 +1079,54 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       .map(([id]) => id);
     expect(exposed).toEqual([]);
   });
+});
+
+/**
+ * classify's `heavy` output, evaluated with the same expression model: only
+ * a proven merge-queue verdict turns it off; anything else (verified false,
+ * an empty output, the step skipped off push) passes the classifier through.
+ * A skipped step's outputs read as empty in GitHub; both empty and absent
+ * are modelled.
+ */
+describe("classify's heavy output under the merge-group verdict", () => {
+  const heavy = String(
+    (readJobs().classify as Job & { outputs: Record<string, string> }).outputs
+      .heavy,
+  )
+    .replace(/^\$\{\{\s*/, '')
+    .replace(/\s*\}\}$/, '');
+  const evaluateHeavy = (verdict: Record<string, string>, classifier: string) =>
+    evaluate(
+      heavy,
+      ([head, id, field, name, ...rest]) => {
+        if (head !== 'steps' || field !== 'outputs' || rest.length)
+          throw new Error(`unmodelled ${head}.${id}.${field}`);
+        if (id === 'classify' && name === 'heavy') return classifier;
+        if (id === 'merge-group-verdict' && name === 'verified')
+          return verdict.verified;
+        throw new Error(`unmodelled steps.${id}.outputs.${name}`);
+      },
+      {},
+    );
+
+  test.each(['true', 'false'])(
+    'a proven verdict turns heavy off when the classifier says %s',
+    (classifier) => {
+      expect(evaluateHeavy({ verified: 'true' }, classifier)).toBe('false');
+    },
+  );
+
+  test.each([
+    ['verified=false', { verified: 'false' }],
+    ['an empty output', { verified: '' }],
+    ['the step skipped (no output)', {}],
+  ] as Array<[string, Record<string, string>]>)(
+    '%s keeps the classifier answer',
+    (_label, verdict) => {
+      for (const classifier of ['true', 'false'])
+        expect(evaluateHeavy(verdict, classifier), classifier).toBe(classifier);
+    },
+  );
 });
 
 describe('delivery work waits for required PR feedback', () => {
@@ -803,16 +1197,23 @@ describe('repository-wide PR source runner ceilings', () => {
     shard = 1,
     event = 'pull_request_target',
     sha = 'a'.repeat(40),
+    identity: { ref?: string; repo?: string; login?: string } = {},
   ) => {
     if (!job.concurrency) throw new Error('Missing source concurrency');
     const github = {
       event_name: event,
       ref: `refs/heads/${event}`,
       sha,
+      repository: REPOSITORY,
       event: {
         pull_request: {
           number: pr,
-          head: { sha },
+          user: { login: identity.login ?? 'octocat' },
+          head: {
+            sha,
+            ref: identity.ref ?? 'feature/source',
+            repo: { full_name: identity.repo ?? REPOSITORY },
+          },
           base: { sha: 'b'.repeat(40) },
         },
       },
@@ -836,8 +1237,35 @@ describe('repository-wide PR source runner ceilings', () => {
       },
     );
   };
-  // #4365 added a third shared shard slot for odd shards of PRs ending 0-2.
-  test('25 simultaneous PRs expose exactly two statics and three shard slots, with no cancellation or pending replacement', () => {
+  // Five shared shard groups since the 2026-11 slot measurement; #4365 had
+  // added the third. Pinned as literals, not derived from ci.yml.
+  const SHARD_GROUPS = [
+    'ci-pr-shards-even',
+    'ci-pr-shards-odd',
+    'ci-pr-shards-third',
+    'ci-pr-shards-fourth',
+    'ci-pr-shards-fifth',
+  ];
+  // Three shared statics groups since the 2026-11-15 statics wait
+  // measurement, keyed by the PR number's last digit. Pinned as literals.
+  const STATICS_GROUPS = [
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-third',
+  ];
+  const STATICS_SLOT_BY_DIGIT = [
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-third',
+    'ci-pr-statics-third',
+    'ci-pr-statics-third',
+  ];
+  test('25 simultaneous PRs expose exactly three statics and five shard slots, with no cancellation or pending replacement', () => {
     const statics = new Set();
     const shards = new Set();
     for (let pr = 3700; pr < 3725; pr++) {
@@ -845,35 +1273,169 @@ describe('repository-wide PR source runner ceilings', () => {
       for (const shard of [1, 2, 3, 4])
         shards.add(sourceGroups(jobs['fast-checks-shard'], pr, shard));
     }
-    expect(statics.size).toBe(2);
-    expect(shards).toEqual(
-      new Set(['ci-pr-shards-odd', 'ci-pr-shards-even', 'ci-pr-shards-third']),
-    );
-    expect(new Set([...statics, ...shards]).size).toBe(5);
+    expect(statics).toEqual(new Set(STATICS_GROUPS));
+    expect(shards).toEqual(new Set(SHARD_GROUPS));
+    expect(new Set([...statics, ...shards]).size).toBe(8);
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       expect(jobs[id].concurrency?.queue).toBe('max');
       expect(jobs[id].concurrency?.['cancel-in-progress']).toBe(false);
     }
   });
-  test('odd and even one-shard PRs use both slots; four-way plans keep every shard without cancelling siblings', () => {
-    // PRs ending 0-2 send shard 1 to the third slot; 3703/3704 keep odd/even.
-    expect(sourceGroups(jobs['fast-checks-shard'], 3703)).not.toBe(
-      sourceGroups(jobs['fast-checks-shard'], 3704),
+  test('every last digit lands in exactly one shared statics group, split 4/3/3', () => {
+    const job = jobs['fast-checks-statics'];
+    const perGroup = new Map<unknown, number>();
+    for (let digit = 0; digit <= 9; digit++) {
+      // Several PR numbers, heads and matrix values per digit: every run of
+      // one PR must share one slot, so the group depends only on the digit.
+      const cell = new Set([
+        sourceGroups(job, 4940 + digit),
+        sourceGroups(job, 4940 + digit, 1, undefined, 'c'.repeat(40)),
+        sourceGroups(job, 4940 + digit, 3),
+        sourceGroups(job, 120 + digit),
+        sourceGroups(job, digit === 0 ? 10 : digit),
+      ]);
+      expect(cell.size, `digit ${digit}`).toBe(1);
+      const [group] = cell;
+      expect(group, `digit ${digit}`).toBe(STATICS_SLOT_BY_DIGIT[digit]);
+      perGroup.set(group, (perGroup.get(group) ?? 0) + 1);
+    }
+    expect(Object.fromEntries(perGroup)).toEqual({
+      'ci-pr-statics-even': 4,
+      'ci-pr-statics-odd': 3,
+      'ci-pr-statics-third': 3,
+    });
+    // Runs created under the parity mapping keep their slot names; only
+    // digits 7, 8 and 9 moved, so only those PRs can briefly hold two slots
+    // while a pre-change run is still live.
+    for (let digit = 0; digit <= 6; digit++)
+      expect(sourceGroups(job, 4940 + digit), `digit ${digit}`).toBe(
+        digit % 2 === 1 ? 'ci-pr-statics-odd' : 'ci-pr-statics-even',
+      );
+  });
+  test('every last digit and shard index lands in exactly one shared shard group, evenly', () => {
+    const job = jobs['fast-checks-shard'];
+    const perGroup = new Map<unknown, number>();
+    for (let digit = 0; digit <= 9; digit++) {
+      const ofPr = new Set();
+      for (let shard = 1; shard <= 4; shard++) {
+        // Two PR numbers and two heads per cell: the group must depend only
+        // on the last digit and the shard, never on the run's identity.
+        const cell = new Set([
+          sourceGroups(job, 4940 + digit, shard),
+          sourceGroups(job, 4940 + digit, shard, undefined, 'c'.repeat(40)),
+          sourceGroups(job, 120 + digit, shard),
+        ]);
+        expect(cell.size, `digit ${digit} shard ${shard}`).toBe(1);
+        const [group] = cell;
+        expect(SHARD_GROUPS, `digit ${digit} shard ${shard}`).toContain(group);
+        ofPr.add(group);
+        perGroup.set(group, (perGroup.get(group) ?? 0) + 1);
+      }
+      // One PR's four shards never wait on each other.
+      expect(ofPr.size, `digit ${digit}`).toBe(4);
+    }
+    expect(perGroup.size).toBe(5);
+    // 10 digits x 4 shards = 40 cells, 8 per group.
+    expect([...perGroup.values()]).toEqual([8, 8, 8, 8, 8]);
+    // Shard 1, which every plan has, spreads two digits to each group.
+    const firstShard = new Map<unknown, number>();
+    for (let digit = 0; digit <= 9; digit++) {
+      const group = sourceGroups(job, 4940 + digit, 1);
+      firstShard.set(group, (firstShard.get(group) ?? 0) + 1);
+    }
+    expect(firstShard.size).toBe(5);
+    expect([...firstShard.values()]).toEqual([2, 2, 2, 2, 2]);
+  });
+  test('one-shard PRs use every slot; four-way plans keep every shard without cancelling siblings', () => {
+    const firstShards = [3700, 3701, 3702, 3703, 3704].map((pr) =>
+      sourceGroups(jobs['fast-checks-shard'], pr),
     );
-    expect(sourceGroups(jobs['fast-checks-shard'], 3701)).toBe(
-      'ci-pr-shards-third',
-    );
+    expect(firstShards).toEqual(SHARD_GROUPS);
     const slots = [1, 2, 3, 4].map((shard) =>
       sourceGroups(jobs['fast-checks-shard'], 3701, shard),
     );
-    expect(slots.filter((slot) => slot === slots[0])).toHaveLength(2);
-    expect(new Set(slots).size).toBe(2);
+    expect(slots).toEqual([
+      'ci-pr-shards-odd',
+      'ci-pr-shards-third',
+      'ci-pr-shards-fourth',
+      'ci-pr-shards-fifth',
+    ]);
     const state = simulate(jobs, sameRepositoryPr, {
       outputs: { 'fast-checks-plan': { legacy: 'false' } },
     });
     expect(state.shards.get('fast-checks-shard')).toEqual([1, 2, 3, 4]);
     expect(state.results.get('fast-checks')).toBe('success');
   });
+  // The release-bot PR's three-part identity, as build-ios.yml's guard.
+  const RELEASE_BOT = {
+    ref: 'changeset-release/main',
+    repo: REPOSITORY,
+    login: 'station-automation[bot]',
+  };
+  test('the release-bot PR runs every shard and statics in its one dedicated slot', () => {
+    const groups = new Set();
+    for (const pr of [4097, 4100, 4101])
+      for (let shard = 1; shard <= 4; shard++)
+        groups.add(
+          sourceGroups(
+            jobs['fast-checks-shard'],
+            pr,
+            shard,
+            undefined,
+            undefined,
+            RELEASE_BOT,
+          ),
+        );
+    groups.add(
+      sourceGroups(
+        jobs['fast-checks-statics'],
+        4097,
+        1,
+        undefined,
+        undefined,
+        RELEASE_BOT,
+      ),
+    );
+    expect(groups).toEqual(new Set(['ci-pr-release-bot']));
+    // Its merge-group and dispatch runs keep their per-run identities.
+    for (const id of ['fast-checks-statics', 'fast-checks-shard'])
+      for (const event of ['merge_group', 'workflow_dispatch', 'push'])
+        expect(
+          sourceGroups(jobs[id], 4097, 1, event, undefined, RELEASE_BOT),
+        ).not.toBe('ci-pr-release-bot');
+  });
+  test.each([
+    ['a fork', { ...RELEASE_BOT, repo: 'someone/station' }],
+    ['another author', { ...RELEASE_BOT, login: 'octocat' }],
+    ['another branch', { ...RELEASE_BOT, ref: 'changeset-release/next' }],
+  ])(
+    'a changeset-release/main PR from %s stays in the shared slots',
+    (_label, identity) => {
+      for (let digit = 0; digit <= 9; digit++) {
+        for (let shard = 1; shard <= 4; shard++)
+          expect(SHARD_GROUPS).toContain(
+            sourceGroups(
+              jobs['fast-checks-shard'],
+              4090 + digit,
+              shard,
+              undefined,
+              undefined,
+              identity,
+            ),
+          );
+        expect(
+          sourceGroups(
+            jobs['fast-checks-statics'],
+            4090 + digit,
+            1,
+            undefined,
+            undefined,
+            identity,
+          ),
+        ).toBe(STATICS_SLOT_BY_DIGIT[digit]);
+      }
+    },
+  );
   test('merge groups and diagnostics never join a PR slot or each other; source identities remain distinct', () => {
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       const prSlots = [
@@ -887,6 +1449,884 @@ describe('repository-wide PR source runner ceilings', () => {
       expect(queue).not.toBe(dispatch);
       expect(queue).not.toBe(
         sourceGroups(jobs[id], 3701, 1, 'merge_group', 'c'.repeat(40)),
+      );
+    }
+  });
+});
+
+/**
+ * #4748: the actionlint handoff's shell, taken verbatim from ci.yml and run in
+ * real GNU bash against real GNU sha256sum and tar. Only the network and the
+ * clock are controlled: `curl` and `sleep` are stand-ins that record their
+ * calls and serve a fixture archive (or fail with curl's exit 22, a missing
+ * file, a flipped byte). `tar` is a recording wrapper around the host tar, so
+ * "the digest is verified BEFORE tar runs" is observed, not inferred.
+ */
+describe('the pinned actionlint provisioning text, executed (#4748)', () => {
+  type RunStep = {
+    name?: string;
+    run?: string;
+    env?: Record<string, string>;
+    with?: Record<string, string>;
+  };
+  const workflowJobs = readJobs() as unknown as Record<
+    string,
+    Job & { steps: RunStep[] }
+  >;
+  const stepOf = (jobId: string, name: string) => {
+    const step = workflowJobs[jobId].steps.find(
+      (candidate) => candidate.name === name,
+    );
+    if (typeof step?.run !== 'string' && step?.with === undefined)
+      throw new Error(`Expected the ${jobId} "${name}" step.`);
+    return step as RunStep;
+  };
+  const provisioning = (jobId: string, name: string) => {
+    const step = stepOf(jobId, name);
+    if (typeof step.run !== 'string' || !step.env)
+      throw new Error(`Expected a ${jobId} "${name}" run step with env.`);
+    return { run: step.run, env: step.env };
+  };
+  const PRODUCER = 'actionlint-artifact';
+  const PRODUCER_STEP = 'Download and verify pinned actionlint';
+  const INSTALL_STEP = 'Install pinned actionlint';
+  const CONSUMERS = ['fast-checks-shard', 'fast-checks-statics', 'fork-smoke'];
+  const ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
+  const makeTempDir = trackTempDirs();
+
+  type Outcome = { status: number; stdout: string; stderr: string };
+  /**
+   * A fixture child counts only when it ran to a numeric exit: a spawn error
+   * (ENOENT, a timeout, an output overflow), a signal, a missing status or a
+   * shell "command not found" would otherwise read as a nonzero "denial" for a
+   * negative control that never reached the behavior it names.
+   */
+  function settle(label: string, result: SpawnSyncReturns<string>): Outcome {
+    if (result.error)
+      throw new Error(
+        `${label}: spawn infrastructure error ${result.error.name}: ${result.error.message}`,
+      );
+    if (result.signal !== null)
+      throw new Error(`${label}: ended by signal ${result.signal}`);
+    if (typeof result.status !== 'number')
+      throw new Error(`${label}: no numeric exit status`);
+    if (/command not found/.test(result.stderr))
+      throw new Error(`${label}: a command was missing: ${result.stderr}`);
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  }
+  const bounded = (
+    label: string,
+    command: string,
+    args: string[],
+    options: { env?: Record<string, string> } = {},
+  ) =>
+    settle(
+      label,
+      spawnSyncBounded(command, args, {
+        encoding: 'utf8',
+        timeout: 30_000,
+        windowsHide: true,
+        ...options,
+      }) as SpawnSyncReturns<string>,
+    );
+
+  function sandbox() {
+    const root = makeTempDir('actionlint-handoff-');
+    const bin = join(root, 'bin');
+    const temp = join(root, 'runner-temp');
+    mkdirSync(bin);
+    mkdirSync(temp);
+    const githubPath = join(root, 'github-path');
+    writeFileSync(githubPath, '');
+    const located = bounded('locate tar', 'bash', ['-c', 'command -v tar']);
+    const realTar = located.stdout.trim();
+    if (located.status !== 0 || !realTar)
+      throw new Error('A host tar is required for these fixtures.');
+    const tool = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`, {
+        mode: 0o755,
+      });
+    tool(
+      'curl',
+      [
+        'printf "%s\\n" "$*" >> "$FAKE_CURL_LOG"',
+        'echo call >> "$FAKE_CURL_COUNT"',
+        'calls="$(wc -l < "$FAKE_CURL_COUNT" | tr -d " ")"',
+        "out=''",
+        'while [ "$#" -gt 0 ]; do case "$1" in --output) out="$2"; shift ;; esac; shift; done',
+        'case "$FAKE_CURL_MODE" in',
+        '  ok) cp "$FAKE_ARCHIVE" "$out" ;;',
+        '  fail22) echo "curl: (22) The requested URL returned error: 504" >&2; exit 22 ;;',
+        '  flaky) if [ "$calls" -le 2 ]; then echo "curl: (22) The requested URL returned error: 504" >&2; exit 22; fi; cp "$FAKE_ARCHIVE" "$out" ;;',
+        '  nofile) ;;',
+        '  *) echo "unknown fake curl mode" >&2; exit 99 ;;',
+        'esac',
+      ].join('\n'),
+    );
+    tool('sleep', 'echo "$*" >> "$FAKE_SLEEP_LOG"');
+    tool('tar', 'echo "$*" >> "$FAKE_TAR_LOG"\nexec "$REAL_TAR" "$@"');
+    const run = (
+      script: string,
+      env: Record<string, string>,
+      extra: Record<string, string> = {},
+    ) =>
+      bounded(
+        'workflow script',
+        'bash',
+        ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script],
+        {
+          env: {
+            PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+            RUNNER_TEMP: temp,
+            GITHUB_PATH: githubPath,
+            GITHUB_OUTPUT: join(root, 'github-output'),
+            FAKE_CURL_LOG: join(root, 'curl.log'),
+            FAKE_CURL_COUNT: join(root, 'curl.count'),
+            FAKE_SLEEP_LOG: join(root, 'sleep.log'),
+            FAKE_TAR_LOG: join(root, 'tar.log'),
+            REAL_TAR: realTar,
+            ...env,
+            ...extra,
+          },
+        },
+      );
+    const lines = (name: string) =>
+      existsSync(join(root, name))
+        ? readFileSync(join(root, name), 'utf8').split('\n').filter(Boolean)
+        : [];
+    return { root, temp, githubPath, run, lines };
+  }
+
+  function fixtureArchive(box: ReturnType<typeof sandbox>) {
+    const src = join(box.root, 'src');
+    const good = join(box.root, 'fixture');
+    const flipped = join(box.root, 'fixture-flipped');
+    for (const dir of [src, good, flipped]) mkdirSync(dir);
+    writeFileSync(
+      join(src, 'actionlint'),
+      '#!/bin/sh\necho fixture actionlint\n',
+      { mode: 0o755 },
+    );
+    const made = bounded('fixture tar', 'tar', [
+      '-czf',
+      join(good, ARCHIVE),
+      '-C',
+      src,
+      'actionlint',
+    ]);
+    if (made.status !== 0)
+      throw new Error(`fixture tar failed: ${made.stderr}`);
+    const bytes = readFileSync(join(good, ARCHIVE));
+    const corrupted = Buffer.from(bytes);
+    corrupted[Math.floor(corrupted.length / 2)] ^= 1;
+    writeFileSync(join(flipped, ARCHIVE), corrupted);
+    return {
+      archive: join(good, ARCHIVE),
+      flipped: join(flipped, ARCHIVE),
+      sha: createHash('sha256').update(bytes).digest('hex'),
+    };
+  }
+
+  test('the fixtures run on GNU sha256sum and GNU tar, so a host without them fails here instead of passing vacuously', () => {
+    for (const [tool, banner] of [
+      ['sha256sum', /GNU coreutils/],
+      ['tar', /GNU tar/],
+    ] as const) {
+      const result = bounded(`${tool} --version`, tool, ['--version']);
+      expect(result.status, tool).toBe(0);
+      expect(`${result.stdout}${result.stderr}`, tool).toMatch(banner);
+    }
+  });
+
+  describe('the producer download step', () => {
+    const producer = provisioning(PRODUCER, PRODUCER_STEP);
+
+    test('the uploaded path is the file the step verified', () => {
+      expect(
+        stepOf(PRODUCER, 'Upload verified actionlint archive').with,
+      ).toMatchObject({
+        path: `\${{ runner.temp }}/actionlint-download/${ARCHIVE}`,
+        overwrite: false,
+        'if-no-files-found': 'error',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        name: 'pinned-actionlint-${{ github.run_id }}-${{ github.run_attempt }}',
+      });
+      expect(producer.env.ACTIONLINT_ARCHIVE).toBe(ARCHIVE);
+    });
+
+    test('downloads once, verifies the digest and leaves exactly the verified archive', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const result = box.run(
+        producer.run,
+        { ...producer.env, ACTIONLINT_SHA256: fixture.sha },
+        { FAKE_CURL_MODE: 'ok', FAKE_ARCHIVE: fixture.archive },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        readFileSync(join(box.temp, 'actionlint-download', ARCHIVE)),
+      ).toEqual(readFileSync(fixture.archive));
+      const [call] = box.lines('curl.log');
+      expect(box.lines('curl.count')).toHaveLength(1);
+      expect(call).toContain('--fail');
+      expect(call).toContain('--max-time 60');
+      expect(call).toContain(producer.env.ACTIONLINT_URL);
+      expect(box.lines('sleep.log')).toEqual([]);
+    });
+
+    test('retries after curl exit 22 and succeeds on the third attempt', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const result = box.run(
+        producer.run,
+        { ...producer.env, ACTIONLINT_SHA256: fixture.sha },
+        { FAKE_CURL_MODE: 'flaky', FAKE_ARCHIVE: fixture.archive },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(box.lines('curl.count')).toHaveLength(3);
+      expect(box.lines('sleep.log')).toEqual(['10', '15']);
+    });
+
+    test('gives up after exactly four attempts when curl keeps returning 22', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const result = box.run(
+        producer.run,
+        { ...producer.env, ACTIONLINT_SHA256: fixture.sha },
+        { FAKE_CURL_MODE: 'fail22', FAKE_ARCHIVE: fixture.archive },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('failed after 4 attempts');
+      expect(box.lines('curl.count')).toHaveLength(4);
+      expect(box.lines('sleep.log')).toEqual(['10', '15', '20']);
+      expect(existsSync(join(box.temp, 'actionlint-download', ARCHIVE))).toBe(
+        false,
+      );
+    });
+
+    test.each([
+      [
+        'the production digest rejects an archive that is not the release',
+        'ok',
+        'good',
+        undefined,
+      ],
+      ['a flipped byte in the served archive', 'ok', 'flipped', 'fixture-sha'],
+      [
+        'a download that reports success but writes nothing',
+        'nofile',
+        'good',
+        'fixture-sha',
+      ],
+    ] as const)('rejects %s', (_name, mode, which, digest) => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const result = box.run(
+        producer.run,
+        {
+          ...producer.env,
+          ...(digest === 'fixture-sha'
+            ? { ACTIONLINT_SHA256: fixture.sha }
+            : {}),
+        },
+        {
+          FAKE_CURL_MODE: mode,
+          FAKE_ARCHIVE: which === 'good' ? fixture.archive : fixture.flipped,
+        },
+      );
+      expect(result.status).toBe(1);
+      expect(box.lines('curl.count')).toHaveLength(1);
+    });
+
+    test('refuses a download directory that already exists and never calls curl', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      mkdirSync(join(box.temp, 'actionlint-download'));
+      const result = box.run(
+        producer.run,
+        { ...producer.env, ACTIONLINT_SHA256: fixture.sha },
+        { FAKE_CURL_MODE: 'ok', FAKE_ARCHIVE: fixture.archive },
+      );
+      expect(result.status).toBe(1);
+      expect(box.lines('curl.count')).toEqual([]);
+    });
+  });
+
+  describe('the producer artifact id validation step', () => {
+    const VALIDATION_STEP = 'Validate uploaded artifact id';
+    const validation = stepOf(PRODUCER, VALIDATION_STEP);
+    const script = String(validation.run);
+    const outputFile = (box: ReturnType<typeof sandbox>) =>
+      join(box.root, 'github-output');
+    const written = (box: ReturnType<typeof sandbox>) =>
+      existsSync(outputFile(box)) ? readFileSync(outputFile(box), 'utf8') : '';
+
+    test('is the only step that writes the job output, from the upload id', () => {
+      const steps = workflowJobs[PRODUCER].steps as Array<
+        RunStep & { id?: string }
+      >;
+      expect(
+        steps.filter((step) => String(step.run).includes('GITHUB_OUTPUT')),
+      ).toEqual([validation]);
+      expect(validation.env).toEqual({
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        UPLOADED_ARTIFACT_ID: '${{ steps.upload.outputs.artifact-id }}',
+      });
+      // The validation step follows the upload that produces the id.
+      expect(steps.findIndex((step) => step.id === 'artifact')).toBeGreaterThan(
+        steps.findIndex((step) => step.id === 'upload'),
+      );
+    });
+
+    test.each(['1', '4748', '123456789012', '9007199254740993'])(
+      'passes the positive integer %s through unchanged and writes nothing else',
+      (id) => {
+        const box = sandbox();
+        const result = box.run(script, { UPLOADED_ARTIFACT_ID: id });
+        expect(result.status, result.stderr).toBe(0);
+        expect(written(box)).toBe(`artifact-id=${id}\n`);
+      },
+    );
+
+    test.each([
+      ['empty', ''],
+      ['zero', '0'],
+      ['a leading zero', '007'],
+      ['negative', '-5'],
+      ['a decimal', '1.5'],
+      ['letters', '12ab'],
+      ['a space', '12 34'],
+      ['surrounding whitespace', ' 12 '],
+      ['a newline-injected second output', '12\nartifact-id=99'],
+      ['an environment-file injection', '12\nGITHUB_ENV=x'],
+    ])('rejects %s and exposes no output', (_name, id) => {
+      const box = sandbox();
+      const result = box.run(script, { UPLOADED_ARTIFACT_ID: id });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('not a positive integer');
+      expect(written(box)).toBe('');
+    });
+
+    test('control: without the validation an empty id would be exposed as a successful output', () => {
+      // The harness reads the same output file; an unvalidated writer leaves a
+      // present-but-empty id, the shape that makes the download action fetch
+      // every artifact of the run.
+      const unvalidated =
+        'echo "artifact-id=$UPLOADED_ARTIFACT_ID" >> "$GITHUB_OUTPUT"';
+      const box = sandbox();
+      const result = box.run(unvalidated, { UPLOADED_ARTIFACT_ID: '' });
+      expect(result.status).toBe(0);
+      expect(written(box)).toBe('artifact-id=\n');
+    });
+  });
+
+  test('all three consumers install with the same shell and the same pinned inputs', () => {
+    const [first, ...rest] = CONSUMERS.map((id) =>
+      provisioning(id, INSTALL_STEP),
+    );
+    expect(first.run).toContain('sha256sum --check --status');
+    for (const other of rest) expect(other).toEqual(first);
+    expect(first.env.ACTIONLINT_ARCHIVE).toBe(ARCHIVE);
+    expect(first.env.ACTIONLINT_SHA256).toBe(
+      provisioning(PRODUCER, PRODUCER_STEP).env.ACTIONLINT_SHA256,
+    );
+  });
+
+  describe.each(CONSUMERS)('%s install step', (jobId) => {
+    const install = provisioning(jobId, INSTALL_STEP);
+    const place = (box: ReturnType<typeof sandbox>, source: string) => {
+      const directory = join(box.temp, 'actionlint-artifact');
+      mkdirSync(directory);
+      copyFileSync(source, join(directory, ARCHIVE));
+      return directory;
+    };
+    const untouched = (box: ReturnType<typeof sandbox>) => {
+      expect(box.lines('tar.log')).toEqual([]);
+      expect(readFileSync(box.githubPath, 'utf8')).toBe('');
+    };
+
+    test('extracts the verified archive and puts only that directory on PATH', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      place(box, fixture.archive);
+      const result = box.run(install.run, {
+        ...install.env,
+        ACTIONLINT_SHA256: fixture.sha,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(existsSync(join(box.temp, 'actionlint', 'actionlint'))).toBe(true);
+      expect(readFileSync(box.githubPath, 'utf8')).toBe(
+        `${join(box.temp, 'actionlint')}\n`,
+      );
+      expect(box.lines('tar.log')).toHaveLength(1);
+      expect(box.lines('tar.log')[0]).toContain('-xzf');
+      // The controlled curl wrapper is on this PATH, and the install never
+      // calls it: it extracts only what the download step already provided.
+      expect(box.lines('curl.count')).toEqual([]);
+    });
+
+    test.each([
+      ['a flipped byte', 'flipped', 'fixture-sha'],
+      ['an archive that is not the pinned release', 'good', 'production-sha'],
+    ] as const)('rejects %s before tar runs', (_name, which, digest) => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      place(box, which === 'good' ? fixture.archive : fixture.flipped);
+      const result = box.run(install.run, {
+        ...install.env,
+        ...(digest === 'fixture-sha' ? { ACTIONLINT_SHA256: fixture.sha } : {}),
+      });
+      expect(result.status).toBe(1);
+      untouched(box);
+      expect(existsSync(join(box.temp, 'actionlint'))).toBe(false);
+    });
+
+    test('rejects a missing archive before tar runs', () => {
+      const box = sandbox();
+      const result = box.run(install.run, install.env);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('missing from the downloaded artifact');
+      untouched(box);
+    });
+
+    test('rejects an archive that is a symbolic link before tar runs', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      const directory = join(box.temp, 'actionlint-artifact');
+      mkdirSync(directory);
+      symlinkSync(fixture.archive, join(directory, ARCHIVE));
+      const result = box.run(install.run, {
+        ...install.env,
+        ACTIONLINT_SHA256: fixture.sha,
+      });
+      expect(result.status).toBe(1);
+      untouched(box);
+    });
+
+    test('control: the harness sees tar run when the verification is moved after it', () => {
+      // Without this, "tar never ran" above could hold for a harness that
+      // cannot observe tar at all. The same flipped archive, with the digest
+      // check moved behind the extraction, must show tar having run.
+      const verify =
+        'echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --status\n';
+      const tail = 'echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"';
+      const unsafe = install.run
+        .replace(verify, '')
+        .replace(tail, `${verify}${tail}`);
+      expect(install.run).toContain(verify);
+      expect(unsafe).not.toBe(install.run);
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      place(box, fixture.flipped);
+      const result = box.run(unsafe, {
+        ...install.env,
+        ACTIONLINT_SHA256: fixture.sha,
+      });
+      // GNU tar's own refusal of the corrupted gzip (exit 2), or 1 from the
+      // digest check that now runs after it: either way tar was observed.
+      expect([1, 2]).toContain(result.status);
+      expect(box.lines('tar.log')).toHaveLength(1);
+    });
+
+    test('refuses an extraction directory that already exists', () => {
+      const box = sandbox();
+      const fixture = fixtureArchive(box);
+      place(box, fixture.archive);
+      mkdirSync(join(box.temp, 'actionlint'));
+      const result = box.run(install.run, {
+        ...install.env,
+        ACTIONLINT_SHA256: fixture.sha,
+      });
+      expect(result.status).toBe(1);
+      untouched(box);
+    });
+  });
+});
+
+/**
+ * The zsh provisioning step, taken verbatim from every workflow that carries
+ * it and run in real bash. Two of a week's twenty merge-group failures were
+ * `Temporary failure resolving 'archive.ubuntu.com'` inside this apt install
+ * (runs 43034809151, 43039693039), so the bootstrap invocation retries.
+ * Only the network, the privileged installer and the clock are controlled:
+ * `curl` serves a stand-in bootstrap, `sudo` is a recording stand-in that
+ * fails the first N installs with apt's DNS error and exit 100, and `sleep`
+ * records its argument. `/bin/zsh` is rewritten to a sandbox path (every
+ * occurrence, counted) so the install branch is reached on hosts that ship
+ * zsh; the installer stand-in creates that path only when it succeeds.
+ */
+describe('the zsh provisioning text, executed', () => {
+  type RunStep = { name?: string; run?: string; env?: Record<string, string> };
+  const ZSH_STEP =
+    'Provision and preflight zsh for process-heavy installer fixtures';
+  const copies = (
+    [
+      ['ci.yml', 'fast-checks-shard'],
+      ['full-regression.yml', 'ordinary'],
+      ['full-regression.yml', 'process-heavy'],
+      ['full-regression.yml', 'exclusive'],
+    ] as const
+  ).map(([file, jobId]) => {
+    const parsed = load(
+      readFileSync(resolve(root, '.github/workflows', file), 'utf8'),
+      { schema: JSON_SCHEMA },
+    ) as { jobs: Record<string, { steps?: RunStep[] }> };
+    return [
+      file,
+      jobId,
+      parsed.jobs[jobId]?.steps?.find((step) => step.name === ZSH_STEP),
+    ] as const;
+  });
+  const makeZshDir = trackTempDirs();
+
+  function zshSandbox() {
+    const dir = makeZshDir('zsh-provisioning-');
+    const bin = join(dir, 'bin');
+    const temp = join(dir, 'runner-temp');
+    mkdirSync(bin);
+    mkdirSync(temp);
+    const target = join(dir, 'installed', 'zsh');
+    const tool = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`, {
+        mode: 0o755,
+      });
+    tool(
+      'curl',
+      [
+        'out=""',
+        'while [ "$#" -gt 0 ]; do case "$1" in --output) out="$2"; shift ;; esac; shift; done',
+        'printf "#!/usr/bin/env bash\\necho stand-in bootstrap\\n" > "$out"',
+      ].join('\n'),
+    );
+    tool(
+      'sudo',
+      [
+        'printf "%s\\n" "$*" >> "$FAKE_SUDO_LOG"',
+        'calls="$(wc -l < "$FAKE_SUDO_LOG" | tr -d " ")"',
+        'if [ "$calls" -le "$FAKE_SUDO_FAILURES" ]; then',
+        '  echo "E: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/jammy/InRelease  Temporary failure resolving \'archive.ubuntu.com\'" >&2',
+        '  exit 100',
+        'fi',
+        'mkdir -p "$(dirname "$FAKE_ZSH_TARGET")"',
+        'printf "#!/usr/bin/env bash\\necho \\"zsh 5.9 (stand-in)\\"\\n" > "$FAKE_ZSH_TARGET"',
+        'chmod 755 "$FAKE_ZSH_TARGET"',
+        'cp "$FAKE_ZSH_TARGET" "$FAKE_BIN/zsh"',
+      ].join('\n'),
+    );
+    tool('sleep', 'echo "$*" >> "$FAKE_SLEEP_LOG"');
+    const lines = (name: string) =>
+      existsSync(join(dir, name))
+        ? readFileSync(join(dir, name), 'utf8').split('\n').filter(Boolean)
+        : [];
+    const run = (step: RunStep, failures: number) => {
+      const script = String(step.run);
+      const occurrences = script.split('/bin/zsh').length - 1;
+      const rewritten = script.replaceAll('/bin/zsh', target);
+      const result = spawnSyncBounded(
+        'bash',
+        ['--noprofile', '--norc', '-eo', 'pipefail', '-c', rewritten],
+        {
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+          env: {
+            PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+            RUNNER_TEMP: temp,
+            FAKE_BIN: bin,
+            FAKE_ZSH_TARGET: target,
+            FAKE_SUDO_FAILURES: String(failures),
+            FAKE_SUDO_LOG: join(dir, 'sudo.log'),
+            FAKE_SLEEP_LOG: join(dir, 'sleep.log'),
+            ...step.env,
+          },
+        },
+      ) as SpawnSyncReturns<string>;
+      if (
+        result.error ||
+        result.signal !== null ||
+        typeof result.status !== 'number'
+      )
+        throw new Error(
+          `zsh step did not run to an exit: ${result.error ?? result.signal}`,
+        );
+      return { ...result, occurrences };
+    };
+    return { run, lines, target };
+  }
+
+  test('every workflow provisions zsh with the same step text', () => {
+    for (const [file, jobId, step] of copies)
+      expect(step?.run, `${file} ${jobId}`).toBe(copies[0][2]?.run);
+  });
+
+  test.each(copies)(
+    '%s %s installs on the first attempt without sleeping',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 0);
+      expect(result.occurrences).toBe(3);
+      expect(result.status, result.stderr).toBe(0);
+      expect(box.lines('sudo.log')).toHaveLength(1);
+      expect(box.lines('sudo.log')[0]).toMatch(
+        /^bash .*install-ci-ubuntu-packages\.sh zsh$/,
+      );
+      expect(box.lines('sleep.log')).toEqual([]);
+      expect(result.stdout).toContain('zsh 5.9 (stand-in)');
+    },
+  );
+
+  test.each(copies)(
+    '%s %s retries a transient apt failure twice and then succeeds',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 2);
+      expect(result.status, result.stderr).toBe(0);
+      expect(box.lines('sudo.log')).toHaveLength(3);
+      expect(box.lines('sleep.log')).toEqual(['10', '20']);
+      expect(result.stderr).toContain(
+        'zsh provisioning attempt 1 failed (exit 100)',
+      );
+      expect(result.stdout).toContain('zsh 5.9 (stand-in)');
+    },
+  );
+
+  test.each(copies)(
+    '%s %s fails with the real apt error and status when every attempt fails',
+    (_file, _job, step) => {
+      const box = zshSandbox();
+      const result = box.run(step as RunStep, 99);
+      expect(result.status).toBe(100);
+      expect(box.lines('sudo.log')).toHaveLength(3);
+      expect(box.lines('sleep.log')).toEqual(['10', '20']);
+      expect(result.stderr).toContain(
+        "Temporary failure resolving 'archive.ubuntu.com'",
+      );
+      expect(result.stderr).toContain(
+        'zsh provisioning failed after 3 attempts (exit 100)',
+      );
+      expect(existsSync(box.target)).toBe(false);
+      expect(result.stdout).not.toContain('zsh 5.9');
+    },
+  );
+});
+
+/**
+ * STATION_PR_HEAVY_CHECKS (scripts/pr-heavy-checks-decision.mjs). The graph
+ * reads the decision only through pr-admission's `heavy` output, which the
+ * scenarios take from the real decision function for the same event.
+ */
+describe('heavy pull-request checks switch under GitHub job-status semantics', () => {
+  const jobs = readJobs();
+  const fork: Context = {
+    ...sameRepositoryPr,
+    headRepository: 'someone/station',
+  };
+  const armed = (context: Context, mode?: string): Context => ({
+    ...context,
+    action: 'auto_merge_enabled',
+    vars: mode === undefined ? {} : { STATION_PR_HEAVY_CHECKS: mode },
+  });
+  const decided = (context: Context, armedAtEvent = false) => ({
+    admitted: 'true',
+    heavy: String(
+      decideHeavyChecks({
+        mode: context.vars?.STATION_PR_HEAVY_CHECKS,
+        eventName: context.event,
+        action: context.action ?? 'synchronize',
+        runAttempt: '1',
+        repository: REPOSITORY,
+        live: null,
+        pullRequest: {
+          number: 7,
+          head: { repo: { full_name: context.headRepository } },
+          labels: [],
+          auto_merge: armedAtEvent ? { merge_method: 'squash' } : null,
+        },
+      }).heavy,
+    ),
+  });
+  const run = (context: Context, armedAtEvent = false) =>
+    simulate(jobs, context, {
+      outputs: {
+        'pr-admission': decided(context, armedAtEvent),
+        'fast-checks-plan': { legacy: 'false', shards: '[1,2]' },
+        classify: { heavy: 'true' },
+      },
+    });
+  /** Which of the aggregate's steps run, from their base-controlled `if`. */
+  const aggregateSteps = (state: State) => {
+    const steps = (
+      jobs['fast-checks'] as Job & {
+        steps: Array<{ name?: string; if?: string }>;
+      }
+    ).steps;
+    return steps
+      .filter((step) => step.name?.startsWith('Record heavy checks'))
+      .filter((step) =>
+        truthy(
+          evaluate(
+            String(step.if)
+              .replace(/^\$\{\{\s*/, '')
+              .replace(/\s*\}\}$/, ''),
+            (path) => {
+              const [head, need, field, name] = path;
+              if (head !== 'needs' || field !== 'outputs')
+                throw new Error(`unmodelled ${path.join('.')}`);
+              return state.outputs.get(need)?.[name] ?? '';
+            },
+            { always: () => true },
+          ),
+        ),
+      )
+      .map((step) => step.name);
+  };
+  const HEAVY_JOBS = ['fast-checks-shard', 'ui-bundle-delta', 'delivery-plan'];
+
+  test('when-armed: an unarmed push runs the cheap jobs only, the aggregate passes and records the deferral', () => {
+    const context = {
+      ...sameRepositoryPr,
+      vars: { STATION_PR_HEAVY_CHECKS: 'when-armed' },
+    };
+    const state = run(context);
+    expect(state.outputs.get('pr-admission')?.heavy).toBe('false');
+    for (const id of [
+      'fast-checks-plan',
+      'fast-checks-statics',
+      'fast-checks',
+      'source-policy',
+      // Nothing before landing runs the source scans except a push run.
+      'repo-scans',
+    ])
+      expect(state.results.get(id), id).toBe('success');
+    for (const id of HEAVY_JOBS)
+      expect(state.results.get(id), id).toBe('skipped');
+    expect(aggregatorPartResults(jobs, state)).toBe(0);
+    expect(aggregateSteps(state)).toEqual([
+      'Record heavy checks deferred until armed',
+    ]);
+  });
+
+  test.each([
+    ['arming', armed(sameRepositoryPr, 'when-armed'), false],
+    [
+      'a push to an armed pull request',
+      { ...sameRepositoryPr, vars: { STATION_PR_HEAVY_CHECKS: 'when-armed' } },
+      true,
+    ],
+  ] as const)(
+    'when-armed: %s runs every heavy job and records that they ran',
+    (_name, context, armedAtEvent) => {
+      const state = run(context, armedAtEvent);
+      for (const id of [
+        'pr-admission',
+        'fast-checks-plan',
+        'fast-checks-statics',
+        'fast-checks',
+        'source-policy',
+        ...HEAVY_JOBS,
+      ])
+        expect(state.results.get(id), id).toBe('success');
+      expect(state.shards.get('fast-checks-shard')).toEqual([1, 2]);
+      expect(aggregatorPartResults(jobs, state)).toBe(0);
+      expect(aggregateSteps(state)).toEqual(['Record heavy checks ran']);
+      // The push run of that head already scanned it; arming does not repeat.
+      expect(state.results.get('repo-scans')).toBe(
+        armedAtEvent ? 'success' : 'skipped',
+      );
+    },
+  );
+
+  test('when-armed: a merge group runs the shards and records that they ran', () => {
+    const state = run({
+      ...sameRepositoryPr,
+      event: 'merge_group',
+      vars: { STATION_PR_HEAVY_CHECKS: 'when-armed' },
+    });
+    expect(state.results.get('pr-admission')).toBe('skipped');
+    expect(state.results.get('fast-checks-shard')).toBe('success');
+    expect(state.results.get('merge-queue-regression')).toBe('success');
+    expect(aggregateSteps(state)).toEqual(['Record heavy checks ran']);
+  });
+
+  test('a cheap-only aggregate fails if a shard ran and failed anyway', () => {
+    const context = {
+      ...sameRepositoryPr,
+      vars: { STATION_PR_HEAVY_CHECKS: 'when-armed' },
+    };
+    const state = run(context);
+    state.results.set('fast-checks-shard', 'failure');
+    expect(aggregatorPartResults(jobs, state)).toBe(1);
+  });
+
+  test.each([
+    ['switch unset', armed(sameRepositoryPr), []],
+    ['switch every-push', armed(sameRepositoryPr, 'every-push'), []],
+    // Only the in-run publisher, which reads every source job skipped on a
+    // `PR armed` run and republishes the older run's verdict.
+    ['a fork under when-armed', armed(fork, 'when-armed'), ['source-policy']],
+  ])(
+    'arming with %s runs no source job, so the source policy ignores the run',
+    (_name, context, expected) => {
+      const state = run(context);
+      const ran = [...state.results]
+        .filter(([, result]) => result !== 'skipped')
+        .map(([id]) => id);
+      expect(ran).toEqual(expected);
+    },
+  );
+
+  /**
+   * The switch unset must plan exactly what ci.yml planned before it existed,
+   * origin/main at f7f8f28e46. Compares job results only, for jobs present
+   * then; delete this case once ci.yml's admission changes for another
+   * reason, since it pins that revision rather than a lasting rule.
+   */
+  test('switch unset: every event plans the same jobs as the pre-switch ci.yml', () => {
+    const baseline = spawnSync(
+      'git',
+      ['show', 'f7f8f28e46:.github/workflows/ci.yml'],
+      { cwd: root, encoding: 'utf8', windowsHide: true },
+    );
+    expect(
+      baseline.status,
+      `pre-switch ci.yml unavailable: ${baseline.stderr}`,
+    ).toBe(0);
+    const before = readJobs(baseline.stdout);
+    const contexts: Array<[string, Context]> = [
+      ['same-repository synchronize', sameRepositoryPr],
+      ['opened', { ...sameRepositoryPr, action: 'opened' }],
+      ['metadata edit', { ...sameRepositoryPr, action: 'edited' }],
+      [
+        'base retarget',
+        { ...sameRepositoryPr, action: 'edited', retarget: true },
+      ],
+      ['fork', fork],
+      ['merge group', { ...sameRepositoryPr, event: 'merge_group' }],
+      ['dispatch', { ...sameRepositoryPr, event: 'workflow_dispatch' }],
+      ['push', { ...sameRepositoryPr, event: 'push' }],
+    ];
+    for (const [name, context] of contexts) {
+      const outputs = {
+        'pr-admission': decided(context),
+        'fast-checks-plan': { legacy: 'false', shards: '[1,2,3]' },
+        classify: { heavy: 'true' },
+      };
+      const now = simulate(jobs, context, { outputs });
+      const then = simulate(before, context, { outputs });
+      const pick = (state: State) =>
+        Object.fromEntries(
+          Object.keys(before).map((id) => [id, state.results.get(id)]),
+        );
+      expect(pick(now), name).toEqual(pick(then));
+      expect(now.shards.get('fast-checks-shard'), name).toEqual(
+        then.shards.get('fast-checks-shard'),
+      );
+      expect(aggregatorPartResults(jobs, now), name).toBe(
+        aggregatorPartResults(before, then),
       );
     }
   });

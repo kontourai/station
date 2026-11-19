@@ -20,16 +20,27 @@ describe('canGrant (#3586)', () => {
 
   test('a member grants exactly the roles whose actions they all hold', () => {
     // Pinned literally, not derived from PROJECT_MEMBER_ROLES: the ladder is
-    // viewer < contributor < admin < owner.
+    // viewer < commenter < contributor < admin < owner.
     const grantable = (actor: keyof typeof PROJECT_MEMBER_ROLES) =>
-      (['viewer', 'contributor', 'admin', 'owner'] as const).filter((role) =>
-        canGrant(holding(actor), role),
-      );
+      (
+        ['viewer', 'commenter', 'contributor', 'admin', 'owner'] as const
+      ).filter((role) => canGrant(holding(actor), role));
     expect(grantable('viewer')).toEqual(['viewer']);
-    expect(grantable('contributor')).toEqual(['viewer', 'contributor']);
-    expect(grantable('admin')).toEqual(['viewer', 'contributor', 'admin']);
+    expect(grantable('commenter')).toEqual(['viewer', 'commenter']);
+    expect(grantable('contributor')).toEqual([
+      'viewer',
+      'commenter',
+      'contributor',
+    ]);
+    expect(grantable('admin')).toEqual([
+      'viewer',
+      'commenter',
+      'contributor',
+      'admin',
+    ]);
     expect(grantable('owner')).toEqual([
       'viewer',
+      'commenter',
       'contributor',
       'admin',
       'owner',
@@ -62,6 +73,7 @@ describe('ProjectRolePicker', () => {
     ).map((option) => [option.textContent, option.disabled]);
     expect(options).toEqual([
       ['Viewer', false],
+      ['Commenter', false],
       ['Contributor', false],
       ['Project admin', true],
     ]);

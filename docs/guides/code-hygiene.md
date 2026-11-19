@@ -120,8 +120,10 @@ indentation from the dash, a keyed one from the key. A JavaScript regular-expres
 literal that contains a quote can still hide the rest of its line. A Markdown file that discusses the markers must put its examples in
 code spans or fences.
 
-There is no declared flag registry: Station reads `STATION_FEATURES` and
-tests it for literal flag names. The markers check follows every read to its
+There is no declared flag registry. Station reads no `STATION_FEATURES` flag
+today ([#3909](https://github.com/kontourai/station/issues/3909) retired the
+last one); a flag would be read from that variable and tested for literal flag
+names. The markers check follows every read to its
 membership tests: on the read itself, through a `const` list, or through an
 unexported function that returns the list. A read in any other shape
 (destructuring `process.env` under any key spelling, aliasing the list,
@@ -181,7 +183,11 @@ The `hygiene` job of
 using the same single-issue pattern as the documentation freshness sweep. The
 issue stays open while anything is reported or NOT_VERIFIED and closes when
 nothing is. A NOT_VERIFIED run also fails the `hygiene` job. Neither job is a
-required check.
+required check. Because the report comes from a job that installs
+dependencies, the issue job writes only to an issue the workflow bot opened,
+posts only a report stamped with its own checkout's revision (current, not
+proof of who wrote it), breaks every `@` mention including entity-encoded
+ones, and refuses posted text over GitHub's body limit.
 
 ## Promote a check
 
@@ -213,7 +219,8 @@ feature-specific geometry are not blanket utility conversions.
 
 `npm run lint:component-style` scans shipped shell, SDK and pane-package TSX
 and CSS, including untracked non-ignored source. Its baseline names each
-inherited file/signature: new legacy-token references, standard-action
+inherited file/signature: new legacy-token references (pre-`--k-*` families:
+space, text, radius, font, background, border, accent, color, status and shadow), standard-action
 native-button recipes, native `dialog`/`alertdialog` shells and `role="alert"`
 elements that hold their own button fail. Each finding prints its own fix.
 For an alert that offers a retry or other recovery, use `ErrorState` with an
@@ -224,6 +231,13 @@ geometry and literal code examples are not rejected solely for using native
 elements. A passing scan is not rendered-layout, accessibility or behavioral
 proof. Existing Fallow clone findings remain advisory candidates requiring
 source review; repeated small layout declarations are not automatically defects.
+
+The same command advises on new literal font sizes, padding and gaps in
+stylesheets and direct JSX style objects across the shell, SDK, Connect and
+pane packages. Follow the reported locations to inspect the owning row,
+control or layout recipe. This advisory has no baseline file. It compares
+the current branch and working tree with their merge base and reports a
+narrower scope when that base is unavailable.
 
 The baseline records inherited migration debt, not permission to add more.
 Reduce matching entries when consolidating an owner. New exceptions need owner

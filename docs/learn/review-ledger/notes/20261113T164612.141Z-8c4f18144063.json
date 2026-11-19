@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"Checked: stationFailure.ts gained one coded probe failure; connection failure attribution text unaffected. No claim changed.","inputs":["docs/design/station-connection.md","src-ui/src/utils/stationFailure.ts"]}
+  ]
+}

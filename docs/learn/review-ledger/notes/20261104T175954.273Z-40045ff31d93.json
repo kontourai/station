@@ -1,9 +1,0 @@
-{
-  "revision": "7c190d42492fdcbdd4b3eeac6e51158a924f110f",
-
-  "notes": [
-    {"path":"docs/design/verified-action-replay.md","note":"Re-read after the foldable-device guide section landed. The Device input bullet describes device_input pointer, text and key batches, which still prove only socket acceptance; the new iOS fold input (settled by the helper's correlated reply) is documented in the device guide and does not change this design note's claim.","inputs":["docs/design/verified-action-replay.md","docs/guides/mobile-device-workspace.md"]},
-
-    {"path":"docs/guides/agent-efficiency.md","note":"Re-read after the module-map shared live surface update (fold producer status, settled iOS fold input, canvas projection). This guide makes no live-surface, device input or fold claims; it remains accurate.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]}
-  ]
-}

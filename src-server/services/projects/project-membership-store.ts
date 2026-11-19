@@ -5,6 +5,7 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import {
+  GRANTABLE_PROJECT_ROLES,
   PROJECT_MEMBER_ROLES,
   PROJECT_MEMBERSHIP_VERSION,
   type ProjectAccessAdministrationView,
@@ -28,7 +29,7 @@ export class ProjectMembershipRefusal extends Error {
   }
 }
 const principalSchema = z.custom<PrincipalRef>(isPrincipalRef);
-const roleSchema = z.enum(['viewer', 'contributor', 'admin', 'owner']);
+const roleSchema = z.enum([...GRANTABLE_PROJECT_ROLES, 'owner']);
 const memberSchema = z
   .object({
     principal: principalSchema,
@@ -43,7 +44,7 @@ const invitationSchema = z
   .object({
     id: z.string().min(1),
     recipientEmail: z.string().email().nullable(),
-    role: z.enum(['viewer', 'contributor', 'admin']),
+    role: z.enum(GRANTABLE_PROJECT_ROLES),
     invitedBy: principalSchema,
     status: z.enum(['pending', 'accepted', 'revoked']),
     expiresAt: z.string().datetime(),
@@ -200,7 +201,7 @@ export class ProjectMembershipStore {
     if (
       (email !== null &&
         (!z.string().email().safeParse(email).success || email.length > 320)) ||
-      !['viewer', 'contributor', 'admin'].includes(input.role)
+      !GRANTABLE_PROJECT_ROLES.includes(input.role)
     )
       throw new ProjectMembershipRefusal('invitation_invalid');
     const expiry = Date.parse(input.expiresAt);
@@ -322,6 +323,33 @@ export class ProjectMembershipStore {
       });
   }
 
+  /**
+   * Active members who may view this exact Project incarnation, in principal
+   * order (#4799). Discloses the roster: call only inside an admitted
+   * operation on this scope. A Project that was never shared has none.
+   */
+  viewingMembers(scope: ProjectMembershipScope): PrincipalRef[] {
+    const shared = this.db
+      .prepare(
+        'SELECT portable_id, local_slug FROM shared_projects WHERE local_id=?',
+      )
+      .get(scope.localProjectId);
+    if (!shared) return [];
+    this.assertScope(scope);
+    return this.db
+      .prepare(
+        'SELECT record FROM project_members WHERE project_id=? ORDER BY principal_id',
+      )
+      .all(scope.localProjectId)
+      .map((row) => this.parseMember(row.record))
+      .filter(
+        (member) =>
+          member.status === 'active' &&
+          this.actions(member.role).includes('view'),
+      )
+      .map((member) => structuredClone(member.principal));
+  }
+
   invitationScope(token: string): ProjectMembershipScope {
     const { scope, invitation } = this.pendingInvitation(token);
     this.requireGrant(scope, invitation.invitedBy, invitation.role);
@@ -410,7 +438,7 @@ export class ProjectMembershipStore {
       if (
         !z
           .object({
-            role: z.enum(['viewer', 'contributor', 'admin']),
+            role: z.enum(GRANTABLE_PROJECT_ROLES),
             status: z.enum(['active', 'revoked']),
           })
           .strict()

@@ -6,3 +6,25 @@
   font-size: var(--k-text-sm);
   line-height: 1.3;
 }
+
+.discard-draft__undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
+  max-width: 100%;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.discard-draft__cancel {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+button.menu-row.discard-draft__cancel,
+button.menu-row.discard-draft__cancel:hover,
+button.menu-row.discard-draft__cancel:focus-visible {
+  color: var(--k-text);
+  background: var(--k-panel-raised);
+}

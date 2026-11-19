@@ -223,10 +223,16 @@ export type ConnectionQuotaResult =
   | { kind: 'snapshot'; snapshot: ConnectionQuotaSnapshot }
   | {
       kind: 'unavailable';
+      /**
+       * `not-reported`: the provider answered the read and reported no
+       * observation (Muse's `usage/read` omits `usage` until its host has
+       * seen one). Not an error, and never read as a window at 0%.
+       */
       reason:
         | 'unsupported-provider'
         | 'not-authenticated'
         | 'provider-error'
-        | 'timeout';
+        | 'timeout'
+        | 'not-reported';
       detail?: string;
     };

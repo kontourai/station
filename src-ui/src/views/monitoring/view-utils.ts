@@ -25,6 +25,24 @@ export interface MonitoringSelectionState {
   eventTypeFilter: string[];
 }
 
+/**
+ * The lowercased text a free-text search runs against, serialized once per
+ * event OBJECT. Events are replaced, never edited in place, and the same
+ * instance stays in the store across arrivals, so each keystroke and each new
+ * event no longer re-serializes every loaded payload. Weak, like
+ * `monitoringEventIdentity`'s cache, so an event past the retention cap is
+ * collectable.
+ */
+const searchHaystackCache = new WeakMap<object, string>();
+
+function searchHaystack(event: MonitoringEvent): string {
+  const cached = searchHaystackCache.get(event);
+  if (cached !== undefined) return cached;
+  const haystack = JSON.stringify(event).toLowerCase();
+  searchHaystackCache.set(event, haystack);
+  return haystack;
+}
+
 export function parseMonitoringSearchQuery(query: string) {
   return parseSearchQuery(query, [...MONITORING_QUERY_FILTER_KEYS]);
 }
@@ -87,7 +105,7 @@ export function filterMonitoringEvents(
     if (
       parsed.text &&
       !isIncompleteFilter &&
-      !JSON.stringify(event).toLowerCase().includes(searchText)
+      !searchHaystack(event).includes(searchText)
     ) {
       return false;
     }

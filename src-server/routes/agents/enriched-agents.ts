@@ -665,7 +665,10 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       executionDefault: registryDefault,
       ...(!engineDefault
         ? {
-            definitionFingerprint: agentDefinitionFingerprint(spec),
+            definitionFingerprint: agentDefinitionFingerprint(
+              spec,
+              metadata.slug,
+            ),
             profileCapabilities: agentProfileCapabilities(spec, metadata.slug),
           }
         : {}),

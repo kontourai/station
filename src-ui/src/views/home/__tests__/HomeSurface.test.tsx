@@ -1,9 +1,11 @@
 /** @vitest-environment jsdom */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -22,6 +24,12 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 // and Project queries (the dock's own hooks), and this file mounts no query
 // client. The cross-surface agreement is pinned in ActivityList.test and
 // ChatInboxHoverCard.test, which feed those reads.
+vi.mock('../../../contexts/ApiBaseContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../contexts/ApiBaseContext')
+  >()),
+  useHostRequestAuthorityScope: () => null,
+}));
 vi.mock('../../../hooks/useGitLocationByThreadId', () => ({
   useGitLocationByThreadId: () => new Map(),
 }));
@@ -160,6 +168,79 @@ describe('HomeSurface live-lane focus', () => {
     expect(screen.queryByRole('heading', { name: /^Running/ })).toBeNull();
     expect(document.activeElement).toBe(open('Wire the delegate verbs'));
   });
+});
+
+test('Home forgets Details when its row leaves and moves focus after snoozing', async () => {
+  vi.stubGlobal('matchMedia', (media: string) => ({
+    matches: media === '(pointer: coarse)',
+    media,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  try {
+    const current = item(
+      'action-item',
+      'Review current work',
+      'Station',
+      2,
+      'Ready',
+    );
+    const following = item(
+      'next-item',
+      'Review following work',
+      'Station',
+      3,
+      'Ready',
+    );
+    const client = new QueryClient();
+    const home = (workItems: HomeWorkItem[]) => (
+      <QueryClientProvider client={client}>
+        <HomeSurface
+          model={model({ workItems })}
+          continuation={null}
+          onNavigate={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(home([current, following]));
+    const details = () =>
+      screen.getByRole('button', { name: 'Details for Review current work' });
+    const sheet = () =>
+      screen.queryByRole('dialog', { name: 'Details for Review current work' });
+    fireEvent.click(details());
+    await screen.findByRole('dialog', {
+      name: 'Details for Review current work',
+    });
+
+    view.rerender(home([following]));
+    expect(sheet()).toBeNull();
+    view.rerender(home([current, following]));
+    expect(sheet()).toBeNull();
+    expect(details().getAttribute('aria-expanded')).toBe('false');
+
+    details().focus();
+    fireEvent.click(details());
+    const choice = within(
+      await screen.findByRole('dialog', {
+        name: 'Details for Review current work',
+      }),
+    ).getByRole('button', { name: '1 hour' });
+    choice.focus();
+    fireEvent.click(choice);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen
+          .getByText('Review following work', { exact: true })
+          .closest('button'),
+      ),
+    );
+    expect(sheet()).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /^Review current work/ }),
+    ).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 describe('HomeSurface composition', () => {
@@ -318,10 +399,7 @@ describe('HomeSurface composition', () => {
     expect(
       within(region).getByRole('heading', { level: 2, name: 'Continue' }),
     ).toBeTruthy();
-    fireEvent.click(
-      within(region).getByRole('button', { name: 'View Activity' }),
-    );
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.queryByRole('button', { name: 'View Activity' })).toBeNull();
     // The skip link still lands on the work.
     expect(
       screen
@@ -348,8 +426,8 @@ describe('HomeSurface composition', () => {
     renderHome({ workItems: [newest, older], primaryWorkItem: newest });
     const recent = screen.getByRole('region', { name: 'Recent work' });
     expect(
-      within(recent).getByRole('button', { name: 'View Activity' }),
-    ).toBeTruthy();
+      within(recent).queryByRole('button', { name: 'View Activity' }),
+    ).toBeNull();
     expect(
       within(screen.getByRole('region', { name: 'Continue' })).queryByRole(
         'button',
@@ -490,8 +568,7 @@ describe('HomeSurface composition', () => {
   test('a failed load sends the reader to Activity rather than counting nothing', () => {
     const { model: m } = renderHome({ workItems: [], workError: true });
     expect(screen.getByText('Recent work unavailable')).toBeTruthy();
-    screen.getByRole('button', { name: 'Open Activity' }).click();
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
     expect(m.retryWork).not.toHaveBeenCalled();
     expect(
       screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
@@ -523,23 +600,14 @@ describe('HomeSurface: what is clickable', () => {
     showSurfacePage.mockClear();
   });
 
-  test('View Activity opens the Activity page, and promises nothing more', () => {
+  test('Recent work offers no retired global Activity page', () => {
     const { onNavigate } = renderHome({
       workItems: [item('a', 'Some work', 'Station', 3, 'Running')],
     });
-    const recent = screen.getByRole('region', { name: 'Recent work' });
-    within(recent).getByRole('button', { name: 'View Activity' }).click();
-    // No session: a generic "show me Activity", so no intent is minted and
-    // nothing routes (#928 — there is no Activity route left to route to).
-    // It is the page verb (Activity takes `main`), not the dock reveal.
-    expect(showSurfacePage).toHaveBeenCalledWith('activity');
-    expect(showSurface).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: 'Recent work' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'View Activity' })).toBeNull();
+    expect(showSurfacePage).not.toHaveBeenCalled();
     expect(onNavigate).not.toHaveBeenCalled();
-    // Activity is the surface's only name here: no retired "Sessions"
-    // affordance renders beside the right one.
-    expect(
-      screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
-    ).toEqual([]);
   });
 
   test('a chart bar opens the newest item in that bucket', () => {

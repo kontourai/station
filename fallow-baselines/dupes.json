@@ -115,7 +115,6 @@
     "src-server/services/projects/task-graph-service.ts:3263-3272|src-server/services/projects/task-graph-service.ts:3346-3355|src-server/services/projects/task-graph-service.ts:3405-3414",
     "src-server/knowledge-store/adapters/default-store.ts:618-642|src-server/knowledge-store/adapters/obsidian-store.ts:1366-1390",
     "packages/contracts/src/workspace-pane.ts:232-249|src-server/services/projects/workspace-pane-catalog.ts:63-80",
-    "src-server/runtime/frameworks/strands-native-client-pool.ts:31-43|src-server/runtime/mcp/mcp-manager.ts:154-165",
     "src-server/routes/knowledge/neo4j-graph-routes.ts:238-258|src-server/routes/knowledge/neo4j-graph-routes.ts:291-311",
     "src-server/routes/plugins/plugin-public-routes.ts:125-149|src-server/routes/plugins/plugin-public-routes.ts:94-118",
     "src-server/services/identity/application-session-service.ts:697-725|src-server/services/identity/application-session-service.ts:757-789",

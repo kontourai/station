@@ -1,0 +1,7 @@
+{
+  "revision": "2f1fc8870d2d52d83dcdfe9289daa017990cacc0",
+
+  "notes": [
+    {"path":"docs/design/verified-action-replay.md","note":"Reviewed the browser bound-channel decision delta for #5141: separate header and bound catalog credential keys preserve the existing per-call authority and replay boundaries; no replay policy or artifact lifecycle changes. Runtime channel coexistence, rotation, and close are exercised by codex-bound-tools.test.ts; live provider behavior remains separate.","inputs":["docs/design/verified-action-replay.md","docs/decisions/browser-agent-actions-and-bound-channel.md"]}
+  ]
+}

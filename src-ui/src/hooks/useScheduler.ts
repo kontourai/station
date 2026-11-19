@@ -109,12 +109,26 @@ export function useSchedulerEvents(enabled = true) {
       }
     };
 
+    // Set by a stream failure: events until the next open are not replayed.
+    let reopenOwesRefresh = false;
+
+    // No `maxRetries`: a retry budget ended this stream for the page's life
+    // after about three minutes of outage, with nothing on screen saying so.
+    // The ladder's 30s ceiling already bounds the rate.
     authenticatedStream = fetchSSE(`${apiBase}/scheduler/events`, {
       authentication: 'required',
       retryDelayMs: 1000,
       maxRetryDelayMs: 30_000,
-      maxRetries: 10,
       retryResetAfterMessages: 1,
+      onOpen: () => {
+        if (!reopenOwesRefresh) return;
+        reopenOwesRefresh = false;
+        qc.invalidateQueries({ queryKey: ['scheduler'] });
+        qc.invalidateQueries({ queryKey: ['runs'] });
+      },
+      onError: () => {
+        reopenOwesRefresh = true;
+      },
       onMessage: (e) => {
         if (!e.data) return;
         try {

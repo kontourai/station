@@ -18,6 +18,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const refetchPlugins = vi.fn();
+const refetchUpdateCheck = vi.fn();
 const reloadRejectedPlugin = vi.fn();
 
 vi.mock('../contexts/NavigationContext', () => {
@@ -129,6 +130,12 @@ function baseViewModel(overrides: Record<string, unknown> = {}) {
     toggleProvider: vi.fn(),
     updateMutation: { isPending: false, variables: undefined },
     updatePlugin: vi.fn(),
+    updateCheck: {
+      data: undefined,
+      isFetching: false,
+      isError: false,
+      refetch: refetchUpdateCheck,
+    },
     updates: [],
     ...overrides,
   };
@@ -146,6 +153,48 @@ describe('PluginManagementView error wiring (Review H1)', () => {
   beforeEach(() => {
     refetchPlugins.mockReset();
     viewModel = baseViewModel();
+  });
+
+  test('update refusal offers retry and differs from a completed empty scan', () => {
+    viewModel = baseViewModel({
+      updateCheck: { isError: true, refetch: refetchUpdateCheck },
+    });
+    const { rerender } = render(<PluginManagementView onNavigate={vi.fn()} />);
+    expect(screen.getByText('Plugin update check unavailable.')).toBeTruthy();
+    expect(screen.queryByText('No plugin updates found.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry update check' }));
+    expect(refetchUpdateCheck).toHaveBeenCalledOnce();
+
+    viewModel = baseViewModel({
+      updateCheck: { data: { status: 'complete', updates: [] } },
+    });
+    rerender(<PluginManagementView onNavigate={vi.fn()} />);
+    expect(screen.getByText('No plugin updates found.')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Retry update check' }),
+    ).toBeNull();
+  });
+
+  test('a partial check keeps the discovered update visible', () => {
+    const update = {
+      name: 'known',
+      currentVersion: '1.0',
+      latestVersion: '2.0',
+      source: 'registry',
+    };
+    viewModel = baseViewModel({
+      updateCheck: {
+        data: { status: 'partial', updates: [update] },
+        refetch: refetchUpdateCheck,
+      },
+      updates: [update],
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+    expect(
+      screen.getByText('Some plugin update sources could not be checked.'),
+    ).toBeTruthy();
+    expect(screen.getByText('1 update available')).toBeTruthy();
+    expect(screen.queryByText('No plugin updates found.')).toBeNull();
   });
 
   test('an errored pluginsError renders the shell error state, not "No plugins installed yet"', () => {
@@ -179,7 +228,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
 
     expect(
       screen.getByText(
-        /drain running module work and retire registered providers/,
+        /Running work finishes and registered providers are removed/,
       ),
     ).toBeTruthy();
     expect(screen.getByText(/still winding down/)).toBeTruthy();

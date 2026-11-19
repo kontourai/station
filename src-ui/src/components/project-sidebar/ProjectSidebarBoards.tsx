@@ -8,17 +8,29 @@ import {
 import type { ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { boardPath } from '../../app-shell/board-route';
+import { boardSlugFromName, nextBoardSlug } from '../../app-shell/board-slug';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { regionLabel } from '../../regions/region-model';
 import { Button } from '../Button';
 import { DashboardGlyph } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import { ErrorState, SkeletonBlock } from '../state';
+import {
+  offerUndoableAction,
+  usePendingUndoKeys,
+} from '../undo/undoable-actions';
 import { NEW_BOARD_REQUEST_EVENT } from './new-board-events';
 import { useSidebarPillRegions } from './pill-region-open';
 import { sidebarLayoutPaneId } from './pill-region-placement';
 import { SidebarPopover } from './SidebarPopover';
 import './ProjectSidebarBoards.css';
+
+const loadAppsLibrary = () =>
+  import('../../views/apps/AppsLibrary').then((module) => ({
+    default: module.AppsLibrary,
+  }));
 
 /**
  * The panel's **Boards** section (#2062; design record D3 in
@@ -70,50 +82,11 @@ type RowMode =
  */
 const DEFAULT_BOARD_NAME = 'Untitled Board';
 
-/**
- * A slug this viewer is not already using, derived from the default name.
- *
- * The slug is the Board's ADDRESS (the filename on disk and the segment in
- * its URL), and the server refuses a repeat with 409. Deriving a free one
- * here means the `+` always produces a Board rather than an error the user
- * did not ask a question to receive; the NAME stays the friendly duplicate
- * ("Untitled Board" twice is fine) because the name is not an identity.
- */
-export function nextBoardSlug(taken: readonly string[]): string {
-  const base = 'untitled-board';
-  if (!taken.includes(base)) return base;
-  for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${base}-${suffix}`;
-    if (!taken.includes(candidate)) return candidate;
-  }
-}
+/** The General Undo identity of one of the viewer's Boards (#4688). */
+const boardUndoKey = (slug: string) => `personal-board:${slug}`;
 
-/**
- * #4405 (A28): the address a new Board's first name gives it — lowercase
- * words joined by `-`, starting with a letter, at most 64 characters (the
- * server's slug rule) — made free among `taken` the way `nextBoardSlug` is.
- * `undefined` when the name has nothing an address can use.
- */
-export function boardSlugFromName(
-  name: string,
-  taken: readonly string[],
-): string | undefined {
-  const words = name
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  if (!words) return undefined;
-  const base = (/^[a-z]/.test(words) ? words : `board-${words}`)
-    .slice(0, 56)
-    .replace(/-+$/, '');
-  if (!taken.includes(base)) return base;
-  for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${base}-${suffix}`;
-    if (!taken.includes(candidate)) return candidate;
-  }
-}
+/** Where deleting the open Board leaves the viewer (#4458). */
+const HOME_PATH = '/';
 
 /**
  * One of the row's three `role="menu"` surfaces (#2083).
@@ -203,6 +176,8 @@ export function ProjectSidebarBoards({
   const { projects } = useProjects();
   const [mode, setMode] = useState<RowMode>({ kind: 'rest' });
   const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const appsEnabled = useSurfaceVisibilityFlags().has('apps-library');
   const navigatorTriggerRef = useRef<HTMLButtonElement>(null);
   const closeNavigator = useCallback(() => setNavigatorOpen(false), []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Route and presentation changes dismiss the transient navigator.
@@ -481,6 +456,65 @@ export function ProjectSidebarBoards({
   const promoteBoard = usePromotePersonalLayoutMutation();
 
   const rows = Array.isArray(boards) ? boards : [];
+  // #4688: a Board deleted or moved with Undo still pending is gone from
+  // here, while the server keeps it until the Undo window closes. Slugs are
+  // still derived from `rows`: the server still holds those addresses.
+  const pendingUndo = usePendingUndoKeys();
+  const visibleRows = rows.filter(
+    (row) => !pendingUndo.has(boardUndoKey(row.slug)),
+  );
+
+  /**
+   * Delete and Move to project are deferred behind Undo. The write runs when
+   * the notice closes, so Undo cancels it rather than recreating the Board.
+   * The list is re-read before the row is released, so it does not flash
+   * back between the write and the refetch. The notice is scoped to the
+   * connected Station, so switching Station drops the write unsent.
+   *
+   * Leaving the open Board when it is deleted or moved (#4458): its address
+   * is about to stop naming a personal Board. Undo returns to it only if the
+   * viewer is still where this left them.
+   */
+  const leaveIfOpen = (slug: string) => {
+    const path = boardPath(slug);
+    if (activePath !== path) return undefined;
+    navigate(HOME_PATH);
+    return () => {
+      if (window.location.pathname === HOME_PATH) navigate(path);
+    };
+  };
+  const deleteWithUndo = (board: { slug: string; name: string }) => {
+    offerUndoableAction({
+      key: boardUndoKey(board.slug),
+      message: `Deleted ${board.name}`,
+      restoredMessage: `Restored ${board.name}`,
+      failureMessage: `Could not delete ${board.name}.`,
+      commit: async () => {
+        await deleteBoard.mutateAsync(board.slug);
+        await refetch();
+      },
+      onUndo: leaveIfOpen(board.slug),
+    });
+  };
+  const moveWithUndo = (
+    board: { slug: string; name: string },
+    project: { slug: string; name: string },
+  ) => {
+    offerUndoableAction({
+      key: boardUndoKey(board.slug),
+      message: `Moved ${board.name} to ${project.name}`,
+      restoredMessage: `Kept ${board.name} in Apps`,
+      failureMessage: `Could not move ${board.name} to ${project.name}.`,
+      commit: async () => {
+        await promoteBoard.mutateAsync({
+          layoutSlug: board.slug,
+          projectSlug: project.slug,
+        });
+        await refetch();
+      },
+      onUndo: leaveIfOpen(board.slug),
+    });
+  };
 
   /**
    * The command palette's "New Board" (#2062 review MED-6) runs THIS create,
@@ -569,6 +603,21 @@ export function ProjectSidebarBoards({
     if (open) openBoard(slug);
   };
 
+  const library = appsEnabled && libraryOpen && (
+    <LazyBoundary
+      load={loadAppsLibrary}
+      pending={<SkeletonBlock label="Opening Apps" />}
+      componentProps={{
+        returnFocusTarget: collapsed ? navigatorTriggerRef.current : undefined,
+        onClose: () => setLibraryOpen(false),
+        onOpen: (slug) => {
+          setLibraryOpen(false);
+          openBoard(slug);
+        },
+      }}
+    />
+  );
+
   const content = (
     <>
       <div className="sidebar__section-label sidebar__section-label--boards">
@@ -602,6 +651,17 @@ export function ProjectSidebarBoards({
           </svg>
         </button>
       </div>
+      {appsEnabled && (
+        <Button
+          className="apps-library-entry"
+          onClick={() => {
+            closeNavigator();
+            setLibraryOpen(true);
+          }}
+        >
+          Browse apps
+        </Button>
+      )}
       {isPending && <SkeletonBlock count={2} label="Loading apps" />}
       {isError && (
         <ErrorState
@@ -614,12 +674,10 @@ export function ProjectSidebarBoards({
           }
         />
       )}
-      {!collapsed && Array.isArray(boards) && rows.length === 0 && (
-        <p className="sidebar__boards-description">
-          Dashboards across projects.
-        </p>
+      {!collapsed && Array.isArray(boards) && visibleRows.length === 0 && (
+        <p className="sidebar__boards-description">Boards across Projects.</p>
       )}
-      {rows.map((board) => {
+      {visibleRows.map((board) => {
         const path = boardPath(board.slug);
         const isActive = activePath === path;
         const renaming = mode.kind === 'rename' && mode.slug === board.slug;
@@ -636,19 +694,6 @@ export function ProjectSidebarBoards({
         });
         return (
           <div className="sidebar__board-row" key={board.slug}>
-            {/* The row's own line — the Board button (or its rename input)
-                and the absolutely-positioned menu trigger — wrapped so the
-                trigger is centred on THAT box and not on the whole row.
-
-                Without this wrapper the trigger centres on
-                `.sidebar__board-row`, which grows from 44px to ~138px when a
-                menu opens below, sliding the trigger down on top of the
-                menu's first item: a tap on Rename hit the trigger and closed
-                the menu instead (#2062 review F1, measured in Chromium at
-                33x27px of overlap). The projects list already solves this the
-                same way — `.sidebar__project-row-main` in `ProjectSidebar.css`
-                wraps its button and absolute controls with the expanded
-                content outside it. */}
             <div className="sidebar__board-row-main">
               {renaming ? (
                 <input
@@ -835,8 +880,9 @@ export function ProjectSidebarBoards({
               </BoardRowMenu>
             )}
             {open && mode.kind === 'confirm-delete' && (
-              // Deleting is the one irreversible row action, and a Board can
-              // hold a whole arrangement. The confirm lives in the same menu
+              // Deleting is the most destructive row action, and a Board can
+              // hold a whole arrangement, so it is confirmed here and then
+              // offered with Undo (#4688). The confirm lives in the same menu
               // rather than a Dialog so the panel stays free of dialog chrome
               // it would otherwise load eagerly.
               <BoardRowMenu
@@ -851,7 +897,7 @@ export function ProjectSidebarBoards({
                   role="menuitem"
                   onClick={() => {
                     setMode({ kind: 'rest' });
-                    deleteBoard.mutate(board.slug);
+                    deleteWithUndo(board);
                   }}
                 >
                   Delete
@@ -901,10 +947,7 @@ export function ProjectSidebarBoards({
                       role="menuitem"
                       onClick={() => {
                         setMode({ kind: 'rest' });
-                        promoteBoard.mutate({
-                          layoutSlug: board.slug,
-                          projectSlug: project.slug,
-                        });
+                        moveWithUndo(board, project);
                       }}
                     >
                       {project.name}
@@ -918,7 +961,13 @@ export function ProjectSidebarBoards({
       })}
     </>
   );
-  if (!collapsed) return content;
+  if (!collapsed)
+    return (
+      <>
+        {content}
+        {library}
+      </>
+    );
   return (
     <>
       <button
@@ -936,6 +985,7 @@ export function ProjectSidebarBoards({
       >
         <DashboardGlyph />
       </button>
+      {library}
       <SidebarPopover
         open={collapsed && !isMobile && navigatorOpen}
         anchorRef={navigatorTriggerRef}

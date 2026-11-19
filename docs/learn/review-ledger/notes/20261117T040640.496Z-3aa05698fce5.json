@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"ConversationBody ownership and slots are unchanged; this change covers the loading stage, the draft during the open read, and approvalsHeld wiring only.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

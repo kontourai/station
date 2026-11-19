@@ -20,10 +20,12 @@ import {
 import {
   ADOPTION_CONTINUATION_IN_PROGRESS_CODE,
   ADOPTION_ENGINE_NOT_READY_CODE,
+  ADOPTION_SOURCE_ACTIVE_CODE,
   PROVIDER_FAILURE_KINDS,
 } from '@kontourai/station-contracts/provider-failure';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
+import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
 import type {
   ProviderAdapterShape,
   ProviderSessionAdoptInput,
@@ -35,6 +37,7 @@ import {
 } from '../../providers/sessions/session-source-affinity.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrantor } from '../../security/coding-authority.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
@@ -53,6 +56,7 @@ import {
   resolveContinuationPlace,
 } from './attached-session-continuation-place.js';
 import type { AttachedProjectRoot } from './attached-session-follow-service.js';
+import { deriveAttachedSourceActivity } from './attached-source-activity.js';
 import { DISPATCH_CANONICAL_CWD_METADATA_KEY } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
@@ -113,6 +117,27 @@ export class AdoptionEngineNotReadyError extends ProviderRefusalError {
       PROVIDER_FAILURE_KINDS[ADOPTION_ENGINE_NOT_READY_CODE],
     );
     this.name = 'AdoptionEngineNotReadyError';
+  }
+}
+
+/**
+ * The harness that wrote the attached transcript is still working on it
+ * (`AttachedSourceActivity` reads `active`), and the request did not say
+ * `continueWhileSourceActive`. Refused before anything is reserved, so the
+ * outcome is certain and the same request with the override can proceed.
+ * Continuing would fork a conversation that is still moving: Station's child
+ * is an independent native session, so it would miss everything the original
+ * writes from here on. Station cannot stop the original, which it does not own.
+ */
+export class AdoptionSourceActiveError extends ProviderRefusalError {
+  readonly code = ADOPTION_SOURCE_ACTIVE_CODE;
+
+  constructor(engine: string) {
+    super(
+      `Still running in ${engine}, so no continuation was created. Continuing now forks it.`,
+      PROVIDER_FAILURE_KINDS[ADOPTION_SOURCE_ACTIVE_CODE],
+    );
+    this.name = 'AdoptionSourceActiveError';
   }
 }
 
@@ -230,8 +255,10 @@ export interface AttachedSessionAdoptionDeps {
    */
   applyConfinement?: (
     input: ProviderSessionAdoptInput,
-  ) => ProviderSessionAdoptInput;
+  ) => ProviderSessionAdoptInput | Promise<ProviderSessionAdoptInput>;
   forgetAbandonedAdoptionMemory: (reservation: AdoptionReservation) => void;
+  /** Clock for the source-activity re-check; defaults to the wall clock. */
+  now?: () => number;
   logCleanupFailure: (
     resource: string,
     reservation: AdoptionReservation,
@@ -280,6 +307,7 @@ export class AttachedSessionAdoption {
     ownerAttribution?: SessionOwnerAttribution,
     confinementStamp?: AdoptionConfinement,
     target?: AdoptSessionTarget,
+    continueWhileSourceActive = false,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     if (idempotencyKey) {
       // Coalescing must retain the same authority boundary as durable lookup:
@@ -292,15 +320,34 @@ export class AttachedSessionAdoption {
         idempotencyKey,
         // #3386: a different choice of where to continue is a different intent.
         target ?? null,
+        // The override is not part of the intent: a retry without it joins
+        // the continuation an overriding request already started.
       ]);
-      const inFlight = this.adoptionIntents.get(intentScope);
-      if (inFlight) {
-        const settled = await inFlight;
-        this.deps.persistReceipt(receipt);
-        return {
-          receipt,
-          result: { ...settled.result, alreadyAdopted: true },
-        };
+      // Join whatever attempt of this intent is in flight. One refused only
+      // because the source is running does not answer a request that says
+      // to continue anyway, so that request looks again: another overriding
+      // request may have started an attempt meanwhile, which it joins.
+      const refused = new Set<Promise<unknown>>();
+      for (
+        let inFlight = this.adoptionIntents.get(intentScope);
+        inFlight && !refused.has(inFlight);
+        inFlight = this.adoptionIntents.get(intentScope)
+      ) {
+        try {
+          const settled = await inFlight;
+          this.deps.persistReceipt(receipt);
+          return {
+            receipt,
+            result: { ...settled.result, alreadyAdopted: true },
+          };
+        } catch (error) {
+          if (
+            !continueWhileSourceActive ||
+            !(error instanceof AdoptionSourceActiveError)
+          )
+            throw error;
+          refused.add(inFlight);
+        }
       }
       const intent = this.performAttachedSessionAdoption(
         sourceThreadId,
@@ -311,12 +358,16 @@ export class AttachedSessionAdoption {
         ownerAttribution,
         confinementStamp,
         target,
+        continueWhileSourceActive,
       );
       this.adoptionIntents.set(intentScope, intent);
       try {
         return await intent;
       } finally {
-        this.adoptionIntents.delete(intentScope);
+        // Only this attempt's entry: a later attempt of the same intent may
+        // have replaced it after this one was refused.
+        if (this.adoptionIntents.get(intentScope) === intent)
+          this.adoptionIntents.delete(intentScope);
       }
     }
     return this.performAttachedSessionAdoption(
@@ -328,6 +379,7 @@ export class AttachedSessionAdoption {
       ownerAttribution,
       confinementStamp,
       target,
+      continueWhileSourceActive,
     );
   }
 
@@ -340,6 +392,7 @@ export class AttachedSessionAdoption {
     ownerAttribution?: SessionOwnerAttribution,
     confinementStamp?: AdoptionConfinement,
     target?: AdoptSessionTarget,
+    continueWhileSourceActive = false,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     await this.reconciliation;
     // Resolve and authorize the source before treating an existing child as
@@ -432,6 +485,19 @@ export class AttachedSessionAdoption {
     ) {
       throw new Error('This attached session is already being continued.');
     }
+    // Re-checked here, from the same events the read model folds, so a
+    // client that read the source as idle (or skipped the read) cannot fork
+    // a source that is still running without saying so. After both joins
+    // (an existing continuation, a reservation of the same intent), so a
+    // retry of a continuation already made or being made returns it rather
+    // than being refused; before reserving, so a refusal creates nothing.
+    if (
+      !continueWhileSourceActive &&
+      this.readSourceActivity(context.source).state === 'active'
+    )
+      throw new AdoptionSourceActiveError(
+        engineDisplayLabel(context.source.provider) ?? context.source.provider,
+      );
     context.tenantExecutionContext =
       tenantExecutionContext ?? sourceTenantExecutionContext;
     context.reservation.idempotencyKey = idempotencyKey;
@@ -486,6 +552,18 @@ export class AttachedSessionAdoption {
     } finally {
       this.adoptingSourceThreads.delete(sourceThreadId);
     }
+  }
+
+  private readSourceActivity(source: ProviderSession) {
+    const events = (
+      this.deps.eventStore?.listSessionProjectionEvents(source.threadId) ?? []
+    ).map((event) => event.payload);
+    // The same projection and recovery filter the summary builder folds.
+    return deriveAttachedSourceActivity(
+      withoutCompletedTurnRecovery(events),
+      this.deps.now?.() ?? Date.now(),
+      source.attachedSource?.lastWriteAt,
+    );
   }
 
   private findExistingAdoptedChild(
@@ -823,7 +901,7 @@ export class AttachedSessionAdoption {
         : {}),
     };
     const baseAdoptionInput =
-      this.deps.applyConfinement?.(unconfinedAdoptionInput) ??
+      (await this.deps.applyConfinement?.(unconfinedAdoptionInput)) ??
       unconfinedAdoptionInput;
     const launchInput = this.deps.withAcceptedModelLaunchPlan(
       adapter,
@@ -859,20 +937,24 @@ export class AttachedSessionAdoption {
       context.providerAdoptionStarted = true;
     };
     if (adapter.adoptionLifecycle !== 'reported') startCreation();
-    const adopted = await adapter.adoptSession!(adoptionInput, {
-      onProviderChildCreationStarted: startCreation,
-      onProviderChildCreated: (cursor) => {
-        const missingStart = !context.providerAdoptionStarted;
-        if (missingStart) startCreation();
-        this.requireAdoptionTransition(
-          this.requireOwnedAdoption(context).recordProviderCursor(cursor),
-        );
-        if (missingStart)
-          throw new Error(
-            'Provider created a child without reporting its creation boundary.',
+    // #2377 slice D: the adopted engine never inherits a dispatch route's
+    // server scope.
+    const adopted = await runEngineOutsideStationServerScope(() =>
+      adapter.adoptSession!(adoptionInput, {
+        onProviderChildCreationStarted: startCreation,
+        onProviderChildCreated: (cursor) => {
+          const missingStart = !context.providerAdoptionStarted;
+          if (missingStart) startCreation();
+          this.requireAdoptionTransition(
+            this.requireOwnedAdoption(context).recordProviderCursor(cursor),
           );
-      },
-    });
+          if (missingStart)
+            throw new Error(
+              'Provider created a child without reporting its creation boundary.',
+            );
+        },
+      }),
+    );
     this.deps.recordAcceptedModelLaunchPlan(
       adapter,
       this.deps.modelLaunchPlanFromInput(adoptionInput),

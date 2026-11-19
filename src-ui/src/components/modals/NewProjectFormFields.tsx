@@ -1,5 +1,5 @@
 import type { ProjectIconCandidate } from '@kontourai/station-contracts/project';
-import type { RefObject } from 'react';
+import { type RefObject, useId } from 'react';
 import { ProjectIcon } from '../icons/ProjectIcon';
 import { PathAutocomplete } from '../PathAutocomplete';
 import { ProjectIconPicker } from '../project-icon/ProjectIconPicker';
@@ -70,6 +70,7 @@ interface IdentityFieldProps {
   inputRef?: RefObject<HTMLInputElement | null>;
   candidates: ProjectIconCandidate[];
   icon: string;
+  iconDisabled: boolean;
   name: string;
   derivedName: string;
   /** The duplicate-name sentence a REFRESHED project list supported. */
@@ -78,7 +79,7 @@ interface IdentityFieldProps {
   nameAdvisory?: string | undefined;
   showIconChoices: boolean;
   iconCandidatesFetching: boolean;
-  onIconChange: (icon: string) => void;
+  onIconChange: (icon: string, disabled?: boolean) => void;
   onNameChange: (name: string) => void;
   onToggleIconChoices: () => void;
   /** When the host path is hidden, name is the identity — not a folder leaf. */
@@ -88,6 +89,7 @@ interface IdentityFieldProps {
 export function NewProjectIdentityField({
   candidates,
   icon,
+  iconDisabled,
   name,
   derivedName,
   nameConflict,
@@ -100,6 +102,8 @@ export function NewProjectIdentityField({
   identityHint,
   inputRef,
 }: IdentityFieldProps) {
+  const iconLabelId = useId();
+  const iconPreviewId = useId();
   return (
     <div className="editor-field">
       <label className="editor-label" htmlFor="new-project-name">
@@ -109,15 +113,20 @@ export function NewProjectIdentityField({
         <button
           type="button"
           className="new-project-modal__identity-icon"
-          aria-label="Choose project icon"
+          aria-labelledby={`${iconLabelId} ${iconPreviewId}`}
           aria-expanded={showIconChoices}
           onClick={onToggleIconChoices}
         >
-          <ProjectIcon
-            project={{ name: name || derivedName || 'New Project', icon }}
-            size={44}
-            fallback="initials"
-          />
+          <span id={iconLabelId} hidden>
+            Choose project icon
+          </span>
+          <span id={iconPreviewId} aria-hidden="true">
+            <ProjectIcon
+              project={{ name: name || derivedName || 'New Project', icon }}
+              size={44}
+              fallback="initials"
+            />
+          </span>
         </button>
         <input
           ref={inputRef}
@@ -160,7 +169,9 @@ export function NewProjectIdentityField({
           idPrefix="new-project-icon"
           name={name || derivedName || 'New Project'}
           value={icon}
+          iconDisabled={iconDisabled}
           onChange={onIconChange}
+          onUseDetected={() => onIconChange('', false)}
           candidates={candidates}
           fetching={iconCandidatesFetching}
         />

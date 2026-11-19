@@ -23,6 +23,20 @@ import {
   clipboardWrites,
 } from './clipboard-stubs';
 
+vi.mock('../components/browser-activity/InlineBrowserActivity', () => ({
+  InlineBrowserActivity: ({
+    active,
+    children,
+  }: {
+    active: boolean;
+    children: React.ReactNode;
+  }) => (
+    <section className="inline-browser-activity" data-active={String(active)}>
+      {children}
+    </section>
+  ),
+}));
+
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
 }));
@@ -66,9 +80,124 @@ vi.mock('../components/icons/UserIcon', () => ({
   UserIcon: () => <span aria-hidden="true">U</span>,
 }));
 
+import { BrowserActivityContext } from '../components/chat/BrowserActivityContext';
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { CHAT_READER_RESTORE_EVENT } from '../components/chat/chatScrollAnchor';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+test('keeps one live browser activity through persisted rows and settlement', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const first = {
+    type: 'tool-invocation' as const,
+    toolCallId: 'open',
+    toolName: 'mcp__station-browser__browser_open',
+    input: {},
+    output: { ok: true, session: { browserSessionId: 'tab-a' } },
+  };
+  const click = {
+    type: 'tool-invocation' as const,
+    toolCallId: 'click',
+    toolName: 'mcp__station-browser__browser_click',
+    input: { browserSessionId: 'tab-a' },
+    output: 'ok',
+  };
+  const base = {
+    id: 'browser-thread',
+    currentSessionId: 'browser-thread',
+    openTurnId: 'turn-a',
+    orchestrationSessionStarted: true,
+    orchestrationTurnOpen: true,
+    agentSlug: agentId('dev-agent'),
+    agentName: 'Dev Agent',
+    title: 'Browser',
+    input: '',
+    attachments: [],
+    queuedMessages: [],
+    inputHistory: [],
+    status: 'idle' as const,
+    createdAt: 1,
+    updatedAt: 1,
+    source: 'manual' as const,
+  };
+  const messages = [
+    {
+      role: 'assistant' as const,
+      id: 'browser-message-one',
+      content: '',
+      turnId: 'turn-a',
+      contentParts: [first],
+    },
+    {
+      role: 'assistant' as const,
+      id: 'browser-message-two',
+      content: 'Between calls',
+      turnId: 'turn-a',
+      contentParts: [
+        { type: 'text' as const, content: 'Between calls' },
+        click,
+      ],
+    },
+  ];
+  const scope = {
+    apiBase: '/station',
+    requestScope: { apiBase: '/station', authorityKey: 'a' },
+    projectSlug: 'p',
+    threadIds: ['browser-thread'],
+    conversationKey: 'c',
+  };
+  activeChatsStore.initChat('browser-thread', {
+    agentSlug: 'dev-agent',
+    agentName: 'Dev Agent',
+    title: 'Browser',
+  });
+  activeChatsStore.updateChat('browser-thread', {
+    streamingMessage: { role: 'assistant', content: '', contentParts: [first] },
+  });
+  const view = (live: boolean, rows = messages, suppress = true) => (
+    <QueryClientProvider client={client}>
+      <BrowserActivityContext.Provider value={scope}>
+        <ChatMessageList
+          activeSession={{
+            ...base,
+            orchestrationTurnOpen: live,
+            messages: rows,
+          }}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          suppressStreamingRow={suppress}
+        />
+      </BrowserActivityContext.Provider>
+    </QueryClientProvider>
+  );
+  const rendered = render(view(true, [], false));
+  await waitFor(() =>
+    expect(
+      document
+        .querySelector('.inline-browser-activity')
+        ?.getAttribute('data-active'),
+    ).toBe('true'),
+  );
+  const viewer = document.querySelector('.inline-browser-activity');
+  rendered.rerender(view(true, messages, false));
+  await waitFor(() => expect(screen.getByText('Between calls')).toBeTruthy());
+  expect(document.querySelector('.inline-browser-activity')).toBe(viewer);
+  expect(document.querySelectorAll('.inline-browser-activity')).toHaveLength(1);
+  rendered.rerender(view(false));
+  await waitFor(() =>
+    expect(
+      document
+        .querySelector('.inline-browser-activity')
+        ?.getAttribute('data-active'),
+    ).toBe('false'),
+  );
+  expect(document.querySelectorAll('.inline-browser-activity')).toHaveLength(1);
+  activeChatsStore.removeChat('browser-thread');
+  client.clear();
+});
 
 describe('ChatMessageList', () => {
   test('only the current Station completion notices appear in the transcript', () => {
@@ -123,7 +252,6 @@ describe('ChatMessageList', () => {
       attachments: [],
       queuedMessages: [],
       inputHistory: [],
-      hasUnread: false,
       status: 'idle' as const,
       createdAt: 1,
       updatedAt: 1,
@@ -605,7 +733,6 @@ describe('ChatMessageList', () => {
           attachments: [],
           queuedMessages: [],
           inputHistory: [],
-          hasUnread: false,
           status: 'sending',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -793,7 +920,6 @@ describe('ChatMessageList', () => {
           attachments: [],
           queuedMessages: [],
           inputHistory: [],
-          hasUnread: false,
           status: 'sending',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -826,7 +952,6 @@ describe('ChatMessageList', () => {
           attachments: [],
           queuedMessages: [],
           inputHistory: [],
-          hasUnread: false,
           status: 'sending',
           createdAt: 1,
           updatedAt: 1,
@@ -859,7 +984,6 @@ describe('ChatMessageList', () => {
       attachments: [],
       queuedMessages: [],
       inputHistory: [],
-      hasUnread: false,
       status: 'idle' as const,
       createdAt: 1,
       updatedAt: 1,
@@ -918,7 +1042,6 @@ describe('ChatMessageList', () => {
           attachments: [],
           queuedMessages: [],
           inputHistory: [],
-          hasUnread: false,
           status: 'idle',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -949,7 +1072,6 @@ describe('ChatMessageList', () => {
           attachments: [],
           queuedMessages: [],
           inputHistory: [],
-          hasUnread: false,
           status: 'idle',
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -1231,7 +1353,6 @@ describe('ChatMessageList', () => {
             attachments: [],
             queuedMessages: [],
             inputHistory: [],
-            hasUnread: false,
             status: 'idle',
             createdAt: Date.now(),
             updatedAt: Date.now(),

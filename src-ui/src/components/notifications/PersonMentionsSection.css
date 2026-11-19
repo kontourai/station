@@ -1,0 +1,80 @@
+/* "For you": the reader's own mentions (#4799), above the attention list. */
+.person-mentions {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.person-mentions__title {
+  margin: 0;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+.person-mentions__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  overflow: hidden;
+}
+.person-mentions__list > li + li {
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+.person-mentions__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--k-space-3);
+  inline-size: 100%;
+  min-height: 44px;
+  padding: var(--k-space-3);
+  border: 0;
+  background: var(--k-panel);
+  color: var(--k-text);
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+.person-mentions__row:hover {
+  background: var(--k-panel-raised);
+}
+.person-mentions__row:focus-visible {
+  outline: 2px solid var(--k-focus, var(--k-active));
+  outline-offset: -2px;
+}
+.person-mentions__mark::before {
+  content: "@";
+}
+.person-mentions__mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: calc(var(--k-space-5) + var(--k-space-1));
+  block-size: calc(var(--k-space-5) + var(--k-space-1));
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--k-caution) 22%, transparent);
+  color: var(--k-text);
+  font-weight: 700;
+}
+.person-mentions__text {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.person-mentions__headline {
+  font-weight: 500;
+}
+.person-mentions__row--unread .person-mentions__headline {
+  font-weight: 700;
+}
+.person-mentions__excerpt {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.person-mentions__time {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  white-space: nowrap;
+}

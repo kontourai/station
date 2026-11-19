@@ -6,6 +6,7 @@ import { NoteFilterBar } from './components/NoteFilterBar';
 import { NotesSidebar } from './components/NotesSidebar';
 import { useEnhanceNote, useHasVault, useVaultSave } from './data';
 import {
+  NOTES_NAMESPACE,
   type NoteFrontmatter,
   type NoteSummary,
   toNoteSummary,
@@ -63,7 +64,7 @@ export function Notes() {
   const deleteNote = useDeleteNote();
   const enhanceNote = useEnhanceNote();
   const hasVault = useHasVault(projectSlug ?? undefined);
-  const vaultSave = useVaultSave(projectSlug ?? '', 'enterprise-notes');
+  const vaultSave = useVaultSave(projectSlug ?? '', NOTES_NAMESPACE);
 
   // The document whose body the editor currently holds. The editor loads a
   // body once per selection and then owns the text: re-syncing whenever the

@@ -50,7 +50,6 @@ const session: ChatSession = {
   status: 'idle',
   createdAt: 1,
   updatedAt: 2,
-  hasUnread: false,
   inputHistory: [],
   projectSlug: 'station',
   projectName: 'Station',

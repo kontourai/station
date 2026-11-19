@@ -3,6 +3,7 @@ import { InfoTip } from '../../components/InfoTip';
 import { ManagedApprovalCeilingNote } from '../../components/managed/ManagedApprovalCeilingNote';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
 import { useACPConnections } from '../../hooks/useACPConnections';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import {
   APPROVAL_MODE_OPTIONS,
   acpApprovalFor,
@@ -27,6 +28,7 @@ export function AgentEditorApprovalDefault({
   setForm,
   locked,
 }: Pick<AgentEditorFormProps, 'form' | 'setForm' | 'locked'>) {
+  useDecisionSurface('agent-approval-default');
   const { data: acpConnections = [] } = useACPConnections();
   const { aboveCeiling, ceiling } = useManagedApprovalCeiling();
   const connectionId = form.execution.agentConnectionId;

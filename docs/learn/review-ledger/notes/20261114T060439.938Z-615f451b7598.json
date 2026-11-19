@@ -1,0 +1,15 @@
+{
+  "revision": "612898ff71ab3c4c61f079e787d50dd14047a9b7",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md changed only its push merge-queue-verdict paragraph (warning annotation, classify actions: read). This file links testing.md for verification selection and completion; that section and the lane registry are unchanged, so the row stays accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md changed only its push merge-queue-verdict paragraph (warning annotation, classify actions: read). This file links testing.md for the generated verification schedule and the fixture/profile/mutation anchor; both sections and the anchor are unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md changed only its push merge-queue-verdict paragraph (warning annotation, classify actions: read). This file links testing.md for test guidance routes only; no claim about CI push verdicts, so it stays accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md changed only its push merge-queue-verdict paragraph (warning annotation, classify actions: read). This file links testing.md for the fixture-fidelity and test-effectiveness anchor, which is unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md changed only its push merge-queue-verdict paragraph (warning annotation, classify actions: read). This file links testing.md for the fixture-fidelity and test-effectiveness anchor, which is unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

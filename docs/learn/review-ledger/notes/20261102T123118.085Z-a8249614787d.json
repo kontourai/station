@@ -1,7 +1,0 @@
-{
-  "revision": "fbaa4c99b4ca2eeeaae3e26e7b9bfb60ec200ea8",
-
-  "notes": [
-    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed Images and files against the SDK/HTTP attachment transport keeper and runtime history/worker startup. Probe-only busy waiting now covers independent SQLite contention and still requires the permanent v4 old-writer fence; dropping the installed trigger fails the assertion, restoration passes. No product storage, authority, byte-retention, or provider qualification changes; existing prose remains accurate.","inputs":["docs/design/task-room-agent-requests.md","src-server/routes/orchestration/__tests__/task-room-attachments.test.ts"]}
-  ]
-}

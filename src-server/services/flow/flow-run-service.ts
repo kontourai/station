@@ -16,12 +16,14 @@ import {
   attachEvidence,
   ensureFlowLayout,
   evaluateRun,
+  evaluateRunChecked,
   type FlowConsoleProjection,
   type FlowDefinition,
   type FlowEvidenceEntry,
   type FlowEvidenceManifest,
   type FlowRunState,
   findGate,
+  flowRunHead,
   type GateOutcome,
   listRunsWithDiagnostics,
   loadRun,
@@ -39,6 +41,7 @@ import {
   type GateEvaluationReadResult,
   readGateEvaluation,
 } from '@kontourai/flow/gate-evaluation-reader';
+import type { FlowGateReevaluationDetails } from '@kontourai/station-contracts/runtime-events';
 import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
 import {
@@ -56,6 +59,10 @@ import { errorMessage } from '../../utils/error-message.js';
 import { flowRunDir } from '../evidence/local-artifact-paths.js';
 import { buildSyntheticTrustBundle } from '../evidence/trust-bundle.js';
 import { registerDetachedOwnedChild } from '../infra/process-utils.js';
+import {
+  boundFlowDiagnosticText,
+  projectFlowGateDiagnostics,
+} from './flow-gate-diagnostics.js';
 
 /**
  * Stable Flow error codes Station branches on. Flow 3 attaches a `code` to its
@@ -265,6 +272,7 @@ export interface FlowEvaluationResult {
   runId: string;
   outcomes: GateOutcome[];
   state: FlowRunState;
+  reopened?: FlowGateReevaluationDetails;
 }
 
 export interface FlowRouteBackPreview extends Record<string, unknown> {
@@ -621,7 +629,17 @@ export class FlowRunService {
     try {
       const projection = await projectFlowRunFromFiles(runId, { cwd });
       flowRunConsoleProjections.add(1, { status: 'ok' });
-      return projection;
+      return {
+        ...projection,
+        gates: projection.gates.map((gate) => {
+          const diagnostics = gate.evaluation_ref
+            ? projectFlowGateDiagnostics(gate.diagnostics)
+            : undefined;
+          return diagnostics
+            ? { ...gate, display_diagnostics: diagnostics }
+            : gate;
+        }),
+      };
     } catch (error: unknown) {
       flowRunConsoleProjections.add(1, { status: 'error' });
       translateFlowError(error, `Flow run not found: ${runId}`);
@@ -893,16 +911,71 @@ export class FlowRunService {
     cwd: string,
     runId: string,
     gate?: string,
+    isRequestCurrent?: () => boolean,
   ): Promise<FlowEvaluationResult> {
     try {
-      const result = await evaluateRun(runId, { cwd, gate });
+      const prior =
+        gate && isRequestCurrent ? await this.loadRun(cwd, runId) : undefined;
+      const result =
+        prior?.state.status === 'completed' && isRequestCurrent
+          ? await evaluateRunChecked(runId, {
+              cwd,
+              gate,
+              expectedRunHead: flowRunHead(prior.state),
+              admission: {
+                acquire: async () => ({
+                  assertCurrent: () => {
+                    if (!isRequestCurrent())
+                      throw new FlowRunInvalidError(
+                        'Flow request is no longer current',
+                      );
+                  },
+                  release: () => {},
+                }),
+              },
+            })
+          : await evaluateRun(runId, { cwd, gate });
       this.recordGateEvaluations(result.outcomes);
+      const last = result.outcomes.at(-1);
+      let reopened: FlowGateReevaluationDetails | undefined;
+      if (
+        prior?.state.status === 'completed' &&
+        result.state.status !== 'completed' &&
+        last &&
+        (last.status === 'wait' ||
+          last.status === 'block' ||
+          last.status === 'route-back')
+      ) {
+        const gateId = boundFlowDiagnosticText(last.gate_id);
+        if (gateId) {
+          const diagnostics = projectFlowGateDiagnostics(last.diagnostics);
+          reopened = {
+            gateId,
+            verdict: last.status,
+            missing: (last.missing ?? []).slice(0, 32).flatMap((id) => {
+              const text = boundFlowDiagnosticText(id);
+              return text ? [text] : [];
+            }),
+            ...(diagnostics ? { diagnostics } : {}),
+          };
+        }
+      }
       return {
         runId,
         outcomes: result.outcomes,
         state: result.state,
+        ...(reopened ? { reopened } : {}),
       };
     } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith('flow.run_head.stale:')
+      ) {
+        throw new FlowRunInvalidError(
+          'The Flow run changed before re-evaluation.',
+          'flow.run_head.stale',
+        );
+      }
       translateFlowError(error, `Flow run not found: ${runId}`);
     }
   }

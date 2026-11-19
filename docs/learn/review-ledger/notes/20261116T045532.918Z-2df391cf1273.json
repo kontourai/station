@@ -1,0 +1,7 @@
+{
+  "revision": "63f9860233940de9b85b3811e8c8487243d50bb3",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed complete terminal-refusal explanation against manager, supervisor handoff and control-server closeAfterReply. The supervisor converts internal terminal rollback metadata into afterReply shutdown, so the refusal result is sent before bounded close. Exit78 boot/rollback stopping and CLI policy preflight remain accurate. Integrated supervisor/crash/rollback and CLI process cases passed; this note does not establish nonreading-client, packaged/native or deployment qualification.","inputs":["docs/design/process-supervisor.md","src-server/runtime/bootstrap/supervisor-link.ts","packages/supervisor/src/supervisor.ts"]}
+  ]
+}

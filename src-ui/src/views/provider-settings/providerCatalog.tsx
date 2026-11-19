@@ -6,7 +6,8 @@ import {
 } from '@kontourai/station-contracts/tool';
 import type { ReactNode } from 'react';
 import type { HostActionId } from '../../components/host-action/host-action-copy';
-import type { ProviderTypeOption } from './types';
+import type { ProviderConnection, ProviderTypeOption } from './types';
+import './provider-status-dot.css';
 
 /**
  * The provider catalog is the one source of truth for provider choices and
@@ -274,7 +275,7 @@ export type ProviderReadiness =
   | 'Disabled'
   | 'Unreachable';
 
-type ProviderTone = 'ready' | 'warn' | 'error' | 'disabled';
+export type ProviderTone = 'ready' | 'warn' | 'error' | 'disabled';
 
 type ProviderCatalogKind = 'model' | 'agent' | 'command';
 
@@ -306,7 +307,7 @@ interface ProviderCatalogInputBase {
  * callers may attach the one discovery fact the row actually observed, but
  * may not synthesize a three-state setup tuple from it.
  */
-type ProviderCatalogInput =
+export type ProviderCatalogInput =
   | (ProviderCatalogInputBase & {
       setup: AgentConnectionView['setup'];
       discovery?: never;
@@ -659,7 +660,7 @@ export function resolveProviderPresentation(
           readiness: 'Reachable — no model catalog',
           tone: 'warn',
           detail:
-            'The service answered but offers no model list. Run Test Connection or start a chat to verify it can actually run work.',
+            'The service answered but offers no model list. Run Test connection or start a chat to verify it can actually run work.',
           actionLabel: 'Test connection',
         };
       }
@@ -669,8 +670,8 @@ export function resolveProviderPresentation(
      * runs catalogue discovery — so a connection could read "Ready" with
      * `check.status: 'not-checked'`, which is the claim exists to remove.
      * Discovery is now recorded as a real bound check
-     * (`source: 'catalog-discovery'`), so the ONLY things that make a model
-     * connection Ready are a provider that answered and a smoke that passed.
+     * (`source: 'catalog-discovery'`). A model connection reads Ready
+     * with a passed provider check or a matching passed smoke receipt.
      * A level with no receipt behind it means nobody reached the provider —
      * a timeout, an abort, or a fallback to configured selectors.
      */
@@ -683,8 +684,7 @@ export function resolveProviderPresentation(
         brand,
         readiness: 'Saved — not verified',
         tone: 'warn',
-        detail:
-          'Settings are saved. Nothing has asked this connection yet — test it to be sure.',
+        detail: evidence.summary,
         actionLabel: 'Test connection',
       };
     }
@@ -739,4 +739,60 @@ export function resolveProviderChoicePresentation(
 ): ProviderChoicePresentation {
   const presentation = resolveProviderPresentation(input);
   return { badge: presentation.readiness, detail: presentation.detail };
+}
+
+/**
+ * How a saved model connection presents, for every place that lists one. The
+ * list row and the summary card both read this, so they cannot disagree about
+ * whether the same connection is ready.
+ */
+/** The catalog input for a model connection; the one shape every reader uses. */
+export function modelCatalogInput(
+  connection: ProviderConnection,
+): ProviderCatalogInput {
+  return {
+    id: connection.id,
+    kind: 'model',
+    type: connection.type,
+    name: connection.name,
+    enabled: connection.enabled,
+    status: connection.status,
+    prerequisites: connection.prerequisites,
+    ...(connection.readinessEvidence
+      ? { readinessEvidence: connection.readinessEvidence }
+      : {}),
+    setup: null,
+    href: '',
+  };
+}
+
+export function modelConnectionPresentation(
+  connection: ProviderConnection,
+): ProviderPresentation {
+  return resolveProviderPresentation(modelCatalogInput(connection));
+}
+
+/**
+ * The status dot for a connection's tone. Decorative: the row states the
+ * status in words. `row` is the list row's slightly larger size.
+ */
+export function ProviderStatusDot({
+  tone,
+  row = false,
+}: {
+  tone: ProviderTone;
+  row?: boolean;
+}) {
+  const toneClass =
+    tone === 'ready'
+      ? ' provider-overview__dot--active'
+      : tone === 'disabled'
+        ? ''
+        : ` provider-overview__dot--${tone}`;
+  return (
+    <span
+      aria-hidden="true"
+      className={`provider-overview__dot${toneClass}${row ? ' provider-overview__dot--row' : ''}`}
+    />
+  );
 }

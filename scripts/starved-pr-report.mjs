@@ -133,9 +133,10 @@ ${HOLD_MARKER} waiting on review of the fix round -->
 *Reported by \`scripts/starved-pr-report.mjs\` (station#1153). This comment is posted once per pull request.*`;
 }
 
-const QUERY = `query($owner:String!, $name:String!) {
+const QUERY = `query($owner:String!, $name:String!, $after:String) {
   repository(owner:$owner, name:$name) {
-    pullRequests(states:OPEN, first:100) {
+    pullRequests(states:OPEN, first:100, after:$after) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         number isDraft isInMergeQueue mergeStateStatus body updatedAt
         autoMergeRequest { enabledAt }
@@ -154,6 +155,45 @@ function gh(args, options = {}) {
   });
 }
 
+// 20 pages of 100: far above any open-PR count this repository has had, and a
+// bound so a cursor that never ends cannot loop forever.
+const MAX_PAGES = 20;
+
+/**
+ * Every open pull request, following the connection's cursor. One page is 100
+ * pull requests; without the cursor the rest were never examined, so a starved
+ * pull request past the first hundred was never reported.
+ */
+export function listOpenPullRequests(owner, name, run = gh) {
+  const nodes = [];
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const args = [
+      'api',
+      'graphql',
+      '-f',
+      `query=${QUERY}`,
+      '-F',
+      `owner=${owner}`,
+      '-F',
+      `name=${name}`,
+    ];
+    // `-f`, not `-F`: a cursor is an opaque string and must not be coerced.
+    if (after) args.push('-f', `after=${after}`);
+    const connection = JSON.parse(run(args))?.data?.repository?.pullRequests;
+    nodes.push(...(connection?.nodes ?? []));
+    if (!connection?.pageInfo?.hasNextPage) return nodes;
+    after = connection.pageInfo.endCursor;
+    if (!after)
+      throw new Error(
+        'starved-pr-report: GitHub reported another page of open pull requests without a cursor',
+      );
+  }
+  throw new Error(
+    `starved-pr-report: more than ${MAX_PAGES * 100} open pull requests; refusing to report from a partial listing`,
+  );
+}
+
 export function main(argv = process.argv.slice(2)) {
   const repository = process.env.GITHUB_REPOSITORY;
   if (!repository) {
@@ -166,18 +206,7 @@ export function main(argv = process.argv.slice(2)) {
   const [owner, name] = repository.split('/');
   const apply = argv.includes('--apply');
 
-  const raw = gh([
-    'api',
-    'graphql',
-    '-f',
-    `query=${QUERY}`,
-    '-F',
-    `owner=${owner}`,
-    '-F',
-    `name=${name}`,
-  ]);
-  const nodes = JSON.parse(raw)?.data?.repository?.pullRequests?.nodes ?? [];
-  const starved = selectStarved(nodes);
+  const starved = selectStarved(listOpenPullRequests(owner, name));
 
   if (starved.length === 0) {
     console.log('starved-pr-report: no unreported starved pull requests.');

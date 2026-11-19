@@ -1,0 +1,15 @@
+{
+  "revision": "55dc93b70d39d8f30638111b2b0031dd569ba07d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#4852 fix round 2 (thread seek and page-back): ProjectRoom.tsx now stops Load earlier at the 20 windows a room keeps, with a note, and announces kept rows it unloads; RoomConversation gained an optional olderNote line. Client display only. The ProjectRoom section describes the server store and service, not this client paging; prose unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"#4852 fix round 2 (thread seek and page-back): ProjectRoom.tsx now stops Load earlier at the 20 windows a room keeps, with a note, and announces kept rows it unloads; RoomConversation gained an optional olderNote line. Client display only. No route, limit or refusal changed; prose unchanged.","inputs":["docs/reference/api.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"#4852 fix round 2 (thread seek and page-back): ProjectRoom.tsx now stops Load earlier at the 20 windows a room keeps, with a note, and announces kept rows it unloads; RoomConversation gained an optional olderNote line. Client display only. No contract shape changed; prose unchanged.","inputs":["docs/reference/contracts.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"#4852 fix round 2 (thread seek and page-back): ProjectRoom.tsx now stops Load earlier at the 20 windows a room keeps, with a note, and announces kept rows it unloads; RoomConversation gained an optional olderNote line. Client display only. The SDK paragraph already states the history keeps up to 20 windows and that a caller retires kept rows older than the 500-message re-read; the UI now follows both. Prose unchanged.","inputs":["docs/reference/sdk.md","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"#4852 fix round 2 (thread seek and page-back): ProjectRoom.tsx now stops Load earlier at the 20 windows a room keeps, with a note, and announces kept rows it unloads; RoomConversation gained an optional olderNote line. Client display only. This guide does not describe Project room history or paging; prose unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/room/RoomConversation.tsx"]}
+  ]
+}

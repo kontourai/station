@@ -8,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -201,6 +202,32 @@ describe('a Project that is one folder of a larger repository', () => {
   test('its session worktree (derived from the repository root) is read and edited', async () => {
     expect((await read('app', monoWorktree)).status).toBe(200);
     expect((await create('app', monoWorktree, 'session.txt')).status).toBe(200);
+  });
+
+  test('the repository list and diff agree when opened from the Project subfolder', async () => {
+    const mounted = app();
+    const query = `projectSlug=app&path=${encodeURIComponent(monoProject)}`;
+    const diff = await mounted.request(`/git/diff?${query}`);
+    expect(diff.status).toBe(200);
+    expect(await diff.json()).toHaveProperty(
+      'data.diff',
+      expect.stringContaining('packages/app/index.ts'),
+    );
+
+    const repos = await mounted.request(`/repos?${query}`);
+    expect(repos.status).toBe(200);
+    expect(await repos.json()).toHaveProperty('data', {
+      workspace: realpathSync(monoProject),
+      workspaceIsRepo: true,
+      repos: [
+        {
+          root: realpathSync(mono),
+          name: 'mono',
+          relativePath: '../..',
+          branch: 'main',
+        },
+      ],
+    });
   });
 
   test("the Task workspace's repository root above the Project is readable", async () => {

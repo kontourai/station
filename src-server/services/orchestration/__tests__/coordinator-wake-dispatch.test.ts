@@ -12,6 +12,10 @@
  *
  * The coordinator's own wake turn ending writes a "finished" notification of
  * its own; each test also pins that it does not wake the coordinator again.
+ *
+ * The `coordinator-session` preview is a real registry binding, on unless a
+ * test turns it off; the inbox's placement policy is the wake's, as in
+ * production.
  */
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -35,6 +39,7 @@ import type { IProviderAdapterRegistry } from '../../../providers/provider-inter
 import { createCoordinatorRoutes } from '../../../routes/orchestration/coordinator.js';
 import { inboxPlacementStartPort } from '../../../runtime/routes/conversation-start-ports.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
+import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import {
   coordinatorDeliveryPorts,
@@ -46,7 +51,10 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
 import { ThreadInboxDelivery } from '../thread-inbox.js';
-import { wireTurnCompletionNotifications } from '../turn-completion-notifications.js';
+import {
+  FINISHED_ALERT_CONFIRM_MS,
+  wireTurnCompletionNotifications,
+} from '../turn-completion-notifications.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -82,6 +90,15 @@ interface World {
   notifications: NotificationService;
   /** The real coordinator routes, as the person (owner) calls them. */
   routes: Hono;
+  setPreview(enabled: boolean): Promise<unknown>;
+  /**
+   * A finished turn's record (which the wake reads) is written only after
+   * its confirmation window. Waits for a window to be armed, at the real
+   * `FINISHED_ALERT_CONFIRM_MS`, and lets it run out.
+   */
+  passFinishWindow(what: string): Promise<void>;
+  /** Finish windows armed and not yet run. */
+  pendingFinishWindows(): number;
   dispose: () => Promise<void>;
 }
 
@@ -90,11 +107,24 @@ afterEach(async () => {
   for (const world of worlds.splice(0)) await world.dispose();
 });
 
-function boot(adapters: ProviderAdapterShape[]): World {
+async function boot(adapters: ProviderAdapterShape[]): Promise<World> {
   const tmp = makeTempDir('coordinator-wake-');
   const previousHome = process.env.STATION_HOME;
   process.env.STATION_HOME = join(tmp, 'home');
   mkdirSync(process.env.STATION_HOME, { recursive: true });
+  const previews = new FeaturePreviewRegistry(process.env.STATION_HOME, {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as never);
+  const preview = previews.bind({
+    id: 'coordinator-session',
+    label: 'Coordinator chat',
+    description: 'test',
+  });
+  await previews.setEnabled('coordinator-session', true);
+  let placement: ReturnType<typeof wireCoordinatorWakes> | undefined;
   const store = new EventStore(join(tmp, 'orchestration.sqlite'));
   const bus = new EventBus();
   const service = new OrchestrationService({
@@ -178,17 +208,39 @@ function boot(adapters: ProviderAdapterShape[]): World {
         if (frame.event === 'orchestration:event' && event)
           listener({ threadId: event.threadId, method: event.method });
       }),
+    placementRefusal: (input) =>
+      placement?.placementRefusal({
+        conversationId: input.conversationId,
+        clientTurnId: input.clientTurnId,
+        userId: input.payload.actor.userId,
+        queuedAt: input.queuedAt,
+      }),
     logger: { warn: vi.fn() },
     retryDelaysMs: [20, 50, 100],
   });
   inbox.start();
   const notifications = new NotificationService(bus, tmp);
+  const finishWindows: Array<{
+    callback: () => void;
+    delayMs: number;
+    live: boolean;
+  }> = [];
   const unwireCompletions = wireTurnCompletionNotifications(
     bus,
     service,
     notifications,
     { warn: vi.fn() },
+    {
+      setTimer: (callback, delayMs) => {
+        const entry = { callback, delayMs, live: true };
+        finishWindows.push(entry);
+        return () => {
+          entry.live = false;
+        };
+      },
+    },
   );
+  const liveWindows = () => finishWindows.filter((entry) => entry.live);
   store.coordinatorStore().designate({
     conversationId: COORDINATOR,
     actor: { userId: OWNER },
@@ -199,6 +251,8 @@ function boot(adapters: ProviderAdapterShape[]): World {
     eventBus: bus,
     eventStore: store,
     store: store.coordinatorStore(),
+    enabled: () =>
+      preview.select({ enabled: () => true, disabled: () => false }),
     threadInbox: inbox,
     // The person may read a Session they own (the owner branch of the
     // production read rule).
@@ -211,10 +265,12 @@ function boot(adapters: ProviderAdapterShape[]): World {
       return () => clearTimeout(timer);
     },
   });
+  placement = wakes;
   const routes = new Hono().route(
     '/api/orchestration',
     createCoordinatorRoutes({
       store: store.coordinatorStore(),
+      preview,
       person: () => ({
         userId: OWNER,
         mayRead: () => true,
@@ -231,6 +287,22 @@ function boot(adapters: ProviderAdapterShape[]): World {
     inbox,
     notifications,
     routes,
+    setPreview: (enabled) =>
+      previews.setEnabled('coordinator-session', enabled),
+    passFinishWindow: async (what) => {
+      const due = await waitFor(
+        liveWindows,
+        (windows) => windows.length > 0,
+        `${what}: its finish window`,
+      );
+      for (const entry of due) {
+        expect(entry.delayMs).toBe(FINISHED_ALERT_CONFIRM_MS);
+        entry.live = false;
+        entry.callback();
+      }
+      await notifications.drainAsyncDispatch();
+    },
+    pendingFinishWindows: () => liveWindows().length,
     dispose: async () => {
       wakes.unsubscribe();
       unwireCompletions();
@@ -270,7 +342,7 @@ async function acpWorld() {
       return child as unknown as ACPProcess;
     },
   });
-  const world = boot([acp]);
+  const world = await boot([acp]);
   const start = async (threadId: string) => {
     await world.service.dispatch(
       {
@@ -344,6 +416,15 @@ describe('a worker finishing wakes the coordinator once', () => {
       'worker prompt',
     );
     workerProcess!.resolvePrompt('end_turn');
+    // Until the finish is confirmed there is no record, so no wake.
+    await waitFor(
+      () => world.pendingFinishWindows(),
+      (count) => count > 0,
+      'the worker finish window',
+    );
+    await quiet();
+    expect(prompts(coordinatorProcess)).toEqual([]);
+    await world.passFinishWindow('the worker finish');
 
     const [wake] = await waitFor(
       () => prompts(coordinatorProcess),
@@ -364,13 +445,15 @@ describe('a worker finishing wakes the coordinator once', () => {
       dispatchOrigin: 'unknown',
     });
 
-    // The wake turn ends: its own "finished" does not wake it again.
+    // The wake turn ends: its own "finished", once confirmed, does not wake
+    // it again.
     coordinatorProcess!.resolvePrompt('end_turn');
     await waitFor(
       () => methods(world, COORDINATOR),
       (seen) => seen.includes('turn.completed'),
       'the wake turn to end',
     );
+    await world.passFinishWindow('the wake turn');
     await quiet();
     await world.inbox.idle();
     expect(prompts(coordinatorProcess)).toHaveLength(1);
@@ -380,6 +463,7 @@ describe('a worker finishing wakes the coordinator once', () => {
     const { world, coordinatorProcess, prompts, finishWorkerTurn } =
       await acpWorld();
     await finishWorkerTurn('build it');
+    await world.passFinishWindow('the first worker finish');
     await waitFor(
       () => prompts(coordinatorProcess),
       (p) => p.length === 1,
@@ -388,6 +472,7 @@ describe('a worker finishing wakes the coordinator once', () => {
     // A second worker finishes while the first wake's turn still runs: its
     // wake waits in the coordinator's inbox.
     await finishWorkerTurn('build another');
+    await world.passFinishWindow('the second worker finish');
     await waitFor(
       () => world.inbox.list(COORDINATOR),
       (rows) => rows.some((row) => row.state === 'queued'),
@@ -413,9 +498,69 @@ describe('a worker finishing wakes the coordinator once', () => {
       (seen) => seen.includes('turn.completed'),
       'the first wake turn to end',
     );
+    await world.passFinishWindow('the wake turn');
     await quiet();
     await world.inbox.idle();
     expect(prompts(coordinatorProcess)).toHaveLength(1);
+  });
+
+  test('ACP: with the preview off nothing is recorded or delivered; turned on, the next finish wakes it', async () => {
+    const { world, coordinatorProcess, prompts, finishWorkerTurn } =
+      await acpWorld();
+    await world.setPreview(false);
+    await finishWorkerTurn('build it');
+    await world.passFinishWindow('the worker finish');
+    await quiet();
+    await world.inbox.idle();
+    expect(prompts(coordinatorProcess)).toEqual([]);
+    expect(world.inbox.list(COORDINATOR)).toEqual([]);
+    expect(world.store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
+
+    // The choice is read when the next notification arrives, not at boot.
+    await world.setPreview(true);
+    await finishWorkerTurn('build another');
+    await world.passFinishWindow('the second worker finish');
+    const [wake] = await waitFor(
+      () => prompts(coordinatorProcess),
+      (p) => p.length === 1,
+      'the wake after turning the preview on',
+    );
+    expect(wake).toContain(FRAME);
+  });
+
+  test('ACP: a wake queued while on is refused after the preview is turned off, and is not re-sent when it is turned on', async () => {
+    const { world, coordinatorProcess, prompts, finishWorkerTurn } =
+      await acpWorld();
+    await finishWorkerTurn('build it');
+    await world.passFinishWindow('the first worker finish');
+    await waitFor(
+      () => prompts(coordinatorProcess),
+      (p) => p.length === 1,
+      'the first wake',
+    );
+    await finishWorkerTurn('build another');
+    await world.passFinishWindow('the second worker finish');
+    const queued = await waitFor(
+      () => world.inbox.list(COORDINATOR).find((row) => row.state === 'queued'),
+      (row) => row !== undefined,
+      'the second wake queued',
+    );
+    await world.setPreview(false);
+    coordinatorProcess!.resolvePrompt('end_turn');
+    await waitFor(
+      () => world.inbox.entry(COORDINATOR, queued!.clientTurnId!),
+      (entry) => entry?.state === 'refused',
+      'the queued wake refused at placement',
+    );
+    expect(world.inbox.entry(COORDINATOR, queued!.clientTurnId!)).toMatchObject(
+      { reasonCode: 'coordinator_preview_disabled' },
+    );
+    await world.setPreview(true);
+    await world.passFinishWindow('the wake turn');
+    await quiet();
+    await world.inbox.idle();
+    expect(prompts(coordinatorProcess)).toHaveLength(1);
+    expect(world.store.coordinatorStore().waitingItems(OWNER)).toEqual([]);
   });
 
   test('Claude provider: the coordinator engine receives one framed Station turn', async () => {
@@ -436,7 +581,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       }
     }
     const adapter = new CountingAdapter();
-    const world = boot([adapter]);
+    const world = await boot([adapter]);
     let sequence = 0;
     const emit = async (
       threadId: string,
@@ -479,6 +624,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       { turnId: 'turn-1' },
       workerInvocation,
     );
+    await world.passFinishWindow('the worker finish');
 
     const [wake] = await waitFor(
       () => sends.get(COORDINATOR) ?? [],
@@ -501,6 +647,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       { turnId: 'turn-1' },
       wakeInvocation,
     );
+    await world.passFinishWindow('the wake turn');
     await quiet();
     await world.inbox.idle();
     expect(sends.get(COORDINATOR)).toHaveLength(1);
@@ -525,7 +672,7 @@ describe('Muse inbox delivery after a completed turn', () => {
       logger: { warn: vi.fn(), info: vi.fn() },
     });
     vi.spyOn(adapter, 'getPrerequisites').mockResolvedValue([]);
-    const world = boot([adapter]);
+    const world = await boot([adapter]);
     await world.service.dispatch(
       {
         type: 'startSession',
@@ -588,7 +735,7 @@ describe('delivery state through the production ports', () => {
     stamp: boolean,
   ) {
     const adapter = new RecordingAdapter();
-    const world = boot([adapter]);
+    const world = await boot([adapter]);
     let sequence = 0;
     const emit = async (method: string, fields: Record<string, unknown>) => {
       sequence += 1;

@@ -13,6 +13,7 @@ import {
   DASHBOARD_HTML,
   DASHBOARD_JS,
 } from '../../../packages/telemetry-broker/src/public-dashboard.ts';
+import { type AccessConfiguration, insightsAccess } from './access-session.ts';
 import { INSIGHTS_HTML, INSIGHTS_JS } from './insights-page.ts';
 import { callReceiver, type ReceiverNamespace } from './receiver.ts';
 
@@ -32,7 +33,7 @@ export interface ResponseCache {
   put(request: Request, response: Response): Promise<void>;
 }
 
-export interface Env {
+export interface Env extends AccessConfiguration {
   /** The LiteReceiver Durable Object namespace (SQLite-backed). */
   LITE_RECEIVER: ReceiverNamespace;
   /** The private operator key, `sto_` + 43 base64url characters (a Worker secret). */
@@ -227,6 +228,20 @@ export async function handleRequest(
     });
     if (cache && maxAge > 0) await cache.put(key, out.clone());
     return out;
+  }
+
+  if (pathname === '/insights/data' && method === 'GET') {
+    const network = networkKey(clientAddress(request).address, 64);
+    if (!(await env.READ_PER_IP_LIMITER.limit({ key: network })).success)
+      return rateLimited();
+    const access = await insightsAccess(request, env);
+    if (access !== 'ok')
+      return json(
+        { error: `insights_${access}` },
+        access === 'unconfigured' ? 503 : 401,
+      );
+    if (url.search) return json({ error: 'filters_unsupported' }, 400);
+    return relay(await callReceiver(env.LITE_RECEIVER, { op: 'insights' }));
   }
 
   if (pathname.startsWith('/v1/operator/')) {

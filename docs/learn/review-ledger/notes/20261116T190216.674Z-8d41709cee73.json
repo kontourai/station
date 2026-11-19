@@ -1,0 +1,17 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Archived Projects leave the sidebar list unless open, behind an Archived (n) toggle; reorder still sends the whole order. No cited page claims every Project is always listed; settings.md documents archived Projects.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Archived Projects leave the sidebar list unless open, behind an Archived (n) toggle; reorder still sends the whole order. No cited page claims every Project is always listed; settings.md documents archived Projects.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Archived Projects leave the sidebar list unless open, behind an Archived (n) toggle; reorder still sends the whole order. No cited page claims every Project is always listed; settings.md documents archived Projects.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Archived Projects leave the sidebar list unless open, behind an Archived (n) toggle; reorder still sends the whole order. No cited page claims every Project is always listed; settings.md documents archived Projects.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Archived Projects leave the sidebar list unless open, behind an Archived (n) toggle; reorder still sends the whole order. No cited page claims every Project is always listed; settings.md documents archived Projects.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Archived Projects leave the sidebar list unless open, behind an Archived (n) toggle; reorder still sends the whole order. No cited page claims every Project is always listed; settings.md documents archived Projects.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
+  ]
+}

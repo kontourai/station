@@ -139,21 +139,21 @@ export function SessionReferencePicker({
     const hasQuery = query.trim().length > 0;
     if (hasQuery)
       return inventoryPage.hasMore
-        ? `No matches in the ${searched} most recent conversations. Older conversations aren’t searched.`
-        : 'No matching conversations';
+        ? `No matches in the ${searched} most recent chats. Older chats aren’t searched.`
+        : 'No matching chats';
     if (candidates.length === 0) {
       if (inventoryPage.hasMore)
-        return `No referenceable conversations in the ${searched} most recent. Older conversations aren’t shown.`;
+        return `None of the ${searched} most recent chats can be referenced. Older chats aren’t shown.`;
       return searched === 0
-        ? 'No conversations yet'
-        : 'No conversations available to reference';
+        ? 'No chats yet'
+        : 'No chats available to reference';
     }
     return null;
   })();
   return (
     <ResponsiveDialogSurface
       layer="popover"
-      ariaLabel="Reference a conversation"
+      ariaLabel="Reference a chat"
       onClose={() => {
         if (dragging) finishDrag();
         onClose();
@@ -163,12 +163,12 @@ export function SessionReferencePicker({
       panelClassName="composer-popover-panel"
     >
       <ResponsiveDialogHeader
-        title="Reference a conversation"
+        title="Reference a chat"
         closeLabel="Close conversation references"
         onClose={onClose}
       />
       <input
-        aria-label="Find conversations"
+        aria-label="Find chats"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Find a conversation"
@@ -177,10 +177,10 @@ export function SessionReferencePicker({
       <div
         className="file-mention-picker session-reference-picker__list"
         role="listbox"
-        aria-label="Conversations"
+        aria-label="Chats"
       >
         {inventory.isFetching ? (
-          <SkeletonList count={3} label="Conversation references" />
+          <SkeletonList count={3} label="Loading chats" />
         ) : null}
         {!inventory.isFetching && inventory.data?.unavailable ? (
           <div className="file-mention-picker__status" role="alert">

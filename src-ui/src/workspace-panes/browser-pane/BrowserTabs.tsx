@@ -5,6 +5,7 @@ import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
 import { CloseGlyph, PlusGlyph } from '../../components/icons/Glyph';
 import { useOptionalKeyboardShortcuts } from '../../contexts/KeyboardShortcutsContext';
+import { nextTabIndex } from '../../utils/tab-navigation';
 import {
   type BrowserPaneApi,
   browserPaneKeys,
@@ -182,7 +183,13 @@ export function BrowserTabs({
                 ? 'New tab'
                 : session?.title || url || 'Browser page';
             return (
-              <div className="browser-tabs__item" key={id}>
+              <div
+                className="browser-tabs__item"
+                key={id}
+                // A closed session's tab stays (it can be reopened) but no
+                // longer looks like a live page.
+                data-closed={session?.state === 'closed' || undefined}
+              >
                 <button
                   type="button"
                   className="browser-tabs__tab"
@@ -192,16 +199,21 @@ export function BrowserTabs({
                   title={label}
                   onClick={() => onSelect(id)}
                   onKeyDown={(event) => {
-                    const direction =
-                      event.key === 'ArrowLeft'
-                        ? -1
-                        : event.key === 'ArrowRight'
-                          ? 1
-                          : 0;
-                    if (!direction) return;
+                    const nextIndex = nextTabIndex(
+                      index,
+                      ids.length,
+                      event.key,
+                    );
+                    if (nextIndex === null) return;
+                    // Alt reorders, and only sideways: Alt+Home and the
+                    // vertical arrows stay with the browser.
+                    if (
+                      event.altKey &&
+                      event.key !== 'ArrowLeft' &&
+                      event.key !== 'ArrowRight'
+                    )
+                      return;
                     event.preventDefault();
-                    const nextIndex =
-                      (index + direction + ids.length) % ids.length;
                     if (event.altKey) {
                       const reordered = [...ids];
                       [reordered[index], reordered[nextIndex]] = [

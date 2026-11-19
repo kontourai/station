@@ -21,12 +21,16 @@ function senderAgentLabel(sender: ClientOriginSender): string | undefined {
   );
 }
 
+const PULL_REQUEST_FEEDBACK_LABEL = 'Pull request feedback from Station';
+
 /** The accessible name of the whole incoming message. */
 export function incomingMessageLabel(sender: ClientOriginSender): string {
   if (sender.kind === 'unattributed')
-    return 'Non-person input: sender not recorded';
+    return 'Automated message: sender unknown';
   if (sender.kind === 'provider') return 'The engine replied on its own';
   if (sender.kind === 'coordinator') return 'Update from Station';
+  if (sender.kind === 'pull-request-feedback')
+    return `${PULL_REQUEST_FEEDBACK_LABEL}, not from you`;
   const agent = senderAgentLabel(sender);
   return `Message from another agent: ${senderSessionLabel(sender)}${agent ? `, ${agent}` : ''}`;
 }
@@ -45,7 +49,7 @@ export function IncomingAgentHeader({
     return (
       <p className="agent-cause">
         <InboxGlyph />
-        Non-person input · sender not recorded
+        Automated message · sender unknown
       </p>
     );
   if (sender.kind === 'provider')
@@ -60,6 +64,15 @@ export function IncomingAgentHeader({
       <p className="agent-cause">
         <InboxGlyph />
         Update from Station
+      </p>
+    );
+  // Station composed it from the pull request's checks and reviews: not a
+  // link, since no Session sent it.
+  if (sender.kind === 'pull-request-feedback')
+    return (
+      <p className="agent-cause">
+        <InboxGlyph />
+        {PULL_REQUEST_FEEDBACK_LABEL}
       </p>
     );
   const session = senderSessionLabel(sender);
@@ -103,12 +116,14 @@ export function IncomingAgentCause({
 }) {
   const label =
     sender.kind === 'unattributed'
-      ? 'Non-person input · sender not recorded'
+      ? 'Automated message · sender unknown'
       : sender.kind === 'provider'
         ? 'The engine replied on its own'
         : sender.kind === 'coordinator'
           ? 'Update from Station'
-          : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
+          : sender.kind === 'pull-request-feedback'
+            ? PULL_REQUEST_FEEDBACK_LABEL
+            : `From ${senderSessionLabel(sender)}${senderAgentLabel(sender) ? ` · ${senderAgentLabel(sender)}` : ''}`;
   return (
     <details className="agent-cause-disclosure">
       <summary className="agent-cause">

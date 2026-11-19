@@ -44,7 +44,7 @@ export interface SelfHostedBrokerClientGrantV1 {
 export interface SelfHostedBrokerNativeClientSurfaceV2 {
   readonly kind: 'station-native';
   readonly appIdentifier: string;
-  readonly channel: 'dev' | 'stable' | 'beta' | 'nightly';
+  readonly channel: 'dev' | 'stable' | 'nightly';
   readonly clientInstanceId: string;
   readonly keyThumbprint: string;
 }

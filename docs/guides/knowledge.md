@@ -96,6 +96,12 @@ Station also retains the older per-Project document/namespace API through
 providers. It is not the same interface as the store/index routes described
 here; the migration section explains how their data is related.
 
+The [Enterprise Notes example](../../examples/enterprise-layout/README.md#knowledge-namespaces)
+uses the older document API. Applying its layout registers `enterprise-notes`, the
+same namespace its SDK calls use. An earlier `notes` registration remains a
+separate Project namespace with its existing documents. Unscoped document
+search considers registered RAG namespaces with indexed content.
+
 For a concrete example, [browse Station's repository graph](repository-knowledge-graph.md)
 or see [the captured Knowledge Library](../learn/walkthroughs.md#explore-repository-knowledge).
 That journey uses canonical records and links without an embedding service.
@@ -115,6 +121,7 @@ flowchart LR
   Roots --> Resolve
   Resolve --> Result["Current title/category; excerpt still in the record"]
   Legacy["Older document / namespace API"] --> Service["KnowledgeService"]
+  Namespaces["Registered Project RAG namespaces"] -->|unscoped document search| Service
   Service --> Providers["Configured embedding and vector providers"]
   OldFiles["Older document and vector files"] -->|"explicit migration"| Roots
 ```
@@ -154,8 +161,8 @@ Erasure remains unavailable until index cleanup and recovery are fenced
 
 ### Review, recall and brief
 
-With the preview on, **Settings → My knowledge → My knowledge store → What
-Station remembers about you** does three things with what your agents have
+With the preview on, **Settings → My knowledge → My knowledge store → Your
+saved memories** does three things with what your agents have
 learned about you and your work:
 
 - **You check the doubtful ones.** Station asks you only when a new memory
@@ -226,9 +233,12 @@ Known limits:
   Codex sessions build their own context; Station does not write their brief
   files.
 - **Recall is a plain word match** over claims, titles and excerpts, and the
-  brief applies a smaller version of the Kit's rules. The Kit's question-answering
-  recall, brief compiler, envelope decoder and marker are not yet published
-  ([flow-agents#1611](https://github.com/kontourai/flow-agents/issues/1611)).
+  brief applies a smaller version of the Kit's rules. Flow Agents 9.14 publishes
+  the Kit's question-answering recall, brief compiler, envelope decoder and marker
+  (`@kontourai/flow-agents/memory-recall`, `/memory-brief`, `/memory-envelope`,
+  `/memory-marker`; [flow-agents#1611](https://github.com/kontourai/flow-agents/issues/1611)),
+  and Station takes the brief's markers from `/memory-marker`. It still decodes
+  envelopes, compiles the brief and matches recall with its own code.
 
 ### Measuring whether review is worth it
 
@@ -466,7 +476,10 @@ only results.
 Station's own conversation history — everything under `station runs`/the chat history, both
 native-SDK (Claude/Codex) sessions and managed-runtime chats — is itself registered as a read-only
 knowledge store root, `root:conversations`, when the `knowledgeStores` setting is on in a personal-host runtime. Hosted
-tenant runtimes suppress this root. This means
+tenant runtimes suppress this root. Turn it on in **Settings → My knowledge store → Past conversations in
+Knowledge** (off by default) and restart Station. Then run a reindex (below), which needs an embedding
+connection and the Station operator. Turning the setting off does not remove the root, and it cannot be
+deleted. This means
 `./station knowledge search`/`search_knowledge` and the K3 index cover past conversations the same
 way they cover any other root: no separate "search my chat history" surface to learn.
 
@@ -491,11 +504,16 @@ Station user actually gets a knowledge store in the first place, without reading
 
 ### Settings: My knowledge store
 
-Settings has a **My knowledge store** section that displays the first personal
-root returned by the server. A personal root is available outside a particular
-Project; whether an Agent can read or write it depends on its tools, engine,
-authority, and the adapter (conversation history is read-only). Knowledge is
-optional: Station does not show a global setup prompt or create/import a store automatically.
+**My knowledge store** in Settings is an operator-managed personal store on
+the connected Station. Settings search and the published registry identify
+this row as personal. The card displays the first ordinary personal root
+returned by the server. It skips author-private memory roots and the read-only
+`root:conversations` root. The registry permits multiple personal roots, and
+the card keeps using the first eligible one. Agent access still depends on
+the caller's authority, tools, engine, and adapter. Store setup and imports
+start only when the operator chooses them.
+The same section holds **Past conversations in Knowledge**, the
+[`root:conversations`](#rootconversations-past-conversations-as-a-knowledge-root) setting.
 
 **Creating one is a single click.** If you don't have a personal knowledge store yet, the section
 shows a "Create recommended store" action. There's no path to type: the server defaults the
@@ -664,9 +682,10 @@ The Project knowledge section keeps the older document upload, indexing and
 migration controls. Store creation and attachment now have one owner:
 **Settings → Sources**. **Manage sources** navigates there through the ordinary
 unsaved-changes guard. These document actions apply immediately rather than
-waiting for the Project settings **Save** button. Failed reads offer **Retry**;
-upload failures name the affected files while remaining files continue.
-Indexing, removal, and clear failures remain visible in the section.
+waiting for the Project settings **Save** button. Removing one document, or
+every document with **Remove all**, first asks for confirmation. Failed reads
+offer **Retry**; upload failures name the affected files while remaining files
+continue. Indexing and removal failures remain visible in the section.
 
 **Migrate this project's existing knowledge** appears when earlier document
 storage contains files. It runs the [migration described above](#the-non-destructive-guarantee),

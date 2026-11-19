@@ -1,0 +1,9 @@
+{
+  "revision": "00098d3c52aaaa7a237fa3df99806bf0df2e59f1",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed Android keyboard image contract against the UI-thread receiver, grant creation deadline, detach release, menu reconciliation and wrapped Activity ownership. URI admission, payload shape, composer capture and no-auto-send contracts remain accurate. Native baseline/restored 99 tests and eight behavioral negative controls; no physical-device qualification.","inputs":["docs/design/native-capabilities.md","src-desktop/plugins/media-intake/android/src/main/java/io/kontourai/station/mediaintake/MediaIntakePlugin.kt"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed runner changes: all notification required cases, sealed vectors and fail-closed report accounting remain unchanged. Only keyboard case list, stub Chromium superclass for generated-hook behavioral tests and a moved comment changed. Full 99-test Android plugin suite passed; no new FCM, provider or physical-delivery claim.","inputs":["docs/design/notification-delivery.md","scripts/run-agent-activity-android-unit-tests.mjs"]}
+  ]
+}

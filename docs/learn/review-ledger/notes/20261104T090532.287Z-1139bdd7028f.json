@@ -1,7 +1,0 @@
-{
-  "revision": "f08cf30589e59e63e7ea21cc48fce3b01bb4feb4",
-
-  "notes": [
-    {"path":"docs/guides/testing.md","note":"Reviewed only Gallery product-assertion hit-target and fixture-effectiveness claims against the two owned modules and retained rendered RED/GREEN receipts. Overlap uses separate currently painted client-clip intersection in viewport coordinates; reachable target-size44, unreachable/count and conservative pinned/sheet rules remain unchanged. Clipped-away raw tails first failed the owner test; positive-axis scale2 genuine overlap then failed a keeper before coordinate correction; final57/57 passed with both tests and55keepers unchanged. This adds no scrollcouldclear exemption or allowlist. Existing prose remains accurate; no universal rotation/skew/zero-box correctness, canonical deterministic fixture equality or hosted3/original5 finding clearance is claimed. Retained user-cache/headless-shell1248 test-target evidence is distinct from source-only transfer; no57rerun. Broader guide claims were not requalified.","inputs":["docs/guides/testing.md","tests/helpers/hit-target-audit.ts","scripts/__tests__/gallery-ui-audit.browser.test.ts"]}
-  ]
-}

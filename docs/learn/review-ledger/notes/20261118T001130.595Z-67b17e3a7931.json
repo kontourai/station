@@ -1,0 +1,7 @@
+{
+  "revision": "90405d93cf80cb1333c0b97a1423897383113e26",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed rendered steering disclosure after replacing the obsolete command-only ACP copy assertion. EngineCapabilitySummary still renders the profile fidelity and detail. The updated test independently requires the ACP row to display Station fallback; false-native fault injection fails, restoration passes 12/12. No production contract or copy changed; the canonical native-versus-interrupting disclosure remains accurate.","inputs":["docs/reference/contracts.md","src-ui/src/components/acp-connections/__tests__/EngineCapabilitySummary.test.tsx"]}
+  ]
+}

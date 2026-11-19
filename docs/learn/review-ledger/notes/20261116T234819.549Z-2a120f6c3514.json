@@ -1,0 +1,17 @@
+{
+  "revision": "041d04f42340cfb76040a27bbefde54ce90d6514",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md change only adds the Nightly source-gate receipt paragraph; routed AGENTS and code-quality pointers to testing.md sections are unaffected (no section renamed or removed).","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md change only adds the Nightly source-gate receipt paragraph; routed AGENTS and code-quality pointers to testing.md sections are unaffected (no section renamed or removed).","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md change only adds the Nightly source-gate receipt paragraph; routed AGENTS and code-quality pointers to testing.md sections are unaffected (no section renamed or removed).","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md change only adds the Nightly source-gate receipt paragraph; routed AGENTS and code-quality pointers to testing.md sections are unaffected (no section renamed or removed).","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md change only adds the Nightly source-gate receipt paragraph; routed AGENTS and code-quality pointers to testing.md sections are unaffected (no section renamed or removed).","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md change only adds the Nightly source-gate receipt paragraph; routed AGENTS and code-quality pointers to testing.md sections are unaffected (no section renamed or removed).","inputs":["docs/guides/testing.md"]}
+  ]
+}

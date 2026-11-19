@@ -1,0 +1,7 @@
+{
+  "revision": "595d1961846fe6420921330ea628400afb37ba5b",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed for the thread-open fast path, loading stage and fix rounds. Changes: ConversationLoadingStage replaces the first-load skeleton; the draft stays editable while the open read resolves; /open reads history once; the reader key no longer restarts on child binding; the revalidator keys on conversation and connection; open chunks preload; an in-memory transcript window cache paints reopened chats, re-reads them, holds approval answers while re-reading, and drops rows on a failed re-read; hover/focus prefetch; skill shortcuts follow the composer's send rule. This page's claims were checked against those sources and remain accurate (offline-outbound-queue.md and chat-composer.md carry the new behavior).","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

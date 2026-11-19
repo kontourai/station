@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { reportLiteralStyles } from './lib/literal-style-advisory.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOTS = [
@@ -10,8 +11,14 @@ const ROOTS = [
   'packages/basis-pane/src',
   'packages/board-pane/src',
 ];
-const LEGACY_TOKEN =
-  /var\(\s*(--(?:space|text|radius|font|bg|border|accent|color)-[\w-]+)/g;
+// Pre-`--k-*` token families. This is the growth-only guard for the token
+// burn-down (#1225, folding #27; #4690 for font and radius): a file may not
+// gain a reference to one. The status and shadow families map to
+// `--k-negative`, `--k-caution`, `--k-positive` and `--k-shadow`. Station's
+// own role families (`--layer-*`, `--motion-*`, `--ease-*`) and
+// component-scoped custom properties are not legacy and stay out.
+export const LEGACY_TOKEN =
+  /var\(\s*(--(?:space|text|radius|font|bg|border|accent|color|error|warning|success|shadow)-[\w-]+)/g;
 const STANDARD_ACTION =
   /(?:__action\b|__confirm\b|--(?:primary|secondary|danger)\b)/;
 const ACTION_TAG = /^(?:button|Button|ActionControl|NoticeAction)$/;
@@ -213,4 +220,9 @@ if (invokedDirectly(import.meta.url)) {
     `Component/style hygiene: ${added.length} new legacy-token, bespoke-action, bespoke-dialog or alert-with-action finding(s).`,
   );
   if (added.length) process.exitCode = 1;
+  try {
+    reportLiteralStyles();
+  } catch (error) {
+    console.warn('Literal style advisory could not complete:', error.message);
+  }
 }

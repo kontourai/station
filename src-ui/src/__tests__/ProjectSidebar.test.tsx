@@ -129,11 +129,6 @@ vi.mock('../contexts/open-chats-store', () => {
     }),
     openChatsStore: {
       focus: vi.fn(),
-      openCollection: vi.fn(),
-      registerNavigation: ({ openCollection }: any) => {
-        openChatsStore.openCollection = openCollection;
-        return vi.fn();
-      },
     },
   };
 });
@@ -183,8 +178,28 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
   ...(await importActual<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => presentation.isMobile,
 }));
+// No Station is ready here, so the footer's Updates control stays icon-only.
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../hooks/useConnectedServerUpdateContext')
+  >()),
+  useConnectedServerUpdateContext: () => ({
+    apiBase: '',
+    scopeKey: 'sidebar-test',
+    connectionName: 'Test Station',
+    kind: 'remote-server',
+    reachability: 'unknown',
+    identity: null,
+    identityReady: false,
+    identitySettled: false,
+    nativeObservationPending: false,
+    claimedOwnerUnresolved: false,
+    isCurrent: () => false,
+  }),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: sessions }),
+  useCoreUpdateStatusQuery: () => ({ data: undefined }),
   useProjectLayoutsQuery: () => ({ data: [] }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   // archive#3313 routed the sidebar's visibility flags through
@@ -218,8 +233,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePromotePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
 }));
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
-import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
@@ -229,6 +244,10 @@ import { useProjectAccents } from '../hooks/useProjectAccents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 // #1765 routed the sidebar status row's command-palette keycap through
 // `useShortcutDisplay`, which throws outside KeyboardShortcutsProvider; an
@@ -296,6 +315,14 @@ describe('ProjectSidebar Home affordances reveal the Home surface (#928 C2a)', (
     fireEvent.click(screen.getByRole('button', { name: 'Station home' }));
     expect(showSurfaceStub).toHaveBeenCalledWith('home');
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('renders the sidebar custom-appearance hook on its navigation', () => {
+    resetState();
+    renderSidebar(<ProjectSidebar />);
+    const sidebar = document.querySelectorAll(appearanceHook('sidebar'));
+    expect(sidebar).toHaveLength(1);
+    expect(sidebar[0]!.tagName).toBe('NAV');
   });
 
   test('the Home row is active at / only while main shows Home', () => {
@@ -445,7 +472,7 @@ describe('ProjectSidebar panel order (#2059)', () => {
     // The header is above the body and is its own control, so it anchors the
     // order rather than joining the row list.
     expect(screen.getByRole('button', { name: 'Station home' })).toBeTruthy();
-    expect(panelRowLabels()).toEqual(['Home', 'Activity', 'Station', 'Ferry']);
+    expect(panelRowLabels()).toEqual(['Home', 'Station', 'Ferry']);
   });
 
   test('keeps individual customization destinations out of the panel', () => {
@@ -794,7 +821,6 @@ describe('a project wears the same colour everywhere', () => {
         remoteUnavailable={[]}
         remoteAuthenticationRequired={[]}
         onOpen={vi.fn()}
-        onViewActivity={vi.fn()}
         onRetry={vi.fn()}
       />
     );
@@ -818,7 +844,7 @@ describe('a project wears the same colour everywhere', () => {
     );
   }
 
-  test('the sidebar, the switcher, the dock inbox and Home agree on beta', async () => {
+  test('the sidebar, the dock inbox and Home agree on beta', async () => {
     resetState();
     projects.push(
       { id: 'p-gamma', slug: 'gamma', name: 'Gamma' },
@@ -848,22 +874,6 @@ describe('a project wears the same colour everywhere', () => {
     // which no allocation over beta alone would give it.
     expect(sidebarColour).toBe('var(--event-agent-complete)');
 
-    const switcher = renderSidebar(
-      <ChatDockProjectSwitcherSheet
-        anchorRef={{ current: null }}
-        boundProjectSlug="beta"
-        projects={[{ id: 'p-beta', slug: 'beta', name: 'Beta' }]}
-        onOpenProject={vi.fn()}
-        onSwitchProject={vi.fn()}
-        onNewProject={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-    const switcherColour = switcher.baseElement.querySelector<HTMLElement>(
-      '.chat-dock__project-switcher-accent',
-    )?.style.backgroundColor;
-    switcher.unmount();
-
     const rowColour = (ui: ReactElement) => {
       const view = renderSidebar(ui);
       const colour = view.container.querySelector<HTMLElement>(
@@ -876,11 +886,9 @@ describe('a project wears the same colour everywhere', () => {
     const homeColour = rowColour(<Home items={[betaWork]} />);
 
     expect({
-      switcher: switcherColour,
       dock: dockColour,
       home: homeColour,
     }).toEqual({
-      switcher: sidebarColour,
       dock: sidebarColour,
       home: sidebarColour,
     });
@@ -920,7 +928,7 @@ test('an open project popup is retired when the rail becomes a closed mobile dra
     projects.push({ id: 'p1', slug: 'station', name: 'Station' });
     deviceSettingsStore.set('projectSidebarCollapsed', true);
     renderSidebar(<ProjectSidebar />);
-    fireEvent.click(screen.getByRole('button', { name: 'Station views' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Station views/ }));
     expect(screen.getByRole('dialog', { name: 'Station views' })).toBeTruthy();
     act(() => {
       presentation.isMobile = true;
@@ -933,7 +941,7 @@ test('an open project popup is retired when the rail becomes a closed mobile dra
     });
     expect(
       screen
-        .getByRole('button', { name: 'Station views' })
+        .getByRole('button', { name: /^Station views/ })
         .getAttribute('aria-expanded'),
     ).toBe('false');
   } finally {

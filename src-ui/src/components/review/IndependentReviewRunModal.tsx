@@ -99,7 +99,7 @@ export function IndependentReviewRunModal({
       (!priorReceiptId.trim() || deltaFindingIds.length === 0)
     ) {
       setValidationError(
-        'Delta reviews require a prior receipt and finding IDs.',
+        'Delta reviews need a prior review ID and finding IDs.',
       );
       return;
     }
@@ -240,14 +240,14 @@ export function IndependentReviewRunModal({
         {mode === 'delta' ? (
           <>
             <label>
-              Prior receipt ID
+              Prior review ID
               <input
                 value={priorReceiptId}
                 onChange={(event) => setPriorReceiptId(event.target.value)}
               />
             </label>
             <label>
-              Claimed finding IDs
+              Finding IDs
               <textarea
                 value={claimedFindingIds}
                 onChange={(event) => setClaimedFindingIds(event.target.value)}
@@ -257,12 +257,14 @@ export function IndependentReviewRunModal({
           </>
         ) : null}
         <p className="review-run-modal__truth">
-          Findings are recorded as evidence input. They do not approve, reject,
-          or satisfy a gate.
+          Findings are advisory. They don't approve or block a gate.
         </p>
         {validationError ? <p role="alert">{validationError}</p> : null}
         {mutation.isError ? (
-          <p role="alert">The independent review could not be completed.</p>
+          <p role="alert">
+            The review couldn't finish. Check Review for a result before running
+            it again.
+          </p>
         ) : null}
       </div>
       <ResponsiveSurfaceActions className="modal-footer">

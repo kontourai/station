@@ -10,8 +10,17 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { attachEvidence } from '@kontourai/flow';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
+import {
+  PINNED_CONFIG,
+  READINESS_DEFINITION,
+  readinessBundle,
+} from '../../../__test-utils__/readiness-bundle.js';
+import { createFlowRunRoutes } from '../../../routes/evidence/flow-runs.js';
 import { buildSyntheticTrustBundle } from '../../evidence/trust-bundle.js';
+import type { FlowEvaluationResult } from '../flow-run-service.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   flowRunsStarted: { add: vi.fn() },
@@ -33,9 +42,8 @@ const {
   FlowRunNotFoundError,
   commandOutcomePassed,
 } = await import('../flow-run-service.js');
-const { attachFlowRunForSessionStart } = await import(
-  '../orchestration-flow-gate.js'
-);
+const { attachFlowRunForSessionStart, evaluateFlowCompletionGate } =
+  await import('../orchestration-flow-gate.js');
 
 /** Minimal valid Flow Definition: two steps, one gated with route-back. */
 const TEST_DEFINITION = {
@@ -136,57 +144,6 @@ describe('FlowRunService', () => {
         ? readinessBundle('veritas')
         : buildSyntheticTrustBundle({ claimType, subjectId: 'run-1', value });
     return writeEvidenceFile(cwd, name, bundle);
-  }
-
-  function readinessBundle(
-    producerId: string,
-    authorityRef = 'authority:readiness',
-  ) {
-    const now = '2026-08-25T00:00:00.000Z';
-    return {
-      schemaVersion: 7,
-      source: 'fixture',
-      producerId,
-      claims: [
-        {
-          id: 'claim.readiness',
-          subjectType: 'change',
-          subjectId: 'r1',
-          facet: 'governance',
-          claimType: 'governance.merge-readiness',
-          fieldOrBehavior: 'readiness',
-          value: 'pass',
-          createdAt: now,
-          updatedAt: now,
-        },
-      ],
-      evidence: [],
-      policies: [],
-      events: [
-        {
-          id: 'event.readiness',
-          claimId: 'claim.readiness',
-          status: 'verified',
-          actor: 'veritas',
-          method: 'review',
-          evidenceIds: [],
-          createdAt: now,
-          verifiedAt: now,
-        },
-      ],
-      authorityTrace: [
-        {
-          id: 'trace.readiness',
-          subject: { subjectType: 'change', subjectId: 'r1' },
-          actorRef: 'veritas',
-          authorityType: 'system',
-          authorityRef,
-          sourceRef: 'policy:readiness',
-          observedAt: now,
-          claimIds: ['claim.readiness'],
-        },
-      ],
-    };
   }
 
   describe('detectWorkspace', () => {
@@ -1037,43 +994,6 @@ describe('FlowRunService', () => {
 
   describe('trusted producer pinning via .flow/config.json', () => {
     /** Flow owns trusted producer and rich authority policy in Flow 5.1. */
-    const PINNED_CONFIG = {
-      schema_version: '0.1',
-      trusted_producers: {
-        'governance.merge-readiness': { producers: ['veritas'] },
-      },
-      gate_overrides: {},
-    };
-
-    /** Single readiness-gated step, same shape as station-delivery's last step. */
-    const READINESS_DEFINITION = {
-      id: 'pinned-readiness',
-      version: '1',
-      steps: [{ id: 'readiness', next: null }],
-      gates: {
-        'readiness-gate': {
-          step: 'readiness',
-          expects: [
-            {
-              id: 'merge-readiness',
-              kind: 'trust.bundle',
-              required: true,
-              description: 'Veritas merge readiness for the working tree.',
-              bundle_claim: {
-                claimType: 'governance.merge-readiness',
-                accepted_statuses: ['verified'],
-              },
-            },
-          ],
-          on_route_back: {
-            missing_evidence: 'readiness',
-            default: 'readiness',
-          },
-          route_back_policy: { max_attempts: 2, on_exceeded: 'block' },
-        },
-      },
-    };
-
     function createPinnedWorkspace(): string {
       const cwd = createWorkspace();
       writeFileSync(
@@ -1086,6 +1006,148 @@ describe('FlowRunService', () => {
       );
       return cwd;
     }
+
+    test('completion reports an actual passing gate and does not repeat it on a completed run', async () => {
+      const cwd = createPinnedWorkspace();
+      const flowRunService = new FlowRunService();
+      const binding = { cwd, runId: 'r1', definitionId: 'pinned-readiness' };
+      await flowRunService.startRun(cwd, {
+        definition: binding.definitionId,
+        runId: binding.runId,
+      });
+      await flowRunService.attachEvidence(cwd, binding.runId, {
+        gate: 'readiness-gate',
+        file: bundleEvidence(cwd, 'governance.merge-readiness'),
+        kind: 'trust.bundle',
+        producer: 'veritas',
+      });
+      const complete = () =>
+        evaluateFlowCompletionGate({
+          flowRunService,
+          binding,
+          provider: 'codex',
+          threadId: 'thread',
+        });
+      await expect(complete()).resolves.toMatchObject({
+        verdict: 'pass',
+        gateId: 'readiness-gate',
+      });
+      const repeated = await complete();
+      expect(repeated.verdict).toBe('not-evaluated');
+      expect(repeated.gateId).toBeUndefined();
+      expect(repeated.summary).toContain('No gate outcome was recorded');
+    });
+
+    test('a workspace without a bound Flow makes no attach or reachability claim', async () => {
+      const cwd = createWorkspace();
+      rmSync(join(cwd, '.flow', 'definitions', 'test-flow.json'));
+      const flowRunService = new FlowRunService();
+      const emitWarning = vi.fn();
+      await expect(
+        attachFlowRunForSessionStart({
+          flowRunService,
+          emitWarning,
+          input: { cwd, provider: 'codex', threadId: 'no-binding' },
+        }),
+      ).resolves.toBeNull();
+      expect(emitWarning).not.toHaveBeenCalled();
+    });
+
+    test('a claimed gate with unavailable routing inventory warns at attach', async () => {
+      const cwd = createPinnedWorkspace();
+      const emitWarning = vi.fn();
+      await attachFlowRunForSessionStart({
+        flowRunService: new FlowRunService(),
+        input: {
+          cwd,
+          provider: 'codex',
+          threadId: 'unknown-routing',
+          metadata: { flowDefinition: 'pinned-readiness' },
+        },
+        emitWarning,
+      });
+      expect(emitWarning).toHaveBeenCalledWith({
+        code: 'flow.unreachable-gate-claims',
+        message: expect.stringContaining('not evaluable'),
+        details: {
+          runId: 'session-unknown-routing',
+          kind: 'reachability-not-evaluable',
+          severity: 'not-evaluable',
+          reason: 'routable-claim-types-unavailable',
+        },
+      });
+    });
+
+    test('explicit re-evaluation explains the actual completed-run transition and console receipt', async () => {
+      const cwd = createPinnedWorkspace();
+      const svc = new FlowRunService();
+      await svc.startRun(cwd, { definition: 'pinned-readiness', runId: 'r1' });
+      const previous = await svc.attachEvidence(cwd, 'r1', {
+        gate: 'readiness-gate',
+        file: bundleEvidence(cwd, 'governance.merge-readiness'),
+        kind: 'trust.bundle',
+        producer: 'veritas',
+      });
+      expect((await svc.evaluate(cwd, 'r1')).state.status).toBe('completed');
+
+      const older = readinessBundle('veritas');
+      older.policies = [];
+      Reflect.deleteProperty(older.claims[0], 'verificationPolicyId');
+      await svc.attachEvidence(cwd, 'r1', {
+        gate: 'readiness-gate',
+        file: writeEvidenceFile(cwd, 'legacy-readiness.json', older),
+        kind: 'trust.bundle',
+        producer: 'veritas',
+        supersede: previous.id,
+      });
+      expect((await svc.getRun(cwd, 'r1')).state.status).toBe('completed');
+
+      const app = new Hono();
+      app.route(
+        '/api/projects/:slug/flow',
+        createFlowRunRoutes(svc, {
+          getWorkspacePath: () => cwd,
+          isRequestPrincipalCurrent: () => true,
+        }),
+      );
+      const path = '/api/projects/local/flow/runs/r1';
+      const reply = await app.request(`${path}/evaluate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gate: 'readiness-gate' }),
+      });
+      const result = await readJson<{ data: FlowEvaluationResult }>(reply);
+      expect(reply.status, JSON.stringify(result)).toBe(200);
+      const reopened = result.data.reopened;
+      if (!reopened) throw new Error('Expected an observed reopen receipt');
+      expect(reopened).toMatchObject({
+        gateId: 'readiness-gate',
+        verdict: 'route-back',
+        missing: ['merge-readiness'],
+        diagnostics: {
+          claims: expect.arrayContaining([
+            expect.objectContaining({
+              expectationId: 'merge-readiness',
+              specificReason: 'policy_unresolved',
+            }),
+          ]),
+        },
+      });
+      expect(result.data.state.status).not.toBe('completed');
+      const consoleReply = await app.request(`${path}/console`);
+      expect(consoleReply.status).toBe(200);
+      expect(await consoleReply.json()).toMatchObject({
+        data: {
+          gates: [
+            expect.objectContaining({
+              id: 'readiness-gate',
+              status: 'route-back',
+              display_diagnostics: reopened.diagnostics,
+            }),
+          ],
+        },
+      });
+    });
 
     test('a veritas-producer readiness claim satisfies the pinned gate', async () => {
       const cwd = createPinnedWorkspace();
@@ -1104,6 +1166,41 @@ describe('FlowRunService', () => {
       });
       expect(result.state.status).toBe('completed');
     });
+
+    test.each(['policy', 'passing'] as const)(
+      'rejects stored verified evidence missing %s when an in-flight run resumes',
+      async (missing) => {
+        const cwd = createPinnedWorkspace();
+        const svc = new FlowRunService();
+        await svc.startRun(cwd, {
+          definition: 'pinned-readiness',
+          runId: 'r1',
+        });
+        const bundle = readinessBundle('veritas');
+        if (missing === 'policy') {
+          bundle.policies = [];
+          Reflect.deleteProperty(bundle.claims[0], 'verificationPolicyId');
+        } else {
+          Reflect.deleteProperty(bundle.evidence[0], 'passing');
+        }
+        await svc.attachEvidence(cwd, 'r1', {
+          gate: 'readiness-gate',
+          file: writeEvidenceFile(cwd, 'old-bundle.json', bundle),
+          kind: 'trust.bundle',
+          producer: 'veritas',
+        });
+        const resumed = new FlowRunService();
+        expect((await resumed.getRun(cwd, 'r1')).state.status).not.toBe(
+          'completed',
+        );
+        const result = await resumed.evaluate(cwd, 'r1');
+        expect(result.outcomes[0]).toMatchObject({
+          status: 'route-back',
+          missing: ['merge-readiness'],
+        });
+        expect(result.state.status).not.toBe('completed');
+      },
+    );
 
     test('an attachment producer that disagrees with its bundle producer routes back', async () => {
       const cwd = createPinnedWorkspace();

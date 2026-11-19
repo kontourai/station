@@ -1,0 +1,7 @@
+{
+  "revision": "041d04f42340cfb76040a27bbefde54ce90d6514",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Replaced the two-slot ordering sentence: four builds start from the plan, two macOS runners (macOS, iOS) at once out of STATION_HOSTED_MACOS_SLOTS, an unplaced macOS cancellation fails staging before publication. Gate claims (lint, typecheck, native boundary, smoke on the exact SHA) remain true under the receipt.","inputs":["docs/guides/releasing.md","scripts/__tests__/native-release-promotion.test.ts"]}
+  ]
+}

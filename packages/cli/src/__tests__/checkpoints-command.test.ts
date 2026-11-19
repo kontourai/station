@@ -14,6 +14,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -23,12 +24,22 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { runCheckpointsCommand } from '../commands/checkpoints.js';
+import {
+  getProfileCredentialStore,
+  setProfileCredentialStore,
+} from '../commands/profile-credentials.js';
+import { upsertProfile } from '../commands/profile-store.js';
+import { readBody } from './helpers/http-test-helpers.js';
 
 const scratch: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterAll(() => {
   for (const dir of scratch) rmSync(dir, { recursive: true, force: true });
@@ -146,76 +157,67 @@ describe('station checkpoints (real git, default runner)', () => {
     process.exitCode = 0;
   }, 30_000);
 
-  it('requires confirmation then exercises the authorized server restore surface', async () => {
+  it('lists recorded restores for one thread, and fails closed when the restore audit is corrupt', async () => {
     const { home } = fixture();
+    const lines: string[] = [];
+    await runCheckpointsCommand(['history', '--thread=thread-1'], {
+      env: { ...process.env, STATION_HOME: home },
+      stdout: (line) => lines.push(line),
+      stderr: (line) => lines.push(line),
+    });
+    // No audit file yet: nothing was recorded, which is not a failure.
+    expect(lines).toEqual(['thread thread-1: no checkpoint restores recorded']);
+
+    // The document `CheckpointRestoreService` writes: `{ version, events }`
+    // with one full restore event per confirmed restore.
+    const restoreEvent = (id: string, threadId: string) => {
+      const previewId = `00000000-0000-4000-8000-00000000000${id.slice(-1)}`;
+      return {
+        id,
+        threadId,
+        turnId: 'turn-1',
+        phase: 'settle',
+        checkpointId: 'cp-1',
+        commitSha: 'b'.repeat(40),
+        treeSha: 'c'.repeat(40),
+        repoRoot: join(home, '..', 'repo'),
+        restoredAt: '2026-08-16T00:00:00.000Z',
+        previewId,
+        previousTreeSha: 'a'.repeat(40),
+        recoveryRef: `refs/station/restore-recovery/${previewId}`,
+      };
+    };
+    const own = restoreEvent('restore-1', 'thread-1');
+    writeFileSync(
+      join(home, 'checkpoint-restores.json'),
+      JSON.stringify(
+        { version: 1, events: [own, restoreEvent('restore-2', 'thread-2')] },
+        null,
+        2,
+      ),
+    );
+    lines.length = 0;
+    await runCheckpointsCommand(['history', '--thread=thread-1'], {
+      env: { ...process.env, STATION_HOME: home },
+      stdout: (line) => lines.push(line),
+      stderr: () => {},
+    });
+    expect(lines).toEqual([JSON.stringify(own)]);
+
+    writeFileSync(join(home, 'checkpoint-restores.json'), '{corrupt');
     const errors: string[] = [];
-    const request = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            success: true,
-            data: {
-              previewId: 'preview-1',
-              currentTreeSha: 'a'.repeat(40),
-            },
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ success: true, data: { restored: true } }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        ),
-      );
-    await runCheckpointsCommand(
-      ['restore', '--thread=thread-1', '--turn=turn-1'],
-      {
-        env: { ...process.env, STATION_HOME: home },
-        fetch: request,
-        stderr: (line) => errors.push(line),
-        stdout: () => {},
-      },
+    lines.length = 0;
+    await runCheckpointsCommand(['history', '--thread=thread-1'], {
+      env: { ...process.env, STATION_HOME: home },
+      stdout: (line) => lines.push(line),
+      stderr: (line) => errors.push(line),
+    });
+    expect(errors.join('\n')).toMatch(
+      /station checkpoints history: audit unavailable/,
     );
-    expect(request).not.toHaveBeenCalled();
-    expect(errors.join('\n')).toMatch(/requires --confirm/);
+    expect(lines).toEqual([]);
+    expect(process.exitCode).toBe(1);
     process.exitCode = 0;
-    await runCheckpointsCommand(
-      [
-        'restore',
-        '--thread=thread-1',
-        '--turn=turn-1',
-        '--phase=baseline',
-        '--confirm',
-      ],
-      {
-        env: { ...process.env, STATION_HOME: home },
-        fetch: request,
-        stderr: () => {},
-        stdout: () => {},
-      },
-    );
-    expect(request).toHaveBeenNthCalledWith(
-      1,
-      'http://127.0.0.1:3141/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore-preview',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ phase: 'baseline' }),
-      }),
-    );
-    expect(request).toHaveBeenNthCalledWith(
-      2,
-      'http://127.0.0.1:3141/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          confirmed: true,
-          previewId: 'preview-1',
-          expectedCurrentTreeSha: 'a'.repeat(40),
-        }),
-      }),
-    );
   });
 
   it('exposes durable retention outcomes for inspection', async () => {
@@ -457,4 +459,211 @@ describe('station checkpoints (real git, default runner)', () => {
       existsSync(join(repo, '.git', 'STATION_CHECKPOINTS', 'thread-1', 'cp-1')),
     ).toBe(false);
   });
+});
+
+it('previews and confirms only the reviewed checkpoint on the authenticated saved Station', async () => {
+  const home = makeTempDir('station-cp-target-');
+  const credential = 'isolated-checkpoint-bearer';
+  let previewId = randomUUID();
+  const currentTreeSha = 'a'.repeat(40);
+  const preview = {
+    currentTreeSha,
+    threadId: 'thread-1',
+    turnId: 'turn-1',
+    phase: 'baseline',
+    checkpointId: 'cp-1',
+    repoRoot: home,
+    targetTreeSha: 'b'.repeat(40),
+    paths: [{ path: 'src/example.ts', status: 'M' }],
+    pathsTruncated: false,
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  };
+  const requests: Array<{ path: string; body: unknown }> = [];
+  let mode:
+    | 'success'
+    | 'preview-refused'
+    | 'stale'
+    | 'lost'
+    | 'redirect'
+    | 'silent' = 'success';
+  const server = createServer(async (req, res) => {
+    if (req.headers.authorization !== `Bearer ${credential}`) {
+      res.writeHead(401).end();
+      return;
+    }
+    const path = req.url ?? '';
+    const body = await readBody(req);
+    requests.push({ path, body });
+    const send = (status: number, payload: unknown) => {
+      res.writeHead(status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(payload));
+    };
+    if (
+      req.method !== 'POST' ||
+      !path.startsWith(
+        '/api/orchestration/sessions/thread-1/checkpoints/turn-1/',
+      )
+    ) {
+      send(404, { success: false });
+    } else if (path.endsWith('/restore-preview')) {
+      if (mode === 'preview-refused') {
+        send(409, {
+          success: false,
+          error: 'No preview available',
+          reason: 'checkpoint_pruned',
+        });
+      } else {
+        send(200, { success: true, data: { ...preview, previewId } });
+      }
+    } else if (mode === 'stale') {
+      send(409, {
+        success: false,
+        error: 'Workspace changed',
+        reason: 'workspace_changed',
+      });
+    } else if (mode === 'lost') {
+      req.socket.destroy();
+    } else if (mode === 'redirect') {
+      res.writeHead(307, { Location: '/unselected-checkpoint' }).end();
+    } else if (mode !== 'silent') {
+      send(200, {
+        success: true,
+        data: {
+          threadId: 'thread-1',
+          turnId: 'turn-1',
+          previewId,
+          previousTreeSha: currentTreeSha,
+          restored: true,
+        },
+      });
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const apiBase = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const previousCredentialStore = getProfileCredentialStore();
+  const previousExitCode = process.exitCode;
+  const stdout = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  try {
+    vi.stubEnv('STATION_HOME', home);
+    vi.stubEnv('STATION_ROOT', home);
+    vi.stubEnv('STATION_TARGET', undefined);
+    vi.stubEnv('STATION_API_CREDENTIAL', undefined);
+    setProfileCredentialStore({
+      get: (ref) => (ref.id === 'checkpoint-test' ? credential : undefined),
+      set: () => {},
+      delete: () => {},
+      status: () => 'available',
+    });
+    upsertProfile({
+      name: 'checkpoint-test',
+      endpoint: apiBase,
+      credentialRef: { kind: 'station-bearer', id: 'checkpoint-test' },
+      makeDefault: true,
+    });
+    expect(
+      (
+        await fetch(
+          `${apiBase}/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore-preview`,
+          {
+            method: 'POST',
+          },
+        )
+      ).status,
+    ).toBe(401);
+
+    const { runCli } = await import('../cli.js');
+    const args = [
+      'checkpoints',
+      'restore',
+      '--thread=thread-1',
+      '--turn=turn-1',
+    ];
+    const reviewArgs = [
+      ...args,
+      '--station=checkpoint-test',
+      '--phase=baseline',
+    ];
+    const confirmArgs = () => [
+      ...args,
+      `--api-base=${apiBase}/`,
+      `--credential=${credential}`,
+      '--confirm',
+      `--preview-id=${previewId}`,
+      `--expected-current-tree-sha=${currentTreeSha}`,
+    ];
+
+    await runCli([...args, '--confirm']);
+    expect(requests).toEqual([]);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+
+    mode = 'preview-refused';
+    await runCli(reviewArgs);
+    expect(requests).toHaveLength(1);
+    expect(stderr.mock.calls.flat().join('\n')).toContain('checkpoint_pruned');
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+
+    mode = 'success';
+    await runCli(reviewArgs);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual({
+      path: '/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore-preview',
+      body: { phase: 'baseline' },
+    });
+    expect(stdout.mock.calls.flat().join('\n')).toContain('src/example.ts');
+    expect(stdout.mock.calls.flat().join('\n')).toContain(apiBase);
+    expect(stdout.mock.calls.flat().join('\n')).toContain(
+      `--preview-id=${previewId}`,
+    );
+
+    const expectedConfirmation = () => ({
+      path: '/api/orchestration/sessions/thread-1/checkpoints/turn-1/restore',
+      body: {
+        confirmed: true,
+        previewId,
+        expectedCurrentTreeSha: currentTreeSha,
+      },
+    });
+    await runCli(confirmArgs());
+    expect(stdout.mock.calls.flat().join('\n')).toContain(
+      'Restored thread thread-1',
+    );
+    expect(requests[2]).toEqual(expectedConfirmation());
+
+    for (const refusal of ['stale', 'lost', 'redirect', 'silent'] as const) {
+      previewId = randomUUID();
+      await runCli(reviewArgs);
+      expect(stdout.mock.calls.flat().join('\n')).toContain(
+        `--preview-id=${previewId}`,
+      );
+      stdout.mockClear();
+      stderr.mockClear();
+      const before = requests.length;
+      mode = refusal;
+      if (refusal === 'silent') vi.stubEnv('STATION_REQUEST_TIMEOUT_MS', '500');
+      await runCli(confirmArgs());
+      expect(process.exitCode).toBe(1);
+      expect(requests.slice(before)).toEqual([expectedConfirmation()]);
+      const error = stderr.mock.calls.flat().join('\n');
+      expect(error).toContain('Inspect the workspace');
+      if (refusal === 'stale') expect(error).toContain('workspace_changed');
+      if (refusal === 'silent') expect(error).toMatch(/deadline|timed out/i);
+      expect(stdout.mock.calls.flat().join('\n')).not.toContain(
+        'Restored thread',
+      );
+      process.exitCode = 0;
+      mode = 'success';
+    }
+  } finally {
+    stdout.mockRestore();
+    stderr.mockRestore();
+    vi.unstubAllEnvs();
+    setProfileCredentialStore(previousCredentialStore);
+    process.exitCode = previousExitCode;
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

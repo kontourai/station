@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 /**
- * Runs the agent-activity plugin's Kotlin unit tests (model, registration pin,
- * AES-GCM known-answer vectors) without a Rust build (#2516).
+ * Runs the local Android plugins' Kotlin unit tests without a Rust build
+ * (#2516): agent-activity (model, registration pin, AES-GCM known-answer
+ * vectors) and media-intake (share intent shape, image sniffing, contract
+ * bounds). The filename predates the second plugin; CI and the release-ring
+ * pin call it by this name.
  *
  * In a real Android build the plugin reaches Gradle through
  * `src-desktop/gen/android/tauri.settings.gradle`, which only exists after
  * `tauri android build` has compiled the app for an Android target. The unit
- * tests need none of that: they need the plugin's Gradle project and the
- * `:tauri-android` library it depends on. So this script builds a throwaway
- * Gradle root holding exactly those two projects, reusing the checked-in
+ * tests need none of that: they need each plugin's Gradle project and the
+ * `:tauri-android` library they depend on. So this script builds a throwaway
+ * Gradle root holding exactly those projects, reusing the checked-in
  * gen/android root build script, gradle.properties and Gradle wrapper, so the
  * AGP, Kotlin and Gradle versions stay the ones the APK is built with.
  *
@@ -17,7 +20,7 @@
  * the plugin's `.tauri/tauri-api` (DEP_TAURI_ANDROID_LIBRARY_PATH).
  *
  * Fails closed: a Gradle run that executes no tests, or skips a test class
- * under src/test, is a failure, not a pass.
+ * under any plugin's src/test, is a failure, not a pass.
  *
  * Usage: node scripts/run-agent-activity-android-unit-tests.mjs [gradle args...]
  * Needs cargo, a JDK 17+ (JAVA_HOME), and an Android SDK (ANDROID_HOME).
@@ -26,6 +29,7 @@ import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -36,17 +40,17 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const PROJECT = 'tauri-plugin-station-agent-activity';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const genAndroid = join(repoRoot, 'src-desktop', 'gen', 'android');
-const pluginAndroid = join(
-  repoRoot,
-  'src-desktop',
-  'plugins',
-  'agent-activity',
-  'android',
-);
-const testSources = join(pluginAndroid, 'src', 'test', 'java');
+const PLUGINS = ['agent-activity', 'media-intake'].map((dir) => {
+  const android = join(repoRoot, 'src-desktop', 'plugins', dir, 'android');
+  return {
+    project: `tauri-plugin-station-${dir}`,
+    android,
+    testSources: join(android, 'src', 'test', 'java'),
+    testResults: join(android, 'build', 'test-results', 'testDebugUnitTest'),
+  };
+});
 /**
  * Test cases that must be present in their class's report AND pass. A class
  * that runs is not enough: dropping `@Test` from one of these leaves the class
@@ -69,19 +73,62 @@ const REQUIRED_TEST_CASES = Object.freeze({
     'anOlderRetractCannotCancelANewerReShow',
     'onlyItsOwnStationKindAndRegistrationOpenIt',
   ],
+  // Generated WebView input/menu hooks and native image handoff lifetime.
+  'io.kontourai.station.mediaintake.KeyboardImageIntakeTest': [
+    'keyboardCommitReachesTheInstalledReceiver',
+    'unrelatedContentFallsBackToOriginalConnection',
+    'systemPasteMenuRoutesImagesAndKeepsTextPaste',
+    'destroyRecreateKeepsCommandsAndKeyboardReadsAlive',
+    'foreignOriginsCannotReceiveImages',
+    'grantTimeoutBoundsCaptureAndQueuedRead',
+    'generatedWryViewRebindsOnAttachAndDetaches',
+    'keyboardCommitFromImeThreadNeverReadsWebViewState',
+    'detachReleasesPendingGrantBeforeCapture',
+    'activityContextCanBeWrapped',
+  ],
+  // The share receiver's adoption decision, URI guard and contract bounds.
+  'io.kontourai.station.mediaintake.ImageIntakeTest': [
+    'nonImageOrNonShareIntentsYieldNothing',
+    'refusesMoreThanTheContractCountRatherThanTruncating',
+    'refusesAnImageOverTheByteLimit',
+    'refusesASetOverTheTotalByteLimit',
+    'checksActionAndTypeBeforeReadingExtras',
+    'aShareRelaunchedFromRecentsIsIgnored',
+    'extrasThatFailToUnpackAreNotAShare',
+    'aRestoredLaunchIntentWhoseShareWasTakenIsNotReplayed',
+    'aNewerShareIsAdoptedWithItsOwnKey',
+    'aShareOverTheCountIsRefusedNotTruncated',
+    'admitsOnlyContentFromAnotherAppsProvider',
+    'refusesStationsOwnProviders',
+    'aSourceThatIsNotAdmittedRefusesTheReadBeforeAnythingIsOpened',
+    'aMixedClipPastesTheImagesAndSkipsTheRest',
+    'replacesNamesWithFormatOrSeparatorCharacters',
+    'shareKeysDependOnTaskAndStreamsAndStayBounded',
+    'anUntypedItemCountsOnlyWhenTheClipDeclaresImagesAlone',
+  ],
+  // The plugin's wiring: launch vs fresh adoption, marking taken, the URI
+  // guard on every read and its fail-closed lookup, the startup buffer.
+  'io.kontourai.station.mediaintake.ShareIntakeSessionTest': [
+    'loadAdoptsTheLaunchIntentAsALaunch',
+    'loadTreatsABufferedShareAsFresh',
+    'takingAShareRecordsItAsTakenOnce',
+    'shareKeysDependOnTheBoot',
+    'everyReadIsHeldToTheUriGuard',
+    'aFailedOwnProviderLookupRefusesEverySource',
+    'theClipboardNeverAsksTypesOfSourcesItWouldRefuse',
+    'theBufferKeepsTheLatestShareUntilTakenAndDropsOnlyWhatWasDelivered',
+    'onlyAShareReplacesABufferedShare',
+    'anIntentLoadDrainedIsNotAdoptedAgainWhenDelivered',
+    'aTakenShareDoesNotSuppressTheSameTaskAfterAReboot',
+  ],
 });
-const testResults = join(
-  pluginAndroid,
-  'build',
-  'test-results',
-  'testDebugUnitTest',
-);
 
 function fail(message) {
-  console.error(`agent-activity Kotlin unit tests: ${message}`);
+  console.error(`Android plugin Kotlin unit tests: ${message}`);
   process.exit(1);
 }
 
+let resolvedWry;
 function tauriAndroidLibrary() {
   const result = spawnSync(
     'cargo',
@@ -103,9 +150,9 @@ function tauriAndroidLibrary() {
   if (result.error) fail(`cargo metadata did not run: ${result.error.message}`);
   if (result.status !== 0)
     fail(`cargo metadata exited ${result.status ?? result.signal}`);
-  const tauri = JSON.parse(result.stdout).packages.filter(
-    (pkg) => pkg.name === 'tauri',
-  );
+  const packages = JSON.parse(result.stdout).packages;
+  resolvedWry = packages.find((pkg) => pkg.name === 'wry');
+  const tauri = packages.filter((pkg) => pkg.name === 'tauri');
   if (tauri.length !== 1)
     fail(`expected one resolved tauri crate, found ${tauri.length}`);
   const library = join(dirname(tauri[0].manifest_path), 'mobile', 'android');
@@ -114,8 +161,8 @@ function tauriAndroidLibrary() {
   return library;
 }
 
-/** Test classes expected from the sources, as JUnit report names. */
-function expectedTestClasses() {
+/** Test classes expected from one plugin's sources, as JUnit report names. */
+function expectedTestClasses(testSources) {
   const classes = [];
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -136,11 +183,79 @@ function groovyString(value) {
   return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 }
 
-const expected = expectedTestClasses();
+const expected = PLUGINS.flatMap((plugin) =>
+  expectedTestClasses(plugin.testSources).map((name) => ({ plugin, name })),
+);
 const tauriAndroid = tauriAndroidLibrary();
-const root = mkdtempSync(join(tmpdir(), 'agent-activity-unit-tests-'));
+const root = mkdtempSync(join(tmpdir(), 'android-plugin-unit-tests-'));
+// Compile the actual resolved Wry template with Cargo's maintained extension in
+// the media-intake test source set. JNI calls are stubbed; APK packaging is not proved.
+function stageRustWebView(root) {
+  const config = readFileSync(
+    join(repoRoot, 'src-desktop/.cargo/config.toml'),
+    'utf8',
+  );
+  const extension =
+    /^WRY_RUSTWEBVIEW_CLASS_EXTENSION\s*=\s*'''([\s\S]*?)'''/m.exec(
+      config,
+    )?.[1];
+  if (
+    !extension ||
+    ![
+      'connection(this',
+      'actionMode(this',
+      'attached(this',
+      'detached(this',
+    ].every((call) => extension.includes(call))
+  )
+    fail('missing keyboard image RustWebView extension');
+  if (!resolvedWry) fail('no resolved Wry crate');
+  const template = readFileSync(
+    join(
+      dirname(resolvedWry.manifest_path),
+      'src/android/kotlin/RustWebView.kt',
+    ),
+    'utf8',
+  );
+  if (template.split(': WebView(context)').length !== 2)
+    fail('unexpected Wry superclass seam');
+  const source = template
+    // Stub only Chromium-owned superclass results; keep the generated overrides intact.
+    .replace(': WebView(context)', ': HookWebView(context)')
+    .replaceAll('{{package}}', 'station.hookcheck')
+    .replaceAll('{{class-init}}', '')
+    .replaceAll('{{class-extension}}', extension);
+  if (source.includes('{{')) fail('unsubstituted Wry template token');
+  const directory = join(root, 'hook-source');
+  mkdirSync(directory);
+  writeFileSync(join(directory, 'RustWebView.kt'), source);
+  writeFileSync(
+    join(directory, 'Stubs.kt'),
+    `package station.hookcheck
+open class HookWebView(context: android.content.Context): android.webkit.WebView(context) {
+  val originalConnection = android.view.inputmethod.BaseInputConnection(this, false)
+  var actionCallback: android.view.ActionMode.Callback? = null
+  override fun onCreateInputConnection(info: android.view.inputmethod.EditorInfo): android.view.inputmethod.InputConnection? {
+    info.inputType = android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+    return originalConnection
+  }
+  override fun startActionMode(callback: android.view.ActionMode.Callback, type: Int): android.view.ActionMode? {
+    actionCallback = callback
+    return null
+  }
+}
+object Rust {
+  fun shouldOverride(id: String, url: String) = false
+  fun onEval(id: String, request: Int, result: String) {}
+}
+object Logger { fun error(message: String) {} }
+`,
+  );
+  return directory;
+}
 let status = 1;
 try {
+  const hookSource = stageRustWebView(root);
   copyFileSync(
     join(genAndroid, 'build.gradle.kts'),
     join(root, 'build.gradle.kts'),
@@ -152,24 +267,31 @@ try {
   writeFileSync(
     join(root, 'settings.gradle'),
     [
-      "rootProject.name = 'agent-activity-unit-tests'",
+      "rootProject.name = 'android-plugin-unit-tests'",
       "include ':tauri-android'",
       `project(':tauri-android').projectDir = new File(${groovyString(tauriAndroid)})`,
       // Gradle would otherwise write this project's build/ into the shared
       // Cargo registry, which tauri-plugin copies into every plugin's
       // .tauri/tauri-api. Keep it inside this throwaway root.
       'gradle.beforeProject { p ->',
+      "  if (p.name == 'tauri-plugin-station-media-intake') p.afterEvaluate {",
+      `    p.android.sourceSets.test.java.srcDir(${groovyString(hookSource)})`,
+      "    p.dependencies.add('testImplementation', 'androidx.webkit:webkit:1.14.0')",
+      '  }',
       "  if (p.path == ':tauri-android') {",
       `    p.layout.buildDirectory.set(new File(${groovyString(join(root, 'tauri-android-build'))}))`,
       '  }',
       '}',
-      `include ':${PROJECT}'`,
-      `project(':${PROJECT}').projectDir = new File(${groovyString(pluginAndroid)})`,
+      ...PLUGINS.flatMap((plugin) => [
+        `include ':${plugin.project}'`,
+        `project(':${plugin.project}').projectDir = new File(${groovyString(plugin.android)})`,
+      ]),
       '',
     ].join('\n'),
   );
   // Stale reports from an earlier run must not satisfy the check below.
-  rmSync(testResults, { recursive: true, force: true });
+  for (const plugin of PLUGINS)
+    rmSync(plugin.testResults, { recursive: true, force: true });
 
   const gradlew = join(
     genAndroid,
@@ -181,7 +303,7 @@ try {
       '-p',
       root,
       '--console=plain',
-      `:${PROJECT}:testDebugUnitTest`,
+      ...PLUGINS.map((plugin) => `:${plugin.project}:testDebugUnitTest`),
       ...process.argv.slice(2),
     ],
     {
@@ -201,8 +323,8 @@ if (status !== 0)
 
 const missing = [];
 let total = 0;
-for (const name of expected) {
-  const report = join(testResults, `TEST-${name}.xml`);
+for (const { plugin, name } of expected) {
+  const report = join(plugin.testResults, `TEST-${name}.xml`);
   if (!existsSync(report)) {
     missing.push(name);
     continue;
@@ -226,9 +348,9 @@ for (const name of expected) {
   }
 }
 for (const name of Object.keys(REQUIRED_TEST_CASES))
-  if (!expected.includes(name))
-    fail(`required test class ${name} has no source under ${testSources}`);
+  if (!expected.some((entry) => entry.name === name))
+    fail(`required test class ${name} has no source under any plugin`);
 if (missing.length > 0) fail(`no JUnit report for ${missing.join(', ')}`);
 console.log(
-  `agent-activity Kotlin unit tests: ${total} tests passed across ${expected.length} classes`,
+  `Android plugin Kotlin unit tests: ${total} tests passed across ${expected.length} classes`,
 );

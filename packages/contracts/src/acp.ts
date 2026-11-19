@@ -1,3 +1,59 @@
+import {
+  isManagedInstallId,
+  MANAGED_RUNTIME_SCRIPT_TOKEN,
+} from './managed-engine-install.js';
+import { isObjectRecord } from './record-guard.js';
+
+export interface EngineInstallTerminalView {
+  projectSlug: string;
+  projectId: string;
+  bindingKey: string;
+  terminalId: string;
+  operationId?: string;
+  status: 'starting' | 'running' | 'exited' | 'failed';
+  exitCode: number | null;
+}
+
+export interface EngineInstallTerminalSetup {
+  name: string;
+  command: string;
+  allowed: boolean;
+  canStop: boolean;
+  terminal: EngineInstallTerminalView | null;
+}
+
+export interface EngineStationToolsSetup {
+  agentSlug: string | null;
+  supported: boolean;
+  selected: boolean;
+  recommended?: { id: string; name: string; command: string; args: string[] };
+}
+
+/** Safe setup facts: no commands, paths, accounts, or credential values. */
+export interface ACPEngineSetupEntry {
+  id: string;
+  name: string;
+  source: 'core' | 'plugin' | 'custom';
+  detected: boolean | null;
+  configured: boolean;
+  enabled: boolean;
+  status: ACPStatusValue | 'not-connected';
+  setupPath: string;
+  handshakeObservedAt: string | null;
+  /** An advertised channel is not proof that tools were delivered to a turn. */
+  httpTools: 'advertised' | 'not-advertised' | 'unknown';
+  connectionId: string | null;
+  relatedConnectionIds: string[];
+  nextAction:
+    | 'install'
+    | 'connect'
+    | 'enable'
+    | 'check'
+    | 'inspect'
+    | 'review-setup'
+    | 'choose-existing';
+}
+
 export interface ACPConnectionConfig {
   id: string;
   name: string;
@@ -88,10 +144,34 @@ export interface ACPConnectionRegistryEntry {
   /** Data only, not yet applied: nothing renders it today. */
   homepageUrl?: string;
   /**
+   * An engine runtime Station installs itself from a pinned manifest
+   * (`@kontourai/station-contracts/managed-engine-install`) and runs with
+   * these arguments. Accepted only from built-in entries; a plugin entry that
+   * carries one is refused, like `launchEnv`.
+   */
+  managedRuntime?: ACPManagedRuntimeDescriptor;
+  /**
+   * The oldest engine version this entry's `args` work with. Read only from
+   * built-in entries, and only after a check of the engine has failed for a
+   * reason other than sign-in, so an older install is named as one instead of
+   * a startup that never answers.
+   */
+  minimumVersion?: ACPEngineMinimumVersion;
+  /**
    * Server projection: `install` for the platform Station runs on. Not part
    * of a descriptor; producers leave it unset.
    */
   hostInstall?: ACPEngineInstallRecipe;
+}
+
+/**
+ * How a built-in entry runs a managed install. `installId` names the pin; the
+ * install's runtime is the program, and `argv` its arguments, where exactly one
+ * argument is `{script}`, replaced by the install's entry script.
+ */
+export interface ACPManagedRuntimeDescriptor {
+  installId: string;
+  argv: string[];
 }
 
 export const ACP_PUBLIC_REGISTRY_DISTRIBUTIONS = [
@@ -182,7 +262,48 @@ export type ACPEngineInstallRecipes = Partial<
   Record<ACPEngineInstallPlatform, ACPEngineInstallRecipe>
 >;
 
+/**
+ * How Station tells an engine install is too old for its built-in entry.
+ * The version is the first `major.minor.patch` the command prints on stdout;
+ * output without one leaves the version unknown, never "too old".
+ */
+export interface ACPEngineMinimumVersion {
+  /** A non-interactive command (argv, no shell) documented to print the installed version. */
+  versionCommand: string[];
+  /** The oldest working version, `major.minor.patch`. */
+  minimum: string;
+  /** How to update, in one sentence. Shown, never run. */
+  updateHint: string;
+}
+
+/** `major.minor.patch` with plain decimal parts. */
+const PLAIN_SEMVER = /^(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/;
+
+/** The first `major.minor.patch` in a version command's output, or undefined. */
+export function readEngineVersion(output: string): string | undefined {
+  return /\b\d{1,6}\.\d{1,6}\.\d{1,6}\b/.exec(output)?.[0];
+}
+
+/** Negative when `a` is older than `b`; both must be plain `major.minor.patch`. */
+export function compareEngineVersions(a: string, b: string): number {
+  const left = a.split('.').map(Number);
+  const right = b.split('.').map(Number);
+  for (let index = 0; index < 3; index++) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
 export interface ACPEngineAuthDescriptor {
+  /** Reviewed built-in CLI login, offered only after its help advertises the required flag. */
+  terminalLogin?: {
+    id: string;
+    name: string;
+    args: string[];
+    helpArgs: string[];
+    requiredHelpText: string;
+  };
   /**
    * A non-interactive command (argv, no shell) documented to report sign-in
    * status. Run only from built-in entries, and only together with
@@ -251,6 +372,8 @@ export const ACP_LAUNCH_ENV_PREFIXES = [
   'DROID_',
   'FACTORY_',
   'AUGMENT_',
+  // KIRO_CLI_CLIENT_APPLICATION names the client to kiro-cli.
+  'KIRO_CLI_',
 ] as const;
 /**
  * Characters that render as nothing (Unicode Default_Ignorable_Code_Point:
@@ -325,10 +448,6 @@ function isHttpsUrl(value: unknown): boolean {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function boundedStringList(
   value: unknown,
   field: string,
@@ -357,7 +476,7 @@ function validateStatusRule(
   statusCommand: unknown,
   errors: string[],
 ): void {
-  if (!isRecord(rule)) {
+  if (!isObjectRecord(rule)) {
     errors.push('auth.statusRule must be an object');
     return;
   }
@@ -434,7 +553,7 @@ function validateTermsNotices(notices: unknown, errors: string[]): void {
   }
   notices.forEach((notice, index) => {
     const at = `auth.subscriptionTermsNotices[${index}]`;
-    if (!isRecord(notice)) {
+    if (!isObjectRecord(notice)) {
       errors.push(`${at} must be an object`);
       return;
     }
@@ -470,6 +589,8 @@ export function validateACPEngineDescriptor(
       | 'platforms'
       | 'auth'
       | 'homepageUrl'
+      | 'managedRuntime'
+      | 'minimumVersion'
     >
   >,
 ): string[] {
@@ -499,7 +620,7 @@ export function validateACPEngineDescriptor(
   }
 
   if (entry.install !== undefined) {
-    if (!isRecord(entry.install)) {
+    if (!isObjectRecord(entry.install)) {
       errors.push('install must be an object keyed by platform');
     } else {
       for (const [platform, recipe] of Object.entries(entry.install)) {
@@ -512,7 +633,7 @@ export function validateACPEngineDescriptor(
           errors.push(`${at}: unknown platform`);
           continue;
         }
-        if (!isRecord(recipe)) {
+        if (!isObjectRecord(recipe)) {
           errors.push(`${at} must be an object`);
           continue;
         }
@@ -542,7 +663,7 @@ export function validateACPEngineDescriptor(
 
   const credentialEnvVars = new Set(entry.auth?.credentialEnvVars ?? []);
   if (entry.launchEnv !== undefined) {
-    if (!isRecord(entry.launchEnv)) {
+    if (!isObjectRecord(entry.launchEnv)) {
       errors.push('launchEnv must be an object');
     } else {
       const names = Object.keys(entry.launchEnv);
@@ -578,10 +699,30 @@ export function validateACPEngineDescriptor(
   }
 
   if (entry.auth !== undefined) {
-    if (!isRecord(entry.auth)) {
+    if (!isObjectRecord(entry.auth)) {
       errors.push('auth must be an object');
     } else {
       const auth = entry.auth;
+      if (auth.terminalLogin !== undefined) {
+        const login = auth.terminalLogin;
+        if (
+          !isObjectRecord(login) ||
+          !isBoundedText(login.id) ||
+          !isBoundedText(login.name) ||
+          !isBoundedText(login.requiredHelpText)
+        )
+          errors.push(
+            'auth.terminalLogin needs bounded id, name and requiredHelpText',
+          );
+        if (isObjectRecord(login)) {
+          boundedStringList(login.args, 'auth.terminalLogin.args', errors);
+          boundedStringList(
+            login.helpArgs,
+            'auth.terminalLogin.helpArgs',
+            errors,
+          );
+        }
+      }
       if (auth.statusCommand !== undefined) {
         boundedStringList(auth.statusCommand, 'auth.statusCommand', errors);
       }
@@ -611,7 +752,64 @@ export function validateACPEngineDescriptor(
       }
     }
   }
+  if (entry.managedRuntime !== undefined) {
+    validateManagedRuntime(entry.managedRuntime, errors);
+  }
+  if (entry.minimumVersion !== undefined) {
+    validateMinimumVersion(entry.minimumVersion, errors);
+  }
   return errors;
+}
+
+function validateMinimumVersion(value: unknown, errors: string[]): void {
+  if (!isObjectRecord(value)) {
+    errors.push('minimumVersion must be an object');
+    return;
+  }
+  const { versionCommand, minimum, updateHint, ...rest } = value;
+  if (Object.keys(rest).length > 0) {
+    errors.push(
+      `minimumVersion: unknown field ${Object.keys(rest).join(', ')}`,
+    );
+  }
+  boundedStringList(versionCommand, 'minimumVersion.versionCommand', errors);
+  if (typeof minimum !== 'string' || !PLAIN_SEMVER.test(minimum)) {
+    errors.push('minimumVersion.minimum must be major.minor.patch');
+  }
+  if (!isBoundedText(updateHint)) {
+    errors.push('minimumVersion.updateHint is not valid');
+  }
+}
+
+function validateManagedRuntime(value: unknown, errors: string[]): void {
+  if (!isObjectRecord(value)) {
+    errors.push('managedRuntime must be an object');
+    return;
+  }
+  const { installId, argv, ...rest } = value;
+  if (Object.keys(rest).length > 0) {
+    errors.push(
+      `managedRuntime: unknown field ${Object.keys(rest).join(', ')}`,
+    );
+  }
+  if (!isManagedInstallId(installId)) {
+    errors.push('managedRuntime.installId is not valid');
+  }
+  if (argv === undefined) {
+    errors.push('managedRuntime.argv is required');
+    return;
+  }
+  const before = errors.length;
+  boundedStringList(argv, 'managedRuntime.argv', errors);
+  if (errors.length > before) return;
+  const scripts = (argv as string[]).filter(
+    (arg) => arg === MANAGED_RUNTIME_SCRIPT_TOKEN,
+  ).length;
+  if (scripts !== 1) {
+    errors.push(
+      `managedRuntime.argv must contain ${MANAGED_RUNTIME_SCRIPT_TOKEN} exactly once`,
+    );
+  }
 }
 
 /** Whether an entry launches on a host platform (`process.platform` value). */

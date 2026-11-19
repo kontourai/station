@@ -33,6 +33,7 @@ import {
   CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
   incompleteDiagnosticReasons,
 } from './lib/changed-verification-diagnostics.mjs';
+import { directUiComponentImporterTests } from './lib/dependency-change-scan.mjs';
 import {
   FAST_CHECKS_PLAN_KIND,
   FAST_CHECKS_SHARD_COUNT,
@@ -75,6 +76,7 @@ import {
   isEscalationPath,
   matches,
   mergeQueueRegressionPaths,
+  NATIVE_LITERAL_PIN_REASON,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from './test-impact-manifest.mjs';
@@ -86,6 +88,7 @@ import {
 } from './workspace-dependency-provenance.mjs';
 
 const receiptValidator = new Ajv2020({ strict: true }).compile(receiptSchema);
+const LOCAL_DEFERRED_TEST_CAP = 32;
 const FAILURE_IDENTITY_LIMIT = 20;
 const FAILURE_NAME_LIMIT = 512;
 const FAILURE_EXCERPT_LIMIT = CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES;
@@ -122,16 +125,81 @@ const RELATED_DISCOVERY_SETTLEMENT_MS = 5_000;
 const CHANGED_CHILD_OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
 const VITEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const RELATED_DISCOVERY_SOURCE = `
-import { relative, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { createRequire } from 'node:module';
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { createVitest } from 'vitest/node';
 const root = process.cwd();
-const deferGlobalTriggers = process.argv[1] === '--defer-global-triggers';
-const related = process.argv.slice(deferGlobalTriggers ? 2 : 1);
+const args = process.argv.slice(1);
+const deferGlobalTriggers = args[0] === '--defer-global-triggers';
+if (deferGlobalTriggers) args.shift();
+const ESCALATED = '--escalated-importers=';
+const escalated = args[0]?.startsWith(ESCALATED) ? JSON.parse(args.shift().slice(ESCALATED.length)) : undefined;
+const related = args;
 const vitest = await createVitest('test', {
   root, watch: false, run: true, passWithNoTests: true, related,
 });
+const repoPath = (path) => relative(root, path).split(sep).join('/');
+// The suites within two import edges of each escalated seed, read from the
+// same Vite SSR module graph getRelevantTestSpecifications walks (and reusing
+// its transforms when it already walked them). Seeds and graph modules are
+// compared by real path, as Vite resolves them. A list is emitted only within
+// its limit, so a wide seed reports a count, not an unbounded output. A seed
+// with no suite within two edges is looked up in the whole graph, so a file
+// the graph does not hold is not reported as merely unimported.
+async function escalatedImporters({ seeds, limits }) {
+  const reals = new Map();
+  const real = (path) => {
+    if (!reals.has(path)) reals.set(path, realpathSync(path));
+    return reals.get(path);
+  };
+  const direct = new Map();
+  const depsOf = (project, id) => {
+    const key = project.name + '\\0' + id;
+    if (!direct.has(key)) direct.set(key, (async () => {
+      const ssr = project.vite.environments.ssr;
+      const transformed = ssr.moduleGraph.getModuleById(id)?.transformResult || await ssr.transformRequest(id);
+      if (!transformed) return [];
+      return [...new Set([...(transformed.deps || []), ...(transformed.dynamicDeps || [])].map((dep) =>
+        dep.startsWith('/@fs/') ? dep.slice(process.platform === 'win32' ? 5 : 4) : join(project.config.root, dep))
+        .filter((path) => !path.includes('node_modules') && existsSync(path)).map(real))];
+    })());
+    return direct.get(key);
+  };
+  const bySeed = new Map(seeds.map((seed) => [real(seed), seed]));
+  const hits = new Map(seeds.map((seed) => [seed, { depth1: new Set(), depth2: new Set() }]));
+  const hit = (path) => hits.get(bySeed.get(path));
+  const specifications = await vitest.globTestSpecifications();
+  await Promise.all(specifications.map(async (specification) => {
+    const test = repoPath(specification.moduleId);
+    const first = await depsOf(specification.project, specification.moduleId);
+    for (const dep of first) {
+      const found = hit(dep);
+      if (found) { found.depth1.add(test); found.depth2.add(test); }
+    }
+    for (const deps of await Promise.all(first.map((dep) => depsOf(specification.project, dep))))
+      for (const dep of deps) hit(dep)?.depth2.add(test);
+  }));
+  let graph;
+  if (seeds.some((seed) => hits.get(seed).depth2.size === 0)) {
+    graph = new Set();
+    const visit = async (project, id) => {
+      if (graph.has(id)) return;
+      graph.add(id);
+      await Promise.all((await depsOf(project, id)).map((dep) => visit(project, dep)));
+    };
+    await Promise.all(specifications.map((specification) => visit(specification.project, real(specification.moduleId))));
+  }
+  const emitted = (set, limit) => (set.size <= limit ? [...set].sort() : undefined);
+  const entries = seeds.map((seed) => {
+    const { depth1, depth2 } = hits.get(seed);
+    return { seed, inGraph: depth2.size > 0 || graph.has(real(seed)), depth1Count: depth1.size, depth2Count: depth2.size, depth1: emitted(depth1, limits.depth1), depth2: emitted(depth2, limits.depth2) };
+  });
+  const tests = [...new Set(entries.flatMap((entry) => [...(entry.depth1 ?? []), ...(entry.depth2 ?? [])]))].sort();
+  const index = new Map(tests.map((test, position) => [test, position]));
+  const indexed = (list) => (list === undefined ? undefined : list.map((test) => index.get(test)));
+  return { tests, seeds: entries.map((entry) => ({ ...entry, depth1: indexed(entry.depth1), depth2: indexed(entry.depth2) })) };
+}
 try {
   const globalTriggeredPaths = [];
   if (deferGlobalTriggers) {
@@ -145,8 +213,9 @@ try {
     });
   }
   const specifications = await vitest.getRelevantTestSpecifications();
-  const files = [...new Set(specifications.map((item) => relative(root, item.moduleId).split(sep).join('/')))].sort();
-  process.stdout.write(JSON.stringify(deferGlobalTriggers ? { files, globalTriggeredPaths } : files));
+  const files = [...new Set(specifications.map((item) => repoPath(item.moduleId)))].sort();
+  const importers = escalated ? { escalatedImporters: await escalatedImporters(escalated) } : {};
+  process.stdout.write(JSON.stringify(deferGlobalTriggers ? { files, globalTriggeredPaths, ...importers } : files));
 } finally { await vitest.close(); }
 `;
 
@@ -172,6 +241,220 @@ export function parseRelatedTestDiscovery(result) {
   // could not run. Conflating the two made a data-only diff read as a broken
   // runner (#1757).
   return parsed;
+}
+
+/**
+ * An escalated path (`ESCALATION_PATHS`: shared packages, contracts, root
+ * configuration) records the `ci-fast` lane and skips related discovery,
+ * because most of the corpus imports it. #4935, #4999 and #5010 reached
+ * `main` breaking suites that import such a file directly or through one
+ * module. The hosted plan therefore also runs the suites within two import
+ * edges of each escalated file when there are at most `depth2` of them, else
+ * those within one edge when there are at most `depth1`, else none. Every
+ * path whose suites do not run here is named in a `ci-fast` reason. A file
+ * re-exported through a widely imported barrel (`packages/contracts/src/
+ * index.ts`) is often over the two-edge limit and so gets only its direct
+ * importers, which may be none. The `ci-fast` obligation is reported either
+ * way: running near importers narrows what it leaves unrun, it does not
+ * discharge it.
+ *
+ * @typedef {{
+ *   path: string,
+ *   inGraph: boolean,
+ *   depth1Count: number,
+ *   depth2Count: number,
+ *   depth1?: string[],
+ *   depth2?: string[],
+ * }} EscalatedImporterReport
+ */
+export const ESCALATED_IMPORTER_LIMITS = Object.freeze({
+  depth1: 100,
+  depth2: 100,
+});
+/**
+ * The most suites the rule may add to one plan beyond those the plan runs
+ * anyway. The worst of the 150 merges before 2026-11-16 added 95; a plan's
+ * four shards run up to about 2,400 files. Above the cap the rule adds none.
+ */
+export const ESCALATED_IMPORTER_TOTAL_CAP = 250;
+export const ESCALATED_IMPORTER_DEFERRAL_REASON =
+  'escalated path has more importing suites than the plan runs inline';
+export const ESCALATED_IMPORTER_UNCOVERED_REASON =
+  'escalated path has no importing suite within the bound';
+export const ESCALATED_IMPORTER_ABSENT_REASON =
+  "escalated path is not in Vitest's module graph";
+export const ESCALATED_IMPORTER_CAP_REASON =
+  'escalated paths would add more suites than the total cap, so none were added';
+/** Files Vitest can import: a seed of any other kind has no importer. */
+const ESCALATED_IMPORTER_SEED = /\.(?:[cm]?[jt]sx?|json)$/;
+
+function importerList(value, count, limit, tests) {
+  if (count > limit) {
+    if (value !== undefined) throw new Error('an importer list over its limit');
+    return undefined;
+  }
+  if (
+    !Array.isArray(value) ||
+    value.length !== count ||
+    new Set(value).size !== count ||
+    value.some((index) => !Number.isSafeInteger(index) || !tests[index])
+  )
+    throw new Error('an importer list does not match its count');
+  return value.map((index) => tests[index]).sort();
+}
+
+/**
+ * Strictly parses the child's report for exactly the seeds it was given: an
+ * absent, extra or reordered seed, a count without its list, a list over its
+ * limit, or a path that is not a Vitest file is refused, so a malformed
+ * report fails the plan rather than selecting less.
+ *
+ * @returns {EscalatedImporterReport[]}
+ */
+function parseEscalatedImporters(
+  root,
+  seeds,
+  metadata,
+  limits = ESCALATED_IMPORTER_LIMITS,
+) {
+  const report = metadata?.escalatedImporters;
+  try {
+    if (
+      !report ||
+      !Array.isArray(report.tests) ||
+      report.tests.some(
+        (test) => typeof test !== 'string' || !VITEST_FILE_PATTERN.test(test),
+      ) ||
+      new Set(report.tests).size !== report.tests.length ||
+      !Array.isArray(report.seeds) ||
+      report.seeds.length !== seeds.length
+    )
+      throw new Error('a malformed report');
+    return seeds.map((path, position) => {
+      const entry = report.seeds[position];
+      if (
+        entry?.seed !== resolve(root, path) ||
+        typeof entry.inGraph !== 'boolean' ||
+        !Number.isSafeInteger(entry.depth1Count) ||
+        !Number.isSafeInteger(entry.depth2Count) ||
+        entry.depth1Count < 0 ||
+        entry.depth2Count < entry.depth1Count ||
+        (!entry.inGraph && entry.depth2Count > 0)
+      )
+        throw new Error(`a malformed entry for ${path}`);
+      const depth1 = importerList(
+        entry.depth1,
+        entry.depth1Count,
+        limits.depth1,
+        report.tests,
+      );
+      const depth2 = importerList(
+        entry.depth2,
+        entry.depth2Count,
+        limits.depth2,
+        report.tests,
+      );
+      return {
+        path,
+        inGraph: entry.inGraph,
+        depth1Count: entry.depth1Count,
+        depth2Count: entry.depth2Count,
+        ...(depth1 ? { depth1 } : {}),
+        ...(depth2 ? { depth2 } : {}),
+      };
+    });
+  } catch (error) {
+    throw new Error(
+      `Invalid escalated importer discovery metadata: ${error.message}`,
+    );
+  }
+}
+
+/**
+ * Two import edges when within `depth2`, else one when within `depth1`, else
+ * deferred. Only a non-empty set is `selected`: an empty one, a path over
+ * both limits, and a path the graph does not hold each carry the `ci-fast`
+ * reason that names it. A path over both limits selects none of its
+ * importers, never an arbitrary part of them.
+ *
+ * @param {EscalatedImporterReport[]} reports
+ */
+export function decideEscalatedImporters(
+  reports,
+  limits = ESCALATED_IMPORTER_LIMITS,
+) {
+  return reports.map(
+    ({ path, inGraph, depth1Count, depth2Count, depth1, depth2 }) => {
+      const counts = { depth1Count, depth2Count };
+      if (!inGraph)
+        return {
+          path,
+          disposition: 'not-in-graph',
+          depth: null,
+          tests: [],
+          ...counts,
+          reason: `${ESCALATED_IMPORTER_ABSENT_REASON}: ${path}`,
+        };
+      const chosen =
+        depth2Count <= limits.depth2
+          ? { depth: 2, tests: depth2 }
+          : depth1Count <= limits.depth1
+            ? { depth: 1, tests: depth1 }
+            : undefined;
+      if (!chosen)
+        return {
+          path,
+          disposition: 'deferred',
+          depth: null,
+          tests: [],
+          ...counts,
+          reason: `${ESCALATED_IMPORTER_DEFERRAL_REASON}: ${path} (${depth1Count} import it directly, above ${limits.depth1})`,
+        };
+      if (chosen.tests.length === 0)
+        return {
+          path,
+          disposition: 'no-suite-within-bound',
+          depth: null,
+          tests: [],
+          ...counts,
+          reason: `${ESCALATED_IMPORTER_UNCOVERED_REASON}: ${path} (${
+            chosen.depth === 2
+              ? 'none within two imports'
+              : `${depth2Count} within two imports, above ${limits.depth2}; none directly`
+          })`,
+        };
+      return { path, disposition: 'selected', ...chosen, ...counts };
+    },
+  );
+}
+
+/**
+ * Applies the total cap to the suites the rule would add beyond `planned`:
+ * within it, every selected path's suites run; above it, none do, each such
+ * path is marked `over-total-cap`, and one reason gives the count.
+ *
+ * @param {ReturnType<typeof decideEscalatedImporters>} decisions
+ * @param {Iterable<string>} planned
+ */
+export function capEscalatedImporters(
+  decisions,
+  planned,
+  cap = ESCALATED_IMPORTER_TOTAL_CAP,
+) {
+  const already = new Set(planned);
+  const suites = [...new Set(decisions.flatMap(({ tests }) => tests))].sort();
+  const added = suites.filter((test) => !already.has(test));
+  if (added.length <= cap) return { decisions, suites, added };
+  return {
+    decisions: decisions.map((decision) =>
+      decision.disposition === 'selected'
+        ? { ...decision, disposition: 'over-total-cap', tests: [] }
+        : decision,
+    ),
+    suites: [],
+    added: [],
+    reason: `${ESCALATED_IMPORTER_CAP_REASON}: ${added.length} not otherwise planned, above ${cap}`,
+  };
 }
 
 function withoutChangedDeadline(env) {
@@ -232,6 +515,7 @@ export async function runOwnedChangedCommand(
   };
   let cleanupPromise;
   let cancellation;
+  let timedOut = false;
   let resolveCancellation;
   const cancellationRequested = new Promise((resolveCancellationPromise) => {
     resolveCancellation = resolveCancellationPromise;
@@ -259,10 +543,10 @@ export async function runOwnedChangedCommand(
   signal?.addEventListener?.('abort', abort, { once: true });
   let timer;
   if (timeoutMs !== undefined)
-    timer = setTimeout(
-      () => void cancel(`timed out after ${timeoutMs}ms`),
-      timeoutMs,
-    );
+    timer = setTimeout(() => {
+      if (cancellation === undefined) timedOut = true;
+      void cancel(`timed out after ${timeoutMs}ms`);
+    }, timeoutMs);
   try {
     if (signal?.aborted) abort();
     const completed = await Promise.race([
@@ -293,6 +577,9 @@ export async function runOwnedChangedCommand(
       stdout: captured.stdout.text,
       stderr: captured.stderr.text,
       launch,
+      ...(timedOut && completed.kind === 'cancelled' && !unsafeOutput
+        ? { timedOut: true }
+        : {}),
       cleanup: treeAlive
         ? // The canonical receipt has no unknown cardinality. One is a
           // conservative nonzero sentinel when settlement cannot establish
@@ -380,6 +667,8 @@ export function changedDeadlineFromEnv(env = process.env) {
  * @param {(timeoutMs: number) => void} [options.onTimeout] told the timeout the child runs under
  * @param {boolean} [options.deferGlobalTriggers] Preserve global reruns as hosted deferred obligations.
  * @param {(paths: string[]) => void} [options.onGlobalTriggeredPaths] Records configured global seeds omitted from related discovery.
+ * @param {string[]} [options.escalatedSeeds] escalated changed paths whose near importers to report (hosted only)
+ * @param {(entries: EscalatedImporterReport[]) => void} [options.onEscalatedImporters] receives them
  */
 export async function discoverRelatedTestFiles(
   root,
@@ -404,18 +693,28 @@ export async function discoverRelatedTestFiles(
     onTimeout = () => {},
     deferGlobalTriggers = false,
     onGlobalTriggeredPaths = () => {},
+    escalatedSeeds = [],
+    onEscalatedImporters = () => {},
   } = {},
 ) {
-  if (!Array.isArray(relatedPaths) || relatedPaths.length === 0)
+  if (
+    !Array.isArray(relatedPaths) ||
+    (relatedPaths.length === 0 && escalatedSeeds.length === 0)
+  )
     throw new Error('Related Vitest discovery requires at least one path');
+  // Only the hosted plan reads the metadata object the seeds are reported in.
+  if (escalatedSeeds.length > 0 && !deferGlobalTriggers)
+    throw new Error('Escalated importer discovery is a hosted-plan query');
   if (timeoutMs !== undefined) assertDiscoveryTimeout(timeoutMs);
   let result;
   try {
-    const refined = refine(root, relatedPaths, { base });
+    const refined = relatedPaths.length
+      ? refine(root, relatedPaths, { base })
+      : { paths: [], decisions: [] };
     for (const decision of refined.decisions) reportRefinement(decision);
     // Every refined path reached no file outside SDK source: nothing imports
     // it, which is discovery's empty answer, not a failure.
-    if (refined.paths.length === 0) return [];
+    if (refined.paths.length === 0 && escalatedSeeds.length === 0) return [];
     // Derived here, after refinement, so the child gets what is actually left.
     const childTimeoutMs =
       timeoutMs ?? relatedDiscoveryTimeoutMs({ deadlineAt, now });
@@ -427,6 +726,14 @@ export async function discoverRelatedTestFiles(
         '--eval',
         RELATED_DISCOVERY_SOURCE,
         ...(deferGlobalTriggers ? ['--', '--defer-global-triggers'] : []),
+        ...(escalatedSeeds.length
+          ? [
+              `--escalated-importers=${JSON.stringify({
+                seeds: escalatedSeeds.map((path) => resolve(root, path)),
+                limits: ESCALATED_IMPORTER_LIMITS,
+              })}`,
+            ]
+          : []),
         ...refined.paths.map((path) => resolve(root, path)),
       ],
       {
@@ -462,15 +769,29 @@ export async function discoverRelatedTestFiles(
     onGlobalTriggeredPaths(
       metadata.globalTriggeredPaths.map((path) => allowed.get(path)),
     );
+    if (escalatedSeeds.length)
+      onEscalatedImporters(
+        parseEscalatedImporters(root, escalatedSeeds, metadata),
+      );
     return files;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Keep the failed preparation distinct from a completed discovery
+    // whose answer contained no test files.
     const discoveryError = new Error(
-      error instanceof Error ? error.message : String(error),
+      escalatedSeeds.length
+        ? `${message} (with the escalated-importer query for ${escalatedSeeds.length} path(s))`
+        : message,
       { cause: error },
     );
     discoveryError.phase = 'related-discovery';
     discoveryError.childStarted = result?.launch?.started === true;
     discoveryError.cleanup = result?.cleanup;
+    discoveryError.timedOut =
+      result?.timedOut === true &&
+      discoveryError.childStarted &&
+      result.cleanup?.status === 'passed' &&
+      result.cleanup.survivingOwnedChildren === 0;
     throw discoveryError;
   }
 }
@@ -601,6 +922,9 @@ export function selectChangedVerification(
   // structured so execution can tell them from escalations (see
   // prepareChangedSelection) without reading reason text.
   const supplementalDeferrals = [];
+  // Paths that escalated for being an escalation path, kept structured so
+  // the hosted plan can find their near importers without reading reasons.
+  const escalationPaths = [];
   let escalated = false;
   const changed = new Set(paths);
   for (const path of paths) {
@@ -642,6 +966,7 @@ export function selectChangedVerification(
       boundaryEdges.some((edge) => edge.tests?.length || edge.lanes?.length);
     if (isEscalationPath(path) && !hasExplicitBoundary) {
       addReason(lanes, 'ci-fast', `escalation: ${path}`);
+      escalationPaths.push(path);
       escalated = true;
       continue;
     }
@@ -685,6 +1010,7 @@ export function selectChangedVerification(
     relatedPaths: [...relatedPaths].sort(),
     ownedRelatedPaths: [...ownedRelatedPaths].sort(),
     supplementalDeferrals,
+    escalationPaths: [...new Set(escalationPaths)].sort(),
     escalated,
   };
 }
@@ -1054,7 +1380,11 @@ export async function planChangedVitestGroups(
     partition = partitionVitestResourceSubset,
   } = {},
 ) {
-  const relatedTests = selection.relatedPaths.length
+  // Escalated seeds (hosted plan only) ride the same discovery child.
+  const discovers =
+    selection.relatedPaths.length > 0 ||
+    (selection.escalatedSeeds?.length ?? 0) > 0;
+  const relatedTests = discovers
     ? await discoverRelated(root, selection.relatedPaths)
     : [];
   const candidates = [
@@ -1066,9 +1396,9 @@ export async function planChangedVitestGroups(
   // Discovery ran and matched nothing. That is an empty plan, not a planning
   // failure, so it must not reach validateSelectedTestFiles -- whose empty
   // throw is the fail-closed guard for a selection that was supposed to hold
-  // files. Only a related-path selection can land here: an explicit test
+  // files. Only a discovering selection can land here: an explicit test
   // target always contributes its own path.
-  if (candidates.length === 0 && selection.relatedPaths.length > 0) return null;
+  if (candidates.length === 0 && discovers) return null;
   const selected = validateSelectedTestFiles(root, candidates);
   const groups = partition(selected, { root });
   const kind = selection.relatedPaths.length
@@ -1643,6 +1973,11 @@ export function renderChangedVerificationSummary(result) {
           `[test:changed] remedy: ${result.emptyRelatedSelection.remedy ?? EMPTY_RELATED_SELECTION_REMEDY}`,
         ]
       : []),
+    ...(result.localUiImporters
+      ? [
+          `[test:changed] direct UI component importer suites: ${result.localUiImporters.tests.length} ${result.localUiImporters.disposition === 'cap-exceeded' ? `omitted (combined selection exceeds ${result.localUiImporters.cap})` : 'selected'}`,
+        ]
+      : []),
     `[test:changed] lanes: ${lanes.rendered}`,
     `[test:changed] product laws: ${laws.rendered}`,
     `[test:changed] detail: ${CHANGED_SELECTION_ARTIFACT}${truncated ? ' (terminal names truncated; full selection is in the artifact)' : ''}`,
@@ -1870,14 +2205,17 @@ export function prepareChangedSelection(
         ((path) => fileAtRevision(root, changed.mergeBase, path)),
     }),
   ];
+  // The escalation paths feed only the hosted plan's near-importer query;
+  // the selection itself (and the local profile) stays exactly as it was.
+  const { escalationPaths, ...selected } = selectChangedVerification(
+    changed.paths,
+    manifest,
+  );
   const escalated = escalateUnavailableExplicitTests(
-    escalateUnavailableRelatedPaths(
-      selectChangedVerification(changed.paths, manifest),
-      {
-        root,
-        pathExists,
-      },
-    ),
+    escalateUnavailableRelatedPaths(selected, {
+      root,
+      pathExists,
+    }),
     { root, pathExists },
   );
   const productLawRouting = withProductLawDispositions(
@@ -1893,6 +2231,72 @@ export function prepareChangedSelection(
   const deferredOnly = preserveMappedTargets
     ? new Set((selection.supplementalDeferrals ?? []).map(({ path }) => path))
     : supplementalOnlyDeferredPaths(selection);
+  // The local profile runs an escalated diff's explicit tests only up to 32
+  // of them. A test that only a derived native-literal edge selected is the
+  // first to go, so those edges cannot push a diff over the bound and leave
+  // local feedback with none; the hosted plan keeps every one.
+  const withoutNativeOnly = selection.tests.filter(
+    (entry) =>
+      !entry.reasons.every((reason) =>
+        reason.startsWith(NATIVE_LITERAL_PIN_REASON),
+      ),
+  );
+  const localTests =
+    selection.tests.length <= LOCAL_DEFERRED_TEST_CAP
+      ? selection.tests
+      : withoutNativeOnly;
+  const existingLocalTests =
+    localTests.length <= LOCAL_DEFERRED_TEST_CAP
+      ? localTests.filter((entry) => pathExists(resolve(root, entry.path)))
+      : [];
+  const droppedComponents =
+    preserveMappedTargets || !selection.lanes.length
+      ? []
+      : changed.paths.filter(
+          (path) =>
+            path.startsWith('src-ui/src/components/') &&
+            /\.[cm]?tsx?$/.test(path) &&
+            !VITEST_FILE_PATTERN.test(path) &&
+            pathExists(resolve(root, path)) &&
+            (!deferredOnly ||
+              deferredOnly.has(path) ||
+              !selection.relatedPaths.includes(path)),
+        );
+  const localTestPaths = new Set(localTests.map(({ path }) => path));
+  const addedImporters = directUiComponentImporterTests(
+    root,
+    droppedComponents,
+  ).filter(({ path }) => !localTestPaths.has(path));
+  const importersFit =
+    localTests.length <= LOCAL_DEFERRED_TEST_CAP &&
+    existingLocalTests.length + addedImporters.length <=
+      LOCAL_DEFERRED_TEST_CAP;
+  const localUiImporters = addedImporters.length
+    ? {
+        disposition: importersFit ? 'selected' : 'cap-exceeded',
+        cap: LOCAL_DEFERRED_TEST_CAP,
+        components: droppedComponents,
+        tests: addedImporters,
+      }
+    : undefined;
+  // An escalated path the importer query cannot see is named, not dropped.
+  const escalatedQueries = (paths) => {
+    const queried = (path) =>
+      ESCALATED_IMPORTER_SEED.test(path) && pathExists(resolve(root, path));
+    return {
+      escalatedSeeds: paths.filter(queried),
+      escalatedUnqueried: paths
+        .filter((path) => !queried(path))
+        .map((path) => ({
+          path,
+          disposition: pathExists(resolve(root, path))
+            ? 'not-importable'
+            : 'absent',
+          depth: null,
+          suites: 0,
+        })),
+    };
+  };
   const executionSelection =
     selection.lanes.length === 0
       ? selection
@@ -1912,14 +2316,22 @@ export function prepareChangedSelection(
                   (!preserveMappedTargets || pathExists(resolve(root, path))),
               )
             : selection.ownedRelatedPaths,
-          tests:
-            preserveMappedTargets || selection.tests.length <= 32
-              ? selection.tests.filter((entry) =>
-                  pathExists(resolve(root, entry.path)),
-                )
-              : [],
+          tests: preserveMappedTargets
+            ? selection.tests.filter((entry) =>
+                pathExists(resolve(root, entry.path)),
+              )
+            : importersFit
+              ? [...existingLocalTests, ...addedImporters]
+              : existingLocalTests,
+          ...(preserveMappedTargets ? escalatedQueries(escalationPaths) : {}),
         };
-  return { changed, selection, productLawRouting, executionSelection };
+  return {
+    changed,
+    selection,
+    productLawRouting,
+    executionSelection,
+    localUiImporters,
+  };
 }
 
 /**
@@ -1979,7 +2391,8 @@ export async function runChangedVerification(
     changedPathsFn,
     pathExists,
   });
-  const { changed, productLawRouting, executionSelection } = prepared;
+  const { changed, productLawRouting, executionSelection, localUiImporters } =
+    prepared;
   let { selection } = prepared;
   // Capture the request identity before any child process can modify outputs.
   const before = collectProvenance({ cwd: root });
@@ -1992,6 +2405,7 @@ export async function runChangedVerification(
     base,
     ...changed,
     productLaws: productLawRouting.productLaws,
+    ...(localUiImporters ? { localUiImporters } : {}),
     selection,
     nextCommands: nextCommands(selection),
     executed: [],
@@ -2174,7 +2588,7 @@ function prepareCiFastExecution({ cwd, env }) {
  *   root?: string;
  *   run?: typeof runOwnedChangedCommand;
  *   changedPathsFn?: typeof changedPaths;
- *   discoverRelatedFiles?: (root: string, relatedPaths: string[], options?: { base?: string; onTimeout?: (timeoutMs: number) => void }) => Promise<string[]>;
+ *   discoverRelatedFiles?: (root: string, relatedPaths: string[], options?: { base?: string; onTimeout?: (timeoutMs: number) => void; escalatedSeeds?: string[]; onEscalatedImporters?: (entries: EscalatedImporterReport[]) => void }) => Promise<string[]>;
  *   resourcePartition?: typeof partitionVitestResourceSubset;
  *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
  *   pathExists?: typeof existsSync;
@@ -2215,9 +2629,13 @@ export async function planChangedVerificationShards(
   let emptyRelatedSelection;
   let relatedDiscovery;
   const globalTriggeredPaths = new Set();
+  const escalatedSeeds = executionSelection.escalatedSeeds ?? [];
+  let escalatedImporters;
+  let escalatedCap;
   if (
     executionSelection.tests.length ||
-    executionSelection.relatedPaths.length
+    executionSelection.relatedPaths.length ||
+    escalatedSeeds.length
   ) {
     let relatedDiscoveryCount;
     const discover =
@@ -2233,16 +2651,65 @@ export async function planChangedVerificationShards(
       discoverRelated: async (discoveryRoot, relatedPaths) => {
         const startedAt = now();
         let timeoutMilliseconds;
-        const files = await discover(discoveryRoot, relatedPaths, {
-          base: changed.mergeBase,
-          deferGlobalTriggers: true,
-          onGlobalTriggeredPaths: (paths) => {
-            for (const path of paths) globalTriggeredPaths.add(path);
-          },
-          onTimeout: (value) => {
-            timeoutMilliseconds = value;
-          },
-        });
+        let files;
+        try {
+          files = await discover(discoveryRoot, relatedPaths, {
+            base: changed.mergeBase,
+            deferGlobalTriggers: true,
+            onGlobalTriggeredPaths: (paths) => {
+              for (const path of paths) globalTriggeredPaths.add(path);
+            },
+            onTimeout: (value) => {
+              timeoutMilliseconds = value;
+            },
+            ...(escalatedSeeds.length
+              ? {
+                  escalatedSeeds,
+                  onEscalatedImporters: (reports) => {
+                    escalatedImporters = decideEscalatedImporters(reports);
+                  },
+                }
+              : {}),
+          });
+        } catch (error) {
+          if (
+            error?.timedOut !== true ||
+            timeoutMilliseconds === undefined ||
+            signal?.aborted
+          )
+            throw error;
+          relatedDiscovery = {
+            milliseconds: now() - startedAt,
+            timeoutMilliseconds,
+            timedOut: true,
+          };
+          selection = withDeferredLaneReasons(selection, 'ci-fast', [
+            'related discovery timed out; only known exact suites were planned',
+          ]);
+          const components = changed.paths.filter(
+            (path) =>
+              path.startsWith('src-ui/src/components/') &&
+              /\.[cm]?tsx?$/.test(path) &&
+              !VITEST_FILE_PATTERN.test(path) &&
+              pathExists(resolve(root, path)),
+          );
+          const exact = new Set(
+            executionSelection.tests.map(({ path }) => path),
+          );
+          const additional = directUiComponentImporterTests(root, components)
+            .map(({ path }) => path)
+            .filter((path) => !exact.has(path));
+          if (additional.length <= ESCALATED_IMPORTER_TOTAL_CAP)
+            return additional;
+          selection = withDeferredLaneReasons(selection, 'ci-fast', [
+            `direct UI importer fallback omitted: ${additional.length} additions exceed the existing ${ESCALATED_IMPORTER_TOTAL_CAP}-suite bound`,
+          ]);
+          return [];
+        }
+        if (escalatedSeeds.length && !escalatedImporters)
+          throw new Error(
+            'Related Vitest discovery reported no escalated importers',
+          );
         // #2803: discovery now runs on far more pull requests. Record its
         // cost in every plan, so the hosted margin is measured per run rather
         // than argued; #2855 derives the timeout from the budget, so record
@@ -2253,29 +2720,37 @@ export async function planChangedVerificationShards(
           ...(timeoutMilliseconds === undefined ? {} : { timeoutMilliseconds }),
         };
         relatedDiscoveryCount = files.length;
-        return files;
+        if (!escalatedImporters) return files;
+        // Added beside the related files: the empty-discovery check above
+        // still reads related discovery's own answer.
+        escalatedCap = capEscalatedImporters(escalatedImporters, [
+          ...files,
+          ...executionSelection.tests.map(({ path }) => path),
+        ]);
+        escalatedImporters = escalatedCap.decisions;
+        return [...files, ...escalatedCap.suites];
       },
       partition: resourcePartition,
     });
     groups = planned?.groups ?? [];
-    if (globalTriggeredPaths.size) {
-      const lanes = new Map(
-        selection.lanes.map(({ id, reasons }) => [id, new Set(reasons)]),
+    // Stated, not truncated: a path whose importers did not run keeps its
+    // `ci-fast` escalation and gains the reason, as does a capped diff.
+    const unrun = [
+      ...(escalatedImporters ?? []).flatMap(({ reason }) =>
+        reason ? [reason] : [],
+      ),
+      ...(escalatedCap?.reason ? [escalatedCap.reason] : []),
+    ];
+    if (unrun.length)
+      selection = withDeferredLaneReasons(selection, 'ci-fast', unrun);
+    if (globalTriggeredPaths.size)
+      selection = withDeferredLaneReasons(
+        selection,
+        'test-full',
+        [...globalTriggeredPaths].map(
+          (path) => `configured Vitest global rerun deferred: ${path}`,
+        ),
       );
-      for (const path of globalTriggeredPaths)
-        addReason(
-          lanes,
-          'test-full',
-          `configured Vitest global rerun deferred: ${path}`,
-        );
-      selection = {
-        ...selection,
-        escalated: true,
-        lanes: [...lanes]
-          .map(([id, reasons]) => ({ id, reasons: [...reasons].sort() }))
-          .sort((a, b) => a.id.localeCompare(b.id)),
-      };
-    }
     const uncovered = uncoveredRelatedPaths(
       {
         ...executionSelection,
@@ -2288,7 +2763,7 @@ export async function planChangedVerificationShards(
         relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
       },
     );
-    if (uncovered.length > 0) {
+    if (uncovered.length > 0 && !relatedDiscovery?.timedOut) {
       emptyRelatedSelection = {
         relatedPaths: [...uncovered].sort(),
         remedy: EMPTY_RELATED_SELECTION_REMEDY,
@@ -2315,8 +2790,41 @@ export async function planChangedVerificationShards(
     ...(globalTriggeredPaths.size
       ? { globalTriggeredPaths: [...globalTriggeredPaths].sort() }
       : {}),
+    ...(escalatedImporters || executionSelection.escalatedUnqueried?.length
+      ? {
+          escalatedImporters: {
+            limits: ESCALATED_IMPORTER_LIMITS,
+            totalCap: ESCALATED_IMPORTER_TOTAL_CAP,
+            suites: escalatedCap?.suites.length ?? 0,
+            added: escalatedCap?.added.length ?? 0,
+            paths: [
+              ...(escalatedImporters ?? []).map(
+                ({ tests, reason, ...entry }) => ({
+                  ...entry,
+                  suites: tests.length,
+                }),
+              ),
+              ...(executionSelection.escalatedUnqueried ?? []),
+            ].sort((a, b) => a.path.localeCompare(b.path)),
+          },
+        }
+      : {}),
     groups,
     fileCount: groups.reduce((total, group) => total + group.files.length, 0),
+  };
+}
+
+function withDeferredLaneReasons(selection, lane, reasons) {
+  const lanes = new Map(
+    selection.lanes.map(({ id, reasons: existing }) => [id, new Set(existing)]),
+  );
+  for (const reason of reasons) addReason(lanes, lane, reason);
+  return {
+    ...selection,
+    escalated: true,
+    lanes: [...lanes]
+      .map(([id, laneReasons]) => ({ id, reasons: [...laneReasons].sort() }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
   };
 }
 

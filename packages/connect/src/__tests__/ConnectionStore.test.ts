@@ -963,6 +963,126 @@ describe('ConnectionStore — persistence', () => {
     expect(store2.getAll()).toHaveLength(1);
     expect(store2.getActive()?.url).toBe('http://persisted:3141');
   });
+
+  // A row this build cannot read: what a newer build writes and an older tab
+  // or a rollback then reads, or plain damage.
+  const unreadableRows: Array<[string, unknown]> = [
+    [
+      'a broker route with a field this build does not know',
+      {
+        id: 'broker-1',
+        name: 'Relay',
+        url: 'https://app.example.com',
+        brokerRoute: {
+          brokerOrigin: 'https://broker.example.com',
+          scope: {
+            stationId: 'station-12345',
+            enrollmentId: 'enroll-12345',
+            routingGeneration: 1,
+            browserOrigin: 'https://ui.example.com',
+            extra: 1,
+          },
+        },
+      },
+    ],
+    ['a null row', null],
+  ];
+
+  function storageWithUnreadableRow(row: unknown): StorageAdapter {
+    const adapter = memoryAdapter();
+    const seed = new ConnectionStore({ storage: adapter });
+    seed.add('Office', 'https://office.example.com');
+    seed.add('Home', 'https://home.example.com');
+    const rows = JSON.parse(adapter.get('station-connect-connections') ?? '[]');
+    // Between the readable rows, so its position is observable.
+    rows.splice(1, 0, row);
+    adapter.set('station-connect-connections', JSON.stringify(rows));
+    return adapter;
+  }
+
+  it.each(unreadableRows)(
+    'keeps the readable saved connections beside %s',
+    (_label, row) => {
+      const adapter = storageWithUnreadableRow(row);
+      const before = adapter.get('station-connect-connections');
+
+      const store = new ConnectionStore({ storage: adapter });
+
+      expect(store.getAll().map((connection) => connection.name)).toEqual([
+        'Office',
+        'Home',
+      ]);
+      expect(store.getActive()?.name).toBe('Office');
+      expect(store.hasUnreadableStoredList()).toBe(false);
+      // Reading alone does not rewrite the row it could not read.
+      expect(adapter.get('station-connect-connections')).toBe(before);
+    },
+  );
+
+  it.each(unreadableRows)(
+    'writes %s back unchanged, in place, on later writes',
+    (_label, row) => {
+      const adapter = storageWithUnreadableRow(row);
+      const store = new ConnectionStore({ storage: adapter });
+
+      store.add('Cabin', 'https://cabin.example.com');
+      const home = store.getAll().find((item) => item.name === 'Home');
+      store.update(home?.id ?? '', { name: 'Home office' });
+
+      const persisted = JSON.parse(
+        adapter.get('station-connect-connections') ?? '[]',
+      );
+      expect(persisted).toHaveLength(4);
+      expect(persisted[1]).toEqual(row);
+      expect([persisted[0].name, persisted[2].name, persisted[3].name]).toEqual(
+        ['Office', 'Home office', 'Cabin'],
+      );
+
+      // Removing the readable row it followed does not take it along.
+      store.remove(store.getAll()[0].id);
+      const afterRemoval = JSON.parse(
+        adapter.get('station-connect-connections') ?? '[]',
+      );
+      expect(afterRemoval).toHaveLength(3);
+      expect(afterRemoval).toContainEqual(row);
+      expect(
+        new ConnectionStore({ storage: adapter })
+          .getAll()
+          .map((connection) => connection.name),
+      ).toEqual(['Home office', 'Cabin']);
+    },
+  );
+
+  it.each([
+    ['text that is not JSON', '[{"id":"office","name":"Office"'],
+    ['a value that is not a list', '{"formatVersion":9,"rows":[]}'],
+  ])(
+    'reads %s as an unreadable list and leaves it for legacy migration',
+    (_label, raw) => {
+      const adapter = memoryAdapter();
+      adapter.set('station-connect-connections', raw);
+      adapter.set('legacy-api-base', 'http://legacy-host:3141');
+
+      const store = new ConnectionStore({ storage: adapter });
+
+      expect(store.getAll()).toHaveLength(0);
+      expect(store.hasUnreadableStoredList()).toBe(true);
+      store.migrate('legacy-api-base');
+      expect(store.getAll()).toHaveLength(0);
+      expect(adapter.get('station-connect-connections')).toBe(raw);
+    },
+  );
+
+  it('does not report an absent or empty stored list as unreadable', () => {
+    const adapter = memoryAdapter();
+    expect(
+      new ConnectionStore({ storage: adapter }).hasUnreadableStoredList(),
+    ).toBe(false);
+    adapter.set('station-connect-connections', '[]');
+    expect(
+      new ConnectionStore({ storage: adapter }).hasUnreadableStoredList(),
+    ).toBe(false);
+  });
 });
 
 describe('ConnectionStore — injected connection', () => {

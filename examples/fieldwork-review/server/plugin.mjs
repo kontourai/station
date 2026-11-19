@@ -1005,8 +1005,7 @@ function installReviewedOutputRoute(app, context) {
       await (await application(context)).reviewedOutput(record.runDirectory);
       return c.json({ success: true, available: true });
     } catch (error) {
-      if (Number.isInteger(error?.status)) return failure(c, error);
-      return c.json({ success: true, available: false });
+      return failure(c, error);
     }
   });
 }

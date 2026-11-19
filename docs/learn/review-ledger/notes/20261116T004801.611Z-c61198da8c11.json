@@ -1,0 +1,7 @@
+{
+  "revision": "760e8960b616c06b1beda3085b920518e669d168",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed: only the finished-alert section changed again (fallbacks and retry/re-hold rules). The webhook-turn card-alert claim this document cites is unchanged.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}

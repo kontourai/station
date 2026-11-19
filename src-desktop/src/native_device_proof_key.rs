@@ -413,9 +413,9 @@ mod tests {
         );
 
         // A different channel is a different owner.
-        let beta = NativeDeviceProofKeyOwner::with_binding_id(
+        let nightly = NativeDeviceProofKeyOwner::with_binding_id(
             APP,
-            NativeProofKeyChannel::Beta,
+            NativeProofKeyChannel::Nightly,
             CLIENT,
             STATION,
             DEVICE,
@@ -423,7 +423,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            vault.restore(&beta).unwrap_err(),
+            vault.restore(&nightly).unwrap_err(),
             DeviceProofKeyError::Missing
         );
     }

@@ -1,7 +1,0 @@
-{
-  "revision": "9cbf54b31edc38112b91a0fc12a448815b9a52d4",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Reviewed the regenerated TaskReviewThreads topic against the changed module map and verified Station Docs remains static documentation, not live authority or runtime evidence.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

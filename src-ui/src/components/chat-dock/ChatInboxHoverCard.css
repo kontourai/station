@@ -1,9 +1,7 @@
 /* The inbox row's hover card (ChatInboxHoverCard). Fixed-positioned in a
    portal beside the row — the inbox scroll container would clip an
-   absolutely-positioned child. Display-only: pointer-events none so row-to-
-   row pointer travel never fights an overlay, and the card never gains a
-   tab stop. Colors come from the theme variables only, so both themes and
-   narrow viewports are covered by construction. */
+   absolutely-positioned child. The pointer can scroll long previews. The
+   card stays a description of the row and does not add a tab stop. */
 .chat-dock-inbox-hover-card {
   position: fixed;
   /* The surface-popover layer, not the page popover layer: a row on Home
@@ -14,7 +12,7 @@
   max-width: calc(100vw - 16px);
   max-height: min(70vh, 560px);
   overflow-y: auto;
-  pointer-events: none;
+  overscroll-behavior-y: contain;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
@@ -44,6 +42,7 @@
 
 .chat-dock-inbox-hover-card__meta dt {
   flex: 0 0 62px;
+  white-space: nowrap;
   color: var(--text-muted);
   font-size: var(--k-text-sm);
   text-transform: uppercase;

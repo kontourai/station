@@ -12,7 +12,6 @@ import { describeStationFailure } from '../utils/stationFailure';
  * server.
  */
 
-import { FullScreenLoader } from '@kontourai/station-sdk';
 import {
   createContext,
   type ReactNode,
@@ -22,10 +21,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { StartupHandoff } from '../components/StartupHandoff';
+import { NativeStartupRecovery } from '../components/NativeStartupRecovery';
 import { StartupScreen } from '../components/StartupScreen';
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
+import {
+  beforeNativeStartupDeadline,
+  NativeStartupTimeout,
+} from './native/startupDeadline';
 import type { NativeStationProfileStorage } from './native/stationProfileStorage';
 import type {
   NativeClientBuildProvenance,
@@ -54,7 +57,7 @@ export interface PlatformProfile {
   isDevBuild: boolean;
   /** Configured local Tauri package identity, never remote Station branding. */
   productName?: string;
-  channel?: 'stable' | 'dev' | 'beta' | 'nightly';
+  channel?: 'stable' | 'dev' | 'nightly';
   /** Native scheme selected by this installed client, never a backend URL. */
   pairingDeepLinkScheme?: string;
   /** Build evidence for this native app, never the connected Station host. */
@@ -132,8 +135,11 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
   if (adapter.platform !== 'tauri') return WEB_PROFILE;
 
   const [report, productName] = await Promise.all([
-    adapter.getCapabilityReport(),
-    nativeProductName(),
+    beforeNativeStartupDeadline(
+      'device capabilities',
+      adapter.getCapabilityReport(),
+    ),
+    beforeNativeStartupDeadline('this app’s name', nativeProductName()),
   ]);
   if (report.status !== 'ok') {
     return { ...TAURI_UNKNOWN_PROFILE, productName };
@@ -177,6 +183,10 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
 let profileRepository: NativeStationProfileStorage | null = null;
 let nativeBootstrapRecoveryError: string | undefined;
 
+/** Safe copy for a mobile launch whose saved Station the host would not authorize. */
+const LAUNCH_AUTHORIZATION_FAILURE =
+  'Station couldn’t reconnect to your saved Station. Open Connections to pair this device again.';
+
 export function nativeProfileRepository(): NativeStationProfileStorage {
   if (!profileRepository)
     throw new Error('The native Station list is not ready yet.');
@@ -204,13 +214,20 @@ let cachedProfile: PlatformProfile | null = null;
 const profileReady: Promise<PlatformProfile> = platformResolution.then(
   async (profile) => {
     if (profile.isTauri) {
-      const [{ nativeStationProfileStorage }] = await Promise.all([
-        import('./native/stationProfileStorage'),
-      ]);
+      const profileStore = import('./native/stationProfileStorage');
+      const { nativeStationProfileStorage } = await (profile.isDesktop
+        ? profileStore
+        : beforeNativeStartupDeadline('saved Station storage', profileStore));
       // Both desktop and mobile own their selection locally; neither changes
       // the shared CLI default when someone switches Stations in the app.
-      profileRepository = nativeStationProfileStorage(true);
-      await profileRepository.hydrate();
+      const repository = nativeStationProfileStorage(true);
+      if (profile.isDesktop) await repository.hydrate();
+      else
+        await beforeNativeStartupDeadline(
+          'the saved Station list',
+          repository.hydrate(),
+        );
+      profileRepository = repository;
       if (profile.isDesktop) {
         const [{ bootstrapBundledLocalProfile }, { invokeTauri }] =
           await Promise.all([
@@ -234,13 +251,28 @@ const profileReady: Promise<PlatformProfile> = platformResolution.then(
       // by trying to authorize it; let OnboardingGate present the concrete
       // keychain remedy recorded above.
       if (!profile.isDesktop && !nativeBootstrapRecoveryError) {
-        const { deviceSettingsStore } = await import(
-          '../lib/device-settings-store'
+        const { deviceSettingsStore } = await beforeNativeStartupDeadline(
+          'device settings',
+          import('../lib/device-settings-store'),
         );
-        if (deviceSettingsStore.get('openLastStationOnLaunch')) {
-          await profileRepository.authorizeRememberedProfile();
-        } else {
-          await profileRepository.authorizeDefaultProfile(true);
+        // The same holds on mobile: a re-pairing interrupted before its final
+        // write leaves the launch Station requires-auth, and the host refuses
+        // to authorize it on every later start. Record that instead of failing
+        // the whole start, so the shell mounts and Connections is reachable.
+        try {
+          await beforeNativeStartupDeadline(
+            'the selected Station',
+            deviceSettingsStore.get('openLastStationOnLaunch')
+              ? profileRepository.authorizeRememberedProfile()
+              : profileRepository.authorizeDefaultProfile(true),
+          );
+        } catch (error) {
+          if (error instanceof NativeStartupTimeout) throw error;
+          console.warn(
+            'The launch Station could not be authorized; starting without it.',
+            error,
+          );
+          nativeBootstrapRecoveryError = LAUNCH_AUTHORIZATION_FAILURE;
         }
       }
       // Ask for notification permission here rather than when one arrives: a
@@ -267,7 +299,10 @@ let cachedProfileBootstrapError: string | null = null;
 const profileResolution = profileReady.then(
   (profile) => ({ status: 'ok' as const, profile }),
   (error) => {
-    const message = describeStationFailure(error).body;
+    const message =
+      error instanceof NativeStartupTimeout
+        ? error.message
+        : describeStationFailure(error).body;
     cachedProfileBootstrapError = message;
     return { status: 'error' as const, message };
   },
@@ -439,6 +474,25 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     };
   }, [profile]);
 
+  // The installed app (native mobile shell or a home-screen web app) does not
+  // page-zoom; a browser tab keeps pinch zoom. See `installedAppZoom.ts`,
+  // loaded lazily so the lock and its stylesheet stay out of the entry chunk.
+  useEffect(() => {
+    let disposed = false;
+    let release: (() => void) | undefined;
+    void import('./installedAppZoom').then((zoom) => {
+      if (disposed) return;
+      release = zoom.setInstalledAppZoomLock(
+        Boolean(profile?.isMobile && profile.isTauri) ||
+          zoom.isStandaloneDisplay(),
+      );
+    });
+    return () => {
+      disposed = true;
+      release?.();
+    };
+  }, [profile]);
+
   useEffect(() => {
     if (!profile?.isMobile || !profile.isTauri) return;
     let disposed = false;
@@ -458,15 +512,21 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   // render, and a stale tint would be a lie about which app is on screen.
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.appChannel = profile?.channel ?? 'stable';
+    if (profile?.channel) root.dataset.appChannel = profile.channel;
+    else delete root.dataset.appChannel;
     root.classList.toggle('is-dev-build', profile?.isDevBuild === true);
     // Remember which mark this install shows, so public/startup-theme.js can
     // put it on the next launch's splash before the host report arrives.
     if (profile) {
-      const mark = profile.isDevBuild ? 'dev' : (profile.channel ?? 'stable');
-      root.dataset.startupMark = mark;
+      const mark = profile.isDevBuild ? 'dev' : profile.channel;
       try {
-        localStorage.setItem('station-startup-mark', mark);
+        if (mark) {
+          root.dataset.startupMark = mark;
+          localStorage.setItem('station-startup-mark', mark);
+        } else {
+          delete root.dataset.startupMark;
+          localStorage.removeItem('station-startup-mark');
+        }
       } catch {
         // Storage can be unavailable in a WebView; the splash then shows
         // the stable mark until the report arrives, as on a first launch.
@@ -479,25 +539,8 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     };
   }, [profile]);
 
-  if (profileBootstrapError) {
-    return (
-      <>
-        <StartupHandoff recovery />
-        <FullScreenLoader
-          label="Station"
-          message="Station couldn’t finish starting"
-          action={
-            <div role="alert" aria-label="Station couldn’t finish starting">
-              <pre>{profileBootstrapError}</pre>
-              <button type="button" onClick={() => window.location.reload()}>
-                Reload Station
-              </button>
-            </div>
-          }
-        />
-      </>
-    );
-  }
+  if (profileBootstrapError)
+    return <NativeStartupRecovery detail={profileBootstrapError} />;
   if (!profile) return <StartupScreen message="Preparing this device" />;
 
   return (

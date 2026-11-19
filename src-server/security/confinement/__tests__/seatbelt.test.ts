@@ -6,9 +6,10 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { basename, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { shortSessionTmpRoots } from '../../../services/infra/session-tmpdir.js';
 import {
   canonicalPath,
   confineWithSeatbelt,
@@ -18,12 +19,39 @@ import {
   type SeatbeltBounds,
   type SeatbeltEvidence,
   seatbeltGrants,
+  seatbeltNetworkRules,
   seatbeltProfile,
+  seatbeltProfileNetwork,
   seatbeltSessionDirPrefix,
   seatbeltTempRoot,
   seatbeltWorkspaceRefusal,
   seatbeltWriteGrantKinds,
 } from '../seatbelt.js';
+
+const shortBases = vi.hoisted(() => ({
+  paths: undefined as string[] | undefined,
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  const { tmpdir } = await import('node:os');
+  const systemBases = [tmpdir(), '/tmp'];
+  return {
+    ...fs,
+    realpathSync: Object.assign(
+      (...args: Parameters<typeof fs.realpathSync>) => {
+        const index = systemBases.indexOf(String(args[0]));
+        if (shortBases.paths && index !== -1) {
+          const base = shortBases.paths[index] ?? shortBases.paths[0];
+          if (!base) throw new Error('System temp base unavailable');
+          args[0] = base;
+        }
+        return fs.realpathSync(...args);
+      },
+      { native: fs.realpathSync.native },
+    ),
+  };
+});
 
 const HOME = '/Users/op';
 const STATION_HOME = '/Users/op/.station/instances/stable';
@@ -246,8 +274,142 @@ describe('Seatbelt grants and profile', () => {
       '--print',
     ]);
     expect(() => confineWithSeatbelt({ ...spec, network: 'none' })).toThrow(
-      /does not restrict the network/,
+      /opens the network or restricts it to the egress broker/,
     );
+  });
+});
+
+describe('Seatbelt restricted network (#4769)', () => {
+  const networkRules = (profile: string) =>
+    profile.split('\n').filter((line) => /^\((allow|deny) network/.test(line));
+
+  test('without a broker port the profile keeps the one open-network rule it always had', () => {
+    const profile = seatbeltProfile(linkedGrants());
+    expect(seatbeltProfile(linkedGrants(), undefined)).toBe(profile);
+    expect(networkRules(profile)).toEqual(['(allow network*)']);
+    expect(seatbeltNetworkRules()).toEqual(['(allow network*)']);
+    expect(seatbeltProfileNetwork(profile)).toBe('full');
+  });
+
+  test('with a broker port the only network rule is outbound IPv4 TCP to that loopback port, Mach lookups are an allow-list, and nothing else changes', () => {
+    const open = seatbeltProfile(linkedGrants()).split('\n');
+    const restricted = seatbeltProfile(linkedGrants(), 41_234).split('\n');
+    expect(networkRules(restricted.join('\n'))).toEqual([
+      '(allow network-outbound (remote tcp4 "localhost:41234"))',
+    ]);
+    const mach = [
+      '(deny mach-lookup)',
+      '(allow mach-lookup (global-name "com.apple.bsd.dirhelper") (global-name "com.apple.diagnosticd") (global-name "com.apple.logd") (global-name "com.apple.system.notification_center") (global-name "com.apple.system.opendirectoryd.libinfo") (global-name "com.apple.system.opendirectoryd.membership"))',
+    ];
+    // Line for line the same profile: the network rule replaced in place,
+    // and the Mach allow-list after it, so it wins over `(allow mach*)`.
+    const at = open.indexOf('(allow network*)');
+    expect(open.indexOf('(allow mach*)')).toBeLessThan(at);
+    expect(restricted).toEqual([
+      ...open.slice(0, at),
+      '(allow network-outbound (remote tcp4 "localhost:41234"))',
+      ...mach,
+      ...open.slice(at + 1),
+    ]);
+    // No network-capable service is on the list.
+    expect(mach[1]).not.toMatch(
+      /nsurlsessiond|lsd|trustd|cloudd|configd|appleevents|coreservices/,
+    );
+    expect(seatbeltProfileNetwork(restricted.join('\n'))).toBe('restricted');
+    // The broker rule without the Mach restriction is not the restricted
+    // profile, so a spawn that dropped it is not observed restricted.
+    expect(
+      seatbeltProfileNetwork(
+        restricted.filter((line) => !mach.includes(line)).join('\n'),
+      ),
+    ).toBeUndefined();
+  });
+
+  test.each([0, 65_536, 1.5, Number.NaN, -1])(
+    'a broker port of %s is refused',
+    (port) => {
+      expect(() => seatbeltProfile(linkedGrants(), port)).toThrow(
+        /not a TCP port/,
+      );
+    },
+  );
+
+  test('a profile Station did not build reads as neither open nor restricted', () => {
+    expect(seatbeltProfileNetwork(undefined)).toBeUndefined();
+    expect(
+      seatbeltProfileNetwork(
+        '(version 1)\n(allow network*)\n(allow network-outbound (remote tcp "localhost:1"))',
+      ),
+    ).toBeUndefined();
+    expect(
+      seatbeltProfileNetwork(
+        '(version 1)\n(allow network-outbound (remote tcp "*:443"))',
+      ),
+    ).toBeUndefined();
+    expect(
+      seatbeltProfileNetwork('(version 1)\n(deny default)'),
+    ).toBeUndefined();
+    // A path that merely names the network is not a network rule.
+    expect(
+      seatbeltProfileNetwork(
+        '(allow mach*)\n(allow network*)\n(allow file-read* (subpath "/Users/op/network"))',
+      ),
+    ).toBe('full');
+  });
+
+  test('a broker spec needs the broker port, and is wrapped in the broker-only profile', () => {
+    const spec = {
+      command: '/usr/local/bin/claude',
+      args: [],
+      cwd: WORKSPACE,
+      env: {},
+      grants: linkedGrants(),
+      network: 'broker' as const,
+    };
+    expect(() => confineWithSeatbelt(spec)).toThrow(/egress broker port/);
+    expect(confineWithSeatbelt({ ...spec, brokerPort: 5_000 }).args[1]).toBe(
+      seatbeltProfile(spec.grants, 5_000),
+    );
+  });
+
+  test('a broker spawn is confined only when the profile it was spawned with restricts the network', () => {
+    const provider = createSeatbeltConfinementProvider();
+    expect(provider.restrictsNetwork).toBe(true);
+    const { spec, pending } = provider.confine({
+      command: '/usr/local/bin/claude',
+      args: [],
+      cwd: WORKSPACE,
+      env: {},
+      grants: linkedGrants(),
+      network: 'broker',
+      brokerPort: 5_000,
+    });
+    expect(pending.network?.()).toBe('restricted');
+    const evidence = (args: readonly string[]): SeatbeltEvidence => ({
+      spawned: { command: spec.command, args: [...args] },
+      handshake: 'completed',
+      bounds: BOUNDS,
+    });
+    expect(pending.observe(evidence(spec.args))).toBe('confined');
+    // The same spawn with the open profile is not the restricted one.
+    const opened = [...spec.args];
+    opened[1] = seatbeltProfile(linkedGrants());
+    expect(pending.observe(evidence(opened))).toBe('configured-but-failed');
+    expect(
+      observeSeatbeltPosture(
+        { ...spec, args: opened, network: 'broker' },
+        evidence(opened),
+      ),
+    ).toBe('configured-but-failed');
+    const open = provider.confine({
+      command: '/usr/local/bin/claude',
+      args: [],
+      cwd: WORKSPACE,
+      env: {},
+      grants: linkedGrants(),
+      network: 'full',
+    });
+    expect(open.pending.network?.()).toBe('full');
   });
 });
 
@@ -471,6 +633,8 @@ describe('Seatbelt breadth', () => {
     [STATION_HOME, "it is or overlaps Station's data"],
     [`${STATION_HOME}/workspaces/x`, "it is or overlaps Station's data"],
     [`${HOME}/.claude`, 'it is inside ~/.claude'],
+    // A hidden folder whose name starts with two dots is still inside home.
+    [`${HOME}/..cache/project`, 'it is inside ~/..cache'],
     [`${HOME}/Library/Mobile`, 'it is inside ~/Library'],
   ])('a workspace at %s cannot be confined: %s', (workspace, reason) => {
     expect(
@@ -564,6 +728,17 @@ describe('Seatbelt posture', () => {
 
 describe('reaping stale confined-session temp directories (R9)', () => {
   const makeTempDir = trackTempDirs();
+  // Short bases under the system /tmp, never this user's real short roots.
+  const makeShortDir = trackTempDirs({ base: '/tmp' });
+
+  beforeEach(() => {
+    // The in-home cases sweep no short root; the short-root case sets one.
+    shortBases.paths = [];
+  });
+
+  afterEach(() => {
+    shortBases.paths = undefined;
+  });
 
   function layout() {
     const home = canonicalPath(makeTempDir('seatbelt-reap-'));
@@ -617,6 +792,40 @@ describe('reaping stale confined-session temp directories (R9)', () => {
     expect(reapStaleSeatbeltSessionDirs(home)).toBe(1);
     expect(existsSync(stale)).toBe(false);
   });
+
+  // #4740: a long home puts confined directories in the short per-user
+  // root, shared with unconfined sessions' TMPDIRs and other instances.
+  test.skipIf(process.platform === 'win32')(
+    'sweeps the short root by owner process, leaves unconfined session directories, and never sweeps through a link',
+    () => {
+      const { home } = layout();
+      const base = canonicalPath(makeShortDir('st'));
+      shortBases.paths = [base];
+      const [root] = shortSessionTmpRoots();
+      mkdirSync(root!, { mode: 0o700 });
+      const make = (name: string) => {
+        mkdirSync(join(root!, name));
+        return join(root!, name);
+      };
+      const dead = make('session-999991-abcdef');
+      const live = make('session-999992-abcdef');
+      const unconfined = make(`999991-${'a'.repeat(16)}`);
+      const alive = new Set([999992]);
+      const isAlive = (pid: number) => alive.has(pid);
+      expect(reapStaleSeatbeltSessionDirs(home, { isAlive })).toBe(1);
+      expect(existsSync(dead)).toBe(false);
+      expect(existsSync(live) && existsSync(unconfined)).toBe(true);
+      // A root that is a link is not swept.
+      const linkedBase = canonicalPath(makeShortDir('st'));
+      const target = canonicalPath(makeShortDir('st'));
+      const victim = join(target, 'session-999993-abcdef');
+      mkdirSync(victim);
+      symlinkSync(target, join(linkedBase, basename(root!)));
+      shortBases.paths = [linkedBase];
+      expect(reapStaleSeatbeltSessionDirs(home, { isAlive })).toBe(0);
+      expect(existsSync(victim)).toBe(true);
+    },
+  );
 
   test('a missing root is nothing to reap', () => {
     expect(

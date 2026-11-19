@@ -1,0 +1,61 @@
+{
+  "path": "docs/reviews/sidebar-focus-20261107/README.md",
+
+  "kind": "historical",
+
+  "state": "source-reviewed",
+
+  "summary": "Exact-source sidebar focus transition, inspected current navigation captures, keyboard and explicit browser-touch/offline/loading controls; separate modal finding retained.",
+
+  "limits": "CLI watch/Vite browser evidence with disposable data and one operator. Not exhaustive product, packaged/native, provider, two-human, Gallery, hosted or release qualification.",
+
+  "sources": [
+    "src-ui/src/components/project-sidebar/ProjectSidebar.tsx",
+
+    "src-ui/src/__tests__/ProjectSidebarReturnFocus.test.tsx",
+
+    "packages/shared/src/return-focus.ts",
+
+    "packages/connect/src/react/ConnectionManagerModalContent.tsx",
+
+    "docs/reviews/sidebar-focus-20261107/capture-manifest.json",
+
+    "docs/reviews/sidebar-focus-20261107/task-desktop-dark.png",
+
+    "docs/reviews/sidebar-focus-20261107/task-desktop-light.png",
+
+    "docs/reviews/sidebar-focus-20261107/task-mobile-dark.png",
+
+    "docs/reviews/sidebar-focus-20261107/task-mobile-light.png",
+
+    "docs/reviews/sidebar-focus-20261107/drawer-touch-dark.png",
+
+    "docs/reviews/sidebar-focus-20261107/drawer-touch-light.png",
+
+    "docs/reviews/sidebar-focus-20261107/offline-message.png",
+
+    "docs/reviews/sidebar-focus-20261107/recovered-message.png",
+
+    "docs/reviews/sidebar-focus-20261107/throttled-loading.png",
+
+    "docs/reviews/sidebar-focus-20261107/focus-comparison.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md",
+
+    "docs/reviews/sidebar-focus-20261107/manager-capture-manifest.json",
+
+    "docs/reviews/sidebar-focus-20261107/manager-dark-1440x900.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-light-1440x900.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-dark-390x844.png",
+
+    "docs/reviews/sidebar-focus-20261107/manager-light-390x844.png",
+
+    "docs/reviews/sidebar-focus-20261107/row-editor-dark-390x844.png"
+  ],
+
+  "checks": [
+    "Read the bounded audit receipt, inspected every published image, checked source identities and actual before/after focus observations, and preserved emulation/fixture/runtime limits. Root verified predecessor/base sidebar blob equality. No image pixel was redrawn inside the captured header; comparison labels are outside it. Modal opening warning remains #4665."
+  ]
+}

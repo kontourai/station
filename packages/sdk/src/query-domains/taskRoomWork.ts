@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { discoverDelegationOptions } from '../client/delegations';
 import type { ApiRequestScope } from '../client/http';
 import {
+  fetchSharedTaskRoomCapabilities,
   fetchTaskRoomAgentRequests,
+  submitSharedTaskRoomAgentRequest,
   submitTaskRoomAgentRequest,
   TaskRoomWorkNotSentError,
 } from '../client/task-room-work';
@@ -138,5 +140,63 @@ export function useSubmitTaskRoomAgentRequestMutation(
         }),
         cache.invalidateQueries({ queryKey: ['tasks'] }),
       ]),
+  });
+}
+
+// UNWIRED(#4659): caller must keep the original intent for reconciliation.
+export function useSharedTaskRoomCapabilitiesQuery(
+  taskId: string,
+  incarnation: string,
+  scope: TaskRoomWorkRequestScope | undefined,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: [
+      'task-room-shared-capabilities',
+      scope?.apiBase,
+      scope?.authorityKey,
+      taskId,
+      incarnation,
+    ],
+    enabled: enabled && !!scope && !!incarnation,
+    retry: false,
+    queryFn: async ({ signal }) => {
+      const captured = current(scope);
+      const result = await fetchSharedTaskRoomCapabilities(
+        captured.apiBase,
+        taskId,
+        { requestScope: captured, isCurrent: captured.isCurrent, signal },
+      );
+      current(captured);
+      return result;
+    },
+  });
+}
+
+export function useSubmitSharedTaskRoomAgentRequestMutation(
+  task: import('@kontourai/station-contracts/task-room-work').SharedTaskIdentity,
+  scope: TaskRoomWorkRequestScope | undefined,
+) {
+  return useMutation({
+    retry: false,
+    mutationFn: async (
+      input: import('@kontourai/station-contracts/task-room-work').SharedAgentRequest,
+    ) => {
+      const captured = current(scope);
+      const intent = structuredClone(input);
+      const result = await submitSharedTaskRoomAgentRequest(
+        captured.apiBase,
+        task,
+        intent,
+        { requestScope: captured, isCurrent: captured.isCurrent },
+      );
+      return captured.isCurrent()
+        ? result
+        : {
+            kind: 'unconfirmed' as const,
+            operationId: intent.operationId,
+            intent,
+          };
+    },
   });
 }

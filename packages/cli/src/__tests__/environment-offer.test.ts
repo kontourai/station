@@ -47,7 +47,7 @@ function proofFor(nonce: string) {
 // absent leaves inside it.
 const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-offer-test-'));
 const STATION_HOME = join(TEST_TEMP_ROOT, 'station-home');
-const STATION_BETA_HOME = join(TEST_TEMP_ROOT, 'station-beta');
+const STATION_NIGHTLY_HOME = join(TEST_TEMP_ROOT, 'station-nightly');
 
 afterAll(() => {
   rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
@@ -95,6 +95,11 @@ describe('environment offer', () => {
       ['offer', '--tailscale=false', '--tailscale'],
     ],
     ['port without tailscale', ['offer', '--tailscale-serve-port=8444']],
+    ['retired client channel', ['offer', '--client-channel=beta']],
+    [
+      'retired client channel in payload-only mode',
+      ['offer', '--payload-only', '--client-channel=beta'],
+    ],
     [
       'bare duplicate port',
       ['offer', '--tailscale-serve-port', '--tailscale-serve-port=8444'],
@@ -104,9 +109,13 @@ describe('environment offer', () => {
     const deps = dependencies(request);
     const createService = vi.fn(deps.createService!);
     deps.createService = createService;
-    await expect(runEnvironmentCommand(args, deps)).rejects.toThrow(/Usage:/);
+    const failure = await runEnvironmentCommand(args, deps).catch(
+      (error: unknown) => error,
+    );
     expect(createService).not.toHaveBeenCalled();
     expect(request).not.toHaveBeenCalled();
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toMatch(/Usage:/);
   });
   test('discovers an offer host through the real published active-local record', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-offer-active-local-'));
@@ -159,7 +168,7 @@ describe('environment offer', () => {
   test('reads the active-local record from the resolved channel home', async () => {
     const request = vi.fn<OperatorJsonRequest>();
     const deps = dependencies(request);
-    deps.projectHome = STATION_BETA_HOME;
+    deps.projectHome = STATION_NIGHTLY_HOME;
     const readActiveLocalStation = vi.fn(() => undefined);
     deps.offer.readActiveLocalStation = readActiveLocalStation;
 
@@ -167,7 +176,7 @@ describe('environment offer', () => {
       /No running local Station was discovered/,
     );
     expect(readActiveLocalStation).toHaveBeenCalledWith({
-      path: join(STATION_BETA_HOME, 'runtime', 'active-local.json'),
+      path: join(STATION_NIGHTLY_HOME, 'runtime', 'active-local.json'),
     });
   });
 
@@ -316,7 +325,7 @@ describe('environment offer', () => {
           return {
             protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
             environmentId: SNAPSHOT.environmentId,
-            offerId: 'beta-offer',
+            offerId: 'nightly-offer',
             challenge: 'challenge',
             manualCode: 'PAIRME2345',
             endpoint: API_BASE,
@@ -327,9 +336,9 @@ describe('environment offer', () => {
         throw new Error(`unexpected path ${path}`);
       });
     const deps = dependencies(request);
-    await runEnvironmentCommand(['offer', '--client-channel=beta'], deps);
+    await runEnvironmentCommand(['offer', '--client-channel=nightly'], deps);
     expect(deps.stdout.mock.calls[0]?.[0]).toContain(
-      'station-beta://pair?linkVersion=1&clientChannel=beta&payload=',
+      'station-nightly://pair?linkVersion=1&clientChannel=nightly&payload=',
     );
     await runEnvironmentCommand(
       ['offer', '--payload-only', '--client-channel=nightly'],
