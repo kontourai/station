@@ -434,6 +434,8 @@ test.describe('Project lifecycle', () => {
 
     await page.goto('/projects/new');
     await fillStable(page, 'input[placeholder="My Project"]', 'Git Project');
+    await page.getByRole('radio', { name: /^From a repository/ }).check();
+    await page.getByText('Use an existing folder', { exact: true }).click();
     await page.getByPlaceholder('~/code/my-project').fill('/tmp/git-project/');
 
     await expect(

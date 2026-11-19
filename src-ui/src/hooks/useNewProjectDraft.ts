@@ -18,7 +18,7 @@ function useProjectDraftValues(partition?: string) {
   const [description, setDescription] = useProjectDraftState('', partition);
   const [directory, setDirectory] = useProjectDraftState('', partition);
   const [startIntent, setStartIntent] =
-    useProjectDraftState<ProjectStartIntent>('workspace', partition);
+    useProjectDraftState<ProjectStartIntent>('blank', partition);
   const [repositoryAcquisition, setRepositoryAcquisition] =
     useProjectDraftState<{
       id: string;
@@ -86,7 +86,7 @@ export function useNewProjectDraft(isOpen: boolean, partition?: string) {
     draft.setDescription('');
     draft.setDefaultEnvironment({ kind: 'current' });
     draft.setDirectory('');
-    draft.setStartIntent('workspace');
+    draft.setStartIntent('blank');
     draft.setRepositoryAcquisition(null);
     draft.setNameTouched(false);
     draft.setShowIconChoices(false);
@@ -100,7 +100,10 @@ export function useNewProjectDraft(isOpen: boolean, partition?: string) {
     if (!isOpen) return;
     const params = new URLSearchParams(window.location.search);
     const requested = params.get('directory');
-    if (requested) draft.setDirectory(requested);
+    if (requested) {
+      draft.setStartIntent('workspace');
+      draft.setDirectory(requested);
+    }
     // #5071: Continue in Project opens New project with a name and brief
     // drafted from a chat. They are a draft: the person edits them here, and
     // nothing is created until they choose Create.
