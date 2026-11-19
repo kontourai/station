@@ -111,12 +111,12 @@ function world(count: number) {
 }
 
 /** Runtime-home admissions, and each row's classification, for one list request. */
-function listRequest(reader: ConversationHistoryReadService) {
+async function listRequest(reader: ConversationHistoryReadService) {
   const admit = vi.mocked(resolveAdmittedRuntimeHome);
   const build = vi.mocked(buildOrchestrationSessionSummary);
   admit.mockClear();
   build.mockClear();
-  const page = reader.list({
+  const page = await reader.list({
     authority: sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
     limit: 100,
   });
@@ -132,9 +132,9 @@ function listRequest(reader: ConversationHistoryReadService) {
 }
 
 describe('conversation history runtime-home admission (#5092)', () => {
-  test('a list request admits the runtime home once, however many records it lists', () => {
-    const small = listRequest(world(2).reader);
-    const large = listRequest(world(60).reader);
+  test('a list request admits the runtime home once, however many records it lists', async () => {
+    const small = await listRequest(world(2).reader);
+    const large = await listRequest(world(60).reader);
     expect(small.page.items).toHaveLength(3);
     expect(large.page.items).toHaveLength(61);
     expect(large.managed.size).toBe(61);
@@ -142,15 +142,15 @@ describe('conversation history runtime-home admission (#5092)', () => {
     expect(small.admissions).toBe(large.admissions);
   });
 
-  test('a later list request admits the home again rather than reusing an earlier answer', () => {
+  test('a later list request admits the home again rather than reusing an earlier answer', async () => {
     const { reader } = world(4);
-    expect(listRequest(reader).admissions).toBe(1);
-    expect(listRequest(reader).admissions).toBe(1);
+    expect((await listRequest(reader)).admissions).toBe(1);
+    expect((await listRequest(reader)).admissions).toBe(1);
   });
 
-  test('scratch-root and outside records keep their classification', () => {
+  test('scratch-root and outside records keep their classification', async () => {
     const { reader, expected } = world(6);
-    const { managed } = listRequest(reader);
+    const { managed } = await listRequest(reader);
     expect(managed).toEqual(new Map([...expected, ['no-cwd', false]]));
     expect([...expected.values()]).toContain(true);
     expect([...expected.values()]).toContain(false);
