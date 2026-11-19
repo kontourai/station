@@ -31,10 +31,31 @@
  * open: this pins the read-model refresh, not the chat store's own request
  * bookkeeping.
  */
+import type { FetchSseConnection } from '@kontourai/station-sdk';
+import { observeSseFixture, ownSseFixture } from './helpers/ownedSseFixture';
+
+const connections = vi.hoisted(
+  () => new Map<FetchSseConnection, { settled: boolean }>(),
+);
+vi.mock('@kontourai/station-sdk', async (load) => {
+  const sdk = await load<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...sdk,
+    fetchSSE: (...args: Parameters<typeof sdk.fetchSSE>) =>
+      observeSseFixture(connections, sdk.fetchSSE(...args)),
+  };
+});
+const retainRelease = ownSseFixture(connections);
+function ensureOrchestrationEventStream(
+  ...args: Parameters<typeof openOrchestrationEventStream>
+) {
+  return retainRelease(openOrchestrationEventStream(...args));
+}
+
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { handleOrchestrationEvent, settleSemanticDeliveryBuffer } = vi.hoisted(
   () => ({
@@ -50,7 +71,7 @@ vi.mock('../hooks/orchestration/eventHandlers', () => ({
 
 import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
 import {
-  ensureOrchestrationEventStream,
+  ensureOrchestrationEventStream as openOrchestrationEventStream,
   resetSessionReadModelRefreshForTests,
 } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { buildHomeWorkItems } from '../views/home/home-view-model';
@@ -204,11 +225,6 @@ describe('a resolved approval leaves the inbox Needs-you group', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     vi.setSystemTime(Date.parse('2026-10-28T15:48:10.000Z'));
   });
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
   it('re-reads the session read-model on request.opened and request.resolved of a successor session', async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
