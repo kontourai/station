@@ -101,6 +101,12 @@ describe('stationToolPhrase', () => {
 describe('stationToolOf', () => {
   test.each([
     ['mcp__station-control__wait_session', 'station-control', 'wait_session'],
+    ['mcp_station-control_wait_session', 'station-control', 'wait_session'],
+    [
+      'mcp_station-docs_search_station_docs',
+      'station-docs',
+      'search_station_docs',
+    ],
     ['station-control_claim_work', 'station-control', 'claim_work'],
     ['station-control/notify_user', 'station-control', 'notify_user'],
     ['station-control.get_task', 'station-control', 'get_task'],

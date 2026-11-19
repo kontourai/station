@@ -1065,6 +1065,16 @@ and the scripted profile
   cancel, `session/resume` (whose answer re-advertises modes and options)
   and `session/load` are core ACP and take the generic paths above. Its permission requests use string
   ids, which the SDK answers as sent.
+- **Approvals.** Antigravity's own settings decide which actions run and which
+  ask. With **Full access** granted for the chat, Station answers ordinary
+  permission requests automatically. Questions, plan exits and policy
+  approvals still reach the person. Selecting **Ask first** takes effect on
+  the next turn. Station keeps the same Antigravity process.
+- **Delegation.** For an appearance handoff, `delegate_task` can request
+  `appearanceProposal: true` on a new local child. A chat acting for the person
+  can grant that child a read and proposal for the first turn. The person still
+  previews and keeps the proposal. Result delivery reports the child's reply
+  separately from whether the requested work succeeded.
 - **Steering** is a mid-turn prompt (`prompt-handoff`, above; capture
   `mid-turn-steer`). Station's composer queues follow-ups for ACP engines,
   so the hand-off runs through Station's steer command. While the engine

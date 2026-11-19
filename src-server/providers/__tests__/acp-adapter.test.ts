@@ -4368,6 +4368,83 @@ describe('AcpAdapter', () => {
     }
   });
 
+  test('Antigravity Full access answers regular ACP asks, then Ask takes effect without restarting', async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'other', command: '/usr/bin/agy', args: ['acp'] },
+      ],
+    });
+    const threadId = 'antigravity-approval';
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    try {
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'other' },
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+      await nextEvent(events, 'session.started');
+      expect(await nextEvent(events, 'session.configured')).toMatchObject({
+        metadata: { approvalMode: 'never' },
+      });
+
+      const permission = (id: string, kind: 'other' | 'switch_mode') =>
+        processes[0]!.client.requestPermission({
+          sessionId: 'ignored-by-adapter',
+          toolCall: { toolCallId: id, title: id, name: id, kind },
+          options: [PERMISSION_OPTIONS[0]!, PERMISSION_OPTIONS[2]!],
+        });
+      await expect(
+        permission('mcp_station-control_get_appearance', 'other'),
+      ).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'allow-once' },
+      });
+      const plan = permission('plan-exit', 'switch_mode');
+      const planRequest = await nextEvent(events, 'request.opened');
+      expect(planRequest).toMatchObject({
+        method: 'request.opened',
+        title: 'plan-exit',
+      });
+      await adapter.respondToRequest(
+        threadId,
+        String(planRequest.requestId),
+        'decline',
+      );
+      await plan;
+      await nextEvent(events, 'request.resolved');
+
+      await adapter.sendTurn({
+        threadId,
+        prompt: 'Continue',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'ask' },
+      });
+      await nextEvent(events, 'turn.started');
+      processes[0]!.resolvePrompt('end_turn');
+      await nextEvent(events, 'turn.completed');
+      expect(processes).toHaveLength(1);
+
+      const ask = permission('mcp_station-control_get_appearance', 'other');
+      const opened = await nextEvent(events, 'request.opened');
+      expect(opened).toMatchObject({
+        method: 'request.opened',
+        title: 'mcp_station-control_get_appearance',
+      });
+      await adapter.respondToRequest(
+        threadId,
+        String(opened.requestId),
+        'decline',
+      );
+      await expect(ask).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
   test('acceptForSession grants the whole tool: a later call auto-allows with no prompt', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();

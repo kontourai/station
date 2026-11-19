@@ -10,6 +10,7 @@ import {
   normalizeACPArgs,
 } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import { acpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import { Hono } from 'hono';
 import {
@@ -521,6 +522,9 @@ function connectionStatusView(
       sessionId: null,
       mcpServers: [],
     }),
+    ...(acpApprovalControl(cfg.command) === 'requests'
+      ? { stationApprovalRequests: true as const }
+      : {}),
   };
 }
 

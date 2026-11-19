@@ -56,6 +56,8 @@ export interface ACPConnectionInfo {
   name: string;
   icon?: string;
   command?: string;
+  /** The host supports applying approval modes to this engine's ACP asks. */
+  stationApprovalRequests?: true;
   args?: string[];
   cwd?: string;
   enabled: boolean;

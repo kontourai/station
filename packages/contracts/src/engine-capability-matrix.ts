@@ -800,17 +800,15 @@ export const ACP_MODEL_OVERRIDE_PER_TURN = false;
  *   answers only the requests the engine chooses to send, so the approval
  *   control says the engine decides and offers no mode.
  */
-export type AcpApprovalControl = 'station' | 'engine';
+export type AcpApprovalControl = 'station' | 'requests' | 'engine';
 
-/** ACP engines whose launch configuration Station sets (#3290). */
-export type AcpStationApprovalEngine = 'opencode';
+/** ACP engines for which Station offers an approval mode. */
+export type AcpStationApprovalEngine = 'opencode' | 'antigravity';
 
 /**
- * The ACP engine a connection's command launches, when Station sets its
- * approval rules at launch. Matched on the executable's own name (any
- * directory, a Windows launcher extension ignored), the identity the
- * OpenCode model listing also uses. A wrapper such as `npx opencode-ai` is
- * not recognized, so that connection is `engine`-decided.
+ * Identifies an ACP engine that supports Station approval modes by its
+ * executable name. Station configures OpenCode at launch and answers
+ * Antigravity's permission requests through ACP. Wrappers are ambiguous.
  */
 export function acpStationApprovalEngine(
   command: string | null | undefined,
@@ -823,7 +821,9 @@ export function acpStationApprovalEngine(
     .pop()
     ?.toLowerCase()
     .replace(/\.(exe|cmd|bat)$/, '');
-  return executable === 'opencode' ? 'opencode' : undefined;
+  if (executable === 'opencode') return 'opencode';
+  if (executable === 'agy') return 'antigravity';
+  return undefined;
 }
 
 /**
@@ -854,7 +854,14 @@ export function isOpenCodeAcpConnection(
 export function acpApprovalControl(
   command: string | null | undefined,
 ): AcpApprovalControl {
-  return acpStationApprovalEngine(command) ? 'station' : 'engine';
+  switch (acpStationApprovalEngine(command)) {
+    case 'opencode':
+      return 'station';
+    case 'antigravity':
+      return 'requests';
+    default:
+      return 'engine';
+  }
 }
 
 export const ENGINE_CAPABILITY_MATRICES: Record<

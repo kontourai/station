@@ -16,6 +16,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ChatContentPart } from '../contexts/active-chats-state';
 
 const REASONING = 'inspect the request compare the evidence choose the answer';
+const viewport = vi.hoisted(() => ({ isMobile: false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => viewport.isMobile,
+}));
 
 vi.mock('../contexts/PreviewContext', () => ({
   usePreview: () => ({ openPreview: vi.fn() }),
@@ -49,6 +54,7 @@ afterEach(() => {
   cleanup();
   activeChatsStore.removeChat(SESSION);
   __resetReasoningDisclosureIntents();
+  viewport.isMobile = false;
 });
 
 /** What the live stream writes: the row reads it through the real store. */
@@ -142,6 +148,14 @@ describe('the streaming row renders reasoning through ReasoningSection', () => {
         .getByRole('button', { name: 'Reasoning · 9 words' })
         .getAttribute('aria-expanded'),
     ).toBe('false');
+    expect(screen.queryByText(REASONING)).toBeNull();
+  });
+
+  test('on a phone reasoning stays collapsed until opened', () => {
+    viewport.isMobile = true;
+    renderStreamingRow({ parts: [reasoningPart], showReasoning: true });
+    const summary = screen.getByRole('button', { name: 'Reasoning · 9 words' });
+    expect(summary.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByText(REASONING)).toBeNull();
   });
 

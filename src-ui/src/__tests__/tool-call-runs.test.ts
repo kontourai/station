@@ -176,6 +176,41 @@ describe('foldTurnWork', () => {
     expect(run.interludes).toEqual([]);
   });
 
+  test('keeps the visual reply in place while folding the work above and below it', () => {
+    const htmlReply = {
+      version: 1,
+      sessionId: 'publisher',
+      pageId: '00000000-0000-4000-8000-000000000001',
+    };
+    const blocks = foldTurnWork([
+      toolCall({ toolCallId: 'a' }),
+      text('progress'),
+      toolCall({
+        toolCallId: 'page',
+        toolName: 'mcp_station-control_html_render',
+        output: { htmlReply },
+      }),
+      toolCall({ toolCallId: 'b' }),
+      text('more progress'),
+      toolCall({ toolCallId: 'c' }),
+      text('answer'),
+    ]);
+    expect(blocks.map((block) => block.type)).toEqual([
+      'tool-call-run',
+      'content-part',
+      'html-reply',
+      'tool-call-run',
+      'content-part',
+    ]);
+    expect(blocks[0]).toMatchObject({
+      calls: [{ part: { toolCallId: 'a' } }, { part: { toolCallId: 'page' } }],
+    });
+    expect(blocks[3]).toMatchObject({
+      calls: [{ part: { toolCallId: 'b' } }, { part: { toolCallId: 'c' } }],
+      interludes: [{ part: { content: 'more progress' } }],
+    });
+  });
+
   test('a turn that ends on a call keeps its last narration out of the fold', () => {
     const parts = [
       text('intent'),
@@ -229,6 +264,7 @@ test.each([
 test.each([
   'Tool: station-control/html_render',
   'mcp__station-control__html_render',
+  'mcp_station-control_html_render',
 ])('recognizes a qualified ACP tool result: %s', (toolName) => {
   const htmlReply = {
     version: 1,

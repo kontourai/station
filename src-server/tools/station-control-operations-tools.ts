@@ -980,6 +980,12 @@ export function registerOperationsTools(
         .optional()
         .describe('Parent task for worker or subagent topology'),
       navigate: z.boolean().optional(),
+      appearanceProposal: z
+        .boolean()
+        .optional()
+        .describe(
+          'Let a new local child read your appearance and submit a proposal. The person previews and keeps it.',
+        ),
       _delegation: delegationContextSchema.optional(),
       _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),
@@ -1019,6 +1025,7 @@ export function registerOperationsTools(
           target,
           ...(input.sessionId ? { sessionId: input.sessionId } : {}),
           ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+          ...(input.appearanceProposal ? { appearanceProposal: true } : {}),
           // #2601: a claim only, like `send_message`'s.
           delegation: _delegation,
           ...(_delegation && _delegationAttestation

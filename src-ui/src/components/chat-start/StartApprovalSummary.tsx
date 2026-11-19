@@ -4,11 +4,14 @@ import { useAccountPreferences } from '../../contexts/AccountPreferencesContext'
 import { type AgentData, useAgents } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
+import { useACPConnections } from '../../hooks/useACPConnections';
 import {
   type ApprovalMode,
+  acpApprovalFor,
   approvalChoiceIndicators,
   approvalModeChipLabel,
   approvalModeDescription,
+  approvalModeKnobSupported,
   approvalModeSourceNote,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
@@ -54,7 +57,12 @@ export function StartApprovalSummary({
   const actual = useAgents().find(
     (entry) => entry.slug === (executionAgentId ?? agent.slug),
   );
-  const engine = actual?.execution?.agentConnectionId;
+  const connectionId = actual?.execution?.agentConnectionId;
+  const { data: acpConnections } = useACPConnections(Boolean(connectionId));
+  const acp = acpApprovalFor(
+    acpConnections?.find((connection) => connection.id === connectionId),
+  );
+  const engine = acp ? acp.engineId : connectionId;
   const personalDefault =
     engine === 'codex'
       ? account.data?.values.interactiveApprovalModes?.codex
@@ -64,7 +72,7 @@ export function StartApprovalSummary({
           ? account.data?.values.interactiveApprovalModes?.muse
           : undefined;
   const resolved = resolveEffectiveApprovalMode({
-    engineConnectionId: engine,
+    engineConnectionId: engine ?? undefined,
     sessionOverride: pick,
     agentDefault: actual?.execution?.approvalMode,
     projectDefault,
@@ -72,8 +80,7 @@ export function StartApprovalSummary({
     personalDefault,
     stationDefault: config?.defaultApprovalMode,
   });
-  if (engine !== 'codex' && engine !== 'claude' && engine !== 'muse')
-    return null;
+  if (!approvalModeKnobSupported(engine)) return null;
   // #4518: an inherited default above the managed ceiling starts the chat at
   // the ceiling (the server lowers it), so the chip and the open picker show
   // that. This start's own pick is shown as picked: above the ceiling the
@@ -149,7 +156,7 @@ export function StartApprovalSummary({
           componentProps={{
             triggerRef,
             effectiveMode: startMode,
-            engineConnectionId: engine,
+            engineConnectionId: engine ?? undefined,
             onClose: () => setIsSheetOpen(false),
             onSelect: onPick,
             sourceNote:

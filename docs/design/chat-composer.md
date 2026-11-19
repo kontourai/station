@@ -745,7 +745,8 @@ for not sent and may-have-reached, and caution-coloured for a send with no
 answer. An assistant row with nothing to draw renders no bubble: the streaming
 row appears with its first text, reasoning or tool row (the pill carries the
 starting state before that) and eases in, and a settled row whose only content
-is reasoning keeps a collapsed **Reasoning · N words** disclosure. A turn that
+is reasoning keeps a collapsed **Reasoning · N words** disclosure. On a
+phone, live reasoning disclosures also start collapsed. A turn that
 ended with nothing to draw (no text, tool or file rows, or only reasoning the
 reader hides) keeps its row as one line, **No reply**, or **Stopped** when it
 was stopped, with the turn's actions at the end of that line, so both are the
@@ -1117,9 +1118,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   Station has taken over. A pick the engine could not be switched to is never
   shown as applied: the chip shows what still runs, marked pending, with text
   that differs from Default ("Own settings", or "Ask · kept"), and its name
-  says the pick was not applied. A newly recorded decision clears that. Any other ACP engine
-  shows **Approval: Set by engine**, which opens a read-only explanation and
-  offers no mode. Codex's Default likewise names the engine's own settings
+  says the pick was not applied. A newly recorded decision clears that.
+  Antigravity offers Station's approval modes for the requests it sends.
+  It keeps control of its own tool rules. Other ACP connections show
+  **Approval: Set by engine** with a read-only explanation. Codex's Default likewise names the engine's own settings
   ("Default — Codex's own settings"), and its description states what
   an unconfigured Codex does there, as a bound on which commands run unasked:
   none that uses the network or writes outside the chat's folder and temp.

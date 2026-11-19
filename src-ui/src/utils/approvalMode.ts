@@ -1,5 +1,6 @@
 import {
   type AcpApprovalControl,
+  acpApprovalControl,
   acpStationApprovalEngine,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
@@ -31,6 +32,7 @@ const APPROVAL_MODE_KNOB_ENGINE_IDS = new Set([
   'codex',
   'muse',
   'opencode',
+  'antigravity',
 ]);
 
 /**
@@ -50,7 +52,11 @@ export function approvalModeKnobSupported(engineId?: string | null): boolean {
  * and never its id; `null` when the engine decides for itself.
  */
 export function acpApprovalFor(
-  connection?: { command?: string | null; name?: string | null } | null,
+  connection?: {
+    command?: string | null;
+    name?: string | null;
+    stationApprovalRequests?: true;
+  } | null,
 ):
   | {
       control: AcpApprovalControl;
@@ -59,10 +65,14 @@ export function acpApprovalFor(
     }
   | undefined {
   if (!connection) return undefined;
-  const engineId = acpStationApprovalEngine(connection.command) ?? null;
+  const control = acpApprovalControl(connection.command);
+  const supported =
+    control !== 'requests' || connection.stationApprovalRequests === true;
   return {
-    control: engineId ? 'station' : 'engine',
-    engineId,
+    control: supported ? control : 'engine',
+    engineId: supported
+      ? (acpStationApprovalEngine(connection.command) ?? null)
+      : null,
     ...(connection.name ? { engineName: connection.name } : {}),
   };
 }
@@ -135,17 +145,21 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     codex:
       "Agent requests approval at its own discretion; Codex's configured reviewer may approve sandbox escalations automatically. File writes stay sandboxed to the workspace.",
     claude: 'File edits auto-approved; other actions still ask.',
+    antigravity: 'Station allows file edit requests. Other requests still ask.',
     // #3290: Station answers OpenCode's requests; only edits are allowed.
     opencode:
       'File edits run on their own; shell commands, web access and MCP tools still ask.',
   },
   never: {
+    antigravity:
+      'Station answers ordinary approval requests automatically. Antigravity still decides which tools can run. Questions, plan exits and policy approvals still ask.',
     // #3290: nothing asks; the built-in subagents may run (their rules cannot
     // ask either); plan mode's own edit block stays.
     opencode:
       'With full access granted, permitted actions run without approval prompts. Questions, plan exits and network-host requests may still ask. Without a grant, Station applies Auto, so some actions still ask. Plan mode still blocks most edits.',
   },
   'connection-default': {
+    antigravity: 'Uses Antigravity’s permission settings.',
     // #3290 (owner decision): Station sends OpenCode no mode until it takes
     // over, as with Claude and Codex (`resolveDefaultPick`).
     opencode:

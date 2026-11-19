@@ -33,6 +33,12 @@ import {
 } from '@kontourai/station-shared/json-file-storage';
 import { contrastRatio } from '@kontourai/ui/contrast';
 
+export class CustomAppearanceGrantExpiredError extends Error {
+  constructor() {
+    super('The delegated appearance proposal grant expired.');
+  }
+}
+
 export class CustomAppearanceConflictError extends Error {
   constructor() {
     super('This appearance changed. Read it again before proposing or saving.');
@@ -235,9 +241,12 @@ export class CustomAppearanceStore {
     input: unknown,
     sourceSessionId?: string,
     studioEnabled: () => boolean = () => false,
+    grantCurrent?: () => boolean,
   ): Promise<CustomAppearanceDocument> {
     const appearance = admitCustomAppearance(input);
     return this.change(owner, revision, (current) => {
+      if (grantCurrent && !grantCurrent())
+        throw new CustomAppearanceGrantExpiredError();
       if (appearance.visual && !studioEnabled())
         throw new CustomAppearanceStudioDisabledError();
       return {

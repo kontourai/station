@@ -104,6 +104,8 @@ export interface StationControlCaller {
    * one must fail closed.
    */
   readonly principal?: StationControlCallerPrincipal;
+  /** A turn-scoped grant for reading and proposing personal appearance only. */
+  readonly appearanceOwnerId?: string;
   /** Station-local project identity (`ProjectConfig.id`); membership keys on it. */
   readonly localProjectId?: string;
   /**

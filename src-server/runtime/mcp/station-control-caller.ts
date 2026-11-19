@@ -49,6 +49,7 @@ export interface StationControlCallerRecord {
   /** Rechecked only for a coordinator-scoped in-process credential. */
   readonly coordinatorCurrent?: () => boolean;
   readonly principal?: SessionActingPrincipal;
+  readonly appearanceOwnerId?: string;
   readonly localProjectId?: string;
   readonly projectIdSource?: 'session-record' | 'slug-lookup';
   readonly projectSlug?: string;
@@ -95,6 +96,7 @@ export type StationControlCallerRecordResolver = (
 export interface StationControlCallerRecordSources {
   /** Ownership-record principal (`OrchestrationService.resolveSessionActingPrincipal`). */
   actingPrincipal(sessionId: string): SessionActingPrincipal | undefined;
+  delegatedAppearanceOwner?(sessionId: string): string | undefined;
   /**
    * The metadata the session STARTED with (its first `session.started`).
    * Never the latest `session.configured`: engines publish sparse later
@@ -134,6 +136,7 @@ export function createStationControlCallerRecordResolver(
         principal: { id: run.principalId, source: 'session-owner' as const },
       };
     const principal = sources.actingPrincipal(sessionId);
+    const appearanceOwnerId = sources.delegatedAppearanceOwner?.(sessionId);
     const metadata = sources.startedMetadata(sessionId);
     const delegation = metadata?.delegation as
       | { projectSlug?: unknown }
@@ -159,6 +162,7 @@ export function createStationControlCallerRecordResolver(
     const conversationId = sources.conversationId(sessionId);
     return {
       ...(principal ? { principal } : {}),
+      ...(appearanceOwnerId ? { appearanceOwnerId } : {}),
       ...(localProjectId
         ? {
             localProjectId,
@@ -190,7 +194,8 @@ export function stationControlCallerRecordSources(runtime: {
   orchestrationService: Pick<
     OrchestrationService,
     'resolveSessionActingPrincipal' | 'firstStartedMetadataOfThread'
-  >;
+  > &
+    Partial<Pick<OrchestrationService, 'delegatedAppearanceOwner'>>;
   eventStore?: {
     conversationForSession(
       sessionId: string,
@@ -208,6 +213,8 @@ export function stationControlCallerRecordSources(runtime: {
   return {
     actingPrincipal: (sessionId) =>
       runtime.orchestrationService.resolveSessionActingPrincipal(sessionId),
+    delegatedAppearanceOwner: (sessionId) =>
+      runtime.orchestrationService.delegatedAppearanceOwner?.(sessionId),
     startedMetadata: (sessionId) =>
       runtime.orchestrationService.firstStartedMetadataOfThread(sessionId),
     localProjectId: (slug) => {
@@ -280,6 +287,11 @@ function resolveVerifiedStationControlCaller(
   const caller: StationControlCaller = Object.freeze({
     sessionId: verified.sessionId,
     assurance,
+    ...(record?.appearanceOwnerId &&
+    assurance !== 'bearer-exposed' &&
+    !verified.callerRecordBinding
+      ? { appearanceOwnerId: record.appearanceOwnerId }
+      : {}),
     ...(record?.principal
       ? {
           principal: stationControlCallerPrincipal(

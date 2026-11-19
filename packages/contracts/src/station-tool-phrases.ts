@@ -794,7 +794,7 @@ export function stationToolPhraseNames(): string[] {
 }
 
 const QUALIFIED_NAME = new RegExp(
-  `^(?:mcp__(${STATION_TOOL_SERVERS.join('|')})__|(${STATION_TOOL_SERVERS.join('|')})[_/.]|Tool: (${STATION_TOOL_SERVERS.join('|')})/)([A-Za-z0-9_-]+)$`,
+  `^(?:mcp__(${STATION_TOOL_SERVERS.join('|')})__|mcp_(${STATION_TOOL_SERVERS.join('|')})_|(${STATION_TOOL_SERVERS.join('|')})[_/.]|Tool: (${STATION_TOOL_SERVERS.join('|')})/)([A-Za-z0-9_-]+)$`,
 );
 
 /**
@@ -810,10 +810,11 @@ export function stationToolOf(
   const name = toolName.trim();
   const qualified = QUALIFIED_NAME.exec(name);
   if (qualified) {
-    const found = (qualified[1] ?? qualified[2] ?? qualified[3]) as
-      | StationToolServer
-      | undefined;
-    const tool = qualified[4];
+    const found = (qualified[1] ??
+      qualified[2] ??
+      qualified[3] ??
+      qualified[4]) as StationToolServer | undefined;
+    const tool = qualified[5];
     return found && tool ? { server: found, tool } : undefined;
   }
   if (

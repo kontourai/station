@@ -27,6 +27,10 @@ export function createHtmlReplyPages(
       sessionId: string,
       conversationId: string,
       page: HtmlReplyPage,
+      publishEvent?: (
+        reference: HtmlReplyReference,
+        insert: () => void,
+      ) => void,
     ): HtmlReplyReference {
       const bytes = Buffer.byteLength(page.html);
       if (!sessionExists(sessionId))
@@ -52,8 +56,7 @@ export function createHtmlReplyPages(
       };
       const storedJson = JSON.stringify(stored);
       const storedBytes = Buffer.byteLength(storedJson);
-      db.exec('BEGIN IMMEDIATE');
-      try {
+      const insert = () => {
         if (!sessionExists(sessionId))
           throw new HtmlReplyRefusal('HTML reply session no longer exists');
         const usage = db
@@ -74,6 +77,14 @@ export function createHtmlReplyPages(
           storedJson,
           storedBytes,
         );
+      };
+      if (publishEvent) {
+        publishEvent(reference, insert);
+        return reference;
+      }
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        insert();
         db.exec('COMMIT');
         return reference;
       } catch (error) {

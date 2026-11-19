@@ -1862,10 +1862,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #3290: nothing requested leaves OpenCode on its own configuration; a
     // mode puts it on Station's floor for that mode.
     const startApprovalMode =
+      approvalControl === 'engine'
+        ? undefined
+        : acpAppliedApprovalMode(requestedApprovalMode, input.confinement);
+    const startApprovalFloor =
       approvalControl === 'station'
-        ? acpAppliedApprovalMode(requestedApprovalMode, input.confinement)
+        ? acpApprovalFloor(startApprovalMode)
         : undefined;
-    const startApprovalFloor = acpApprovalFloor(startApprovalMode);
     if (startApprovalFloor) {
       const preflight = this.startPreflights.get(input.threadId);
       this.startPreflights.delete(input.threadId);
@@ -3251,7 +3254,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const turnApprovalMode = readApprovalMode(input.modelOptions);
     let approvalTakeoverFailed = false;
     if (turnApprovalMode) {
-      if (record.approvalControl !== 'station') {
+      if (record.approvalControl === 'engine') {
         throw new SendTurnRefusedError(
           ACP_ENGINE_DECIDES_APPROVAL_MESSAGE,
           'input_unsupported',
@@ -3263,7 +3266,10 @@ export class AcpAdapter implements ProviderAdapterShape {
       );
       // Station takes over from the engine's own configuration, or moves
       // between floors: relaunch on the floor and resume the same session.
-      const floor = acpApprovalFloor(applied);
+      const floor =
+        record.approvalControl === 'station'
+          ? acpApprovalFloor(applied)
+          : undefined;
       const switched: { ok: true } | { ok: false; reason: string } =
         floor === record.approvalFloor
           ? { ok: true }

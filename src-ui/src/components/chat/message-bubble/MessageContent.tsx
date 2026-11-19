@@ -185,7 +185,8 @@ function MessageContentComponent({
         content={part.content ?? ''}
         fontSize={chatFontSize}
         show={showReasoning}
-        hasAnswerText
+        hasAnswerText={hasAnswerText}
+        autoExpand={false}
       />
     ) : (
       <LazyMarkdown key={`interlude:${index}`}>
