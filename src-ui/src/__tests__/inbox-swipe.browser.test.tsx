@@ -212,6 +212,14 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     expect(target?.height).toBeGreaterThanOrEqual(44);
     expect(target?.width).toBeGreaterThanOrEqual(44);
 
+    await expectBrowser
+      .poll(() =>
+        row.evaluate((element) => {
+          const container = element.closest('.inbox-row');
+          return container && getComputedStyle(container).transform;
+        }),
+      )
+      .toBe('none');
     const rowTop = (await row.boundingBox())?.y ?? 0;
     await setUpdating(true);
     await expectBrowser(pill).toHaveText('Refreshing inbox…');
