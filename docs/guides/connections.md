@@ -996,8 +996,10 @@ Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
 persist their default Agents. Automatic adoption respects an engine's recorded
 removal and refuses an identity already bound to another connection. It does
-not sign the engine in. See
-[startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
+not sign the engine in. During shutdown, adoption stops waiting for a
+contended registry or Agent lock. Committed connections stay registered, and
+the next startup can create any default Agent whose write was interrupted.
+See [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
 and the [Agent registry](../../src-server/domain/agent-registry.ts).
 The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
