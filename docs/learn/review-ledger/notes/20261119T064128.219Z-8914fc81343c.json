@@ -1,0 +1,13 @@
+{
+  "revision": "b1be6a25a8004567413657af3c987e2661e904dc",
+
+  "notes": [
+    {"path":"docs/reference/station-weight.md","note":"Reviewed the strict launcher timeout and SDK child cleanup against the two production callers. Rule B waits for the current exit batch and checks status before the synchronous POSIX group signal. Rule C retains the synchronous SDK handle guard, which has a narrower calling-context assumption. Real-child regression and live launcher timeout cases ran in the focused macOS sets, and the owned-process suite ran on Linux arm64.","inputs":["docs/reference/station-weight.md","scripts/lib/owned-process.mjs"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed the shared process owner delta against the lab's cancellation and cleanup claims. Only the benchmark opts into the changed strict launcher termination. The lab retains its existing termination, settlement and artifact policy.","inputs":["docs/guides/native-model-channel-lab.md","scripts/lib/owned-process.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the shared process owner delta against the Windows wrapper, Job settlement, output EOF and drain checks. The only changed caller uses strict POSIX termination in the benchmark. No Windows guard or legacy group signal was changed.","inputs":["docs/guides/testing.md","scripts/lib/owned-process.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the shared owned-process strict branch against the script guidance on process-tree custody, bounded output and meaningful fault outcomes. The new regression uses real exit state and records the signal attempt without dispatching it.","inputs":["scripts/AGENTS.md","scripts/lib/owned-process.mjs"]}
+  ]
+}
