@@ -415,6 +415,11 @@
     );
   }
 
+  /* With Inbox open, leave room for the controls and its own scrolling list. */
+  :root:has(.mobile-inbox:not([hidden])) .notification-container {
+    max-height: 45dvh;
+  }
+
   .notification-approval-queue__panel {
     max-height: min(56dvh, 460px);
   }
