@@ -2922,8 +2922,28 @@ after deleting file-memory history and its derived summary. Orchestration
 history is read-only through this path (409), including a conversation whose
 later turns run in successor Sessions and each successor itself, and hosted
 requests return 404.
-A caller-scoped station-control deletion additionally checks the stored owner.
-This is not a general endpoint for deleting any Session visible in a list.
+A caller-scoped Station Control deletion additionally checks the stored owner.
+
+`DELETE /agents/:slug/conversations/:conversationId/owned` uses the same
+deletion lifecycle for an authenticated person on a personal Station. The
+stored file owner and the Agent must both match. Missing, foreign, and
+ambiguous legacy records all return 404 with `owned_conversation_not_found`.
+Runtime-managed records remain read-only (409). The request's owner authority is
+checked again at fork retirement and before deleting the saved files. An
+already retired fork whose cleanup does not finish returns 409 with
+`owned_conversation_deletion_incomplete`.
+
+### Search Saved Conversations
+
+`GET /api/conversations/work/search?query=<phrase>` searches saved
+conversation titles and transcript excerpts. The optional `projectSlug`,
+`agent`, and `limit` parameters narrow the results. The response includes a
+search state and result coverage. A `partial` state can omit matching records.
+
+Person requests use their existing conversation read authority. Verified
+Station Control callers retain their Project and transcript rules, including
+their Project as the default when recorded. Unverified internal callers are
+refused.
 
 ### Manage Conversation Context
 

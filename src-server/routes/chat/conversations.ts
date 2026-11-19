@@ -360,6 +360,7 @@ interface SessionMessageReader {
   deleteUnstartedConversationForkContext?(
     id: string,
     scope: SessionReadAuthority,
+    isCurrent?: () => boolean,
   ): Promise<boolean>;
   readSessionMessages(
     threadId: string,
@@ -794,6 +795,10 @@ export function createConversationRoutes(
   importCaller?: (
     request: Request,
   ) => { deviceId: string; stationName: string } | undefined,
+  mayUseOwnedConversationRoute?: (
+    context: Context,
+    expectedUserId?: string,
+  ) => boolean,
 ) {
   const app = new Hono();
   const sessionSummaries =
@@ -2092,8 +2097,30 @@ export function createConversationRoutes(
   );
 
   // Delete conversation
-  app.delete('/:slug/conversations/:conversationId', async (c) => {
+  const deleteConversation = async (c: Context, ownerOnly: boolean) => {
+    const ownedNotFound = () =>
+      c.json(
+        {
+          success: false,
+          error: 'Conversation not found',
+          code: 'owned_conversation_not_found',
+        },
+        404,
+      );
+    const incompleteRetirement = () =>
+      c.json(
+        {
+          success: false,
+          error:
+            'The fork was retired, but its saved conversation cleanup did not finish.',
+          code: 'owned_conversation_deletion_incomplete',
+        },
+        409,
+      );
+    let forkRetired = false;
     try {
+      if (ownerOnly && !mayUseOwnedConversationRoute?.(c))
+        return ownedNotFound();
       conversationOps.add(1, { operation: 'delete', agent: param(c, 'slug') });
       const slug = param(c, 'slug');
       const conversationId = param(c, 'conversationId');
@@ -2103,11 +2130,14 @@ export function createConversationRoutes(
       // fence before the adapter because the file store is process-global in a
       // hosted deployment.
       if (isHostedSessionReadAuthority(authority)) {
+        if (ownerOnly) return ownedNotFound();
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       }
-      const adapter = getAdapter(runtimeAgentKey(slug));
+      const agentKey = runtimeAgentKey(slug);
+      const adapter = getAdapter(agentKey);
 
       if (!adapter) {
+        if (ownerOnly) return ownedNotFound();
         return c.json({ success: false, error: 'Agent not found' }, 404);
       }
       // #2377 slice B: a station-control agent deletes only a conversation
@@ -2122,12 +2152,28 @@ export function createConversationRoutes(
             404,
           );
       }
+      const current = () =>
+        mayUseOwnedConversationRoute?.(c, authority.userId) === true;
+      const ownsStoredConversation = (
+        stored: { userId: string; resourceId: string } | null,
+      ) =>
+        stored?.userId === authority.userId &&
+        (stored.resourceId === agentKey || stored.resourceId === slug);
       if (
+        ownerOnly &&
+        (!ownsStoredConversation(
+          await adapter.getConversation(conversationId),
+        ) ||
+          !current())
+      )
+        return ownedNotFound();
+      const runtimeConversation =
         await sessionMessageReader?.readSessionConversation(
           conversationId,
           authority,
-        )
-      ) {
+        );
+      if (ownerOnly && !current()) return ownedNotFound();
+      if (runtimeConversation) {
         return c.json(
           {
             success: false,
@@ -2137,7 +2183,15 @@ export function createConversationRoutes(
         );
       }
 
-      await reserveFork(conversationId, async () => {
+      const deleted = await reserveFork(conversationId, async () => {
+        if (
+          ownerOnly &&
+          (!ownsStoredConversation(
+            await adapter.getConversation(conversationId),
+          ) ||
+            !current())
+        )
+          return false;
         const fork = sessionMessageReader?.readForkConversation?.(
           conversationId,
           authority,
@@ -2156,13 +2210,26 @@ export function createConversationRoutes(
             );
           // Tombstone before file cleanup: a failed file deletion must never
           // leave the retained seed eligible for a provider start.
-          await sessionMessageReader.deleteUnstartedConversationForkContext(
+          const retired =
+            await sessionMessageReader.deleteUnstartedConversationForkContext(
+              conversationId,
+              authority,
+              ...(ownerOnly ? [current] : []),
+            );
+          if (ownerOnly && !retired) return false;
+          forkRetired = ownerOnly && retired;
+        }
+        if (ownerOnly) {
+          return adapter.deleteOwnedConversation(
             conversationId,
-            authority,
+            (stored) => ownsStoredConversation(stored) && current(),
           );
         }
         await adapter.deleteConversation(conversationId);
+        return true;
       });
+      if (!deleted)
+        return forkRetired ? incompleteRetirement() : ownedNotFound();
       // Derived summaries do not outlive their source conversation. Their
       // owner-scoped coordinate prevents an ID reused later from inheriting
       // this conversation's derived text.
@@ -2188,6 +2255,13 @@ export function createConversationRoutes(
 
       return c.json({ success: true });
     } catch (error: unknown) {
+      if (forkRetired) {
+        logger.warn(
+          'Could not finish owned conversation cleanup after fork retirement',
+          { error },
+        );
+        return incompleteRetirement();
+      }
       return conversationRouteFailure(
         c,
         logger,
@@ -2195,7 +2269,13 @@ export function createConversationRoutes(
         error,
       );
     }
-  });
+  };
+  app.delete('/:slug/conversations/:conversationId', (c) =>
+    deleteConversation(c, false),
+  );
+  app.delete('/:slug/conversations/:conversationId/owned', (c) =>
+    deleteConversation(c, true),
+  );
 
   // Get messages for a conversation
   // The one unified read seam (`conversation-message-reader.ts`): every

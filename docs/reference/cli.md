@@ -1443,17 +1443,52 @@ Project, title, worktree branch or folder, and any active work claims.
 Sessions on another Station or SSH Environment are never listed. It needs the
 same `session-cli-reads` Feature Preview as `sessions wait`.
 
+### `board` and `boards`
+
+Read or arrange widgets on a Session or Task Board. Task Boards require the
+owning Project slug. Pin reads one block as JSON from `--data`, `--file`, or
+piped stdin. Station checks the caller's access to the Board and requires
+source references when the block claims data. `--after` uses an existing
+widget's stable name.
+
+```bash
+station board read session "$SESSION_ID"
+station board read task "$TASK_ID" --project="$PROJECT_SLUG"
+station board pin session "$SESSION_ID" summary --file=summary.json
+station board move session "$SESSION_ID" summary --after=status
+station board unpin session "$SESSION_ID" summary
+station boards list
+station boards get "$BOARD_SLUG"
+```
+
+`boards list` and `boards get` read the authenticated person's saved Personal
+Boards. All six commands return JSON.
+
 ### `conversation`
 
-Export a conversation as a portable thread, or in a provider-native format,
-fork it into a new conversation, or settle or reopen it in your own inbox.
+Search conversations you can read, export them in a portable or
+provider-native format, fork or delete saved conversations, or settle or reopen them in your inbox.
 
 ```
+station conversation delete <agent> <conversationId> --confirm
+station conversation search <phrase> [--project=<slug>] [--agent=<slug>] [--limit=<n>]
 station conversation export <agent> <conversationId>
 station conversation fork <agent> <conversationId> [--target-agent=<slug>] [--project=<slug>] [--turn=<id>] [--idempotency-key=<key>] [--json]
 station conversation settle <conversationId> [--json]
 station conversation reopen <conversationId> [--json]
 ```
+
+Search returns matching titles and message excerpts as JSON. Filters narrow
+the conversations available to your Station credential. Results marked
+`partial` may omit matches. File conversations need a recorded owner matching
+your principal, so old records stamped with an OS alias can be absent.
+
+Delete requires confirmation and matches both the named Agent and your
+recorded owner identity. It applies to saved file conversations on personal
+Stations. Runtime-managed history and old rows with ambiguous ownership are
+refused.
+If a fork was retired before its file cleanup could finish, the CLI reports
+the incomplete deletion.
 
 `export`:
 
